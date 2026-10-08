@@ -204,8 +204,9 @@ Portable Skills preparation creates missing files only, never overwrites researc
 instructions. Runtime project discovery is bounded to cwd; one process-local extra
 Skill root is applied before readiness and is not a persisted folder preference.
 Failed application blocks sending. Ordinary native writes require idle admission;
-token-scoped explicit Agent configuration uses the same versioned owner without
-changing the admitted research permission.
+Agent operations inspect capabilities, change Skills, request sign-in or reduce
+next-turn permission. Only researcher-controlled native settings write connections
+or elevate permission.
 
 OAuth has an independent generation-bound task; inventory refresh cannot confirm
 or cancel it. Only explicit Sign In opens a validated ephemeral HTTPS URL. Matching

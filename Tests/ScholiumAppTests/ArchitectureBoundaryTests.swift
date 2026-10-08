@@ -3,6 +3,29 @@ import Testing
 
 @Suite("Modular monolith boundaries")
 struct ArchitectureBoundaryTests {
+    @Test("Chat website icon presentation has no automatic remote transport")
+    func localChatWebsiteIcons() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in [
+            "Scholium/Services/AgentChatFaviconStore.swift",
+            "ScholiumApplication/AgentChatWebsiteIcons.swift",
+            "ScholiumCore/WebsiteIconTransport.swift",
+        ] {
+            #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path))
+        }
+        for path in [
+            "Scholium/Views/Sidebar/AgentChatReadReply.swift",
+            "Scholium/Views/Sidebar/AgentChatReplyActions.swift",
+            "Scholium/Views/Sidebar/AgentChatWebsiteIcon.swift",
+        ] {
+            let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            for transport in ["URLSession", "AgentChatFaviconStore", "WebsiteIconTransport"] {
+                #expect(!source.contains(transport), "Automatic website icon transport in \(path)")
+            }
+        }
+    }
+
     @Test("Public Chat wire interpretation stays in Application")
     func chatTranscriptBoundary() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -77,7 +100,6 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/AgentChatController+Conversation.swift",
             "Scholium/Services/AgentChatController+Execution.swift",
             "Scholium/Services/AgentChatController+Materials.swift",
-            "Scholium/Services/AgentChatFaviconStore.swift",
             "Scholium/Services/AgentChatExecutionState.swift",
             "Scholium/Services/AgentChatRegistry.swift",
             // Feature composition roots; presentation leaves still consume Contracts only.

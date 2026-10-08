@@ -333,7 +333,7 @@ public actor StyleOperations: StyleUseCases {
         var attachmentFolderPath: String?
         var newLinkFormat: String?
         var vaultName: String?
-        if let object = jsonObject(at: obsidianURL.appendingPathComponent("app.json")) {
+        if let object = obsidianJSONObject(vaultRootURL: vaultRootURL, fileName: "app.json") {
             theme = object["theme"] as? String
             showLineNumbers = object["showLineNumber"] as? Bool
             defaultViewMode = object["defaultViewMode"] as? String
@@ -341,11 +341,11 @@ public actor StyleOperations: StyleUseCases {
             newLinkFormat = object["newLinkFormat"] as? String
         }
         if theme == nil,
-            let object = jsonObject(at: obsidianURL.appendingPathComponent("appearance.json"))
+            let object = obsidianJSONObject(vaultRootURL: vaultRootURL, fileName: "appearance.json")
         {
             theme = object["theme"] as? String
         }
-        if let object = jsonObject(at: obsidianURL.appendingPathComponent("core-plugins.json")) {
+        if let object = obsidianJSONObject(vaultRootURL: vaultRootURL, fileName: "core-plugins.json") {
             vaultName = object["vaultName"] as? String
         }
         return ObsidianAppearanceSnapshot(
@@ -358,8 +358,12 @@ public actor StyleOperations: StyleUseCases {
         )
     }
 
-    private func jsonObject(at url: URL) -> [String: Any]? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+    private func obsidianJSONObject(vaultRootURL: URL, fileName: String) -> [String: Any]? {
+        guard
+            let data = try? VaultConfigurationReader.readObsidianFile(
+                at: vaultRootURL, fileName: fileName
+            )
+        else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 

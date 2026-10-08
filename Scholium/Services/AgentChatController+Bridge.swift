@@ -367,56 +367,22 @@ extension AgentChatController {
         conversationID: UUID,
         admitted: @MainActor () -> Bool
     ) async throws -> MCPJSONValue {
-        try agentRequireOnly(
-            arguments,
-            keys: [
-                "action", "expected_version", "name", "kind", "address", "args", "enabled",
-                "bearer_token_env_var", "env_vars", "reuse_access_settings",
-            ])
+        // Runtime currency is not researcher consent. Executable, endpoint and
+        // access configuration can be changed only through native Settings.
         let action = try agentRequiredString(arguments["action"], name: "action")
-        let threadID = conversation(conversationID)?.threadID
-        if action == "sign_in" {
-            let name = try agentRequiredString(arguments["name"], name: "name")
-            let url = try await capabilities.agentSignIn(name: name, threadID: threadID, admitted: admitted)
-            return agentOK([
-                "action": .string(action), "applies_to": .string("authorization_flow"),
-                "authorization_url": .string(url.absoluteString), "configuration": .object([:]),
-            ])
-        }
-        guard ["add", "update", "set_enabled", "remove"].contains(action) else {
-            throw agentInvalid("action", "Choose add, update, set_enabled, remove or sign_in.")
-        }
-        if action == "add" {
-            _ = try agentRequiredString(arguments["name"], name: "name")
-        }
-        let expectedVersion = try agentRequiredString(arguments["expected_version"], name: "expected_version")
-        let snapshot = try await capabilities.agentCapabilitySnapshot(threadID: threadID, admitted: admitted)
-        let existing: AgentChatToolConnection?
-        if let name = try agentOptionalString(arguments["name"], name: "name") {
-            existing = snapshot.configuration.connections.first { $0.name == name }
-        } else {
-            existing = nil
-        }
-        if action != "add", existing == nil {
+        guard action == "sign_in" else {
             throw ScholiumMCPFailure(
-                code: .notFound,
-                message: "The requested MCP connection is not in the current configuration.",
-                recovery: "Inspect capabilities and use its exact connection name.")
+                code: .invalidRequest,
+                message: "MCP connection changes require researcher-controlled Settings.",
+                recovery: "Ask the researcher to open Agents & Chat > Skills and Tools while Chat is idle and review the exact connection there.")
         }
-        if let existing, !existing.isEditable {
-            throw CodexChatToolConfigurationError.managedConnection
-        }
-        let removing = action == "remove"
-        let connection = try agentToolConnection(arguments, existing: existing)
-        let reuse = try agentOptionalBool(arguments["reuse_access_settings"], name: "reuse_access_settings") ?? false
-        let result = try await capabilities.agentWriteTool(
-            connection, originalName: existing?.name,
-            expectedVersion: expectedVersion, removing: removing, reuseAccessSettings: reuse,
-            threadID: threadID, admitted: admitted)
+        try agentRequireOnly(arguments, keys: ["action", "name"])
+        let name = try agentRequiredString(arguments["name"], name: "name")
+        let threadID = conversation(conversationID)?.threadID
+        let url = try await capabilities.agentSignIn(name: name, threadID: threadID, admitted: admitted)
         return agentOK([
-            "action": .string(action), "applies_to": .string("runtime_configuration"),
-            "authorization_url": .null,
-            "configuration": agentToolConfigurationValue(result.configuration, overridden: result.overridden),
+            "action": .string(action), "applies_to": .string("authorization_flow"),
+            "authorization_url": .string(url.absoluteString),
         ])
     }
 
@@ -438,7 +404,15 @@ extension AgentChatController {
             guard let permission = AgentChatPermission(rawValue: raw) else {
                 throw agentInvalid("permission", "Choose ask or fullAccess.")
             }
-            update(in: conversationID) { $0.permission = permission }
+            guard permission == .ask else {
+                throw ScholiumMCPFailure(
+                    code: .invalidRequest,
+                    message: "Full Access requires the researcher's native permission control.",
+                    recovery: "Ask the researcher to select Full Access in this conversation's Chat Settings while it is idle. "
+                        + "This permits approvalPolicy=never and sandbox=danger-full-access for subsequent turns.")
+            }
+            try requireAgentCapabilityAdmission(admitted)
+            update(in: conversationID) { $0.permission = .ask }
         case "set_model":
             let model = try agentOptionalString(arguments["model"], name: "model")
             guard model == nil || models.contains(where: { $0.model == model }) else {
@@ -490,38 +464,6 @@ extension AgentChatController {
         ])
     }
 
-    private func agentToolConnection(
-        _ arguments: [String: MCPJSONValue],
-        existing: AgentChatToolConnection?
-    ) throws -> AgentChatToolConnection {
-        let name = try agentOptionalString(arguments["name"], name: "name") ?? existing?.name ?? ""
-        let kind: AgentChatToolConnection.Kind
-        if let raw = try agentOptionalString(arguments["kind"], name: "kind") {
-            guard let value = AgentChatToolConnection.Kind(rawValue: raw) else {
-                throw agentInvalid("kind", "Choose local or remote.")
-            }
-            kind = value
-        } else if let existing {
-            kind = existing.kind
-        } else {
-            throw agentInvalid("kind", "Add a local or remote MCP connection.")
-        }
-        let address = try agentOptionalString(arguments["address"], name: "address") ?? existing?.address ?? ""
-        let args = try agentOptionalStringArray(arguments["args"], name: "args") ?? existing?.arguments ?? []
-        let enabled = try agentOptionalBool(arguments["enabled"], name: "enabled") ?? existing?.enabled ?? true
-        let bearer =
-            try agentOptionalString(arguments["bearer_token_env_var"], name: "bearer_token_env_var")
-            ?? existing?.bearerTokenVariable ?? ""
-        let environment =
-            try agentOptionalStringArray(arguments["env_vars"], name: "env_vars")
-            ?? existing?.environmentVariables ?? []
-        return .init(
-            name: name, kind: kind, address: address, arguments: args, enabled: enabled,
-            bearerTokenVariable: bearer, environmentVariables: environment,
-            canEditEnvironmentVariables: existing?.canEditEnvironmentVariables ?? true,
-            isEditable: existing?.isEditable ?? true)
-    }
-
     private func agentConversationValue(_ conversationID: UUID) -> MCPJSONValue {
         guard let conversation = conversation(conversationID) else { return .object([:]) }
         return .object([
@@ -551,8 +493,8 @@ extension AgentChatController {
         ])
     }
 
-    private func agentToolConfigurationValue(_ configuration: CodexChatToolConfiguration, overridden: Bool? = nil) -> MCPJSONValue {
-        var value: [String: MCPJSONValue] = [
+    private func agentToolConfigurationValue(_ configuration: CodexChatToolConfiguration) -> MCPJSONValue {
+        let value: [String: MCPJSONValue] = [
             "file": .string(configuration.file), "version": .string(configuration.version),
             "connections": .array(
                 configuration.connections.map { connection in
@@ -565,7 +507,6 @@ extension AgentChatController {
                     ])
                 }),
         ]
-        if let overridden { value["overridden"] = .bool(overridden) }
         return .object(value)
     }
 

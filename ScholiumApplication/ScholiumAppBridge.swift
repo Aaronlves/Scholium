@@ -220,37 +220,41 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
             }
             throw ScholiumAppBridgeError.systemCall("connect", errno)
         }
-        var sent = false
-        do {
-            let clientNonce = try AppBridgeAuthentication.randomData(count: 32)
-            try AppBridgeIO.writeFrame(clientNonce, to: descriptor)
-            let challenge = try AppBridgeIO.readFrame(from: descriptor)
-            guard challenge.count == 64 else {
-                throw ScholiumAppBridgeError.permissionDenied
-            }
-            let serverNonce = Data(challenge.prefix(32))
-            let serverTag = Data(challenge.suffix(32))
-            guard
-                AppBridgeAuthentication.verify(
-                    tag: serverTag,
-                    role: "server",
-                    secret: secret,
-                    clientNonce: clientNonce,
-                    serverNonce: serverNonce
-                )
-            else { throw ScholiumAppBridgeError.permissionDenied }
-            let tag = AppBridgeAuthentication.tag(
-                role: "client",
+        let authenticationDeadline = AppBridgeDeadline(
+            timeout: min(timeout, ScholiumAppBridgeLocation.timeout)
+        )
+        let clientNonce = try AppBridgeAuthentication.randomData(count: 32)
+        try AppBridgeIO.writeFrame(clientNonce, to: descriptor, deadline: authenticationDeadline)
+        let challenge = try AppBridgeIO.readFrame(from: descriptor, deadline: authenticationDeadline)
+        guard challenge.count == 64 else {
+            throw ScholiumAppBridgeError.permissionDenied
+        }
+        let serverNonce = Data(challenge.prefix(32))
+        let serverTag = Data(challenge.suffix(32))
+        guard
+            AppBridgeAuthentication.verify(
+                tag: serverTag,
+                role: "server",
                 secret: secret,
                 clientNonce: clientNonce,
                 serverNonce: serverNonce
             )
-            let body = try AppBridgeCoding.encode(request)
-            try AppBridgeIO.writeFrame(tag + body, to: descriptor)
-            sent = true
+        else { throw ScholiumAppBridgeError.permissionDenied }
+        let tag = AppBridgeAuthentication.tag(
+            role: "client",
+            secret: secret,
+            clientNonce: clientNonce,
+            serverNonce: serverNonce
+        )
+        let body = try AppBridgeCoding.encode(request)
+        return try Self.withRequestDeliveryOutcome {
+            try AppBridgeIO.writeFrame(tag + body, to: descriptor, deadline: authenticationDeadline)
             let response = try AppBridgeCoding.decode(
                 ScholiumAppBridgeResponse.self,
-                from: AppBridgeIO.readFrame(from: descriptor)
+                from: AppBridgeIO.readFrame(
+                    from: descriptor,
+                    deadline: AppBridgeDeadline(timeout: responseTimeout)
+                )
             )
             guard response.correlationID == request.correlationID else {
                 throw ScholiumAppBridgeError.invalidResponse
@@ -262,13 +266,16 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
                 )
             }
             return response
-        } catch {
-            // Once the complete request has been sent, EOF, malformed replies,
-            // correlation failures and remote transport errors cannot prove
-            // that an admitted operation failed before committing.
-            if sent { throw ScholiumAppBridgeError.outcomeUnknown }
-            throw error
         }
+    }
+
+    /// Once authenticated request delivery begins, even a failed write can
+    /// have delivered the complete frame before its final deadline check.
+    /// Partial-write, deadline and response failures cannot prove nonexecution.
+    static func withRequestDeliveryOutcome(
+        _ operation: () throws -> ScholiumAppBridgeResponse
+    ) throws -> ScholiumAppBridgeResponse {
+        do { return try operation() } catch { throw ScholiumAppBridgeError.outcomeUnknown }
     }
 }
 
@@ -280,7 +287,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.scholium.app-bridge")
     private let peerQueue = DispatchQueue(label: "com.scholium.app-bridge.peers", attributes: .concurrent)
     private let draining = DispatchGroup()
-    private static let maximumConcurrentRequests = 32
+    private static let maximumConcurrentRequests = AppBridgePeerAdmission.maximumAuthenticatedPeers
     private let containerURL: URL
     private let authenticationURL: URL
     private let port: UInt16
@@ -291,7 +298,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     private var listener: Int32 = -1
     private var stopping = false
     private var secret = Data()
-    private var peers: Set<Int32> = []
+    private var peerAdmission = AppBridgePeerAdmission()
     private var handlerTasks: [UUID: Task<Void, Never>] = [:]
 
     public init(
@@ -318,7 +325,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             guard !stopping else { return [] }
             stopping = true
             // Workers close their own descriptors. Shutdown interrupts blocking I/O.
-            for peer in peers { Darwin.shutdown(peer, SHUT_RDWR) }
+            for peer in peerAdmission.descriptors { Darwin.shutdown(peer, SHUT_RDWR) }
             if listener >= 0 {
                 Darwin.shutdown(listener, SHUT_RDWR)
                 Darwin.close(listener)
@@ -392,9 +399,11 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 if errno == EINTR { continue }
                 return
             }
+            let authenticationDeadline = AppBridgeDeadline(
+                timeout: min(timeout, ScholiumAppBridgeLocation.timeout)
+            )
             let admitted = lock.withLock {
-                guard !stopping, peers.count < Self.maximumConcurrentRequests else { return false }
-                peers.insert(peer)
+                guard !stopping, peerAdmission.admit(peer) else { return false }
                 draining.enter()
                 return true
             }
@@ -405,22 +414,22 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             peerQueue.async { [self] in
                 defer {
                     lock.withLock {
-                        peers.remove(peer)
+                        peerAdmission.release(peer)
                         Darwin.close(peer)
                     }
                     draining.leave()
                 }
-                handle(peer)
+                handle(peer, authenticationDeadline: authenticationDeadline)
             }
         }
     }
 
-    private func handle(_ peer: Int32) {
+    private func handle(_ peer: Int32, authenticationDeadline: AppBridgeDeadline) {
         var correlationID = UUID()
         var operationAdmitted = false
         do {
             try AppBridgeIO.configure(peer, timeout: timeout)
-            let clientNonce = try AppBridgeIO.readFrame(from: peer)
+            let clientNonce = try AppBridgeIO.readFrame(from: peer, deadline: authenticationDeadline)
             guard clientNonce.count == 32 else {
                 throw ScholiumAppBridgeError.permissionDenied
             }
@@ -431,8 +440,8 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 clientNonce: clientNonce,
                 serverNonce: serverNonce
             )
-            try AppBridgeIO.writeFrame(serverNonce + serverTag, to: peer)
-            let authenticated = try AppBridgeIO.readFrame(from: peer)
+            try AppBridgeIO.writeFrame(serverNonce + serverTag, to: peer, deadline: authenticationDeadline)
+            let authenticated = try AppBridgeIO.readFrame(from: peer, deadline: authenticationDeadline)
             guard authenticated.count > 32 else {
                 throw ScholiumAppBridgeError.permissionDenied
             }
@@ -446,6 +455,9 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                     serverNonce: serverNonce
                 )
             else { throw ScholiumAppBridgeError.permissionDenied }
+            try authenticationDeadline.check()
+            let promoted = lock.withLock { !stopping && peerAdmission.authenticate(peer) }
+            guard promoted else { throw ScholiumAppBridgeError.permissionDenied }
             let request = try AppBridgeCoding.decode(
                 ScholiumAppBridgeRequest.self,
                 from: Data(authenticated.dropFirst(32))
@@ -493,7 +505,8 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             )
             try AppBridgeIO.writeFrame(
                 AppBridgeCoding.encode(response),
-                to: peer
+                to: peer,
+                deadline: AppBridgeDeadline(timeout: timeout)
             )
         } catch {
             let payload = ScholiumAppBridgeRemoteError(
@@ -504,9 +517,68 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 correlationID: correlationID,
                 error: payload
             ), let data = try? AppBridgeCoding.encode(response) {
-                try? AppBridgeIO.writeFrame(data, to: peer)
+                try? AppBridgeIO.writeFrame(
+                    data,
+                    to: peer,
+                    deadline: operationAdmitted ? AppBridgeDeadline(timeout: timeout) : authenticationDeadline
+                )
             }
         }
+    }
+}
+
+/// Pending authentication cannot occupy the authenticated peer/operation budget.
+/// The server's lock owns all transitions; a descriptor has exactly one state.
+struct AppBridgePeerAdmission {
+    static let maximumPendingAuthentications = 8
+    static let maximumAuthenticatedPeers = 32
+    private var pending: Set<Int32> = []
+    private var authenticated: Set<Int32> = []
+
+    var descriptors: Set<Int32> { pending.union(authenticated) }
+
+    mutating func admit(_ descriptor: Int32) -> Bool {
+        guard pending.count < Self.maximumPendingAuthentications,
+            !pending.contains(descriptor), !authenticated.contains(descriptor)
+        else { return false }
+        pending.insert(descriptor)
+        return true
+    }
+
+    mutating func authenticate(_ descriptor: Int32) -> Bool {
+        guard pending.contains(descriptor),
+            authenticated.count < Self.maximumAuthenticatedPeers
+        else { return false }
+        pending.remove(descriptor)
+        authenticated.insert(descriptor)
+        return true
+    }
+
+    mutating func release(_ descriptor: Int32) {
+        pending.remove(descriptor)
+        authenticated.remove(descriptor)
+    }
+}
+
+/// ContinuousClock is monotonic. The same instant covers all partial I/O and
+/// all authentication frames, so byte progress never renews the budget.
+struct AppBridgeDeadline: Sendable {
+    private let instant: ContinuousClock.Instant
+
+    init(timeout: TimeInterval) {
+        instant = ContinuousClock.now.advanced(by: .seconds(timeout))
+    }
+
+    func check() throws {
+        guard ContinuousClock.now < instant else { throw ScholiumAppBridgeError.timeout }
+    }
+
+    func remainingMilliseconds() throws -> Int32 {
+        let remaining = ContinuousClock.now.duration(to: instant)
+        guard remaining > .zero else { throw ScholiumAppBridgeError.timeout }
+        let parts = remaining.components
+        let milliseconds = Double(parts.seconds) * 1_000 + Double(parts.attoseconds) / 1_000_000_000_000_000
+        return Int32(min(Double(Int32.max), max(1, ceil(milliseconds))))
     }
 }
 
@@ -607,7 +679,7 @@ private enum AppBridgeAuthentication {
     }
 }
 
-private enum AppBridgeIO {
+enum AppBridgeIO {
     static func validatePrivateDirectory(
         at url: URL,
         createIfMissing: Bool
@@ -737,45 +809,62 @@ private enum AppBridgeIO {
         }
     }
 
-    static func readFrame(from descriptor: Int32) throws -> Data {
-        let header = try readExactly(4, from: descriptor)
+    static func readFrame(from descriptor: Int32, deadline: AppBridgeDeadline) throws -> Data {
+        try configureNonblocking(descriptor)
+        let header = try readExactly(4, from: descriptor, deadline: deadline)
         let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
         guard length > 0,
             length <= ScholiumAppBridgeLocation.maximumFrameByteCount
         else {
             throw ScholiumAppBridgeError.invalidFrame
         }
-        return try readExactly(Int(length), from: descriptor)
+        return try readExactly(Int(length), from: descriptor, deadline: deadline)
     }
 
-    static func writeFrame(_ data: Data, to descriptor: Int32) throws {
+    static func writeFrame(_ data: Data, to descriptor: Int32, deadline: AppBridgeDeadline) throws {
         guard !data.isEmpty,
             data.count <= ScholiumAppBridgeLocation.maximumFrameByteCount
         else {
             throw ScholiumAppBridgeError.invalidFrame
         }
+        try configureNonblocking(descriptor)
         let length = UInt32(data.count)
         let header = Data([
             UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
             UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
         ])
-        try writeAll(header, to: descriptor)
-        try writeAll(data, to: descriptor)
+        try writeAll(header, to: descriptor, deadline: deadline)
+        try writeAll(data, to: descriptor, deadline: deadline)
+    }
+
+    /// Framing owns these connected descriptors through close. Preserve their
+    /// other flags; per-call MSG_DONTWAIT alone does not bound every Darwin send.
+    private static func configureNonblocking(_ descriptor: Int32) throws {
+        let flags = Darwin.fcntl(descriptor, F_GETFL, 0)
+        guard flags >= 0 else {
+            throw ScholiumAppBridgeError.systemCall("inspect its socket flags", errno)
+        }
+        guard flags & O_NONBLOCK == 0 else { return }
+        guard Darwin.fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
+            throw ScholiumAppBridgeError.systemCall("configure nonblocking socket IO", errno)
+        }
     }
 
     private static func readExactly(
         _ count: Int,
-        from descriptor: Int32
+        from descriptor: Int32,
+        deadline: AppBridgeDeadline? = nil
     ) throws -> Data {
         var data = Data(count: count)
         var offset = 0
         while offset < count {
+            if let deadline { try wait(descriptor, for: Int16(POLLIN), deadline: deadline) }
             let amount = data.withUnsafeMutableBytes { buffer in
-                Darwin.read(
-                    descriptor,
-                    buffer.baseAddress!.advanced(by: offset),
-                    count - offset
-                )
+                if deadline != nil {
+                    Darwin.recv(descriptor, buffer.baseAddress!.advanced(by: offset), count - offset, MSG_DONTWAIT)
+                } else {
+                    Darwin.read(descriptor, buffer.baseAddress!.advanced(by: offset), count - offset)
+                }
             }
             if amount > 0 {
                 offset += amount
@@ -784,22 +873,25 @@ private enum AppBridgeIO {
             if amount == 0 { throw ScholiumAppBridgeError.invalidFrame }
             if errno == EINTR { continue }
             if [EAGAIN, EWOULDBLOCK].contains(errno) {
+                if deadline != nil { continue }
                 throw ScholiumAppBridgeError.timeout
             }
             throw ScholiumAppBridgeError.systemCall("read", errno)
         }
+        try deadline?.check()
         return data
     }
 
-    private static func writeAll(_ data: Data, to descriptor: Int32) throws {
+    private static func writeAll(_ data: Data, to descriptor: Int32, deadline: AppBridgeDeadline? = nil) throws {
         var offset = 0
         while offset < data.count {
+            if let deadline { try wait(descriptor, for: Int16(POLLOUT), deadline: deadline) }
             let amount = data.withUnsafeBytes { buffer in
-                Darwin.write(
-                    descriptor,
-                    buffer.baseAddress!.advanced(by: offset),
-                    data.count - offset
-                )
+                if deadline != nil {
+                    Darwin.send(descriptor, buffer.baseAddress!.advanced(by: offset), data.count - offset, MSG_DONTWAIT)
+                } else {
+                    Darwin.write(descriptor, buffer.baseAddress!.advanced(by: offset), data.count - offset)
+                }
             }
             if amount > 0 {
                 offset += amount
@@ -807,9 +899,28 @@ private enum AppBridgeIO {
             }
             if errno == EINTR { continue }
             if [EAGAIN, EWOULDBLOCK].contains(errno) {
+                if deadline != nil { continue }
                 throw ScholiumAppBridgeError.timeout
             }
             throw ScholiumAppBridgeError.systemCall("write", errno)
+        }
+        try deadline?.check()
+    }
+
+    private static func wait(_ descriptor: Int32, for events: Int16, deadline: AppBridgeDeadline) throws {
+        while true {
+            var state = pollfd(fd: descriptor, events: events, revents: 0)
+            let result = Darwin.poll(&state, 1, try deadline.remainingMilliseconds())
+            if result > 0 {
+                try deadline.check()
+                guard state.revents & Int16(POLLNVAL) == 0 else {
+                    throw ScholiumAppBridgeError.systemCall("poll", EBADF)
+                }
+                return
+            }
+            if result == 0 { throw ScholiumAppBridgeError.timeout }
+            if errno == EINTR { continue }
+            throw ScholiumAppBridgeError.systemCall("poll", errno)
         }
     }
 }

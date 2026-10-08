@@ -4,6 +4,133 @@ import XCTest
 
 extension ScholiumUITests {
     @MainActor
+    func testLibraryDragToRootAndBackPreservesOpenNoteIdentity() throws {
+        waitForCurrentDocumentSurface()
+        let main = stableWorkspaceWindow(app.windows.firstMatch)
+        let mainID = main.identifier
+        let vault = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let filename = "QA Autosave A.md"
+        let folder = "QA Drag Return"
+        let nestedPath = folder + "/" + filename
+        let rootURL = vault.appendingPathComponent(filename)
+        let nestedURL = vault.appendingPathComponent(nestedPath)
+        let originalBytes = try Data(contentsOf: rootURL)
+        let identity = try organizationNoteIdentity(at: filename)
+        let noteID = try XCTUnwrap(identity["id"] as? String)
+        let vaultID = try XCTUnwrap(identity["vaultID"] as? String)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent(folder, isDirectory: true), withIntermediateDirectories: false)
+
+        // The native Move command establishes the nested starting state. Both
+        // acceptance moves below must complete through actual outline drags.
+        organizationContextAction("Move Note…", for: filename)
+        let sheet = main.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        typeCommittedText(nestedPath, into: sheet.textFields.firstMatch, in: app)
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 15) { !sheet.exists && FileManager.default.fileExists(atPath: nestedURL.path) })
+        try organizationAssertMovedNote(
+            path: nestedPath, absent: rootURL, bytes: originalBytes, noteID: noteID, vaultID: vaultID, mainID: mainID)
+
+        let filters = main.descendants(matching: .any)["scholium.libraryFilters"].firstMatch
+        XCTAssertTrue(filters.waitForExistence(timeout: 5))
+        filters.click()
+        let collapse = app.menuItems["Collapse All Folders"].firstMatch
+        if collapse.exists { collapse.click() } else { app.typeKey(.escape, modifierFlags: []) }
+        let outline = main.outlines["scholium.noteList"].firstMatch
+        let folderRow = outline.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.folderRow." + folder).firstMatch
+        XCTAssertTrue(folderRow.waitForExistence(timeout: 10))
+        focusWorkspaceWindow(main)
+        folderRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).click()
+        app.typeKey(.rightArrow, modifierFlags: [])
+        let source = outline.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow." + nestedPath).firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).click()
+
+        // All other folders are collapsed, leaving a short visible outline.
+        // AppKit owns the root insertion gap below its final row; the Library
+        // header and an ordinary Note row are deliberately not drop targets.
+        let rows = outline.descendants(matching: .outlineRow).allElementsBoundByIndex
+        let lastRow = try XCTUnwrap(rows.max { $0.frame.maxY < $1.frame.maxY })
+        let viewport = outline.frame.intersection(main.frame)
+        let rootY = lastRow.frame.maxY + 14
+        XCTAssertLessThan(rootY, viewport.maxY - 4, "The collapsed fixture must expose a visible native root drop gap.")
+        let rootDrop = outline.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: 28, dy: rootY - outline.frame.minY))
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+            .click(forDuration: 0.8, thenDragTo: rootDrop)
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                FileManager.default.fileExists(atPath: rootURL.path)
+                    && !FileManager.default.fileExists(atPath: nestedURL.path)
+            }, "Dragging below the last Library row must move the Note to the vault root.")
+        try organizationAssertMovedNote(
+            path: filename, absent: nestedURL, bytes: originalBytes, noteID: noteID, vaultID: vaultID, mainID: mainID)
+        organizationCaptureDragBoundary("Library drag to root", window: main)
+
+        let rootRow = outline.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.noteRow." + filename).firstMatch
+        XCTAssertTrue(rootRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(folderRow.exists)
+        rootRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+            .click(forDuration: 0.8, thenDragTo: folderRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                FileManager.default.fileExists(atPath: nestedURL.path)
+                    && !FileManager.default.fileExists(atPath: rootURL.path)
+            }, "The return drag must move the same open Note into its original folder.")
+        try organizationAssertMovedNote(
+            path: nestedPath, absent: rootURL, bytes: originalBytes, noteID: noteID, vaultID: vaultID, mainID: mainID)
+        organizationCaptureDragBoundary("Library drag back to folder", window: main)
+    }
+
+    private func organizationNoteIdentity(at path: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: triptychDirectory.appendingPathComponent(".scholium/identities.json"))
+        let document = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try XCTUnwrap(document["records"] as? [[String: Any]])
+        let matches = records.filter { $0["relativePath"] as? String == path }
+        XCTAssertEqual(matches.count, 1, "The synthetic Note must have one unambiguous stored identity.")
+        return try XCTUnwrap(matches.first)
+    }
+
+    @MainActor
+    private func organizationAssertMovedNote(
+        path: String, absent: URL, bytes: Data, noteID: String, vaultID: String, mainID: String
+    ) throws {
+        let source = triptychDirectory.appendingPathComponent("01-analyses/" + path)
+        XCTAssertEqual(try Data(contentsOf: source), bytes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: absent.path))
+        let identity = try organizationNoteIdentity(at: path)
+        XCTAssertEqual(identity["id"] as? String, noteID)
+        XCTAssertEqual(identity["vaultID"] as? String, vaultID)
+        XCTAssertEqual(app.windows.count, 1)
+        XCTAssertTrue(app.windows[mainID].exists, "Moving a Note must retain its original native window.")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: app.windows[mainID], timeout: 8))
+        let sessionURL = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions/" + sessionID.uuidString + ".json")
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                guard let data = try? Data(contentsOf: sessionURL),
+                    let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let selected = session["selectedDocument"] as? [String: Any],
+                    let open = session["openDocuments"] as? [[String: Any]]
+                else { return false }
+                return selected["relativePath"] as? String == path
+                    && selected["vaultID"] as? String == vaultID
+                    && open.count == 1 && open.first?["relativePath"] as? String == path
+            }, "The original window must retain the moved Note as its selected, sole document.")
+    }
+
+    @MainActor
+    private func organizationCaptureDragBoundary(_ name: String, window: XCUIElement) {
+        let screenshot = XCTAttachment(screenshot: window.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testReviewedChangesHistoryDeletionKeepsTheCurrentNote() throws {
         waitForCurrentDocumentSurface()
         let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")

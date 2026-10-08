@@ -224,30 +224,17 @@
       if (symbol) {
         anchor.dataset.scholiumChatLinkSymbol = symbol;
         anchor.classList.add("scholium-chat-link");
-        const websiteHost = symbol === "globe" ? chatWebsiteHost(anchor.getAttribute("href") ?? "") : null;
-        if (websiteHost) anchor.dataset.scholiumChatWebsiteHost = websiteHost;
-        else delete anchor.dataset.scholiumChatWebsiteHost;
         const websiteIcon = symbol === "globe" ? chatWebsiteIconKey(anchor.getAttribute("href") ?? "") : null;
         if (websiteIcon) anchor.dataset.scholiumChatWebsiteIcon = websiteIcon;
         else delete anchor.dataset.scholiumChatWebsiteIcon;
       } else {
         delete anchor.dataset.scholiumChatLinkSymbol;
-        delete anchor.dataset.scholiumChatWebsiteHost;
         delete anchor.dataset.scholiumChatWebsiteIcon;
         anchor.classList.remove("scholium-chat-link");
       }
       anchor.classList.remove("scholium-attachment-link");
       delete anchor.dataset.scholiumAttachmentSymbol;
     });
-  }
-  function chatWebsiteHost(href) {
-    let url;
-    try {
-      url = new URL(href);
-    } catch {
-      return null;
-    }
-    return (url.protocol === "https:" || url.protocol === "http:") && url.hostname ? url.hostname.toLowerCase() : null;
   }
 
   // chat-reply.ts

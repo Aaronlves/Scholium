@@ -38,6 +38,7 @@ public enum VaultImageAttachmentManagement: Equatable, Sendable {
 /// Portable identity remains with `TriptychControlStore`; Markdown insertion
 /// remains with the editor transaction.
 public actor VaultAttachmentStore {
+    private static let maximumImportedFileByteCount = 20 * 1_024 * 1_024
     private let vaultURL: URL
     private let canonicalRoot: URL
     private let fileManager: FileManager
@@ -134,6 +135,7 @@ public actor VaultAttachmentStore {
 
     /// Copies an immutable document snapshot selected through an existing scoped owner.
     public func copyDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID) throws -> PreparedVaultDocumentFile {
+        guard data.count <= Self.maximumImportedFileByteCount else { throw CocoaError(.fileReadTooLarge) }
         guard filename == URL(fileURLWithPath: filename).lastPathComponent,
             !filename.isEmpty, filename != ".", filename != "..", !filename.contains("\0")
         else {
@@ -454,7 +456,9 @@ public actor VaultAttachmentStore {
         else {
             throw ImageAttachmentError.unsupportedImage(url.path)
         }
-        let data = try VaultDescriptorAccess.readAll(from: descriptor)
+        let data = try VaultDescriptorAccess.readAll(
+            from: descriptor, maximumByteCount: maximumImportedFileByteCount
+        )
         var final = stat()
         guard fstat(descriptor, &final) == 0,
             initial.st_dev == final.st_dev,
@@ -588,7 +592,9 @@ public actor VaultAttachmentStore {
             else {
                 throw ImageAttachmentError.cleanupRefused(relativePath.rawValue)
             }
-            let data = try VaultDescriptorAccess.readAll(from: descriptor)
+            let data = try VaultDescriptorAccess.readAll(
+                from: descriptor, maximumByteCount: Self.maximumImportedFileByteCount
+            )
             var current = stat()
             guard fstatat(parentDescriptor, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
                 current.st_dev == opened.st_dev,

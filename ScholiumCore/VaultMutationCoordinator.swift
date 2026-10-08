@@ -1061,7 +1061,9 @@ final class VaultMutationCoordinator {
         guard lseek(descriptor, 0, SEEK_SET) >= 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        return try VaultDescriptorAccess.readAll(from: descriptor)
+        return try VaultDescriptorAccess.readAll(
+            from: descriptor, maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+        )
     }
 
     private func writeNewFile(_ data: Data, name: String, parentFD: Int32) throws {

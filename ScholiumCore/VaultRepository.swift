@@ -105,7 +105,9 @@ public actor VaultRepository {
         let path = try markdownRelativePath(relativePath)
         let loaded = try descriptorAccess.withOpenRegularFile(path) {
             descriptor, parentDescriptor, name, initialStatus in
-            let data = try VaultDescriptorAccess.readAll(from: descriptor)
+            let data = try VaultDescriptorAccess.readNoteBytes(
+                from: descriptor, relativePath: relativePath
+            )
             var finalStatus = stat()
             guard fstat(descriptor, &finalStatus) == 0 else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -420,6 +422,7 @@ public actor VaultRepository {
 
         let current = NoteDocument(relativePath: relativePath, rawContent: currentContent)
         let updatedContent = try current.applying(changeSet, timestampKey: nil)
+        try Self.requireSupportedSource(updatedContent, relativePath: relativePath)
         let updated = NoteDocument(relativePath: relativePath, rawContent: updatedContent)
         let preservesClosedInvalidFrontmatter: Bool =
             switch changeSet {
@@ -534,6 +537,7 @@ public actor VaultRepository {
 
     /// Creates a new Markdown note without replacing an existing path.
     public func create(relativePath: String, content: String) throws -> NoteDocument {
+        try Self.requireSupportedSource(content, relativePath: relativePath)
         let proposed = NoteDocument(relativePath: relativePath, rawContent: content)
         if proposed.rawFrontmatter != nil, !proposed.validationWarnings.isEmpty {
             throw VaultRepositoryError.invalidFrontmatter(proposed.validationWarnings.joined(separator: "\n"))
@@ -556,6 +560,15 @@ public actor VaultRepository {
         } catch { throw error }
     }
 
+    private static func requireSupportedSource(_ source: String, relativePath: String) throws {
+        guard source.utf8.count <= VaultSourceReadLimits.maximumNoteByteCount else {
+            throw VaultRepositoryError.sourceTooLarge(
+                relativePath: relativePath,
+                maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        }
+    }
+
     /// Copies exact UTF-8 Markdown bytes into the vault root without replacing
     /// an existing note. Imported frontmatter remains source material and is
     /// not normalized through the new-note creation contract.
@@ -563,6 +576,12 @@ public actor VaultRepository {
         preferredFilename: String,
         sourceData: Data
     ) throws -> NoteDocument {
+        guard sourceData.count <= VaultSourceReadLimits.maximumNoteByteCount else {
+            throw VaultRepositoryError.sourceTooLarge(
+                relativePath: preferredFilename,
+                maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        }
         let filename = URL(fileURLWithPath: preferredFilename).lastPathComponent
         guard filename == preferredFilename,
             filename.caseInsensitiveCompare(".md") != .orderedSame,
@@ -1101,6 +1120,7 @@ public actor VaultRepository {
             .fileAlreadyExists,
             .notRegularFile,
             .markdownRequired,
+            .sourceTooLarge,
             .readbackMismatch,
             .recoveryEntryNotFound,
             .recoveryPathConflict,

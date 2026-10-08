@@ -1,5 +1,5 @@
 import {parseHTML} from "linkedom";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {chatLinkSymbol, chatWebsiteIconKey, decorateChatReplyLinks} from "../chat-link-presentation";
 import {decorateAttachmentLinks} from "../attachment-presentation";
 
@@ -32,6 +32,36 @@ describe("Chat reply link symbols", () => {
     expect(chatWebsiteIconKey("https://openai.com.evil.test/")).toBeNull();
   });
 
+  it("decorates an unrecognized HTTPS host without requesting or embedding remote resources", () => {
+    const href = "https://unique-view-marker.attacker.net/private/path?view=unique#passage";
+    const {document} = parseHTML(`<article><a href="${href}">Source title</a></article>`);
+    const root = document.querySelector("article")!;
+    const link = root.querySelector("a")!;
+    const fetch = vi.fn();
+    const request = vi.fn();
+    const beacon = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("XMLHttpRequest", request);
+    vi.stubGlobal("WebSocket", request);
+    vi.stubGlobal("navigator", {sendBeacon: beacon});
+    try {
+      decorateChatReplyLinks(root);
+      decorateChatReplyLinks(root);
+      expect(link.dataset.scholiumChatLinkSymbol).toBe("globe");
+      expect(link.dataset.scholiumChatWebsiteIcon).toBeUndefined();
+      expect(link.dataset.scholiumChatWebsiteHost).toBeUndefined();
+      expect(link.getAttribute("href")).toBe(href);
+      expect(link.textContent).toBe("Source title");
+      expect(root.querySelectorAll("img, link, iframe, script, style, source")).toHaveLength(0);
+      expect(link.getAttribute("style")).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+      expect(beacon).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps exact link text, children, href and source mapping across updates", () => {
     const {document} = parseHTML('<article><p><a href="https://example.org" data-source-utf16-start="4"><em>Site</em> 中文</a> and <a href="scholium-note:../paper.pdf">File</a></p></article>');
     const root = document.querySelector("article")!;
@@ -42,7 +72,6 @@ describe("Chat reply link symbols", () => {
     decorateChatReplyLinks(root);
     decorateChatReplyLinks(root);
     expect(site.dataset.scholiumChatLinkSymbol).toBe("globe");
-    expect(site.dataset.scholiumChatWebsiteHost).toBe("example.org");
     expect(site.getAttribute("href")).toBe("https://example.org");
     expect(site.getAttribute("data-source-utf16-start")).toBe("4");
     expect([...site.childNodes]).toEqual(siteChildren);
@@ -53,11 +82,9 @@ describe("Chat reply link symbols", () => {
     site.setAttribute("href", "https://example.org/Paper.PDF");
     decorateChatReplyLinks(root);
     expect(site.dataset.scholiumChatLinkSymbol).toBe("doc-richtext");
-    expect(site.dataset.scholiumChatWebsiteHost).toBeUndefined();
     site.removeAttribute("href");
     decorateChatReplyLinks(root);
     expect(site.dataset.scholiumChatLinkSymbol).toBeUndefined();
-    expect(site.dataset.scholiumChatWebsiteHost).toBeUndefined();
   });
 
   it("adds a local site icon only to website pages, preserving linked documents", () => {
@@ -66,9 +93,7 @@ describe("Chat reply link symbols", () => {
     const [page, pdf] = [...root.querySelectorAll("a")];
     decorateChatReplyLinks(root);
     expect(page.dataset.scholiumChatWebsiteIcon).toBe("openai");
-    expect(page.dataset.scholiumChatWebsiteHost).toBe("openai.com");
     expect(pdf.dataset.scholiumChatWebsiteIcon).toBeUndefined();
-    expect(pdf.dataset.scholiumChatWebsiteHost).toBeUndefined();
     page.setAttribute("href", "https://elsewhere.example/page");
     decorateChatReplyLinks(root);
     expect(page.dataset.scholiumChatWebsiteIcon).toBeUndefined();

@@ -182,10 +182,8 @@ uncited search results to the answer. Supported destinations open through their
 existing owner; other locators remain selectable without executing arbitrary URLs.
 Actionable website, Note, document and Zotero links in reply prose have small
 type cues beside their exact labels. Source titles and native Note targets use
-the same cues. A website favicon may identify its public HTTPS domain in Chat;
-Scholium requests only that domain's icon, without sending the link path or query,
-and caches a bounded result for the app session. A bundled icon may cover a site
-whose normal favicon endpoint is unavailable. Missing icons use the system globe.
+the same cues. Websites use the system globe or a bundled site icon; displaying
+reply links or Sources makes no remote icon request.
 Icons are decorative and change neither link routes nor source authority.
 Unsupported locators receive no false file symbol.
 Source rows disclose observed read ranges, revision and bounded excerpts without

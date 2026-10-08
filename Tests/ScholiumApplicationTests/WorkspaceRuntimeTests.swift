@@ -528,9 +528,9 @@ struct WorkspaceRuntimeTests {
         let source = handle.events
         let stream = await source.events()
         let subscriber = Task {
-            for await _ in stream {
-                if Task.isCancelled { break }
-            }
+            // Let AsyncStream observe cancellation in next(), even when the
+            // initial snapshot is buffered as cancellation arrives.
+            for await _ in stream {}
         }
         for _ in 0..<20 where await source.subscriberCount != 1 {
             await Task.yield()
@@ -539,8 +539,11 @@ struct WorkspaceRuntimeTests {
 
         subscriber.cancel()
         _ = await subscriber.result
-        for _ in 0..<20 where await source.subscriberCount != 0 {
-            await Task.yield()
+        // Stream termination schedules actor cleanup in a separate task.
+        // Observe its completion within a deadline rather than counting yields.
+        let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while ContinuousClock.now < cleanupDeadline, await source.subscriberCount != 0 {
+            try await Task.sleep(for: .milliseconds(10))
         }
         #expect(await source.subscriberCount == 0)
         await runtime.shutdown()

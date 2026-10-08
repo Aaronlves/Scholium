@@ -20,10 +20,8 @@ struct AgentChatCapabilityToolTests {
         }
     }
 
-    @Test(
-        "Successful Agent capability writes refresh retained inventory and native configuration",
-        arguments: ["skill", "tool"])
-    func successfulWriteRefreshesRetainedCapabilities(_ operation: String) async throws {
+    @Test("Successful Agent Skill writes refresh retained inventory and native configuration")
+    func successfulWriteRefreshesRetainedCapabilities() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-refresh-\(UUID())")
         let suite = "scholium.agent-capability-refresh.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -34,78 +32,39 @@ struct AgentChatCapabilityToolTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        do {
-            try #require(await controller.waitUntilLoaded())
-            let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-            controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-            try #require(await controller.waitUntilConnectionReady())
-            controller.editDraft("hold capability configuration")
-            controller.send()
-            try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "working turn")
-            let token = try #require(controller.token)
-            let context = try #require(controller.runtimeContext(for: token))
-            let caps = controller.capabilities
-            let method = try #require(caps.methods.first { !$0.isProtected })
-            let inspected = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
-            let initialVersion = try #require(inspected.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
-            let request: ScholiumMCPBridgeRequest
-            if operation == "skill" {
-                request = .init(
-                    tool: .configureSkill,
-                    arguments: ["action": .string("disable"), "path": .string(method.selection.path)],
-                    conversationToken: token, runtimeContext: context)
-            } else {
-                request = .init(
-                    tool: .configureTool,
-                    arguments: [
-                        "action": .string("add"), "expected_version": .string(initialVersion),
-                        "name": .string("retained-parser"), "kind": .string("remote"),
-                        "address": .string("https://parser.example.invalid/mcp"), "enabled": .bool(false),
-                    ], conversationToken: token, runtimeContext: context)
-            }
-            let response = await controller.handle(request)
-            try #require(response.error == nil)
-            try await wait({ !caps.isRefreshing && !caps.isChanging }, reason: "settled capability refresh")
-            #expect(caps.hasMethods && caps.hasTools && caps.workspaceReady)
-            #expect(caps.methodError == nil && caps.toolError == nil && caps.toolConfigurationError == nil)
-            #expect(caps.tools.contains { $0.name == "scholium" })
-            #expect(controller.state == .working && controller.runtimeContext(for: token) == context)
-
-            let expectedVersion: String
-            if operation == "skill" {
-                #expect(FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("method-disabled").path))
-                #expect(caps.methods.first { $0.selection.path == method.selection.path }?.enabled == false)
-                #expect(!caps.contains(method.selection))
-                expectedVersion = initialVersion
-            } else {
-                expectedVersion = try #require(response.result?.objectValue?["configuration"]?.objectValue?["version"]?.stringValue)
-                let saved = try Data(contentsOf: controller.runtimeHome.appendingPathComponent("fixture-tool-config.json"))
-                let configuration = try JSONDecoder().decode(MCPJSONValue.self, from: saved).objectValue
-                #expect(configuration?["servers"]?.objectValue?["retained-parser"]?.objectValue?["enabled"]?.boolValue == false)
-                #expect(caps.toolConnections.first { $0.name == "retained-parser" }?.enabled == false)
-                #expect(caps.tools.first { $0.name == "retained-parser" }?.connectionStatus == "disabled")
-                #expect(expectedVersion != initialVersion)
-            }
-
-            controller.stop()
-            try await wait({ controller.state == .ready && !controller.isBusy }, reason: "idle conversation")
-            #expect(!caps.isChanging && !caps.isRefreshing && caps.canConfigureTools)
-            #expect(await controller.waitUntilConnectionReady())
-            #expect(caps.editTool()?.revision == expectedVersion)
-            if operation == "tool" {
-                #expect(caps.editTool(named: "retained-parser")?.revision == expectedVersion)
-            }
-        } catch {
-            await controller.disconnect()
-            throw error
-        }
+        try #require(await controller.waitUntilLoaded())
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+        try #require(await controller.waitUntilConnectionReady())
+        controller.editDraft("hold capability configuration")
+        controller.send()
+        try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "working turn")
+        let token = try #require(controller.token)
+        let context = try #require(controller.runtimeContext(for: token))
+        let caps = controller.capabilities
+        let method = try #require(caps.methods.first { !$0.isProtected })
+        let response = await controller.handle(
+            .init(
+                tool: .configureSkill,
+                arguments: ["action": .string("disable"), "path": .string(method.selection.path)],
+                conversationToken: token, runtimeContext: context))
+        try #require(response.error == nil)
+        try await wait({ !caps.isRefreshing && !caps.isChanging }, reason: "settled capability refresh")
+        #expect(caps.hasMethods && caps.hasTools && caps.workspaceReady)
+        #expect(caps.methodError == nil && caps.toolError == nil && caps.toolConfigurationError == nil)
+        #expect(FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("method-disabled").path))
+        #expect(caps.methods.first { $0.selection.path == method.selection.path }?.enabled == false)
+        #expect(!caps.contains(method.selection))
+        controller.stop()
+        try await wait({ controller.state == .ready && !controller.isBusy }, reason: "idle conversation")
+        #expect(caps.canConfigureTools)
         await controller.disconnect()
     }
 
-    @Test("An active Agent turn can inspect and configure runtime Skills, Tools and Chat settings")
+    @Test("An active Agent turn can inspect and configure Skills but cannot grant itself authority")
     func activeTurnCanConfigureCapabilities() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/capabilities-(UUID())")
-        let suite = "scholium.agent-capabilities.(UUID())"
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capabilities-\(UUID())")
+        let suite = "scholium.agent-capabilities.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer {
             defaults.removePersistentDomain(forName: suite)
@@ -169,30 +128,14 @@ struct AgentChatCapabilityToolTests {
                     "name": .string("agent-parser"), "kind": .string("remote"),
                     "address": .string("https://parser.example.invalid/mcp"), "enabled": .bool(false),
                 ], conversationToken: token, runtimeContext: context))
-        #expect(added.error == nil)
-        let addedConfiguration = try #require(added.result?.objectValue?["configuration"]?.objectValue)
-        let addedVersion = try #require(addedConfiguration["version"]?.stringValue)
-        #expect(
-            addedConfiguration["connections"]?.arrayValue?.contains {
-                $0.objectValue?["name"]?.stringValue == "agent-parser"
-            } == true)
-
-        let enabled = await controller.handle(
-            .init(
-                tool: .configureTool,
-                arguments: [
-                    "action": .string("set_enabled"), "expected_version": .string(addedVersion),
-                    "name": .string("agent-parser"), "enabled": .bool(true),
-                ], conversationToken: token, runtimeContext: context))
-        #expect(enabled.error == nil)
-
+        #expect(added.error?.code == .invalidRequest)
+        #expect(!FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("fixture-tool-config.json").path))
         let settings = await controller.handle(
             .init(
                 tool: .configureChat,
-                arguments: [
-                    "action": .string("set_permission"), "permission": .string("fullAccess"),
-                ], conversationToken: token, runtimeContext: context))
-        #expect(settings.error == nil && controller.conversationPermissionForTests(conversationID: controller.selectedID!) == .fullAccess)
+                arguments: ["action": .string("set_permission"), "permission": .string("fullAccess")],
+                conversationToken: token, runtimeContext: context))
+        #expect(settings.error?.code == .invalidRequest && controller.selected?.permission == .ask)
         #expect(controller.approvals.isEmpty)
 
         let mutation = Task { @MainActor in
@@ -213,7 +156,7 @@ struct AgentChatCapabilityToolTests {
     @Test(
         "Stop during capability discovery prevents later configuration writes",
         arguments: [
-            "selected_skills", "skill_enable", "tool_write", "sign_in",
+            "selected_skills", "skill_enable", "sign_in",
         ])
     func stoppedDiscoveryDoesNotWrite(_ operation: String) async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-stop-\(UUID())")
@@ -240,7 +183,7 @@ struct AgentChatCapabilityToolTests {
         let context = try #require(controller.runtimeContext(for: token))
         let method = try #require(controller.capabilities.methods.first { !$0.isProtected })
         let inventory = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
-        let version = try #require(inventory.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
+        #expect(inventory.error == nil)
         let hold = operation == "sign_in" ? "tools-list" : "skills-list"
         let home = controller.runtimeHome
         FileManager.default.createFile(atPath: home.appendingPathComponent("hold-capability-\(hold)").path, contents: Data())
@@ -257,14 +200,6 @@ struct AgentChatCapabilityToolTests {
                 tool: .configureSkill,
                 arguments: [
                     "action": .string("disable"), "path": .string(method.selection.path),
-                ], conversationToken: token, runtimeContext: context)
-        case "tool_write":
-            request = .init(
-                tool: .configureTool,
-                arguments: [
-                    "action": .string("add"), "expected_version": .string(version),
-                    "name": .string("stopped-parser"), "kind": .string("remote"),
-                    "address": .string("https://parser.example.invalid/mcp"),
                 ], conversationToken: token, runtimeContext: context)
         default:
             request = .init(
@@ -286,44 +221,157 @@ struct AgentChatCapabilityToolTests {
         await controller.disconnect()
     }
 
-    @Test("A saved tool configuration with failed readback reports an uncertain outcome")
-    func savedToolWithLostReadbackIsUncertain() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-readback-\(UUID())")
-        let suite = "scholium.agent-capability-readback.\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+    @Test("Agent connection changes are denied regardless of supplied revision or execution fields")
+    func modelConnectionWritesRequireNativeSettings() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/capability-authority-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        try await wait({ controller.isLoaded }, reason: "readback fixture loaded")
+        try #require(await controller.waitUntilLoaded())
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-        try await wait(
-            { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }, reason: "readback fixture ready")
-        controller.editDraft("hold capability configuration")
+        try #require(await controller.waitUntilConnectionReady())
+        let caps = controller.capabilities
+        // Native configuration remains usable and gives the Agent a real revision
+        // to replay. The runtime fixture records writes; it never launches servers.
+        var native = try #require(caps.editTool())
+        native.connection = .init(
+            name: "fixture-server", kind: .local,
+            address: "/fixture/researcher-selected-program", enabled: false)
+        try #require(await caps.saveTool(native))
+        try await wait { caps.canConfigureTools }
+        let configURL = controller.runtimeHome.appendingPathComponent("fixture-tool-config.json")
+        let originalBytes = try Data(contentsOf: configURL)
+        let originalConnections = caps.toolConnections
+        let version = try #require(caps.editTool(named: "fixture-server")?.revision)
+        controller.editDraft("hold capability authority")
         controller.send()
-        try await wait({ controller.state == .working && controller.selected?.pendingMessageID == nil }, reason: "readback working turn")
+        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         let token = try #require(controller.token)
         let context = try #require(controller.runtimeContext(for: token))
-        let inspected = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
-        let version = try #require(inspected.result?.objectValue?["tool_configuration"]?.objectValue?["version"]?.stringValue)
-        FileManager.default.createFile(
-            atPath: controller.runtimeHome.appendingPathComponent("fail-config-read-after-write").path, contents: Data())
-        let result = await controller.handle(
+        for action in ["add", "update", "set_enabled", "remove"] {
+            for revision in [version, "stale-fixture-version"] {
+                for kind in ["local", "remote"] {
+                    let request = ScholiumMCPBridgeRequest(
+                        tool: .configureTool,
+                        arguments: [
+                            "action": .string(action), "expected_version": .string(revision),
+                            "name": .string("fixture-server"), "kind": .string(kind),
+                            "address": .string(kind == "local" ? "/fixture/changed-program" : "https://fixture.invalid/mcp"),
+                            "args": .array([.string("changed-argument")]), "env_vars": .array([.string("FIXTURE_ONLY")]),
+                            "enabled": .bool(true), "reuse_access_settings": .bool(true),
+                        ], conversationToken: token, runtimeContext: context)
+                    let result = await controller.handle(request)
+                    #expect(result.error?.code == .invalidRequest)
+                    #expect(try Data(contentsOf: configURL) == originalBytes)
+                    #expect(caps.toolConnections == originalConnections && !caps.isChanging)
+                }
+            }
+        }
+        for tool in [ScholiumMCPToolName.configureTool, .configureChat] {
+            let arguments: [String: MCPJSONValue] =
+                tool == .configureTool
+                ? ["action": .string("add"), "name": .string("unapproved-fixture")]
+                : ["action": .string("set_permission"), "permission": .string("fullAccess")]
+            let foreign = await controller.handle(
+                .init(
+                    tool: tool, arguments: arguments,
+                    conversationToken: UUID(), runtimeContext: context))
+            #expect(foreign.error?.code == .invalidRequest)
+            let changedContext = await controller.handle(
+                .init(
+                    tool: tool, arguments: arguments,
+                    conversationToken: token, runtimeContext: .init(threadID: "foreign-fixture-thread", turnID: context.turnID)))
+            #expect(changedContext.error?.code == .invalidRequest)
+            let cancelled = await Task { @MainActor in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return await controller.handle(
+                    .init(
+                        tool: tool, arguments: arguments,
+                        conversationToken: token, runtimeContext: context))
+            }.value
+            #expect(cancelled.error?.code == .invalidRequest)
+            #expect(try Data(contentsOf: configURL) == originalBytes)
+            #expect(controller.selected?.permission == .ask && caps.toolConnections == originalConnections)
+        }
+        #expect(controller.approvals.isEmpty)
+        controller.stop()
+        try await wait { !controller.isBusy }
+        let stale = await controller.handle(
             .init(
                 tool: .configureTool,
-                arguments: [
-                    "action": .string("add"), "expected_version": .string(version),
-                    "name": .string("saved-parser"), "kind": .string("remote"),
-                    "address": .string("https://parser.example.invalid/mcp"),
-                ], conversationToken: token, runtimeContext: context))
-        #expect(result.error?.code == .operationUncertain)
-        let saved = try String(contentsOf: controller.runtimeHome.appendingPathComponent("fixture-tool-config.json"), encoding: .utf8)
-        #expect(saved.contains("saved-parser"))
+                arguments: ["action": .string("set_enabled"), "enabled": .bool(true)],
+                conversationToken: token, runtimeContext: context))
+        #expect(stale.error?.code == .invalidRequest)
+        #expect(try Data(contentsOf: configURL) == originalBytes)
+        await controller.disconnect()
+    }
+
+    @Test("Agent elevation cannot alter queued turns, native idle control still grants and Agent can reduce permission")
+    func permissionAuthorityAndQueuedTurns() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/permission-authority-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try #require(await controller.waitUntilLoaded())
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+        try #require(await controller.waitUntilConnectionReady())
+        controller.editDraft("hold-queue authority turn")
+        controller.send()
+        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        let token = try #require(controller.token)
+        let context = try #require(controller.runtimeContext(for: token))
+        controller.editDraft("queued ordinary request")
+        try #require(controller.queue())
+        controller.setPermission(.fullAccess)
+        #expect(controller.selected?.permission == .ask)
+        let elevated = await controller.handle(
+            .init(
+                tool: .configureChat,
+                arguments: ["action": .string("set_permission"), "permission": .string("fullAccess")],
+                conversationToken: token, runtimeContext: context))
+        #expect(elevated.error?.code == .invalidRequest && controller.selected?.permission == .ask)
+        #expect(controller.approvals.isEmpty && controller.queuedMessages.count == 1)
+        try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
+        controller.refreshQuota()
+        try await wait { controller.queuedMessages.isEmpty && controller.selected?.lastRunStatus == .completed }
+        let inputs = try JSONDecoder().decode(
+            MCPJSONValue.self,
+            from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("turn-inputs.json")))
+        let turns = try #require(inputs.arrayValue)
+        #expect(turns.count == 2)
+        for turn in turns {
+            #expect(turn.objectValue?["approvalPolicy"]?.stringValue == AgentChatPermission.ask.approvalPolicy)
+            #expect(turn.objectValue?["approvalPolicy"]?.stringValue != "never")
+        }
+        let runtimeConfiguration = try JSONDecoder().decode(
+            MCPJSONValue.self,
+            from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("configuration.json")))
+        #expect(runtimeConfiguration.objectValue?["sandbox"]?.stringValue == AgentChatPermission.ask.sandbox)
+        let stale = await controller.handle(
+            .init(
+                tool: .configureChat,
+                arguments: ["action": .string("set_permission"), "permission": .string("fullAccess")],
+                conversationToken: token, runtimeContext: context))
+        #expect(stale.error?.code == .invalidRequest && controller.selected?.permission == .ask)
+        controller.setPermission(.fullAccess)
+        #expect(controller.selected?.permission == .fullAccess)
+        controller.editDraft("hold authority reduction")
+        controller.send()
+        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        let fullToken = try #require(controller.token)
+        let fullContext = try #require(controller.runtimeContext(for: fullToken))
+        let reduced = await controller.handle(
+            .init(
+                tool: .configureChat,
+                arguments: ["action": .string("set_permission"), "permission": .string("ask")],
+                conversationToken: fullToken, runtimeContext: fullContext))
+        #expect(reduced.error == nil && controller.selected?.permission == .ask)
         controller.stop()
+        try await wait { !controller.isBusy }
         await controller.disconnect()
     }
 
@@ -365,11 +413,5 @@ struct AgentChatCapabilityToolTests {
         #expect(result.error?.code == .operationUncertain)
         #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent("method-disabled").path))
         await controller.disconnect()
-    }
-}
-
-private extension AgentChatController {
-    func conversationPermissionForTests(conversationID: UUID) -> AgentChatPermission? {
-        selected?.id == conversationID ? selected?.permission : nil
     }
 }

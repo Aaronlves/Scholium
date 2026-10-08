@@ -3,6 +3,228 @@ import AppKit
 
 extension ScholiumUITests {
     @MainActor
+    func testAuthorizedCleanupInterruptedZoteroWarningOnly() throws {
+        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_REAL_ZOTERO"] == "1" else {
+            throw XCTSkip("Only the already-authorized interrupted native QA run owns this cleanup.")
+        }
+        let zotero = XCUIApplication(bundleIdentifier: "org.zotero.zotero")
+        let message = "A word processor integration command is already running."
+        let dialogs = zotero.dialogs.allElementsBoundByIndex + zotero.alerts.allElementsBoundByIndex
+            + zotero.windows.allElementsBoundByIndex
+        let warning = try XCTUnwrap(dialogs.first {
+            $0.descendants(matching: .any).matching(
+                NSPredicate(format: "value == %@ OR label == %@", message, message)).firstMatch.exists
+        }, "Only dismiss the exact warning produced by the interrupted QA operation.")
+        XCTAssertTrue(warning.buttons["OK"].exists)
+        warning.buttons["OK"].click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !warning.exists })
+    }
+
+    @MainActor
+    func testAuthorizedRealZoteroRefreshStyleAndCancelPreserveManuscriptFields() throws {
+        guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_REAL_ZOTERO"] == "1" else {
+            throw XCTSkip("Requires explicit researcher authorization for the already-running Zotero picker and a disposable manuscript.")
+        }
+        let runningZotero = NSRunningApplication.runningApplications(withBundleIdentifier: "org.zotero.zotero")
+        XCTAssertEqual(runningZotero.count, 1, "This journey never launches or restarts the researcher's Zotero.")
+        let zoteroPID = try XCTUnwrap(runningZotero.first?.processIdentifier)
+        let zotero = XCUIApplication(bundleIdentifier: "org.zotero.zotero")
+        let preferences = zotero.windows["Zotero - Document Preferences"]
+        let picker = zotero.windows["Citation Dialog"]
+        if ProcessInfo.processInfo.environment["SCHOLIUM_QA_CANCEL_OWNED_ZOTERO_DIALOG"] == "1" {
+            // Explicit recovery for a prior interrupted QA invocation only.
+            // Normal runs refuse to take over any preexisting citation dialog.
+            XCTAssertTrue(preferences.exists && !picker.exists)
+            preferences.buttons["Cancel"].click()
+            XCTAssertTrue(waitUntil(timeout: 10) { !preferences.exists })
+        }
+        XCTAssertFalse(preferences.exists || picker.exists, "Do not take over an existing researcher citation operation.")
+        addTeardownBlock {
+            await MainActor.run {
+            // Cancel only dialogs created by this authorized journey. Never
+            // close Zotero's library, documents, or application.
+            for dialog in [preferences, picker] where dialog.exists {
+                let cancel = dialog.buttons["Cancel"].firstMatch
+                if cancel.exists && cancel.isEnabled { cancel.click() }
+            }
+            }
+        }
+        let workspace = stableWorkspaceWindow(app.windows.firstMatch)
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try String(contentsOf: noteURL, encoding: .utf8)
+        let editor = enterLivePreview(in: workspace)
+        editor.typeKey(.end, modifierFlags: .command)
+        realZoteroCommand("Citation…")
+        XCTAssertTrue(preferences.waitForExistence(timeout: 15))
+        realZoteroSelectStyle("APA Style 7th edition", in: preferences)
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        let search = picker.textFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.click()
+        search.typeText("Slaves of the Passions")
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { picker.staticTexts.containing(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", "Slaves of the Passions", "Slaves of the Passions")).count > 0 },
+            "The authorized published-item fixture must resolve in Zotero; never substitute another source.")
+        search.typeKey(.return, modifierFlags: [])
+        let accept = picker.buttons["Accept"]
+        XCTAssertTrue(waitUntil(timeout: 8) { accept.isEnabled })
+        XCTAssertTrue(picker.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Schroeder, 2007")).firstMatch.exists)
+        accept.click()
+        XCTAssertTrue(waitUntil(timeout: 15) { !picker.exists && (try? self.realZoteroFields(at: noteURL).count) == 1 })
+        let citation = try realZoteroFields(at: noteURL)
+        XCTAssertEqual(citation.first?["kind"], "citation")
+        XCTAssertTrue(try String(contentsOf: noteURL, encoding: .utf8).contains(original))
+        realZoteroAttachSource(noteURL, name: "real-zotero-citation-inserted")
+
+        app.activate()
+        let bibliographyEditor = enterLivePreview(in: workspace)
+        bibliographyEditor.typeKey(.end, modifierFlags: .command)
+        bibliographyEditor.typeKey(.return, modifierFlags: [])
+        bibliographyEditor.typeKey(.return, modifierFlags: [])
+        realZoteroCommand("Bibliography…")
+        XCTAssertTrue(waitUntil(timeout: 15) { (try? self.realZoteroFields(at: noteURL).count) == 2 })
+        let beforeRefresh = try realZoteroFields(at: noteURL)
+        XCTAssertEqual(beforeRefresh.map { $0["kind"] ?? "" }, ["citation", "bibliography"])
+        XCTAssertEqual(beforeRefresh.first?["id"], citation.first?["id"])
+        realZoteroAttachSource(noteURL, name: "real-zotero-before-refresh")
+
+        // Make successful Refresh observable even when Zotero renders the
+        // same text: a concurrent editor invalidates only this disposable
+        // manuscript's accepted-field signatures, preserving all field bytes.
+        try realZoteroInvalidateAcceptance(at: noteURL)
+        let stale = workspace.descendants(matching: .any)["scholium.document.citations.stale"]
+        let issue = workspace.descendants(matching: .any)["scholium.document.citations.issue"]
+        let unresolved = workspace.descendants(matching: .any)["scholium.document.citations.unresolved"]
+        XCTAssertTrue(stale.waitForExistence(timeout: 15))
+        let expectedSignatures = beforeRefresh.map { ["id": $0["id"]!, "code": $0["code"]!] }
+        realZoteroCommand("Refresh Citations", nested: true)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (try? self.realZoteroDocument(at: noteURL)["acceptedFields"] as? [[String: String]]) == expectedSignatures
+                    && !stale.exists && !issue.exists && !unresolved.exists
+            }, "Refresh must replace the persisted stale witness with both accepted fields and clear the citation notice.")
+        realZoteroWaitForIdle()
+        XCTAssertEqual(try realZoteroFields(at: noteURL).map { $0["id"] }, beforeRefresh.map { $0["id"] })
+        XCTAssertEqual(try realZoteroFields(at: noteURL).map { $0["kind"] }, beforeRefresh.map { $0["kind"] })
+        XCTAssertTrue(try String(contentsOf: noteURL, encoding: .utf8).contains(original))
+        realZoteroAttachSource(noteURL, name: "real-zotero-after-refresh")
+
+        let beforeStyle = try Data(contentsOf: noteURL)
+        realZoteroCommand("Citation Style…", nested: true)
+        XCTAssertTrue(preferences.waitForExistence(timeout: 15))
+        realZoteroSelectStyle("Chicago Manual of Style 18th edition (author-date)", in: preferences)
+        XCTAssertTrue(waitUntil(timeout: 15) { (try? Data(contentsOf: noteURL)) != beforeStyle && !preferences.exists })
+        realZoteroWaitForIdle()
+        let styledFields = try realZoteroFields(at: noteURL)
+        XCTAssertEqual(styledFields.map { $0["id"] }, beforeRefresh.map { $0["id"] })
+        XCTAssertEqual(styledFields.map { $0["kind"] }, beforeRefresh.map { $0["kind"] })
+        XCTAssertTrue(styledFields[0]["text"]?.contains("Schroeder") == true)
+        XCTAssertTrue(styledFields[1]["text"]?.localizedCaseInsensitiveContains("Slaves of the Passions") == true)
+        let styleData = try XCTUnwrap(realZoteroDocument(at: noteURL)["data"] as? String)
+        XCTAssertTrue(styleData.contains("/chicago") && styleData.contains("author-date"), "The accepted document must use the selected Chicago author-date style.")
+        XCTAssertFalse(issue.exists || unresolved.exists || stale.exists)
+        realZoteroAttachSource(noteURL, name: "real-zotero-after-style-change")
+        app.activate()
+        focusWorkspaceWindow(workspace)
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 12) { (try? Data(contentsOf: noteURL)) == beforeStyle }, "One Undo must restore exact source before the accepted style change.")
+
+        realZoteroCommand("Citation Style…", nested: true)
+        XCTAssertTrue(preferences.waitForExistence(timeout: 15))
+        preferences.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !preferences.exists })
+        realZoteroWaitForIdle()
+        selectDocumentMode("Source", in: workspace)
+        let sourceEditor = workspace.textViews["Markdown source editor"].firstMatch
+        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 10))
+        XCTAssertEqual(sourceEditor.value as? String, String(data: beforeStyle, encoding: .utf8), "Cancellation must preserve the current editor source, not only the previous saved file.")
+        selectDocumentMode("Review", in: workspace)
+        XCTAssertEqual(try Data(contentsOf: noteURL), beforeStyle, "Cancellation must retain both exact fields and document metadata.")
+        XCTAssertFalse(issue.exists || unresolved.exists || stale.exists)
+        realZoteroAttachSource(noteURL, name: "real-zotero-cancelled-style")
+        XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "org.zotero.zotero").map(\.processIdentifier), [zoteroPID])
+        selectDocumentMode("Review", in: workspace)
+        let shot = XCTAttachment(screenshot: workspace.screenshot())
+        shot.name = "Real Zotero citation and bibliography after Refresh, style Undo and cancellation"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    @MainActor
+    private func realZoteroCommand(_ title: String, nested: Bool = false) {
+        app.activate()
+        app.menuBars.menuBarItems["Insert"].click()
+        if nested { app.menuItems["Citations"].firstMatch.hover() }
+        let command = app.menuItems[title].firstMatch
+        XCTAssertTrue(command.waitForExistence(timeout: 5))
+        XCTAssertTrue(command.isEnabled)
+        command.click()
+    }
+
+    @MainActor
+    private func realZoteroSelectStyle(_ style: String, in preferences: XCUIElement) {
+        let hierarchy = XCTAttachment(string: preferences.debugDescription)
+        hierarchy.name = "Zotero document style controls"
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
+        let choice = preferences.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR value == %@", style, style)).firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5))
+        choice.click()
+        preferences.buttons["OK"].click()
+        XCTAssertTrue(waitUntil(timeout: 10) { !preferences.exists })
+    }
+
+    @MainActor
+    private func realZoteroWaitForIdle() {
+        app.activate()
+        app.menuBars.menuBarItems["Insert"].click()
+        app.menuItems["Citations"].firstMatch.hover()
+        let cancel = app.menuItems["Cancel Citation Operation"].firstMatch
+        let refresh = app.menuItems["Refresh Citations"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { cancel.exists && !cancel.isEnabled && refresh.isEnabled })
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    private func realZoteroFields(at url: URL) throws -> [[String: String]] {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let expression = try NSRegularExpression(pattern: "(?:scholium-zotero:1:|<!--scholium-zotero-field:1:)([A-Za-z0-9+/=]+)")
+        return try expression.matches(in: text, range: NSRange(text.startIndex..., in: text)).map { match in
+            let range = try XCTUnwrap(Range(match.range(at: 1), in: text))
+            let data = try XCTUnwrap(Data(base64Encoded: String(text[range])))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+        }
+    }
+
+    private func realZoteroDocument(at url: URL) throws -> [String: Any] {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let expression = try NSRegularExpression(pattern: "<!--scholium-zotero-document:1:([A-Za-z0-9+/=]+)-->")
+        let match = try XCTUnwrap(expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)))
+        let range = try XCTUnwrap(Range(match.range(at: 1), in: text))
+        let data = try XCTUnwrap(Data(base64Encoded: String(text[range])))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func realZoteroInvalidateAcceptance(at url: URL) throws {
+        var text = try String(contentsOf: url, encoding: .utf8)
+        let expression = try NSRegularExpression(pattern: "<!--scholium-zotero-document:1:([A-Za-z0-9+/=]+)-->")
+        let match = try XCTUnwrap(expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)))
+        let range = try XCTUnwrap(Range(match.range(at: 1), in: text))
+        var document = try realZoteroDocument(at: url)
+        document["acceptedFields"] = [[String: String]]()
+        let payload = try JSONSerialization.data(withJSONObject: document).base64EncodedString()
+        text.replaceSubrange(range, with: payload)
+        try Data(text.utf8).write(to: url, options: .atomic)
+    }
+
+    private func realZoteroAttachSource(_ url: URL, name: String) {
+        let attachment = XCTAttachment(contentsOfFile: url)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testNativeHTMLAndDOCXExportUseUnsavedSourceWithoutSavingTheNote() throws {
         app.terminate()
         app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000, appearance: .light)

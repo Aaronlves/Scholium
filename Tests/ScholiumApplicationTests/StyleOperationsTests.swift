@@ -423,6 +423,46 @@ struct StyleOperationsTests {
         #expect(appearance.showLineNumbers == true)
         #expect(appearance.defaultViewMode == "source")
     }
+
+    @Test("Obsidian JSON reads accept the limit and refuse oversized or symlinked source")
+    func boundedObsidianAppearance() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/security-hardening/obsidian-fixtures/\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let obsidian = root.appendingPathComponent(".obsidian", isDirectory: true)
+        try FileManager.default.createDirectory(at: obsidian, withIntermediateDirectories: true)
+        let path = obsidian.appendingPathComponent("app.json")
+        let prefix = Data(#"{"theme":""#.utf8)
+        let suffix = Data(#""}"#.utf8)
+        let maximum = VaultSourceReadLimits.maximumObsidianConfigurationByteCount
+        var atLimit = prefix
+        atLimit.append(Data(repeating: 0x61, count: maximum - prefix.count - suffix.count))
+        atLimit.append(suffix)
+        try atLimit.write(to: path)
+        let operations = StyleOperations(applicationSupportURL: root.appendingPathComponent("Support"))
+        #expect(await operations.obsidianAppearance(at: root)?.theme?.utf8.count == maximum - prefix.count - suffix.count)
+        var oversized = atLimit
+        oversized.insert(0x61, at: prefix.count)
+        try oversized.write(to: path)
+        #expect(await operations.obsidianAppearance(at: root)?.theme == nil)
+        #expect(try Data(contentsOf: path) == oversized)
+
+        let outside = root.appendingPathComponent("outside.json")
+        let sentinel = Data(#"{"theme":"outside"}"#.utf8)
+        try sentinel.write(to: outside)
+        try FileManager.default.removeItem(at: path)
+        try FileManager.default.createSymbolicLink(at: path, withDestinationURL: outside)
+        #expect(await operations.obsidianAppearance(at: root)?.theme == nil)
+        #expect(try Data(contentsOf: outside) == sentinel)
+        try FileManager.default.removeItem(at: obsidian)
+        let externalDirectory = root.appendingPathComponent("External", isDirectory: true)
+        try FileManager.default.createDirectory(at: externalDirectory, withIntermediateDirectories: true)
+        try sentinel.write(to: externalDirectory.appendingPathComponent("app.json"))
+        try FileManager.default.createSymbolicLink(at: obsidian, withDestinationURL: externalDirectory)
+        #expect(await operations.obsidianAppearance(at: root)?.theme == nil)
+        #expect(try Data(contentsOf: externalDirectory.appendingPathComponent("app.json")) == sentinel)
+    }
     @Test("Appearance and snippet failures recover independently with exact backups", arguments: ["appearances.json", "snippets.json"])
     func independentRecovery(_ brokenFile: String) async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

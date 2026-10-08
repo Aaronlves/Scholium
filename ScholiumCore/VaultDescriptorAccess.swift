@@ -43,15 +43,45 @@ final class VaultDescriptorAccess {
     }
 
     func read(_ path: MarkdownRelativePath) throws -> Data {
-        try withOpenRegularFile(path) {
+        do {
+            return try read(
+                rawValue: path.rawValue,
+                components: path.components.map(String.init),
+                maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        } catch let error as CocoaError where error.code == .fileReadTooLarge {
+            throw VaultRepositoryError.sourceTooLarge(
+                relativePath: path.rawValue,
+                maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        }
+    }
+
+    func read(_ path: AttachmentRelativePath, maximumByteCount: Int) throws -> Data {
+        try read(
+            rawValue: path.rawValue,
+            components: path.components.map(String.init),
+            maximumByteCount: maximumByteCount
+        )
+    }
+
+    private func read(
+        rawValue: String, components: [String], maximumByteCount: Int
+    ) throws -> Data {
+        try withOpenRegularFile(rawValue: rawValue, components: components) {
             descriptor, parentDescriptor, name, initialStatus in
-            let data = try Self.readAll(from: descriptor)
+            let data = try Self.readAll(from: descriptor, maximumByteCount: maximumByteCount)
             var finalStatus = stat()
             guard fstat(descriptor, &finalStatus) == 0 else {
                 throw POSIXError(Self.posixCode(errno))
             }
             let initialIdentity = FileIdentity(initialStatus)
             guard FileIdentity(finalStatus) == initialIdentity,
+                finalStatus.st_size == initialStatus.st_size,
+                finalStatus.st_mtimespec.tv_sec == initialStatus.st_mtimespec.tv_sec,
+                finalStatus.st_mtimespec.tv_nsec == initialStatus.st_mtimespec.tv_nsec,
+                finalStatus.st_ctimespec.tv_sec == initialStatus.st_ctimespec.tv_sec,
+                finalStatus.st_ctimespec.tv_nsec == initialStatus.st_ctimespec.tv_nsec,
                 Int(finalStatus.st_size) == data.count
             else {
                 throw VaultRepositoryError.commitUncertain(
@@ -65,14 +95,21 @@ final class VaultDescriptorAccess {
                     parentDescriptor: parentDescriptor
                 )
             } catch let error as POSIXError where error.code == .ENOENT {
-                throw VaultRepositoryError.fileDoesNotExist(path.rawValue)
+                throw VaultRepositoryError.fileDoesNotExist(rawValue)
             }
             guard currentIdentity == initialIdentity else {
                 throw VaultRepositoryError.commitUncertain(
                     "The source path changed identity while its exact bytes were being read."
                 )
             }
-            try verifyCurrentParent(path, retainedDescriptor: parentDescriptor)
+            let expectedParent = try Self.identity(descriptor: parentDescriptor)
+            try withParentDescriptor(rawValue: rawValue, components: components) { observed, _ in
+                guard try Self.identity(descriptor: observed) == expectedParent else {
+                    throw VaultRepositoryError.commitUncertain(
+                        "The authorized parent directory changed while source was being read."
+                    )
+                }
+            }
             return data
         }
     }
@@ -115,14 +152,23 @@ final class VaultDescriptorAccess {
         _ path: MarkdownRelativePath,
         _ body: (Int32, Int32, String, stat) throws -> T
     ) throws -> T {
-        try withParentDescriptor(path) { parentDescriptor, name in
+        try withOpenRegularFile(
+            rawValue: path.rawValue, components: path.components.map(String.init), body
+        )
+    }
+
+    private func withOpenRegularFile<T>(
+        rawValue: String, components: [String],
+        _ body: (Int32, Int32, String, stat) throws -> T
+    ) throws -> T {
+        try withParentDescriptor(rawValue: rawValue, components: components) { parentDescriptor, name in
             let descriptor = openat(
                 parentDescriptor,
                 name,
                 O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC
             )
             guard descriptor >= 0 else {
-                throw Self.openError(code: errno, path: path.rawValue)
+                throw Self.openError(code: errno, path: rawValue)
             }
             defer { close(descriptor) }
 
@@ -131,7 +177,7 @@ final class VaultDescriptorAccess {
                 throw POSIXError(Self.posixCode(errno))
             }
             guard (status.st_mode & S_IFMT) == S_IFREG else {
-                throw VaultRepositoryError.notRegularFile(path.rawValue)
+                throw VaultRepositoryError.notRegularFile(rawValue)
             }
             return try body(descriptor, parentDescriptor, name, status)
         }
@@ -191,22 +237,53 @@ final class VaultDescriptorAccess {
         return try body(currentDescriptor, name)
     }
 
-    static func readAll(from descriptor: Int32, maximumByteCount: Int? = nil) throws -> Data {
+    static func readNoteBytes(from descriptor: Int32, relativePath: String) throws -> Data {
+        do {
+            return try readAll(
+                from: descriptor, maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        } catch let error as CocoaError where error.code == .fileReadTooLarge {
+            throw VaultRepositoryError.sourceTooLarge(
+                relativePath: relativePath,
+                maximumByteCount: VaultSourceReadLimits.maximumNoteByteCount
+            )
+        }
+    }
+
+    static func readAll(from descriptor: Int32, maximumByteCount: Int) throws -> Data {
+        try readAll(from: descriptor, maximumByteCount: maximumByteCount, afterChunkForTesting: nil)
+    }
+
+    /// Deterministic growth seam. Production callers use the overload above.
+    static func readAll(
+        from descriptor: Int32, maximumByteCount: Int,
+        afterChunkForTesting: ((Int) throws -> Void)?
+    ) throws -> Data {
+        var status = stat()
+        guard fstat(descriptor, &status) == 0 else { throw POSIXError(posixCode(errno)) }
+        guard maximumByteCount >= 0, status.st_size >= 0, status.st_size <= maximumByteCount else {
+            throw CocoaError(.fileReadTooLarge)
+        }
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
         while true {
             let count = buffer.withUnsafeMutableBytes { bytes in
-                Darwin.read(descriptor, bytes.baseAddress, bytes.count)
+                // Read at most one byte beyond the remaining allowance so
+                // growth cannot cause an unbounded allocation before refusal.
+                let remaining = maximumByteCount - data.count
+                let readCount = remaining < bytes.count ? remaining + 1 : bytes.count
+                return Darwin.read(descriptor, bytes.baseAddress, readCount)
             }
             if count == 0 { return data }
             if count < 0, errno == EINTR { continue }
             guard count > 0 else {
                 throw POSIXError(posixCode(errno))
             }
-            if let maximumByteCount, count > maximumByteCount - data.count {
+            if count > maximumByteCount - data.count {
                 throw CocoaError(.fileReadTooLarge)
             }
             data.append(buffer, count: count)
+            try afterChunkForTesting?(data.count)
         }
     }
 
@@ -333,5 +410,17 @@ final class VaultDescriptorAccess {
 
     private static func posixCode(_ code: Int32) -> POSIXErrorCode {
         POSIXErrorCode(rawValue: code) ?? .EIO
+    }
+}
+
+/// Read-only configuration access reuses the vault's descriptor-relative,
+/// no-follow source boundary, including parent and leaf identity rechecks.
+package enum VaultConfigurationReader {
+    package static func readObsidianFile(at vaultRootURL: URL, fileName: String) throws -> Data {
+        let path = try AttachmentRelativePath(".obsidian/\(fileName)")
+        let access = try VaultDescriptorAccess(rootURL: vaultRootURL)
+        return try access.read(
+            path, maximumByteCount: VaultSourceReadLimits.maximumObsidianConfigurationByteCount
+        )
     }
 }

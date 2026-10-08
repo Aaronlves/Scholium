@@ -9,6 +9,11 @@ one exact Markdown buffer; autosave; create, duplicate, import, move,
 export, Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
 source properties, Changes, conflicts, and recovery.
 
+Note processing has a bounded source size. Oversized Notes remain byte-unchanged
+and unavailable for loading or derived projections. Failed refresh retains the
+last trustworthy catalog and reports the unavailable source, never emptiness
+or deletion.
+
 ### 5.1 Document modes and YAML
 
 - **Review** renders committed content for reading, navigation, and selection.

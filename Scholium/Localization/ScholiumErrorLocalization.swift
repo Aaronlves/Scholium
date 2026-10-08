@@ -34,6 +34,10 @@ enum ScholiumErrorLocalization {
             case .fileAlreadyExists(let path): ScholiumL10n.string("A note already exists at: \(path)", locale: locale)
             case .notRegularFile(let path): ScholiumL10n.string("The path is not a regular file: \(path)", locale: locale)
             case .markdownRequired(let path): ScholiumL10n.string("Scholium note operations require a Markdown file: \(path)", locale: locale)
+            case .sourceTooLarge(let path, let maximumByteCount):
+                ScholiumL10n.string(
+                    "The note exceeds the supported source limit of \(maximumByteCount) bytes and is unavailable for processing: \(path). Its file remains unchanged.",
+                    locale: locale)
             case .conflict: ScholiumL10n.string("This note changed on disk after editing began. Compare changes or reload before saving.", locale: locale)
             case .readbackMismatch:
                 ScholiumL10n.string(

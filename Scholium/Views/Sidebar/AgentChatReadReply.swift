@@ -25,7 +25,6 @@ struct AgentChatReadReply: View {
     @State private var objectsSource: String?
     @State private var failure: String?
     @State private var preview = ScholiumContentPreview()
-    @ObservedObject private var faviconStore = AgentChatFaviconStore.shared
 
     var body: some View {
         Group {
@@ -125,7 +124,6 @@ struct AgentChatReadReply: View {
                 hasMeasuredLayout = false
             }
             renderer.submit(source)
-            await faviconStore.load(AgentChatReplySource.collect(source))
         }
     }
 
@@ -214,7 +212,7 @@ struct AgentChatReadReply: View {
             + ScholiumChatAppearance.messageBodyCSS
             + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
             + AgentChatWebsiteIcon.presentationCSS
-            + faviconStore.presentationCSS(for: AgentChatReplySource.collect(source)) + """
+                + """
                 html, body { overflow: hidden; }
                 .scholium-document a { color: var(--scholium-document-accent); text-decoration-color: currentColor; }
                 .scholium-document a.scholium-chat-link::before {

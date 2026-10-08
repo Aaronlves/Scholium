@@ -6,6 +6,63 @@ import Testing
 
 @Suite("Fresh-source catalog projection reuse")
 struct VaultSourceProjectionCacheTests {
+    @Test("Oversized source fails a refresh without replacing the trustworthy catalog")
+    func oversizedSourceRetainsCatalog() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let catalog = try await fixture.catalog(useCache: false)
+        let original = try await catalog.snapshot(refreshFolders: false)
+        let oversizedURL = fixture.vaultURL.appendingPathComponent("Large.md")
+        let oversized = Data(repeating: 0x20, count: VaultSourceReadLimits.maximumNoteByteCount + 1)
+        try oversized.write(to: oversizedURL)
+        await #expect {
+            try await catalog.reconcile()
+        } throws: { error in
+            guard let error = error as? VaultRepositoryError,
+                case .sourceTooLarge(let path, let maximum) = error
+            else { return false }
+            return path == "Large.md" && maximum == VaultSourceReadLimits.maximumNoteByteCount
+        }
+        let retained = try await catalog.snapshot(refreshFolders: false)
+        #expect(retained.generation == original.generation)
+        #expect(retained.projections == original.projections)
+        #expect(retained.sourceVersions == original.sourceVersions)
+        #expect(try Data(contentsOf: oversizedURL) == oversized)
+        #expect(try Data(contentsOf: fixture.noteURL) == Data(fixture.source.utf8))
+        // Once the external participant makes its source processable, the
+        // catalog can publish the complete new generation normally.
+        try Data("Available again\n".utf8).write(to: oversizedURL)
+        try await catalog.reconcile()
+        let recovered = try await catalog.snapshot(refreshFolders: false)
+        #expect(recovered.generation == original.generation + 1)
+        #expect(recovered.projections.map(\.relativePath).sorted() == ["Large.md", Fixture.path])
+    }
+
+    @Test("Parallel catalogs process near-limit Notes under one aggregate source budget")
+    func sharedNearLimitSourceBudget() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let source = Data(repeating: 0x20, count: VaultSourceReadLimits.maximumNoteByteCount - 1)
+        for number in 0..<4 {
+            try source.write(to: fixture.vaultURL.appendingPathComponent("Large-\(number).md"))
+        }
+        let budget = VaultSourceProcessingBudget()
+        let first = try await fixture.catalog(useCache: false, processingBudget: budget)
+        let second = try await fixture.catalog(useCache: false, processingBudget: budget)
+        async let firstSnapshot = first.snapshot(refreshFolders: false)
+        async let secondSnapshot = second.snapshot(refreshFolders: false)
+        let snapshots = try await (firstSnapshot, secondSnapshot)
+        #expect(snapshots.0.projections.count == 5)
+        #expect(snapshots.1.projections == snapshots.0.projections)
+        #expect(snapshots.0.measurement.parsedDocuments == 5)
+        #expect(snapshots.1.measurement.parsedDocuments == 5)
+        let complete = await budget.statistics()
+        #expect(complete.peakReservedBytes > 0)
+        #expect(complete.peakReservedBytes <= VaultSourceReadLimits.maximumInFlightSourceByteCount)
+        #expect(complete.reservedBytes == 0)
+        #expect(complete.queued == 0)
+    }
+
     @Test("A new catalog reuses Search coordinates while reading and parsing current source")
     func freshStartupHit() async throws {
         let fixture = try await Fixture()
@@ -180,7 +237,10 @@ struct VaultSourceProjectionCacheTests {
             }
         }
 
-        func catalog(useCache: Bool = true) async throws -> VaultSourceCatalog {
+        func catalog(
+            useCache: Bool = true,
+            processingBudget: VaultSourceProcessingBudget = .shared
+        ) async throws -> VaultSourceCatalog {
             let services = await handle.services
             let repository = try #require(services.repositories[vaultID])
             if useCache {
@@ -188,7 +248,7 @@ struct VaultSourceProjectionCacheTests {
                     repository: repository, vaultRole: .topicKnowledge,
                     applicationSupportURL: supportURL, vaultID: vaultID)
             }
-            return VaultSourceCatalog(repository: repository)
+            return VaultSourceCatalog(repository: repository, processingBudget: processingBudget)
         }
 
         func index(_ snapshot: VaultSourceCatalogSnapshot) async throws -> (projectedDocuments: Int, restoredSearchProjections: Int) {

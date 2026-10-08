@@ -55,17 +55,18 @@ struct AgentChatPresentationTests {
         #expect(AgentChatWebsiteIcon.presentationCSS.contains("data:image/svg+xml;base64,"))
     }
 
-    @Test("Favicon requests exclude local and non-HTTPS links")
+    @Test("Unknown website metadata uses a generic symbol and retains the exact explicit destination")
     @MainActor
-    func faviconRequestBoundary() throws {
-        #expect(AgentChatFaviconStore.fetchableHost(for: try #require(URL(string: "https://github.com/owner/repo?private=1"))) == "github.com")
-        for link in [
-            "http://github.com/", "https://localhost/", "https://127.0.0.1/",
-            "https://[::1]/", "https://intranet.local/", "https://example.org/",
-            "https://reader:secret@github.com/", "https://github.com.evil.test/",
-        ] {
-            #expect(AgentChatFaviconStore.fetchableHost(for: try #require(URL(string: link))) == nil)
-        }
+    func localWebsiteMetadata() throws {
+        let destination = "https://unique-view-marker.attacker.net/private/path?view=unique#passage"
+        let source = try #require(AgentChatReplySource.collect("[Source title](\(destination))").first)
+        #expect(source.title == "Source title")
+        #expect(source.url.absoluteString == destination)
+        #expect(source.destination == "unique-view-marker.attacker.net")
+        #expect(source.symbol == .globe)
+        #expect(AgentChatWebsiteIcon.image(for: source.url) == nil)
+        #expect(AgentChatReplySource.externalURL(source.url) == source.url)
+        #expect(!AgentChatWebsiteIcon.presentationCSS.contains(source.destination))
     }
 
     @Test("Public commentary and each tool call group only within their confirmed turn; final and unknown phases stay visible")

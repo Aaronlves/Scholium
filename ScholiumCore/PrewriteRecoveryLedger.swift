@@ -214,7 +214,7 @@ final class PrewriteRecoveryLedger {
         }
         // The exact bytes are now durable. Remove only the same checked backup.
         try access.withOpenRegularFile(path) { descriptor, parent, name, status in
-            guard try VaultDescriptorAccess.readAll(from: descriptor) == data,
+            guard try VaultDescriptorAccess.readAll(from: descriptor, maximumByteCount: data.count) == data,
                 try VaultDescriptorAccess.identity(name: name, parentDescriptor: parent) == VaultDescriptorAccess.FileIdentity(status)
             else { throw VaultRepositoryError.commitUncertain("The save backup changed before cleanup.") }
             try access.verifyCurrentParent(path, retainedDescriptor: parent)

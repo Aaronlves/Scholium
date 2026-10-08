@@ -546,18 +546,10 @@ public actor ScholiumMCPServer {
         tool(
             .configureTool,
             description:
-                "Add, edit, enable, disable, remove or begin sign-in for a runtime-owned MCP connection. Configuration writes use the supplied live revision and edit environment-variable names only; secret values remain with the runtime.",
+                "Begin runtime-owned sign-in for an observed MCP connection. Adding, editing, enabling, disabling or removing connections requires the researcher-controlled native Settings surface; a model request cannot authorize executable or access configuration changes.",
             properties: [
-                "action": enumSchema(["add", "update", "set_enabled", "remove", "sign_in"]),
-                "expected_version": stringSchema("Exact tool-configuration version returned by scholium_capabilities for a write."),
+                "action": enumSchema(["sign_in"]),
                 "name": stringSchema("Exact connection name."),
-                "kind": enumSchema(["local", "remote"]),
-                "address": stringSchema("Local executable path or remote MCP endpoint."),
-                "args": arraySchema(stringSchema("One local server argument.")),
-                "enabled": booleanSchema,
-                "bearer_token_env_var": stringSchema("Environment-variable name only; never a token value."),
-                "env_vars": arraySchema(stringSchema("Inherited environment-variable name only.")),
-                "reuse_access_settings": booleanSchema,
             ],
             required: ["action"],
             readOnly: false,
@@ -567,10 +559,10 @@ public actor ScholiumMCPServer {
         tool(
             .configureChat,
             description:
-                "Change this conversation's runtime preferences or next-message Skill selection. Changes are stored on the addressed conversation and apply to the next turn; they do not rewrite Notes or retroactively change the active turn.",
+                "Change this conversation's runtime preferences or next-message Skill selection. Changes are stored on the addressed conversation and apply to the next turn. Permission can only be reduced to Ask; Full Access requires the researcher's native idle-conversation control. Changes do not rewrite Notes or retroactively change the active turn.",
             properties: [
                 "action": enumSchema(["set_permission", "set_model", "set_effort", "set_web_search", "set_selected_skills"]),
-                "permission": enumSchema(["ask", "fullAccess"]),
+                "permission": enumSchema(["ask"]),
                 "model": nullable(stringSchema("Available model identifier; omit or send null to use the runtime default.")),
                 "effort": nullable(stringSchema("Reasoning effort supported by the selected model; omit or send null for the default.")),
                 "web_search": enumSchema(["runtimeDefault", "disabled", "cached", "live"]),
@@ -800,8 +792,8 @@ public actor ScholiumMCPServer {
                     successSchema(
                         properties: [
                             "action": simpleSchema("string"), "applies_to": simpleSchema("string"),
-                            "authorization_url": nullable(simpleSchema("string")), "configuration": simpleSchema("object"),
-                        ], required: ["action", "applies_to", "authorization_url", "configuration"])
+                            "authorization_url": simpleSchema("string"),
+                        ], required: ["action", "applies_to", "authorization_url"])
                 ]
             case .configureChat:
                 [

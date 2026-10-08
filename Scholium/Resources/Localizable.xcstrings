@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The note exceeds the supported source limit of %lld bytes and is unavailable for processing: %@. Its file remains unchanged.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The note exceeds the supported source limit of %lld bytes and is unavailable for processing: %@. Its file remains unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "笔记超过支持的来源大小上限（%lld 字节），无法进行处理：%@。原文件保持不变。"}}}},
     "Footnote and endnote citation styles are unavailable. Your text was preserved.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Footnote and endnote citation styles are unavailable. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脚注和尾注引用样式不可用。您的文本已保留。"}}}},
     "Citations need updating": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Citations need updating"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用需要更新"}}}},
     "Refresh citations and bibliography in Zotero.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refresh citations and bibliography in Zotero."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在 Zotero 中刷新引用和参考文献。"}}}},

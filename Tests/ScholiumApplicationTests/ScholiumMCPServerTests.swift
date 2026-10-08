@@ -165,6 +165,17 @@ struct ScholiumMCPServerTests {
             #expect(schema["additionalProperties"] as? Bool == false)
             #expect(try object(tool["outputSchema"])["oneOf"] as? [[String: Any]] != nil)
         }
+        let toolControl = try #require(tools.first { $0["name"] as? String == ScholiumMCPToolName.configureTool.rawValue })
+        let toolProperties = try object(try object(toolControl["inputSchema"])["properties"])
+        #expect(try object(toolProperties["action"])["enum"] as? [String] == ["sign_in"])
+        #expect(toolProperties["address"] == nil && toolProperties["args"] == nil && toolProperties["env_vars"] == nil)
+        let toolOutputs = try #require(try object(toolControl["outputSchema"])["oneOf"] as? [[String: Any]])
+        let toolSuccessProperties = try object(try #require(toolOutputs.first)["properties"])
+        #expect(toolSuccessProperties["configuration"] == nil)
+        #expect(try object(toolSuccessProperties["authorization_url"])["type"] as? String == "string")
+        let chatControl = try #require(tools.first { $0["name"] as? String == ScholiumMCPToolName.configureChat.rawValue })
+        let chatProperties = try object(try object(chatControl["inputSchema"])["properties"])
+        #expect(try object(chatProperties["permission"])["enum"] as? [String] == ["ask"])
         _ = try await rpc(
             server, id: 2, method: "tools/call",
             params: [

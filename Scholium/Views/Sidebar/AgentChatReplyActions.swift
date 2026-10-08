@@ -129,7 +129,6 @@ struct AgentChatSourcesView: View {
     let close: () -> Void
     let open: (AgentChatReplySource) -> Void
     @State private var expandedSources: Set<String> = []
-    @ObservedObject private var faviconStore = AgentChatFaviconStore.shared
 
     private var sourceTextInset: CGFloat {
         max(ScholiumGrid.Dimension.iconTrackWidth, ScholiumChatAppearance.sourceIconSize)
@@ -150,7 +149,6 @@ struct AgentChatSourcesView: View {
                             HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                                 if source.symbol == .globe,
                                     let image = AgentChatWebsiteIcon.image(for: source.url)
-                                        ?? faviconStore.image(for: source.url)
                                 {
                                     Image(nsImage: image)
                                         .resizable()
@@ -211,7 +209,6 @@ struct AgentChatSourcesView: View {
             .fixedSize(horizontal: false, vertical: true)
             .scrollBounceBehavior(.basedOnSize)
         }
-        .task { await faviconStore.load(sources) }
         .padding().frame(width: 340)
         .font(.body).foregroundStyle(.primary)
         .tint(nil as Color?)

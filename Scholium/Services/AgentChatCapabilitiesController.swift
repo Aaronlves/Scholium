@@ -10,11 +10,6 @@ struct AgentChatCapabilitySnapshot: Sendable {
     let skillRoots: [String]
 }
 
-struct AgentChatToolWriteResult: Sendable {
-    let configuration: CodexChatToolConfiguration
-    let overridden: Bool
-}
-
 /// A stopped turn cannot begin a new capability operation. Once a runtime
 /// mutation has been sent, loss of admission makes its outcome uncertain.
 @MainActor
@@ -387,9 +382,9 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
     /// Agent-facing capability operations deliberately do not use `mayChange`.
     /// The native Settings surface still waits for idle executions, while an
-    /// active Chat turn may perform an explicit, runtime-owned configuration
-    /// change requested by the researcher. The operation remains serialized,
-    /// version checked and connection-generation checked.
+    /// active Chat turn may inspect capabilities, change Skill enablement or
+    /// request tool sign-in. MCP connection writes remain researcher-only;
+    /// active-turn admission never substitutes for native configuration consent.
     func agentCapabilitySnapshot(threadID: String?, admitted: @MainActor () -> Bool) async throws -> AgentChatCapabilitySnapshot {
         try requireAgentCapabilityAdmission(admitted)
         guard let runtime, let cwd, let home = configurationHome else {
@@ -466,90 +461,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
         return .init(
             selection: method.selection, description: method.description, enabled: effective,
             scope: method.scope, dependencies: method.dependencies)
-    }
-
-    func agentWriteTool(
-        _ connection: AgentChatToolConnection,
-        originalName: String?,
-        expectedVersion: String,
-        removing: Bool,
-        reuseAccessSettings: Bool,
-        threadID: String?,
-        admitted: @MainActor () -> Bool
-    ) async throws -> AgentChatToolWriteResult {
-        try requireAgentCapabilityAdmission(admitted)
-        guard let runtime, let home = configurationHome else {
-            throw ScholiumMCPFailure(
-                code: .workspaceNotReady,
-                message: "The Agent runtime is not connected.", recovery: "Connect the Scholium Agent runtime and retry the tool change.")
-        }
-        guard !isChanging else {
-            throw ScholiumMCPFailure(
-                code: .conflict,
-                message: "Another Skill or tool configuration change is in progress.", recovery: "Inspect capabilities again after that change finishes.")
-        }
-        let generation = connectionGeneration
-        isChanging = true
-        defer { if connectionGeneration == generation { isChanging = false } }
-        let snapshot = try await runtime.chatToolConfiguration(home: home)
-        try requireAgentCapabilityAdmission(admitted)
-        guard connectionGeneration == generation else { throw CancellationError() }
-        guard snapshot.version == expectedVersion else {
-            throw ScholiumMCPFailure(
-                code: .staleRevision,
-                message: "The tool configuration changed before this Agent operation.",
-                recovery: "Inspect capabilities again and retry with its current configuration version.")
-        }
-        let overridden: Bool
-        do {
-            overridden = try await runtime.writeChatTool(
-                connection, originalName: originalName,
-                snapshot: snapshot, removing: removing, reuseAccessSettings: reuseAccessSettings)
-        } catch let failure as ScholiumMCPFailure {
-            throw failure
-        } catch let error as CodexChatToolConfigurationError {
-            throw error
-        } catch let error as CodexConnectionError {
-            if case .server(let message) = error, message.localizedCaseInsensitiveContains("changed") {
-                throw ScholiumMCPFailure(
-                    code: .staleRevision,
-                    message: "The tool configuration changed before this Agent operation.",
-                    recovery: "Inspect capabilities again and retry with its current configuration version.")
-            }
-            throw ScholiumMCPFailure(
-                code: .operationUncertain,
-                message: "The tool configuration change was sent, but its result was not confirmed.",
-                recovery: "Inspect the current tool configuration version before trying again.")
-        } catch {
-            throw ScholiumMCPFailure(
-                code: .operationUncertain,
-                message: "The tool configuration change was sent, but its result was not confirmed.",
-                recovery: "Inspect the current tool configuration version before trying again.")
-        }
-        try requireAgentCapabilityAdmission(admitted, afterCommit: true)
-        guard connectionGeneration == generation else {
-            throw ScholiumMCPFailure(
-                code: .operationUncertain, message: "The tool configuration was saved on a replaced connection.",
-                recovery: "Inspect the current tool configuration version before trying again.")
-        }
-        let current: CodexChatToolConfiguration
-        do {
-            current = try await runtime.chatToolConfiguration(home: home)
-        } catch {
-            throw ScholiumMCPFailure(
-                code: .operationUncertain,
-                message: "The tool configuration was saved, but its current version could not be read.",
-                recovery: "Inspect the current tool configuration version before trying again.")
-        }
-        try requireAgentCapabilityAdmission(admitted, afterCommit: true)
-        guard connectionGeneration == generation else {
-            throw ScholiumMCPFailure(
-                code: .operationUncertain, message: "The tool configuration was saved on a replaced connection.",
-                recovery: "Inspect the current tool configuration version before trying again.")
-        }
-        isChanging = false
-        refresh(threadID: threadID)
-        return .init(configuration: current, overridden: overridden)
     }
 
     func agentSignIn(name: String, threadID: String?, admitted: @MainActor () -> Bool) async throws -> URL {

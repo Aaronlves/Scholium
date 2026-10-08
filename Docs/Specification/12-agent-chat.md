@@ -23,9 +23,8 @@ full-access environment and permits scoped MCP mutations without an additional
 proposal approval. Both preserve exact source, current revisions, live editors,
 readback, conflict and recovery. Full Access does not imply that arbitrary
 filesystem edits acquire Agent Change evidence. Raw edits remain external edits.
-Native permission controls apply while idle. The token-scoped Agent capability
-control may persist a new permission during an active turn for the next turn;
-the admitted turn keeps its original policy. Runtime tools obey the actual
+Only native idle permission controls grant Full Access. Agent controls may
+reduce permission to Ask for the next turn. The admitted policy stays fixed. Runtime tools obey the actual
 runtime policy, not a simulated UI permission. Unsupported approval requests
 cannot run silently.
 
@@ -279,8 +278,8 @@ and use its current version to reject intervening changes. A stale form retains
 its draft and requires an explicit reload; it never overwrites newer settings.
 Connections controlled by another configuration layer remain inspectable, with
 their ownership visible. Scholium's own bridge is managed by the application.
-Native writes wait for idle. Agent writes may run during its active turn; the
-runtime serializes and version-checks them. Saving and connecting remain
+Only researcher-controlled native Settings can write connections, while idle.
+The runtime serializes and version-checks writes. Saving and connecting remain
 distinct; removal does not revoke credentials or delete the local program.
 Changing a remote origin or local program requires an explicit choice before
 reusing configured authentication headers or process environment values with
@@ -303,9 +302,9 @@ Authorization URLs remain ephemeral, accept secure web destinations only, and
 are never recorded in conversations or portable research data. A late response
 from a disconnected runtime cannot open a page or update the new connection.
 
-In-app Chat publishes token-scoped controls for Skills, roots, MCP connections
-and next-turn settings. Agent permission changes are next-turn only; Note-mutation
-policy stays fixed.
+In-app Chat publishes token-scoped controls for Skills, inspection, tool sign-in
+and next-turn settings. Permission reductions affect subsequent turns only;
+Full Access and connection writes remain researcher-controlled.
 
 Web search is a first-class chat capability with explicit Off, Cached and Live
 choices where supported. Its availability is separate from general filesystem
@@ -441,7 +440,8 @@ reading or philosophical support. Unsupported result formats remain unknown.
 Supplied PDF text, page images and ordinary images retain their snapshot,
 page coverage and preview owner; supplying a material is not proof it was used.
 Sources fetches no documents, creates no citations and executes no arbitrary
-locator. Favicon requests (§14) prove no source access. Observations remain nonauthorizing.
+locator. Website icons (§18.2.2) use local assets and prove no source access.
+Observations remain nonauthorizing.
 Reply, child-reply and Sources links open the validated item/PDF/annotation
 references owned by §15.4 through the system. An unobserved Zotero lookup remains
 unknown even when its locator opens successfully. Zotero results do not become

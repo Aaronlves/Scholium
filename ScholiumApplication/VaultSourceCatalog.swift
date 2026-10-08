@@ -52,6 +52,7 @@ actor VaultSourceCatalog {
 
     private let repository: VaultRepository
     private let searchProjectionCache: SourceSearchProjectionCache?
+    private let processingBudget: VaultSourceProcessingBudget
     private var records: [String: Record] = [:]
     private var folders: [VaultRelativeFolderPath] = []
     private var generation: UInt64 = 0
@@ -70,10 +71,12 @@ actor VaultSourceCatalog {
 
     init(
         repository: VaultRepository,
-        searchProjectionCache: SourceSearchProjectionCache? = nil
+        searchProjectionCache: SourceSearchProjectionCache? = nil,
+        processingBudget: VaultSourceProcessingBudget = .shared
     ) {
         self.repository = repository
         self.searchProjectionCache = searchProjectionCache
+        self.processingBudget = processingBudget
     }
 
     init(
@@ -81,6 +84,7 @@ actor VaultSourceCatalog {
         applicationSupportURL: URL, vaultID: UUID
     ) {
         self.repository = repository
+        self.processingBudget = .shared
         self.searchProjectionCache = SourceSearchProjectionCache(
             applicationSupportURL: applicationSupportURL, vaultID: vaultID, role: vaultRole
         )
@@ -298,6 +302,7 @@ actor VaultSourceCatalog {
     ) async throws -> [String: AuthorizedRecord] {
         guard !candidates.isEmpty else { return [:] }
         let repository = repository
+        let processingBudget = processingBudget
         let workerCount = min(
             candidates.count,
             max(2, ProcessInfo.processInfo.activeProcessorCount)
@@ -314,6 +319,7 @@ actor VaultSourceCatalog {
                         relativePath: path,
                         authorizedRecord: try await Self.authorizedRecord(
                             repository: repository,
+                            processingBudget: processingBudget,
                             relativePath: path,
                             existing: existing
                         )
@@ -335,6 +341,7 @@ actor VaultSourceCatalog {
                             relativePath: path,
                             authorizedRecord: try await Self.authorizedRecord(
                                 repository: repository,
+                                processingBudget: processingBudget,
                                 relativePath: path,
                                 existing: existing
                             )
@@ -352,6 +359,7 @@ actor VaultSourceCatalog {
     ) async throws -> AuthorizedRecord {
         try await Self.authorizedRecord(
             repository: repository,
+            processingBudget: processingBudget,
             relativePath: relativePath,
             existing: existing
         )
@@ -359,6 +367,7 @@ actor VaultSourceCatalog {
 
     private static func authorizedRecord(
         repository: VaultRepository,
+        processingBudget: VaultSourceProcessingBudget,
         relativePath: String,
         existing: Record?
     ) async throws -> AuthorizedRecord {
@@ -389,29 +398,31 @@ actor VaultSourceCatalog {
 
         let clock = ContinuousClock()
         do {
-            let loaded = try await repository.loadCatalogSource(
-                relativePath: relativePath
-            )
-            let vaultID = await repository.identity.id
-            let parseStart = clock.now
-            let semantic = MarkdownSemanticDocument(parsing: loaded.document)
-            let projection = WorkspaceSourceProjection(
-                vaultID: vaultID,
-                document: loaded.document,
-                semantic: semantic
-            )
-            let parseDuration = parseStart.duration(to: clock.now)
-            return AuthorizedRecord(
-                record: Record(
-                    projection: projection,
-                    version: loaded.version,
-                    fileMetadata: loaded.fileMetadata
-                ),
-                didRead: true,
-                didParse: true,
-                readDuration: loaded.readDuration,
-                parseDuration: parseDuration
-            )
+            return try await processingBudget.withReservation {
+                let loaded = try await repository.loadCatalogSource(
+                    relativePath: relativePath
+                )
+                let vaultID = await repository.identity.id
+                let parseStart = clock.now
+                let semantic = MarkdownSemanticDocument(parsing: loaded.document)
+                let projection = WorkspaceSourceProjection(
+                    vaultID: vaultID,
+                    document: loaded.document,
+                    semantic: semantic
+                )
+                let parseDuration = parseStart.duration(to: clock.now)
+                return AuthorizedRecord(
+                    record: Record(
+                        projection: projection,
+                        version: loaded.version,
+                        fileMetadata: loaded.fileMetadata
+                    ),
+                    didRead: true,
+                    didParse: true,
+                    readDuration: loaded.readDuration,
+                    parseDuration: parseDuration
+                )
+            }
         } catch VaultRepositoryError.fileDoesNotExist {
             return AuthorizedRecord(
                 record: nil,

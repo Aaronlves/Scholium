@@ -8,6 +8,7 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
     case fileAlreadyExists(String)
     case notRegularFile(String)
     case markdownRequired(String)
+    case sourceTooLarge(relativePath: String, maximumByteCount: Int)
     case conflict(expected: DocumentFingerprint, current: DocumentFingerprint)
     case readbackMismatch(expected: DocumentFingerprint, current: DocumentFingerprint)
     case invalidFrontmatter(String)
@@ -30,6 +31,10 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .fileAlreadyExists(let path): return "A note already exists at: \(path)"
         case .notRegularFile(let path): return "The path is not a regular file: \(path)"
         case .markdownRequired(let path): return "Scholium note operations require a Markdown file: \(path)"
+        case .sourceTooLarge(let path, let maximumByteCount):
+            return
+                "The note exceeds the supported source limit of \(maximumByteCount) bytes "
+                + "and is unavailable for processing: \(path). Its file remains unchanged."
         case .conflict: return "This note changed on disk after editing began. Compare changes or reload before saving."
         case .readbackMismatch:
             return "Scholium could not verify the saved bytes. The editor buffer and any unresolved save transaction remain available for recovery."

@@ -177,7 +177,6 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/AgentChatController+Conversation.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController+Execution.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController+Materials.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatFaviconStore.swift"|\
     "${ROOT}/Scholium/Services/AgentChatExecutionState.swift"|\
     "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
     "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\

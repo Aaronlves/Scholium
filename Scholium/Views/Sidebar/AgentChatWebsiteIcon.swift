@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 
 /// Bundled site identity for links already visible in Chat. The favicon is the
-/// site's own mark, not a source or trust indicator. The SVG comes from
+/// site's own mark, not a source or trust indicator. Unknown sites retain the
+/// system globe; presentation never requests website data. The SVG comes from
 /// https://cdn.oaistatic.com/assets/favicon-o20kmmos.svg (retrieved 2026-09-23).
 @MainActor
 enum AgentChatWebsiteIcon {
