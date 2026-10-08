@@ -32,6 +32,22 @@ struct DocumentPassageActionsTests {
         #expect(DocumentPassageSnapshot.capture(source: source, range: .init(location: 0, length: 0)) == nil)
     }
 
+    @Test("A passage in mixed line endings reports its exact logical source lines")
+    func mixedLineEndingCapture() throws {
+        let source = "\u{FEFF}Title\rFirst\nBefore\r\n甲 😀 text.\rNext e\u{301}\r\nTail"
+        let excerpt = "甲 😀 text.\rNext e\u{301}"
+        let selected = (source as NSString).range(of: excerpt)
+        let snapshot = try #require(DocumentPassageSnapshot.capture(source: source, range: selected))
+        #expect(snapshot.source.utf8.elementsEqual(source.utf8))
+        #expect(snapshot.excerpt.utf8.elementsEqual(excerpt.utf8))
+        #expect(snapshot.sourceRange.utf16LowerBound == selected.location)
+        #expect(snapshot.sourceRange.utf16UpperBound == NSMaxRange(selected))
+        #expect(snapshot.sourceRange.line == 4)
+        #expect(snapshot.sourceRange.column == 1)
+        #expect(snapshot.sourceRange.endLine == 5)
+        #expect(snapshot.sourceRange.endColumn == 8)
+    }
+
     @Test("Creating a link inserts only its marker without changing adjacent source")
     func anchorReplacementScope() throws {
         let source = "---\r\ncustom: 'kept'\r\n---\r\n\r\nA 😀 paragraph.\r\n\r\nFollowing.\r\n"

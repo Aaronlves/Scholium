@@ -16,7 +16,8 @@ extension WindowModel {
             Task { [weak self] in
                 await self?.openWorkspaceReference(
                     route.reference,
-                    line: route.sourceLocator?.line
+                    line: route.sourceLocator?.line,
+                    sourceFingerprint: route.sourceFingerprint
                 )
             }
         case .openSearchResult(let result, let disposition):
@@ -72,15 +73,15 @@ extension WindowModel {
                 relativePath: note.relativePath,
                 stableNoteID: note.stableNoteID
             )
-            if disposition == .newTab {
-                requestOpenNote(reference, disposition: .newTab)
-            } else {
-                openWorkspaceReference(
-                    reference,
-                    sourceRange: note.sourceRange,
-                    fallbackLine: note.sourceLine
-                )
-            }
+            openWorkspaceReference(
+                reference,
+                sourceRange: note.sourceRange,
+                fallbackLine: note.sourceLine,
+                sourceFingerprint: note.fingerprint,
+                scope: discoveryController.search.criteria.scope,
+                freshnessToken: note.freshnessToken,
+                placement: disposition == .newTab ? .newTab : .replaceSelected
+            )
         }
     }
 

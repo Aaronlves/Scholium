@@ -1,3 +1,5 @@
+import {inlineCodeMarkers} from "./transformations";
+
 export interface ClipboardPayload { plainText: string; html?: string }
 
 function escapeHTML(value: string) {
@@ -37,6 +39,12 @@ function renderChildren(node: Node): string {
   return Array.from(node.childNodes).map(renderNode).join("");
 }
 
+function literalCodeText(node: Node): string {
+  if (node.nodeType === 3) return node.nodeValue ?? "";
+  if (node.nodeType === 1 && (node as Element).tagName.toLowerCase() === "br") return "\n";
+  return Array.from(node.childNodes).map(literalCodeText).join("");
+}
+
 function renderList(node: Element, ordered: boolean) {
   let index = 1;
   return Array.from(node.children).flatMap((child) => {
@@ -71,7 +79,12 @@ function renderNode(node: Node): string {
   if (["strong", "b"].includes(tag)) return `**${content()}**`;
   if (["em", "i"].includes(tag)) return `*${content()}*`;
   if (["del", "s", "strike"].includes(tag)) return `~~${content()}~~`;
-  if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") return `\`${content().replaceAll("`", "\\`")}\``;
+  if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") {
+    const text = literalCodeText(element).replace(/\r\n?|\n/g, " ");
+    if (!text) return "";
+    const {opening, closing} = inlineCodeMarkers(text);
+    return opening + text + closing;
+  }
   if (tag === "pre") {
     const raw = element.textContent ?? "";
     const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));

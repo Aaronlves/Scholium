@@ -140,6 +140,22 @@ describe("source-owned Zotero Markdown fields", () => {
     expect(projectFields(encodeDocumentData("<data />", null, [])).citationStateStale).toBe(false);
   });
 
+  it.each(["", " ", "\t", "\n", "\r\n", "\n\n", "\u00a0"])(
+    "reports adjacency only to the immediately touching next citation (%j)", separator => {
+      const source = [citation, {...citation, id: "cite_b", code: code(2)}, {...citation, id: "cite_c", code: code(3)}]
+        .map(field => encodeField(field)).join(separator);
+      const projection = projectFields(source);
+      expect(projection.diagnostics).toEqual([]);
+      expect(projection.fields.map(field => field.adjacent)).toEqual(separator === "" ? [true, true, false] : [false, false, false]);
+    });
+
+  it("never reports a bibliography as the previous or next adjacent citation", () => {
+    const source = [citation, bibliography, {...citation, id: "cite_b", code: code(2)}].map(field => encodeField(field)).join("\n\n");
+    const projection = projectFields(source);
+    expect(projection.diagnostics).toEqual([]);
+    expect(projection.fields.map(field => field.adjacent)).toEqual([false, false, false]);
+  });
+
   it("makes copied occurrence IDs inert and blocks all mutation and metadata hiding", () => {
     const source = encodeField(citation) + " " + encodeField(citation), projection = projectFields(source);
     expect(projection.fields).toEqual([]);

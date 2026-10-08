@@ -305,6 +305,54 @@ describe("source-owned Zotero callback transaction", () => {
     expect(() => unverified.finalize(state, capture, complete)).toThrow(/verify/);
   });
 
+  it("preserves a citation before its bibliography through Zotero's refresh deletion transcript", () => {
+    const citation = {id: "cite", kind: "citation" as const, code: code(1), text: "[1]"};
+    const bibliography = {id: "bib", kind: "bibliography" as const, code: bibCode,
+      text: '<div class="csl-bib-body"><div class="csl-entry">First book.</div></div>'};
+    const source = encodeDocumentData("<data style='apa' />", null, [citation, bibliography].map(({id, code}) => ({id, code})))
+      + "\r\n\r\nArgument 😀 " + encodeField(citation) + "\r\n\r\n" + encodeField(bibliography, "\r\n") + "\r\nTail é";
+    const state = initial(source, 0), capture = {...context, command: "refresh" as const};
+    const transaction = ZoteroMarkdownTransaction.capture(state, capture);
+    const reply = transaction.applyCallback(state, capture, {type: "getFields"});
+    if (reply.kind !== "fields") throw new Error("Expected ordered manuscript fields");
+    // Zotero 10.0.5 _processFields marks ITEM fields with adjacent=true for deletion;
+    // a following bibliography never receives the pending citation merge.
+    const deletions = reply.value.filter(field => field.code.startsWith("ITEM CSL_CITATION ") && field.adjacent);
+    transaction.applyCallback(state, capture, {type: "setFieldCode", id: "bib", code: bibCode});
+    transaction.applyCallback(state, capture, {type: "setFieldText", id: "bib", html: bibliography.text});
+    for (const field of deletions.reverse()) transaction.applyCallback(state, capture, {type: "deleteField", id: field.id});
+    const operation = transaction.finalize(state, capture, complete);
+    const current = operation ? commit(state, operation) : state;
+    expect(projectFields(current.field(exactSourceState).text).fields.map(field => field.id)).toEqual(["cite", "bib"]);
+    expect(current.field(exactSourceState).text).toBe(source);
+    expect(undoDepth(current)).toBe(0);
+  });
+
+  it("lets Zotero merge three touching citations into the final occurrence in one exact Undo", () => {
+    const fields = [1, 2, 3].map(id => ({id: `cite_${id}`, kind: "citation" as const, code: code(id, `[${id}]`), text: `[${id}]`}));
+    const source = encodeDocumentData("<data style='numeric' />", null, fields.map(({id, code}) => ({id, code})))
+      + "\n\nArgument 😀 " + fields.map(field => encodeField(field)).join("") + " tail é";
+    const state = initial(source, 0), capture = {...context, command: "refresh" as const};
+    const transaction = ZoteroMarkdownTransaction.capture(state, capture);
+    const reply = transaction.applyCallback(state, capture, {type: "getFields"});
+    if (reply.kind !== "fields") throw new Error("Expected ordered manuscript fields");
+    const deletions = [];
+    for (const field of reply.value) {
+      if (field.adjacent) { deletions.push(field.id); continue; }
+      transaction.applyCallback(state, capture, {type: "setFieldCode", id: field.id,
+        code: 'ITEM CSL_CITATION {"citationID":"merged","citationItems":[{"id":1},{"id":2},{"id":3}]}' });
+      transaction.applyCallback(state, capture, {type: "setFieldText", id: field.id, html: "[1–3]"});
+    }
+    for (const id of deletions.reverse()) transaction.applyCallback(state, capture, {type: "deleteField", id});
+    let current = commit(state, transaction.finalize(state, capture, complete)!);
+    const catalog = projectFields(current.field(exactSourceState).text);
+    expect(catalog.fields.map(field => ({id: field.id, text: field.text}))).toEqual([{id: "cite_3", text: "[1–3]"}]);
+    expect(catalog.citationStateStale).toBe(false);
+    expect(undoDepth(current)).toBe(1);
+    current = perform(current, undo);
+    expect(current.field(exactSourceState).text).toBe(source);
+  });
+
   it.each([
     '<data data-version="3"><prefs><pref name="noteType" value="1"/></prefs></data>',
     '<data data-version="3"><prefs><pref name="noteType" value="2"/></prefs></data>',

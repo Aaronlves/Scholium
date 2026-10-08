@@ -296,8 +296,19 @@ final class WindowLibraryMutationController: ObservableObject {
                     inVault: context.vault.id,
                     parentRelativePath: parentRelativePath
                 )
+                // A role switch may complete while source creation is in
+                // flight. Its authoritative refresh still owns the original
+                // vault; do not install that folder into the new Library.
+                guard !Task.isCancelled,
+                    self.dependencies.context()?.assignmentID == context.assignmentID,
+                    self.dependencies.context()?.vault.id == context.vault.id
+                else { return }
                 await self.dependencies.committedFolderCreated(outcome)
             } catch {
+                guard !Task.isCancelled,
+                    self.dependencies.context()?.assignmentID == context.assignmentID,
+                    self.dependencies.context()?.vault.id == context.vault.id
+                else { return }
                 self.dependencies.reportError(
                     String(
                         localized: "Could not create folder: \(ScholiumErrorLocalization.message(error))",

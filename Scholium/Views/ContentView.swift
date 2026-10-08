@@ -881,10 +881,11 @@ struct ContentView: View {
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,
-                openReference: { reference, sourceLine in
+                openReference: { reference, sourceLine, sourceFingerprint in
                     appState.researchController.requestOpen(
                         reference,
-                        sourceLine: sourceLine
+                        sourceLine: sourceLine,
+                        sourceFingerprint: sourceFingerprint
                     )
                 },
                 findRelated: { appState.findRelatedMaterials(automatic: true) },

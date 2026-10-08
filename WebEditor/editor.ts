@@ -2492,7 +2492,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     editor.dispatch({
       changes: transformed.changes,
       selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
-      annotations: Transaction.userEvent.of(`input.scholium.${operation.command}`),
+      annotations: [Transaction.userEvent.of(`input.scholium.${operation.command}`), isolateHistory.of("full")],
     });
     lastUndoLabel = transformed.undoLabel;
     lastRedoLabel = transformed.undoLabel;

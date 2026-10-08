@@ -16,8 +16,9 @@ tabs, Review/Edit/Source, source-derived Search and Links, Writing References,
 Changes, guarded Note/file operations, note reorganization and Recovery.
 External Markdown opens independently and imports to a selected Triptych role.
 Exact Markdown remains authoritative; YAML is authored source. The Zotero
-citation adapter reaches body fields, bold/italic fallback and static exports; live picker/CSL
-and native/offline recovery acceptance remain pending.
+citation adapter reaches body fields, bold/italic fallback and static exports.
+Live picker/insertion and bibliography rendering have bounded native proof;
+post-repair Refresh/style and offline recovery acceptance remain pending.
 
 External Agents connect through the bundled App-mediated MCP helper. Note
 operations, attachment reads, display, move previews and Agent Change inspection/Undo

@@ -59,6 +59,8 @@
   local API/Connector availability, indexed-text and original reads, import
   confirmation, version-checked item updates, failure/restart and unavailable
   behavior. Deterministic MCP fixtures do not establish human acceptance.
+- Recheck manuscript citation Refresh/style with the corrected field adjacency
+  against real Zotero, plus offline/restart recovery and native focus/input.
 - Complete runtime/native acceptance for branching and Retry in New Branch,
   concurrent execution, model/reasoning/web-search choices, Context/quota, plans,
   research questions, Note-update comparisons, command/terminal/network/file

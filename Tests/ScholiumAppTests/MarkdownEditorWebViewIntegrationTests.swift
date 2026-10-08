@@ -7280,6 +7280,46 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Typing after a formatting command retains a separate Undo event", arguments: [MarkdownEditorMode.livePreview, .source])
+    func formattingCommandSeparatesSubsequentTyping(mode: MarkdownEditorMode) async throws {
+        let source = "Selected 中文 claim remains exact.\r\n"
+        let selectedText = "Selected 中文 claim"
+        let formatted = "**Selected 中文 claim** remains exact.\r\n"
+        let harness = EditorHarness(source: source, initialMode: mode)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: selectedText.utf16.count)
+        try await harness.waitUntilSelection(head: selectedText.utf16.count)
+        try await harness.session.focusAndWait()
+
+        // Keep both edits within CodeMirror's grouping interval regardless of
+        // native bridge timing, so this checks the command's history boundary.
+        _ = try await harness.callPageJavaScript(
+            "window.auditOriginalDateNow = Date.now; const now = Date.now(); Date.now = () => now;")
+        do {
+            try await harness.session.perform(.bold)
+            #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(formatted.utf8))
+            _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'Replacement 中文');")
+            let typed = "**Replacement 中文** remains exact.\r\n"
+            #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(typed.utf8))
+            for expected in [formatted, source] {
+                _ = try await harness.callPageJavaScript(
+                    """
+                    document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
+                      key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, bubbles: true, cancelable: true
+                    }));
+                    """)
+                #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(expected.utf8))
+            }
+        } catch {
+            _ = try? await harness.callPageJavaScript("Date.now = window.auditOriginalDateNow; delete window.auditOriginalDateNow;")
+            throw error
+        }
+        _ = try await harness.callPageJavaScript("Date.now = window.auditOriginalDateNow; delete window.auditOriginalDateNow;")
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit selection stays unobscured while native formatting commands preserve exact source")
     func editSelectionRetainsNativeFormattingCommands() async throws {
         let source = "Selected 中文 claim remains exact.\n"

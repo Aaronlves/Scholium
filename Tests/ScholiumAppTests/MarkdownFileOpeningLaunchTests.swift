@@ -31,6 +31,68 @@ struct MarkdownFileOpeningLaunchTests {
                 == "Nested/Attachments/Note.md")
     }
 
+    @Test("Filesystem-equivalent spellings keep registered Notes on their guarded Triptych route")
+    func filesystemSpellingPreservesManagedRouting() async throws {
+        try await withRouting { opening, _, root, externalRoutes, workspaceRoutes in
+            let parent = root.appendingPathComponent("SyntheticTriptych", isDirectory: true)
+            let folders = ["Analyses", "Topics", "Works"].map { parent.appendingPathComponent($0, isDirectory: true) }
+            for folder in folders { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+            let nested = folders[1].appendingPathComponent("Nested", isDirectory: true)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+            let noteURL = nested.appendingPathComponent("Café.md")
+            let bytes = Data("# Registered source\r\n".utf8)
+            try bytes.write(to: noteURL)
+            let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+            let assignmentID: UUID
+            let vaultID: UUID
+            do {
+                let capabilities = try await store.configureTriptychCapabilities(
+                    paperAnalysisURL: folders[0], topicKnowledgeURL: folders[1], outputURL: folders[2],
+                    portableContainerURL: parent, triptychName: "Synthetic Triptych"
+                )
+                assignmentID = capabilities.id
+                vaultID = try #require((try await store.registeredTriptychs()).first?.vault(for: .topicKnowledge)?.id)
+                await store.shutdownApplicationRuntime()
+            } catch {
+                await store.shutdownApplicationRuntime()
+                throw error
+            }
+
+            let caseSensitive = try #require(
+                noteURL.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames)
+            let alternate = parent.appendingPathComponent("topics/nested/cafe\u{301}.md")
+            if caseSensitive {
+                // On a case-sensitive volume this really is another file and
+                // must remain external, even with identical source bytes.
+                try FileManager.default.createDirectory(at: alternate.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try bytes.write(to: alternate)
+            }
+            opening.requestOpen([alternate])
+            try await waitUntil { !workspaceRoutes.values.isEmpty || !externalRoutes.values.isEmpty }
+            if caseSensitive {
+                #expect(workspaceRoutes.values.isEmpty)
+                #expect(externalRoutes.values.first?.fileURL == alternate)
+            } else {
+                let route = try #require(workspaceRoutes.values.first)
+                #expect(route.triptychID == assignmentID)
+                #expect(route.initialDocument?.vaultID == vaultID)
+                #expect(route.initialDocument?.relativePath == "Nested/Café.md")
+                #expect(externalRoutes.values.isEmpty)
+            }
+            #expect(try Data(contentsOf: noteURL) == bytes)
+
+            let attachment = folders[1].appendingPathComponent("Attachments/Original.md")
+            try FileManager.default.createDirectory(at: attachment.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try bytes.write(to: attachment)
+            let selectedAttachment = caseSensitive ? attachment : parent.appendingPathComponent("topics/attachments/original.md")
+            #expect(MarkdownFileOpeningController.managedMarkdownRelativePath(at: selectedAttachment, in: folders[1]) == nil)
+
+            let link = root.appendingPathComponent("OutsideLink.md")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: noteURL)
+            #expect(MarkdownFileOpeningController.managedMarkdownRelativePath(at: link, in: folders[1]) == nil)
+        }
+    }
+
     @Test("A queued launch file suppresses only the initial Bootstrap, even when it attaches after launch finishes")
     func pendingLaunchSurvivesUntilBootstrapConsumesIt() {
         let opening = MarkdownFileOpeningController()

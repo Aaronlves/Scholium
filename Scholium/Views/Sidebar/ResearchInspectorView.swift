@@ -26,7 +26,7 @@ struct ResearchInspectorView: View {
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
-    let openReference: (VaultNoteReference, Int?) -> Void
+    let openReference: (VaultNoteReference, Int?, DocumentFingerprint?) -> Void
     let findRelated: @MainActor () -> Void
     let findRelatedWithTermGroup: @MainActor (SearchTermGroup?) -> Void
     let retryRelated: () -> Void
@@ -52,7 +52,7 @@ struct ResearchInspectorView: View {
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
-        openReference: @escaping (VaultNoteReference, Int?) -> Void,
+        openReference: @escaping (VaultNoteReference, Int?, DocumentFingerprint?) -> Void,
         findRelated: @escaping @MainActor () -> Void,
         findRelatedWithTermGroup: @escaping @MainActor (SearchTermGroup?) -> Void,
         retryRelated: @escaping () -> Void,
@@ -162,8 +162,8 @@ struct ResearchInspectorView: View {
             },
             freshness: researchInspectorContentContext.freshness,
             retryRefresh: researchInspectorContentContext.retryRefresh,
-            openReference: { reference, line in
-                openReference(reference, line)
+            openReference: { reference, line, fingerprint in
+                openReference(reference, line, fingerprint)
             },
             externalLinks: externalProjectionKey == resourceProjectionKey ? externalLinks : [],
             openExternalURL: openExternalURL

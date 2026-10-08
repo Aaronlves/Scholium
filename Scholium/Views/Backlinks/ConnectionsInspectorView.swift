@@ -83,7 +83,7 @@ struct ConnectionsInspectorContext {
     let current: VaultQualifiedNoteID?
     let freshness: ResearchProjectionFreshness
     let retryRefresh: () -> Void
-    let openReference: (VaultNoteReference, Int?) -> Void
+    let openReference: (VaultNoteReference, Int?, DocumentFingerprint?) -> Void
     var externalLinks: [SourceResourceReferences.ExternalLink] = []
     var openExternalURL: (URL) -> Void = { _ in }
 }
@@ -418,13 +418,13 @@ struct ConnectionsInspectorView: View {
                 separatesFromPreviousGroup: separatesFromPrevious
             ) {
                 if let peer = group.items.first?.peer {
-                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
+                    Button("Open Linked Note") { context.openReference(peer.reference, nil, nil) }
                 }
                 keptPassageMenus(for: group)
             }
             .accessibilityActions {
                 if let peer = group.items.first?.peer {
-                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
+                    Button("Open Linked Note") { context.openReference(peer.reference, nil, nil) }
                 }
             }
             .accessibilityIdentifier("scholium.links.group." + group.id)
@@ -435,7 +435,7 @@ struct ConnectionsInspectorView: View {
                 isKept: keptPassages.contains(item),
                 activate: {
                     guard let source = item.source else { return }
-                    context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
+                    context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line, source.fingerprint)
                 }, openReference: context.openReference,
                 toggleKept: { toggleKept(item) })
         }
@@ -491,7 +491,7 @@ private struct LinkOccurrenceRow: View {
     let query: String
     let isKept: Bool
     let activate: () -> Void
-    let openReference: (VaultNoteReference, Int?) -> Void
+    let openReference: (VaultNoteReference, Int?, DocumentFingerprint?) -> Void
     let toggleKept: () -> Void
     @State private var contextExpanded = false
     private var keptActionTitle: LocalizedStringKey { isKept ? "Remove Kept Passage" : "Keep Passage" }
@@ -555,7 +555,7 @@ private struct LinkOccurrenceRow: View {
                 if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                     let peer = item.peer, let line = item.edge.destination?.span?.start.line
                 {
-                    Button("Open Linked Passage") { openReference(peer.reference, line) }
+                    Button("Open Linked Passage") { openReference(peer.reference, line, peer.fingerprint) }
                 }
             }
             .accessibilityActions {
@@ -565,7 +565,7 @@ private struct LinkOccurrenceRow: View {
                 if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                     let peer = item.peer, let line = item.edge.destination?.span?.start.line
                 {
-                    Button("Open Linked Passage") { openReference(peer.reference, line) }
+                    Button("Open Linked Passage") { openReference(peer.reference, line, peer.fingerprint) }
                 }
             }
             .accessibilityLabel(
@@ -581,7 +581,7 @@ private struct LinkOccurrenceRow: View {
                 let peer = item.peer, let line = item.edge.destination?.span?.start.line
             {
                 Button {
-                    openReference(peer.reference, line)
+                    openReference(peer.reference, line, peer.fingerprint)
                 } label: {
                     Text("Open Linked Passage")
                 }
@@ -602,7 +602,7 @@ private struct LinkOccurrenceRow: View {
             current: nil,
             freshness: .unavailable("No workspace is open."),
             retryRefresh: {},
-            openReference: { _, _ in }
+            openReference: { _, _, _ in }
         ), session: LinksInspectorSession(), keptPassages: KeptPassagesSession(),
         keepLink: { _ in }, openKept: { _ in }
     )

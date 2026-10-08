@@ -125,7 +125,9 @@ function appendInlineMarkdownNode(
     code.dir = "ltr";
     const opening = raw.match(/^`+/)?.[0] ?? "";
     const closing = raw.endsWith(opening) ? opening.length : 0;
-    code.textContent = raw.slice(opening.length, raw.length - closing);
+    const text = raw.slice(opening.length, raw.length - closing).replace(/\r\n?|\n/g, " ");
+    code.textContent = text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text)
+      ? text.slice(1, -1) : text;
     parent.append(code);
     return;
   }

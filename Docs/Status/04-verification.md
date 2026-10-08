@@ -31,17 +31,22 @@ Logs: `.build/verification/` and `.build/verification-release/`; local candidate
 
 ## Current feature coverage
 
-**2026-10-04 — Current-source review:** Inventory follows reachable App commands,
-construction and the current specification. Built-in PDF reading and Note Info
-remain absent; Links and Related Material remain available. Xcode 27.0
-(27A5218g), Swift 6.4, SDK 27.0 and macOS 27.2; Debug QA uses independent
-Analyses/Topics/Works registrations from disposable standard 500-Note copies.
+**2026-10-07 UTC — Existing-feature audit:** `.build/feature-audit/feature-matrix.json`
+records 51 areas, exact working diff from `e693109f`, checks and acceptance limits;
+`review-final.json` and `navigation-repair-review.json` record independent review hashes. Native Zotero 10.0.5 picker,
+insertion/Undo/Redo and bibliography rendering passed on disposable manuscripts.
+Refresh exposed citation deletion before a bibliography; callback regressions
+prove the repair. Computer Use disconnected before native recheck. Root dragging,
+cold/windowless opening, physical input and complete adaptations remain unverified.
+`native/native-proof.json` retains source snapshots; all 506 fixture hashes and
+preexisting recovery are preserved.
 
-The checklist distinguishes source inspection, deterministic behavior and native
-journeys. Thirty-three distinct native journeys pass across baseline and extension; two
-organization/passage journeys remain qualified by system-Trash privacy denial.
-An existing test name alone supplies no fresh passing evidence. Scenario/assertion maps and logs are in `.build/feature-review/RESULTS.md` and
-`.build/feature-review-extension/RESULTS.md`.
+**2026-10-04 — Retained native baseline:** Thirty-three journeys across baseline
+and extension passed; two organization/passage journeys remain qualified by
+system-Trash privacy denial. Xcode 27.0 (27A5218g), Swift 6.4, SDK 27.0, macOS
+27.2; disposable standard 500-Note Triptychs with three separate registrations.
+Scenario/assertion maps and logs: `.build/feature-review/RESULTS.md` and
+`.build/feature-review-extension/RESULTS.md`. These are dated, not fresh execution.
 
 | Feature/workflow | Normal use | Keyboard/accessibility | Empty, error, interrupted or repeated flow | Verification/findings |
 | --- | --- | --- | --- | --- |
@@ -68,18 +73,12 @@ An existing test name alone supplies no fresh passing evidence. Scenario/asserti
 | Windows/layout | Independent/detached/external, Focus/full screen | Native menus/tabs/transfer | Close guards, transfer failure, focus restoration | Lifecycle suites; native inherited/destination mode, transfer/caret/Undo/focus |
 | Notifications/Zotero | Local queue/exact link display | Named bell/actions/references | Empty/stale, missing target, unavailable integration | Deterministic routes; actual banners/clicks and Zotero untested |
 
-Owning checks cover opening/close, creation, mode/restoration/transfer, authorized
-image rendering/cache invalidation and Chat deletion preservation/failure. No
-performance improvement is claimed. The initial 21/25 native matrix and rechecks
-retain failures, corrected harness assumptions and final passing routes in the
-reports; failures are not relabelled as passes.
+The reports retain corrected harness assumptions and failures alongside passes;
+no performance improvement is claimed.
 
-Fresh extension journeys cover unsaved export, History deletion, attachments/
-images/Quick Look, window modes/transfer, saved/group Search management and offline
-Chat deletion/Undo/relaunch. Duplicate/Move/collision retry and passage Copy/Extract/Move passed
-feasible commits; committed Trash/Merge acceptance and cleanup remain blocked by
-macOS privacy. One exact synthetic Merge file in system Trash needs manual cleanup;
-its path and denied exact-path attempts are recorded in the extension report.
+Committed Trash/Merge acceptance and cleanup remain privacy-blocked. One synthetic
+Merge file in system Trash still needs manual cleanup; exact path and denied
+attempts remain in the extension report.
 Review refresh re-resolves local images; unchanged Markdown/lifecycle does not
 continuously watch image files. Captures are inspected; real providers/Zotero,
 VoiceOver, physical IME and complete adaptations remain unverified.

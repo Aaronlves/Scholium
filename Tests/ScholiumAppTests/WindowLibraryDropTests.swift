@@ -112,6 +112,30 @@ struct WindowLibraryDropTests {
         #expect(fixture.controller.requestFolderDrop(.init(vaultID: UUID(), relativePath: "Folder"), to: "Filed/Folder") == nil)
         #expect(!fixture.controller.hasActiveLibraryMutation)
     }
+
+    @Test("Folder creation never publishes into a Library role selected while creation is in flight", arguments: [false, true])
+    func folderCreationKeepsItsOrigin(changeRole: Bool) async throws {
+        let fixture = DropFixture()
+        defer { fixture.controller.unbind() }
+        let original = try #require(fixture.context)
+        fixture.operations.beforeFolderCreationReturns = {
+            if changeRole {
+                fixture.context = .init(
+                    assignmentID: original.assignmentID,
+                    vault: .init(name: "Other role", role: .draftProject, canonicalPath: "/unused/other-role"),
+                    sourceScope: .library)
+            }
+        }
+        fixture.controller.requestUntitledFolderCreation(in: nil)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while fixture.controller.isMutatingFolder, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(!fixture.controller.hasActiveLibraryMutation)
+        #expect(fixture.operations.createdFolderVaults == [original.vault.id])
+        #expect(fixture.createdFolders == (changeRole ? [] : ["Untitled Folder"]))
+        #expect(fixture.errors.isEmpty)
+    }
 }
 
 @MainActor
@@ -146,6 +170,7 @@ private final class DropFixture {
     var errors: [String] = []
     var committedNotes = 0
     var committedFolders = 0
+    var createdFolders: [String] = []
     var recoveryRefreshes = 0
     var flush: @MainActor () async -> Void = {}
 
@@ -161,7 +186,8 @@ private final class DropFixture {
                 flushEditors: { [unowned self] _ in await flush() },
                 flushActiveTarget: { [unowned self] _ in await flush() },
                 expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
-                committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
+                committedNoteCreated: { _, _ in },
+                committedFolderCreated: { [unowned self] in createdFolders.append($0.committedValue.rawValue) },
                 committedFolderMoved: { [unowned self] _ in committedFolders += 1 },
                 committedNoteDuplicated: { _, _, _ in },
                 committedNoteMoved: { [unowned self] _, _ in committedNotes += 1 },
@@ -181,6 +207,8 @@ private final class DropOperations: LibraryMutationUseCases {
     var shouldFail = false
     var noteMoves: [String] = []
     var folderMoves: [String] = []
+    var createdFolderVaults: [UUID] = []
+    var beforeFolderCreationReturns: @MainActor () -> Void = {}
 
     func move(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         if shouldFail { throw CocoaError(.fileWriteNoPermission) }
@@ -210,7 +238,9 @@ private final class DropOperations: LibraryMutationUseCases {
         throw CocoaError(.featureUnsupported)
     }
     func createUntitledFolder(inVault vaultID: UUID, parentRelativePath: String?) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
-        throw CocoaError(.featureUnsupported)
+        createdFolderVaults.append(vaultID)
+        beforeFolderCreationReturns()
+        return .init(committedValue: try .init("Untitled Folder"))
     }
     func prepareFolderSystemTrash(inVault vaultID: UUID, relativePath: String) async throws -> SystemTrashDeletionPreview {
         throw CocoaError(.featureUnsupported)

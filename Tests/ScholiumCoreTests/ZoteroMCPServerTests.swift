@@ -333,6 +333,46 @@ struct ZoteroMCPServerTests {
             })
     }
 
+    @Test("Citation export honors its optional APA style and preserves an explicit style", arguments: [nil, "chicago-author-date"] as [String?])
+    func citationStyleDefault(style: String?) async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(
+            method: "GET", path: "/api/users/0/items/top",
+            json: #"[{"key":"ITEM0001","citation":"(Synthetic, 2026)"}]"#)
+        let server = ZoteroMCPServer(client: client)
+        var arguments: [String: Any] = [:]
+        if let style { arguments["style"] = style }
+        let response = try await toolCall(server, id: 1, name: "zotero_citations", arguments: arguments)
+        #expect(try !toolIsError(response))
+        let payload = try structuredContent(response)
+        let expectedStyle = style ?? "apa"
+        #expect(payload["style"] as? String == expectedStyle)
+        #expect(payload["count"] as? Int == 1)
+        #expect((payload["items"] as? [[String: Any]])?.first?["citation"] as? String == "(Synthetic, 2026)")
+        let requests = await client.recordedRequests()
+        let request = try #require(requests.first)
+        #expect(requests.count == 1)
+        #expect(request.httpMethod == "GET" && request.httpBody == nil)
+        let url = try #require(request.url)
+        #expect(url.host == "127.0.0.1" && url.path == "/api/users/0/items/top")
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        #expect(query?.contains(.init(name: "style", value: expectedStyle)) == true)
+        #expect(query?.contains(.init(name: "limit", value: "25")) == true)
+    }
+
+    @Test("Malformed explicit citation styles never fall back to APA or contact Zotero")
+    func citationStyleInvalid() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let server = ZoteroMCPServer(client: client)
+        let invalidStyles: [Any] = [NSNull(), true, 7, "", "   ", "two words", "apa\u{0000}"]
+        for (id, style) in invalidStyles.enumerated() {
+            let response = try await toolCall(server, id: id, name: "zotero_citations", arguments: ["style": style])
+            #expect(try toolIsError(response))
+            #expect(try structuredContent(response)["error_code"] as? String == "invalid_arguments")
+        }
+        #expect(await client.recordedRequests().isEmpty)
+    }
+
     @Test("Attachment pointers require the explicit inspection flag")
     func attachmentPointersAreExplicitAndBounded() async throws {
         let client = MockZoteroMCPHTTPClient()

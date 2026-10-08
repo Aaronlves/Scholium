@@ -203,14 +203,29 @@ final class MarkdownFileOpeningController: ObservableObject {
     /// navigation remains the owner of access, source and stable identity.
     static func managedMarkdownRelativePath(at url: URL, in vaultRoot: URL) -> String? {
         guard url.isFileURL, url.pathExtension.lowercased() == "md" else { return nil }
-        let path = url.standardizedFileURL.path
-        let root = vaultRoot.standardizedFileURL.path + "/"
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        // The filesystem owns case and Unicode equivalence. A lexical prefix
+        // can misroute a registered Note as writable external Markdown when
+        // an Open event uses another spelling of its existing root or path.
+        // Canonical spelling is only a routing hint; guarded Note opening
+        // still establishes containment, stable identity and source authority.
+        let path = routingPath(for: url)
+        let root = routingPath(for: vaultRoot) + "/"
         guard path.hasPrefix(root) else { return nil }
         let relativePath = String(path.dropFirst(root.count))
         guard WorkspaceLibraryVisibility.includes(relativePath),
             !relativePath.split(separator: "/").contains(where: { $0.hasPrefix(".") })
         else { return nil }
         return relativePath
+    }
+
+    private static func routingPath(for url: URL) -> String {
+        let standardized = url.standardizedFileURL
+        guard let values = try? standardized.resourceValues(forKeys: [.canonicalPathKey, .isSymbolicLinkKey]),
+            values.isSymbolicLink != true
+        else { return standardized.path }
+        return values.canonicalPath ?? standardized.path
     }
 
     private static func managedNote(

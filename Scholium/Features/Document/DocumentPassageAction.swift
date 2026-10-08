@@ -37,9 +37,9 @@ enum DocumentPassageSnapshot {
             source: source, excerpt: String(source[selected]),
             sourceRange: .init(
                 utf16LowerBound: range.location, utf16UpperBound: upper,
-                line: 1 + source[..<selected.lowerBound].utf8.filter { $0 == 10 }.count,
+                line: 1 + source[..<selected.lowerBound].lazy.filter { $0 == "\n" || $0 == "\r" || $0 == "\r\n" }.count,
                 column: range.location - native.lineRange(for: NSRange(location: range.location, length: 0)).location + 1,
-                endLine: 1 + source[..<selected.upperBound].utf8.filter { $0 == 10 }.count,
+                endLine: 1 + source[..<selected.upperBound].lazy.filter { $0 == "\n" || $0 == "\r" || $0 == "\r\n" }.count,
                 endColumn: upper - native.lineRange(for: NSRange(location: upper, length: 0)).location + 1))
     }
 }

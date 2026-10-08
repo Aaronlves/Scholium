@@ -31,4 +31,20 @@ describe("inert clipboard conversion", () => {
     expect(decodeClipboardPayload("legacy plain argument")).toBeUndefined();
     expect(decodeClipboardPayload(undefined)).toBeUndefined();
   });
+  it.each([
+    ["a*b_[c]\\d", "`a*b_[c]\\d`"],
+    ["a`b", "``a`b``"],
+    ["`literal", "`` `literal ``"],
+    ["literal`", "`` literal` ``"],
+    [" a b ", "`  a b  `"],
+    ["   ", "`   `"],
+    ["first\nsecond", "`first second`"],
+    ["", ""],
+  ])("preserves literal inline-code content %j", (text, expected) => {
+    expect(convertClipboardHTML(`<p><code>${text}</code></p>`)).toBe(expected);
+  });
+  it("retains code line breaks and highlighted text without adding Markdown escapes", () => {
+    expect(convertClipboardHTML('<p><code><span class="syntax">first*</span><br><span>second_</span></code></p>'))
+      .toBe("`first* second_`");
+  });
 });

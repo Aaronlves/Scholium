@@ -13,6 +13,18 @@ struct WindowSearchResultEvidence: Equatable, Sendable {
     let fingerprint: DocumentFingerprint?
 }
 
+enum SearchResultNavigationError: LocalizedError {
+    case staleResult
+
+    var errorDescription: String? {
+        String(
+            localized: "This search result is out of date. Select a current result to open the Note.",
+            table: "Localizable",
+            bundle: .module
+        )
+    }
+}
+
 /// Owns one window's Search execution, stale-result validation, and Saved
 /// Search persistence lifecycle. `DiscoveryController` remains the owner of
 /// the visible Search projection; the window composition root supplies only
@@ -205,10 +217,17 @@ final class WindowSearchController: ObservableObject {
             await refreshAfterStaleResult()
             return false
         }
+        let criteria = discoveryController.search.criteria
+        let responseRequestID = discoveryController.search.responseRequestID
         let evidence = await dependencies.resultEvidence(
             searchResult,
-            discoveryController.search.criteria.scope
+            criteria.scope
         )
+        guard !Task.isCancelled,
+            discoveryController.search.criteria == criteria,
+            discoveryController.search.responseRequestID == responseRequestID,
+            discoveryController.search.freshnessToken == searchResult.freshnessToken
+        else { return false }
         guard evidence.freshness == searchResult.freshnessToken,
             evidence.fingerprint == searchResult.fingerprint
         else {
@@ -386,11 +405,7 @@ final class WindowSearchController: ObservableObject {
     }
 
     private func refreshAfterStaleResult() async {
-        let message = String(
-            localized: "This search result is out of date. Select a current result to open the Note.",
-            table: "Localizable",
-            bundle: .module
-        )
+        let message = SearchResultNavigationError.staleResult.localizedDescription
         dependencies.reportInformation(
             message
         )

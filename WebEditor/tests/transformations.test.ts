@@ -98,6 +98,18 @@ describe("exact Markdown transformations", () => {
     expect(apply("a`b", "inlineCode", 0, 3).source).toBe("``a`b``");
     expect(apply("x\n```\ny", "fencedCode", 0, 7).source).toBe("````\nx\n```\ny\n````");
   });
+  it.each([
+    ["`literal", "`` `literal ``", 3],
+    ["literal`", "`` literal` ``", 3],
+    [" a b ", "`  a b  `", 2],
+    ["   ", "`   `", 1],
+    [" \n ", "` \n `", 1],
+  ])("keeps inline-code boundary content exact for %j", (text, expected, offset) => {
+    const transformed = apply(text, "inlineCode", 0, text.length);
+    expect(transformed.source).toBe(expected);
+    expect(transformed.result.selections).toEqual([{anchor: offset, head: offset + text.length}]);
+    expect(apply(expected, "inlineCode", offset, offset + text.length).source).toBe(text);
+  });
   it("changes only proven ATX heading markers", () => {
     expect(apply("  ## Thesis\nNext", "heading4", 6).source).toBe("#### Thesis\nNext");
     expect(apply("#### Thesis\nNext", "paragraph", 6).source).toBe("Thesis\nNext");

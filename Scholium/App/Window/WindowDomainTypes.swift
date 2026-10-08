@@ -166,15 +166,18 @@ enum WindowOpenDisposition: String, Codable, Hashable, Sendable {
 struct WindowDocumentRoute: Hashable, Sendable {
     let reference: VaultNoteReference
     let sourceLocator: SourceLocator?
+    let sourceFingerprint: DocumentFingerprint?
     let disposition: WindowOpenDisposition
 
     init(
         reference: VaultNoteReference,
         sourceLocator: SourceLocator? = nil,
+        sourceFingerprint: DocumentFingerprint? = nil,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
         self.reference = reference
         self.sourceLocator = sourceLocator
+        self.sourceFingerprint = sourceFingerprint
         self.disposition = disposition
     }
 }

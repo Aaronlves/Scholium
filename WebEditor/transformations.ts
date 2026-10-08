@@ -52,6 +52,15 @@ function maximumRun(text: string, character: string) {
   for (const match of text.matchAll(new RegExp(`\\${character}+`, "g"))) maximum = Math.max(maximum, match[0].length);
   return maximum;
 }
+
+/** Code spans treat punctuation literally and strip one paired boundary space. */
+export function inlineCodeMarkers(text: string) {
+  const fence = "`".repeat(Math.max(1, maximumRun(text, "`") + 1));
+  const normalized = text.replace(/\r\n?|\n/g, " ");
+  const padding = normalized.startsWith("`") || normalized.endsWith("`")
+    || (normalized.startsWith(" ") && normalized.endsWith(" ") && /[^ ]/.test(normalized)) ? " " : "";
+  return {opening: fence + padding, closing: padding + fence};
+}
 function labelFor(command: MarkdownEditorCommand) {
   return command.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
 }
@@ -133,8 +142,8 @@ function transformOne(
   }
   if (command === "inlineCode") {
     const selected = source.slice(range.from, range.to);
-    const fence = "`".repeat(Math.max(1, maximumRun(selected, "`") + 1));
-    const result = inlineChange(source, range, fence, fence);
+    const {opening, closing} = inlineCodeMarkers(selected);
+    const result = inlineChange(source, range, opening, closing);
     return {...result, label: "Inline Code"};
   }
   if (command === "standardLink" || command === "linkSelectedText") {

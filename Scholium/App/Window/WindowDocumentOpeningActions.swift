@@ -455,26 +455,98 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         sourceRange: SearchSourceRange?,
         fallbackLine: Int,
+        sourceFingerprint: DocumentFingerprint,
+        scope: SearchPresentationScope,
+        freshnessToken: SearchFreshnessToken,
+        placement: DocumentTabPlacement = .replaceSelected,
         mode: NotePresentationMode? = nil
     ) {
-        if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+        let forwardToExistingOwner: @MainActor () -> Bool = { [weak self] in
+            guard let self, let owner = self.workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) else { return false }
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             owner.openWorkspaceReference(
-                reference,
-                sourceRange: sourceRange,
-                fallbackLine: fallbackLine,
-                mode: mode
-            )
-            return
+                reference, sourceRange: sourceRange, fallbackLine: fallbackLine,
+                sourceFingerprint: sourceFingerprint, scope: scope, freshnessToken: freshnessToken,
+                placement: placement, mode: mode)
+            return true
         }
+        if forwardToExistingOwner() { return }
+        guard let capabilities = windowWorkspaceController.activeCapabilities else { return }
         let navigationMode = mode ?? presentedDocumentMode
-        enqueueDocumentTransition(preparation: openingPreparation(for: reference)) { [weak self] in
+        let target = reference.stableNoteID.flatMap(UUID.init(uuidString:)).map {
+            DocumentSessionKey(vaultID: reference.vaultID, noteID: $0)
+        }
+        let currentSummary: @MainActor () throws -> WorkspaceNoteSummary = { [weak self] in
+            guard
+                let summary = self?.workspaceProjectionController.cachedNote(
+                    vaultID: reference.vaultID, stableNoteID: target?.noteID, relativePath: reference.relativePath)
+            else { throw SearchResultNavigationError.staleResult }
+            return summary
+        }
+        var admittedSummary: WorkspaceNoteSummary?
+        let validateDisplay: @MainActor () throws -> Void = { [weak self] in
+            guard self?.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity else {
+                throw CancellationError()
+            }
+            // A peer can acquire the target while this request is queued or
+            // suspended. Redirect the complete request before preparing the
+            // origin; activation's ordinary reveal is not local selection.
+            if forwardToExistingOwner() { throw CancellationError() }
+            if let admittedSummary, try !currentSummary().hasSameSourceBinding(as: admittedSummary) {
+                throw SearchResultNavigationError.staleResult
+            }
+        }
+        let validateSource: @MainActor () async throws -> Void = { [weak self] in
+            guard let self else { throw CancellationError() }
+            try validateDisplay()
+            let summary = try currentSummary()
+            if scope == .thisNote {
+                guard let snapshot = try await self.currentSearchSourceSnapshot(),
+                    snapshot.noteID == summary.id,
+                    target == nil || snapshot.stableNoteID == target?.noteID,
+                    snapshot.fingerprint == sourceFingerprint,
+                    SearchFreshnessToken.currentNote(snapshot) == freshnessToken
+                else { throw SearchResultNavigationError.staleResult }
+            } else {
+                guard summary.fingerprint == sourceFingerprint else { throw SearchResultNavigationError.staleResult }
+                // Hydration checks the resolved identity/path and filesystem
+                // version. Reading the captured path could validate an unrelated
+                // replacement after the stable Note has moved.
+                let hydrated = try await capabilities.documents.hydrate(summary)
+                guard hydrated.summary.hasSameSourceBinding(as: summary) else { throw SearchResultNavigationError.staleResult }
+                if let target, let session = self.documentController.retainedSession(for: target),
+                    session.hasUnsavedChanges || session.editorSession.isComposing
+                {
+                    throw SearchResultNavigationError.staleResult
+                }
+            }
+            try Task.checkCancellation()
+            try validateDisplay()
+            guard try currentSummary().hasSameSourceBinding(as: summary) else { throw SearchResultNavigationError.staleResult }
+            admittedSummary = summary
+        }
+        // Search evidence is checked again when the queued transition runs and
+        // immediately before activation, before saving or replacing the origin.
+        enqueueDocumentTransition(
+            preparation: openingPreparation(for: reference, placement: placement), retainingCurrentDocument: target,
+            validateBeforePreparation: validateDisplay, admitBeforePreparation: validateSource
+        ) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,
-                tabActivation: .place(.replaceSelected)
+                tabActivation: .place(placement),
+                validateDisplay: validateDisplay, validateSource: validateSource
             )
-            self.documentController.requestSourceLocation(line: sourceRange?.line ?? max(1, fallbackLine), range: sourceRange)
+            try validateDisplay()
+            guard let admittedSummary,
+                self.currentNote?.workspaceSnapshot?.hasSameSourceBinding(as: admittedSummary) == true,
+                self.documentController.selectedDocument?.vaultID == admittedSummary.id.vaultID,
+                self.documentController.selectedDocument?.relativePath == admittedSummary.id.relativePath,
+                target == nil || self.currentDocumentDescriptor?.sessionKey == target
+            else { throw SearchResultNavigationError.staleResult }
+            self.documentController.requestSourceLocation(
+                line: sourceRange?.line ?? max(1, fallbackLine), range: sourceRange,
+                sourceFingerprint: sourceFingerprint.sha256)
             // Search locates a result; it does not choose a new Document mode.
             // Read-only destinations still enter Review through activation.
             self.requestPresentationMode =

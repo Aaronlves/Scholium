@@ -1485,9 +1485,18 @@ final class MCPAppBridgeRequestRouter {
             return ("", 0, nil, 0, 0)
         }
         var starts = [0]
-        for (offset, byte) in data.enumerated()
-        where byte == 0x0A && offset + 1 < data.count {
-            starts.append(offset + 1)
+        var offset = 0
+        while offset < data.count {
+            let byte = data[offset]
+            if byte == 0x0D {
+                if offset + 1 < data.count, data[offset + 1] == 0x0A {
+                    offset += 1
+                }
+                if offset + 1 < data.count { starts.append(offset + 1) }
+            } else if byte == 0x0A, offset + 1 < data.count {
+                starts.append(offset + 1)
+            }
+            offset += 1
         }
         guard startLine <= starts.count else {
             throw ScholiumMCPFailure(

@@ -8,6 +8,46 @@ import Testing
 @Suite("Running App MCP router", .serialized)
 @MainActor
 struct MCPAppBridgeRequestRouterTests {
+    @Test("Note paging preserves exact mixed line endings and complete-source UTF-8 offsets")
+    func mixedLineEndingPaging() async throws {
+        let lines = ["\u{FEFF}# Alpha\r", "Second\r\n", "第三行\n", "Final"]
+        let source = lines.joined()
+        let fixture = try await Fixture.make(exactAnalysis: source)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        do {
+            let router = MCPAppBridgeRequestRouter(
+                runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
+            var byteOffset = 0
+            for (index, line) in lines.enumerated() {
+                let page = try result(
+                    await router.handle(
+                        .init(
+                            tool: .readNote,
+                            arguments: [
+                                "triptych_id": .string(fixture.assignment.id.uuidString),
+                                "note_id": .string(fixture.analysisNoteID.uuidString),
+                                "start_line": .integer(index + 1), "line_count": .integer(1),
+                            ])))
+                #expect(page["source"]?.stringValue == line)
+                #expect(page["line_count"]?.intValue == 1)
+                #expect(page["start_utf8"]?.intValue == byteOffset)
+                byteOffset += line.utf8.count
+                #expect(page["end_utf8"]?.intValue == byteOffset)
+                #expect(try decodedFingerprint(page["fingerprint"]) == fixture.analysisFingerprint)
+                #expect(page["complete"]?.boolValue == (index == lines.count - 1))
+                #expect(page["next_line"] == (index == lines.count - 1 ? .null : .integer(index + 2)))
+            }
+            let analysisURL = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
+            #expect(try Data(contentsOf: analysisURL) == Data(source.utf8))
+            let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+            #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
+            await fixture.runtime.shutdown()
+        } catch {
+            await fixture.runtime.shutdown()
+            throw error
+        }
+    }
+
     @Test(
         "Closing a Triptych during editor reconciliation blocks new MCP access and mutations",
         arguments: [ScholiumMCPToolName.workspaceStatus, .updateNote, .createNote])

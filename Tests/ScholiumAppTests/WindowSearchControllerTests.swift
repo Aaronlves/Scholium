@@ -17,6 +17,52 @@ private final class WindowSearchPresentationProbe {
 @Suite("Window Search controller")
 @MainActor
 struct WindowSearchControllerTests {
+    @Test("A late result validation cannot open a dismissed or replaced Search", arguments: [false, true])
+    func supersededResultValidationIsDiscarded(dismissed: Bool) async {
+        let discovery = DiscoveryController()
+        let generation = SearchGenerationID(triptychID: UUID(), sequence: 1, sourceManifestHash: "manifest")
+        let freshness = SearchFreshnessToken.triptych(generation)
+        let fingerprint = DocumentFingerprint(content: "# Result\n")
+        let hit = NoteSearchResult(
+            vaultID: UUID(), vaultName: "Analyses", vaultRole: .sourceCorpus,
+            relativePath: "Result.md", stableNoteID: nil, title: "Result", matchedField: .body,
+            context: nil, sourceLine: 1, snippet: "Result", highlights: [], freshnessToken: freshness,
+            fingerprint: fingerprint, evidentialLayer: .paperAnalysis, classification: .retrievalLead)
+        let started = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let probe = WindowSearchPresentationProbe()
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                resultEvidence: { _, _ in
+                    await withCheckedContinuation { continuation in
+                        release = continuation
+                        started.continuation.yield(())
+                    }
+                    return .init(freshness: freshness, fingerprint: fingerprint)
+                },
+                open: { _, _ in probe.openCount += 1 },
+                reportInformation: { probe.informationMessages.append($0) }))
+        controller.beginAdvanced()
+        let request = discovery.beginSearch(.init(query: "result", scope: .triptych))
+        discovery.receiveSearchResponse(
+            .init(
+                requestID: request.id, scope: .triptych, explanation: explanation(provider: .note),
+                freshnessToken: freshness, availability: .current(generation), results: [.note(hit)], hasMore: false),
+            for: request)
+        let opening = Task { await controller.open(.result(.note(hit)), disposition: .replaceCurrent) }
+        for await _ in started.stream { break }
+        if dismissed { controller.dismiss() } else { controller.replaceQuery("new query") }
+        let expected = discovery.search
+        release?.resume()
+        #expect(await opening.value == false)
+        started.continuation.finish()
+        #expect(probe.openCount == 0)
+        #expect(probe.informationMessages.isEmpty)
+        #expect(discovery.search == expected)
+        #expect(controller.presentation == (dismissed ? .inactive : .advanced))
+    }
+
     @Test("Late Search context cannot replace a newer query or revive dismissed Search", arguments: [false, true])
     func supersededContextIsDiscarded(dismissed: Bool) async {
         let discovery = DiscoveryController()

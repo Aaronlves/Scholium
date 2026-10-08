@@ -382,7 +382,8 @@ final class ResearchController: ObservableObject {
 
     func requestOpen(
         _ reference: VaultNoteReference,
-        sourceLine: Int? = nil
+        sourceLine: Int? = nil,
+        sourceFingerprint: DocumentFingerprint? = nil
     ) {
         intentHandler(
             .openDocument(
@@ -394,7 +395,8 @@ final class ResearchController: ObservableObject {
                             line: $0,
                             column: 1
                         )
-                    }
+                    },
+                    sourceFingerprint: sourceFingerprint
                 )))
     }
 

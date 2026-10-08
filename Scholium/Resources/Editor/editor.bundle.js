@@ -30447,7 +30447,8 @@ ${blankRow(table.position.columnCount)}`;
       code2.dir = "ltr";
       const opening = raw.match(/^`+/)?.[0] ?? "";
       const closing2 = raw.endsWith(opening) ? opening.length : 0;
-      code2.textContent = raw.slice(opening.length, raw.length - closing2);
+      const text = raw.slice(opening.length, raw.length - closing2).replace(/\r\n?|\n/g, " ");
+      code2.textContent = text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text) ? text.slice(1, -1) : text;
       parent.append(code2);
       return;
     }
@@ -31330,8 +31331,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     for (let index = 0; index < fields.length; index++) {
       const field = fields[index];
-      const previous = fields[index - 1], next = fields[index + 1];
-      field.adjacent = !!(previous && source.slice(previous.range.to, field.range.from).trim() === "" || next && source.slice(field.range.to, next.range.from).trim() === "");
+      const next = fields[index + 1];
+      field.adjacent = field.kind === "citation" && next?.kind === "citation" && field.range.to === next.range.from;
     }
     const current = fields.map(({ id: id2, code: code2 }) => ({ id: id2, code: code2 }));
     const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
@@ -32684,6 +32685,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     for (const match of text.matchAll(new RegExp(`\\${character}+`, "g"))) maximum = Math.max(maximum, match[0].length);
     return maximum;
   }
+  function inlineCodeMarkers(text) {
+    const fence = "`".repeat(Math.max(1, maximumRun(text, "`") + 1));
+    const normalized2 = text.replace(/\r\n?|\n/g, " ");
+    const padding = normalized2.startsWith("`") || normalized2.endsWith("`") || normalized2.startsWith(" ") && normalized2.endsWith(" ") && /[^ ]/.test(normalized2) ? " " : "";
+    return { opening: fence + padding, closing: padding + fence };
+  }
   function labelFor(command2) {
     return command2.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   }
@@ -32740,8 +32747,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     if (command2 === "inlineCode") {
       const selected = source.slice(range.from, range.to);
-      const fence = "`".repeat(Math.max(1, maximumRun(selected, "`") + 1));
-      const result = inlineChange(source, range, fence, fence);
+      const { opening, closing: closing2 } = inlineCodeMarkers(selected);
+      const result = inlineChange(source, range, opening, closing2);
       return { ...result, label: "Inline Code" };
     }
     if (command2 === "standardLink" || command2 === "linkSelectedText") {
@@ -33146,6 +33153,11 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
   function renderChildren(node) {
     return Array.from(node.childNodes).map(renderNode).join("");
   }
+  function literalCodeText(node) {
+    if (node.nodeType === 3) return node.nodeValue ?? "";
+    if (node.nodeType === 1 && node.tagName.toLowerCase() === "br") return "\n";
+    return Array.from(node.childNodes).map(literalCodeText).join("");
+  }
   function renderList(node, ordered) {
     let index = 1;
     return Array.from(node.children).flatMap((child) => {
@@ -33188,7 +33200,12 @@ ${rows.slice(1).map(line).join("\n")}
     if (["strong", "b"].includes(tag)) return `**${content2()}**`;
     if (["em", "i"].includes(tag)) return `*${content2()}*`;
     if (["del", "s", "strike"].includes(tag)) return `~~${content2()}~~`;
-    if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") return `\`${content2().replaceAll("`", "\\`")}\``;
+    if (tag === "code" && element.parentElement?.tagName.toLowerCase() !== "pre") {
+      const text = literalCodeText(element).replace(/\r\n?|\n/g, " ");
+      if (!text) return "";
+      const { opening, closing: closing2 } = inlineCodeMarkers(text);
+      return opening + text + closing2;
+    }
     if (tag === "pre") {
       const raw = element.textContent ?? "";
       const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));
@@ -42220,7 +42237,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         editor.dispatch({
           changes: transformed.changes,
           selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
-          annotations: Transaction.userEvent.of(`input.scholium.${operation.command}`)
+          annotations: [Transaction.userEvent.of(`input.scholium.${operation.command}`), isolateHistory.of("full")]
         });
         lastUndoLabel = transformed.undoLabel;
         lastRedoLabel = transformed.undoLabel;

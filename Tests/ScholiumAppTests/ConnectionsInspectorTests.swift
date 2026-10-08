@@ -278,7 +278,7 @@ private struct LinksLifecycleView: View {
         ConnectionsInspectorView(
             context: .init(
                 graph: graph, catalog: catalog, current: state.current,
-                freshness: .current, retryRefresh: {}, openReference: { _, _ in }), session: session,
+                freshness: .current, retryRefresh: {}, openReference: { _, _, _ in }), session: session,
             keptPassages: keptPassages, keepLink: { _ in }, openKept: { _ in })
     }
 }

@@ -377,9 +377,10 @@ export function projectFields(source: string): FieldProjection {
   }
   for (let index = 0; index < fields.length; index++) {
     const field = fields[index];
-    const previous = fields[index - 1], next = fields[index + 1];
-    field.adjacent = !!((previous && source.slice(previous.range.to, field.range.from).trim() === "")
-      || (next && source.slice(field.range.to, next.range.from).trim() === ""));
+    const next = fields[index + 1];
+    // Zotero uses this as isAdjacentToNextField and deletes the current
+    // citation during Refresh so it can merge into the next citation.
+    field.adjacent = field.kind === "citation" && next?.kind === "citation" && field.range.to === next.range.from;
   }
   const current = fields.map(({id, code}) => ({id, code}));
   const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);

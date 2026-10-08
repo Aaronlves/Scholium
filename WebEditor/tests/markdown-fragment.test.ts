@@ -3,6 +3,19 @@ import {describe, expect, it} from "vitest";
 import {appendMarkdownBlocks} from "../markdown-fragment";
 
 describe("appendMarkdownBlocks", () => {
+  it.each([
+    ["`` `literal ``", "`literal"],
+    ["`  a b  `", " a b "],
+    ["`   `", "   "],
+    ["`first\nsecond`", "first second"],
+    ["` \n `", "   "],
+  ])("projects inline-code delimiter padding without changing its literal content: %j", (source, expected) => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    appendMarkdownBlocks(source, root);
+    expect(root.querySelector("code")?.textContent).toBe(expected);
+  });
+
   it("adds presentation-only language context for Chinese, English, and mixed prose", () => {
     const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
     const root = document.querySelector<HTMLElement>("#root")!;

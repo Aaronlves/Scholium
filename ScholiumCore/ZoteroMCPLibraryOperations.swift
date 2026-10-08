@@ -319,7 +319,7 @@ extension ZoteroMCPServer {
 
     func citations(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
         guard arguments.keys.allSatisfy(["library", "style", "limit"].contains),
-            let style = arguments["style"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let style = (arguments["style"] ?? .string("apa")).stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
             !style.isEmpty, style.utf8.count <= 128,
             style.unicodeScalars.allSatisfy({
                 !CharacterSet.whitespacesAndNewlines.contains($0)
