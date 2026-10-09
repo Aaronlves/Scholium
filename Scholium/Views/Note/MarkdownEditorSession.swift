@@ -1273,7 +1273,24 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// intents, or provoke an autosave. The ordinary editor stream remains its owner.
     func currentChatMetadata() async throws -> (AgentChatDocumentObservation.Revision, AgentChatDocumentObservation.Selection) {
         if isComposing { return (.unavailable(.composing), .unavailable(.composing)) }
-        guard isReady, isLoaded, let webView else { return (.unavailable(.loading), .unavailable(.loading)) }
+        guard isReady, isLoaded, webView != nil else { return (.unavailable(.loading), .unavailable(.loading)) }
+        do {
+            let snapshot = try await currentAgentSourceSnapshot()
+            return (.editorSnapshot(snapshot.fingerprint), snapshot.selection)
+        } catch let failure as ScholiumMCPFailure where failure.code == .workspaceNotReady {
+            return (.unavailable(.sourceSnapshotUnavailable), .unavailable(.sourceMappingUnavailable))
+        }
+    }
+
+    /// Exact demand-driven source capture. The caller separately controls
+    /// whether source text may leave the App; metadata-only callers discard it.
+    /// This query never reconciles a mirror, saves or consumes navigation intents.
+    func currentAgentSourceSnapshot() async throws -> (
+        source: String, fingerprint: DocumentFingerprint, selection: AgentChatDocumentObservation.Selection
+    ) {
+        guard !isComposing, isReady, isLoaded, let webView else {
+            throw ScholiumMCPFailure.chatObservation(.workspaceNotReady)
+        }
         let epoch = requestEpoch
         let interaction = citationInteractionRevision
         guard let rendererInteraction = rendererInteractionRevision else {
@@ -1290,7 +1307,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             else { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
             if case SessionError.staleRequest = error { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
             if case SessionError.invalidResult = error { throw ScholiumMCPFailure.chatObservation(.staleRevision) }
-            return (.unavailable(.sourceSnapshotUnavailable), .unavailable(.sourceMappingUnavailable))
+            throw ScholiumMCPFailure.chatObservation(.workspaceNotReady)
         }
         guard epoch == requestEpoch, interaction == citationInteractionRevision,
             rendererInteraction == rendererInteractionRevision, result.interactionRevision == rendererInteraction,
@@ -1303,7 +1320,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let selection: AgentChatDocumentObservation.Selection =
             preferredDocumentFocusTarget == .title
             ? .unavailable(.sourceMappingUnavailable) : .editor(source: source, selections: result.selections)
-        return (.editorSnapshot(DocumentFingerprint(content: source)), selection)
+        return (source, DocumentFingerprint(content: source), selection)
     }
 
     func writingContextSnapshot(mode: MarkdownWritingContextCaptureMode) async throws -> (

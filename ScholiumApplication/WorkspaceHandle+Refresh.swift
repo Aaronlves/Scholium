@@ -259,6 +259,26 @@ extension WorkspaceHandle {
         let gateWaitDuration = cycleStart.duration(to: clock.now)
         defer { endRefreshCycle(refreshLease) }
         let payload = try WorkspaceRefreshPayload.merged(payloads)
+        if mode == .live,
+            case .liveInventory = payload.publication,
+            case .none = payload.sourceCatalogPreparation,
+            currentSnapshot.phase.isComplete,
+            !derivedStateRequiresRefresh,
+            currentSnapshot.research.healthIssues.isEmpty
+        {
+            // A live request can wait behind a source commit that already
+            // publishes its complete inputs. Revalidate while holding the
+            // existing source lease before allocating another graph generation.
+            let changed = await sourceInventoryChanges(
+                vaultIDs: Set(assignment.vaults.values.map(\.id))
+            )
+            try Task.checkCancellation()
+            try requireActive()
+            try requireRootAuthoritiesAvailable()
+            if changed.isEmpty {
+                return currentSnapshot
+            }
+        }
         var snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
         let sourcePreparationDuration: Duration
@@ -886,6 +906,9 @@ extension WorkspaceHandle {
                     // An unreadable source still counts as changed so the
                     // subsequent full rebuild publishes a typed, vault-local
                     // failure instead of silently discarding the event.
+                    #if DEBUG
+                        await liveInventoryPreflightBarrierForTesting?()
+                    #endif
                     changedVaultIDs = await sourceInventoryChanges(
                         vaultIDs: changedVaultIDs
                     )
@@ -921,35 +944,52 @@ extension WorkspaceHandle {
     }
 
     private func sourceInventoryChanges(vaultIDs: Set<UUID>) async -> Set<UUID> {
-        let published = sourceRevisions(in: currentSnapshot)
         var changed: Set<UUID> = []
+        var observed: [UUID: VaultSourceCatalogPublicationInventory] = [:]
         for vaultID in vaultIDs {
             do {
                 guard let catalog = services.sourceCatalogs[vaultID] else {
                     throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
                 }
-                let observed = try await catalog.sourceInventory(
-                    refreshFolders: false
-                )
-                let publishedCount = published.keys.reduce(into: 0) { count, id in
-                    if id.vaultID == vaultID { count += 1 }
-                }
-                guard observed.count == publishedCount else {
-                    changed.insert(vaultID)
-                    continue
-                }
-                for (path, fingerprint) in observed {
-                    let id = VaultQualifiedNoteID(
-                        vaultID: vaultID, relativePath: path
-                    )
-                    if published[id] != fingerprint {
-                        changed.insert(vaultID)
-                        break
-                    }
-                }
+                observed[vaultID] = try await catalog.publicationInventory()
             } catch {
                 guard !Task.isCancelled else { return [] }
                 changed.insert(vaultID)
+            }
+        }
+        // Capture publication after the asynchronous catalog reads. A save may
+        // have published while those reads were suspended; comparing with the
+        // old snapshot would queue a duplicate complete rebuild.
+        let published = currentSnapshot
+        var expectedIdentities: [UUID: [String: NoteIdentityRecord]] = [:]
+        for (vaultID, inventory) in observed {
+            guard let vault = published.vault(id: vaultID),
+                inventory.fingerprints.count == vault.documents.count,
+                inventory.folders == vault.folders,
+                vault.identityRecovery.ambiguities.isEmpty,
+                vault.identityRecovery.pendingRebindings.isEmpty,
+                vault.identityRecovery.failures.isEmpty
+            else {
+                changed.insert(vaultID)
+                continue
+            }
+            if vault.documents.contains(where: {
+                inventory.fingerprints[$0.id.relativePath] != $0.fingerprint
+                    || inventory.fileMetadata[$0.id.relativePath] != $0.fileMetadata
+                    || $0.stableIdentity.resolvedID == nil
+                    || vault.identityRecovery.identities[$0.id.relativePath]?.id != $0.stableIdentity.resolvedID
+            }) {
+                changed.insert(vaultID)
+                continue
+            }
+            expectedIdentities[vaultID] = vault.identityRecovery.identities
+        }
+        if !expectedIdentities.isEmpty {
+            do {
+                changed.formUnion(try await services.controlStore.identityInventoryChanges(comparedWith: expectedIdentities))
+            } catch {
+                guard !Task.isCancelled else { return [] }
+                changed.formUnion(expectedIdentities.keys)
             }
         }
         return changed

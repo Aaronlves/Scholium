@@ -302,10 +302,11 @@ Authorization URLs remain ephemeral, accept secure web destinations only, and
 are never recorded in conversations or portable research data. A late response
 from a disconnected runtime cannot open a page or update the new connection.
 
-In-app Chat publishes token-scoped controls for Skills, inspection,
+Chat controls cover Skills, inspection,
 [metadata observation](03-agent-collaboration-and-workflows.md#83-tool-contract), tool sign-in
-and next-turn settings. Permission reductions affect subsequent turns only;
-Full Access and connection writes remain researcher-controlled.
+and next-turn settings. Runtime reductions affect later turns;
+context revocation is immediate (§8.3). Full Access and connection writes
+remain researcher-controlled.
 
 Web search is a first-class chat capability with explicit Off, Cached and Live
 choices where supported. Its availability is separate from general filesystem

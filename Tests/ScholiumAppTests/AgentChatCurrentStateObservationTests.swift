@@ -7,6 +7,31 @@ import Testing
 @Suite("Chat current-state observation", .serialized)
 @MainActor
 struct AgentChatCurrentStateObservationTests {
+    @Test("Native state access disables the existing Chat observation and off/on revokes pending capture")
+    func nativeStateAccessRevocation() async throws {
+        try await withFixture { fixture in
+            let preferences = fixture.controller.contextAccessPreferences
+            preferences.chatStateAccess = false
+            #expect(await fixture.registry.handle(fixture.request()).error?.code == .permissionDenied)
+            #expect(fixture.capture.calls == 0)
+            preferences.chatStateAccess = true
+            fixture.capture.pauses = true
+            let pending = Task { await fixture.registry.handle(fixture.request()) }
+            do {
+                try await wait { fixture.capture.isWaiting }
+                preferences.chatStateAccess = false
+                preferences.chatStateAccess = true
+                fixture.capture.release()
+                try expectSafeFailure(await pending.value)
+                #expect(fixture.capture.calls == 1)
+            } catch {
+                pending.cancel()
+                fixture.capture.release()
+                _ = await pending.value
+                throw error
+            }
+        }
+    }
     @Test("Observation returns closed metadata and counts without drafts, content or raw diagnostics")
     func metadataOnly() async throws {
         try await withFixture { fixture in
@@ -208,9 +233,13 @@ struct AgentChatCurrentStateObservationTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-tests/observation-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
+        let preferenceSuite = "Scholium.ChatObservation.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: preferenceSuite))
+        defer { defaults.removePersistentDomain(forName: preferenceSuite) }
+        let preferences = AgentContextAccessPreferences(defaults: defaults)
         let capture = ObservationCapture()
         let registry = AgentChatRegistry(
-            root: root, workspaceDirectory: { _ in root },
+            root: root, contextAccessPreferences: preferences, workspaceDirectory: { _ in root },
             displayWindow: { _, _ in capture.visible ? capture.scope : nil },
             observeCurrentState: { triptych, scope, conversation, admitted in
                 try await capture.observe(triptych: triptych, scope: scope, conversation: conversation, admitted: admitted)

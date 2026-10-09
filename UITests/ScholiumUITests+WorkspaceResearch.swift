@@ -605,9 +605,227 @@ extension ScholiumUITests {
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
     }
 
+    /// One native Settings journey verifies per-caller read grants through the
+    /// bundled helper while the research window remains behind Settings.
+    @MainActor
+    func testAgentContextAccessSettingsControlObservationWithoutChangingNotes() throws {
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let initialMode = documentModeState(documentModeControl())
+
+        func noteSources() throws -> [String: Data] {
+            var sources: [String: Data] = [:]
+            for role in ["01-analyses", "02-topics", "03-works"] {
+                let root = triptychDirectory.appendingPathComponent(role, isDirectory: true)
+                let files = try XCTUnwrap(
+                    FileManager.default.enumerator(
+                        at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]))
+                for case let file as URL in files {
+                    guard file.pathExtension.lowercased() == "md" else { continue }
+                    guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+                    sources[String(file.path.dropFirst(triptychDirectory.path.count + 1))] = try Data(contentsOf: file)
+                }
+            }
+            return sources
+        }
+        let original = try noteSources()
+        XCTAssertEqual(original.count, 500, "This journey uses the complete standard disposable Triptych.")
+        let status = try callQAMCP(tool: "scholium_workspace_status")
+        let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
+        let windows = try XCTUnwrap(status["windows"] as? [[String: Any]])
+        XCTAssertEqual(windows.count, 1)
+        let windowID = try XCTUnwrap(windows.first?["window_id"] as? String)
+        let scope: [String: Any] = ["triptych_id": triptychID, "window_id": windowID]
+
+        let settings = openSettingsForTransactionTest()
+        resizeProofWindow(settings, toWidth: 780, height: 640)
+        let search = settings.searchFields["scholium.settings.search"]
+        func reveal(_ caller: String, _ kind: String, query: String) -> XCUIElement {
+            typeCommittedText(query, into: search, in: app)
+            selectSettingsSearchResult("agents.context.\(caller).\(kind)", in: settings)
+            let control = settings.checkBoxes["scholium.settings.agentContext.\(caller).\(kind)"]
+            XCTAssertTrue(control.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitUntil(timeout: 5) { control.isHittable }, "Search must reveal the sole native access checkbox.")
+            return control
+        }
+        func set(_ control: XCUIElement, to selected: Bool) {
+            if selectionControlIsSelected(control) != selected { control.click() }
+            XCTAssertTrue(waitUntil(timeout: 3) { self.selectionControlIsSelected(control) == selected })
+        }
+        func focusSettingsSearch() {
+            search.click()
+            app.typeKey(.escape, modifierFlags: [])
+            let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: search)
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [focused], timeout: 5), .completed,
+                "The metadata request must run while Settings owns keyboard focus.")
+        }
+
+        let chatState = reveal("chat", "state", query: "Chat state access")
+        XCTAssertEqual(chatState.label, "Allow Chat agents to inspect Scholium state")
+        XCTAssertTrue(selectionControlIsSelected(chatState), "Chat metadata access preserves its existing default.")
+        if NSApplication.shared.isFullKeyboardAccessEnabled {
+            focusSettingsSearch()
+            let focused = NSPredicate(format: "hasKeyboardFocus == true")
+            for _ in 0..<16 {
+                if focused.evaluate(with: chatState) { break }
+                app.typeKey(.tab, modifierFlags: [])
+                _ = waitUntil(timeout: 0.2) { focused.evaluate(with: chatState) }
+            }
+            XCTAssertTrue(
+                waitUntil(timeout: 3) { focused.evaluate(with: chatState) },
+                "Keyboard navigation must reach the named context-access checkbox.")
+            app.typeKey(" ", modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 3) { !self.selectionControlIsSelected(chatState) })
+            app.typeKey(" ", modifierFlags: [])
+            XCTAssertTrue(
+                waitUntil(timeout: 3) { self.selectionControlIsSelected(chatState) },
+                "The Space round trip must restore its initial grant.")
+        } else {
+            let diagnostic = "Context-access checkbox keyboard activation was not verified: host Keyboard navigation is disabled. No host setting was changed."
+            print(diagnostic)
+            let evidence = XCTAttachment(string: diagnostic)
+            evidence.name = "agent-context-keyboard-prerequisite-unavailable"
+            evidence.lifetime = .keepAlways
+            add(evidence)
+        }
+        set(chatState, to: false)
+        let chatText = reveal("chat", "workingText", query: "Chat working text")
+        XCTAssertEqual(chatText.label, "Allow Chat agents to read working text")
+        XCTAssertFalse(selectionControlIsSelected(chatText), "Working text is opt-in independently of metadata.")
+        set(chatText, to: true)
+        XCTAssertFalse(selectionControlIsSelected(chatState))
+
+        let externalState = reveal("external", "state", query: "MCP state")
+        XCTAssertEqual(externalState.label, "Allow external agents to inspect Scholium state")
+        XCTAssertFalse(selectionControlIsSelected(externalState), "External metadata access starts disabled.")
+        let externalText = settings.checkBoxes["scholium.settings.agentContext.external.workingText"]
+        XCTAssertTrue(externalText.waitForExistence(timeout: 5))
+        XCTAssertEqual(externalText.label, "Allow external agents to read working text")
+        XCTAssertFalse(selectionControlIsSelected(externalText), "External working text starts disabled.")
+        let denied = try callQAMCP(tool: "scholium_observe_workspace", arguments: scope, expectsToolFailure: true)
+        XCTAssertEqual(denied["code"] as? String, "permission_denied")
+
+        set(externalState, to: true)
+        focusSettingsSearch()
+        let snapshot = try callQAMCP(tool: "scholium_observe_workspace", arguments: scope)
+        XCTAssertEqual(snapshot["status"] as? String, "ok")
+        XCTAssertEqual(snapshot["triptych_id"] as? String, triptychID)
+        XCTAssertEqual(snapshot["window_id"] as? String, windowID)
+        let tabs = try XCTUnwrap(snapshot["tabs"] as? [String: Any])
+        let items = try XCTUnwrap(tabs["items"] as? [[String: Any]])
+        let selected = try XCTUnwrap(items.first { $0["selected"] as? Bool == true })
+        let note = try XCTUnwrap(selected["note"] as? [String: Any])
+        let noteID = try XCTUnwrap(note["note_id"] as? String)
+        let revision = try XCTUnwrap(note["revision"] as? [String: Any])
+        let fingerprint = try XCTUnwrap(revision["fingerprint"] as? [String: Any])
+        let path = try XCTUnwrap(note["relative_path"] as? String)
+        XCTAssertEqual(path, "QA Autosave A.md")
+        XCTAssertNil(snapshot["text"], "Metadata does not supply Note text.")
+        var readScope = scope
+        readScope["kind"] = "active_note"
+        readScope["note_id"] = noteID
+        readScope["expected_fingerprint"] = fingerprint
+        readScope["max_utf8"] = 65_536
+        let textDenied = try callQAMCP(tool: "scholium_read_context", arguments: readScope, expectsToolFailure: true)
+        XCTAssertEqual(textDenied["code"] as? String, "permission_denied")
+
+        set(externalState, to: false)
+        let workingText = reveal("external", "workingText", query: "MCP working text")
+        set(workingText, to: true)
+        XCTAssertFalse(selectionControlIsSelected(externalState))
+        focusSettingsSearch()
+        let stateDenied = try callQAMCP(tool: "scholium_observe_workspace", arguments: scope, expectsToolFailure: true)
+        XCTAssertEqual(stateDenied["code"] as? String, "permission_denied")
+        let read = try callQAMCP(tool: "scholium_read_context", arguments: readScope)
+        let expectedSource = try XCTUnwrap(original["01-analyses/QA Autosave A.md"])
+        XCTAssertEqual(read["text"] as? String, String(decoding: expectedSource, as: UTF8.self))
+        let coverage = try XCTUnwrap(read["coverage"] as? [String: Any])
+        XCTAssertEqual(coverage["has_more"] as? Bool, false)
+        XCTAssertEqual(coverage["end_utf8"] as? Int, expectedSource.count)
+
+        settings.radioButtons["Connection and Chat"].click()
+        XCTAssertTrue(chatText.waitForExistence(timeout: 5))
+        XCTAssertFalse(selectionControlIsSelected(chatState))
+        XCTAssertTrue(selectionControlIsSelected(chatText), "External grants cannot change Chat grants.")
+        settings.radioButtons["External Access"].click()
+        XCTAssertTrue(workingText.waitForExistence(timeout: 5))
+        XCTAssertFalse(selectionControlIsSelected(externalState))
+        XCTAssertTrue(selectionControlIsSelected(workingText), "Segment changes retain independent choices.")
+        let attachment = XCTAttachment(screenshot: settings.screenshot())
+        attachment.name = "agent-context-access-independent-grants-minimum-width"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        set(workingText, to: false)
+        set(reveal("chat", "workingText", query: "Chat working text"), to: false)
+        set(reveal("chat", "state", query: "Chat state access"), to: true)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { !settings.exists })
+        waitForCurrentDocumentSurface()
+        XCTAssertEqual(documentModeState(documentModeControl()), initialMode)
+        let after = try noteSources()
+        XCTAssertEqual(after.count, original.count)
+        let changed = Set(original.keys).union(after.keys).filter { original[$0] != after[$0] }.sorted()
+        XCTAssertTrue(changed.isEmpty, "Context access must preserve every Note byte: \(Array(changed.prefix(10)))")
+
+        // One additional appearance capture reuses this journey's restored
+        // grants. QA overrides exercise app-owned consumers, not the native
+        // system accessibility settings recorded alongside the screenshot.
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, appearance: .dark)
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let darkSettings = openSettingsForTransactionTest()
+        resizeProofWindow(darkSettings, toWidth: 780, height: 640)
+        let darkSearch = darkSettings.searchFields["scholium.settings.search"]
+        let controls: [(caller: String, kind: String, query: String, label: String, selected: Bool)] = [
+            ("chat", "state", "Chat state access", "Allow Chat agents to inspect Scholium state", true),
+            ("chat", "workingText", "Chat working text", "Allow Chat agents to read working text", false),
+            ("external", "state", "MCP state", "Allow external agents to inspect Scholium state", false),
+            ("external", "workingText", "MCP working text", "Allow external agents to read working text", false),
+        ]
+        for expected in controls {
+            typeCommittedText(expected.query, into: darkSearch, in: app)
+            selectSettingsSearchResult("agents.context.\(expected.caller).\(expected.kind)", in: darkSettings)
+            let control = darkSettings.checkBoxes["scholium.settings.agentContext.\(expected.caller).\(expected.kind)"]
+            XCTAssertTrue(control.waitForExistence(timeout: 5))
+            XCTAssertEqual(control.label, expected.label)
+            XCTAssertTrue(waitUntil(timeout: 5) { control.isHittable })
+            XCTAssertEqual(selectionControlIsSelected(control), expected.selected)
+        }
+        typeCommittedText("MCP state", into: darkSearch, in: app)
+        selectSettingsSearchResult("agents.context.external.state", in: darkSettings)
+        let native = NSWorkspace.shared
+        let adaptationDiagnostic =
+            "Dark QA capture; app-owned Increase Contrast, Reduce Transparency and Reduce Motion overrides enabled. "
+            + "Native host flags: increaseContrast=\(native.accessibilityDisplayShouldIncreaseContrast), "
+            + "reduceTransparency=\(native.accessibilityDisplayShouldReduceTransparency), reduceMotion=\(native.accessibilityDisplayShouldReduceMotion). "
+            + "Overrides do not prove native checkbox adaptation."
+        print(adaptationDiagnostic)
+        let nativeEvidence = XCTAttachment(string: adaptationDiagnostic)
+        nativeEvidence.name = "agent-context-native-adaptation-observations"
+        nativeEvidence.lifetime = .keepAlways
+        add(nativeEvidence)
+        let darkAttachment = XCTAttachment(screenshot: darkSettings.screenshot())
+        darkAttachment.name = "agent-context-access-dark-minimum-width"
+        darkAttachment.lifetime = .keepAlways
+        add(darkAttachment)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { !darkSettings.exists })
+    }
+
     private func callQAMCP(
         tool: String,
-        arguments: [String: Any] = [:]
+        arguments: [String: Any] = [:],
+        expectsToolFailure: Bool = false
     ) throws -> [String: Any] {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -656,7 +874,7 @@ extension ScholiumUITests {
             JSONSerialization.jsonObject(with: responseLine) as? [String: Any]
         )
         let result = try XCTUnwrap(response["result"] as? [String: Any])
-        XCTAssertEqual(result["isError"] as? Bool, false)
+        XCTAssertEqual(result["isError"] as? Bool, expectsToolFailure)
         return try XCTUnwrap(result["structuredContent"] as? [String: Any])
     }
 

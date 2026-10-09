@@ -109,6 +109,9 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     private var requestRouter: ScholiumAppBridgeRequestRouter?
     var noteDisplayWindows: [UUID: AgentNoteDisplayWindow] = [:]
     private var chatRegistryStorage: AgentChatRegistry?
+    func admitsAgentObservation(_ request: ScholiumMCPBridgeRequest, windowID: UUID) -> Bool {
+        chatRegistryStorage?.admitsDisplay(request, windowID: windowID) == true
+    }
     var chatRegistry: AgentChatRegistry {
         if let current = chatRegistryStorage { return current }
         let registry = AgentChatRegistry(
@@ -210,6 +213,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 didConfirmChange: { [weak self] change in
                     SystemNotificationService.shared.receive(change)
                     self?.lastConfirmedAgentChange = change
+                },
+                observeAgentState: { [weak self] request in
+                    guard let self else { throw ScholiumMCPFailure.chatObservation(.appUnavailable) }
+                    return try await self.observeAgentState(request)
                 },
                 chatHandler: { [weak self] request in
                     guard let self else {

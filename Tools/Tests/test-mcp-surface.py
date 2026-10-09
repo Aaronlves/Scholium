@@ -20,7 +20,7 @@ class MCPSurfaceTests(unittest.TestCase):
 
     def test_current_closed_catalog(self):
         self.check_source(SOURCE)
-        self.assertEqual(len(GUARD["RESEARCH_TOOLS"]), 16)
+        self.assertEqual(len(GUARD["RESEARCH_TOOLS"]), 19)
         self.assertEqual(len(GUARD["CHAT_CONTROLS"]), 5)
 
     def test_count_preserving_renamed_wire_identity_is_rejected(self):

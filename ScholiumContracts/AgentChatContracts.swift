@@ -287,13 +287,15 @@ extension AgentChatActivity.Kind {
         switch tool {
         case .moveNote: .files
         case .previewMove, .showNote: .tool
-        case .readNote: .read
+        case .readNote, .readContext: .read
         case .readAttachment: .readAttachment
         case .browse, .search, .listLinks, .listAttachments, .workspaceStatus, .listChanges, .readChange: .search
         case .createNote: .create
         case .updateNote, .undoChange: .update
         case .trashNote: .trash
-        case .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState: .tool
+        case .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState,
+            .observeWorkspace, .observeResearchContext:
+            .tool
         }
     }
 

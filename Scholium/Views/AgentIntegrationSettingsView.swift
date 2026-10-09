@@ -19,6 +19,7 @@ enum AgentSettingsCategory: String, CaseIterable, Identifiable {
 struct AgentIntegrationSettingsView: View {
     let searchQuery: String
     @ObservedObject private var chatSidebarPreferences: ChatSidebarPreferences
+    @ObservedObject private var contextAccessPreferences: AgentContextAccessPreferences
     private let coreProtocolURL = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.agentChatSettingsController) private var chatController
@@ -31,9 +32,13 @@ struct AgentIntegrationSettingsView: View {
         category: .connection)
     @State private var hasRestoredCategory = false
 
-    init(searchQuery: String = "", chatSidebarPreferences: ChatSidebarPreferences = .shared) {
+    init(
+        searchQuery: String = "", chatSidebarPreferences: ChatSidebarPreferences = .shared,
+        contextAccessPreferences: AgentContextAccessPreferences = .shared
+    ) {
         self.searchQuery = searchQuery
         self.chatSidebarPreferences = chatSidebarPreferences
+        self.contextAccessPreferences = contextAccessPreferences
     }
 
     var body: some View {
@@ -68,6 +73,7 @@ struct AgentIntegrationSettingsView: View {
                             Text("Chat Sidebar — This Mac", bundle: .module)
                         }
                         .id("agents.chatSidebar")
+                        AgentContextAccessSettingsSection(caller: .chat, preferences: contextAccessPreferences)
                         if let chatController {
                             AgentChatConnectionSettingsView(controller: chatController)
                         } else {
@@ -107,9 +113,12 @@ struct AgentIntegrationSettingsView: View {
                     .scholiumSettingsFormStyle()
                     .scholiumSettingsSearchDestination()
                 case .externalAccess:
-                    Form { ExternalAgentHostsSettingsView(settingsModel: settingsModel) }
-                        .scholiumSettingsFormStyle()
-                        .scholiumSettingsSearchDestination()
+                    Form {
+                        AgentContextAccessSettingsSection(caller: .external, preferences: contextAccessPreferences)
+                        ExternalAgentHostsSettingsView(settingsModel: settingsModel)
+                    }
+                    .scholiumSettingsFormStyle()
+                    .scholiumSettingsSearchDestination()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -143,8 +152,9 @@ struct AgentIntegrationSettingsView: View {
         let matching: AgentSettingsCategory?
         switch searchTarget {
         case "agents.protocol", "agents.skills", "agents.tools": matching = .capabilities
-        case "agents.external": matching = .externalAccess
-        case "agents.chatSidebar", "agents.connection", "agents.behavior", "agents.paths": matching = .connection
+        case "agents.external", "agents.context.external.state", "agents.context.external.workingText": matching = .externalAccess
+        case "agents.chatSidebar", "agents.connection", "agents.behavior", "agents.paths", "agents.context.chat.state", "agents.context.chat.workingText":
+            matching = .connection
         default: matching = nil
         }
         navigation.updateQuery(searchQuery)

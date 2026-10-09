@@ -6,6 +6,7 @@ import ScholiumContracts
 final class AgentChatRegistry {
     private var controllers: [UUID: AgentChatController] = [:]
     private let root: URL
+    private let contextAccessPreferences: AgentContextAccessPreferences
     private let workspaceDirectory: @MainActor (UUID) async throws -> URL
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
     private let observeCurrentState:
@@ -16,6 +17,7 @@ final class AgentChatRegistry {
 
     init(
         root: URL,
+        contextAccessPreferences: AgentContextAccessPreferences = .shared,
         workspaceDirectory: @escaping @MainActor (UUID) async throws -> URL,
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
         observeCurrentState:
@@ -28,6 +30,7 @@ final class AgentChatRegistry {
         handler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.root = root
+        self.contextAccessPreferences = contextAccessPreferences
         self.workspaceDirectory = workspaceDirectory
         self.displayWindow = displayWindow
         self.observeCurrentState = observeCurrentState
@@ -43,6 +46,7 @@ final class AgentChatRegistry {
             triptychID: triptychID,
             root: root,
             workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) },
+            contextAccessPreferences: contextAccessPreferences,
             displayWindow: { displayWindow(triptychID, $0) },
             observeCurrentState: { [observeCurrentState] scope, conversation, admitted in
                 try await observeCurrentState(triptychID, scope, conversation, admitted)

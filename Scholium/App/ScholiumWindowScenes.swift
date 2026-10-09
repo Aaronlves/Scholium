@@ -860,7 +860,9 @@ struct ScholiumWindowObservedRoot: View {
             }
             let displayWindow = AgentNoteDisplayWindow(
                 state: { [weak appState, weak windowCoordinator] in
-                    appState?.agentNoteDisplayState(canDisplay: windowCoordinator?.canAcceptAgentDisplay == true)
+                    var state = appState?.agentNoteDisplayState(canDisplay: windowCoordinator?.canAcceptAgentDisplay == true)
+                    state?.canObserve = windowCoordinator?.canAcceptAgentObservation == true
+                    return state
                 },
                 display: { [weak appState] target, admitted in
                     guard let appState else { throw WorkspaceStore.displayUnavailable() }

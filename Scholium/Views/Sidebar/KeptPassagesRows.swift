@@ -31,9 +31,10 @@ struct KeptPassagesRows: View {
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("scholium.kept.toggle")
             .help(
-                Text(verbatim:
-                    ScholiumL10n.string("Captured text stays unchanged. Open Source checks its saved revision before locating the passage.")
-                    + " " + ScholiumL10n.string("Kept passages stay in this window until removed or the Triptych closes."))
+                Text(
+                    verbatim:
+                        ScholiumL10n.string("Captured text stays unchanged. Open Source checks its saved revision before locating the passage.")
+                        + " " + ScholiumL10n.string("Kept passages stay in this window until removed or the Triptych closes."))
             )
             .id("scholium.kept.heading")
             .researchListRow()

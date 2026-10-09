@@ -97,6 +97,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var managedCreationPostSourceBarrierForTesting: (@Sendable () async -> Void)?
     var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
     var hydrationPostReadBarrierForTesting: (@Sendable () async -> Void)?
+    #if DEBUG
+        var liveInventoryPreflightBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setLiveInventoryPreflightBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            liveInventoryPreflightBarrierForTesting = barrier
+        }
+    #endif
     var didCompleteActivationReconciliation = false
     var documentReviewIssue: String?
     var openingReviewCandidates: [UUID: WorkspaceNoteSummary] = [:]

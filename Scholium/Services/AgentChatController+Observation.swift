@@ -16,6 +16,8 @@ extension AgentChatController {
             persist()
         }
         do {
+            guard contextAccessPreferences.allowsState(for: .chat) else { throw ScholiumMCPFailure.contextAccessDenied() }
+            let permissionRevision = contextAccessPreferences.revision
             guard Set(request.arguments.keys) == ["triptych_id", "window_id", "conversation_id"],
                 let requestedTriptych = request.arguments["triptych_id"]?.stringValue.flatMap(UUID.init(uuidString:)),
                 let requestedWindow = request.arguments["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)),
@@ -37,7 +39,9 @@ extension AgentChatController {
             let departureEpoch = selectionDepartureEpoch
             let admitted: @MainActor () -> Bool = { [weak self] in
                 guard let self else { return false }
-                return !Task.isCancelled && self.connectionID == connection && self.connectionState == .ready
+                return !Task.isCancelled && self.contextAccessPreferences.revision == permissionRevision
+                    && self.contextAccessPreferences.allowsState(for: .chat)
+                    && self.connectionID == connection && self.connectionState == .ready
                     && self.selectedID == owner && self.selectionDepartureEpoch == departureEpoch
                     && self.executions[owner]?.state == .working && self.executions[owner]?.admissionID == admission
                     && self.runtimeContext(for: token) == context && self.conversation(owner)?.isAvailable == true

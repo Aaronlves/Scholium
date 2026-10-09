@@ -30,6 +30,9 @@ RESEARCH_TOOLS = {
     "readChange": "scholium_read_change",
     "undoChange": "scholium_undo_change",
     "trashNote": "scholium_trash_note",
+    "observeWorkspace": "scholium_observe_workspace",
+    "observeResearchContext": "scholium_observe_research_context",
+    "readContext": "scholium_read_context",
 }
 CHAT_CONTROLS = {
     "capabilities": "scholium_capabilities",
@@ -146,7 +149,7 @@ if __name__ == "__main__":
             check_source_surface(contracts.read_text(encoding="utf-8"))
         except (OSError, AssertionError) as error:
             sys.exit(str(error))
-        print("MCP surface: exact 16 external tools and five Chat-only controls passed")
+        print("MCP surface: exact 19 external tools and five Chat-only controls passed")
         sys.exit(0)
     executable = Path(sys.argv[1]).resolve(strict=True)
     scratch = Path(__file__).resolve().parents[2] / ".build"

@@ -13,10 +13,13 @@ struct AgentNoteDisplayWindow {
         let triptychID: UUID
         let canDisplay: Bool
         let visibleConversationID: UUID?
+        var canObserve: Bool = false
     }
     let state: () -> State?
     let display: (AgentNoteDisplayTarget, @escaping @MainActor () -> Bool) async throws -> Void
     var observe: ((@escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation)? = nil
+    var observeAgentState: ((ScholiumMCPBridgeRequest, @escaping @MainActor () -> Bool) async throws -> MCPJSONValue)? = nil
+    var stateSummary: (() -> MCPJSONValue)? = nil
 }
 
 extension WorkspaceStore {

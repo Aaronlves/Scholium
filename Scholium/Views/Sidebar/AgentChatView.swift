@@ -77,8 +77,10 @@ struct AgentChatView: View {
                         .offset(x: showsConversationList ? geometry.size.width : 0)
                         // Native readers remain painted until the page has left;
                         // detail visibility already removes input and accessibility.
-                        .environment(\.scholiumDocumentSurfaceVisibility,
-                            isVisible && (!showsConversationList || outgoingDetailID != nil) ? .active : .retained)
+                        .environment(
+                            \.scholiumDocumentSurfaceVisibility,
+                            isVisible && (!showsConversationList || outgoingDetailID != nil) ? .active : .retained
+                        )
                         .id(controller.selectedID)
                         // An already hidden page has no outgoing transition.
                         .transition(showsConversationList ? .identity : pageTransition(from: .trailing))
@@ -124,7 +126,9 @@ struct AgentChatView: View {
             if showsConversationList {
                 outgoingDetailID = nil
                 hasPresentedDetail = false
-            } else { presentedConversationID = id }
+            } else {
+                presentedConversationID = id
+            }
             _ = detailStore.presentation(for: id)
             diagnosticsPresentation = nil
             renameID = nil

@@ -72,7 +72,9 @@ extension ScholiumUITests {
         XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
         XCTAssertEqual(editor.value as? String, draftSource)
         let relatedCardID = String(related.identifier.dropFirst("scholium.related.card.".count))
-        let passageActions = workspace.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", "scholium.research.actions." + relatedCardID)).firstMatch
+        let passageActions = workspace.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@", "scholium.research.actions." + relatedCardID)
+        ).firstMatch
         XCTAssertTrue(passageActions.exists && passageActions.isEnabled)
         XCTAssertGreaterThanOrEqual(passageActions.frame.width, 28)
         XCTAssertGreaterThanOrEqual(passageActions.frame.height, 28)

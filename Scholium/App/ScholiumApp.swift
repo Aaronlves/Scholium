@@ -516,6 +516,11 @@ final class WindowModel: ObservableObject {
             guard let self else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
             return try await self.observeChatDocument(admitted: admitted)
         }
+        registration.observeAgentState = { [weak self] request, admitted in
+            guard let self else { throw ScholiumMCPFailure.chatObservation(.workspaceNotReady) }
+            return try await self.observeAgentState(request, admitted: admitted)
+        }
+        registration.stateSummary = { [weak self] in self?.agentWindowStateSummary() ?? .null }
         workspaceStore.registerNoteDisplayWindow(id: nativeWindowID, window: registration)
     }
 

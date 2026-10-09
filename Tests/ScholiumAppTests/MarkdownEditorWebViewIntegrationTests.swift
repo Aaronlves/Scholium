@@ -528,6 +528,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             let sourceVault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
             let summary = try #require(sourceVault.documents.first { $0.id.relativePath == "Close.md" })
             let snapshot = try await capabilities.documents.hydrate(summary)
+            let citationSnapshot = try #require(snapshot.document.citationSnapshot)
             let window = WindowModel(workspaceStore: store)
             window.documentController.bind(to: capabilities.documents)
             window.documentController.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
@@ -538,12 +539,14 @@ struct MarkdownEditorWebViewIntegrationTests {
                 source: source, revision: snapshot.fingerprint, mode: .source)
             let harness = EditorHarness(
                 source: source, usesSessionDocumentIdentity: true, suppliedSession: session.editorSession,
+                citationSnapshot: citationSnapshot,
                 initialMode: .source)
             defer {
                 harness.close()
                 session.cancelScheduledWork()
             }
             try await harness.waitUntilReady()
+            #expect(session.editorSession.committedCitationSnapshot == citationSnapshot)
 
             // The native coordinator schedules performClose on the next main-queue
             // turn. Chat/window persistence can also suspend after content flush.
@@ -8596,6 +8599,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
             suppliedSession: MarkdownEditorSession? = nil,
+            citationSnapshot: ZoteroCitationSnapshot? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
             initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
@@ -8654,6 +8658,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 usesSessionDocumentIdentity: usesSessionDocumentIdentity,
                 sourceBox: sourceBox,
                 linkPreviews: linkPreviews,
+                citationSnapshot: citationSnapshot,
                 onTitleRename: onTitleRename,
                 laysOutForPointerTesting: laysOutForPointerTesting,
                 fixedLayoutSize: fixedLayoutSize
@@ -9353,6 +9358,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let documentID: String
         let usesSessionDocumentIdentity: Bool
         let linkPreviews: [DocumentLinkPreview]
+        let citationSnapshot: ZoteroCitationSnapshot?
         let onTitleRename: @MainActor (String, String) async throws -> String
         let laysOutForPointerTesting: Bool
         let fixedLayoutSize: NSSize?
@@ -9363,6 +9369,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             usesSessionDocumentIdentity: Bool,
             sourceBox: SourceBox,
             linkPreviews: [DocumentLinkPreview],
+            citationSnapshot: ZoteroCitationSnapshot?,
             onTitleRename: @escaping @MainActor (String, String) async throws -> String,
             laysOutForPointerTesting: Bool,
             fixedLayoutSize: NSSize?
@@ -9372,6 +9379,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             self.usesSessionDocumentIdentity = usesSessionDocumentIdentity
             self.sourceBox = sourceBox
             self.linkPreviews = linkPreviews
+            self.citationSnapshot = citationSnapshot
             self.onTitleRename = onTitleRename
             self.laysOutForPointerTesting = laysOutForPointerTesting
             self.fixedLayoutSize = fixedLayoutSize
@@ -9434,7 +9442,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 writingIndexContextKey: sourceBox.writingIndexContextKey,
                 writingContinuationQuery: sourceBox.writingContinuationQuery,
                 imageResourceContextKey: sourceBox.imageResourceContextKey,
-                imageResourcesQuery: sourceBox.imageResourcesQuery
+                imageResourcesQuery: sourceBox.imageResourcesQuery,
+                citationSnapshot: citationSnapshot
             )
         }
     }

@@ -93,7 +93,7 @@ in §8.5 instead of becoming a second philosophical instruction source.
 ### 8.3 Tool contract
 
 The external local tool surface supports bounded knowledge-base operations. Tool
-availability never expands the current researcher request. The following 16
+availability never expands the current researcher request. The following 19
 research contracts are shared by external hosts and in-app Chat:
 
 | Tool | Input | Result |
@@ -114,6 +114,9 @@ research contracts are shared by external hosts and in-app Chat:
 | `scholium_read_change` | `triptych_id`, `change_id`; optional `note_id`, `offset`, `limit`, `effect_offset`, `effect_limit` | receipt, selected affected Note comparison, paged move effects, current/earlier/unavailable ending and current Undo eligibility |
 | `scholium_undo_change` | `triptych_id`, `note_id`, `change_id`, `expected_fingerprint` | the named eligible update or move restored through ordinary source recovery, exact restored fingerprints and original receipt; no new fabricated update |
 | `scholium_trash_note` | `triptych_id`, `note_id`, `expected_fingerprint` | the exact Note moved to macOS system Trash, original location, and `change_id` |
+| `scholium_observe_workspace` | optional `triptych_id`, `window_id`, `offset`, `limit`, `expected_listing_fingerprint` | registered windows or one window’s paged open Notes, cached readiness, attention and recovery metadata |
+| `scholium_observe_research_context` | `triptych_id`, `window_id`; optional `offset`, `limit`, `expected_listing_fingerprint` | active Note revision and selection coordinates, Library/Search/Related state and retained-passage references |
+| `scholium_read_context` | `triptych_id`, `window_id`, `kind`, `expected_fingerprint`; kind-bound Note/passage identity and selection coordinates; optional UTF-8 bounds | exact working snapshot slice, provenance, fingerprints, locator and continuation |
 
 External role values are only `analyses`, `topics`, and `works`. A Note is
 addressed by stable UUID; path is location and presentation, never mutation
@@ -263,7 +266,7 @@ failures return `isError: true` with
 - `app_unavailable`, `workspace_selection_required`, and
   `workspace_not_ready`;
 - `not_found`, `ambiguous`, and `path_occupied`;
-- `stale_revision`, `conflict`, `no_changes`, and `invalid_request`; and
+- `stale_revision`, `conflict`, `no_changes`, `invalid_request`, and `permission_denied`; and
 - `operation_uncertain` and `internal_error`.
 
 An identical update returns `no_changes` before writing or preparing an Agent
@@ -285,7 +288,52 @@ runtime-owned and do not create an
 application-owned research lifecycle under another name. MCP Tasks must not
 recreate such a lifecycle either.
 
-Current-state observation requires exact `triptych_id`, `window_id` and
+Workspace observation without a Triptych lists only registered scope IDs and
+window counts, without reconciliation. Detailed context requires an explicit
+Triptych. Window lists never
+select foreground focus; detailed observations and reads require an exact
+registered window. Chat additionally binds its admitted originating window,
+conversation and turn; its workspace call fills omitted identities from that
+captured scope, never foreground focus. Metadata reports open Note identities, nullable retained
+session flags, cached source/index availability and generations, structural
+Attention, loaded Changes/recovery counts, and Library/Search/Related/Kept
+references. Missing or unloaded state remains unavailable, not an empty result.
+Research-context capture may query the active renderer for exact revision and
+selection coordinates; no working text is returned. Search query, retrieval seed,
+Note bodies, excerpts, Chat drafts and queued input are omitted. Observed saved
+snapshots and cached generations do not establish current disk source.
+
+Native **Agent Context Access** settings on This Mac independently control
+state and working-text access for in-app Chat and external Agents. In-app state
+access defaults on; external state and both working-text grants default off.
+The researcher may change each choice independently. These read grants neither
+change Ask/Full Access runtime policies nor authorize Note mutation or navigation;
+Agents cannot elevate them. Reducing access revokes pending captures immediately;
+re-enabling access admits only new requests. Already delivered results may remain
+in ordinary runtime history.
+
+Context reads require the captured exact source fingerprint. Active-source and
+selection reads also bind Note identity; selection binds original source UTF-8
+coordinates. Kept reads bind their retained entry identity and lifetime, returning
+historical exact text without claiming current source. Results distinguish
+`saved_source`, `editor_snapshot`, and `kept_snapshot`, full-source revision from
+material-text fingerprint, and returned byte coverage. UTF-8 paging defaults to
+16 KiB, at most 64 KiB, with scalar-safe boundaries and exact continuation. Open
+Note and research-reference pages default to 20, at most 100, bound to their
+listing fingerprint. A changed inventory rejects continuation. Encoded shared
+context results are bounded to 1 MiB without silent truncation.
+
+Observation and context reads are explicit requests, never subscriptions. They
+use existing live owners without opening a workspace, hydrating inactive Notes,
+flushing/saving, refreshing discovery, scanning vaults, calling providers, or
+changing focus, selection or Undo. Cancellation, registration replacement,
+context departure and return, changed revision/selection, or revoked admission
+reject delivery without retargeting or automatic replay. External observation
+can inspect an eligible non-key window. Source access, returned coverage,
+retrieval rank, retained passages and software completion establish no
+philosophical understanding, support, acceptance or research-completion state.
+
+The Chat-only current-state tool uses the same native state grant and requires exact `triptych_id`, `window_id` and
 `conversation_id`, bound to the live Chat turn's originally registered visible
 window. It returns capture time; document-surface kind; active Note identity,
 role, relative path, mode, available exact-source revision, dirty/save/conflict

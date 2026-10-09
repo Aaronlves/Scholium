@@ -133,6 +133,14 @@ struct SettingsSearchRoutingTests {
             ("Server Address", .agents, "agents.tools"),
             ("Scholium Connection Helper", .agents, "agents.paths"),
             ("Copy Claude Setup Command", .agents, "agents.external"),
+            ("Chat state access", .agents, "agents.context.chat.state"),
+            ("聊天状态访问", .agents, "agents.context.chat.state"),
+            ("Chat working text", .agents, "agents.context.chat.workingText"),
+            ("聊天工作文本", .agents, "agents.context.chat.workingText"),
+            ("MCP state", .agents, "agents.context.external.state"),
+            ("外部状态访问", .agents, "agents.context.external.state"),
+            ("MCP working text", .agents, "agents.context.external.workingText"),
+            ("外部工作文本", .agents, "agents.context.external.workingText"),
         ]
         for (query, destination, section) in cases {
             #expect(
@@ -142,6 +150,20 @@ struct SettingsSearchRoutingTests {
         }
         #expect(SettingsSearchTarget.matches("no-such-setting-qa").isEmpty)
         #expect(SettingsSearchTarget.matches("  ").isEmpty)
+    }
+
+    @Test("Agent context results retain distinct single control destinations")
+    func agentContextAccessTargets() {
+        let expectedIDs = [
+            "agents.context.chat.state", "agents.context.chat.workingText",
+            "agents.context.external.state", "agents.context.external.workingText",
+        ]
+        for id in expectedIDs {
+            let targets = SettingsSearchTarget.all.filter { $0.id == id }
+            #expect(targets.count == 1)
+            #expect(targets.first?.sectionID == id)
+            #expect(targets.first?.destination == .agents)
+        }
     }
 
     @Test("Every static visible alias is discoverable in English and Chinese")

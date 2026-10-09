@@ -143,16 +143,30 @@ enum KeptPassageError: LocalizedError {
     }
 
     func directoryContext(for entry: KeptPassage) -> String? {
-        guard entries.contains(where: {
-            $0.title == entry.title
-                && ($0.reference.vaultID != entry.reference.vaultID || $0.reference.relativePath != entry.reference.relativePath)
-        }) else { return nil }
+        guard
+            entries.contains(where: {
+                $0.title == entry.title
+                    && ($0.reference.vaultID != entry.reference.vaultID || $0.reference.relativePath != entry.reference.relativePath)
+            })
+        else { return nil }
         let directory = (entry.reference.relativePath as NSString).deletingLastPathComponent
         return directory.isEmpty ? entry.reference.vaultName : entry.reference.vaultName + " / " + directory
     }
 
     func entryLifetime(for entry: KeptPassage) -> UUID? {
         entries.contains(entry) ? lifetimes[entry.id] : nil
+    }
+
+    /// Metadata projects the current collection once. Exact read/navigation
+    /// consumers retain `entryLifetime(for:)` and its complete-entry check.
+    var observedEntryLifetimes: [String: UUID] {
+        var result: [String: UUID] = [:]
+        result.reserveCapacity(entries.count)
+        for entry in entries {
+            let id = entry.id
+            if let lifetime = lifetimes[id] { result[id] = lifetime }
+        }
+        return result
     }
 
     func remove(_ id: String) {

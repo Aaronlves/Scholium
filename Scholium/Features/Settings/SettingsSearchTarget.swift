@@ -132,6 +132,18 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 "agents.chatSidebar", .agents, "Show Chat in Sidebar",
                 ["Chat Sidebar", "show", "hide", "enable", "disable", "built-in Chat", "聊天边栏", "显示聊天", "隐藏聊天", "启用聊天", "关闭聊天"]),
             Self(
+                "agents.context.chat.state", .agents, "Allow Chat agents to inspect Scholium state",
+                ["Chat state access", "Agent Context Access", "open Notes", "聊天状态访问", "智能体上下文访问", "已打开笔记"]),
+            Self(
+                "agents.context.chat.workingText", .agents, "Allow Chat agents to read working text",
+                ["Chat working text", "unsaved text", "Kept Passages", "聊天工作文本", "未保存文本", "保留段落"]),
+            Self(
+                "agents.context.external.state", .agents, "Allow external agents to inspect Scholium state",
+                ["External state access", "MCP state", "外部状态访问", "MCP 状态"]),
+            Self(
+                "agents.context.external.workingText", .agents, "Allow external agents to read working text",
+                ["External working text", "MCP working text", "外部工作文本", "MCP 工作文本"]),
+            Self(
                 "agents.connection", .agents, "Chat in Scholium",
                 ["Agents & Chat", "connect", "sign in", "Codex", "聊天", "智能体", "连接", "登录"],
                 aliases: ["Open Connection and Chat"]),

@@ -610,6 +610,12 @@ final class DocumentController: ObservableObject {
         return session
     }
 
+    /// Observation borrows an existing owner without creating a session or
+    /// changing its subscription, lease or residency bookkeeping.
+    func peekRetainedSession(for target: DocumentEditingTarget) -> DocumentSessionModel? {
+        sessions.retainedSession(for: target)
+    }
+
     /// Observes a session only to publish an equatable chrome projection. The
     /// controller never forwards the session's broad objectWillChange stream.
     func observe(_ session: DocumentSessionModel) {

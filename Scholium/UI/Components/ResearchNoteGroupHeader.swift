@@ -24,10 +24,13 @@ struct ResearchNoteRoleIcon: View {
 /// Shared identity, grid and native activation for both Inspector note groups.
 struct ResearchNoteGroupHeader<Actions: View>: View {
     enum Count {
-        case links(Int), passages(Int)
+        case links(Int)
+        case passages(Int)
 
         var value: Int {
-            switch self { case .links(let count), .passages(let count): count }
+            switch self {
+            case .links(let count), .passages(let count): count
+            }
         }
 
         var label: String {

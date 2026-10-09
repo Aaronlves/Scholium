@@ -179,6 +179,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     private var activeWorkspaceWindowID: UUID?
     private let policy: ScholiumLifecyclePolicy
     @Published private(set) var workspaceContextRevision: UInt64 = 0
+    @Published private(set) var terminationAttemptSequence: UInt64 = 0
     private(set) var isTerminationAttemptInProgress = false
 
     init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
@@ -353,6 +354,10 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     }
 
     func beginTerminationAttempt() {
+        guard !isTerminationAttemptInProgress else { return }
+        // Saturation can never reauthorize an older observation. Captures
+        // refuse admission once this request-revocation sequence is exhausted.
+        if terminationAttemptSequence < .max { terminationAttemptSequence += 1 }
         isTerminationAttemptInProgress = true
     }
 
@@ -483,6 +488,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private weak var transferFirstResponder: NSResponder?
     private weak var window: NSWindow?
     var canAcceptAgentDisplay: Bool { window?.isKeyWindow == true && window?.attachedSheet == nil && !flushInFlight && !closeIsAuthorized }
+    var canAcceptAgentObservation: Bool {
+        window != nil && !isNativeCloseInProgress && !registry.isTerminationAttemptInProgress
+            && !appState.transferInProgress && !appState.windowCloseCoordinator.isPreparingOrFinalized
+    }
     private weak var splitController: (any ScholiumWorkspaceSplitControlling)?
     // `NSWindow.delegate` is not an ownership boundary. Keep SwiftUI's
     // delegate alive while forwarding optional callbacks, then restore it.

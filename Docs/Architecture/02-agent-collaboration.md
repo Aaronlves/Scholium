@@ -30,10 +30,11 @@ source transaction that must finish or recover. Peer workers own descriptor clos
 
 ## Fixed tool surface
 
-Contracts owns closed tool names, schemas and structured output. External research
-tools and token-scoped runtime capability controls are separate surfaces. The
-latter use the addressed connection's existing capability owner, not an expanded
-external research API. Exact tool inventory belongs to executable schemas.
+Contracts owns tool names; Application owns schemas and research operations.
+Chat controls use admitted conversations. Context projects registered window,
+document and discovery owners without reconciliation or stores. Native context
+preferences gate admission/delivery by revision; registration and departure
+guards prevent retargeting.
 
 Browse consumes current Library inventory/visibility, not another index.
 Pagination binds the sorted listing and exact workspace/role/directory scope;

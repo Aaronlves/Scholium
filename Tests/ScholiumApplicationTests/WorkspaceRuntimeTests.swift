@@ -617,7 +617,9 @@ struct WorkspaceRuntimeTests {
         _ = try #require(await iterator.next())
         let before = try await handle.snapshot()
             .document(id: fixture.analysisNoteID)?.fingerprint
-        try Data("# Agency\n\nA live external revision.\n".utf8)
+        let updatedSource = "# Agency\n\nA live external revision.\n"
+        let updatedFingerprint = DocumentFingerprint(content: updatedSource)
+        try Data(updatedSource.utf8)
             .write(to: fixture.analysesURL.appendingPathComponent("Agency.md"), options: .atomic)
 
         var observedChange = false
@@ -632,15 +634,21 @@ struct WorkspaceRuntimeTests {
         }
         #expect(observedChange)
         let event = try #require(await iterator.next())
+        // Citation invalidation may replace the inventory event in the
+        // single pending slot; its resulting snapshot must retain the change.
+        #expect(event.snapshot.phase.isComplete)
+        #expect(event.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
         if case .inventoryChanged(let inventory) = event {
             #expect(inventory.changed.contains(fixture.analysisNoteID))
-        } else {
-            Issue.record("The live watcher did not publish inventoryChanged.")
         }
 
         await runtime.shutdown()
         #expect(await handle.ownedBackgroundTaskCount == 0)
         #expect(await handle.watcherReadinessEvidence == nil)
+        if let pending = await iterator.next() {
+            #expect(pending.snapshot.phase.isComplete)
+            #expect(pending.snapshot.document(id: fixture.analysisNoteID)?.fingerprint == updatedFingerprint)
+        }
         #expect(await iterator.next() == nil)
     }
 
@@ -974,20 +982,38 @@ struct WorkspaceRuntimeTests {
             try #require(await firstIterator.next()),
             try #require(await secondIterator.next()),
         ] {
-            guard case .inventoryChanged(let inventory) = event else {
-                Issue.record("A window did not receive the resolved rename generation.")
-                continue
+            // Every latest snapshot carries the completed path rebinding,
+            // including a citation invalidation coalesced after the move.
+            #expect(event.snapshot.phase.isComplete)
+            #expect(event.snapshot.document(id: fixture.analysisNoteID) == nil)
+            let destination = try #require(event.snapshot.document(id: destinationID))
+            #expect(destination.stableIdentity.resolvedID == stableID)
+            #expect(destination.fingerprint == original.fingerprint)
+            #expect(event.snapshot.vaults.flatMap(\.documents).filter { $0.stableIdentity.resolvedID == stableID }.count == 1)
+            let vault = try #require(event.snapshot.vaults.first { $0.vault.id == destinationID.vaultID })
+            let rebindings = vault.identityRecovery.completedRebindings.filter { $0.id == stableID }
+            #expect(rebindings.count == 1)
+            let rebinding = try #require(rebindings.first)
+            #expect(rebinding.previousRelativePath == fixture.analysisNoteID.relativePath)
+            #expect(rebinding.relativePath == destinationPath)
+            if case .inventoryChanged(let inventory) = event {
+                #expect(inventory.added.isEmpty)
+                #expect(inventory.removed.isEmpty)
+                #expect(inventory.moved.count == 1)
+                let move = try #require(inventory.moved.first)
+                #expect(move.stableNoteID == stableID)
+                #expect(move.previousLocation == fixture.analysisNoteID)
+                #expect(move.location == destinationID)
             }
-            #expect(inventory.added.isEmpty)
-            #expect(inventory.removed.isEmpty)
-            let move = try #require(inventory.moved.first)
-            #expect(move.stableNoteID == stableID)
-            #expect(move.previousLocation == fixture.analysisNoteID)
-            #expect(move.location == destinationID)
-            #expect(inventory.snapshot.document(id: destinationID)?.stableIdentity.resolvedID == stableID)
         }
 
         await runtime.shutdown()
+        for pending in [await firstIterator.next(), await secondIterator.next()].compactMap({ $0 }) {
+            #expect(pending.snapshot.phase.isComplete)
+            #expect(pending.snapshot.document(id: fixture.analysisNoteID) == nil)
+            #expect(pending.snapshot.document(id: destinationID)?.stableIdentity.resolvedID == stableID)
+            #expect(pending.snapshot.document(id: destinationID)?.fingerprint == original.fingerprint)
+        }
         #expect(await firstIterator.next() == nil)
         #expect(await secondIterator.next() == nil)
         #expect(await firstWindow.ownedBackgroundTaskCount == 0)
@@ -1788,12 +1814,24 @@ struct WorkspaceRuntimeTests {
                 )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
-        _ = try await handle.documents.save(
+        let saved = try await handle.documents.save(
             try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint),
             changeSet: .body("One authoritative self-save.\n"))
-        let committedGeneration = await handle.events.publishedGeneration
+        let committed = try await handle.snapshot()
+        #expect(committed.phase.isComplete)
+        #expect(committed.document(id: fixture.analysisNoteID)?.fingerprint == saved.committedValue.document.fingerprint)
+        _ = try #require(committed.discovery.searchGeneration)
+        _ = try #require(committed.discovery.catalog.graph)
+        let committedEvidence = WorkspaceDerivedRefreshEvidence(snapshot: committed)
+        let catalog = try #require(await handle.services.sourceCatalogs[fixture.analysisNoteID.vaultID])
+        let committedSourceGeneration = try await catalog.snapshot(refreshFolders: false).generation
         try await Task.sleep(for: .seconds(1))
-        #expect(await handle.events.publishedGeneration == committedGeneration)
+        // Delayed identity/citation invalidation may publish a newer event,
+        // but it must not rebuild source, Search, graph or the snapshot.
+        let delayed = try await handle.snapshot()
+        #expect(WorkspaceDerivedRefreshEvidence(snapshot: delayed) == committedEvidence)
+        #expect(delayed.document(id: fixture.analysisNoteID)?.fingerprint == saved.committedValue.document.fingerprint)
+        #expect(try await catalog.snapshot(refreshFolders: false).generation == committedSourceGeneration)
         await runtime.shutdown()
     }
 }

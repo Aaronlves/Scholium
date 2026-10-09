@@ -6,6 +6,42 @@ import Testing
 
 @Suite("Scholium stdio MCP")
 struct ScholiumMCPServerTests {
+    @Test("Context tools expose closed nested state schemas and exact kind-bound inputs")
+    func contextContractsAreDiscoverable() async throws {
+        let server = ScholiumMCPServer { _ in .object([:]) }
+        let listed = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let tools = try #require(object(listed["result"])["tools"] as? [[String: Any]])
+        func checkClosed(_ value: Any) {
+            if let schema = value as? [String: Any] {
+                if schema["type"] as? String == "object" {
+                    #expect(schema["properties"] != nil || schema["oneOf"] != nil)
+                    if let fields = schema["properties"] as? [String: Any] {
+                        #expect(schema["additionalProperties"] as? Bool == false)
+                        #expect(Set(schema["required"] as? [String] ?? []) == Set(fields.keys.filter { $0 != "recovery_details" }))
+                    }
+                }
+                for child in schema.values { checkClosed(child) }
+            } else if let array = value as? [Any] {
+                array.forEach(checkClosed)
+            }
+        }
+        for name in ["scholium_observe_workspace", "scholium_observe_research_context", "scholium_read_context"] {
+            let tool = try #require(tools.first { $0["name"] as? String == name })
+            checkClosed(try object(tool["outputSchema"]))
+            let annotations = try object(tool["annotations"])
+            #expect(annotations["readOnlyHint"] as? Bool == true)
+            #expect(annotations["destructiveHint"] as? Bool == false)
+        }
+        let read = try #require(tools.first { $0["name"] as? String == "scholium_read_context" })
+        let input = try object(read["inputSchema"])
+        let properties = try object(input["properties"])
+        #expect(try object(properties["expected_start_utf8"])["default"] == nil)
+        #expect(try object(properties["expected_end_utf8"])["default"] == nil)
+        let alternatives = try #require(input["oneOf"] as? [[String: Any]])
+        #expect(alternatives.count == 3 && alternatives.allSatisfy { $0["not"] != nil })
+        let workspace = try #require(tools.first { $0["name"] as? String == "scholium_observe_workspace" })
+        #expect(try object(workspace["inputSchema"])["required"] as? [String] == [])
+    }
     @Test("Search tool advertises the shared generic YAML query contract")
     func searchPropertyCapability() async throws {
         let server = ScholiumMCPServer { _ in .object([:]) }

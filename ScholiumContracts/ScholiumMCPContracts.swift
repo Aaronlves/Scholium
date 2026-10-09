@@ -9,8 +9,9 @@ public enum ScholiumMCPContract {
     // Correlation identities must leave room for a complete, definite failure
     // reply before an operation can be admitted.
     public static let maximumEncodedResponseIdentityByteCount = 1_024
-    public static let currentToolSchemaVersion = 9
+    public static let currentToolSchemaVersion = 10
     public static let maximumChatObservationUTF8ByteCount = 16 * 1_024
+    public static let maximumContextObservationUTF8ByteCount = 1_024 * 1_024
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -105,6 +106,9 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     case readChange = "scholium_read_change"
     case undoChange = "scholium_undo_change"
     case trashNote = "scholium_trash_note"
+    case observeWorkspace = "scholium_observe_workspace"
+    case observeResearchContext = "scholium_observe_research_context"
+    case readContext = "scholium_read_context"
     case capabilities = "scholium_capabilities"
     case configureSkill = "scholium_configure_skill"
     case configureTool = "scholium_configure_tool"
@@ -143,6 +147,7 @@ public enum ScholiumMCPFailureCode: String, Codable, CaseIterable, Sendable {
     case staleRevision = "stale_revision"
     case conflict
     case invalidRequest = "invalid_request"
+    case permissionDenied = "permission_denied"
     case noChanges = "no_changes"
     case operationUncertain = "operation_uncertain"
     case internalError = "internal_error"
@@ -194,12 +199,22 @@ extension ScholiumMCPFailure {
             safeCode = code
             message = "The observation request does not match its closed, bound contract."
             recovery = "Supply only the exact Triptych, window and conversation UUIDs for the admitted Chat turn."
+        case .permissionDenied:
+            safeCode = code
+            message = "The researcher has disabled access to this context."
+            recovery = "The researcher can change Agent Context Access in Agents & Chat Settings."
         default:
             safeCode = .internalError
             message = "The current state observation could not be completed."
             recovery = "Inspect the current context in Scholium before requesting another observation."
         }
         return .init(code: safeCode, message: message, recovery: recovery)
+    }
+
+    public static func contextAccessDenied() -> Self {
+        .init(
+            code: .permissionDenied, message: "The researcher has disabled this Agent context access.",
+            recovery: "The researcher can choose app-state and working-text access in Agents & Chat Settings for in-app or external agents.")
     }
 }
 

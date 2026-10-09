@@ -162,7 +162,10 @@ struct ScholiumAppBridgeSecurityTests {
         let elapsed = started.duration(to: .now)
         writer.cancel()
         await writer.value
-        #expect(response == .failure(.invalidFrame), "Expired authentication closes the fixture socket.")
+        // Closing with unread authentication bytes can reset TCP instead of returning EOF.
+        #expect(
+            response == .failure(.invalidFrame) || response == .failure(.systemCall("read", ECONNRESET)),
+            "Expired authentication closes the fixture socket.")
         #expect(elapsed < .seconds(1))
         #expect(await calls.count == 0)
         #expect(await server.stopAndWait(timeout: 1))

@@ -816,6 +816,32 @@ public actor TriptychControlStore {
         try identityPayload().records.first { $0.id == id }
     }
 
+    /// Compares the identities of currently published source paths with one
+    /// fresh portable inventory read. Historical records for absent source
+    /// paths are retained, and unresolved recovery is never treated as a match.
+    public func identityInventoryChanges(
+        comparedWith expected: [UUID: [String: NoteIdentityRecord]]
+    ) throws -> Set<UUID> {
+        let payload = try identityPayload()
+        var recordsByVault: [UUID: [String: NoteIdentityRecord]] = [:]
+        for record in payload.records where expected[record.vaultID] != nil {
+            recordsByVault[record.vaultID, default: [:]][record.relativePath] = record
+        }
+        var changed = Set(
+            payload.pendingRebindings.compactMap { expected[$0.vaultID] == nil ? nil : $0.vaultID }
+        )
+        changed.formUnion(
+            payload.unresolvedAmbiguities.compactMap { expected[$0.vaultID] == nil ? nil : $0.vaultID }
+        )
+        for (vaultID, paths) in expected {
+            let current = recordsByVault[vaultID] ?? [:]
+            if paths.contains(where: { current[$0.key] != $0.value }) {
+                changed.insert(vaultID)
+            }
+        }
+        return changed
+    }
+
     /// Citation ownership is portable authority. Absence is returned only after
     /// a contained no-follow read proves it; malformed bytes are never an empty store.
     public func citationSnapshot(
@@ -1538,6 +1564,18 @@ public actor TriptychControlStore {
             try ensureControlDirectory()
             try commitIdentityPayload(payload, replacing: &snapshot)
             payload = snapshot.payload
+            // Portable encoding is the committed authority, including Date
+            // precision. Return readback records rather than the provisional
+            // values assembled before serialization.
+            let committedByID = Dictionary(uniqueKeysWithValues: payload.records.map { ($0.id, $0) })
+            result = try result.mapValues { expected in
+                guard let committed = committedByID[expected.id],
+                    committed.vaultID == expected.vaultID,
+                    committed.relativePath == expected.relativePath,
+                    committed.fingerprint == expected.fingerprint
+                else { throw TriptychControlError.invalidIdentities }
+                return committed
+            }
         }
         return NoteIdentityReconciliation(
             identities: result,

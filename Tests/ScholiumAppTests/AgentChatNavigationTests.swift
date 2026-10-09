@@ -14,12 +14,13 @@ struct AgentChatNavigationTests {
         var interactions = 0
         var layouts = 0
         let page = AgentChatReadPageExtension()
-        page.update(onEvent: { event in
-            switch event {
-            case .layout: layouts += 1
-            default: interactions += 1
-            }
-        }, isInteractive: true)
+        page.update(
+            onEvent: { event in
+                switch event {
+                case .layout: layouts += 1
+                default: interactions += 1
+                }
+            }, isInteractive: true)
         let reader = try #require(page.makeWebView(configuration: WKWebViewConfiguration()) as? AgentChatReadWebView)
         reader.frame = NSRect(x: 0, y: 0, width: 320, height: 300)
         let window = NSWindow(contentRect: reader.frame, styleMask: [.titled], backing: .buffered, defer: false)
@@ -34,12 +35,13 @@ struct AgentChatNavigationTests {
         #expect(page.handleMessage(type: "replyInteraction", payload: [:], webView: reader))
         #expect(interactions == 1)
 
-        page.update(onEvent: { event in
-            switch event {
-            case .layout: layouts += 1
-            default: interactions += 1
-            }
-        }, isInteractive: false)
+        page.update(
+            onEvent: { event in
+                switch event {
+                case .layout: layouts += 1
+                default: interactions += 1
+                }
+            }, isInteractive: false)
         #expect(!reader.isHidden, "Outgoing pixels survive until the navigation owner finishes the move.")
         #expect(!reader.acceptsFirstResponder)
         #expect(reader.hitTest(NSPoint(x: 20, y: 20)) == nil)
@@ -47,11 +49,14 @@ struct AgentChatNavigationTests {
         #expect(page.handleMessage(type: "replyInteraction", payload: [:], webView: reader))
         #expect(page.handleMessage(type: "replyQuote", payload: ["text": "Late selected reply"], webView: reader))
         #expect(interactions == 1, "A queued bridge event cannot reopen controls after Back.")
-        let preview: [String: Any] = ["event": [
-            "type": "previewSurface", "surface": [
-                "id": 1, "left": 20.0, "top": 20.0, "bottom": 40.0, "html": "<p>Footnote</p>", "css": ""
+        let preview: [String: Any] = [
+            "event": [
+                "type": "previewSurface",
+                "surface": [
+                    "id": 1, "left": 20.0, "top": 20.0, "bottom": 40.0, "html": "<p>Footnote</p>", "css": "",
+                ],
             ]
-        ]]
+        ]
         #expect(DocumentFloatingEvent.decode(preview["event"]) != nil)
         #expect(page.handleMessage(type: "floatingSurface", payload: preview, webView: reader))
         let dismissal: [String: Any] = ["event": ["type": "dismissSurface", "kind": "preview", "id": 1]]

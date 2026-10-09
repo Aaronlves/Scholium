@@ -30,13 +30,40 @@ extension AgentChatController {
             let admission = executions[conversationID]?.admissionID,
             let operationConnection = connectionID
         else { return refusal("The conversation is not accepting operations.") }
+        let capturesContext = request.tool == .observeWorkspace || request.tool == .observeResearchContext || request.tool == .readContext
+        let permissionRevision = contextAccessPreferences.revision
+        let selectionEpoch = selectionDepartureEpoch
+        let boundWindowID = executions[conversationID]?.displayScope?.windowID
+        let boundRegistrationID = executions[conversationID]?.displayScope?.registrationID
+        if capturesContext {
+            let allowed =
+                request.tool == .readContext
+                ? contextAccessPreferences.allowsWorkingText(for: .chat) : contextAccessPreferences.allowsState(for: .chat)
+            guard allowed else { return try! .init(requestID: request.requestID, error: .contextAccessDenied()) }
+            guard let boundWindowID, admitsDisplay(request, windowID: boundWindowID),
+                (request.tool == .observeWorkspace && request.arguments["window_id"] == nil)
+                    || request.arguments["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == boundWindowID,
+                (request.tool == .observeWorkspace && request.arguments["triptych_id"] == nil)
+                    || request.arguments["triptych_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == triptychID
+            else { return refusal("The context request does not match the admitted originating window.") }
+        }
         let isAdmitted: @MainActor @Sendable () -> Bool = { [weak self] in
             guard let self else { return false }
-            return self.connectionID == operationConnection
+            let executionCurrent =
+                self.connectionID == operationConnection
                 && self.executions[conversationID]?.state == .working
                 && self.executions[conversationID]?.admissionID == admission
                 && self.runtimeContext(for: requestToken) == context
                 && self.conversation(conversationID)?.isAvailable == true
+            guard executionCurrent, capturesContext else { return executionCurrent }
+            guard let boundWindowID else { return false }
+            let allowed =
+                request.tool == .readContext
+                ? self.contextAccessPreferences.allowsWorkingText(for: .chat) : self.contextAccessPreferences.allowsState(for: .chat)
+            return allowed && self.contextAccessPreferences.revision == permissionRevision
+                && self.selectionDepartureEpoch == selectionEpoch && self.selectedID == conversationID
+                && self.executions[conversationID]?.displayScope?.registrationID == boundRegistrationID
+                && self.admitsDisplay(request, windowID: boundWindowID)
         }
         let mutationAdmission: AgentMutationAdmission = {
             guard !Task.isCancelled, isAdmitted() else {
@@ -159,6 +186,9 @@ extension AgentChatController {
         record(.running)
         var arguments = request.arguments
         arguments["triptych_id"] = .string(triptychID.uuidString.lowercased())
+        if request.tool == .observeWorkspace, arguments["window_id"] == nil, let boundWindowID {
+            arguments["window_id"] = .string(boundWindowID.uuidString.lowercased())
+        }
         if request.tool == .showNote {
             guard let scope = executions[conversationID]?.displayScope, admitsDisplay(request, windowID: scope.windowID),
                 arguments["window_id"] == nil || arguments["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == scope.windowID
@@ -175,13 +205,22 @@ extension AgentChatController {
                 conversationToken: request.conversationToken,
                 runtimeContext: request.runtimeContext),
             kind.isMutation ? mutationAdmission : nil)
+        if capturesContext, !isAdmitted() {
+            record(.interrupted)
+            return try! .init(
+                requestID: request.requestID,
+                error: .init(
+                    code: contextAccessPreferences.revision == permissionRevision ? .workspaceNotReady : .permissionDenied,
+                    message: "The context capture was revoked before delivery.",
+                    recovery: "Request a fresh observation from the intended current window and conversation."))
+        }
         let result = response.result?.objectValue ?? [:]
         let changeID = result["change_id"]?.stringValue.flatMap(UUID.init(uuidString:))
         activity.status =
             response.error == nil
             ? .completed : (response.error?.code == .operationUncertain ? .uncertain : .failed)
         activity.detail = response.error.map { $0.message + "\n" + $0.recovery } ?? ""
-        if response.error?.code == .staleRevision || response.error?.code == .conflict {
+        if !capturesContext, response.error?.code == .staleRevision || response.error?.code == .conflict {
             activity.detail = String(
                 localized:
                     "The note changed before this edit could be applied. Read it again before deciding how to continue."
@@ -259,7 +298,7 @@ extension AgentChatController {
             if let page = result["page"]?.intValue { activity.detail += "\n" + String(localized: "Page \(page)") }
             if result["has_more"]?.boolValue == true { activity.detail += "\n" + String(localized: "More text remains in this selection.") }
         }
-        if kind == .read, response.error == nil {
+        if request.tool == .readNote, response.error == nil {
             activity.sourceObservation = AgentChatReadObservation.parse(result)
         }
         recordActivity(activity, id: messageID, conversationID: conversationID, changeID: changeID, turnID: operationTurnID)

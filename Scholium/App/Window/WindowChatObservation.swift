@@ -28,7 +28,9 @@ extension WindowModel {
     func observeChatDocument(admitted: @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation {
         let departure = AgentChatObservationDeparture()
         let closeAttempt = windowCloseCoordinator.closeAttemptSequence
-        let observations = [
+        let lifecycleRegistry = nativeWindowCoordinator?.registry
+        let terminationAttempt = lifecycleRegistry?.terminationAttemptSequence
+        var observations = [
             departure.observing(chatSidebarPreferences.$isEnabled),
             departure.observing($transferInProgress),
             departure.observing(shellState.$libraryVisible),
@@ -42,9 +44,15 @@ extension WindowModel {
             departure.observingNotification(NSWindow.didResignKeyNotification),
             departure.observingNotification(NSWindow.willBeginSheetNotification),
         ]
+        if let lifecycleRegistry {
+            observations.append(departure.observing(lifecycleRegistry.$terminationAttemptSequence))
+        }
         defer { observations.forEach { $0.cancel() } }
         func current() -> Bool {
             !Task.isCancelled && admitted() && departure.isCurrent && isChatSidebarEnabled
+                && nativeWindowCoordinator?.registry === lifecycleRegistry
+                && lifecycleRegistry?.isTerminationAttemptInProgress != true
+                && terminationAttempt != UInt64.max && lifecycleRegistry?.terminationAttemptSequence == terminationAttempt
                 && shellState.libraryVisible && shellState.sidebarContent == .chat
                 && !transferInProgress
                 && !windowCloseCoordinator.isPreparingOrFinalized && windowCloseCoordinator.closeAttemptSequence == closeAttempt

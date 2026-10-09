@@ -101,6 +101,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     let toolHandler: @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
     let observeCurrentState: @MainActor (AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation
+    let contextAccessPreferences: AgentContextAccessPreferences
     let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     var runtime: CodexAppServer?
     @Published var writingAssistanceExecution: CodexWritingAssistance?
@@ -133,6 +134,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         triptychID: UUID, root: URL,
         workspaceDirectory: @escaping @MainActor () async throws -> URL,
         methodDefaults: UserDefaults = .standard,
+        contextAccessPreferences: AgentContextAccessPreferences = .shared,
         saveHistory: (@MainActor ([AgentChatConversation]) async throws -> Void)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
         observeCurrentState: @escaping @MainActor (AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation =
@@ -146,6 +148,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         toolHandler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.triptychID = triptychID
+        self.contextAccessPreferences = contextAccessPreferences
         self.workspaceDirectory = workspaceDirectory
         self.toolHandler = toolHandler
         self.displayWindow = displayWindow

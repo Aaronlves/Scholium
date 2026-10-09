@@ -7,6 +7,28 @@ import Testing
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
 
+    @Test("Identity reconciliation returns the exact committed records for creation and revision changes")
+    func reconciliationReturnsCommittedIdentities() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        var noteID: UUID?
+        for source in ["# Created\n", "# Changed\n"] {
+            let fingerprint = DocumentFingerprint(content: source)
+            let reconciled = try await store.reconcileIdentityInventory(vaultID: vaultID, documents: [("Source.md", fingerprint)])
+            let returned = try #require(reconciled.identities["Source.md"])
+            let persisted = try #require(try await store.identityRecord(id: returned.id))
+            #expect(returned == persisted)
+            #expect(returned.fingerprint == fingerprint)
+            if let noteID { #expect(returned.id == noteID) }
+            noteID = returned.id
+            #expect(try await store.identityInventoryChanges(comparedWith: [vaultID: reconciled.identities]).isEmpty)
+        }
+    }
+
     @Test("A committed identity revision cannot replace an unrelated revision or create a missing identity")
     func guardedCommittedIdentityRevision() async throws {
         let fixture = try Fixture()

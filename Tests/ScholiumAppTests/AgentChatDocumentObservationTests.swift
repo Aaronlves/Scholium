@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import ScholiumApplication
@@ -240,6 +241,32 @@ struct AgentChatDocumentObservationTests {
         let json = String(decoding: try JSONEncoder().encode([failed.0.jsonValue, failed.1.jsonValue]), as: UTF8.self)
         #expect(!json.contains("PRIVATE") && !json.contains("/private") && !json.contains("secret-token"))
         #expect(!fixture.editor.isDirty && fixture.editor.errorMessage == nil)
+    }
+
+    @Test("Explicit source capture returns exact working bytes without updating source, Undo, focus or save callbacks")
+    func explicitSourceObservationIsReadOnly() async throws {
+        let fixture = try await EditorFixture.make(source: source)
+        defer { fixture.close() }
+        fixture.select([.init(anchor: 5, head: 14)], focusTarget: .editor)
+        var callbacks = 0
+        fixture.editor.installSourceChangeHandler { callbacks += 1 }
+        fixture.editor.installCommittedTextSynchronizer { _, _ in callbacks += 1 }
+        let presentation = fixture.editor.windowPresentationSnapshot(scrollFraction: 0.25)
+        let context = fixture.editor.context
+        let snapshot = try await fixture.editor.currentAgentSourceSnapshot()
+        #expect(snapshot.source.utf8.elementsEqual(source.utf8))
+        #expect(snapshot.fingerprint == DocumentFingerprint(content: source))
+        #expect(snapshot.selection == .range(.init(startUTF8: 8, endUTF8: 25, startLine: 2, endLine: 3)))
+        #expect(fixture.editor.windowPresentationSnapshot(scrollFraction: 0.25) == presentation)
+        #expect(fixture.editor.context == context && !fixture.editor.isDirty && callbacks == 0)
+        fixture.dispatcher.holdQuery = true
+        let pending = Task { try await fixture.editor.currentAgentSourceSnapshot() }
+        defer { pending.cancel() }
+        try await wait { fixture.dispatcher.hasPendingQuery }
+        fixture.select([.init(anchor: 0, head: 0)])
+        fixture.select([.init(anchor: 5, head: 14)])
+        fixture.dispatcher.releaseQuery()
+        await expectFailure(.staleRevision) { _ = try await pending.value }
     }
 
     @Test("Title focus does not expose the retained body selection as the current selection")
@@ -525,7 +552,10 @@ struct AgentChatDocumentObservationTests {
 
     @Test(
         "A failed close or window-context leave-and-return revokes the pending observation",
-        arguments: ["failedClose", "transfer", "sidebar", "chatDisabled", "vault", "document", "mode"])
+        arguments: [
+            "failedClose", "failedTermination", "transfer", "sidebar", "chatDisabled", "vault", "document", "mode",
+            "sharedSidebar", "sharedChatDisabled", "sharedKey", "sharedSheet", "sharedExternalTermination", "sharedExternalNonKey",
+        ])
     func windowDepartureDuringQuery(change: String) async throws {
         try await withStore { store, root in
             let suite = "Scholium.ChatObservation.WindowDeparture.\(UUID())"
@@ -574,8 +604,31 @@ struct AgentChatDocumentObservationTests {
                 flushContent: { _ in throw SyntheticSaveFailure.failed }, presentationSnapshot: { nil },
                 recordPersistenceFailure: { _ in }, finalizeDependencies: {})
             let closeAttempt = window.windowCloseCoordinator.closeAttemptSequence
+            let isShared = change.hasPrefix("shared")
+            let isExternal = change.hasPrefix("sharedExternal")
+            let sharedReadsWorkingText = change == "sharedChatDisabled"
+            let registry = ScholiumWindowLifecycleRegistry(policy: ScholiumLifecyclePolicy())
+            let nativeCoordinator: WorkspaceWindowCoordinator? =
+                change == "sharedExternalTermination" || change == "failedTermination"
+                ? WorkspaceWindowCoordinator(windowID: window.nativeWindowID, appState: window, lifecycleRegistry: registry) : nil
+            defer { nativeCoordinator?.detach() }
+            var sharedArguments: [String: MCPJSONValue] = [
+                "triptych_id": .string(configured.id.uuidString.lowercased()),
+                "window_id": .string(window.nativeWindowID.uuidString.lowercased()),
+            ]
+            if sharedReadsWorkingText {
+                sharedArguments["kind"] = .string("active_note")
+                sharedArguments["note_id"] = .string(descriptor.sessionKey.noteID.uuidString.lowercased())
+                sharedArguments["expected_fingerprint"] = AgentWindowObservation.fingerprintValue(DocumentFingerprint(content: source))
+            }
+            let sharedRequest = ScholiumMCPBridgeRequest(
+                tool: sharedReadsWorkingText ? .readContext : .observeResearchContext,
+                arguments: sharedArguments, conversationToken: isExternal ? nil : UUID())
             editor.dispatcher.holdQuery = true
-            let pending = Task { try await window.observeChatDocument(admitted: { true }) }
+            let pending = Task {
+                if isShared { return try await window.observeAgentState(sharedRequest, admitted: { true }) }
+                return try await window.observeChatDocument(admitted: { true }).jsonValue
+            }
             defer { pending.cancel() }
             try await wait { editor.dispatcher.hasPendingQuery }
             switch change {
@@ -590,10 +643,10 @@ struct AgentChatDocumentObservationTests {
             case "transfer":
                 window.transferInProgress = true
                 window.transferInProgress = false
-            case "sidebar":
+            case "sidebar", "sharedSidebar":
                 window.shellState.recordLibraryVisibility(false)
                 window.shellState.recordLibraryVisibility(true)
-            case "chatDisabled":
+            case "chatDisabled", "sharedChatDisabled":
                 preferences.isEnabled = false
                 preferences.isEnabled = true
                 #expect(window.shellState.sidebarContent == .library)
@@ -606,19 +659,60 @@ struct AgentChatDocumentObservationTests {
             case "document":
                 window.documentController.selectUnavailableDocument(vaultID: descriptor.reference.vaultID, relativePath: "Missing.md")
                 window.documentController.selectDocument(document)
+            case "sharedKey":
+                NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+            case "sharedSheet":
+                NotificationCenter.default.post(name: NSWindow.willBeginSheetNotification, object: nil)
+            case "sharedExternalTermination", "failedTermination":
+                let attempt = registry.terminationAttemptSequence
+                registry.beginTerminationAttempt()
+                registry.endTerminationAttempt()
+                #expect(!registry.isTerminationAttemptInProgress && registry.terminationAttemptSequence > attempt)
+                #expect(window.windowCloseCoordinator.closeAttemptSequence == closeAttempt)
+            case "sharedExternalNonKey":
+                NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+                NotificationCenter.default.post(name: NSWindow.willBeginSheetNotification, object: nil)
+                window.shellState.recordLibraryVisibility(false)
+                window.shellState.recordLibraryVisibility(true)
             default:
                 window.rememberPresentationMode(.read)
                 window.rememberPresentationMode(.source)
             }
             #expect(editor.editor.context == context && editor.editor.generation == 0)
             editor.dispatcher.releaseQuery()
-            await expectFailure(.workspaceNotReady) { _ = try await pending.value }
+            if change == "sharedExternalNonKey" {
+                let captured = try await pending.value
+                #expect(
+                    captured.objectValue?["active_note"]?.objectValue?["revision"]
+                        == AgentChatDocumentObservation.Revision.editorSnapshot(DocumentFingerprint(content: source)).jsonValue)
+            } else if isShared {
+                do {
+                    _ = try await pending.value
+                    Issue.record("Shared capture accepted a departed context")
+                } catch let failure as ScholiumMCPFailure {
+                    #expect(failure.code == .workspaceNotReady)
+                }
+            } else {
+                await expectFailure(.workspaceNotReady) { _ = try await pending.value }
+            }
             #expect(try Data(contentsOf: file) == Data(source.utf8))
             #expect(window.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey)
             _ = window.shellState.activateSidebar(.chat)
             window.shellState.recordLibraryVisibility(true)
-            let fresh = try await window.observeChatDocument(admitted: { true })
-            #expect(fresh.activeNote?.revision == .editorSnapshot(DocumentFingerprint(content: source)))
+            if isShared {
+                let fresh = try await window.observeAgentState(sharedRequest, admitted: { true })
+                if sharedReadsWorkingText {
+                    #expect(fresh.objectValue?["text"]?.stringValue?.utf8.elementsEqual(source.utf8) == true)
+                    #expect(fresh.objectValue?["origin"] == .string("editor_snapshot"))
+                } else {
+                    #expect(
+                        fresh.objectValue?["active_note"]?.objectValue?["revision"]
+                            == AgentChatDocumentObservation.Revision.editorSnapshot(DocumentFingerprint(content: source)).jsonValue)
+                }
+            } else {
+                let fresh = try await window.observeChatDocument(admitted: { true })
+                #expect(fresh.activeNote?.revision == .editorSnapshot(DocumentFingerprint(content: source)))
+            }
         }
     }
 

@@ -14,6 +14,7 @@ final class MCPAppBridgeRequestRouter {
 
     private let displayWindows: @MainActor (UUID) -> [MCPJSONValue]
     private let displayNote: @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void
+    private let observeAgentState: @MainActor (ScholiumMCPBridgeRequest) async throws -> MCPJSONValue
     private let runtime: WorkspaceRuntime
     private let flushEditors: EditorFlusher
     private let didConfirmChange: @MainActor (AgentChange) -> Void
@@ -27,10 +28,14 @@ final class MCPAppBridgeRequestRouter {
         displayNote: @escaping @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void = { _, _, _ in
             throw WorkspaceStore.displayUnavailable()
         },
-        didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in }
+        didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in },
+        observeAgentState: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> MCPJSONValue = { _ in
+            throw ScholiumMCPFailure.contextAccessDenied()
+        }
     ) {
         self.displayWindows = displayWindows
         self.displayNote = displayNote
+        self.observeAgentState = observeAgentState
         self.runtime = runtime
         self.flushEditors = flushEditors
         self.openTriptychs = openTriptychs
@@ -62,6 +67,8 @@ final class MCPAppBridgeRequestRouter {
         -> MCPJSONValue
     {
         switch request.tool {
+        case .observeWorkspace, .observeResearchContext, .readContext:
+            return try await observeAgentState(request)
         case .workspaceStatus:
             return try await workspaceStatus(request.arguments)
         case .browse:

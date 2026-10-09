@@ -47,7 +47,7 @@ struct AgentMCPServiceTests {
             .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState,
         ]
         let researchTools = ScholiumMCPToolName.allCases.filter { !chatControls.contains($0) }
-        #expect(researchTools.count == 16)
+        #expect(researchTools.count == 19)
         #expect(ScholiumMCPToolName.allCases.filter(\.isChatControl) == chatControls)
         for (handler, expectedTools) in [(external, researchTools), (scoped, researchTools + chatControls)] {
             let data = try #require(await handler(Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)))

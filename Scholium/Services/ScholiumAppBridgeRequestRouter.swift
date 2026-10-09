@@ -18,6 +18,9 @@ final class ScholiumAppBridgeRequestRouter {
             throw WorkspaceStore.displayUnavailable()
         },
         didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in },
+        observeAgentState: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> MCPJSONValue = { _ in
+            throw ScholiumMCPFailure.contextAccessDenied()
+        },
         chatHandler: (@MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse)? = nil
     ) {
         self.chatHandler = chatHandler
@@ -25,7 +28,8 @@ final class ScholiumAppBridgeRequestRouter {
             runtime: runtime,
             flushEditors: flushEditors,
             openTriptychs: openTriptychs,
-            displayWindows: displayWindows, displayNote: displayNote, didConfirmChange: didConfirmChange
+            displayWindows: displayWindows, displayNote: displayNote, didConfirmChange: didConfirmChange,
+            observeAgentState: observeAgentState
         )
     }
 

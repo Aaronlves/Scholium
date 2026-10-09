@@ -220,7 +220,12 @@ Actions and runtime configuration. Connection and Chat contains the native
 search leading to this single editing location; §18.2 owns its
 availability and preservation contract. Agents & Chat keeps connection state and
 primary connect or sign-in actions in Connection and Chat, with custom paths
-inline. Skills and Tools and External Access are its retained task segments.
+inline. Skills and Tools and External Access are its retained task segments. Connection
+and Chat and External Access each expose **Agent Context Access — This Mac**,
+with independent native checkboxes for inspecting state and reading working text.
+They remain available without a Triptych, take effect immediately and identify
+invalid stored grants. §8.3 owns defaults, capture revocation and access scope;
+Ask/Full Access retains its separate runtime and mutation meanings.
 Selection Action edits belong to one page draft and have one scoped Save;
 inline shortcut capture stops when its page becomes inactive. Tool edits remain
 independent transactions; moving them inline does not alter configuration

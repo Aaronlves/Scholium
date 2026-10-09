@@ -27,6 +27,14 @@ struct VaultSourceCatalogSnapshot: Sendable {
     let measurement: VaultSourceCatalogMeasurement
 }
 
+/// The cached inputs that can change a published Vault inventory. This omits
+/// ordered semantic projections and source-version maps used by a full build.
+struct VaultSourceCatalogPublicationInventory: Sendable {
+    let fingerprints: [String: DocumentFingerprint]
+    let fileMetadata: [String: WorkspaceFileMetadata]
+    let folders: [VaultRelativeFolderPath]
+}
+
 /// Rebuildable, descriptor-backed source projection for one pooled vault.
 /// Markdown remains authority; only exact-revision compact projections remain
 /// resident after each authorized source read and semantic parse.
@@ -113,6 +121,15 @@ actor VaultSourceCatalog {
     ) async throws -> [String: DocumentFingerprint] {
         try await prepareSnapshot(refreshFolders: refreshFolders)
         return records.mapValues { $0.projection.fingerprint }
+    }
+
+    func publicationInventory() async throws -> VaultSourceCatalogPublicationInventory {
+        try await prepareSnapshot(refreshFolders: false)
+        return VaultSourceCatalogPublicationInventory(
+            fingerprints: records.mapValues { $0.projection.fingerprint },
+            fileMetadata: records.mapValues(\.fileMetadata),
+            folders: folders
+        )
     }
 
     func sourceVersion(

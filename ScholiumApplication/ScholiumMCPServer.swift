@@ -554,6 +554,57 @@ public actor ScholiumMCPServer {
             destructive: true,
             idempotent: false
         ),
+        tool(
+            .observeWorkspace,
+            description:
+                "Observe bounded live app-state metadata for an explicit Triptych. Omit triptych_id for passive Triptych discovery. Supply it to list registered windows, and window_id to inspect open tabs and readiness. In-app workspace calls bind omitted identities to the turn’s already admitted originating window. Native Agent Context Access settings control access. Reads cached owners without saving, refreshing, navigation or provider calls; cached readiness does not prove disk currentness. Continuations require the returned listing hash.",
+            properties: [
+                "triptych_id": uuidSchema("Explicit open Triptych UUID."), "window_id": uuidSchema("Exact registered window UUID."),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "expected_listing_fingerprint": fingerprintSchema,
+            ], required: [],
+            alternatives: [
+                .object(["not": forbiddenContextFields(["triptych_id", "window_id"])]),
+                .object(["required": .array([.string("triptych_id")])]),
+            ], readOnly: true, destructive: false, idempotent: true),
+        tool(
+            .observeResearchContext,
+            description:
+                "Observe the exact window's active Note revision and selection coordinates, Library/Search/Related state and paged Kept Passage references. Returns metadata without working text or philosophical judgments. Native state access is required; unavailable or changed state remains explicit. No save, hydration, vault scan or provider call. Use explicit reads for exact content and preserve captured source provenance.",
+            properties: [
+                "triptych_id": uuidSchema("Explicit open Triptych UUID."), "window_id": uuidSchema("Exact registered window UUID."),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "expected_listing_fingerprint": fingerprintSchema,
+            ], required: ["triptych_id", "window_id"], readOnly: true, destructive: false, idempotent: true),
+        tool(
+            .readContext,
+            description:
+                "Read one explicit bounded exact working-text slice from the active Note, its verified selection or a retained Kept Passage. Native working-text permission is independent of state and write permissions. Requires the captured source fingerprint and Note identity; selection also binds original source coordinates. UTF-8 paging is relative to the requested material. Kept text is a historical snapshot; editor text is an unsaved snapshot when applicable. No save, fallback source, navigation or new authority.",
+            properties: [
+                "triptych_id": uuidSchema("Explicit open Triptych UUID."), "window_id": uuidSchema("Exact registered window UUID."),
+                "kind": enumSchema(["active_note", "selection", "kept_passage"]),
+                "note_id": uuidSchema("Exact active Note UUID; required for active Note or selection."),
+                "expected_fingerprint": fingerprintSchema, "kept_passage_id": boundedStringSchema(maximum: 8_192),
+                "expected_start_utf8": nonnegativeIntegerSchema,
+                "expected_end_utf8": .object(["type": .string("integer"), "minimum": .integer(1)]),
+                "start_utf8": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "max_utf8": integerSchema(minimum: 1, maximum: 65_536, default: 16_384),
+            ], required: ["triptych_id", "window_id", "kind", "expected_fingerprint"],
+            alternatives: [
+                .object([
+                    "properties": .object(["kind": enumSchema(["active_note"])]), "required": .array([.string("note_id")]),
+                    "not": forbiddenContextFields(["kept_passage_id", "expected_start_utf8", "expected_end_utf8"]),
+                ]),
+                .object([
+                    "properties": .object(["kind": enumSchema(["selection"])]),
+                    "required": .array([.string("note_id"), .string("expected_start_utf8"), .string("expected_end_utf8")]),
+                    "not": forbiddenContextFields(["kept_passage_id"]),
+                ]),
+                .object([
+                    "properties": .object(["kind": enumSchema(["kept_passage"])]), "required": .array([.string("kept_passage_id")]),
+                    "not": forbiddenContextFields(["expected_start_utf8", "expected_end_utf8"]),
+                ]),
+            ], readOnly: true, destructive: false, idempotent: true),
     ]
 
     private static func toolDefinitions(conversationToken: UUID?) -> [MCPJSONValue] {
@@ -860,6 +911,67 @@ public actor ScholiumMCPServer {
                 ]
             case .observeCurrentState:
                 [chatObservationSchema]
+            case .observeWorkspace:
+                [
+                    successSchema(
+                        properties: [
+                            "observed_at": simpleSchema("string"),
+                            "triptychs": contextListingSchema(
+                                contextObject(["triptych_id": uuidSchema("Open Triptych UUID."), "window_count": nonnegativeIntegerSchema])),
+                        ], required: ["observed_at", "triptychs"]),
+                    successSchema(
+                        properties: [
+                            "triptych_id": uuidSchema("Observed Triptych UUID."), "observed_at": simpleSchema("string"),
+                            "windows": contextListingSchema(contextWindowSummarySchema),
+                        ], required: ["triptych_id", "observed_at", "windows"]),
+                    successSchema(
+                        properties: [
+                            "triptych_id": uuidSchema("Observed Triptych UUID."), "window_id": uuidSchema("Observed window UUID."),
+                            "observed_at": simpleSchema("string"), "window": contextWindowSchema,
+                            "listing_fingerprint": fingerprintSchema, "tabs": contextPageSchema(contextTabSchema),
+                        ], required: ["triptych_id", "window_id", "observed_at", "window", "listing_fingerprint", "tabs"]),
+                ]
+            case .observeResearchContext:
+                [
+                    successSchema(
+                        properties: [
+                            "triptych_id": uuidSchema("Observed Triptych UUID."), "window_id": uuidSchema("Observed window UUID."),
+                            "observed_at": simpleSchema("string"), "window": contextWindowSchema, "listing_fingerprint": fingerprintSchema,
+                            "document_surface": enumSchema(["none", "triptych_note", "external_document", "unavailable"]),
+                            "active_note": nullable(contextActiveNoteSchema), "library": contextLibrarySchema, "search": contextSearchSchema,
+                            "related_material": contextRelatedSchema, "kept_passages": contextKeptSchema,
+                        ],
+                        required: [
+                            "triptych_id", "window_id", "observed_at", "window", "listing_fingerprint", "document_surface", "active_note", "library", "search",
+                            "related_material", "kept_passages",
+                        ])
+                ]
+            case .readContext:
+                [
+                    successSchema(
+                        properties: [
+                            "triptych_id": uuidSchema("Observed Triptych UUID."), "window_id": uuidSchema("Observed window UUID."),
+                            "observed_at": simpleSchema("string"),
+                            "kind": enumSchema(["active_note", "selection", "kept_passage"]),
+                            "origin": enumSchema(["editor_snapshot", "saved_source", "kept_snapshot"]),
+                            "note": closedObject(
+                                properties: [
+                                    "vault_id": uuidSchema("Source vault UUID."), "note_id": nullable(uuidSchema("Source Note UUID.")), "role": roleSchema,
+                                    "relative_path": boundedStringSchema(maximum: 4_096),
+                                ], required: ["vault_id", "note_id", "role", "relative_path"]),
+                            "fingerprint": fingerprintSchema, "text_fingerprint": fingerprintSchema, "source_locator": contextReadLocatorSchema,
+                            "kept_passage_id": nullable(boundedStringSchema(maximum: 8_192)), "text": simpleSchema("string"),
+                            "coverage": closedObject(
+                                properties: [
+                                    "basis": enumSchema(["context"]), "total_utf8": nonnegativeIntegerSchema, "start_utf8": nonnegativeIntegerSchema,
+                                    "end_utf8": nonnegativeIntegerSchema, "has_more": booleanSchema, "next_start_utf8": nullable(nonnegativeIntegerSchema),
+                                ], required: ["basis", "total_utf8", "start_utf8", "end_utf8", "has_more", "next_start_utf8"]),
+                        ],
+                        required: [
+                            "triptych_id", "window_id", "observed_at", "kind", "origin", "note", "fingerprint", "text_fingerprint", "source_locator",
+                            "kept_passage_id", "text", "coverage",
+                        ])
+                ]
             case .workspaceStatus:
                 [
                     successSchema(
@@ -1224,6 +1336,165 @@ public actor ScholiumMCPServer {
         ])
     }
 
+    private static func forbiddenContextFields(_ keys: [String]) -> MCPJSONValue {
+        .object(["anyOf": .array(keys.map { .object(["required": .array([.string($0)])]) })])
+    }
+
+    private static func contextObject(_ properties: [String: MCPJSONValue]) -> MCPJSONValue {
+        closedObject(properties: properties, required: properties.keys.sorted())
+    }
+
+    private static func contextPageSchema(_ item: MCPJSONValue) -> MCPJSONValue {
+        contextObject([
+            "offset": nonnegativeIntegerSchema, "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+            "total": nonnegativeIntegerSchema, "has_more": booleanSchema, "next_offset": nullable(nonnegativeIntegerSchema),
+            "items": .object(["type": .string("array"), "maxItems": .integer(100), "items": item]),
+        ])
+    }
+
+    private static func contextListingSchema(_ item: MCPJSONValue) -> MCPJSONValue {
+        var fields = contextPageSchema(item).objectValue!["properties"]!.objectValue!
+        fields["listing_fingerprint"] = fingerprintSchema
+        return contextObject(fields)
+    }
+
+    private static var contextNoteReferenceSchema: MCPJSONValue {
+        contextObject([
+            "vault_id": uuidSchema("Source vault UUID."), "note_id": nullable(uuidSchema("Stable Note UUID, unavailable when unresolved.")),
+            "role": roleSchema, "relative_path": boundedStringSchema(maximum: 4_096),
+        ])
+    }
+
+    private static var contextActiveNoteSchema: MCPJSONValue {
+        var schema = chatObservationSchema.objectValue!["properties"]!.objectValue!["active_note"]!.objectValue!["anyOf"]!.arrayValue![0].objectValue!
+        var fields = schema["properties"]!.objectValue!
+        for key in ["dirty", "saving", "conflict"] { fields[key] = nullable(booleanSchema) }
+        schema["properties"] = .object(fields)
+        return .object(schema)
+    }
+
+    private static var contextTabSchema: MCPJSONValue {
+        var fields = contextNoteReferenceSchema.objectValue!["properties"]!.objectValue!
+        let active = contextActiveNoteSchema.objectValue!["properties"]!.objectValue!
+        for key in ["mode", "revision", "dirty", "saving", "conflict"] { fields[key] = active[key] }
+        return contextObject([
+            "tab_id": uuidSchema("Presentation tab UUID."), "selected": booleanSchema,
+            "document_surface": enumSchema(["triptych_note", "unavailable"]), "note": nullable(contextObject(fields)),
+            "errors": arraySchema(enumSchema(["document_save", "document_conflict"])),
+        ])
+    }
+
+    private static var contextWindowSummarySchema: MCPJSONValue {
+        contextObject([
+            "window_id": uuidSchema("Registered window UUID."), "kind": nullable(enumSchema(["main", "document"])),
+            "selected_tab_id": nullable(uuidSchema("Selected tab UUID.")), "tab_count": nullable(nonnegativeIntegerSchema),
+            "restoring": nullable(booleanSchema), "transferring": nullable(booleanSchema), "closing": nullable(booleanSchema), "available": booleanSchema,
+        ])
+    }
+
+    private static var contextWindowSchema: MCPJSONValue {
+        var fields = contextWindowSummarySchema.objectValue!["properties"]!.objectValue!
+        fields.removeValue(forKey: "available")
+        fields["kind"] = enumSchema(["main", "document"])
+        fields["tab_count"] = nonnegativeIntegerSchema
+        for key in ["restoring", "transferring", "closing"] { fields[key] = booleanSchema }
+        fields["selected_role"] = roleSchema
+        fields["sidebar"] = contextObject(["visible": booleanSchema, "content": enumSchema(["library", "chat"])])
+        fields["inspector"] = contextObject(["visible": booleanSchema, "mode": enumSchema(["links", "related"])])
+        fields["focus_layout"] = booleanSchema
+        fields["software"] = contextObject(["version": nullable(simpleSchema("string")), "build": nullable(simpleSchema("string"))])
+        var recovery: [String: MCPJSONValue] = ["snapshot_available": booleanSchema, "identity_recovering": booleanSchema]
+        for key in [
+            "pending_changes_count", "agent_changes_count", "transaction_recovery_count", "interrupted_save_recovery_count", "attention_count",
+            "identity_ambiguity_count", "identity_pending_rebinding_count", "identity_migration_failure_count",
+        ] {
+            recovery[key] = nullable(nonnegativeIntegerSchema)
+        }
+        recovery["errors"] = arraySchema(
+            enumSchema(["agent_changes", "pending_changes", "transaction_recovery", "interrupted_save_recovery", "note_identity"]))
+        fields["recovery"] = contextObject(recovery)
+        let generation = nullable(contextObject(["sequence": nonnegativeIntegerSchema, "manifest_sha256": simpleSchema("string")]))
+        fields["workspace"] = contextObject([
+            "availability": enumSchema(["unavailable", "opening", "complete"]), "phase": enumSchema(["unavailable", "opening", "complete"]),
+            "generated_at": nullable(simpleSchema("string")), "refreshing": booleanSchema,
+            "derived_state": enumSchema(["unavailable", "opening", "current", "stale", "failed"]),
+            "search_generation": generation, "graph_generation": generation,
+            "errors": arraySchema(enumSchema(["catalog", "access_recovery", "workspace_recovery"])),
+        ])
+        fields["errors"] = arraySchema(enumSchema(["window_session", "operation_issue"]))
+        return contextObject(fields)
+    }
+
+    private static var contextLocatorSchema: MCPJSONValue {
+        var fields = ["start_utf16": nonnegativeIntegerSchema, "end_utf16": nonnegativeIntegerSchema]
+        for key in ["start_line", "start_column", "end_line", "end_column"] {
+            fields[key] = .object(["type": .string("integer"), "minimum": .integer(1)])
+        }
+        return contextObject(fields)
+    }
+
+    private static var contextLibrarySchema: MCPJSONValue {
+        contextObject([
+            "role": roleSchema, "source_scope": enumSchema(["library"]), "loading": booleanSchema, "has_error": booleanSchema,
+            "unavailable_reference_count": nonnegativeIntegerSchema,
+            "selection": contextPageSchema(
+                contextObject([
+                    "kind": enumSchema(["note", "folder_or_unavailable"]), "vault_id": uuidSchema("Selected vault UUID."),
+                    "relative_path": boundedStringSchema(maximum: 4_096), "note": nullable(contextNoteReferenceSchema),
+                ])),
+        ])
+    }
+
+    private static var contextSearchSchema: MCPJSONValue {
+        contextObject([
+            "scope": enumSchema(["triptych", "thisNote", "currentVault"]), "query_present": booleanSchema, "query_text_omitted": enumBooleanTrue,
+            "running": booleanSchema, "availability": enumSchema(["unavailable", "building", "current", "limited", "refreshing", "stale", "failed"]),
+            "has_error": booleanSchema, "has_more_results": booleanSchema, "unavailable_reference_count": nonnegativeIntegerSchema,
+            "indeterminate_document_count": nonnegativeIntegerSchema,
+            "results": contextPageSchema(
+                contextObject([
+                    "result_id": simpleSchema("string"), "selected": booleanSchema, "note": contextNoteReferenceSchema,
+                    "fingerprint": fingerprintSchema, "source_locator": nullable(contextLocatorSchema),
+                ])),
+        ])
+    }
+
+    private static var contextRelatedSchema: MCPJSONValue {
+        contextObject([
+            "loading": booleanSchema, "did_search": booleanSchema, "has_error": booleanSchema, "needs_refresh": booleanSchema,
+            "context_changed": booleanSchema, "omitted_count": nonnegativeIntegerSchema, "seed_text_omitted": enumBooleanTrue,
+            "unavailable_reference_count": nonnegativeIntegerSchema,
+            "passages": contextPageSchema(
+                contextObject([
+                    "passage_id": simpleSchema("string"), "note": contextNoteReferenceSchema, "fingerprint": fingerprintSchema,
+                    "source_locator": contextLocatorSchema,
+                ])),
+        ])
+    }
+
+    private static var contextKeptSchema: MCPJSONValue {
+        contextObject([
+            "has_error": booleanSchema, "unavailable_reference_count": nonnegativeIntegerSchema,
+            "passages": contextPageSchema(
+                contextObject([
+                    "kept_passage_id": boundedStringSchema(maximum: 8_192), "note": contextNoteReferenceSchema, "fingerprint": fingerprintSchema,
+                    "source_locator": contextLocatorSchema, "action_locator": contextLocatorSchema, "origin": enumSchema(["kept_snapshot"]),
+                ])),
+        ])
+    }
+
+    private static var contextReadLocatorSchema: MCPJSONValue {
+        let ranges = contextActiveNoteSchema.objectValue!["properties"]!.objectValue!["selection"]!.objectValue!["oneOf"]!.arrayValue!
+        return .object([
+            "oneOf": .array([
+                contextLocatorSchema, ranges[1],
+                contextObject(["state": enumSchema(["whole_note"]), "start_utf8": nonnegativeIntegerSchema, "end_utf8": nonnegativeIntegerSchema]),
+            ])
+        ])
+    }
+
+    private static var enumBooleanTrue: MCPJSONValue { .object(["type": .string("boolean"), "const": .bool(true)]) }
+
     private static var noteContextSchema: MCPJSONValue {
         closedObject(properties: ["attachments": attachmentListingSchema], required: ["attachments"])
     }
@@ -1311,7 +1582,7 @@ public actor ScholiumMCPServer {
             properties: [
                 "schema_version": .object(["type": .string("integer"), "const": .integer(ScholiumMCPContract.currentToolSchemaVersion)]),
                 "status": .object(["type": .string("string"), "const": .string("failed")]),
-                "code": enumSchema(["app_unavailable", "workspace_not_ready", "stale_revision", "invalid_request", "internal_error"]),
+                "code": enumSchema(["app_unavailable", "workspace_not_ready", "stale_revision", "invalid_request", "permission_denied", "internal_error"]),
                 "message": boundedStringSchema(maximum: 1_024), "recovery": boundedStringSchema(maximum: 1_024),
             ], required: ["schema_version", "status", "code", "message", "recovery"])
     }
