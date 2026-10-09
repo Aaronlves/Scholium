@@ -360,6 +360,266 @@ struct ZoteroMCPServerTests {
         #expect(query?.contains(.init(name: "limit", value: "25")) == true)
     }
 
+    @Test("BibTeX export returns one requested page with explicit continuation and exact bytes")
+    func bibtexExportOnePage() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let first = "\n@book{first,\n title = {First}\n}\n\n"
+        let second = "@book{second,\n title = {Second}\n}\r\n"
+        for text in [first, second] {
+            await client.enqueue(
+                method: "GET", path: "/api/users/0/items/top",
+                response: .init(
+                    statusCode: 200, headers: ["Total-Results": "2"], body: Data(text.utf8)))
+        }
+        let server = ZoteroMCPServer(client: client)
+        let page1 = try structuredContent(
+            await toolCall(
+                server, id: 1, name: "zotero_export_bibtex", arguments: ["library": "user", "limit": 1]))
+        #expect(page1["bibtex"] as? String == first)
+        #expect(page1["bytes"] as? Int == first.utf8.count)
+        #expect(page1["entries"] as? Int == 1 && page1["total_items"] as? Int == 2)
+        #expect(page1["start"] as? Int == 0 && page1["limit"] as? Int == 1)
+        #expect(page1["coverage"] as? String == "library_page")
+        #expect(page1["has_more"] as? Bool == true && page1["next_start"] as? Int == 1)
+        #expect(await client.recordedRequests().count == 1)
+        let page2 = try structuredContent(
+            await toolCall(
+                server, id: 2, name: "zotero_export_bibtex", arguments: ["library": "user", "limit": 1, "start": 1]))
+        #expect(page2["bibtex"] as? String == second)
+        #expect(page2["bytes"] as? Int == second.utf8.count)
+        #expect(page2["has_more"] as? Bool == false && page2["next_start"] is NSNull)
+        let requests = await client.recordedRequests()
+        #expect(requests.count == 2)
+        for (start, request) in requests.enumerated() {
+            let query = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            #expect(query?.contains(.init(name: "limit", value: "1")) == true)
+            #expect(query?.contains(.init(name: "start", value: String(start))) == true)
+            #expect(query?.contains(.init(name: "sort", value: "title")) == true)
+        }
+    }
+
+    @Test("An export page containing only unsupported item types still has item continuation")
+    func bibtexEmptyPageContinues() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: #"[{"id":42,"name":"Synthetic Group"}]"#)
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items",
+            response: .init(
+                statusCode: 200, headers: ["Total-Results": "20005"], body: Data("\n\n".utf8)))
+        let server = ZoteroMCPServer(client: client)
+        let response = try await toolCall(
+            server, id: 1, name: "zotero_export_bibtex",
+            arguments: [
+                "library": "group:42", "include_children": true, "limit": 2, "start": 10001,
+            ])
+        #expect(try !toolIsError(response))
+        let page = try structuredContent(response)
+        #expect(page["entries"] as? Int == 0 && page["bytes"] as? Int == 2)
+        #expect(page["has_more"] as? Bool == true && page["next_start"] as? Int == 10003)
+        let requests = await client.recordedRequests()
+        #expect(requests.count == 2 && requests.first?.url?.path == "/api/users/0/groups")
+        let query = URLComponents(url: try #require(requests.last?.url), resolvingAgainstBaseURL: false)?.queryItems
+        #expect(query?.contains(.init(name: "start", value: "10001")) == true)
+    }
+
+    @Test("One-item BibTeX export retains exact library identity and counts top-level declarations")
+    func bibtexExactItemExport() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: #"[{"id":42,"name":"Synthetic Group"}]"#)
+        let text =
+            #"@book{one, title = {A {Nested} Title}, abstract = {Line"# + "\n"
+            + #"@misc{within, title = {Text, not another entry}} and an escaped \{ brace}"# + "\n}\n"
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items",
+            response: .init(
+                statusCode: 200, body: Data(text.utf8)))
+        let server = ZoteroMCPServer(client: client)
+        let response = try await toolCall(
+            server, id: 1, name: "zotero_export_bibtex",
+            arguments: [
+                "library": "group:42", "item_key": "ITEM0001", "include_children": true, "limit": 100,
+            ])
+        #expect(try !toolIsError(response))
+        let page = try structuredContent(response)
+        #expect(page["bibtex"] as? String == text && page["entries"] as? Int == 1)
+        #expect(page["coverage"] as? String == "item" && page["limit"] as? Int == 1)
+        #expect(page["has_more"] as? Bool == false && page["next_start"] is NSNull)
+        let library = try object(page["library"])
+        #expect(library["type"] as? String == "group" && library["id"] as? Int == 42)
+        let requests = await client.recordedRequests()
+        #expect(requests.count == 2 && requests.first?.url?.path == "/api/users/0/groups")
+        let query = URLComponents(url: try #require(requests.last?.url), resolvingAgainstBaseURL: false)?.queryItems
+        #expect(query?.contains(.init(name: "itemKey", value: "ITEM0001")) == true)
+        #expect(query?.contains(.init(name: "limit", value: "1")) == true)
+        #expect(query?.contains(where: { $0.name == "start" }) == false)
+    }
+
+    @Test("BibTeX pages refuse unverified totals rather than claiming complete coverage", arguments: [nil, "invalid", "-1"] as [String?])
+    func bibtexPageRequiresVerifiedTotal(header: String?) async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueue(
+            method: "GET", path: "/api/users/0/items/top",
+            response: .init(
+                statusCode: 200, headers: header.map { ["Total-Results": $0] } ?? [:], body: Data("\n".utf8)))
+        let response = try await toolCall(ZoteroMCPServer(client: client), id: 1, name: "zotero_export_bibtex", arguments: ["limit": 1])
+        #expect(try toolIsError(response))
+        #expect(try structuredContent(response)["error_code"] as? String == "invalid_response")
+        #expect(await client.recordedRequests().count == 1)
+    }
+
+    @Test("BibTeX export rejects oversized pages and malformed offsets without implicit retries")
+    func bibtexPageInvalidArgumentsAndOverflow() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let server = ZoteroMCPServer(client: client)
+        let invalidArguments: [[String: Any]] = [
+            ["start": -1], ["start": Int.max], ["item_key": "ITEM0001", "start": 1],
+            ["limit": 0], ["limit": 101], ["start": true],
+        ]
+        for arguments in invalidArguments {
+            let response = try await toolCall(server, id: 1, name: "zotero_export_bibtex", arguments: arguments)
+            #expect(try toolIsError(response))
+            #expect(try structuredContent(response)["error_code"] as? String == "invalid_arguments")
+        }
+        #expect(await client.recordedRequests().isEmpty)
+        await client.enqueue(
+            method: "GET", path: "/api/users/0/items/top",
+            response: .init(
+                statusCode: 200, headers: ["Total-Results": "2"], body: Data("@book{one}\n@book{two}\n".utf8)))
+        let oversizedPage = try await toolCall(server, id: 2, name: "zotero_export_bibtex", arguments: ["limit": 1])
+        #expect(try toolIsError(oversizedPage))
+        #expect(try structuredContent(oversizedPage)["error_code"] as? String == "invalid_response")
+        #expect(await client.recordedRequests().count == 1)
+    }
+
+    @Test("BibTeX export budgets the complete encoded MCP reply and retains no partial entry")
+    func bibtexExportCompleteMessageCapacity() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let text = "@book{one, title = {" + String(repeating: "\"", count: 2 * 1_024 * 1_024) + "}}\n"
+        #expect(text.utf8.count < 4 * 1_024 * 1_024)
+        await client.enqueue(
+            method: "GET", path: "/api/users/0/items/top",
+            response: .init(
+                statusCode: 200, headers: ["Total-Results": "1"], body: Data(text.utf8)))
+        let server = ZoteroMCPServer(client: client)
+        let request = try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": ["name": "zotero_export_bibtex", "arguments": ["limit": 1]],
+        ])
+        let encoded = try #require(await server.handle(requestData: request, access: .readOnly))
+        #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
+        let response = try object(JSONSerialization.jsonObject(with: encoded))
+        #expect(try toolIsError(response))
+        let payload = try structuredContent(response)
+        #expect(payload["status"] as? String == "failed" && payload["error_code"] as? String == "response_too_large")
+        #expect(payload["bibtex"] == nil)
+        #expect((payload["error"] as? String)?.contains("smaller page") == true)
+        #expect(await client.recordedRequests().count == 1)
+    }
+
+    @Test("Oversized request bodies and encoded response identities refuse item-update admission")
+    func protocolCapacityRefusesBeforeItemUpdate() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let server = ZoteroMCPServer(client: client)
+        let update: [String: Any] = [
+            "name": "zotero_update_item",
+            "arguments": [
+                "library": "user", "item_key": "ITEM0001", "data": ["title": "After"],
+                "expected_version": 7, "confirm": true,
+            ],
+        ]
+        for identity in [
+            String(repeating: "x", count: ScholiumMCPContract.maximumEncodedResponseIdentityByteCount),
+            String(repeating: "\"", count: ScholiumMCPContract.maximumEncodedResponseIdentityByteCount / 2),
+        ] {
+            let request = try JSONSerialization.data(withJSONObject: [
+                "jsonrpc": "2.0", "id": identity, "method": "tools/call", "params": update,
+            ])
+            let encoded = try #require(await server.handle(requestData: request, access: .full))
+            #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
+            let response = try object(JSONSerialization.jsonObject(with: encoded))
+            #expect(response["id"] is NSNull)
+            #expect(try object(response["error"])["code"] as? Int == -32600)
+        }
+        var request = try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": update,
+        ])
+        request.append(Data(repeating: 0x20, count: ScholiumMCPContract.maximumEncodedMessageByteCount))
+        let encoded = try #require(await server.handle(requestData: request, access: .full))
+        #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
+        let response = try object(JSONSerialization.jsonObject(with: encoded))
+        #expect(response["id"] is NSNull)
+        #expect(try object(response["error"])["code"] as? Int == -32600)
+        #expect(await client.recordedRequests().isEmpty)
+    }
+
+    @Test("The common Zotero reply boundary refuses oversized encoded reads without partial data")
+    func fulltextCompleteMessageCapacity() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        let body = try JSONSerialization.data(withJSONObject: [
+            "content": String(repeating: "\"", count: 1_536 * 1_024)
+        ])
+        #expect(body.count < 4 * 1_024 * 1_024)
+        await client.enqueue(
+            method: "GET", path: "/api/users/0/items/ATTACH01/fulltext",
+            response: .init(
+                statusCode: 200, body: body))
+        let server = ZoteroMCPServer(client: client)
+        let request = try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": ["name": "zotero_fulltext", "arguments": ["library": "user", "attachment_key": "ATTACH01"]],
+        ])
+        let encoded = try #require(await server.handle(requestData: request, access: .readOnly))
+        #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
+        let response = try object(JSONSerialization.jsonObject(with: encoded))
+        #expect(try toolIsError(response))
+        let payload = try structuredContent(response)
+        #expect(payload["status"] as? String == "failed" && payload["error_code"] as? String == "response_too_large")
+        #expect(payload["fulltext"] == nil)
+        #expect(await client.recordedRequests().count == 1)
+    }
+
+    @Test("An oversized item-update confirmation preserves uncertainty after the one accepted write")
+    func itemUpdateCompleteMessageCapacity() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        // Library names are untrusted API strings. Escaping a bounded name in
+        // both response projections can exceed the complete reply capacity.
+        let groups = try JSONSerialization.data(withJSONObject: [
+            ["id": 42, "name": String(repeating: "\"", count: 1_536 * 1_024)]
+        ])
+        #expect(groups.count < 4 * 1_024 * 1_024)
+        await client.enqueue(method: "GET", path: "/api/users/0/groups", response: .init(statusCode: 200, body: groups))
+        await client.enqueueJSON(
+            method: "GET", path: "/api/groups/42/items/ITEM0001",
+            json: #"{"key":"ITEM0001","version":7,"data":{"key":"ITEM0001","itemType":"book","title":"Before"}}"#,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        await client.enqueueJSON(method: "POST", path: "/api/local/authorize", json: #"{"key":"AUTH123456789","remember":true}"#)
+        await client.enqueue(method: "PUT", path: "/api/groups/42/items/ITEM0001", response: .init(statusCode: 204))
+        await client.enqueueJSON(
+            method: "GET", path: "/api/groups/42/items/ITEM0001",
+            json: #"{"key":"ITEM0001","version":8,"data":{"key":"ITEM0001","itemType":"book","title":"After"}}"#,
+            headers: ["Zotero-Server-ID": "SERVER123456"])
+        let request = try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": [
+                "name": "zotero_update_item",
+                "arguments": [
+                    "library": "group:42", "item_key": "ITEM0001", "data": ["title": "After"],
+                    "expected_version": 7, "confirm": true,
+                ],
+            ],
+        ])
+        let encoded = try #require(await ZoteroMCPServer(client: client).handle(requestData: request, access: .full))
+        #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
+        let response = try object(JSONSerialization.jsonObject(with: encoded))
+        #expect(try toolIsError(response))
+        let payload = try structuredContent(response)
+        #expect(payload["status"] as? String == "outcome_uncertain" && payload["error_code"] as? String == "write_outcome_uncertain")
+        #expect((payload["error"] as? String)?.contains("Do not replay") == true)
+        let requests = await client.recordedRequests()
+        #expect(requests.compactMap(\.httpMethod) == ["GET", "GET", "POST", "PUT", "GET"])
+        #expect(requests.filter { $0.httpMethod == "PUT" }.count == 1)
+    }
+
     @Test("Malformed explicit citation styles never fall back to APA or contact Zotero")
     func citationStyleInvalid() async throws {
         let client = MockZoteroMCPHTTPClient()

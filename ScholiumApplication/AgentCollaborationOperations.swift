@@ -451,14 +451,54 @@ extension WorkspaceHandle {
         let current = try await loadDocument(matches[0].id)
         let revisionState: AgentChangeEndingRevisionState =
             current.fingerprint == endingFingerprint ? .current : .earlierRevision
+        var undoUnavailableReason: String?
+        if change.isDirectUndoEligible && revisionState == .current {
+            do {
+                _ = try await validateAgentChangeUndo(
+                    change: change, target: matches[0], current: current,
+                    expectedAfterFingerprint: endingFingerprint)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                undoUnavailableReason = error.localizedDescription
+            }
+        }
         return AgentChangeReview(
             change: change,
             comparison: comparison,
             currentCreatedSource: change.operation == .create && revisionState == .current
                 ? current.rawContent
                 : nil,
-            endingRevisionState: revisionState
+            endingRevisionState: revisionState,
+            undoUnavailableReason: undoUnavailableReason
         )
+    }
+
+    /// Review, preview and execution share the same current Undo constraints.
+    /// The source writer repeats consequential checks under its mutation lease.
+    private func validateAgentChangeUndo(
+        change: AgentChange, target: WorkspaceNoteSummary, current: NoteDocument,
+        expectedAfterFingerprint: DocumentFingerprint
+    ) async throws -> Data {
+        try Task.checkCancellation()
+        guard change.operation == .update, change.state == .confirmed,
+            change.afterFingerprint == expectedAfterFingerprint
+        else { throw AgentChangeError.undoUnavailable(change.id) }
+        guard target.stableIdentity.resolvedID == change.noteID,
+            Self.isAgentWritableRole(target.vaultRole)
+        else { throw AgentChangeError.mismatchedBinding(change.id) }
+        guard current.fingerprint == expectedAfterFingerprint else {
+            throw AgentCollaborationError.staleRevision(expected: expectedAfterFingerprint, current: current.fingerprint)
+        }
+        do {
+            try await requireSourceOnlyAgentUndo(
+                noteID: change.noteID, vaultID: target.id.vaultID, changeID: change.id)
+        } catch AgentChangeError.undoUnavailable {
+            throw AgentCollaborationError.invalidRequest(
+                "Direct Undo is unavailable because this Note has citation companion state that the source-only Agent Change cannot restore.")
+        }
+        return try await services.agentChangeStore.beforeDataForUndo(
+            id: change.id, expectedAfterFingerprint: expectedAfterFingerprint)
     }
 
     private func prepareAgentChangeUndo(
@@ -473,12 +513,9 @@ extension WorkspaceHandle {
         }
         let target = try await currentAgentNote(noteID: change.noteID)
         let current = try await loadDocument(target.id)
-        guard current.fingerprint == expectedAfterFingerprint else {
-            throw AgentCollaborationError.staleRevision(expected: expectedAfterFingerprint, current: current.fingerprint)
-        }
-        try await requireSourceOnlyAgentUndo(
-            noteID: change.noteID, vaultID: target.id.vaultID, changeID: id)
-        let beforeData = try await services.agentChangeStore.beforeDataForUndo(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
+        let beforeData = try await validateAgentChangeUndo(
+            change: change, target: target, current: current,
+            expectedAfterFingerprint: expectedAfterFingerprint)
         return (change, target, current, beforeData)
     }
 

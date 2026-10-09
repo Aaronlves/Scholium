@@ -32,6 +32,17 @@
         "Does not broaden one Note mutation into a whole-app audit.",
         "Remains read-only because the request asks only for diagnosis."
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "Audit the affected save path and fix any confirmed stale-write defect in that path. Leave unrelated findings as recommendations.",
+      "expected_output": "Performs evidence-based audit and routes a confirmed authorized fix to the owning subsystem without a second approval cycle.",
+      "files": [],
+      "assertions": [
+        "Distinguishes the combined audit-and-fix request from an audit-only request.",
+        "Requires reachable evidence before editing and preserves the requested save-path boundary.",
+        "Uses focused regression proof without expanding the task into release acceptance."
+      ]
     }
   ]
 }

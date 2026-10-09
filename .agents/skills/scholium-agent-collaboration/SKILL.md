@@ -9,9 +9,10 @@ Own the functional boundary between an external Agent and the running App,
 including guarded mutations and their exact-source evidence. Conversation and
 research method remain with the external host and researcher.
 
-Read the specification, architecture, and status manifests, then their Agent
-collaboration chapters. Resolve current tools, schemas, storage, and recovery
-semantics there rather than treating this skill as a protocol specification.
+Use the specification's Agent collaboration route for operation contracts,
+architecture for transport and state ownership, and status for implementation
+gaps or acceptance claims. Follow only the routes relevant to the operation;
+this skill is not a protocol specification.
 
 ## Responsibility boundary
 

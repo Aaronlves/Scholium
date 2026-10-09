@@ -32,6 +32,9 @@ public actor ScholiumMCPServer {
     }
 
     public func handle(requestData: Data) async -> Data? {
+        guard requestData.count <= ScholiumMCPContract.maximumEncodedMessageByteCount else {
+            return encode(responseError(id: .null, code: -32600, message: "The MCP request exceeds its encoded size limit."))
+        }
         let request: RPCRequest
         do {
             request = try JSONDecoder().decode(RPCRequest.self, from: requestData)
@@ -44,6 +47,13 @@ public actor ScholiumMCPServer {
                 ))
         }
         guard let id = request.id else { return nil }
+        let identityEncoder = JSONEncoder()
+        identityEncoder.outputFormatting = [.withoutEscapingSlashes]
+        guard let identity = try? identityEncoder.encode(id),
+            identity.count <= ScholiumMCPContract.maximumEncodedResponseIdentityByteCount
+        else {
+            return encode(responseError(id: .null, code: -32600, message: "The MCP response identity exceeds its encoded size limit."))
+        }
         guard request.jsonrpc == "2.0", !request.method.isEmpty else {
             return encode(
                 responseError(
@@ -84,11 +94,20 @@ public actor ScholiumMCPServer {
                         "tools": .array(Self.toolDefinitions(conversationToken: conversationToken))
                     ])))
         case "tools/call":
-            return encode(
-                responseResult(
-                    id: id,
-                    result: await callTool(params: request.params)
-                ))
+            let result = await callTool(params: request.params)
+            let response = encodeUnbounded(responseResult(id: id, result: result))
+            if let response, response.count <= ScholiumMCPContract.maximumEncodedMessageByteCount { return response }
+            let tool = request.params?.objectValue?["name"]?.stringValue.flatMap(ScholiumMCPToolName.init(rawValue:))
+            let mayHaveChangedState = tool?.mayMutatePersistentState == true
+            let failure = ScholiumMCPFailure(
+                code: mayHaveChangedState ? .operationUncertain : .invalidRequest,
+                message: "The complete MCP result exceeds its encoded reply limit.",
+                recovery: mayHaveChangedState
+                    ? "Do not replay the operation. Inspect the current source, retained Agent Changes or runtime settings before another mutation."
+                    : "Request a smaller page or source slice and continue using the returned fingerprints.")
+            let refusal = encodeUnbounded(responseResult(id: id, result: toolResult(failureValue(failure, for: tool), isError: true)))
+            if let refusal, refusal.count <= ScholiumMCPContract.maximumEncodedMessageByteCount { return refusal }
+            return encode(responseError(id: .null, code: -32600, message: "The MCP reply identity exceeds its encoded size limit."))
         default:
             return encode(
                 responseError(
@@ -162,6 +181,11 @@ public actor ScholiumMCPServer {
         } catch let error as ScholiumAppBridgeError {
             let failure: ScholiumMCPFailure
             switch error {
+            case .requestTooLarge:
+                failure = ScholiumMCPFailure(
+                    code: .invalidRequest,
+                    message: "The encoded request exceeds the App bridge limit and was not sent.",
+                    recovery: "Reduce the request within the published source and edit limits. No operation was admitted.")
             case .unavailable, .timeout:
                 failure = ScholiumMCPFailure(
                     code: .appUnavailable,
@@ -244,6 +268,14 @@ public actor ScholiumMCPServer {
     }
 
     private func encode(_ response: RPCResponse) -> Data? {
+        guard let data = encodeUnbounded(response) else { return nil }
+        guard data.count <= ScholiumMCPContract.maximumEncodedMessageByteCount else {
+            return encodeUnbounded(responseError(id: .null, code: -32600, message: "The MCP reply exceeds its encoded size limit."))
+        }
+        return data
+    }
+
+    private func encodeUnbounded(_ response: RPCResponse) -> Data? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try? encoder.encode(response)

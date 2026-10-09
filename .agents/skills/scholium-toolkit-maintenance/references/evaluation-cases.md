@@ -78,7 +78,7 @@ work, or claims experiential acceptance from a weaker evidence layer.
 
 | Request | Expected behavior |
 |---|---|
-| “我不懂设计，这个检查器看起来很乱。先判断，别改。” | Select interface critique; inspect the reachable task and complete window, separate observation from inference, give one plain-language recommendation, and edit nothing. Do not ask for design or framework choices. |
+| “我不懂设计，这个检查器看起来很乱。先判断，别改。” | Select interface critique; inspect the reachable task and complete window, separate observation from inference, prioritize the consequential finding while covering the requested scope, and edit nothing. Explain recommendations in plain language without asking for design or framework choices. |
 | “重新设计 Actions；我只知道希望更安静、专业。” | Select interface design; frame the task and evidence, inspect current behavior and authority, recommend one direction, and compare alternatives only for a material uncertainty. Keep proposals unapproved and read-only. |
 | “设计并实现一个新的研究功能，先看看有没有成熟做法。” | Select interface design or implementation according to permission; inspect the live Scholium pattern and native platform solution first, then research only the mature external candidates capable of changing the decision. Return a reuse, adaptation, translation, minimal-custom, or defer verdict before adding a surface, state owner, component, Variable, or dependency. |
 | “我批准第二个方案；写入规范但先别实现。” | Select decision recording; reopen the approved scope, update the active decision and canonical rule together, and leave application source unchanged. |
@@ -136,6 +136,30 @@ preserved authorized scope, executable patch behavior, and honest uncertainty.
 Record what the performer actually calculated, inspected, or ran. A plausible
 regression proposal is not an executed regression test. Equal correct outcomes
 support retained capability in those cases, not a quality or latency gain.
+
+### Run the supplied artifact cases
+
+The title-edit, autosave-race and retry-after-timeout cases declare package-relative
+raw files. Use [fixture_eval.py](../scripts/fixture_eval.py) to prepare a fresh
+working directory under repository `.build/`; it copies only those inputs and the
+raw prompt, never expected outputs or assertions. The manifest records input,
+case and entry hashes plus the selected instruction tree. Point `--instructions-root`
+at a preserved skills tree for a baseline, or omit it for current instructions.
+
+```bash
+python3 .agents/skills/scholium-toolkit-maintenance/scripts/fixture_eval.py prepare scholium-markdown-yaml-fidelity 0 .build/toolkit-evals/current/title
+python3 .agents/skills/scholium-toolkit-maintenance/scripts/fixture_eval.py check-title .build/toolkit-evals/current/title
+```
+
+Give a fresh performer only `performer.md` and its declared inputs; keep evaluation
+definitions and helper implementation out of its context. Use the same raw case
+for both instruction versions. The title checker verifies the actual result's
+unchanged bytes and complete YAML semantics; it does not exercise application
+code. For `scholium-vault-file-coordination` case 0 and
+`scholium-agent-collaboration` case 5, review the resulting diagnosis against the
+trace and withheld assertions. No keyword check can establish causal accuracy.
+Retain performer output and review results in the run directory, and distinguish
+fixture diagnosis from a reproduced application defect.
 
 ## Evaluation report
 

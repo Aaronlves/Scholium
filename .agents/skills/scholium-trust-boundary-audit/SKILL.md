@@ -16,6 +16,9 @@ The functional subsystem retains its semantics; this capability adds the trust b
 - **Harden:** after the request authorizes a fix, correct the violated trust
   boundary and add executable regression evidence.
 
+A request to audit and fix confirmed defects can use both modes in sequence.
+Honor its stated fix boundary; suspected risks alone do not justify changes.
+
 ## Find the consequential boundary
 
 Trace one untrusted input to the action it could authorize, the durable state

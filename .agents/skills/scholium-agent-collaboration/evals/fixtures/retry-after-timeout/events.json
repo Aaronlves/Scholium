@@ -1,0 +1,25 @@
+{
+  "fixture": "synthetic; no real MCP endpoint, vault or application run",
+  "identities": {"workspace": "fixture-workspace", "note": "fixture-note", "operation": "fixture-operation"},
+  "contents": {"A": "# Note\nOriginal source.\n", "B": "# Note\nRequested source.\n"},
+  "relationships": {
+    "R1": {"source_note": "fixture-note", "target_note": "topic-one", "relation": "connection"},
+    "R2": {"source_note": "fixture-note", "target_note": "topic-two", "relation": "connection"}
+  },
+  "events": [
+    {"step": 1, "actor": "client", "event": "request", "expected_source_revision": "A", "source_payload": "B", "expected_record_revision": "R1"},
+    {"step": 2, "actor": "application", "event": "admit", "workspace": "fixture-workspace", "note": "fixture-note", "observed_source": "A", "observed_record": "R1"},
+    {"step": 3, "actor": "source_writer", "event": "replace", "disk": "B"},
+    {"step": 4, "actor": "source_writer", "event": "readback", "observed_disk": "B", "result": "match"},
+    {"step": 5, "actor": "evidence_store", "event": "confirm", "result": "I/O error", "durable_record_state": "not captured"},
+    {"step": 6, "actor": "client", "event": "timeout", "response_received": false},
+    {"step": 7, "actor": "researcher", "event": "relationship_edit", "record_revision": "R2"},
+    {"step": 8, "actor": "observer", "event": "fresh_read", "source": "B", "record_revision": "R2"},
+    {"step": 9, "actor": "client", "event": "proposed_retry", "expected_source_revision": "A", "source_payload": "B", "expected_record_revision": "R1"}
+  ],
+  "capture_limits": [
+    "The trace contains every source and relationship write for this fixture interval.",
+    "No durable evidence-store contents or implementation of recovery or idempotency was captured.",
+    "The retry at step 9 has not been dispatched."
+  ]
+}

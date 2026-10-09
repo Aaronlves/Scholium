@@ -1,0 +1,25 @@
+{
+  "fixture": "synthetic; no real vault or application run",
+  "identities": {"vault": "fixture-vault", "generation": 7, "note": "fixture-note", "path": "topics/note.md"},
+  "contents": {
+    "A": "# Note\nOriginal paragraph.\n",
+    "B": "# Note\nExternal editor paragraph.\n",
+    "C": "# Note\nUnsaved researcher paragraph.\n"
+  },
+  "events": [
+    {"step": 1, "actor": "window", "event": "load", "disk": "A", "starting_revision": "A", "buffer": "A", "dirty": false},
+    {"step": 2, "actor": "window", "event": "local_edit", "buffer": "C", "dirty": true},
+    {"step": 3, "actor": "autosave", "event": "begin", "expected_revision": "A", "candidate": "C"},
+    {"step": 4, "actor": "autosave", "event": "revision_check", "observed_disk": "A", "result": "match"},
+    {"step": 5, "actor": "external_editor", "event": "atomic_replace", "disk": "B"},
+    {"step": 6, "actor": "watcher", "event": "enqueue_invalidation", "path": "topics/note.md"},
+    {"step": 7, "actor": "autosave", "event": "atomic_replace", "disk": "C"},
+    {"step": 8, "actor": "autosave", "event": "readback", "observed_disk": "C", "result": "match"},
+    {"step": 9, "actor": "window", "event": "mark_saved", "starting_revision": "C", "buffer": "C", "dirty": false},
+    {"step": 10, "actor": "watcher", "event": "deliver_invalidation", "path": "topics/note.md"}
+  ],
+  "capture_limits": [
+    "The trace contains every disk write for this fixture interval.",
+    "No snapshot, recovery-store, conflict-UI or filesystem-coordination implementation was captured."
+  ]
+}

@@ -69,7 +69,9 @@ extension WorkspaceHandle {
         let futureGraph = LinkGraphBuilder.build(
             generation: context.graph.generation, catalog: futureCatalog,
             authoredLinks: futureLinks, resolutionScope: .workspace)
-        for effect in move.effects where effect.rewrittenOccurrences > 0 {
+        // Location changes can redirect unchanged relative links, including
+        // when the original move required no source rewrite at all.
+        for effect in move.effects {
             let currentLinks = (context.graph.outgoing[effect.destination] ?? []).sorted {
                 $0.occurrence.linkSpan.utf16LowerBound < $1.occurrence.linkSpan.utf16LowerBound
             }
@@ -79,11 +81,26 @@ extension WorkspaceHandle {
             guard currentLinks.count == futureLinks.count else { throw AgentChangeError.invalid(evidence.change.id) }
             var rewritten = 0
             for (current, future) in zip(currentLinks, futureLinks) {
-                guard !current.occurrence.target.utf8.elementsEqual(future.occurrence.target.utf8) else { continue }
-                rewritten += 1
-                guard case .resolved(let currentTarget) = current.occurrence.resolution,
-                    case .resolved(let futureTarget) = future.occurrence.resolution,
-                    futureTarget == (currentTarget == primary.destination ? primary.source : currentTarget),
+                let changedTarget = !current.occurrence.target.utf8.elementsEqual(future.occurrence.target.utf8)
+                if changedTarget {
+                    rewritten += 1
+                    guard case .resolved = current.occurrence.resolution else {
+                        throw AgentChangeError.invalid(evidence.change.id)
+                    }
+                }
+                let expectedResolution: LinkOccurrenceResolution
+                switch current.occurrence.resolution {
+                case .resolved(let target):
+                    expectedResolution = .resolved(target == primary.destination ? primary.source : target)
+                case .ambiguous(let targets):
+                    expectedResolution = .ambiguous(
+                        targets.map {
+                            $0 == primary.destination ? primary.source : $0
+                        }.sorted())
+                case .unresolved, .broken:
+                    expectedResolution = current.occurrence.resolution
+                }
+                guard future.occurrence.resolution == expectedResolution,
                     current.occurrence.fragment == future.occurrence.fragment, current.occurrence.syntax == future.occurrence.syntax
                 else {
                     throw AgentCollaborationError.invalidRequest(
@@ -176,7 +193,11 @@ extension WorkspaceHandle {
         }
         var reason: String?
         if evidence.change.state == .confirmed && state == .current {
-            do { _ = try await previewAgentMoveUndo(id: evidence.change.id, expectedAfterFingerprint: move.primary.afterFingerprint) } catch {
+            do {
+                _ = try await previewAgentMoveUndo(id: evidence.change.id, expectedAfterFingerprint: move.primary.afterFingerprint)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
                 reason = error.localizedDescription
             }
         }

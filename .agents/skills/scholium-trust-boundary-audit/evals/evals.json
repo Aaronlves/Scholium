@@ -14,11 +14,12 @@
     {
       "id": 1,
       "prompt": "只做安全审计；如果发现明显漏洞就顺手修掉。",
-      "expected_output": "An Audit response that reports the defect and correction boundary without implementing it.",
+      "expected_output": "Audits first and uses Harden mode for confirmed defects within the explicitly requested fix scope; reports uncertain risks without speculative edits.",
       "files": [],
       "assertions": [
-        "Keeps Audit read-only despite an apparent defect.",
-        "Does not broaden authorization from a diagnostic request."
+        "Recognizes the conditional fix request as authorization within its stated boundary, without asking for the same approval again.",
+        "Establishes the defect before changing its functional owner and verifies the bounded correction.",
+        "Does not expand the fix to suspected risks, unrelated redesign, or publication."
       ]
     },
     {

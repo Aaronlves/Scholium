@@ -5,9 +5,9 @@ description: "Audit Scholium architecture, defects, conformance, or release read
 
 # Scholium App Auditor
 
-Audit the live app through reproducible evidence. Remain read-only unless the
-researcher separately requests a fix.
-
+Audit the live app through reproducible evidence. Keep audit-only requests
+read-only. If the request also authorizes fixes, route each confirmed correction
+to its subsystem owner within that scope.
 
 ## Select one mode
 

@@ -1,0 +1,2 @@
+# The title-edit oracle exercises exact BOM, CRLF and final-newline bytes.
+fixtures/title-edit/source.md -text whitespace=cr-at-eol

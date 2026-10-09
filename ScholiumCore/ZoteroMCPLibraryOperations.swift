@@ -56,12 +56,17 @@ extension ZoteroMCPServer {
         ),
         tool(
             name: "zotero_export_bibtex",
-            description: "Export one item or a bounded library page as Zotero-generated BibTeX.",
+            description:
+                "Export one item or one bounded library page as Zotero-generated BibTeX. start and limit count Zotero items; use next_start to continue. Exported entries may be fewer than items when Zotero omits unsupported item types.",
             properties: [
                 "library": libraryProperty,
                 "item_key": keyProperty,
                 "include_children": .object(["type": .string("boolean"), "default": .bool(false)]),
                 "limit": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(100), "default": .integer(100)]),
+                "start": .object([
+                    "type": .string("integer"), "minimum": .integer(0), "default": .integer(0),
+                    "description": .string("Zero-based Zotero item offset. Must be 0 when item_key is supplied."),
+                ]),
             ]
         ),
         tool(
@@ -271,49 +276,57 @@ extension ZoteroMCPServer {
     }
 
     func exportBibtex(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
-        guard arguments.keys.allSatisfy(["library", "item_key", "include_children", "limit"].contains) else {
+        guard arguments.keys.allSatisfy(["library", "item_key", "include_children", "limit", "start"].contains) else {
             throw ZoteroMCPServiceError.invalidArguments
         }
-        let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
         let itemKey = arguments["item_key"].flatMap(\.stringValue).flatMap(normalizedKey)
         if arguments["item_key"] != nil, itemKey == nil { throw ZoteroMCPServiceError.invalidArguments }
         let includeChildren = try boolean(arguments["include_children"], default: false)
         let limit = try integer(arguments["limit"], default: 100, range: 1...100)
-        var chunks: [String] = []
-        var start = 0
-        var total: Int?
-        repeat {
-            var query = [
-                URLQueryItem(name: "format", value: "bibtex"),
-                URLQueryItem(name: "limit", value: String(limit)),
-            ]
-            if let itemKey { query.append(URLQueryItem(name: "itemKey", value: itemKey)) }
-            if itemKey == nil {
-                query.append(URLQueryItem(name: "sort", value: "title"))
-                query.append(URLQueryItem(name: "direction", value: "asc"))
-                query.append(URLQueryItem(name: "start", value: String(start)))
-            }
-            let resource: ZoteroMCPRequestFactory.APIResource =
-                includeChildren
-                ? .items(query: query) : .topItems(query: query)
-            guard let request = ZoteroMCPRequestFactory.api(route: route, resource: resource) else {
-                throw ZoteroMCPServiceError.invalidRequest
-            }
-            let response = try await sendAPI(request)
-            guard let text = String(data: response.body, encoding: .utf8) else {
+        let start = try integer(arguments["start"], default: 0, range: 0...(Int.max - 100))
+        guard itemKey == nil || start == 0 else { throw ZoteroMCPServiceError.invalidArguments }
+        let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
+        var query = [
+            URLQueryItem(name: "format", value: "bibtex"),
+            URLQueryItem(name: "limit", value: String(itemKey == nil ? limit : 1)),
+        ]
+        if let itemKey {
+            query.append(URLQueryItem(name: "itemKey", value: itemKey))
+        } else {
+            query.append(URLQueryItem(name: "sort", value: "title"))
+            query.append(URLQueryItem(name: "direction", value: "asc"))
+            query.append(URLQueryItem(name: "start", value: String(start)))
+        }
+        let resource: ZoteroMCPRequestFactory.APIResource =
+            includeChildren ? .items(query: query) : .topItems(query: query)
+        guard let request = ZoteroMCPRequestFactory.api(route: route, resource: resource) else {
+            throw ZoteroMCPServiceError.invalidRequest
+        }
+        let response = try await sendAPI(request)
+        guard let text = String(data: response.body, encoding: .utf8) else {
+            throw ZoteroMCPServiceError.invalidResponse
+        }
+        let entries = bibtexEntryCount(text)
+        guard entries <= (itemKey == nil ? limit : 1) else { throw ZoteroMCPServiceError.invalidResponse }
+        let total = response.header(named: "Total-Results").flatMap(Int.init)
+        // Offsets address Zotero's result items, not emitted BibTeX entries:
+        // translators may omit a Note/attachment without ending the item page.
+        if itemKey == nil {
+            guard let total, total >= 0, entries <= max(0, total - start) else {
                 throw ZoteroMCPServiceError.invalidResponse
             }
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { chunks.append(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            total = response.header(named: "Total-Results").flatMap(Int.init)
-            if itemKey != nil { break }
-            start += limit
-            if start >= (total ?? start + (bibtexEntryCount(text) < limit ? 0 : limit)) || start >= 1_000 { break }
-        } while true
-        let text = chunks.joined(separator: "\n\n")
+        } else if let total, total < 0 || total > 1 {
+            throw ZoteroMCPServiceError.invalidResponse
+        }
+        let hasMore = itemKey == nil && start + limit < (total ?? 0)
         return .object([
             "library": route.value, "item_key": itemKey.map(ZoteroMCPJSONValue.string) ?? .null,
-            "include_children": .bool(includeChildren), "bibtex": .string(text + (text.isEmpty ? "" : "\n")),
-            "bytes": .integer(text.utf8.count), "entries": .integer(bibtexEntryCount(text)),
+            "include_children": .bool(includeChildren), "bibtex": .string(text),
+            "bytes": .integer(response.body.count), "entries": .integer(entries),
+            "start": .integer(start), "limit": .integer(itemKey == nil ? limit : 1),
+            "total_items": total.map(ZoteroMCPJSONValue.integer) ?? .null,
+            "has_more": .bool(hasMore), "next_start": hasMore ? .integer(start + limit) : .null,
+            "coverage": .string(itemKey == nil ? "library_page" : "item"),
         ])
     }
 
@@ -578,6 +591,40 @@ extension ZoteroMCPServer {
     }
 
     private func bibtexEntryCount(_ text: String) -> Int {
-        text.split(whereSeparator: \.isNewline).filter { $0.trimmingCharacters(in: .whitespaces).hasPrefix("@") }.count
+        // Zotero's BibTeX translator emits braced records. Count only top-level
+        // declarations, preserving multiline fields containing @ or braces.
+        var depth = 0
+        var escaped = false
+        var declaration: [UInt8]?
+        var count = 0
+        for byte in text.utf8 {
+            if escaped {
+                escaped = false
+                continue
+            }
+            if byte == 0x5C {
+                escaped = true
+                continue
+            }
+            if byte == 0x7B {
+                if depth == 0, let declaration, !declaration.isEmpty {
+                    let kind = String(decoding: declaration, as: UTF8.self).lowercased()
+                    if kind != "comment", kind != "string", kind != "preamble" { count += 1 }
+                }
+                depth += 1
+                declaration = nil
+            } else if byte == 0x7D {
+                depth = max(0, depth - 1)
+            } else if depth == 0 {
+                if byte == 0x40 {
+                    declaration = []
+                } else if (0x41...0x5A).contains(byte) || (0x61...0x7A).contains(byte) {
+                    declaration?.append(byte)
+                } else if byte != 0x20 && byte != 0x09 && byte != 0x0D && byte != 0x0A {
+                    declaration = nil
+                }
+            }
+        }
+        return count
     }
 }

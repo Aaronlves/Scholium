@@ -40,8 +40,8 @@ use [backend research](../scholium-engineering/references/backend-decision-resea
   may reload after validation; a dirty peer enters explicit conflict.
 - Atomic replacement prevents partial files, not stale overwrites. Preserve
   revision checks, containment, snapshot, read-back, and recovery ordering.
-- Observe before scanning can create a blind interval, reconcile afterward,
-  and use bounded rescans when the event stream cannot prove completeness.
+- Start observation before the initial scan, reconcile events received during
+  scanning, and use bounded rescans when the stream cannot prove completeness.
 - Suppress self-events only with exact committed identity and generation, not
   path or timing guesses.
 - Bind asynchronous work to the current vault generation and release old

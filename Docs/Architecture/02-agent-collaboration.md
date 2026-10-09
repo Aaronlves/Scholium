@@ -5,9 +5,11 @@ MCP delivery, conversation admission, and runtime-owned capabilities.
 
 ## Delivery path
 
-The App-bundled helper is a stdio delivery adapter. It owns JSON-RPC framing,
-initialization, fixed discovery, closed schemas and error envelopes, then calls
-the authenticated current-user App endpoint. It cannot launch the App, construct
+The App-bundled helper owns incremental stdio framing, JSON-RPC initialization,
+fixed discovery, closed schemas and error envelopes, then calls the authenticated
+current-user App endpoint. Shared bounds cover complete JSON envelopes.
+Oversized request/read refusals differ from uncertain mutation delivery.
+It cannot launch the App, construct
 a workspace runtime or independently read/write Triptych files. The App router
 uses only currently open workspace capabilities; multiple open Triptychs require
 an exact stable workspace identity.
@@ -222,6 +224,8 @@ or a second Scholium-side library authority. Its read surface includes search,
 metadata, collections, tags, groups, children, indexed full text, attachment
 URLs, annotations, originals, exports and citations. Writes use Zotero-authorized,
 version-checked item updates; Connector imports lack prewrite target binding.
+Exports preserve exact Zotero text in one item page with continuation;
+item coverage differs from exported entry counts.
 
 The native Zotero service remains the Application owner for settings and links;
 the same Application boundary composes the independent MCP server for Chat and

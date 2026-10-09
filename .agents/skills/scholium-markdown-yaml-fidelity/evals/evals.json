@@ -3,13 +3,16 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "修复一个 top-level YAML property 的定向编辑；保留 BOM、CRLF、注释、未知字段、排序和 final newline。",
-      "expected_output": "Source-fidelity owns the targeted mutation and proves intended semantics plus byte preservation outside the changed range.",
-      "files": [],
+      "prompt": "In the supplied source.md, change only the top-level title property from Old title to Researcher's revised title. Save the complete candidate as result.md in the evaluation working directory. Use the supplied skill instructions and inspect the raw source before editing. This is a disposable artifact exercise; do not edit application code or other files. Briefly report what you verified and what this exercise cannot establish.",
+      "expected_output": "Produces the requested string-valued title and proves byte preservation outside its scalar range using the complete supplied source; claims only bounded artifact evidence.",
+      "files": [
+        "evals/fixtures/title-edit/source.md"
+      ],
       "assertions": [
-        "Reopens the live parser, schema, writer, and focused tests.",
-        "Validates the complete proposed mapping and uses the sole transactional writer.",
-        "Does not reconstruct source from a parsed model or rendered Markdown."
+        "Changes the top-level title rather than repeated title text in a nested mapping, multiline value or body.",
+        "Preserves every byte outside the authorized scalar, including BOM, CRLF, comments, unknown data, Unicode bytes and absent final newline.",
+        "Reparses the complete candidate to verify the intended string value and other mapping values.",
+        "Does not claim that this artifact exercise verifies the application transactional writer or full product behavior."
       ]
     },
     {

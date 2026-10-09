@@ -2,6 +2,13 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
+    // An exact edit carries both the old and replacement source. JSON can
+    // expand each UTF-8 byte to six bytes; the remaining capacity holds the
+    // bounded edit metadata and complete protocol envelopes.
+    public static let maximumEncodedMessageByteCount = 8 * 1_024 * 1_024
+    // Correlation identities must leave room for a complete, definite failure
+    // reply before an operation can be admitted.
+    public static let maximumEncodedResponseIdentityByteCount = 1_024
     public static let currentToolSchemaVersion = 9
     public static let maximumChatObservationUTF8ByteCount = 16 * 1_024
 }
@@ -110,6 +117,17 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     public var isChatControl: Bool {
         switch self {
         case .capabilities, .configureSkill, .configureTool, .configureChat, .observeCurrentState: true
+        default: false
+        }
+    }
+
+    /// Delivery failure after these operations cannot prove that source,
+    /// receipts or runtime configuration stayed unchanged.
+    public var mayMutatePersistentState: Bool {
+        switch self {
+        case .createNote, .updateNote, .moveNote, .undoChange, .trashNote,
+            .configureSkill, .configureTool, .configureChat:
+            true
         default: false
         }
     }

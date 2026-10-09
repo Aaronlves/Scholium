@@ -52,6 +52,16 @@ class MCPSurfaceTests(unittest.TestCase):
             with self.subTest(after=after), self.assertRaisesRegex(AssertionError, "unrecognized closed"):
                 self.check_source(self.replace_source(before, after))
 
+    def test_mutation_delivery_cannot_be_classified_as_a_definite_read_failure(self):
+        for replacement in [".readNote", ".configureSkill", ""]:
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(AssertionError, "persistent mutation classification"):
+                self.check_source(self.replace_source(
+                    "case .createNote, .updateNote,", f"case {replacement}, .updateNote," if replacement else "case .updateNote,"))
+
+    def test_unrecognized_mutation_classification_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, "unrecognized closed"):
+            self.check_source(self.replace_source("public var mayMutatePersistentState: Bool", "public var mayMutatePersistentState: Int"))
+
     def test_missing_or_duplicate_enum_fails_closed(self):
         for source in ["", SOURCE + SOURCE]:
             with self.subTest(length=len(source)), self.assertRaisesRegex(AssertionError, "one closed tool enum"):

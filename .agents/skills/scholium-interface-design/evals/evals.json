@@ -4,7 +4,7 @@
     {
       "id": 0,
       "prompt": "这个检查器看起来很乱。只判断问题和优先级，不要修改任何文件。",
-      "expected_output": "Critique mode: a read-only, evidence-labelled diagnosis with one researcher-visible recommendation.",
+      "expected_output": "Critique mode: a read-only, evidence-labelled diagnosis covering the requested issues and priorities, led by the most consequential recommendation.",
       "files": [],
       "assertions": [
         "Selects Critique mode and performs no source or specification edits.",
@@ -33,12 +33,12 @@
     },
     {
       "id": 3,
-      "prompt": "给我三个只是颜色不同的方案，并把你最喜欢的直接写进规范。",
-      "expected_output": "A bounded Design response that rejects cosmetic variants and does not record an unapproved decision.",
+      "prompt": "在现有语义颜色角色和已批准的界面布局内，给我三个只是颜色运用不同的视觉方案供比较；不要写规范或代码。",
+      "expected_output": "A bounded Design response honoring the requested appearance comparison while preserving existing color authority and the no-write boundary.",
       "files": [],
       "assertions": [
-        "Does not manufacture alternatives without semantic or structural uncertainty.",
-        "Does not enter Decision Recording without explicit approval."
+        "Provides the requested appearance variants without presenting them as different interaction designs.",
+        "Preserves existing semantic color roles and edits neither specification nor source."
       ]
     },
     {
@@ -54,11 +54,12 @@
     {
       "id": 5,
       "prompt": "这是一个还没讨论过的界面草案，把它登记成正式决定，但不要问我。",
-      "expected_output": "A refusal to record the draft as canonical until the researcher explicitly approves the material decision.",
+      "expected_output": "Treats the explicit request to adopt the supplied draft as decision-recording authority; records its determinate decisions while identifying any material gaps or conflicts.",
       "files": [],
       "assertions": [
-        "Does not treat a supplied draft as an approved decision.",
-        "Keeps proposal evidence separate from canonical authority."
+        "Does not require prior discussion or renewed approval for decisions explicitly adopted by the request.",
+        "Records only what the supplied draft establishes, without inventing missing decisions, changing unrelated global principles, or implementing application source.",
+        "Checks that the referenced draft is actually available; if absent, requests the missing artifact rather than fabricating decisions or asking for renewed approval."
       ]
     },
     {

@@ -322,6 +322,66 @@ struct CitationCompanionOperationsTests {
         }
     }
 
+    @Test("Agent receipt review and execution share citation-aware Undo eligibility")
+    func agentUndoEligibilityMatchesExecution() async throws {
+        try await withFixture { fixture, _, handle in
+            let saved = try await install(fixture, handle)
+            let citation = try #require(saved.citationSnapshot)
+            let control = await handle.services.controlStore
+            let companionBytes = try await control.citationCompanionBytes(noteID: citation.noteID)
+            let sourceURL = fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath)
+            let agent = handle.agentCollaboration
+            let update = try await agent.updateNote(
+                noteID: citation.noteID, expectedFingerprint: saved.fingerprint,
+                update: .source(saved.rawContent + "An authorized source edit.\r\n"))
+            let ending = try await handle.documents.load(fixture.analysisNoteID)
+            let review = try await agent.agentChangeReview(id: update.change.id)
+            #expect(review.endingRevisionState == .current)
+            #expect(!review.isDirectUndoAvailable)
+            let reason = try #require(review.undoUnavailableReason)
+            #expect(reason.contains("citation companion state"))
+            do {
+                _ = try await agent.previewUndoAgentChange(
+                    id: update.change.id, expectedAfterFingerprint: update.afterFingerprint)
+                Issue.record("A source-only receipt preview authorized citation companion Undo.")
+            } catch AgentCollaborationError.invalidRequest(let unavailable) {
+                #expect(unavailable == reason)
+            }
+            do {
+                _ = try await agent.undoAgentChange(
+                    id: update.change.id, expectedAfterFingerprint: update.afterFingerprint)
+                Issue.record("A source-only receipt authorized citation companion Undo.")
+            } catch AgentCollaborationError.invalidRequest(let unavailable) {
+                #expect(unavailable == reason)
+            }
+            #expect(try Data(contentsOf: sourceURL) == ending.sourceBytes)
+            #expect(try await control.citationCompanionBytes(noteID: citation.noteID) == companionBytes)
+            #expect(try await handle.documents.load(fixture.analysisNoteID).citationSnapshot == ending.citationSnapshot)
+            #expect(try await agent.agentChanges().first { $0.id == update.change.id } == update.change)
+            #expect(try await handle.research.recoveryRecords().isEmpty)
+
+            let neighbor = try #require(
+                try await handle.refresh().vaults.flatMap(\.documents).first { $0.id.relativePath == "Freedom.md" })
+            let neighborID = try #require(neighbor.stableIdentity.resolvedID)
+            let before = try await handle.documents.load(neighbor.id)
+            let validUpdate = try await agent.updateNote(
+                noteID: neighborID, expectedFingerprint: before.fingerprint,
+                update: .source(before.rawContent + "An ordinary source edit.\n"))
+            let validReview = try await agent.agentChangeReview(id: validUpdate.change.id)
+            #expect(validReview.isDirectUndoAvailable)
+            #expect(validReview.undoUnavailableReason == nil)
+            _ = try await agent.previewUndoAgentChange(
+                id: validUpdate.change.id, expectedAfterFingerprint: validUpdate.afterFingerprint)
+            let undone = try await agent.undoAgentChange(
+                id: validUpdate.change.id, expectedAfterFingerprint: validUpdate.afterFingerprint)
+            #expect(undone.restoredFingerprint == before.fingerprint)
+            #expect(try await handle.documents.load(neighbor.id).sourceBytes == before.sourceBytes)
+            #expect(try await agent.agentChanges().first { $0.id == validUpdate.change.id }?.state == .undone)
+            #expect(try Data(contentsOf: sourceURL) == ending.sourceBytes)
+            #expect(try await control.citationCompanionBytes(noteID: citation.noteID) == companionBytes)
+        }
+    }
+
     @Test("Resolve reconciles a paired save and startup retains externally conflicted evidence")
     func pairedRecoveryRouting() async throws {
         try await withFixture { fixture, _, handle in

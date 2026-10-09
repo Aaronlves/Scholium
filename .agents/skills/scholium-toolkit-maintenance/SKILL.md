@@ -17,7 +17,8 @@ For instruction, resource, or discovery changes, use the
 - **Audit:** inspect and report without editing.
 - **Maintain:** make the requested correction, simplification, merge, rename,
   or deletion.
-- **Evaluate:** exercise routing and boundaries without changing product behavior.
+- **Evaluate:** exercise selection and task execution on bounded artifacts
+  without changing product behavior.
 
 ## Establish the practical gap
 
@@ -47,11 +48,11 @@ method solves its task. Keep evaluation outputs in ignored test-owned storage.
 4. Run `scripts/validate_toolkit.py`, the package validator for each changed
    skill, and `Tools/Scripts/validate-scholium-toolkit-catalog.py` from the repository.
 
-For changed routing or permission behavior, read the
-[evaluation guide](references/evaluation-cases.md) and forward-test representative
-positive and neighboring cases with fresh agents and raw prompts. Keep expected
+For task-execution comparisons or changed routing or permission behavior, use the
+[evaluation guide](references/evaluation-cases.md). Forward-test representative
+positive and neighboring cases with fresh agents and raw prompts, keeping expected
 answers out of performer context. Structural validity is not behavioral proof.
 
 Report meaningful removals, preserved boundaries, actual validation, and
-untested behavior. Existing tasks may retain startup discovery metadata; a new
-task is needed to verify fresh discovery, not to finish this maintenance work.
+untested behavior. If an existing task still exposes old discovery metadata,
+verify discovery in a fresh task without delaying authorized maintenance.

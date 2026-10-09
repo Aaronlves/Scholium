@@ -5,8 +5,10 @@ description: "Implement, review, or test Swift language and API behavior; native
 
 # Swift Language
 
-Make the smallest Swift change that satisfies the request and preserves
-unaffected behavior. A language cleanup does not authorize adjacent refactoring.
+Keep review and planning read-only unless changes are also requested. For
+implementation, make the smallest Swift change that satisfies the request and
+preserves unaffected behavior; language cleanup does not authorize adjacent
+refactoring.
 
 Inspect the declaration, callers, tests, serialization or ABI boundary, selected
 toolchain, and relevant official Swift/SDK evidence before changing behavior.

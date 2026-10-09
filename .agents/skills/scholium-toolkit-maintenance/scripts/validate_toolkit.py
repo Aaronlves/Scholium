@@ -37,6 +37,24 @@ def load_yaml(path: Path) -> object:
         fail(f"cannot read YAML {path.relative_to(SKILLS_ROOT)}: {error}")
 
 
+def fixture_paths(skill_dir: Path, case: dict) -> list[Path]:
+    """Resolve performer inputs without permitting package escape or missing files."""
+    files = case.get("files")
+    if not isinstance(files, list):
+        fail(f"{skill_dir.name} case {case.get('id')} has invalid files")
+    resolved_files = []
+    for value in files:
+        if not isinstance(value, str) or not value.strip() or Path(value).is_absolute():
+            fail(f"{skill_dir.name} case {case.get('id')} has invalid fixture path")
+        path = (skill_dir / value).resolve()
+        if not path.is_relative_to(skill_dir.resolve()) or not path.is_file():
+            fail(f"{skill_dir.name} case {case.get('id')} has missing or escaping fixture: {value}")
+        if path in resolved_files:
+            fail(f"{skill_dir.name} case {case.get('id')} repeats fixture: {value}")
+        resolved_files.append(path)
+    return resolved_files
+
+
 def validate_entry(skill_dir: Path) -> tuple[str, int, int]:
     skill_path = skill_dir / "SKILL.md"
     source = skill_path.read_text(encoding="utf-8")
@@ -87,8 +105,7 @@ def validate_entry(skill_dir: Path) -> tuple[str, int, int]:
         identifiers.add(case["id"])
         if not all(isinstance(case.get(key), str) and case[key].strip() for key in ("prompt", "expected_output")):
             fail(f"{eval_path.relative_to(SKILLS_ROOT)} case {case['id']} lacks prompt or output")
-        if not isinstance(case.get("files"), list):
-            fail(f"{eval_path.relative_to(SKILLS_ROOT)} case {case['id']} has invalid files")
+        fixture_paths(skill_dir, case)
         assertions = case.get("assertions")
         if not isinstance(assertions, list) or not assertions or not all(isinstance(item, str) and item.strip() for item in assertions):
             fail(f"{eval_path.relative_to(SKILLS_ROOT)} case {case['id']} has invalid assertions")
@@ -161,7 +178,7 @@ def main() -> None:
     python_files = validate_python()
     print(
         f"Validated {len(skill_dirs)} skills, {len(catalog_skills)} catalog mappings, "
-        f"{evals} evaluations, {links} local links, and {python_files} Python files."
+        f"{evals} evaluation definitions, {links} local links, and {python_files} Python files."
     )
 
 

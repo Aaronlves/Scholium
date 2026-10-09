@@ -4,11 +4,10 @@ These instructions apply to this package and all descendants.
 
 ## Task execution and collaboration
 
-Execution guidance adapts [OpenAI's prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices),
-checked on 2026-09-14; it selects no runtime model or API configuration.
-
 - Complete implementation through scoped verification, reviewable results and
-  test-owned cleanup. Respect discussion, diagnosis and design-only scope.
+  test-owned cleanup. Respect discussion, diagnosis, review and design-only scope.
+  A request to review and fix authorizes both within its stated boundary;
+  skill modes do not create another approval cycle.
 - The researcher owns intent, material tradeoffs and experiential acceptance.
   Resolve routine choices from owning documents and live code; ask only for
   missing facts or material researcher decisions. Do not invent research facts
@@ -57,8 +56,8 @@ point and closed chapter manifest:
    debt and open acceptance, not target authority.
 4. README, live construction/call sites, tests and scripts establish reachability.
 
-Divergence never relaxes source-fidelity, safety, recovery, privacy or preservation;
-apply bounded cutover below. Canonical target prose does not prove implementation.
+Divergence never relaxes source-fidelity, safety, recovery, privacy or preservation.
+Canonical target prose does not prove implementation.
 
 Maintain prose only when it prevents a concrete decision error, adds a contract,
 cross-boundary context, effective proof or unresolved work rather than repeating

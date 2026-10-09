@@ -1,8 +1,10 @@
 # Rust engineering and Swift boundary
 
-Use this only after the Rust skill's adoption gate identifies a bounded,
-measured need. Resolve exact toolchain, edition, platform, dependency, and
-binding behavior from the live repository and current primary documentation.
+Use this for existing Rust or Swift-facing boundaries. A proposed adoption or
+boundary change first needs the skill's adoption assessment; an existing-boundary
+correction does not reopen it. Resolve exact toolchain, edition, platform,
+dependency, and binding behavior from the live repository and current primary
+documentation.
 
 ## Rust boundary
 
@@ -36,8 +38,9 @@ out of diagnostics and prevent blocking work from reaching the UI actor.
 
 Verify format, lints, focused tests, boundary tests, release compilation,
 supported packaging architectures, notices, failure isolation, and recovery as
-separate claims. Measure only after correctness; compare against the live Swift
-baseline with the same fixture and oracle.
+separate claims as relevant to the change. For performance claims, measure only
+after correctness and compare against the relevant existing implementation with
+the same fixture and oracle.
 
 Primary references: [Rust book](https://doc.rust-lang.org/stable/book/),
 [Cargo](https://doc.rust-lang.org/cargo/reference/),

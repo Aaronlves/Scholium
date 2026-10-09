@@ -31,7 +31,7 @@
       "assertions": [
         "Judges grammar and semantic roles at representative call sites.",
         "Distinguishes side-effecting and value-returning operations.",
-        "Updates repository-owned callers without retaining an obsolete alias."
+        "Shows proposed call-site changes without editing files during a review-only request or suggesting an obsolete forwarding alias."
       ]
     },
     {
@@ -59,11 +59,11 @@
     {
       "id": 5,
       "prompt": "Review an async callback bridge that may outlive its owner and can be cancelled or completed twice.",
-      "expected_output": "A bounded lifetime and cancellation repair with exactly-once completion and focused interleaving tests.",
+      "expected_output": "A read-only lifetime and cancellation review with a proposed exactly-once completion contract and focused interleaving tests.",
       "files": [],
       "assertions": [
-        "Gives the task or stream an explicit owner and cancellation path.",
-        "Prevents double completion and stale callbacks.",
+        "Identifies the task or stream owner and proposes the missing cancellation path without editing code.",
+        "Explains how the proposed correction rejects double completion and stale callbacks.",
         "Does not use sleeps or detached work as a shortcut."
       ]
     },

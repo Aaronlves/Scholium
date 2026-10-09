@@ -87,6 +87,9 @@ public actor ZoteroMCPServer {
     /// Handles one JSON-RPC message body. Notifications intentionally return
     /// nil. Diagnostics and errors never echo search text or item data.
     public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
+        guard requestData.count <= ScholiumMCPContract.maximumEncodedMessageByteCount else {
+            return encode(responseError(id: .null, code: -32600, message: "The MCP request exceeds its encoded size limit."))
+        }
         let request: RPCRequest
         do {
             request = try JSONDecoder().decode(RPCRequest.self, from: requestData)
@@ -96,6 +99,11 @@ public actor ZoteroMCPServer {
 
         guard let id = request.id else {
             return nil
+        }
+        guard let identity = try? JSONEncoder.sorted.encode(id),
+            identity.count <= ScholiumMCPContract.maximumEncodedResponseIdentityByteCount
+        else {
+            return encode(responseError(id: .null, code: -32600, message: "The MCP response identity exceeds its encoded size limit."))
         }
         guard request.jsonrpc == "2.0", !request.method.isEmpty else {
             return encode(responseError(id: id, code: -32600, message: "Invalid JSON-RPC request."))
@@ -133,7 +141,23 @@ public actor ZoteroMCPServer {
 
         case "tools/call":
             let result = await callTool(params: request.params, access: access)
-            return encode(responseResult(id: id, result: result))
+            if let response = encode(responseResult(id: id, result: result)) { return response }
+            let mayHaveChangedState = request.params?.objectValue?["name"]?.stringValue == "zotero_update_item"
+            let refusal = responseResult(
+                id: id,
+                result: toolResult(
+                    .object([
+                        "status": .string(mayHaveChangedState ? "outcome_uncertain" : "failed"),
+                        "error_code": .string(mayHaveChangedState ? "write_outcome_uncertain" : ZoteroMCPServiceError.responseTooLarge.failureCode),
+                        "error": .string(
+                            mayHaveChangedState
+                                ? "The complete Zotero MCP reply exceeds the message limit after item-update admission. Do not replay the update. Inspect the current item and version before another update."
+                                : "The complete Zotero MCP reply exceeds the message limit. Request a smaller page or source slice."),
+                    ]), isError: true))
+            return encode(refusal)
+                ?? encode(
+                    responseError(
+                        id: .null, code: -32600, message: "The MCP reply exceeds its encoded size limit."))
 
         default:
             return encode(responseError(id: id, code: -32601, message: "Unsupported MCP method."))
@@ -652,7 +676,12 @@ public actor ZoteroMCPServer {
     }
 
     private func encode(_ value: ZoteroMCPJSONValue) -> Data? {
-        try? JSONEncoder.sorted.encode(value)
+        // Budget every complete reply, including the duplicated text projection,
+        // JSON escaping and correlation identity. This also bounds refusals.
+        guard let data = try? JSONEncoder.sorted.encode(value),
+            data.count <= ScholiumMCPContract.maximumEncodedMessageByteCount
+        else { return nil }
+        return data
     }
 
     private static func toolDefinitions(for access: ZoteroMCPAccess) -> [ZoteroMCPJSONValue] {

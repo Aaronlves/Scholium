@@ -38,6 +38,10 @@ CHAT_CONTROLS = {
     "configureChat": "scholium_configure_chat",
     "observeCurrentState": "scholium_observe_current_state",
 }
+PERSISTENT_MUTATORS = {
+    "createNote", "updateNote", "moveNote", "undoChange", "trashNote",
+    "configureSkill", "configureTool", "configureChat",
+}
 
 
 def require_catalog(actual, expected, label):
@@ -72,11 +76,15 @@ def check_source_surface(source):
     shape = re.fullmatch(
         r"\s*\{\s*switch self\s*\{\s*"
         r"case\s+(?P<chat>\.\w+(?:\s*,\s*\.\w+)*)\s*:\s*true\s*"
+        r"default\s*:\s*false\s*\}\s*\}\s*"
+        r"public var mayMutatePersistentState: Bool\s*\{\s*switch self\s*\{\s*"
+        r"case\s+(?P<mutators>\.\w+(?:\s*,\s*\.\w+)*)\s*:\s*true\s*"
         r"default\s*:\s*false\s*\}\s*\}\s*", parts[1])
     if shape is None:
         raise AssertionError("MCP surface guard failed: unrecognized closed enum/classification")
     require_catalog(cases, {**RESEARCH_TOOLS, **CHAT_CONTROLS}.items(), "wire identities")
     require_catalog(re.findall(r"\.(\w+)", shape["chat"]), CHAT_CONTROLS.keys(), "Chat-only classification")
+    require_catalog(re.findall(r"\.(\w+)", shape["mutators"]), PERSISTENT_MUTATORS, "persistent mutation classification")
 
 
 def check(executable, root):

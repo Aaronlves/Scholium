@@ -22,15 +22,15 @@ where they affect the named task. Prioritize blocked or unsafe work, then
 frequent-task friction, then clarity and craft. Preference alone is not a
 defect.
 
-Recommend one evident correction. Compare alternatives only when a material
-semantic or structural uncertainty remains; each must change the task or
-composition, not merely styling. Use the smallest faithful artifact that can
-reject the decision, with realistic synthetic content and complete-window
-context where hierarchy matters.
+Lead with the most consequential correction and cover the requested scope.
+Compare alternatives when requested or when material semantic or structural
+uncertainty remains. Distinguish appearance variants from different behavioral
+designs. Use the smallest faithful artifact that can reject the decision, with
+realistic synthetic content and complete-window context where hierarchy matters.
 
 ## Communicate
 
 Lead with the recommendation, visible result, reason, important cost, evidence,
-and at most one researcher-authority decision. Keep preview, visual approval,
+and any unresolved material researcher decision. Keep preview, visual approval,
 connected implementation, automated verification, accessibility acceptance,
 and release readiness separate.

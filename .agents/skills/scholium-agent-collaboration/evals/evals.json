@@ -55,13 +55,17 @@
     },
     {
       "id": 5,
-      "prompt": "Review a client retry after source replacement A to B and successful readback, followed by evidence-confirmation I/O failure and timeout. A portable relationship changed from R1 to R2 before retry.",
-      "expected_output": "Separates known source effects, uncertain evidence, delivery failure, and the independent record revision.",
-      "files": [],
+      "prompt": "Review the proposed client retry in the supplied synthetic events.json. Explain the known effects, unresolved outcomes and checks needed before deciding what to do next. Distinguish claims supported by specific events from claims the capture cannot establish. Save your diagnosis as diagnosis.md in the evaluation working directory. Remain read-only apart from that report; do not dispatch requests or edit application code.",
+      "expected_output": "Separates admission, confirmed source B, uncertain durable evidence and failed delivery; accounts for independently changed relationship R2 when assessing the undispatched stale retry.",
+      "files": [
+        "evals/fixtures/retry-after-timeout/events.json"
+      ],
       "assertions": [
-        "Does not treat timeout as proof of no mutation or authorize blind replay.",
-        "Inspects current exact source and record state plus retained evidence before another mutation.",
-        "Does not invent rollback or a new idempotency protocol."
+        "Uses replacement, readback and fresh-read events to establish that source B is present despite the client timeout.",
+        "Treats evidence persistence as unresolved, rather than assuming the I/O error proves no record or proves rollback.",
+        "Recognizes stale source A and record R1 inputs; current source B alone does not validate relationship R2 or authorize blind replay.",
+        "Calls for inspecting retained evidence and current operation recovery semantics without inventing idempotency, rollback or a historical workflow.",
+        "Does not claim that an unexecuted retry was accepted or rejected by the application."
       ]
     }
   ]

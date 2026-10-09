@@ -7,18 +7,18 @@ public enum AgentMCPService {
 
     public static func serve(_ handler: Handler) async throws {
         var parser = MCPFrameParser()
-        func write(_ frame: MCPFrame) async {
+        func write(_ frame: MCPFrame) async throws {
             guard let data = await handler(frame.body) else { return }
             let output =
                 frame.mode == .line
                 ? data + Data([10])
                 : Data("Content-Length: \(data.count)\r\n\r\n".utf8) + data
-            FileHandle.standardOutput.write(output)
+            try FileHandle.standardOutput.write(contentsOf: output)
         }
         for try await byte in FileHandle.standardInput.bytes {
-            for frame in try parser.append(byte) { await write(frame) }
+            for frame in try parser.append(byte) { try await write(frame) }
         }
-        for frame in try parser.finish() { await write(frame) }
+        for frame in try parser.finish() { try await write(frame) }
     }
 
     /// Closed helper entry points: no workspace runtime, installer or CLI maintenance.

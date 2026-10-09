@@ -14,12 +14,14 @@ required by `AGENTS.md`; Apple HIG and selected SDKs support platform claims.
 
 ## Modes
 
-- **Critique:** inspect and prioritize; remain read-only and return one
-  researcher-visible recommendation.
+- **Critique:** inspect and prioritize; remain read-only, cover the requested
+  scope, and lead with the most consequential researcher-visible recommendation.
 - **Design:** propose an unapproved behavior and presentation contract; edit no
   specification or application source.
-- **Decision recording:** after explicit approval, update only the owning
-  canonical decision and its replaced text.
+- **Decision recording:** when the researcher adopts a specific proposal,
+  including a direct request to record it, update only the owning canonical
+  decision and its replaced text. Prior discussion or renewed confirmation is
+  not required; resolve only material gaps or conflicts the request leaves open.
 - **Implementation:** carry out the requested build or repair against the target
   authority, with focused proof. The implementation request authorizes routine
   choices; ask only for an unresolved material product decision. Human and

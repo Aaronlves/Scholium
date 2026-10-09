@@ -3,13 +3,16 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "诊断外部编辑器在 Scholium autosave 前替换文件的竞态；保留 dirty buffer、冲突和恢复路径。",
-      "expected_output": "Vault-file-coordination owns the filesystem identity, watcher, revision, window-convergence, and race correction, with trust and source fidelity added for distinct boundaries.",
-      "files": [],
+      "prompt": "Diagnose the supplied synthetic events.json. Identify what happened to the disk, starting revision and researcher buffer, locate the first stale assumption, and recommend the smallest credible next investigation or correction. Distinguish conclusions supported by specific events from claims the capture cannot establish. Save your diagnosis as diagnosis.md in the evaluation working directory. Remain read-only apart from that report; do not edit application code or run a real vault.",
+      "expected_output": "Reconstructs the A/B/C interleaving, identifies the stale interval between revision check and replacement, and bounds recovery and implementation conclusions by the capture.",
+      "files": [
+        "evals/fixtures/autosave-race/events.json"
+      ],
       "assertions": [
-        "Models the event interleaving before changing code.",
-        "Treats notifications as invalidation hints and uses a fresh authorized read for current bytes.",
-        "Does not let atomic replacement bypass revision checks or silently overwrite dirty work."
+        "Uses steps 4, 5 and 7 to identify the stale revision check and overwritten external B; successful C readback is not proof that B was preserved.",
+        "Keeps original A, external B and researcher C distinct and does not infer that the local C buffer was lost.",
+        "Does not infer absence of a recovery snapshot, exact causal code or sufficiency of a second pre-write read from this trace.",
+        "Proposes inspecting the existing coordination and recovery boundary plus a barrier-controlled reproduction; invents no production patch or timing-based fix."
       ]
     },
     {

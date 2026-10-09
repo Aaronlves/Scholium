@@ -115,6 +115,7 @@ public enum ScholiumAppBridgeError: LocalizedError, Hashable, Sendable {
     case unavailable
     case invalidFrame
     case invalidRequest
+    case requestTooLarge
     case invalidResponse
     case unsupportedVersion(Int)
     case permissionDenied
@@ -129,6 +130,7 @@ public enum ScholiumAppBridgeError: LocalizedError, Hashable, Sendable {
         case .unavailable: "The running Scholium App bridge is unavailable."
         case .invalidFrame: "The Scholium App bridge frame is invalid."
         case .invalidRequest: "The Scholium App bridge request is invalid."
+        case .requestTooLarge: "The encoded Scholium App bridge request exceeds its transport limit."
         case .invalidResponse: "The Scholium App bridge response is invalid."
         case .unsupportedVersion(let version):
             "The Scholium App bridge schema version \(version) is unsupported."
@@ -146,7 +148,7 @@ public enum ScholiumAppBridgeError: LocalizedError, Hashable, Sendable {
 }
 
 public enum ScholiumAppBridgeLocation {
-    public static let maximumFrameByteCount = 1_024 * 1_024
+    public static let maximumFrameByteCount = ScholiumMCPContract.maximumEncodedMessageByteCount
     public static let timeout: TimeInterval = 5
     public static let operationTimeout: TimeInterval = 25
     public static let clientTimeout: TimeInterval = 30
@@ -188,6 +190,12 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
     public func send(
         _ request: ScholiumAppBridgeRequest
     ) throws -> ScholiumAppBridgeResponse {
+        let body = try AppBridgeCoding.encode(request)
+        // This rejection proves non-delivery. Keep it outside the boundary
+        // that conservatively treats partial writes as uncertain outcomes.
+        guard body.count <= ScholiumAppBridgeLocation.maximumFrameByteCount - 32 else {
+            throw ScholiumAppBridgeError.requestTooLarge
+        }
         try AppBridgeIO.validatePrivateDirectory(
             at: containerURL,
             createIfMissing: false
@@ -246,7 +254,6 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
             clientNonce: clientNonce,
             serverNonce: serverNonce
         )
-        let body = try AppBridgeCoding.encode(request)
         return try Self.withRequestDeliveryOutcome {
             try AppBridgeIO.writeFrame(tag + body, to: descriptor, deadline: authenticationDeadline)
             let response = try AppBridgeCoding.decode(
@@ -503,8 +510,24 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 correlationID: correlationID,
                 mcpResponse: result
             )
+            let responseData = try AppBridgeCoding.encode(response)
+            if responseData.count > ScholiumAppBridgeLocation.maximumFrameByteCount {
+                let failure = ScholiumMCPFailure(
+                    code: request.mcpRequest.tool.mayMutatePersistentState ? .operationUncertain : .invalidRequest,
+                    message: "The complete operation result exceeds the encoded App bridge limit.",
+                    recovery: request.mcpRequest.tool.mayMutatePersistentState
+                        ? "Do not replay the operation. Inspect current source, retained Agent Changes or runtime settings before another mutation."
+                        : "Request a smaller page or source slice and retain its exact fingerprints.")
+                let refusal = try ScholiumAppBridgeResponse(
+                    correlationID: correlationID,
+                    mcpResponse: .init(requestID: request.mcpRequest.requestID, error: failure))
+                try AppBridgeIO.writeFrame(
+                    AppBridgeCoding.encode(refusal), to: peer,
+                    deadline: AppBridgeDeadline(timeout: timeout))
+                return
+            }
             try AppBridgeIO.writeFrame(
-                AppBridgeCoding.encode(response),
+                responseData,
                 to: peer,
                 deadline: AppBridgeDeadline(timeout: timeout)
             )

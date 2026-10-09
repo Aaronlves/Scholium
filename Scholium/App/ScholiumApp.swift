@@ -1127,7 +1127,7 @@ extension ScholiumErrorLocalization {
             return switch error {
             case .unavailable: ScholiumL10n.string("The running Scholium App bridge is unavailable.", locale: locale)
             case .invalidFrame: ScholiumL10n.string("The Scholium App bridge frame is invalid.", locale: locale)
-            case .invalidRequest: ScholiumL10n.string("The Scholium App bridge request is invalid.", locale: locale)
+            case .invalidRequest, .requestTooLarge: ScholiumL10n.string("The Scholium App bridge request is invalid.", locale: locale)
             case .invalidResponse: ScholiumL10n.string("The Scholium App bridge response is invalid.", locale: locale)
             case .unsupportedVersion(let version):
                 ScholiumL10n.string("The Scholium App bridge schema version \(String(version)) is unsupported.", locale: locale)
