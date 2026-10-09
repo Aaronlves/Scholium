@@ -44,16 +44,16 @@ struct ZoteroSettingsPageView: View {
 
     var body: some View {
         Form {
-            ZoteroSettingsView().id("zotero.desktop")
+            ZoteroSettingsView().id(SettingsSection.zoteroDesktop)
             if let controller {
                 AgentZoteroCapabilitySettingsView(controller: controller, capabilities: controller.capabilities)
                     .id(controller.triptychID)
-                    .id("zotero.chat")
+                    .id(SettingsSection.zoteroChat)
             } else {
                 Section("Zotero in Chat") {
                     Text("Open a Triptych to configure Zotero in Chat.")
                         .foregroundStyle(.secondary)
-                }.id("zotero.chat")
+                }.id(SettingsSection.zoteroChat)
             }
         }
         .scholiumSettingsFormStyle()
@@ -74,14 +74,23 @@ enum SettingsNavigationRequest {
     static let requestedSectionKey = "scholium.settings.requestedSection"
 
     static func select(
-        _ pane: ScholiumSettingsDestination, agentCategory: AgentSettingsCategory? = nil,
-        sectionID: String? = nil, defaults: UserDefaults = .standard
+        _ pane: ScholiumSettingsDestination, defaults: UserDefaults = .standard
     ) {
-        if let agentCategory {
+        request(pane, section: nil, defaults: defaults)
+    }
+
+    static func reveal(_ section: SettingsSection, defaults: UserDefaults = .standard) {
+        request(section.destination, section: section, defaults: defaults)
+    }
+
+    private static func request(
+        _ pane: ScholiumSettingsDestination, section: SettingsSection?, defaults: UserDefaults
+    ) {
+        if let agentCategory = section?.agentCategory {
             defaults.set(agentCategory.rawValue, forKey: "scholium.settings.agentCategory")
         }
-        if let sectionID {
-            defaults.set(sectionID, forKey: requestedSectionKey)
+        if let section {
+            defaults.set(section.id, forKey: requestedSectionKey)
         } else {
             defaults.removeObject(forKey: requestedSectionKey)
         }
@@ -92,9 +101,9 @@ enum SettingsNavigationRequest {
     /// A requested section is a one-shot route, never retained browsing state.
     static func takeRequestedSection(
         for pane: ScholiumSettingsDestination, defaults: UserDefaults = .standard
-    ) -> SettingsSearchTarget? {
+    ) -> SettingsSection? {
         let sectionID = defaults.string(forKey: requestedSectionKey)
         defaults.removeObject(forKey: requestedSectionKey)
-        return SettingsSearchTarget.all.first { $0.id == sectionID && $0.destination == pane }
+        return SettingsSearchTarget.all.first { $0.section.id == sectionID && $0.destination == pane }?.section
     }
 }

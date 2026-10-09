@@ -12,23 +12,81 @@ struct SettingsSearchRoutingTests {
         let fixture = ChatSidebarPreferenceFixture()
         defer { fixture.cleanup() }
         let defaults = fixture.defaults
-        SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar", defaults: defaults)
+        SettingsNavigationRequest.reveal(.agentChatSidebar, defaults: defaults)
         let revision = defaults.string(forKey: "scholium.settings.navigationRevision")
         #expect(defaults.string(forKey: "scholium.settings.selectedPane") == ScholiumSettingsDestination.agents.rawValue)
         #expect(defaults.string(forKey: "scholium.settings.agentCategory") == AgentSettingsCategory.connection.rawValue)
-        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults)?.sectionID == "agents.chatSidebar")
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == .agentChatSidebar)
         #expect(defaults.object(forKey: SettingsNavigationRequest.requestedSectionKey) == nil)
         #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == nil)
-        SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar", defaults: defaults)
+        SettingsNavigationRequest.reveal(.agentChatSidebar, defaults: defaults)
         #expect(defaults.string(forKey: "scholium.settings.navigationRevision") != revision)
-        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults)?.sectionID == "agents.chatSidebar")
-        SettingsNavigationRequest.select(.agents, sectionID: "agents.chatSidebar", defaults: defaults)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == .agentChatSidebar)
+        SettingsNavigationRequest.reveal(.agentChatSidebar, defaults: defaults)
         SettingsNavigationRequest.select(.document, defaults: defaults)
         #expect(SettingsNavigationRequest.takeRequestedSection(for: .document, defaults: defaults) == nil)
-        SettingsNavigationRequest.select(.agents, sectionID: "agents.chatSidebar", defaults: defaults)
+        SettingsNavigationRequest.reveal(.agentChatSidebar, defaults: defaults)
         #expect(SettingsNavigationRequest.takeRequestedSection(for: .document, defaults: defaults) == nil)
         #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == nil)
         #expect(!fixture.preferences.isEnabled && defaults.object(forKey: ChatSidebarPreferences.enabledKey) == nil)
+    }
+
+    @Test("Every indexed editing location survives contextual navigation with the same pane, segment and anchor")
+    func indexedSectionsRoundTripThroughNavigation() {
+        let fixture = ChatSidebarPreferenceFixture()
+        defer { fixture.cleanup() }
+        let defaults = fixture.defaults
+        let targets = SettingsSearchTarget.all
+        #expect(Set(targets.map(\.id)).count == targets.count, "Search-result identities must be unique")
+        for sameID in Dictionary(grouping: targets.map(\.section), by: \.id).values {
+            #expect(Set(sameID).count == 1, "An anchor cannot describe two different routes")
+        }
+
+        for section in Set(targets.map(\.section)) {
+            defaults.removeObject(forKey: "scholium.settings.agentCategory")
+            SettingsNavigationRequest.reveal(section, defaults: defaults)
+            #expect(defaults.string(forKey: "scholium.settings.selectedPane") == section.destination.rawValue)
+            #expect(defaults.string(forKey: SettingsNavigationRequest.requestedSectionKey) == section.id)
+            #expect(defaults.string(forKey: "scholium.settings.agentCategory") == section.agentCategory?.rawValue)
+            #expect((section.agentCategory != nil) == (section.destination == .agents))
+            #expect(SettingsNavigationRequest.takeRequestedSection(for: section.destination, defaults: defaults) == section)
+            #expect(SettingsNavigationRequest.takeRequestedSection(for: section.destination, defaults: defaults) == nil)
+        }
+
+        defaults.set("unknown-settings-anchor", forKey: SettingsNavigationRequest.requestedSectionKey)
+        #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: defaults) == nil)
+        #expect(defaults.object(forKey: SettingsNavigationRequest.requestedSectionKey) == nil)
+    }
+
+    @Test("Agent search and contextual links choose the same task and preserve the named control identity")
+    func agentRoutesShareSegmentAndAnchor() throws {
+        let cases: [(String, AgentSettingsCategory, SettingsSection)] = [
+            ("Chat Sidebar", .connection, .agentChatSidebar),
+            ("Chat state access", .connection, .agentContextState(.chat)),
+            ("Core Protocol", .capabilities, .agentCoreProtocol),
+            ("Skills", .capabilities, .agentSkills),
+            ("Server Address", .capabilities, .agentTools),
+            ("Claude", .externalAccess, .agentExternal),
+            ("MCP working text", .externalAccess, .agentContextWorkingText(.external)),
+        ]
+        let fixture = ChatSidebarPreferenceFixture()
+        defer { fixture.cleanup() }
+
+        for (query, expectedCategory, expectedSection) in cases {
+            let target = try #require(SettingsSearchTarget.matches(query).first { $0.section == expectedSection })
+            let category = try #require(target.section.agentCategory)
+            #expect(category == expectedCategory)
+            var navigation = SettingsSearchNavigation<AgentSettingsCategory>(category: .connection)
+            navigation.updateQuery(query)
+            navigation.reveal(category)
+            #expect(navigation.category == expectedCategory)
+            navigation.updateQuery("")
+            #expect(navigation.category == .connection)
+
+            SettingsNavigationRequest.reveal(target.section, defaults: fixture.defaults)
+            #expect(fixture.defaults.string(forKey: "scholium.settings.agentCategory") == expectedCategory.rawValue)
+            #expect(SettingsNavigationRequest.takeRequestedSection(for: .agents, defaults: fixture.defaults) == expectedSection)
+        }
     }
 
     @Test("Search retains native editable plain-text field-editor behavior")
@@ -96,7 +154,7 @@ struct SettingsSearchRoutingTests {
             for query in [String(localized: command.title), String(localized: command.menuPath)] {
                 #expect(
                     SettingsSearchTarget.matches(query).contains {
-                        $0.destination == .shortcuts && $0.sectionID == command.rawValue
+                        $0.destination == .shortcuts && $0.section == .shortcut(command)
                     })
             }
         }
@@ -104,49 +162,49 @@ struct SettingsSearchRoutingTests {
 
     @Test("Task searches reveal the sole editing location in either interface language")
     func taskSearchRevealsItsEditingLocation() {
-        let cases: [(String, ScholiumSettingsDestination, String)] = [
-            ("AI Continuation", .writing, "writing.continuation"),
-            ("Body Font", .document, "appearance.reading"),
-            ("正文字体", .document, "appearance.reading"),
-            ("段落间距", .document, "appearance.body"),
-            ("autocomplete", .writing, "writing.continuation"),
-            ("续写模型", .writing, "writing.model"),
-            ("选段操作", .writing, "writing.selection"),
-            ("选区操作", .writing, "writing.selection"),
-            ("回车", .agents, "agents.behavior"),
-            ("Show Chat in Sidebar", .agents, "agents.chatSidebar"),
-            ("Chat Sidebar", .agents, "agents.chatSidebar"),
-            ("关闭聊天", .agents, "agents.chatSidebar"),
-            ("Core Protocol", .agents, "agents.protocol"),
-            ("工具授权", .agents, "agents.tools"),
-            ("Claude", .agents, "agents.external"),
-            ("H3 spacing", .document, "appearance.h3"),
-            ("H6 间距", .document, "appearance.h6"),
-            ("Zotero connection", .zotero, "zotero.chat"),
-            ("Triptych name", .workspace, "workspace.name"),
-            ("Source font size", .document, "appearance.source"),
-            ("Reading line width", .document, "appearance.reading"),
-            ("Body Bold Font", .document, "appearance.styles"),
-            ("正文斜体字体", .document, "appearance.styles"),
-            ("Heading Italic Font", .document, "appearance.styles"),
-            ("Writing Continuation", .writing, "writing.continuation"),
-            ("Server Address", .agents, "agents.tools"),
-            ("Scholium Connection Helper", .agents, "agents.paths"),
-            ("Copy Claude Setup Command", .agents, "agents.external"),
-            ("Chat state access", .agents, "agents.context.chat.state"),
-            ("聊天状态访问", .agents, "agents.context.chat.state"),
-            ("Chat working text", .agents, "agents.context.chat.workingText"),
-            ("聊天工作文本", .agents, "agents.context.chat.workingText"),
-            ("MCP state", .agents, "agents.context.external.state"),
-            ("外部状态访问", .agents, "agents.context.external.state"),
-            ("MCP working text", .agents, "agents.context.external.workingText"),
-            ("外部工作文本", .agents, "agents.context.external.workingText"),
+        let cases: [(String, ScholiumSettingsDestination, SettingsSection)] = [
+            ("AI Continuation", .writing, .writingContinuation),
+            ("Body Font", .document, .appearanceReading),
+            ("正文字体", .document, .appearanceReading),
+            ("段落间距", .document, .appearanceBody),
+            ("autocomplete", .writing, .writingContinuation),
+            ("续写模型", .writing, .writingModel),
+            ("选段操作", .writing, .writingSelection),
+            ("选区操作", .writing, .writingSelection),
+            ("回车", .agents, .agentBehavior),
+            ("Show Chat in Sidebar", .agents, .agentChatSidebar),
+            ("Chat Sidebar", .agents, .agentChatSidebar),
+            ("关闭聊天", .agents, .agentChatSidebar),
+            ("Core Protocol", .agents, .agentCoreProtocol),
+            ("工具授权", .agents, .agentTools),
+            ("Claude", .agents, .agentExternal),
+            ("H3 spacing", .document, .appearanceHeading(.h3)),
+            ("H6 间距", .document, .appearanceHeading(.h6)),
+            ("Zotero connection", .zotero, .zoteroChat),
+            ("Triptych name", .workspace, .workspaceName),
+            ("Source font size", .document, .appearanceSource),
+            ("Reading line width", .document, .appearanceReading),
+            ("Body Bold Font", .document, .appearanceStyles),
+            ("正文斜体字体", .document, .appearanceStyles),
+            ("Heading Italic Font", .document, .appearanceStyles),
+            ("Writing Continuation", .writing, .writingContinuation),
+            ("Server Address", .agents, .agentTools),
+            ("Scholium Connection Helper", .agents, .agentPaths),
+            ("Copy Claude Setup Command", .agents, .agentExternal),
+            ("Chat state access", .agents, .agentContextState(.chat)),
+            ("聊天状态访问", .agents, .agentContextState(.chat)),
+            ("Chat working text", .agents, .agentContextWorkingText(.chat)),
+            ("聊天工作文本", .agents, .agentContextWorkingText(.chat)),
+            ("MCP state", .agents, .agentContextState(.external)),
+            ("外部状态访问", .agents, .agentContextState(.external)),
+            ("MCP working text", .agents, .agentContextWorkingText(.external)),
+            ("外部工作文本", .agents, .agentContextWorkingText(.external)),
         ]
         for (query, destination, section) in cases {
             #expect(
                 SettingsSearchTarget.matches(query).contains {
-                    $0.destination == destination && $0.sectionID == section
-                }, "Query: \(query); target: \(section)")
+                    $0.destination == destination && $0.section == section
+                }, "Query: \(query); target: \(section.id)")
         }
         #expect(SettingsSearchTarget.matches("no-such-setting-qa").isEmpty)
         #expect(SettingsSearchTarget.matches("  ").isEmpty)
@@ -161,7 +219,7 @@ struct SettingsSearchRoutingTests {
         for id in expectedIDs {
             let targets = SettingsSearchTarget.all.filter { $0.id == id }
             #expect(targets.count == 1)
-            #expect(targets.first?.sectionID == id)
+            #expect(targets.first?.section.id == id)
             #expect(targets.first?.destination == .agents)
         }
     }

@@ -15,7 +15,8 @@ struct PortableSettingsRecoverySection: View {
     @State private var message: String?
     @State private var preservedURL: URL?
 
-    private var isCurrent: Bool { settingsModel.snapshot.activeTriptychID == triptychID }
+    private var isCurrent: Bool { settingsModel.selectedTriptychID == triptychID }
+    private var hasConfirmedSettings: Bool { settingsModel.snapshot.activeTriptychID == triptychID }
     private var isBusy: Bool { isPreparing || settingsModel.isRestoringSettings }
 
     var body: some View {
@@ -24,13 +25,13 @@ struct PortableSettingsRecoverySection: View {
                 if let status { Label(status, systemImage: "exclamationmark.triangle") }
                 HStack {
                     Button("Restore Portable Settings Defaults…") { prepare() }
-                        .disabled(isBusy || settingsModel.isRefreshing)
+                        .disabled(isBusy || settingsModel.isRefreshing || !hasConfirmedSettings)
                         .accessibilityIdentifier("scholium.settings.portable.restore")
                     Button("Reload Portable Settings") {
                         Task { _ = await settingsModel.refresh() }
                     }
                     .disabled(isBusy || settingsModel.isRefreshing)
-                    if isBusy { ProgressView().controlSize(.small) }
+                    if isBusy || settingsModel.isRefreshing { ProgressView().controlSize(.small) }
                 }
                 if let error = settingsModel.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle")
@@ -57,7 +58,7 @@ struct PortableSettingsRecoverySection: View {
         } footer: {
             Text("This Triptych. Restoring settings preserves registered folders, research files and other preferences.")
         }
-        .id("workspace.settingsRecovery")
+        .id(SettingsSection.workspaceSettingsRecovery)
         .confirmationDialog("Restore Portable Settings Defaults?", isPresented: $confirmsRestore, titleVisibility: .visible) {
             Button("Restore Portable Settings Defaults", role: .destructive) { restore() }
             Button("Cancel", role: .cancel) { request = nil }
@@ -70,7 +71,7 @@ struct PortableSettingsRecoverySection: View {
         .onChange(of: isPaneActive) { _, active in
             if !active { cancelPreparation() }
         }
-        .onChange(of: settingsModel.snapshot.activeTriptychID) { _, _ in
+        .onChange(of: settingsModel.selectedTriptychID) { _, _ in
             cancelPreparation()
             message = nil
             preservedURL = nil
@@ -78,7 +79,8 @@ struct PortableSettingsRecoverySection: View {
     }
 
     private var status: String? {
-        switch settingsModel.portableSettingsState {
+        guard hasConfirmedSettings else { return nil }
+        return switch settingsModel.portableSettingsState {
         case .current: nil
         case .needsReview: ScholiumL10n.string("Some portable settings are invalid. Available values remain in use; repair or restore the affected settings.")
         case .missing: ScholiumL10n.string("Portable settings are missing. Default values are in use.")
@@ -91,7 +93,7 @@ struct PortableSettingsRecoverySection: View {
     }
 
     private func prepare() {
-        guard isCurrent, !isBusy else { return }
+        guard isCurrent, hasConfirmedSettings, !isBusy else { return }
         preparationGeneration &+= 1
         let generation = preparationGeneration
         isPreparing = true

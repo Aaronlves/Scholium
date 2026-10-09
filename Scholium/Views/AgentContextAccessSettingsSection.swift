@@ -14,7 +14,7 @@ struct AgentContextAccessSettingsSection: View {
             }
             .toggleStyle(.checkbox)
             .accessibilityIdentifier("scholium.settings.agentContext.\(caller.rawValue).state")
-            .id("agents.context.\(caller.rawValue).state")
+            .id(SettingsSection.agentContextState(caller))
             Text("Shows which Notes are open, research pane state, retrieval freshness and recovery status on request.", bundle: .module)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -31,7 +31,7 @@ struct AgentContextAccessSettingsSection: View {
             }
             .toggleStyle(.checkbox)
             .accessibilityIdentifier("scholium.settings.agentContext.\(caller.rawValue).workingText")
-            .id("agents.context.\(caller.rawValue).workingText")
+            .id(SettingsSection.agentContextWorkingText(caller))
             Text(
                 "Includes the active Note's unsaved text, its selected passage and Kept Passages. Conversation drafts and queued messages stay private.",
                 bundle: .module

@@ -65,7 +65,7 @@ extension View {
 }
 
 extension EnvironmentValues {
-    @Entry var scholiumSettingsSearchTarget: String? = nil
+    @Entry var scholiumSettingsSearchTarget: SettingsSection? = nil
     @Entry var scholiumSettingsSearchRevision = 0
 }
 

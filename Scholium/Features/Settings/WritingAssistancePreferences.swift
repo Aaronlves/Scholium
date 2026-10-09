@@ -11,13 +11,30 @@ final class WritingAssistancePreferences: ObservableObject {
     static let defaultModel = "gpt-5.6-luna"
 
     @Published var continuationEnabled: Bool {
-        didSet { defaults.set(continuationEnabled, forKey: Self.enabledKey) }
+        didSet {
+            defaults.set(continuationEnabled, forKey: Self.enabledKey)
+            invalidStoredKeys.remove(Self.enabledKey)
+        }
     }
     @Published var model: String {
-        didSet { defaults.set(model, forKey: Self.modelKey) }
+        didSet {
+            defaults.set(model, forKey: Self.modelKey)
+            if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invalidStoredKeys.insert(Self.modelKey)
+            } else {
+                invalidStoredKeys.remove(Self.modelKey)
+            }
+        }
     }
-    @Published private(set) var loadError: String?
+    @Published private(set) var invalidStoredKeys: Set<String>
     private let defaults: UserDefaults
+
+    var loadError: String? {
+        guard !invalidStoredKeys.isEmpty else { return nil }
+        return ScholiumL10n.string(
+            "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored."
+        )
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -29,11 +46,9 @@ final class WritingAssistancePreferences: ObservableObject {
         let storedModel = rawModel as? String
         let validModel = storedModel.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
         model = validModel ? storedModel! : Self.defaultModel
-        if (rawEnabled != nil && !validBoolean) || (rawModel != nil && !validModel) {
-            loadError = ScholiumL10n.string(
-                "Some writing assistance settings could not be loaded. Defaults are used for unavailable values; saved settings remain unchanged until edited or restored."
-            )
-        }
+        invalidStoredKeys = []
+        if rawEnabled != nil && !validBoolean { invalidStoredKeys.insert(Self.enabledKey) }
+        if rawModel != nil && !validModel { invalidStoredKeys.insert(Self.modelKey) }
     }
 
     func restoreDefaults() {
@@ -41,6 +56,6 @@ final class WritingAssistancePreferences: ObservableObject {
         model = Self.defaultModel
         defaults.removeObject(forKey: Self.enabledKey)
         defaults.removeObject(forKey: Self.modelKey)
-        loadError = nil
+        invalidStoredKeys = []
     }
 }

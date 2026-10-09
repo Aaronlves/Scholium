@@ -114,7 +114,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                             }
                         }
                     }
-                    .id("agents.skills")
+                    .id(SettingsSection.agentSkills)
                 }
             }
             if hasToolSectionContent {
@@ -179,7 +179,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                 } header: {
                     Text(zoteroOnly ? "Zotero in Chat" : "Connected Tools", bundle: .module)
                 }
-                .id(zoteroOnly ? "zotero.chat" : "agents.tools")
+                .id(zoteroOnly ? SettingsSection.zoteroChat : .agentTools)
             }
             if let toolEdit {
                 Section {
@@ -244,7 +244,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Button("Open Connection and Chat") {
-                    SettingsNavigationRequest.select(.agents, agentCategory: .connection)
+                    SettingsNavigationRequest.reveal(.agentConnection)
                 }
             } else if controller.hasActiveExecutions {
                 Text("Wait for the Agent to finish before changing Skills or Tools.", bundle: .module)
@@ -385,10 +385,12 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
 
     private var zoteroStatusText: LocalizedStringKey {
-        if !capabilities.hasMethods {
-            return capabilities.isRefreshing ? "Checking…" : "Unavailable"
+        switch capabilities.zoteroConnectionState {
+        case .disconnected: "Unavailable"
+        case .checking: "Checking…"
+        case .available: "Available in Chat"
+        case .unavailable: "Zotero connection unavailable"
         }
-        return capabilities.zoteroConnectionAvailable ? "Available in Chat" : "Zotero connection unavailable"
     }
 
     private func toolRow(_ name: String) -> some View {
@@ -482,7 +484,7 @@ struct CoreProtocolSettingsSection: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("scholium.agent.core-protocol")
-        }.id("agents.protocol")
+        }.id(SettingsSection.agentCoreProtocol)
     }
 }
 

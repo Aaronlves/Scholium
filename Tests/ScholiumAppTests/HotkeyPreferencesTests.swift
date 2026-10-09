@@ -164,6 +164,43 @@ struct HotkeyPreferencesTests {
         #expect(ScholiumHotkeyPreferences.binding(for: .italic, data: saved) == reserved)
     }
 
+    @Test("Command-Plus cannot override the fixed text-size command when saved or loaded")
+    func shiftedEqualsRemainsReserved() throws {
+        let alias = try #require(ScholiumHotkeyBinding(key: "=", modifiers: [.command, .shift]))
+        #expect(ScholiumHotkeyPreferences.validationIssue(for: alias, command: .showAttention, data: Data()) == .systemReserved)
+        #expect(ScholiumHotkeyPreferences.data(setting: alias, for: .showAttention, in: Data()).isEmpty)
+
+        let persisted = Data(#"{"overrides":{"showAttention":{"key":"=","modifiers":12}},"disabled":[]}"#.utf8)
+        #expect(ScholiumHotkeyPreferences.needsRecovery(persisted))
+        #expect(ScholiumHotkeyPreferences.binding(for: .showAttention, data: persisted) == nil)
+        #expect(ScholiumHotkeyPreferences.command(for: alias, data: persisted) == .increaseTextSize)
+    }
+
+    @Test("Custom shifted-equals aliases conflict in either assignment order", arguments: [false, true])
+    func customEqualsAliasesConflict(shiftedFirst: Bool) throws {
+        let unshifted = try #require(ScholiumHotkeyBinding(key: "=", modifiers: [.option, .command]))
+        let shifted = try #require(ScholiumHotkeyBinding(key: "=", modifiers: [.option, .command, .shift]))
+        let first = shiftedFirst ? shifted : unshifted
+        let second = shiftedFirst ? unshifted : shifted
+        let saved = ScholiumHotkeyPreferences.data(setting: first, for: .showAttention, in: Data())
+        #expect(ScholiumHotkeyPreferences.binding(for: .showAttention, data: saved) == first)
+        #expect(ScholiumHotkeyPreferences.validationIssue(for: second, command: .showSource, data: saved) == .conflict(.showAttention))
+        #expect(ScholiumHotkeyPreferences.data(setting: second, for: .showSource, in: saved) == saved)
+        #expect(ScholiumHotkeyPreferences.command(for: shifted, data: saved) == .showAttention)
+        #expect(ScholiumHotkeyPreferences.command(for: unshifted, data: saved) == (shiftedFirst ? nil : .showAttention))
+    }
+
+    @Test("Persisted custom aliases are isolated without disabling unrelated shortcuts")
+    func persistedEqualsAliasesFailClosed() throws {
+        let persisted = Data(#"{"overrides":{"showAttention":{"key":"=","modifiers":10},"showSource":{"key":"=","modifiers":14}},"disabled":[]}"#.utf8)
+        #expect(ScholiumHotkeyPreferences.needsRecovery(persisted))
+        #expect(ScholiumHotkeyPreferences.binding(for: .showAttention, data: persisted) == nil)
+        #expect(ScholiumHotkeyPreferences.binding(for: .showSource, data: persisted) == nil)
+        #expect(ScholiumHotkeyPreferences.binding(for: .searchResearch, data: persisted) == ScholiumHotkeyCommand.searchResearch.defaultBinding)
+        let event = try #require(ScholiumHotkeyBinding(key: "=", modifiers: [.option, .command, .shift]))
+        #expect(ScholiumHotkeyPreferences.command(for: event, data: persisted) == nil)
+    }
+
     @Test("Menu routing follows current custom bindings and yields ordinary typing")
     @MainActor
     func menuEventMatching() throws {

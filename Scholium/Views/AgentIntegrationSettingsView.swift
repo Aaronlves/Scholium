@@ -72,7 +72,7 @@ struct AgentIntegrationSettingsView: View {
                         } header: {
                             Text("Chat Sidebar — This Mac", bundle: .module)
                         }
-                        .id("agents.chatSidebar")
+                        .id(SettingsSection.agentChatSidebar)
                         AgentContextAccessSettingsSection(caller: .chat, preferences: contextAccessPreferences)
                         if let chatController {
                             AgentChatConnectionSettingsView(controller: chatController)
@@ -87,7 +87,7 @@ struct AgentIntegrationSettingsView: View {
                         } header: {
                             Text("Chat Behavior", bundle: .module)
                         }
-                        .id("agents.behavior")
+                        .id(SettingsSection.agentBehavior)
                         if let chatController {
                             AgentChatConnectionAdvancedSettingsView(controller: chatController)
                         }
@@ -149,16 +149,8 @@ struct AgentIntegrationSettingsView: View {
             navigation.category = AgentSettingsCategory(rawValue: persistedCategory) ?? .connection
             hasRestoredCategory = true
         }
-        let matching: AgentSettingsCategory?
-        switch searchTarget {
-        case "agents.protocol", "agents.skills", "agents.tools": matching = .capabilities
-        case "agents.external", "agents.context.external.state", "agents.context.external.workingText": matching = .externalAccess
-        case "agents.chatSidebar", "agents.connection", "agents.behavior", "agents.paths", "agents.context.chat.state", "agents.context.chat.workingText":
-            matching = .connection
-        default: matching = nil
-        }
         navigation.updateQuery(searchQuery)
-        if let matching { navigation.reveal(matching) }
+        if let category = searchTarget?.agentCategory { navigation.reveal(category) }
     }
 }
 
@@ -188,7 +180,7 @@ private struct ExternalAgentHostsSettingsView: View {
                 }
             }
 
-            .id("agents.external")
+            .id(SettingsSection.agentExternal)
             Section("Setup") {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("Copies a setup command. Run it in your Agent host to connect.")

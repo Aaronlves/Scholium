@@ -277,14 +277,15 @@ delayed keep/open checks runtime/owner identity. Kept text never persists.
 
 ### Settings authority
 
-Settings composes existing workspace, document, shortcut, writing, Zotero and
-Chat owners; it creates no workspace runtime. Immutable snapshots
-carry exact settings revisions and writes return replacements. Captured scope or
-revision mismatch requires explicit reload, not last-writer-wins. Native retained
-page hosts preserve drafts while inactive hosts lose input/accessibility/default
-actions. Background font discovery publishes names only, coalesces invalidation
-and rejects stale completion. Search uses static interface metadata, never research
-content or permission. AppKit owns the preferences toolbar, safe area and
+Settings composes workspace, document, shortcut, writing, Zotero and
+Chat owners; it creates no workspace runtime. `WorkspaceSettingsModel` owns
+Triptych selection; refresh follows it while confirmed snapshots retain
+identity and revision. Scope/revision mismatch requires explicit reload. Native
+hosts retain drafts but exclude inactive input/accessibility/default actions.
+Background font discovery publishes names, coalesces invalidation and rejects
+stale results. Search, contextual links and scroll anchors share typed section
+identities; search indexes static interface metadata, never research content or
+permission. AppKit owns the preferences toolbar, safe area and
 temporary search-result selection; SwiftUI owns category, query and destination.
 
 Shortcuts have one command catalog/validated preference writer; menus consume it.
@@ -349,5 +350,5 @@ Artifact requirements and dated outcomes belong to Specification and Status.
 - `Scholium/App/ApplicationBootstrapController.swift` and `Scholium/App/Window`:
   App composition and native delivery.
 - `Scholium/Features/Settings/WorkspaceSettingsModel.swift` and
-  `Scholium/Views/WorkspaceSettingsView.swift`: Settings composition.
+  `Scholium/Views/ScholiumSettingsView.swift`: Settings composition.
 - `Tools/Scripts/verify.sh`: executable architectural boundary checks.

@@ -807,7 +807,7 @@ struct ScholiumWindowObservedRoot: View {
             if case .chat = notification, !appState.isChatSidebarEnabled,
                 appState.workspaceAssignment?.id == notification.triptychID
             {
-                SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar")
+                SettingsNavigationRequest.reveal(.agentChatSidebar)
                 openSettings()
                 return
             }
@@ -874,7 +874,7 @@ struct ScholiumWindowObservedRoot: View {
                 guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
                 windowCoordinator?.makeKeyAndOrderFront()
                 if case .chat = notification, !appState.isChatSidebarEnabled {
-                    SettingsNavigationRequest.select(.agents, agentCategory: .connection, sectionID: "agents.chatSidebar")
+                    SettingsNavigationRequest.reveal(.agentChatSidebar)
                     openSettings()
                     return true
                 }
@@ -1090,7 +1090,7 @@ private struct ScholiumSettingsRoot: View {
             .environmentObject(settingsModel)
             .environment(
                 \.agentChatSettingsController,
-                settingsModel.snapshot.activeTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) }
+                settingsModel.selectedTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) }
             )
             .tint(nil)
             .buttonStyle(.automatic)

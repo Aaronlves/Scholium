@@ -695,58 +695,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    private func portableSettingsRead(
-        triptychID: UUID
-    ) async throws -> WorkspacePortableSettingsRead {
-        let handle = try await workspaceHandle(id: triptychID)
-        switch try await handle.research.settingsLoadState() {
-        case .current(let snapshot):
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: snapshot.settings,
-                state: .current(snapshot.revision)
-            )
-        case .needsReview(let settings, let revision, let reason):
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: settings,
-                state: .needsReview(revision, reason: reason)
-            )
-        case .missing:
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: TriptychSettings(),
-                state: .missing
-            )
-        case .oldSchema(let version):
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: TriptychSettings(),
-                state: .oldSchema(version)
-            )
-        case .futureSchema(let version):
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: TriptychSettings(),
-                state: .futureSchema(version)
-            )
-        case .corrupted:
-            return WorkspacePortableSettingsRead(
-                triptychID: triptychID,
-                settings: TriptychSettings(),
-                state: .corrupted
-            )
-        }
-    }
-
     func settingsCapabilities() -> WorkspaceSettingsCapabilities {
         WorkspaceSettingsCapabilities(
             workspace: WorkspaceSettingsWorkspaceCapabilities(
                 loadSnapshot: { [self] preferredID in
                     try await settingsSnapshot(preferredTriptychID: preferredID)
-                },
-                loadPortableSettings: { [self] id in
-                    try await portableSettingsRead(triptychID: id)
                 },
                 configureWorkspace: { [self] paper, topics, works, portable, id, name in
                     let handle = try await configureTriptych(

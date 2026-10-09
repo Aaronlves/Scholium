@@ -1155,7 +1155,7 @@ struct AgentChatConversationDetailView: View {
         case .refreshMethods:
             controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
         case .manageMethods:
-            SettingsNavigationRequest.select(.agents, agentCategory: .capabilities)
+            SettingsNavigationRequest.reveal(.agentSkills)
             openSettings()
         case .context: presentation.contextAnchor = .composer
         case .usage: openAccountUsage()

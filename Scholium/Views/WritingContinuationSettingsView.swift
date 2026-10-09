@@ -29,7 +29,7 @@ struct WritingAssistanceModelSettingsContent: View {
         } footer: {
             Text("This Mac", bundle: .module)
         }
-        .id("writing.model")
+        .id(SettingsSection.writingModel)
     }
 }
 
@@ -51,7 +51,7 @@ struct WritingContinuationSettingsContent: View {
         } footer: {
             Text("This Mac", bundle: .module)
         }
-        .id("writing.continuation")
+        .id(SettingsSection.writingContinuation)
     }
 }
 

@@ -279,7 +279,7 @@ struct AgentChatConnectionStatus: View {
         case .refreshSkills: controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
         case .continueWithoutResending: controller.confirmContinueAfterUncertainDelivery()
         case .settings:
-            SettingsNavigationRequest.select(.agents, agentCategory: .connection)
+            SettingsNavigationRequest.reveal(.agentConnection)
             openSettings()
         }
     }

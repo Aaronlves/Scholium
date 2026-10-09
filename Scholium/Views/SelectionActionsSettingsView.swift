@@ -237,7 +237,7 @@ struct SelectionActionsSettingsContent: View {
         } footer: {
             Text("This Mac", bundle: .module)
         }
-        .id("writing.selection")
+        .id(SettingsSection.writingSelection)
         .onAppear { state.synchronize(with: preferences.actions) }
         .onChange(of: preferences.actions) { _, actions in state.synchronize(with: actions) }
     }

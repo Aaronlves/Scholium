@@ -44,7 +44,7 @@ struct AgentChatConnectionSettingsView: View {
                     "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
                 )
             }
-            .id("agents.connection")
+            .id(SettingsSection.agentConnection)
         }
     }
 
@@ -122,7 +122,7 @@ struct AgentChatConnectionAdvancedSettingsView: View {
             } header: {
                 Text("Custom Connection Paths", bundle: .module)
             }
-            .id("agents.paths")
+            .id(SettingsSection.agentPaths)
 
         }
         .onDisappear { fileSelectionTask?.cancel() }

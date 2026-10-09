@@ -10,6 +10,10 @@ struct AgentChatCapabilitySnapshot: Sendable {
     let skillRoots: [String]
 }
 
+enum AgentChatZoteroConnectionState: Equatable {
+    case disconnected, checking, available, unavailable
+}
+
 /// A stopped turn cannot begin a new capability operation. Once a runtime
 /// mutation has been sent, loss of admission makes its outcome uncertain.
 @MainActor
@@ -218,17 +222,19 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
     /// Chat uses Scholium's bundled Zotero MCP connection. It is managed by
     /// the application and is intentionally not a user-editable connection.
-    var zoteroConnectionAvailable: Bool {
+    var zoteroConnectionState: AgentChatZoteroConnectionState {
+        guard isConnected else { return .disconnected }
+        if isRefreshing { return .checking }
         if toolConnections.contains(where: {
             $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame && $0.enabled
         }) {
-            return true
+            return .available
         }
-        if tools.contains(where: { $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame }) { return true }
+        if tools.contains(where: { $0.name.caseInsensitiveCompare("scholium-zotero") == .orderedSame }) { return .available }
         // The connection is injected into each Chat thread rather than the
         // user's global Codex config. Once this runtime has loaded its tool
         // configuration, the managed helper is available for the next turn.
-        return toolConfiguration != nil && isConnected
+        return toolConfiguration != nil ? .available : .unavailable
     }
 
     func editTool(named name: String? = nil) -> AgentChatToolEdit? {

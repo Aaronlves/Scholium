@@ -35023,19 +35023,19 @@
         }
       }
     },
-    "Portable settings must be reread successfully before recovery can continue." : {
+    "Portable settings are already being restored. Wait for the current operation to finish." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Portable settings must be reread successfully before recovery can continue."
+            "value" : "Portable settings are already being restored. Wait for the current operation to finish."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "必须成功重新读取便携设置，才能继续恢复。"
+            "value" : "便携设置正在恢复。请等待当前操作完成。"
           }
         }
       }

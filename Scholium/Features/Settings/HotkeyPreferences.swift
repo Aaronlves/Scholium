@@ -258,6 +258,13 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
             && modifiers == self.modifiers.union(.shift)
     }
 
+    /// Bindings conflict when either accepts the other's event, including the
+    /// shifted "=" event accepted by an unshifted text-size shortcut.
+    func conflicts(with other: Self) -> Bool {
+        matches(key: other.key, modifiers: other.modifiers)
+            || other.matches(key: key, modifiers: modifiers)
+    }
+
     var displayName: String {
         modifiers.displayPrefix + key.uppercased()
     }
@@ -311,10 +318,10 @@ enum ScholiumHotkeyPreferences {
         let payload = decode(data)
         if payload.disabled.contains(command.rawValue) { return nil }
         guard let override = payload.overrides[command.rawValue] else { return command.defaultBinding }
-        guard !systemReservedBindings.contains(override),
+        guard !isReserved(override),
             !ScholiumHotkeyCommand.customizableCommands.contains(where: { peer in
                 peer != command && !payload.disabled.contains(peer.rawValue)
-                    && (payload.overrides[peer.rawValue] ?? peer.defaultBinding) == override
+                    && (payload.overrides[peer.rawValue] ?? peer.defaultBinding)?.conflicts(with: override) == true
             })
         else { return nil }
         return override
@@ -380,11 +387,11 @@ enum ScholiumHotkeyPreferences {
     ) -> ScholiumHotkeyValidationIssue? {
         guard binding.modifiers.contains(.command) else { return .commandRequired }
         guard binding.isStructurallyValid else { return .systemReserved }
-        if systemReservedBindings.contains(binding) { return .systemReserved }
+        if isReserved(binding) { return .systemReserved }
         let payload = decode(data)
         if let conflict = ScholiumHotkeyCommand.customizableCommands.first(where: {
             $0 != command && !payload.disabled.contains($0.rawValue)
-                && (payload.overrides[$0.rawValue] ?? $0.defaultBinding) == binding
+                && (payload.overrides[$0.rawValue] ?? $0.defaultBinding)?.conflicts(with: binding) == true
         }) {
             return .conflict(conflict)
         }
@@ -439,10 +446,10 @@ enum ScholiumHotkeyPreferences {
             needsRecovery = true
         }
         for (name, binding) in payload.overrides {
-            if systemReservedBindings.contains(binding)
+            if isReserved(binding)
                 || ScholiumHotkeyCommand.customizableCommands.contains(where: {
                     $0.rawValue != name && !payload.disabled.contains($0.rawValue)
-                        && (payload.overrides[$0.rawValue] ?? $0.defaultBinding) == binding
+                        && (payload.overrides[$0.rawValue] ?? $0.defaultBinding)?.conflicts(with: binding) == true
                 })
             {
                 needsRecovery = true
@@ -455,6 +462,10 @@ enum ScholiumHotkeyPreferences {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return (try? encoder.encode(payload)) ?? Data()
+    }
+
+    private static func isReserved(_ binding: ScholiumHotkeyBinding) -> Bool {
+        systemReservedBindings.contains { $0.conflicts(with: binding) }
     }
 
     // Fixed application commands are derived from the same menu registry.

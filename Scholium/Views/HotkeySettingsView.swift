@@ -19,7 +19,7 @@ struct HotkeySettingsView: View {
                                 Text(command.title).help(Text(command.menuPath))
                             }
                             .contextMenu { hotkeyActions(command) }
-                            .id(command.rawValue)
+                            .id(SettingsSection.shortcut(command))
                             if editingCommand == command {
                                 HotkeyRecordingEditor(
                                     command: command,
