@@ -81,6 +81,31 @@ struct ResearchPassagePreview: View {
     }
 }
 
+/// Inspector commands share label typography, ink and target geometry. Native
+/// Button/Menu styles still own press, focus, disabled and menu feedback.
+private struct ResearchInspectorActionLabel: ViewModifier {
+    let iconOnly: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .font(ScholiumTypography.interface(.small))
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+            .frame(
+                minWidth: ScholiumGrid.Dimension.preferredCustomTarget,
+                minHeight: ScholiumGrid.Dimension.preferredCustomTarget,
+                alignment: iconOnly ? .center : .leading
+            )
+            .contentShape(Rectangle())
+    }
+}
+
+extension View {
+    func researchInspectorActionLabel(iconOnly: Bool = false) -> some View {
+        modifier(ResearchInspectorActionLabel(iconOnly: iconOnly))
+    }
+}
+
 struct ResearchPassageContextDisclosure: View {
     @Binding var expanded: Bool
     let identity: String
@@ -91,14 +116,56 @@ struct ResearchPassageContextDisclosure: View {
             expanded.toggle()
         } label: {
             Text(expanded ? "Hide Context" : "Show Context")
-                .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
-                .contentShape(Rectangle())
+                .researchInspectorActionLabel()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: ScholiumL10n.string(expanded ? "Hide Context" : "Show Context") + ", " + identity))
         .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
         .accessibilityIdentifier("scholium.research.context." + identifier)
+    }
+}
+
+/// Passage operations share one quiet control row below the source text. The
+/// controls never capture writing context or own a source mutation themselves.
+struct ResearchPassageControls<Actions: View>: View {
+    @Binding var expanded: Bool
+    let identity: String
+    let identifier: String
+    let isKept: Bool
+    var canKeep = true
+    let toggleKept: () -> Void
+    @ViewBuilder let actions: () -> Actions
+    private var keptActionTitle: LocalizedStringKey { isKept ? "Remove Kept Passage" : "Keep Passage" }
+
+    var body: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            ResearchPassageContextDisclosure(expanded: $expanded, identity: identity, identifier: identifier)
+                .layoutPriority(1)
+            Spacer(minLength: 0)
+            Button(action: toggleKept) {
+                Label(keptActionTitle, systemImage: isKept ? "pin.fill" : "pin")
+                    .labelStyle(.iconOnly)
+                    .researchInspectorActionLabel(iconOnly: true)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canKeep)
+            .help(keptActionTitle)
+            .accessibilityLabel(Text(verbatim: ScholiumL10n.string(isKept ? "Remove Kept Passage" : "Keep Passage") + ", " + identity))
+            .accessibilityValue(isKept ? Text("Kept snapshot") : Text(""))
+            .accessibilityIdentifier("scholium.research.keep." + identifier)
+            Menu(content: actions) {
+                Label("Passage Actions", systemImage: "ellipsis")
+                    .labelStyle(.iconOnly)
+                    .researchInspectorActionLabel(iconOnly: true)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .help("Passage Actions")
+            .accessibilityLabel(Text(verbatim: ScholiumL10n.string("Passage Actions") + ", " + identity))
+            .accessibilityIdentifier("scholium.research.actions." + identifier)
+        }
+        .controlSize(.small)
+        .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
     }
 }

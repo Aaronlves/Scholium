@@ -55,7 +55,7 @@ struct ScholiumApparatusStateView<Actions: View>: View {
                         .scholiumForeground(.primaryText)
                     if let detail, !detail.isEmpty {
                         Text(detail)
-                            .font(ScholiumTypography.scholarly(.body))
+                            .font(ScholiumTypography.interface(.control))
                             .scholiumForeground(.secondaryText)
                             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
                             .fixedSize(horizontal: false, vertical: true)

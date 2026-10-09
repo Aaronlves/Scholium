@@ -135,6 +135,12 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         return didSearch && !contextChanged ? .empty : .waiting
     }
 
+    var problemTitle: LocalizedStringResource {
+        if cards.isEmpty { return "Related material unavailable" }
+        if !hasCompleteCurrentResults { return "Some material unavailable" }
+        return "Related material needs attention"
+    }
+
     func invalidateWritingContext() {
         if isLoading { stopAutomaticSearch() }
         guard seed != nil else { return }

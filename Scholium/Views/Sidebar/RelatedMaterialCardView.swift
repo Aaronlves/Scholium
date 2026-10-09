@@ -23,6 +23,7 @@ struct RelatedMaterialNoteGroupView: View {
             ResearchNoteGroupHeader(
                 title: first.candidate.title, role: first.reference.vaultRole,
                 expanded: $expanded,
+                count: group.passages.count > 1 ? .passages(group.passages.count) : nil,
                 entranceProgress: entranceProgress,
                 directoryContext: group.directoryContext,
                 relativePath: first.reference.relativePath,
@@ -91,9 +92,11 @@ struct RelatedMaterialNoteGroupView: View {
                         termGroup: termGroup,
                         isLoading: isLoading,
                         entranceProgress: entranceProgress,
+                        canInsertNote: canInsert && card.linkTarget != nil,
                         canInsertParagraph: canInsertParagraph && card.linkTarget != nil,
                         canAddToChat: canAddToChat,
                         isKept: keptPassages.contains(card),
+                        insertNote: { insert(card) },
                         insertParagraph: { insertParagraph(card) },
                         open: { open(card) }, addToChat: { addToChat(card) },
                         toggleKept: { toggleKept(card) }
@@ -156,9 +159,11 @@ private struct RelatedMaterialPassageView: View {
     let termGroup: SearchTermGroup?
     let isLoading: Bool
     let entranceProgress: CGFloat
+    let canInsertNote: Bool
     let canInsertParagraph: Bool
     let canAddToChat: Bool
     let isKept: Bool
+    let insertNote: () -> Void
     let insertParagraph: () -> Void
     let open: () -> Void
     let addToChat: () -> Void
@@ -224,10 +229,17 @@ private struct RelatedMaterialPassageView: View {
                 }
             }
             .accessibilityIdentifier("scholium.related.card.\(card.id)")
-            ResearchPassageContextDisclosure(
-                expanded: $contextExpanded, identity: card.sourceIdentity, identifier: card.id
-            )
-            .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+            ResearchPassageControls(
+                expanded: $contextExpanded, identity: card.sourceIdentity, identifier: card.id,
+                isKept: isKept, canKeep: !isLoading, toggleKept: toggleKept
+            ) {
+                Button("Open Source", action: open)
+                Button("Link to This Note", action: insertNote).disabled(!canInsertNote)
+                Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
+                if canAddToChat {
+                    Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
+                }
+            }
             .researchGroupEntrance(entranceProgress)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -266,8 +278,10 @@ struct RelatedMaterialSkeleton: View {
                             verbatim: Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10)
                                 .joined(separator: " ")))
                 }
-                ResearchPassageContextDisclosure(expanded: .constant(false), identity: "", identifier: "placeholder")
-                    .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+                ResearchPassageControls(
+                    expanded: .constant(false), identity: "", identifier: "placeholder",
+                    isKept: false, canKeep: false, toggleKept: {}
+                ) {}
             }
         }
         .redacted(reason: .placeholder)

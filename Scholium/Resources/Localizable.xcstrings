@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Passage Actions": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Passage Actions"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "段落操作"}}}},
+    "1 passage": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "1 passage"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "1 个段落"}}}},
+    "%lld passages": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "%lld passages"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 个段落"}}}},
+    "Related material unavailable": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Related material unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "相关材料不可用"}}}},
+    "Related material needs attention": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Related material needs attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "相关材料需要关注"}}}},
+    "Some material unavailable": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Some material unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "部分材料不可用"}}}},
     "Scholium could not leave the current note, so it kept it open. %@": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium could not leave the current note, so it kept it open. %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法离开当前笔记，因此 Scholium 保留了其打开状态。%@"}}}},
     "No diff text was supplied.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No diff text was supplied."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "未提供差异文本。"}}}},
     "Retry Stop": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry Stop"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试停止"}}}},
@@ -2960,22 +2966,6 @@
       "stringUnit": {
         "state": "translated",
         "value": "当前计划"
-      }
-    }
-  }
-},
-    "References unavailable": {
-  "localizations": {
-    "en": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "References unavailable"
-      }
-    },
-    "zh-Hans": {
-      "stringUnit": {
-        "state": "translated",
-        "value": "暂时无法查找参考"
       }
     }
   }

@@ -57,9 +57,10 @@ struct ResearchProjectionFreshnessView: View {
                     density: freshness.detail == nil ? .line : .block
                 ) {
                     if freshness.permitsRetry {
-                        Button("Retry", action: retry)
-                            .controlSize(.small)
-                            .buttonStyle(.borderless)
+                        Button(action: retry) {
+                            Text("Retry").researchInspectorActionLabel()
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .accessibilityIdentifier("scholium.researchProjectionFreshness")

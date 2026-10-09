@@ -673,6 +673,33 @@ struct RelatedMaterialsTests {
         #expect(model.presentation == .waiting)
     }
 
+    @Test("Partial retrieval keeps readable passages and distinguishes its recovery from total unavailability", arguments: [0, 1])
+    func partialRecoveryPresentation(omitted: Int) async {
+        let model = RelatedMaterialsSession()
+        let captured = seed()
+        let source = reference()
+        let complete = populatedResponse(captured)
+        let partial = RelatedContentResponse(
+            requestID: complete.requestID, seedFingerprint: complete.seedFingerprint,
+            freshnessToken: complete.freshnessToken, availability: complete.availability,
+            state: .partial, identityCandidates: complete.identityCandidates,
+            lexicalCandidates: complete.lexicalCandidates, identityHasMore: false, lexicalHasMore: false,
+            passages: complete.passages, omittedSourceCount: omitted)
+        await model.find(capture: { captured }, retrieve: { _ in partial }, references: [source]).value
+        #expect(!model.cards.isEmpty && model.omittedCount == omitted)
+        #expect(model.problemTitle == "Some material unavailable")
+        #expect(!model.canInsertParagraphLink)
+        let retained = model.cards
+        await model.find(capture: { captured }, retrieve: { _ in complete }, references: [source]).value
+        model.report(RelatedMaterialsError.changedSource)
+        #expect(model.cards == retained)
+        #expect(model.problemTitle == "Related material needs attention")
+        model.reset()
+        model.report(RelatedMaterialsError.unavailable)
+        #expect(model.cards.isEmpty)
+        #expect(model.problemTitle == "Related material unavailable")
+    }
+
     @Test("Only complete current results allow paragraph insertion, and one insertion owns the request", arguments: [false, true])
     func paragraphInsertionAdmission(partial: Bool) async {
         let model = RelatedMaterialsSession()

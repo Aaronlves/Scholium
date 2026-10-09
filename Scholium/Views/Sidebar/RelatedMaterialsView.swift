@@ -46,7 +46,11 @@ struct RelatedMaterialsView: View {
                             }
                         } label: {
                             Label("Find with term group", systemImage: "text.magnifyingglass")
+                                .researchInspectorActionLabel()
                         }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .controlSize(.small)
                         .accessibilityHint("Uses your authored search terms to find passages you can inspect before adding to Chat.")
                         .accessibilityIdentifier("scholium.related.termGroup")
                         .disabled(editor == nil || editor?.isComposing == true || session.isInsertingParagraphLink)
@@ -73,7 +77,7 @@ struct RelatedMaterialsView: View {
                     switch session.presentation {
                     case .waiting:
                         ScholiumSidebarState(
-                            Text("Writing References"),
+                            Text("Related Material"),
                             detail: Text("Pause writing or select a passage."),
                             indicator: .symbol("text.magnifyingglass"), horizontalInset: 0
                         ) {
@@ -86,10 +90,14 @@ struct RelatedMaterialsView: View {
                         .accessibilityIdentifier("scholium.related.empty")
                     case .problem(let message):
                         ScholiumSidebarState(
-                            Text("References unavailable"), detail: Text(message),
+                            Text(session.problemTitle), detail: Text(message),
                             indicator: .symbol("exclamationmark.triangle", role: .attention), horizontalInset: 0
                         ) {
-                            Button("Retry", action: retry).disabled(editor == nil)
+                            Button(action: retry) {
+                                Text("Retry").researchInspectorActionLabel()
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(editor == nil)
                         }
                         .accessibilityIdentifier("scholium.related.issue")
                     case .loading:

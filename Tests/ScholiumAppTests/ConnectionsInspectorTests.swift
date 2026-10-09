@@ -54,15 +54,24 @@ struct ConnectionsInspectorTests {
             groups: [], external: links, collapsedGroups: [],
             freshness: .failed(reason), emptyAnnouncement: "No External Links")
         #expect(Set(rows.map(\.id)).count == rows.count)
-        try #require(rows.count == 2)
-        guard case .freshness(let freshness) = rows[0], case .external(let captured) = rows[1] else {
+        try #require(rows.count == 3)
+        guard case .freshness(let freshness) = rows[0] else {
             Issue.record("A refresh failure must precede the retained authored external links.")
             return
+        }
+        let captured = rows.compactMap { row -> SourceResourceReferences.ExternalLink? in
+            guard case .external(let link) = row else { return nil }
+            return link
         }
         #expect(freshness.detail == reason)
         #expect(captured == links)
         #expect(captured.map(\.label) == ["First", "Second"])
         #expect(Set(captured.map(\.id)).count == 2)
+
+        let filtered = InspectorLinkRow.make(
+            groups: [], external: Array(links.suffix(1)), collapsedGroups: [],
+            freshness: .current, emptyAnnouncement: "No External Links")
+        #expect(filtered.map(\.id) == [rows[2].id])
 
         let empty = InspectorLinkRow.make(
             groups: [], external: [], collapsedGroups: [],

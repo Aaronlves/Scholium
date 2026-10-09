@@ -83,9 +83,101 @@ struct KeptPassagesTests {
         #expect(second.keptPassages.entries == [entry])
     }
 
-    private func links(_ source: String, vaultID: UUID = UUID()) throws -> (NoteDocument, [InspectorLinkItem]) {
-        let vault = RegisteredVault(id: vaultID, name: "Synthetic", role: .topicKnowledge, canonicalPath: "/unused/kept-fixture")
-        let document = NoteDocument(relativePath: "Source.md", rawContent: source)
+    @Test("Pane switches and discovery resets preserve window-local comparison disclosure")
+    func comparisonDisclosureOwnership() throws {
+        let (document, items) = try links("Before [[Target]] after.\n")
+        let entry = try KeptPassage(item: #require(items.first), document: document)
+        let first = ResearchController()
+        let second = ResearchController()
+        first.keptPassages.retain(entry)
+        second.keptPassages.retain(entry)
+        first.keptPassages.setContextExpanded(true, for: entry.id)
+        first.keptPassages.isExpanded = false
+
+        first.selectInspectorMode(.related)
+        first.relatedMaterials.reset()
+        first.showResearchInspector(false)
+        first.selectInspectorMode(.links)
+        first.linksInspector.reset()
+        first.showResearchInspector(true)
+
+        #expect(first.keptPassages.entries == [entry])
+        #expect(!first.keptPassages.isExpanded)
+        #expect(first.keptPassages.isContextExpanded(entry.id))
+        #expect(second.keptPassages.isExpanded)
+        #expect(!second.keptPassages.isContextExpanded(entry.id))
+    }
+
+    @Test("A new Keep reveals its passage while repeated Keeps preserve existing comparison state")
+    func keepRevealsNewPassage() throws {
+        let (document, items) = try links("First [[Target]]. Second [[Target]].\n")
+        let first = try KeptPassage(item: #require(items.first), document: document)
+        let second = try KeptPassage(item: #require(items.last), document: document)
+        let kept = KeptPassagesSession()
+        kept.retain(first)
+        kept.isExpanded = false
+        kept.setContextExpanded(true, for: first.id)
+        kept.retain(first)
+        #expect(!kept.isExpanded)
+        #expect(kept.isContextExpanded(first.id))
+
+        kept.retain(second)
+        #expect(kept.isExpanded)
+        #expect(!kept.isContextExpanded(second.id))
+        #expect(kept.isContextExpanded(first.id))
+        #expect(kept.entries == [first, second])
+    }
+
+    @Test("Removal and reset release reading state; stale controls cannot recreate it")
+    func comparisonDisclosureLifetime() throws {
+        let (document, items) = try links("Before [[Target]] after.\n")
+        let entry = try KeptPassage(item: #require(items.first), document: document)
+        let kept = KeptPassagesSession()
+        kept.retain(entry)
+        kept.setContextExpanded(true, for: entry.id)
+        kept.remove(entry.id)
+        kept.setContextExpanded(true, for: entry.id)
+        kept.retain(entry)
+        #expect(!kept.isContextExpanded(entry.id))
+
+        kept.isExpanded = false
+        kept.setContextExpanded(true, for: entry.id)
+        kept.reset()
+        #expect(kept.entries.isEmpty)
+        #expect(kept.isExpanded)
+        kept.setContextExpanded(true, for: entry.id)
+        kept.retain(entry)
+        #expect(!kept.isContextExpanded(entry.id))
+    }
+
+    @Test("Duplicate source titles show vault and directory without regrouping snapshots")
+    func duplicateSourceIdentity() throws {
+        let (document, items) = try links("First [[Target]]. Second [[Target]].\n")
+        let first = try KeptPassage(item: #require(items.first), document: document)
+        let second = try KeptPassage(item: #require(items.last), document: document)
+        let kept = KeptPassagesSession()
+        kept.retain(first)
+        kept.retain(second)
+        #expect(kept.directoryContext(for: first) == nil)
+
+        let (otherDocument, otherItems) = try links(
+            "A different [[Target]].\n", vaultName: "Other vault", relativePath: "Arguments/Source.md"
+        )
+        let other = try KeptPassage(item: #require(otherItems.first), document: otherDocument)
+        #expect(other.title == first.title)
+        kept.retain(other)
+        #expect(kept.directoryContext(for: first) == "Synthetic")
+        #expect(kept.directoryContext(for: other) == "Other vault / Arguments")
+        #expect(kept.entries == [first, second, other])
+        kept.remove(other.id)
+        #expect(kept.directoryContext(for: first) == nil)
+    }
+
+    private func links(
+        _ source: String, vaultID: UUID = UUID(), vaultName: String = "Synthetic", relativePath: String = "Source.md"
+    ) throws -> (NoteDocument, [InspectorLinkItem]) {
+        let vault = RegisteredVault(id: vaultID, name: vaultName, role: .topicKnowledge, canonicalPath: "/unused/kept-fixture")
+        let document = NoteDocument(relativePath: relativePath, rawContent: source)
         let target = NoteDocument(relativePath: "Target.md", rawContent: "Target.\n")
         let documents = [document, target]
         let semantics = Dictionary(

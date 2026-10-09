@@ -9,16 +9,47 @@ struct KeptPassagesRows: View {
 
     var body: some View {
         if !session.entries.isEmpty {
-            Text("Kept Passages")
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
+            Button {
+                session.isExpanded.toggle()
+            } label: {
+                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("Kept Passages")
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                    Text(session.entries.count.formatted())
+                        .font(ScholiumTypography.interface(.small))
+                    Image(systemName: session.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                }
                 .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                .accessibilityAddTraits(.isHeader)
-                .help("Kept passages stay in this window until removed or the Triptych closes.")
-                .id("scholium.kept.heading")
-                .researchListRow()
-            ForEach(session.entries) { entry in
-                KeptPassageRow(entry: entry, open: { open(entry) }, remove: { session.remove(entry.id) })
+                .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(session.isExpanded ? Text("Expanded") : Text("Collapsed"))
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("scholium.kept.toggle")
+            .help(
+                Text(verbatim:
+                    ScholiumL10n.string("Captured text stays unchanged. Open Source checks its saved revision before locating the passage.")
+                    + " " + ScholiumL10n.string("Kept passages stay in this window until removed or the Triptych closes."))
+            )
+            .id("scholium.kept.heading")
+            .researchListRow()
+            if session.isExpanded {
+                ForEach(session.entries) { entry in
+                    KeptPassageRow(
+                        entry: entry,
+                        directoryContext: session.directoryContext(for: entry),
+                        open: { open(entry) }, remove: { session.remove(entry.id) },
+                        contextExpanded: Binding(
+                            get: { session.isContextExpanded(entry.id) },
+                            set: { session.setContextExpanded($0, for: entry.id) }
+                        )
+                    )
                     .researchListRow()
+                }
             }
             Divider().accessibilityHidden(true).researchListRow()
         }
@@ -26,8 +57,10 @@ struct KeptPassagesRows: View {
             ScholiumApparatusStateView(
                 "Kept Passage", detail: error, systemImage: "exclamationmark.triangle", density: .block
             ) {
-                Button("Dismiss") { session.dismissError() }
-                    .buttonStyle(.borderless)
+                Button(action: session.dismissError) {
+                    Text("Dismiss").researchInspectorActionLabel()
+                }
+                .buttonStyle(.plain)
             }
             .accessibilityIdentifier("scholium.kept.error")
             .researchListRow()
@@ -37,65 +70,77 @@ struct KeptPassagesRows: View {
 
 private struct KeptPassageRow: View {
     let entry: KeptPassage
+    let directoryContext: String?
     let open: () -> Void
     let remove: () -> Void
-    @State private var expanded = true
-    @State private var contextExpanded = false
+    @Binding var contextExpanded: Bool
 
     private var identity: String {
-        [entry.title, ScholiumL10n.dynamicString(entry.reference.vaultRole.displayName), entry.reference.relativePath]
+        [entry.title, ScholiumL10n.dynamicString(entry.reference.vaultRole.displayName), entry.reference.vaultName, entry.reference.relativePath]
             .joined(separator: ", ")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ResearchNoteGroupHeader(
-                title: entry.title, role: entry.reference.vaultRole, expanded: $expanded,
-                relativePath: entry.reference.relativePath
-            ) {
-                Button("Open Source", action: open)
-                Button("Remove Kept Passage", action: remove)
-                    .accessibilityIdentifier("scholium.kept.remove.\(entry.id)")
-            }
-            if expanded {
-                Text("Kept snapshot")
+            HStack(alignment: .center, spacing: ScholiumGrid.Apparatus.iconToTextGap) {
+                ResearchNoteRoleIcon(role: entry.reference.vaultRole)
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                    .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
-                    .help("Captured text stays unchanged. Open Source checks its saved revision before locating the passage.")
-                    .accessibilityIdentifier("scholium.kept.snapshot.\(entry.id)")
-                Button(action: open) {
-                    ResearchPassageLayout {
-                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                            if contextExpanded {
-                                ResearchPassageExcerpt(text: Text(verbatim: entry.displayText), isExpanded: true)
-                            } else {
-                                ResearchPassagePreview(source: entry.excerpt, matches: entry.excerptFocus) {
-                                    ResearchPassageHighlight.matches(in: $0.text, ranges: entry.excerptMatches.isEmpty ? [] : $0.matches)
-                                }
-                            }
-                            if !contextExpanded, let annotation = entry.linkOccurrence?.annotation {
-                                HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                                    Image(systemName: "text.bubble").accessibilityHidden(true)
-                                    ResearchPassageExcerpt(
-                                        text: Text(verbatim: annotation.text), lineLimit: 2
-                                    )
-                                }
-                                .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                            }
-                        }
-                        .foregroundStyle(ScholiumNativeColorRole.label.color)
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    ResearchText(text: Text(verbatim: entry.title))
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .lineLimit(1)
+                    if let directoryContext {
+                        ResearchText(text: Text(verbatim: directoryContext))
+                            .font(ScholiumTypography.interface(.small))
+                            .lineLimit(1)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(verbatim: identity))
+                .help(identity)
+                Button(action: remove) {
+                    Image(systemName: "xmark")
+                        .researchInspectorActionLabel(iconOnly: true)
+                }
                 .buttonStyle(.plain)
-                .scholiumActivationPointer()
-                .help("Open Source")
-                .accessibilityLabel(Text(verbatim: identity + ", " + entry.displayText))
-                .accessibilityHint("Open Source")
-                .accessibilityIdentifier("scholium.kept.open.\(entry.id)")
-                ResearchPassageContextDisclosure(expanded: $contextExpanded, identity: identity, identifier: "kept.\(entry.id)")
-                    .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+                .help("Remove Kept Passage")
+                .accessibilityLabel(Text(verbatim: ScholiumL10n.string("Remove Kept Passage") + ", " + identity))
+                .accessibilityIdentifier("scholium.kept.remove.\(entry.id)")
             }
+            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+            Button(action: open) {
+                ResearchPassageLayout {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        if contextExpanded {
+                            ResearchPassageExcerpt(text: Text(verbatim: entry.displayText), isExpanded: true)
+                        } else {
+                            ResearchPassagePreview(source: entry.excerpt, matches: entry.excerptFocus) {
+                                ResearchPassageHighlight.matches(in: $0.text, ranges: entry.excerptMatches.isEmpty ? [] : $0.matches)
+                            }
+                        }
+                        if !contextExpanded, let annotation = entry.linkOccurrence?.annotation {
+                            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                                Image(systemName: "text.bubble").accessibilityHidden(true)
+                                ResearchPassageExcerpt(
+                                    text: Text(verbatim: annotation.text), lineLimit: 2
+                                )
+                            }
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                        }
+                    }
+                    .foregroundStyle(ScholiumNativeColorRole.label.color)
+                }
+            }
+            .buttonStyle(.plain)
+            .scholiumActivationPointer()
+            .help("Captured text stays unchanged. Open Source checks its saved revision before locating the passage.")
+            .accessibilityLabel(Text(verbatim: identity + ", " + ScholiumL10n.string("Kept snapshot") + ", " + entry.displayText))
+            .accessibilityHint("Open Source")
+            .accessibilityIdentifier("scholium.kept.open.\(entry.id)")
+            ResearchPassageContextDisclosure(expanded: $contextExpanded, identity: identity, identifier: "kept.\(entry.id)")
+                .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
         }
         .contextMenu {
             Button("Open Source", action: open)

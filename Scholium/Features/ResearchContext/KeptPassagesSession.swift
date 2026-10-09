@@ -110,6 +110,8 @@ enum KeptPassageError: LocalizedError {
 @MainActor final class KeptPassagesSession: ObservableObject {
     @Published private(set) var entries: [KeptPassage] = []
     @Published private(set) var errorMessage: String?
+    @Published var isExpanded = true
+    @Published private var expandedContextIDs: Set<String> = []
     private(set) var generation = UUID()
     private var pending: [String: UUID] = [:]
     private var lifetimes: [String: UUID] = [:]
@@ -129,7 +131,24 @@ enum KeptPassageError: LocalizedError {
         guard !entries.contains(where: { $0.id == entry.id }) else { return }
         lifetimes[entry.id] = UUID()
         entries.append(entry)
+        isExpanded = true
         errorMessage = nil
+    }
+
+    func isContextExpanded(_ id: String) -> Bool { expandedContextIDs.contains(id) }
+
+    func setContextExpanded(_ expanded: Bool, for id: String) {
+        guard lifetimes[id] != nil else { return }
+        if expanded { expandedContextIDs.insert(id) } else { expandedContextIDs.remove(id) }
+    }
+
+    func directoryContext(for entry: KeptPassage) -> String? {
+        guard entries.contains(where: {
+            $0.title == entry.title
+                && ($0.reference.vaultID != entry.reference.vaultID || $0.reference.relativePath != entry.reference.relativePath)
+        }) else { return nil }
+        let directory = (entry.reference.relativePath as NSString).deletingLastPathComponent
+        return directory.isEmpty ? entry.reference.vaultName : entry.reference.vaultName + " / " + directory
     }
 
     func entryLifetime(for entry: KeptPassage) -> UUID? {
@@ -139,6 +158,7 @@ enum KeptPassageError: LocalizedError {
     func remove(_ id: String) {
         pending[id] = nil
         lifetimes[id] = nil
+        expandedContextIDs.remove(id)
         entries.removeAll { $0.id == id }
     }
 
@@ -168,6 +188,8 @@ enum KeptPassageError: LocalizedError {
         pending = [:]
         lifetimes = [:]
         entries = []
+        isExpanded = true
+        expandedContextIDs = []
         errorMessage = nil
     }
 }

@@ -71,19 +71,28 @@ extension ScholiumUITests {
         XCTAssertEqual(documentTitle(in: workspace), "QA Autosave A")
         XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
         XCTAssertEqual(editor.value as? String, draftSource)
-        related.rightClick()
-        XCTAssertTrue(keepMenu.waitForExistence(timeout: 5) && keepMenu.isEnabled)
-        keepMenu.click()
+        let relatedCardID = String(related.identifier.dropFirst("scholium.related.card.".count))
+        let passageActions = workspace.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", "scholium.research.actions." + relatedCardID)).firstMatch
+        XCTAssertTrue(passageActions.exists && passageActions.isEnabled)
+        XCTAssertGreaterThanOrEqual(passageActions.frame.width, 28)
+        XCTAssertGreaterThanOrEqual(passageActions.frame.height, 28)
+        passageActions.click()
+        XCTAssertTrue(app.menuItems["Link to This Note"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.menuItems["Insert Paragraph Link"].firstMatch.exists)
+        XCTAssertFalse(app.menuItems["Add to Chat"].firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        let keepButton = workspace.buttons.matching(NSPredicate(format: "identifier == %@", "scholium.research.keep." + relatedCardID)).firstMatch
+        XCTAssertTrue(keepButton.exists && keepButton.isEnabled)
+        XCTAssertGreaterThanOrEqual(keepButton.frame.width, 28)
+        XCTAssertGreaterThanOrEqual(keepButton.frame.height, 28)
+        keepButton.click()
         let keptRelated = passage("scholium.kept.open.", containing: "keptrelatedprobe")
         XCTAssertTrue(keptRelated.waitForExistence(timeout: 8))
         XCTAssertEqual(keptControls.count, 1)
         XCTAssertTrue(keptRelated.label.contains(relatedText))
         let keptRelatedID = keptRelated.identifier
         let relatedIdentity = String(keptRelatedID.dropFirst("scholium.kept.open.".count))
-        XCTAssertTrue(
-            workspace.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier == %@", "scholium.kept.snapshot." + relatedIdentity)
-            ).firstMatch.exists)
+        XCTAssertTrue(keptRelated.label.contains("Kept snapshot"))
         XCTAssertEqual(documentTitle(in: workspace), "QA Autosave A")
         XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
         XCTAssertEqual(editor.value as? String, draftSource)
@@ -102,6 +111,28 @@ extension ScholiumUITests {
         XCTAssertFalse(app.menuItems["Keep Passage"].firstMatch.exists, "An already-kept occurrence must expose removal rather than a duplicate Keep action.")
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertEqual(keptControls.count, 1)
+
+        let keptContextID = "scholium.research.context.kept." + relatedIdentity
+        let keptContext = workspace.buttons.matching(NSPredicate(format: "identifier == %@", keptContextID)).firstMatch
+        XCTAssertTrue(keptContext.exists)
+        keptContext.click()
+        XCTAssertEqual(keptContext.value as? String, "Expanded")
+        _ = selectResearchInspectorDirection("incoming")
+        XCTAssertEqual(workspace.buttons.matching(NSPredicate(format: "identifier == %@", keptContextID)).firstMatch.value as? String, "Expanded")
+        _ = selectResearchInspectorMode("related")
+        XCTAssertEqual(workspace.buttons.matching(NSPredicate(format: "identifier == %@", keptContextID)).firstMatch.value as? String, "Expanded")
+        let keptSection = workspace.buttons["scholium.kept.toggle"].firstMatch
+        XCTAssertTrue(keptSection.exists)
+        keptSection.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !keptRelated.exists })
+        _ = selectResearchInspectorDirection("incoming")
+        XCTAssertFalse(keptRelated.exists)
+        workspace.buttons["scholium.kept.toggle"].firstMatch.click()
+        XCTAssertTrue(keptRelated.waitForExistence(timeout: 5))
+        XCTAssertEqual(workspace.buttons.matching(NSPredicate(format: "identifier == %@", keptContextID)).firstMatch.value as? String, "Expanded")
+        _ = selectResearchInspectorMode("related")
+        keptContext.click()
+        XCTAssertEqual(keptContext.value as? String, "Collapsed")
 
         // A new writing focus replaces ordinary results but retains the kept
         // source independently of the current Related seed.
@@ -223,9 +254,12 @@ extension ScholiumUITests {
             XCTAssertTrue(row.exists)
             let passage = row.buttons.matching(NSPredicate(format: "identifier == %@", controlID)).firstMatch
             XCTAssertTrue(passage.exists)
-            passage.rightClick()
-            let remove = app.menuItems["Remove Kept Passage"].firstMatch
-            XCTAssertTrue(remove.waitForExistence(timeout: 5))
+            let remove = row.buttons.matching(
+                NSPredicate(format: "identifier == %@", "scholium.kept.remove." + identity)
+            ).firstMatch
+            XCTAssertTrue(remove.exists && remove.isEnabled)
+            XCTAssertGreaterThanOrEqual(remove.frame.width, 28)
+            XCTAssertGreaterThanOrEqual(remove.frame.height, 28)
             remove.click()
         }
         removeKept(keptLinkedID)

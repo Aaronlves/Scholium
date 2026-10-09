@@ -22,8 +22,10 @@ struct ResearchInspectorPresentationTests {
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     passage(Array(repeating: ScholiumL10n.dynamicString("Writing References"), count: 10).joined(separator: " "))
-                    ResearchPassageContextDisclosure(expanded: .constant(false), identity: "", identifier: "test")
-                        .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+                    ResearchPassageControls(
+                        expanded: .constant(false), identity: "", identifier: "test",
+                        isKept: false, canKeep: false, toggleKept: {}
+                    ) {}
                 }
             }
             let placeholder = try await rowSizes(width: width) {
@@ -105,15 +107,28 @@ struct ResearchInspectorPresentationTests {
             ("narrow-light", 260.0, ColorScheme.light),
             ("ordinary-dark-contrast", 340.0, .dark),
         ] {
-            for state in ["results", "initial-loading", "retained-loading"] {
+            for state in ["results", "kept-comparison", "kept-expanded", "kept-unavailable", "initial-loading", "retained-loading"] {
                 let loading = state == "retained-loading"
+                let group = fixtureGroup()
+                let kept = KeptPassagesSession()
+                if state.hasPrefix("kept-") {
+                    for card in group.passages { kept.retain(KeptPassage(card: card)) }
+                    if state == "kept-expanded", let first = kept.entries.first { kept.setContextExpanded(true, for: first.id) }
+                    if state == "kept-unavailable" { kept.report(KeptPassageError.missingSource) }
+                }
                 let content = List {
                     Group {
+                        KeptPassagesRows(session: kept, open: { _ in })
+                        if state == "kept-unavailable" {
+                            ResearchProjectionFreshnessView(
+                                freshness: .failed("Synthetic recovery state for checking the shared action labels."), retry: {}
+                            )
+                        }
                         if state == "initial-loading" {
                             RelatedMaterialSkeleton()
                             RelatedMaterialSkeleton(separatesFromPreviousGroup: true)
                         } else {
-                            result(fixtureGroup(), loading: loading)
+                            result(group, loading: loading)
                             Group {
                                 ResearchNoteGroupHeader(
                                     title: "Related source — 研究材料", role: .sourceCorpus,

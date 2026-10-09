@@ -238,7 +238,7 @@ struct InspectorLinkGroup: Identifiable {
 enum InspectorLinkRow: Identifiable {
     case freshness(ResearchProjectionFreshness)
     case empty(LocalizedStringResource)
-    case external([SourceResourceReferences.ExternalLink])
+    case external(SourceResourceReferences.ExternalLink)
     case group(InspectorLinkGroup, separatesFromPrevious: Bool)
     case occurrence(InspectorLinkItem)
 
@@ -246,7 +246,7 @@ enum InspectorLinkRow: Identifiable {
         switch self {
         case .freshness: "links-state:freshness"
         case .empty: "links-state:empty"
-        case .external: "links-state:external"
+        case .external(let link): "links-external:\(link.id)"
         case .group(let group, _): group.id
         case .occurrence(let item): "links-occurrence:" + item.id
         }
@@ -261,7 +261,7 @@ enum InspectorLinkRow: Identifiable {
     ) -> [Self] {
         var rows: [Self] = freshness.isActionable ? [.freshness(freshness)] : []
         if groups.isEmpty, external.isEmpty { rows.append(.empty(emptyAnnouncement)) }
-        if !external.isEmpty { rows.append(.external(external)) }
+        rows.append(contentsOf: external.map(Self.external))
         for (index, group) in groups.enumerated() {
             rows.append(.group(group, separatesFromPrevious: index > 0))
             if !collapsedGroups.contains(group.id) {
@@ -373,47 +373,40 @@ struct ConnectionsInspectorView: View {
         case .empty(let announcement):
             ScholiumApparatusStateView(announcement, systemImage: "link")
                 .accessibilityIdentifier("scholium.connections.empty")
-        case .external(let links):
-            VStack(alignment: .leading, spacing: ScholiumGrid.Apparatus.contentRowGap) {
-                ForEach(links) { link in
-                    Button {
+        case .external(let link):
+            Button {
+                context.openExternalURL(link.url)
+            } label: {
+                Text(link.label.isEmpty ? link.url.absoluteString : link.label)
+                    .font(ScholiumTypography.interface(.control))
+                    .foregroundStyle(ScholiumNativeColorRole.label.color)
+                    .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .scholiumActivationPointer()
+            .disabled(!link.canOpen)
+            .help(link.destination)
+            .contextMenu {
+                if (try? ZoteroReference(url: link.url)) != nil {
+                    Button("Open in Zotero", systemImage: "books.vertical") {
                         context.openExternalURL(link.url)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(link.label.isEmpty ? link.url.absoluteString : link.label)
-                                .foregroundStyle(ScholiumNativeColorRole.label.color)
-                                .scholiumContentControlInk(resting: .primaryText, emphasized: .accent)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.borderless)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius, style: .continuous)
-                    )
                     .disabled(!link.canOpen)
-                    .help(link.destination)
-                    .contextMenu {
-                        if (try? ZoteroReference(url: link.url)) != nil {
-                            Button("Open in Zotero", systemImage: "books.vertical") {
-                                context.openExternalURL(link.url)
-                            }
-                            .disabled(!link.canOpen)
-                        } else if ["http", "https"].contains(link.url.scheme?.lowercased() ?? "") {
-                            Button("Open Website", systemImage: "globe") {
-                                context.openExternalURL(link.url)
-                            }
-                            .disabled(!link.canOpen)
-                        }
-                        Button("Copy Link") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(link.destination, forType: .string)
-                        }
+                } else if ["http", "https"].contains(link.url.scheme?.lowercased() ?? "") {
+                    Button("Open Website", systemImage: "globe") {
+                        context.openExternalURL(link.url)
                     }
-                    .accessibilityHint("Open External Link")
-                    .accessibilityIdentifier("scholium.links.external.\(link.id)")
+                    .disabled(!link.canOpen)
+                }
+                Button("Copy Link") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(link.destination, forType: .string)
                 }
             }
-            .accessibilityElement(children: .contain)
+            .accessibilityValue(Text(verbatim: link.destination))
+            .accessibilityHint("Open External Link")
+            .accessibilityIdentifier("scholium.links.external.\(link.id)")
         case .group(let group, let separatesFromPrevious):
             let expanded = Binding(
                 get: { !session.location(for: key).collapsedGroups.contains(group.id) },
@@ -424,7 +417,7 @@ struct ConnectionsInspectorView: View {
                 })
             ResearchNoteGroupHeader(
                 title: group.title, role: group.items.first?.peer?.reference.vaultRole,
-                expanded: expanded, occurrenceCount: group.items.count,
+                expanded: expanded, count: .links(group.items.count),
                 directoryContext: group.directoryContext, relativePath: group.relativePath,
                 separatesFromPreviousGroup: separatesFromPrevious
             ) {
@@ -506,6 +499,11 @@ private struct LinkOccurrenceRow: View {
     let toggleKept: () -> Void
     @State private var contextExpanded = false
     private var keptActionTitle: LocalizedStringKey { isKept ? "Remove Kept Passage" : "Keep Passage" }
+    private var sourceIdentity: String {
+        guard let source = item.source else { return item.displayTitle }
+        return [source.title, ScholiumL10n.dynamicString(source.reference.vaultRole.displayName), source.reference.relativePath]
+            .joined(separator: ", ")
+    }
 
     var body: some View {
         let passage = ResearchLinkPassage(occurrence: item.edge.occurrence, query: query)
@@ -580,24 +578,23 @@ private struct LinkOccurrenceRow: View {
                 }
             }
             .accessibilityLabel(
-                Text(verbatim: [item.diagnosticTitle, contextExpanded ? passage.text : preview.text].compactMap { $0 }.joined(separator: ", "))
+                Text(verbatim: [sourceIdentity, item.diagnosticTitle, contextExpanded ? passage.text : preview.text].compactMap { $0 }.joined(separator: ", "))
             )
             .accessibilityValue(Text(item.edge.occurrence.annotation?.text ?? ""))
             .accessibilityIdentifier("scholium.links.occurrence." + item.id)
-            ResearchPassageContextDisclosure(
-                expanded: $contextExpanded, identity: item.displayTitle, identifier: item.id
-            )
-            .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
-            if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
-                let peer = item.peer, let line = item.edge.destination?.span?.start.line
-            {
-                Button {
-                    openReference(peer.reference, line, peer.fingerprint)
-                } label: {
-                    Text("Open Linked Passage")
+            ResearchPassageControls(
+                expanded: $contextExpanded, identity: sourceIdentity, identifier: item.id,
+                isKept: isKept, canKeep: item.source != nil || isKept, toggleKept: toggleKept
+            ) {
+                Button("Show this passage", action: activate).disabled(item.source == nil)
+                if let peer = item.peer {
+                    Button("Open Linked Note") { openReference(peer.reference, nil, nil) }
                 }
-                .buttonStyle(ScholiumContentActionButtonStyle())
-                .padding(.leading, ScholiumGrid.Apparatus.passageLeadingInset)
+                if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
+                    let peer = item.peer, let line = item.edge.destination?.span?.start.line
+                {
+                    Button("Open Linked Passage") { openReference(peer.reference, line, peer.fingerprint) }
+                }
             }
         }
         .onChange(of: item.edge.occurrence) { _, _ in contextExpanded = false }
