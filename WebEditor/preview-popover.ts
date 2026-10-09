@@ -21,8 +21,11 @@ function normalizedTitle(value: string) {
 }
 
 function sanitizePreviewDocument(body: HTMLElement) {
-  body.querySelectorAll("script, style, iframe, object, embed, form, input, button")
+  body.querySelectorAll("script, style, iframe, object, embed, form, button")
     .forEach((node) => node.remove());
+  body.querySelectorAll("input").forEach(node => {
+    if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
+  });
   body.querySelectorAll<HTMLElement>("*").forEach((node) => {
     for (const attribute of Array.from(node.attributes)) {
       if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
@@ -250,6 +253,7 @@ export function createPreviewPopoverController(
     metadata.hidden = false;
     body.replaceChildren(template.content.cloneNode(true));
     sanitizePreviewDocument(body);
+    renderPreviewMathNodes(body);
     position(button.getBoundingClientRect());
     return true;
   }

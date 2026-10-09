@@ -1,4 +1,4 @@
-import {EditorState} from "@codemirror/state";
+import {EditorSelection, EditorState, type TransactionSpec} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
 import {EditorView} from "@codemirror/view";
 import {describe, expect, it, vi} from "vitest";
@@ -23,8 +23,44 @@ describe("source-backed local image presentation", () => {
     const images = createImageProjection({selection, projections, bodyIsActive: () => true, shouldRefresh: () => false});
     images.setResources(resources);
     return EditorState.create({doc: source, selection: {anchor: source.length},
-      extensions: [scholiumNoteLanguage, selection.extension, projections.extension, images.extension]});
+      extensions: [scholiumNoteLanguage, selection.extension, projections.extension, images.extension,
+        EditorState.allowMultipleSelections.of(true)]});
   }
+
+  it.each(["add", "extend", "composition"])("preserves %s selection behavior at a projected image", mode => {
+    const {document} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    try {
+      const source = "Before.\n\n![figure](Attachments/figure)\n\nAfter.";
+      const imageFrom = source.indexOf("![");
+      let state = projectedState(source, {"Attachments/figure": png});
+      state = state.update({selection: EditorSelection.create([
+        EditorSelection.cursor(2), EditorSelection.cursor(source.length),
+      ], 1)}).state;
+      let widget: import("@codemirror/view").WidgetType | undefined;
+      for (const decorations of state.facet(EditorView.decorations)) {
+        if (typeof decorations !== "function") decorations.between(0, source.length, (_from, _to, decoration) => {
+          if (decoration.spec.widget) widget = decoration.spec.widget;
+        });
+      }
+      expect(widget).toBeDefined();
+      const dispatch = vi.fn((spec: TransactionSpec) => {state = state.update(spec).state;});
+      const view = {get state() {return state;}, composing: false,
+        compositionStarted: mode === "composition", dispatch, focus: vi.fn()};
+      const dom = widget!.toDOM(view as unknown as EditorView);
+      dom.querySelector("img")!.getBoundingClientRect = () => ({left: 0, width: 100} as DOMRect);
+      const event = document.createEvent("Event") as unknown as MouseEvent;
+      event.initEvent("mousedown", true, true);
+      Object.defineProperties(event, {button: {value: 0}, clientX: {value: 10},
+        metaKey: {value: mode === "add"}, shiftKey: {value: mode === "extend"}});
+      dom.dispatchEvent(event);
+      if (mode === "composition") expect(dispatch).not.toHaveBeenCalled();
+      else expect(state.selection.ranges.map(range => [range.anchor, range.head])).toEqual(mode === "add"
+        ? [[2, 2], [imageFrom, imageFrom], [source.length, source.length]]
+        : [[2, 2], [source.length, imageFrom]]);
+      expect(state.doc.toString()).toBe(source);
+    } finally {vi.unstubAllGlobals();}
+  });
 
   function imageReplacementRanges(state: EditorState) {
     const ranges: Array<{from: number; to: number; block: boolean}> = [];

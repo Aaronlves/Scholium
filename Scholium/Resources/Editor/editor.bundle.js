@@ -29972,7 +29972,7 @@
         contentTo: from + Math.max(rawFrom + leading, rawTo - trailing)
       });
     }
-    return cells.length >= 2 ? { lineFrom: from, lineTo: to, cells } : null;
+    return cells.length >= 1 ? { lineFrom: from, lineTo: to, cells } : null;
   }
   function isSeparatorCell(source, cell) {
     return /^:?-{3,}:?$/.test(source.sliceString(cell.contentFrom, cell.contentTo));
@@ -30020,17 +30020,31 @@
   function blankRow(columnCount) {
     return `|${Array.from({ length: columnCount }, () => "  ").join("|")}|`;
   }
+  function mappedTableSelections(source, changes, selections) {
+    const changeSet = ChangeSet.of(changes, source.length);
+    return selections.map(({ anchor, head }) => {
+      const mapped = EditorSelection.range(anchor, head).map(changeSet);
+      return { anchor: mapped.anchor, head: mapped.head };
+    });
+  }
+  function tableCommandAvailable(command2, position) {
+    if (!position || !tableCommands.has(command2)) return false;
+    if (command2 === "tableInsertRowBefore") return position.row > 0;
+    if (command2 === "tableDeleteRow") return position.row > 0 && position.rowCount > 2;
+    if (command2 === "tableDeleteColumn") return position.columnCount > 1;
+    return true;
+  }
   function transformTableCommand(source, selections, command2) {
     if (!tableCommands.has(command2) || selections.length !== 1) return null;
     const selection = selections[0];
     const table = tableAt(source, selection.head);
-    if (!table) return null;
+    if (!table || !tableCommandAvailable(command2, table.position)) return null;
     const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
     const row = table.rows[rawRow];
     const column = table.position.column;
     if (command2 === "tableInsertRowBefore" || command2 === "tableInsertRowAfter") {
       const before = command2 === "tableInsertRowBefore";
-      const point = before ? row.lineFrom : row.lineTo;
+      const point = before ? row.lineFrom : table.position.row === 0 ? table.rows[table.separatorIndex].lineTo : row.lineTo;
       const insert2 = before ? `${blankRow(table.position.columnCount)}
 ` : `
 ${blankRow(table.position.columnCount)}`;
@@ -30038,7 +30052,6 @@ ${blankRow(table.position.columnCount)}`;
       return { changes: [{ from: point, to: point, insert: insert2 }], selections: [{ anchor: point + cellOffset, head: point + cellOffset }], undoLabel: before ? "Insert Table Row Before" : "Insert Table Row After" };
     }
     if (command2 === "tableDeleteRow") {
-      if (table.position.row === 0 || table.position.rowCount <= 2) return null;
       const hasFollowingNewline = row.lineTo < source.length;
       const from = hasFollowingNewline ? row.lineFrom : Math.max(0, row.lineFrom - 1);
       const to = hasFollowingNewline ? row.lineTo + 1 : row.lineTo;
@@ -30049,11 +30062,11 @@ ${blankRow(table.position.columnCount)}`;
       const current = source.slice(separator.contentFrom, separator.contentTo);
       const dashes = "-".repeat(Math.max(3, current.replaceAll(":", "").length));
       const insert2 = command2 === "tableAlignLeft" ? `:${dashes}` : command2 === "tableAlignRight" ? `${dashes}:` : `:${dashes}:`;
-      return { changes: [{ from: separator.contentFrom, to: separator.contentTo, insert: insert2 }], selections, undoLabel: "Align Table Column" };
+      const changes2 = [{ from: separator.contentFrom, to: separator.contentTo, insert: insert2 }];
+      return { changes: changes2, selections: mappedTableSelections(source, changes2, selections), undoLabel: "Align Table Column" };
     }
     const inserting = command2 === "tableInsertColumnBefore" || command2 === "tableInsertColumnAfter";
     if (!inserting && command2 !== "tableDeleteColumn") return null;
-    if (command2 === "tableDeleteColumn" && table.position.columnCount <= 2) return null;
     const changes = [];
     for (let index = 0; index < table.rows.length; index += 1) {
       const target = table.rows[index].cells[column];
@@ -30071,7 +30084,7 @@ ${blankRow(table.position.columnCount)}`;
         }
       }
     }
-    return { changes, selections, undoLabel: inserting ? "Insert Table Column" : "Delete Table Column" };
+    return { changes, selections: mappedTableSelections(source, changes, selections), undoLabel: inserting ? "Insert Table Column" : "Delete Table Column" };
   }
   function tableTabAction(source, offset, backwards) {
     const table = tableAt(source, offset);
@@ -30485,7 +30498,9 @@ ${blankRow(table.position.columnCount)}`;
     "CodeMark",
     "LinkMark",
     "URL",
-    "StrikethroughMark"
+    "LinkTitle",
+    "StrikethroughMark",
+    "HighlightMark"
   ]);
   var renderedTextLocations = /* @__PURE__ */ new WeakMap();
   function renderedTextSourceOffset(node, offset) {
@@ -30547,7 +30562,8 @@ ${blankRow(table.position.columnCount)}`;
   function optionsAt(options, offset) {
     return {
       ...options,
-      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset)
+      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset),
+      sourceText: options.sourceText && ((from, to) => options.sourceText(offset + from, offset + to))
     };
   }
   function optionsWithMap(options, offsets) {
@@ -30556,7 +30572,40 @@ ${blankRow(table.position.columnCount)}`;
       sourceOffset: (nestedOffset) => locatedOffset(
         options,
         offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0
-      )
+      ),
+      sourceText: options.sourceText && ((from, to) => options.sourceText(
+        offsets[Math.max(0, Math.min(from, offsets.length - 1))] ?? 0,
+        offsets[Math.max(0, Math.min(to, offsets.length - 1))] ?? 0
+      ))
+    };
+  }
+  function directChildren(cursor) {
+    const children = [];
+    if (cursor.firstChild()) {
+      do {
+        children.push({ name: cursor.name, from: cursor.from, to: cursor.to });
+      } while (cursor.nextSibling());
+      cursor.parent();
+    }
+    return children;
+  }
+  function exactFragmentSource(source, from, to, options) {
+    return options.sourceText?.(from, to) ?? source.slice(from, to);
+  }
+  function parsedMath(cursor, source, kind) {
+    const children = directChildren(cursor);
+    const content2 = children.find((child) => child.name === "MathContent");
+    const opening = children.find((child) => child.name === "MathMark");
+    if (!content2 || !opening) return null;
+    const raw = source.slice(content2.from, content2.to);
+    return {
+      kind,
+      from: cursor.from,
+      to: cursor.to,
+      contentFrom: content2.from,
+      contentTo: content2.to,
+      delimiterLength: opening.to - opening.from,
+      content: kind === "display" ? raw.replace(/^[\r\n]+|[\r\n]+$/g, "") : raw.length > 2 && /^\s/.test(raw) && /\s$/.test(raw) && /\S/.test(raw) ? raw.slice(1, -1) : raw
     };
   }
   function identifyProjectedLink(element, target, from, to, caret, options) {
@@ -30569,6 +30618,17 @@ ${blankRow(table.position.columnCount)}`;
     const document2 = documentFor(parent);
     const raw = source.slice(cursor.from, cursor.to);
     if (inlineMarkerNodes.has(cursor.name)) return;
+    if (cursor.name === "InlineMath") {
+      const expression = parsedMath(cursor, source, "inline");
+      if (expression) appendMath(
+        expression,
+        parent,
+        options,
+        exactFragmentSource(source, cursor.from, cursor.to, options)
+      );
+      else appendTextWithLanguage(raw, parent, options, cursor.from);
+      return;
+    }
     if (cursor.name === "InlineCode") {
       const code2 = document2.createElement("code");
       code2.dir = "ltr";
@@ -30592,7 +30652,12 @@ ${blankRow(table.position.columnCount)}`;
       return;
     }
     if (cursor.name === "Link") {
-      if (isCitationDestination(raw.slice(raw.lastIndexOf("](") + 2, -1).trim().replace(/^<|>$/g, ""))) {
+      const children = directChildren(cursor);
+      const opening = children.find((child) => child.name === "LinkMark" && source.slice(child.from, child.to) === "[");
+      const closing2 = children.find((child) => child.name === "LinkMark" && source.slice(child.from, child.to) === "]");
+      const url = children.find((child) => child.name === "URL");
+      const target = url ? source.slice(url.from, url.to).replace(/^<|>$/g, "") : null;
+      if (target && isCitationDestination(target)) {
         try {
           const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
           if (!citation) throw new Error("Invalid citation carrier.");
@@ -30610,21 +30675,15 @@ ${blankRow(table.position.columnCount)}`;
         }
         return;
       }
-      const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
+      if (!opening || !closing2 || target === null) {
+        appendTextWithLanguage(raw, parent, options, cursor.from);
+        return;
+      }
       const span = document2.createElement("span");
       span.className = "cm-live-link";
       span.dir = "auto";
-      appendTextWithLanguage(link?.[1] ?? raw, span, options, cursor.from + (link ? 1 : 0));
-      if (link) {
-        identifyProjectedLink(
-          span,
-          link[2].trim().replace(/^<|>$/g, ""),
-          cursor.from,
-          cursor.to,
-          cursor.from + 1,
-          options
-        );
-      }
+      appendInlineMarkdown(source.slice(opening.to, closing2.from), span, optionsAt(options, opening.to));
+      identifyProjectedLink(span, target, cursor.from, cursor.to, opening.to, options);
       parent.append(span);
       return;
     }
@@ -30666,7 +30725,7 @@ ${blankRow(table.position.columnCount)}`;
       ));
       return;
     }
-    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
+    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : cursor.name === "Highlight" ? "mark" : null;
     const destination = wrapperName ? document2.createElement(wrapperName) : parent;
     let position = cursor.from;
     if (cursor.firstChild()) {
@@ -30698,13 +30757,21 @@ ${blankRow(table.position.columnCount)}`;
     element.dir = "ltr";
     element.dataset.scholiumProtected = "math";
     element.dataset.scholiumSourceCaret = String(locatedOffset(options, expression.from));
+    element.dataset.mathSource = btoa(Array.from(
+      new TextEncoder().encode(expression.content),
+      (byte) => String.fromCharCode(byte)
+    ).join(""));
+    element.dataset.mathKind = expression.kind;
     const runtime = document2.defaultView?.scholiumMath;
     const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
     if (rendered?.ok) {
       element.classList.add("scholium-math-rendered");
       element.innerHTML = rendered.html;
     } else {
-      element.classList.add("scholium-math-error");
+      if (rendered) {
+        element.classList.add("scholium-math-error");
+        element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+      }
       const exact = document2.createElement("code");
       exact.className = "scholium-math-source";
       exact.dir = "ltr";
@@ -30803,7 +30870,7 @@ ${blankRow(table.position.columnCount)}`;
           optionsAt(options, position)
         );
       }
-      appendMath(expression, parent, options, source.slice(expression.from, expression.to));
+      appendMath(expression, parent, options, exactFragmentSource(source, expression.from, expression.to, options));
       position = expression.to;
     }
     if (position < source.length) {
@@ -30832,7 +30899,13 @@ ${blankRow(table.position.columnCount)}`;
       source += cell.source[position];
     }
     offsets.push(cell.sourceOffset + cell.source.length);
-    appendInlineMarkdown(source, element, optionsWithMap(options, offsets));
+    appendInlineMarkdown(source, element, optionsWithMap({
+      ...options,
+      sourceText: options.sourceText ?? ((from, to) => cell.source.slice(
+        from - cell.sourceOffset,
+        to - cell.sourceOffset
+      ))
+    }, offsets));
     return element;
   }
   function createTableDOM(presentation, document2, options = {}) {
@@ -30974,7 +31047,7 @@ ${blankRow(table.position.columnCount)}`;
         const paragraph = document2.createElement("p");
         paragraph.dir = "auto";
         applyTextLanguage(paragraph, raw);
-        appendInlineMarkdown(raw, paragraph, options);
+        appendInlineMarkdown(raw, paragraph, optionsAt(options, cursor.from));
         parent.append(paragraph);
         return;
       }
@@ -31027,6 +31100,48 @@ ${blankRow(table.position.columnCount)}`;
         parent.append(pre);
         return;
       }
+      case "CodeBlock": {
+        const pre = document2.createElement("pre");
+        pre.dir = "ltr";
+        const code2 = document2.createElement("code");
+        code2.dir = "ltr";
+        for (const child of directChildren(cursor)) {
+          if (child.name === "CodeText") appendLocatedText(source.slice(child.from, child.to), code2, options, child.from);
+        }
+        pre.append(code2);
+        parent.append(pre);
+        return;
+      }
+      case "Task": {
+        const marker = directChildren(cursor).find((child) => child.name === "TaskMarker");
+        if (!marker) return;
+        const checked = /^\[[xX]\]$/.test(source.slice(marker.from, marker.to));
+        const checkbox = document2.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "scholium-task-checkbox";
+        checkbox.disabled = true;
+        checkbox.checked = checked;
+        if (checked) checkbox.setAttribute("checked", "");
+        checkbox.setAttribute("aria-label", localized(checked ? "Completed task" : "Incomplete task"));
+        if (parent.nodeType === 1) parent.classList.add("scholium-task-list-item");
+        parent.append(checkbox);
+        const paragraph = document2.createElement("p");
+        let from = marker.to;
+        while (from < cursor.to && /[ \t]/.test(source[from])) from++;
+        appendInlineMarkdown(source.slice(from, cursor.to), paragraph, optionsAt(options, from));
+        parent.append(paragraph);
+        return;
+      }
+      case "BlockMath": {
+        const expression = parsedMath(cursor, source, "display");
+        if (expression) appendMath(
+          expression,
+          parent,
+          options,
+          exactFragmentSource(source, cursor.from, cursor.to, options)
+        );
+        return;
+      }
       case "HTMLBlock":
       case "CommentBlock": {
         const pre = document2.createElement("pre");
@@ -31042,6 +31157,13 @@ ${blankRow(table.position.columnCount)}`;
       case "Table": {
         const presentation = tablePresentation(raw, 0, raw.length);
         if (presentation) parent.append(createTableDOM(presentation, document2, optionsAt(options, cursor.from)));
+        else {
+          const pre = document2.createElement("pre");
+          const code2 = document2.createElement("code");
+          appendLocatedText(raw, code2, options, cursor.from);
+          pre.append(code2);
+          parent.append(pre);
+        }
         return;
       }
       case "ATXHeading1":
@@ -31062,6 +31184,18 @@ ${blankRow(table.position.columnCount)}`;
           heading2,
           optionsAt(options, cursor.from + opening)
         );
+        parent.append(heading2);
+        return;
+      }
+      case "SetextHeading1":
+      case "SetextHeading2": {
+        const marker = directChildren(cursor).find((child) => child.name === "HeaderMark");
+        if (!marker) return;
+        const content2 = source.slice(cursor.from, marker.from).replace(/[\r\n]+$/, "");
+        const heading2 = document2.createElement(`h${cursor.name.at(-1)}`);
+        heading2.dir = "auto";
+        applyTextLanguage(heading2, content2);
+        appendInlineMarkdown(content2, heading2, optionsAt(options, cursor.from));
         parent.append(heading2);
         return;
       }
@@ -31091,7 +31225,7 @@ ${blankRow(table.position.columnCount)}`;
             optionsAt(options, position)
           );
         }
-        appendMath(expression, parent, options, source.slice(expression.from, expression.to));
+        appendMath(expression, parent, options, exactFragmentSource(source, expression.from, expression.to, options));
         position = expression.to;
       }
       if (position < source.length) {
@@ -32980,6 +33114,11 @@ ${blankRow(table.position.columnCount)}`;
     if (left.from === left.to) return left.from >= right.from && left.from <= right.to;
     return left.from < right.to && left.to > right.from;
   }
+  function isEscaped4(source, offset) {
+    let backslashes = 0;
+    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) backslashes += 1;
+    return backslashes % 2 === 1;
+  }
   function lineBounds(source, range) {
     const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
     const lastPosition = range.to > range.from && source[range.to - 1] === "\n" ? range.to - 1 : range.to;
@@ -33025,13 +33164,13 @@ ${blankRow(table.position.columnCount)}`;
   }
   function inlineChange(source, range, opening, closing2) {
     const selected = source.slice(range.from, range.to);
-    const escapedOpening = range.from > 0 && source[range.from - 1] === "\\";
+    const escapedOpening = isEscaped4(source, range.from);
     if (!escapedOpening && selected.startsWith(opening) && selected.endsWith(closing2) && selected.length >= opening.length + closing2.length) {
       const insert3 = selected.slice(opening.length, selected.length - closing2.length);
       return { change: { ...range, insert: insert3 }, selection: { anchor: range.from, head: range.from + insert3.length } };
     }
     const enclosingFrom = range.from - opening.length;
-    const escapedEnclosing = enclosingFrom > 0 && source[enclosingFrom - 1] === "\\";
+    const escapedEnclosing = isEscaped4(source, enclosingFrom);
     if (!escapedEnclosing && source.slice(enclosingFrom, range.from) === opening && source.slice(range.to, range.to + closing2.length) === closing2) {
       return {
         change: { from: range.from - opening.length, to: range.to + closing2.length, insert: selected },
@@ -33045,7 +33184,8 @@ ${blankRow(table.position.columnCount)}`;
       selection: { anchor, head: anchor + selected.length }
     };
   }
-  function transformOne(source, range, command2, argument) {
+  function transformOne(source, range, command2, options) {
+    const argument = options.argument;
     const marker = inlineMarkers[command2];
     if (marker) {
       const result = inlineChange(source, range, marker[0], marker[1]);
@@ -33053,6 +33193,15 @@ ${blankRow(table.position.columnCount)}`;
     }
     if (command2 === "inlineCode") {
       const selected = source.slice(range.from, range.to);
+      const existing = /^`+/.exec(selected)?.[0];
+      if (existing && !isEscaped4(source, range.from) && selected.length >= existing.length * 2 && selected.endsWith(existing) && selected[selected.length - existing.length - 1] !== "`") {
+        const content2 = selected.slice(existing.length, -existing.length);
+        if (![...content2.matchAll(/`+/g)].some((match) => match[0].length === existing.length)) {
+          const padded = content2.startsWith(" ") && content2.endsWith(" ") && /[^ ]/.test(content2);
+          const insert2 = padded ? content2.slice(1, -1) : content2;
+          return { change: { ...range, insert: insert2 }, selection: { anchor: range.from, head: range.from + insert2.length }, label: "Inline Code" };
+        }
+      }
       const { opening, closing: closing2 } = inlineCodeMarkers(selected);
       const result = inlineChange(source, range, opening, closing2);
       return { ...result, label: "Inline Code" };
@@ -33120,6 +33269,36 @@ ${fence}`;
     const heading2 = /^ {0,3}#{1,6}[ \t]+/.exec(block);
     if (command2 === "paragraph" || /^heading[1-6]$/.test(command2)) {
       const level = command2 === "paragraph" ? 0 : Number(command2.slice(-1));
+      const setext = options.setextHeadings?.filter((candidate) => {
+        const from = source.lastIndexOf("\n", candidate.from - 1) + 1;
+        return range.from === range.to ? range.from >= from && range.from <= candidate.to : range.from < candidate.to && range.to > from;
+      }) ?? [];
+      if (setext.length) {
+        if (setext.length !== 1) return null;
+        const title = setext[0];
+        const titleLineFrom = source.lastIndexOf("\n", title.from - 1) + 1;
+        const afterTitle = source[title.to] === "\n" ? title.to + 1 : title.to;
+        if (!/^[ \t]*$/.test(source.slice(titleLineFrom, title.from)) || range.from < titleLineFrom || range.to > afterTitle || title.markerRanges.length !== 1) return null;
+        const underline = title.markerRanges[0];
+        const underlineLineFrom = source.lastIndexOf("\n", underline.from - 1) + 1;
+        if (underlineLineFrom <= title.from || underline.from < title.from || underline.to > title.to || underline.to <= underline.from) return null;
+        const contentTo = underlineLineFrom - (source[underlineLineFrom - 2] === "\r" ? 2 : 1);
+        const content2 = source.slice(title.from, contentTo);
+        const label = level ? `Heading ${level}` : "Paragraph";
+        if (level === 1 || level === 2) {
+          return {
+            change: { ...underline, insert: (level === 1 ? "=" : "-").repeat(underline.to - underline.from) },
+            selection: { anchor: title.from, head: contentTo },
+            label
+          };
+        }
+        const insert3 = level ? `${"#".repeat(level)} ${content2.replace(/\r\n?|\n/g, " ")}` : content2;
+        return {
+          change: { from: title.from, to: title.to, insert: insert3 },
+          selection: { anchor: title.from + (level ? level + 1 : 0), head: title.from + insert3.length },
+          label
+        };
+      }
       const without = heading2 ? block.slice(heading2[0].length) : block;
       const insert2 = level ? `${"#".repeat(level)} ${without}` : without;
       return { change: { ...bounds, insert: insert2 }, selection: { anchor: bounds.from + (level ? level + 1 : 0), head: bounds.from + insert2.length }, label: level ? `Heading ${level}` : "Paragraph" };
@@ -33170,11 +33349,12 @@ ${fence}`;
         (total, change) => total + change.insert.length - (change.to - change.from),
         0
       );
-      const separator = source.length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";
+      const endsWithNewline = referenceChanges.at(-1).to < source.length && source.endsWith("\n");
+      const separator = endsWithNewline ? "\n" : "\n\n";
       let definitions = separator;
       const definitionSelections = [];
       for (let index = 0; index < ranges.length; index += 1) {
-        const content2 = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
+        const content2 = (options.argument ?? source.slice(ranges[index].from, ranges[index].to)).replaceAll("\n", "\n  ");
         const prefix = `[^${allocated[index]}]: `;
         const anchor = bodyLength + definitions.length + prefix.length;
         definitions += `${prefix}${content2}
@@ -33239,7 +33419,7 @@ ${fence}`;
         undoLabel: "Toggle Task"
       };
     }
-    const transformed = ranges.map((range) => transformOne(source, range, command2, options.argument));
+    const transformed = ranges.map((range) => transformOne(source, range, command2, options));
     if (transformed.some((value) => value === null)) return null;
     const values2 = transformed;
     const changes = values2.map((value) => value.change);
@@ -33437,17 +33617,22 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
   }
 
   // clipboard.ts
+  var maximumClipboardLength = 2e6;
   function escapeHTML(value) {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   }
   function sanitizeClipboardHTML(html2) {
-    let safe = html2.slice(0, 2e6);
+    if (html2.length > maximumClipboardLength) throw new RangeError("Clipboard HTML exceeds its size limit.");
+    let safe = html2;
     safe = safe.replace(/<!--([\s\S]*?)-->/g, "");
     safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
     safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*\/?\s*>/gi, "");
     safe = safe.replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
       const alt = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
-      return alt ? escapeHTML(alt[1] ?? alt[2] ?? alt[3] ?? "") : "";
+      if (!alt) return "";
+      const raw = (alt[1] ?? alt[2] ?? alt[3] ?? "").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      const parsed = new DOMParser().parseFromString(`<span data-alt="${raw}"></span>`, "text/html");
+      return escapeHTML(parsed.querySelector("span")?.getAttribute("data-alt") ?? "");
     });
     safe = safe.replace(/<(?:video|audio|source|track|picture|link|meta)\b[^>]*\/?\s*>/gi, "");
     safe = safe.replace(/\s(?:src|srcset|poster|background|style|formaction)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
@@ -33463,7 +33648,22 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
     return "";
   }
   function collapseBlankLines(value) {
-    return value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    const lines = [];
+    let fence = null;
+    for (const line of value.split("\n")) {
+      const marker = /^[ \t>*+\-.\d]*(`{3,})[ \t]*$/.exec(line)?.[1];
+      if (fence !== null) {
+        lines.push(line);
+        if (marker === fence) fence = null;
+      } else if (marker) {
+        fence = marker;
+        lines.push(line);
+      } else {
+        const trimmed = line.replace(/[ \t]+$/, "");
+        if (trimmed || lines.at(-1) !== "") lines.push(trimmed);
+      }
+    }
+    return lines.join("\n").trim();
   }
   function renderChildren(node) {
     return Array.from(node.childNodes).map(renderNode).join("");
@@ -33475,21 +33675,20 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
   }
   function renderList(node, ordered) {
     let index = 1;
-    return Array.from(node.children).flatMap((child) => {
+    return "\n" + Array.from(node.children).flatMap((child) => {
       if (child.tagName.toLowerCase() !== "li") return [];
       const prefix = ordered ? `${index++}. ` : "- ";
-      const content2 = collapseBlankLines(renderChildren(child)).replaceAll("\n", "\n  ");
+      const content2 = collapseBlankLines(renderChildren(child)).replaceAll("\n", `
+${" ".repeat(prefix.length)}`);
       return [`${prefix}${content2}
 `];
     }).join("") + "\n";
   }
   function renderTable(node) {
-    const rows = Array.from(node.querySelectorAll("tr")).map((row) => Array.from(row.children).flatMap((cell) => {
-      if (!["td", "th"].includes(cell.tagName.toLowerCase()) || cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")) return [];
-      return [collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")];
-    }));
-    if (rows.length === 0 || rows[0].length < 2 || rows.some((row) => row.length !== rows[0].length)) {
-      return `${collapseBlankLines(renderChildren(node))}
+    const cells = Array.from(node.querySelectorAll("tr")).filter((row) => row.closest("table") === node).map((row) => Array.from(row.children).filter((cell) => ["td", "th"].includes(cell.tagName.toLowerCase())));
+    const rows = cells.map((row) => row.map((cell) => collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")));
+    if (rows.length === 0 || rows[0].length < 2 || rows.some((row) => row.length !== rows[0].length) || cells.some((row) => row.some((cell) => cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")))) {
+      return `${rows.map((row) => row.join("	")).join("\n")}
 
 `;
     }
@@ -33522,12 +33721,11 @@ ${rows.slice(1).map(line).join("\n")}
       return opening + text + closing2;
     }
     if (tag === "pre") {
-      const raw = element.textContent ?? "";
+      const raw = literalCodeText(element);
       const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));
       const fence = "`".repeat(run);
       return `${fence}
-${raw}
-${fence}
+${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
 
 `;
     }
@@ -33564,8 +33762,11 @@ ${fence}
     if (!argument) return void 0;
     try {
       const value = JSON.parse(argument);
-      if (typeof value.plainText === "string" && (value.html === void 0 || typeof value.html === "string")) {
-        return { plainText: value.plainText.slice(0, 2e6), html: value.html?.slice(0, 2e6) };
+      if (typeof value.plainText === "string" && value.plainText.length <= maximumClipboardLength && (value.html === void 0 || typeof value.html === "string")) {
+        return {
+          plainText: value.plainText,
+          html: value.html && value.html.length <= maximumClipboardLength ? value.html : void 0
+        };
       }
     } catch {
     }
@@ -34699,7 +34900,7 @@ ${fence}
     };
   }
   function activeConstructAccessibilityDescription(context) {
-    const heading2 = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
+    const heading2 = context.activeBlockConstructs.find((construct) => /^(?:ATXHeading[1-6]|SetextHeading[12])$/.test(construct));
     if (heading2) return localizedTemplate("Heading level {level}", { level: heading2.at(-1) ?? "" });
     if (context.activeInlineConstructs.includes("Link")) return localized("Link");
     if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");
@@ -34944,7 +35145,10 @@ ${fence}
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
   }
   function sanitizePreviewDocument(body) {
-    body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
+    body.querySelectorAll("script, style, iframe, object, embed, form, button").forEach((node) => node.remove());
+    body.querySelectorAll("input").forEach((node) => {
+      if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
+    });
     body.querySelectorAll("*").forEach((node) => {
       for (const attribute of Array.from(node.attributes)) {
         if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
@@ -35150,6 +35354,7 @@ ${fence}
       metadata.hidden = false;
       body.replaceChildren(template.content.cloneNode(true));
       sanitizePreviewDocument(body);
+      renderPreviewMathNodes(body);
       position(button.getBoundingClientRect());
       return true;
     }
@@ -35811,7 +36016,7 @@ ${fence}
     "scholium-command-divider": "minus"
   };
   function isLiveSuggestionContext(options, state) {
-    return options.mode(state) === "livePreview" && !options.isComposing() && state.selection.ranges.length === 1 && state.selection.main.empty;
+    return options.mode(state) === "livePreview" && !state.readOnly && state.facet(EditorView.editable) && !options.isComposing() && state.selection.ranges.length === 1 && state.selection.main.empty;
   }
   function isWritingSuggestionContext(options, state) {
     const mode = options.mode(state);
@@ -35822,6 +36027,9 @@ ${fence}
       (range) => position >= range.from && position < range.to
     );
   }
+  function suggestionSpanIsProtected(options, state, from, to) {
+    return options.protectedRanges(state).some((range) => from < range.to && to > range.from);
+  }
   function analysisReferenceContext(options, state, position) {
     if (!isLiveSuggestionContext(options, state)) return null;
     const line = state.doc.lineAt(position);
@@ -35830,7 +36038,7 @@ ${fence}
     const match = /(^|[\s([{])@([^\n@|\]]{0,512})$/u.exec(beforeCursor);
     if (!match || match[2].length > 512) return null;
     const from = scanFrom + match.index + match[1].length;
-    if (positionIsProtected(options, state, from)) return null;
+    if (suggestionSpanIsProtected(options, state, from, position)) return null;
     return { from, query: match[2] };
   }
   function termSuffix(state, position, candidate) {
@@ -36420,7 +36628,7 @@ ${fence}
       if (!match) return null;
       const typed = match[1];
       const from = scanFrom + match.index + 2;
-      if (positionIsProtected(options, context.state, from - 2)) return null;
+      if (suggestionSpanIsProtected(options, context.state, from - 2, context.pos)) return null;
       const requestID = boundedUUID();
       const candidates = new Promise((resolve) => {
         const cancel = () => {
@@ -36452,7 +36660,6 @@ ${fence}
       const reference = analysisReferenceContext(options, context.state, context.pos);
       if (!reference) return null;
       const { from, query } = reference;
-      if (options.protectedRanges(context.state).some((range) => from < range.to && context.pos > range.from)) return null;
       const source = context.state.field(exactSourceState, false)?.text;
       if (source === void 0) return null;
       const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
@@ -36607,7 +36814,7 @@ ${fence}
         if (this.destroyed) return;
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
-        if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing || options.isComposing()) {
+        if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing || !isLiveSuggestionContext(options, this.view.state)) {
           options.nativeFloating.hide(nativeID);
           this.signature = "";
           return;
@@ -36618,7 +36825,7 @@ ${fence}
           this.signature = "";
           return;
         }
-        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && !options.isComposing() && this.view.root.activeElement === this.view.contentDOM;
+        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && isLiveSuggestionContext(options, this.view.state) && this.view.root.activeElement === this.view.contentDOM;
         const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
         if (signature === this.signature) return;
         this.signature = signature;
@@ -36803,7 +37010,7 @@ ${fence}
   function overlaps2(ranges, from, to) {
     return ranges.some((range) => range.from < to && range.to > from);
   }
-  function isEscaped4(source, offset) {
+  function isEscaped5(source, offset) {
     let backslashes = 0;
     for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
       backslashes += 1;
@@ -36854,7 +37061,7 @@ ${fence}
     for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
       const from = match.index;
       const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped4(source, from)) continue;
+      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped5(source, from)) continue;
       rawReferences.push({
         identifier: match[1],
         from,
@@ -36867,7 +37074,7 @@ ${fence}
     for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
       const from = match.index;
       const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || isEscaped4(source, from)) continue;
+      if (overlaps2(excluded, from, to) || isEscaped5(source, from)) continue;
       inlineCounter += 1;
       const identifier5 = `inline-${inlineCounter}`;
       rawReferences.push({
@@ -40344,6 +40551,17 @@ ${fence}
     baseTheme3
   ];
 
+  // document-find-matching.ts
+  function documentFindWordBoundary(doc2, from, to) {
+    const before = (position) => /[\p{L}\p{N}\p{M}_]$/u.test(
+      doc2.sliceString(Math.max(0, position - 2), position)
+    );
+    const after = (position) => /^[\p{L}\p{N}\p{M}_]/u.test(
+      doc2.sliceString(position, Math.min(doc2.length, position + 2))
+    );
+    return (!before(from) || !after(from)) && (!after(to) || !before(to));
+  }
+
   // document-find.ts
   var documentFindExtension = search({
     literal: true,
@@ -40361,7 +40579,8 @@ ${fence}
       caseSensitive: request.caseSensitive,
       literal: true,
       regexp: false,
-      wholeWord: request.wholeWord
+      wholeWord: request.wholeWord,
+      test: request.wholeWord ? (_match, state, from, to) => documentFindWordBoundary(state.doc, from, to) : void 0
     });
   }
   function matchingRanges(state, query) {
@@ -40369,7 +40588,11 @@ ${fence}
     const matches = [];
     const cursor = query.getCursor(state);
     for (let next = cursor.next(); !next.done; next = cursor.next()) {
-      matches.push({ from: next.value.from, to: next.value.to });
+      matches.push({
+        from: next.value.from,
+        to: next.value.to,
+        precise: cursor instanceof SearchCursor && cursor.value.precise
+      });
     }
     return matches;
   }
@@ -40426,30 +40649,35 @@ ${fence}
         selectMatch(view, previousMatch(view, query, view.state.selection.main.from));
         break;
       case "replaceCurrent": {
+        if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
         const match = currentMatch(view, query) ?? forwardMatch(view, query, view.state.selection.main.from);
-        if (match) {
+        if (match?.precise) {
           const changes = [{ from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement) }];
           if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
             changes,
-            annotations: Transaction.userEvent.of("input.replace")
+            annotations: [Transaction.userEvent.of("input.replace"), isolateHistory.of("full")]
           });
           sourceChanged = true;
           undoLabel = "Replace";
           selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
+        } else if (match) {
+          selectMatch(view, forwardMatch(view, query, match.to));
         }
         break;
       }
       case "replaceAll": {
-        const changes = matchingRanges(view.state, query).map((match) => ({
-          ...match,
+        if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
+        const changes = matchingRanges(view.state, query).filter((match) => match.precise).map((match) => ({
+          from: match.from,
+          to: match.to,
           insert: normalizedDocumentText(request.replacement)
         }));
         if (changes.length > 0) {
           if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
             changes,
-            annotations: Transaction.userEvent.of("input.replace.all")
+            annotations: [Transaction.userEvent.of("input.replace.all"), isolateHistory.of("full")]
           });
           sourceChanged = true;
           undoLabel = "Replace All";
@@ -40572,16 +40800,17 @@ ${fence}
       image.src = this.presentation.resource;
       shell.append(image);
       shell.addEventListener("mousedown", (event) => {
-        if (event.button !== 0 || view.composing) return;
+        if (event.button !== 0 || view.compositionStarted) return;
         event.preventDefault();
         event.stopPropagation();
         const rect = image.getBoundingClientRect();
         const position = event.clientX <= rect.left + rect.width / 2 ? this.presentation.sourceFrom : this.presentation.sourceTo;
         if (position > view.state.doc.length) return;
-        view.dispatch({ selection: {
-          anchor: event.shiftKey ? view.state.selection.main.anchor : position,
-          head: position
-        }, scrollIntoView: true, annotations: Transaction.userEvent.of("select.pointer") });
+        view.dispatch({
+          selection: projectedPointerSelection(view.state, event, position),
+          scrollIntoView: true,
+          annotations: Transaction.userEvent.of("select.pointer")
+        });
         view.focus();
       });
       return shell;
@@ -41705,7 +41934,8 @@ ${fence}
       {
         argument: argument === void 0 ? void 0 : normalizedDocumentText(argument),
         protectedRanges: commandProtection(command2, state),
-        taskItems: liveProjectionIndex.index(state).taskItemRanges
+        taskItems: liveProjectionIndex.index(state).taskItemRanges,
+        setextHeadings: liveProjectionIndex.index(state).syntax.blocks.filter((block) => block.kind === "heading" && block.nodeName.startsWith("SetextHeading"))
       }
     );
     if (!transformed) return null;
@@ -41717,7 +41947,7 @@ ${fence}
   var protectedInteractionNodes = /* @__PURE__ */ new Set([
     "Frontmatter",
     "FencedCode",
-    "IndentedCode",
+    "CodeBlock",
     "BlockMath",
     "UnclosedBlockMath",
     "ScholiumObsidianCommentBlock",
@@ -41726,8 +41956,10 @@ ${fence}
     "HorizontalRule"
   ]);
   function isProtectedInteractionLine(state, lineFrom) {
+    const line = state.doc.lineAt(lineFrom);
+    const contentFrom = line.from + Math.max(0, line.text.search(/\S/));
     for (let node = syntaxTree(state).resolveInner(
-      Math.min(lineFrom, state.doc.length),
+      contentFrom,
       1
     ); node; node = node.parent) {
       if (protectedInteractionNodes.has(node.name)) return true;
@@ -41759,7 +41991,7 @@ ${fence}
     {
       key: "Enter",
       run: (view) => {
-        if (view.composing) return false;
+        if (view.compositionStarted || compositionGate.active || view.state.readOnly || !view.state.facet(EditorView.editable)) return false;
         const selections = editorSelections(view.state);
         const options = interactionOptions(view);
         return applyInteraction(
@@ -41771,10 +42003,10 @@ ${fence}
     {
       key: "Tab",
       run: (view) => {
-        if (view.composing) return false;
+        if (view.compositionStarted || compositionGate.active || view.state.readOnly || !view.state.facet(EditorView.editable)) return false;
         const selections = editorSelections(view.state);
         const options = interactionOptions(view);
-        const table = view.state.selection.ranges.length === 1 ? tableTabAction(view.state.doc, view.state.selection.main.head, false) : null;
+        const table = view.state.selection.ranges.length === 1 && !options.lineIsProtected(view.state.doc.lineAt(view.state.selection.main.head)) ? tableTabAction(view.state.doc, view.state.selection.main.head, false) : null;
         const list = indentList(view.state.doc, selections, false, options);
         if (table || list) {
           return applyInteraction(
@@ -41793,10 +42025,10 @@ ${fence}
     {
       key: "Shift-Tab",
       run: (view) => {
-        if (view.composing) return false;
+        if (view.compositionStarted || compositionGate.active || view.state.readOnly || !view.state.facet(EditorView.editable)) return false;
         const selections = editorSelections(view.state);
         const options = interactionOptions(view);
-        const table = view.state.selection.ranges.length === 1 ? tableTabAction(view.state.doc, view.state.selection.main.head, true) : null;
+        const table = view.state.selection.ranges.length === 1 && !options.lineIsProtected(view.state.doc.lineAt(view.state.selection.main.head)) ? tableTabAction(view.state.doc, view.state.selection.main.head, true) : null;
         const list = indentList(view.state.doc, selections, true, options);
         if (table || list) {
           return applyInteraction(
@@ -42132,7 +42364,18 @@ ${fence}
     return end > 0 && state.selection.ranges.every((range) => range.from < end && range.to <= end);
   }
   function commandProtection(command2, state = editor.state) {
-    return command2 === "pastePlain" || editingFrontmatterSelection(state) && command2 === "pasteMarkdown" ? [] : protectedCommandRanges(state);
+    if (command2 === "pastePlain" || editingFrontmatterSelection(state) && command2 === "pasteMarkdown") return [];
+    const protectedRanges = protectedCommandRanges(state);
+    if (command2 !== "inlineCode") return protectedRanges;
+    const selectedCode = state.selection.ranges.filter((selection) => {
+      if (selection.empty) return false;
+      for (let node = syntaxTree(state).resolveInner(selection.from, 1); node; node = node.parent) {
+        if (node.name === "InlineCode" && node.from === selection.from && node.to === selection.to) return true;
+      }
+      return false;
+    });
+    if (selectedCode.length === 0) return protectedRanges;
+    return protectedRanges.filter((range) => !selectedCode.some((selection) => range.from === selection.from && range.to === selection.to));
   }
   function indexedTablePositionAt(state, offset) {
     return projectionRangeContaining(
@@ -42162,13 +42405,15 @@ ${fence}
       const linePrefix = boundedLinePrefix(state.doc, selection.head);
       for (let node = syntaxTree(state).resolveInner(selection.head, -1); node; node = node.parent) {
         if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
-        if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
+        if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "SetextHeading1", "SetextHeading2", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
         if (!node.parent) break;
       }
       if (calloutHeader(linePrefix)) block.add("Callout");
     }
     const protectedRanges = protectedCommandRanges(state);
     const protectedSelection = state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedRanges, selection));
+    const inlineCodeProtection = protectedSelection ? commandProtection("inlineCode", state) : [];
+    const canUnwrapInlineCode = protectedSelection && state.selection.ranges.every((selection) => !projectionSelectionOverlaps(inlineCodeProtection, selection));
     const currentTablePosition = state.selection.ranges.length === 1 ? indexedTablePositionAt(state, state.selection.main.head) : void 0;
     const tableOnlyCommands = /* @__PURE__ */ new Set([
       "tableInsertRowBefore",
@@ -42182,7 +42427,7 @@ ${fence}
       "tableAlignRight"
     ]);
     const availableCommands = allCommands.filter((command2) => {
-      if (tableOnlyCommands.has(command2)) return currentTablePosition !== void 0;
+      if (tableOnlyCommands.has(command2)) return tableCommandAvailable(command2, currentTablePosition);
       if (command2 === "toggleTask") {
         return state.selection.ranges.every((selection) => indexedTaskItemForSelection(state, selection) !== null);
       }
@@ -42204,7 +42449,7 @@ ${fence}
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
       composing: view.composing || compositionGate.active,
-      availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter((command2) => ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command2)) : availableCommands,
+      availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter((command2) => command2 === "inlineCode" && canUnwrapInlineCode || ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command2)) : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
       redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0,
       citationState: fieldProjection.diagnostics.length ? "unresolved" : fieldProjection.citationStateStale ? "stale" : "current"

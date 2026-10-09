@@ -392,7 +392,7 @@ function applyOption(source: CompletionSource, text: string, label: string) {
 }
 
 describe("Edit input suggestions", () => {
-  it("hides native candidates and rejects queued native actions for the entire composition lifetime", () => {
+  it.each(["composition", "readOnly", "noneditable", "sourceMode"])("hides native candidates and rejects queued actions after %s begins", reason => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {setTimeout, clearTimeout});
     const callbacks: Array<Parameters<NativeSuggestionPort["show"]>[1]> = [];
@@ -401,16 +401,17 @@ describe("Edit input suggestions", () => {
       hide: vi.fn(),
     };
     let composing = false;
-    const suggestions = createEditorInputSuggestions({nativeFloating, mode: () => "livePreview",
+    let mode: EditorMode = "livePreview";
+    const suggestions = createEditorInputSuggestions({nativeFloating, mode: () => mode,
       dialect: () => dialect, isComposing: () => composing, protectedRanges: () => [],
       requestLinkCompletions: () => {}, didApply: () => {}});
-    const state = EditorState.create({doc: "> [!sta", selection: {anchor: 7}});
+    let state = EditorState.create({doc: "> [!sta", selection: {anchor: 7}});
     const measurement = {state, status: "active", items: [{label: "State", detail: ""}],
       anchor: {left: 0, top: 0, bottom: 20}, selected: 0};
     const writes: Array<(value: typeof measurement) => void> = [];
     const contentDOM = {};
     const dispatch = vi.fn();
-    const view = {state, composing: false, contentDOM, root: {activeElement: contentDOM}, dispatch,
+    const view = {get state() {return state;}, composing: false, contentDOM, root: {activeElement: contentDOM}, dispatch,
       requestMeasure(request: {write(value: typeof measurement): void}) { writes.push(request.write); },
     } as unknown as EditorView;
     const definition = (suggestions.extension as Extension[])[3] as unknown as {
@@ -420,7 +421,10 @@ describe("Edit input suggestions", () => {
     try {
       writes[0](measurement);
       expect(callbacks).toHaveLength(1);
-      composing = true;
+      if (reason === "composition") composing = true;
+      else if (reason === "sourceMode") mode = "source";
+      else state = state.update({effects: StateEffect.appendConfig.of(reason === "readOnly"
+        ? EditorState.readOnly.of(true) : EditorView.editable.of(false))}).state;
       expect(view.composing).toBe(false);
       callbacks[0].select?.(0);
       expect(callbacks[0].choose?.(0)).toBe(false);
@@ -433,6 +437,26 @@ describe("Edit input suggestions", () => {
       vi.unstubAllGlobals();
       vi.useRealTimers();
     }
+  });
+  it.each([EditorState.readOnly.of(true), EditorView.editable.of(false)])("suppresses all caret lists in a nonwritable state", extension => {
+    const {suggestions, request} = controller();
+    for (const [completionSource, text] of [
+      [suggestions.slashCompletionSource, "/"], [suggestions.calloutCompletionSource, "> [!"],
+      [suggestions.wikilinkCompletionSource, "[["], [suggestions.analysisReferenceCompletionSource, "@"],
+    ] as const) {
+      const state = EditorState.create({doc: text, selection: {anchor: text.length}, extensions: [extension]});
+      expect(completionSource(new CompletionContext(state, text.length, false))).toBeNull();
+    }
+    expect(request()).toBeNull();
+  });
+  it.each(["analysis", "wikilink"])("keeps an %s query from replacing a protected construct later in its span", kind => {
+    const source = kind === "analysis" ? "@work `literal`" : "[[work `literal`";
+    const from = source.indexOf("`");
+    const {suggestions, request} = controller("livePreview", [{from, to: source.length}]);
+    const completionSource = kind === "analysis" ? suggestions.analysisReferenceCompletionSource
+      : suggestions.wikilinkCompletionSource;
+    expect(synchronousResult(completionSource, source)).toBeNull();
+    expect(request()).toBeNull();
   });
   it("suppresses every caret suggestion while the composition lifetime gate is active", () => {
     const {suggestions, request} = controller("livePreview", [], true);

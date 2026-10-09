@@ -16,6 +16,11 @@ export interface TransformOptions {
     markerFrom: number;
     markerTo: number;
   }[];
+  setextHeadings?: readonly {
+    from: number;
+    to: number;
+    markerRanges: readonly {from: number; to: number}[];
+  }[];
 }
 
 export function toggledTaskMarker(marker: string): "[x]" | "[ ]" | null {
@@ -39,6 +44,11 @@ function normalized(range: SelectionRange) {
 function overlaps(left: {from: number; to: number}, right: {from: number; to: number}) {
   if (left.from === left.to) return left.from >= right.from && left.from <= right.to;
   return left.from < right.to && left.to > right.from;
+}
+function isEscaped(source: string, offset: number) {
+  let backslashes = 0;
+  for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
 }
 function lineBounds(source: string, range: {from: number; to: number}) {
   const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
@@ -106,14 +116,14 @@ function inlineChange(
   closing: string,
 ): {change: SourceChange; selection: SelectionRange} {
   const selected = source.slice(range.from, range.to);
-  const escapedOpening = range.from > 0 && source[range.from - 1] === "\\";
+  const escapedOpening = isEscaped(source, range.from);
   if (!escapedOpening && selected.startsWith(opening) && selected.endsWith(closing)
       && selected.length >= opening.length + closing.length) {
     const insert = selected.slice(opening.length, selected.length - closing.length);
     return {change: {...range, insert}, selection: {anchor: range.from, head: range.from + insert.length}};
   }
   const enclosingFrom = range.from - opening.length;
-  const escapedEnclosing = enclosingFrom > 0 && source[enclosingFrom - 1] === "\\";
+  const escapedEnclosing = isEscaped(source, enclosingFrom);
   if (!escapedEnclosing && source.slice(enclosingFrom, range.from) === opening
       && source.slice(range.to, range.to + closing.length) === closing) {
     return {
@@ -133,8 +143,9 @@ function transformOne(
   source: string,
   range: {from: number; to: number},
   command: MarkdownEditorCommand,
-  argument?: string,
+  options: TransformOptions,
 ): {change: SourceChange; selection: SelectionRange; label: string} | null {
+  const argument = options.argument;
   const marker = inlineMarkers[command];
   if (marker) {
     const result = inlineChange(source, range, marker[0], marker[1]);
@@ -142,6 +153,17 @@ function transformOne(
   }
   if (command === "inlineCode") {
     const selected = source.slice(range.from, range.to);
+    const existing = /^`+/.exec(selected)?.[0];
+    if (existing && !isEscaped(source, range.from)
+      && selected.length >= existing.length * 2 && selected.endsWith(existing)
+      && selected[selected.length - existing.length - 1] !== "`") {
+      const content = selected.slice(existing.length, -existing.length);
+      if (![...content.matchAll(/`+/g)].some(match => match[0].length === existing.length)) {
+        const padded = content.startsWith(" ") && content.endsWith(" ") && /[^ ]/.test(content);
+        const insert = padded ? content.slice(1, -1) : content;
+        return {change: {...range, insert}, selection: {anchor: range.from, head: range.from + insert.length}, label: "Inline Code"};
+      }
+    }
     const {opening, closing} = inlineCodeMarkers(selected);
     const result = inlineChange(source, range, opening, closing);
     return {...result, label: "Inline Code"};
@@ -213,6 +235,40 @@ function transformOne(
   const heading = /^ {0,3}#{1,6}[ \t]+/.exec(block);
   if (command === "paragraph" || /^heading[1-6]$/.test(command)) {
     const level = command === "paragraph" ? 0 : Number(command.slice(-1));
+    const setext = options.setextHeadings?.filter(candidate => {
+      const from = source.lastIndexOf("\n", candidate.from - 1) + 1;
+      return range.from === range.to ? range.from >= from && range.from <= candidate.to
+        : range.from < candidate.to && range.to > from;
+    }) ?? [];
+    if (setext.length) {
+      if (setext.length !== 1) return null;
+      const title = setext[0];
+      const titleLineFrom = source.lastIndexOf("\n", title.from - 1) + 1;
+      const afterTitle = source[title.to] === "\n" ? title.to + 1 : title.to;
+      // Container prefixes span multiple physical rows. Refuse a conversion
+      // whose source cannot be isolated by this parser-owned heading range.
+      if (!/^[ \t]*$/.test(source.slice(titleLineFrom, title.from))
+          || range.from < titleLineFrom || range.to > afterTitle
+          || title.markerRanges.length !== 1) return null;
+      const underline = title.markerRanges[0];
+      const underlineLineFrom = source.lastIndexOf("\n", underline.from - 1) + 1;
+      if (underlineLineFrom <= title.from || underline.from < title.from
+          || underline.to > title.to || underline.to <= underline.from) return null;
+      const contentTo = underlineLineFrom - (source[underlineLineFrom - 2] === "\r" ? 2 : 1);
+      const content = source.slice(title.from, contentTo);
+      const label = level ? `Heading ${level}` : "Paragraph";
+      if (level === 1 || level === 2) {
+        return {
+          change: {...underline, insert: (level === 1 ? "=" : "-").repeat(underline.to - underline.from)},
+          selection: {anchor: title.from, head: contentTo}, label,
+        };
+      }
+      const insert = level ? `${"#".repeat(level)} ${content.replace(/\r\n?|\n/g, " ")}` : content;
+      return {
+        change: {from: title.from, to: title.to, insert},
+        selection: {anchor: title.from + (level ? level + 1 : 0), head: title.from + insert.length}, label,
+      };
+    }
     const without = heading ? block.slice(heading[0].length) : block;
     const insert = level ? `${"#".repeat(level)} ${without}` : without;
     return {change: {...bounds, insert}, selection: {anchor: bounds.from + (level ? level + 1 : 0), head: bounds.from + insert.length}, label: level ? `Heading ${level}` : "Paragraph"};
@@ -263,11 +319,13 @@ export function transformMarkdown(
     const bodyLength = source.length + referenceChanges.reduce(
       (total, change) => total + change.insert.length - (change.to - change.from), 0,
     );
-    const separator = source.length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";
+    const endsWithNewline = referenceChanges.at(-1)!.to < source.length && source.endsWith("\n");
+    const separator = endsWithNewline ? "\n" : "\n\n";
     let definitions = separator;
     const definitionSelections: SelectionRange[] = [];
     for (let index = 0; index < ranges.length; index += 1) {
-      const content = options.argument ?? source.slice(ranges[index].from, ranges[index].to);
+      const content = (options.argument ?? source.slice(ranges[index].from, ranges[index].to))
+        .replaceAll("\n", "\n  ");
       const prefix = `[^${allocated[index]}]: `;
       const anchor = bodyLength + definitions.length + prefix.length;
       definitions += `${prefix}${content}\n`;
@@ -340,7 +398,7 @@ export function transformMarkdown(
     };
   }
 
-  const transformed = ranges.map((range) => transformOne(source, range, command, options.argument));
+  const transformed = ranges.map((range) => transformOne(source, range, command, options));
   if (transformed.some((value) => value === null)) return null;
   const values = transformed as NonNullable<(typeof transformed)[number]>[];
   const changes = values.map((value) => value.change);
@@ -358,7 +416,7 @@ export function transformMarkdown(
 
 export function applySourceChanges(source: string, changes: SourceChange[]): string {
   let result = source;
-  for (const change of [...changes].sort((left, right) => right.from - left.from)) {
+  for (const change of [...changes].reverse().sort((left, right) => right.from - left.from)) {
     result = result.slice(0, change.from) + change.insert + result.slice(change.to);
   }
   return result;

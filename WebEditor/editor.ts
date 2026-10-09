@@ -89,7 +89,7 @@ import {
   transformMarkdown,
 } from "./transformations";
 import {continueCallout, continueList, indentList} from "./interaction";
-import {tableTabAction} from "./tables";
+import {tableCommandAvailable, tableTabAction} from "./tables";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
 import {createEditorTextTransfer} from "./text-transfer";
 import {completeHeadingSelection} from "./text-transfer-ranges";
@@ -1581,6 +1581,8 @@ function markdownCommandTransformation(
       argument: argument === undefined ? undefined : normalizedDocumentText(argument),
       protectedRanges: commandProtection(command, state),
       taskItems: liveProjectionIndex.index(state).taskItemRanges,
+      setextHeadings: liveProjectionIndex.index(state).syntax.blocks.filter(block =>
+        block.kind === "heading" && block.nodeName.startsWith("SetextHeading")),
     },
   );
   if (!transformed) return null;
@@ -1597,7 +1599,7 @@ function markdownCommandTransformation(
 const protectedInteractionNodes = new Set([
   "Frontmatter",
   "FencedCode",
-  "IndentedCode",
+  "CodeBlock",
   "BlockMath",
   "UnclosedBlockMath",
   "ScholiumObsidianCommentBlock",
@@ -1607,8 +1609,12 @@ const protectedInteractionNodes = new Set([
 ]);
 
 function isProtectedInteractionLine(state: EditorState, lineFrom: number) {
+  const line = state.doc.lineAt(lineFrom);
+  // An indented CodeBlock starts at its first content character, after the
+  // source indentation. Its opening row still belongs to the literal block.
+  const contentFrom = line.from + Math.max(0, line.text.search(/\S/));
   for (let node = syntaxTree(state).resolveInner(
-    Math.min(lineFrom, state.doc.length),
+    contentFrom,
     1,
   ); node; node = node.parent!) {
     if (protectedInteractionNodes.has(node.name)) return true;
@@ -1650,7 +1656,8 @@ const structuralInteractionKeymap = keymap.of([
       // IME owns Enter while marked text is active. Structural continuation
       // must never consume a candidate-confirmation keystroke or create a
       // second source transaction beside the composition.
-      if (view.composing) return false;
+      if (view.compositionStarted || compositionGate.active || view.state.readOnly
+          || !view.state.facet(EditorView.editable)) return false;
       const selections = editorSelections(view.state);
       const options = interactionOptions(view);
       return applyInteraction(
@@ -1665,10 +1672,12 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Tab",
     run: (view) => {
-      if (view.composing) return false;
+      if (view.compositionStarted || compositionGate.active || view.state.readOnly
+          || !view.state.facet(EditorView.editable)) return false;
       const selections = editorSelections(view.state);
       const options = interactionOptions(view);
       const table = view.state.selection.ranges.length === 1
+        && !options.lineIsProtected(view.state.doc.lineAt(view.state.selection.main.head))
         ? tableTabAction(view.state.doc, view.state.selection.main.head, false)
         : null;
       const list = indentList(view.state.doc, selections, false, options);
@@ -1689,10 +1698,12 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Shift-Tab",
     run: (view) => {
-      if (view.composing) return false;
+      if (view.compositionStarted || compositionGate.active || view.state.readOnly
+          || !view.state.facet(EditorView.editable)) return false;
       const selections = editorSelections(view.state);
       const options = interactionOptions(view);
       const table = view.state.selection.ranges.length === 1
+        && !options.lineIsProtected(view.state.doc.lineAt(view.state.selection.main.head))
         ? tableTabAction(view.state.doc, view.state.selection.main.head, true)
         : null;
       const list = indentList(view.state.doc, selections, true, options);
@@ -2023,8 +2034,21 @@ function editingFrontmatterSelection(state = editor.state) {
 }
 
 function commandProtection(command: string, state = editor.state) {
-  return command === "pastePlain" || (editingFrontmatterSelection(state) && command === "pasteMarkdown")
-    ? [] : protectedCommandRanges(state);
+  if (command === "pastePlain" || (editingFrontmatterSelection(state) && command === "pasteMarkdown")) return [];
+  const protectedRanges = protectedCommandRanges(state);
+  if (command !== "inlineCode") return protectedRanges;
+  // Removing one explicitly selected, parser-proven code span is a format
+  // operation on that span. Partial literal selections stay protected.
+  const selectedCode = state.selection.ranges.filter(selection => {
+    if (selection.empty) return false;
+    for (let node = syntaxTree(state).resolveInner(selection.from, 1); node; node = node.parent!) {
+      if (node.name === "InlineCode" && node.from === selection.from && node.to === selection.to) return true;
+    }
+    return false;
+  });
+  if (selectedCode.length === 0) return protectedRanges;
+  return protectedRanges.filter(range => !selectedCode.some(selection =>
+    range.from === selection.from && range.to === selection.to));
 }
 
 function indexedTablePositionAt(state: EditorState, offset: number) {
@@ -2065,7 +2089,7 @@ function currentEditorContext(view = editor): EditorContext {
     const linePrefix = boundedLinePrefix(state.doc, selection.head);
     for (let node = syntaxTree(state).resolveInner(selection.head, -1); node; node = node.parent!) {
       if (["Emphasis", "StrongEmphasis", "InlineCode", "Link"].includes(node.name)) inline.add(node.name);
-      if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
+      if (["ATXHeading1", "ATXHeading2", "ATXHeading3", "ATXHeading4", "ATXHeading5", "ATXHeading6", "SetextHeading1", "SetextHeading2", "Blockquote", "Callout", "BlockMath", "FootnoteDefinition", "BulletList", "OrderedList", "FencedCode", "Table"].includes(node.name)) block.add(node.name);
       if (!node.parent) break;
     }
     if (calloutHeader(linePrefix)) block.add("Callout");
@@ -2073,6 +2097,9 @@ function currentEditorContext(view = editor): EditorContext {
   const protectedRanges = protectedCommandRanges(state);
   const protectedSelection = state.selection.ranges.some((selection) =>
     projectionSelectionOverlaps(protectedRanges, selection));
+  const inlineCodeProtection = protectedSelection ? commandProtection("inlineCode", state) : [];
+  const canUnwrapInlineCode = protectedSelection && state.selection.ranges.every(selection =>
+    !projectionSelectionOverlaps(inlineCodeProtection, selection));
   const currentTablePosition = state.selection.ranges.length === 1
     ? indexedTablePositionAt(state, state.selection.main.head)
     : undefined;
@@ -2082,7 +2109,7 @@ function currentEditorContext(view = editor): EditorContext {
     "tableAlignLeft", "tableAlignCenter", "tableAlignRight",
   ]);
   const availableCommands: MarkdownEditorCommand[] = allCommands.filter((command) => {
-    if (tableOnlyCommands.has(command)) return currentTablePosition !== undefined;
+    if (tableOnlyCommands.has(command)) return tableCommandAvailable(command, currentTablePosition);
     if (command === "toggleTask") {
       return state.selection.ranges.every((selection) =>
         indexedTaskItemForSelection(state, selection) !== null);
@@ -2106,7 +2133,9 @@ function currentEditorContext(view = editor): EditorContext {
     tablePosition: currentTablePosition,
     composing: view.composing || compositionGate.active,
     availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state)
-      ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter(command => ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command)) : availableCommands,
+      ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter(command =>
+        command === "inlineCode" && canUnwrapInlineCode
+        || ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command)) : availableCommands,
     undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
     redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
     citationState: fieldProjection.diagnostics.length ? "unresolved" : fieldProjection.citationStateStale ? "stale" : "current",

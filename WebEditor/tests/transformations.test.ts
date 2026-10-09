@@ -1,10 +1,26 @@
 import {describe, expect, it} from "vitest";
 import {applySourceChanges, transformMarkdown} from "../transformations";
+import {footnotePresentation} from "../footnote-presentation";
+import {EditorState} from "@codemirror/state";
+import {scholiumNoteLanguage} from "../language";
+import {semanticProjectionRanges} from "../semantic-projection";
 
 function apply(source: string, command: Parameters<typeof transformMarkdown>[2], from: number, to = from, argument?: string) {
   const result = transformMarkdown(source, [{anchor: from, head: to}], command, {argument});
   expect(result).not.toBeNull();
   return {result: result!, source: applySourceChanges(source, result!.changes)};
+}
+
+function headingMetadata(source: string) {
+  const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+  return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0).blocks
+    .filter(block => block.kind === "heading");
+}
+
+function transformSetext(source: string, command: Parameters<typeof transformMarkdown>[2], head: number, to = head) {
+  return transformMarkdown(source, [{anchor: head, head: to}], command, {
+    setextHeadings: headingMetadata(source).filter(block => block.nodeName.startsWith("SetextHeading")),
+  });
 }
 
 describe("exact Markdown transformations", () => {
@@ -114,6 +130,51 @@ describe("exact Markdown transformations", () => {
     expect(apply("  ## Thesis\nNext", "heading4", 6).source).toBe("#### Thesis\nNext");
     expect(apply("#### Thesis\nNext", "paragraph", 6).source).toBe("Thesis\nNext");
   });
+  it.each(["Title\n=====", "First line\nSecond line\n==========="])("turns a parsed Setext heading into a paragraph without losing content: %j", title => {
+    const source = `Before 😀 é.\n\n${title}\n\nAfter.`;
+    const titleFrom = source.indexOf(title);
+    const result = transformSetext(source, "paragraph", source.indexOf("="))!;
+    const changed = applySourceChanges(source, result.changes);
+    const content = title.slice(0, title.lastIndexOf("\n"));
+    expect(changed).toBe(`Before 😀 é.\n\n${content}\n\nAfter.`);
+    expect(headingMetadata(changed)).toHaveLength(0);
+    expect(changed.slice(result.selections[0].anchor, result.selections[0].head)).toBe(content);
+    expect(result.changes[0].from).toBe(titleFrom);
+  });
+  it.each([1, 2])("changes multiline Setext titles to level %s by editing only the parser marker", level => {
+    const source = "Before.\n\nFirst line\nSecond line\n=========\n\nAfter.";
+    const command = level === 1 ? "heading1" : "heading2";
+    const result = transformSetext(source, command, source.indexOf("Second"))!;
+    const changed = applySourceChanges(source, result.changes);
+    expect(changed).toBe(source.replace("=========", (level === 1 ? "=" : "-").repeat(9)));
+    expect(headingMetadata(changed).map(heading => heading.nodeName)).toEqual([`SetextHeading${level}`]);
+  });
+  it.each([3, 4, 5, 6])("converts one multiline Setext title into one ATX heading at level %s", level => {
+    const source = "Before.\n\nFirst line\nSecond line\n=========\n\nAfter.";
+    const result = transformSetext(source, `heading${level}` as Parameters<typeof transformMarkdown>[2], source.indexOf("="))!;
+    const changed = applySourceChanges(source, result.changes);
+    expect(changed).toBe(`Before.\n\n${"#".repeat(level)} First line Second line\n\nAfter.`);
+    const headings = headingMetadata(changed);
+    expect(headings.map(heading => heading.nodeName)).toEqual([`ATXHeading${level}`]);
+    expect(changed.slice(result.selections[0].anchor, result.selections[0].head)).toBe("First line Second line");
+  });
+  it("converts distinct adjacent Setext selections atomically without swallowing neighboring bytes", () => {
+    const source = "One\n===\n\nTwo\n---\n\nAfter.";
+    const selections = [{anchor: 0, head: 3}, {anchor: source.indexOf("Two"), head: source.indexOf("Two") + 3}];
+    const result = transformMarkdown(source, selections, "heading4", {
+      setextHeadings: headingMetadata(source).filter(block => block.nodeName.startsWith("SetextHeading")),
+    })!;
+    const changed = applySourceChanges(source, result.changes);
+    expect(changed).toBe("#### One\n\n#### Two\n\nAfter.");
+    expect(result.selections.map(range => changed.slice(range.anchor, range.head))).toEqual(["One", "Two"]);
+    expect(headingMetadata(changed).map(heading => heading.nodeName)).toEqual(["ATXHeading4", "ATXHeading4"]);
+    expect(transformSetext(source, "paragraph", 0, source.indexOf("After"))).toBeNull();
+  });
+  it.each(["> Title\n> =====", "- Title\n  ====="])("declines container-owned Setext syntax without changing its source: %j", source => {
+    expect(headingMetadata(source).some(block => block.nodeName.startsWith("SetextHeading"))).toBe(true);
+    expect(transformSetext(source, "heading3", source.indexOf("Title"))).toBeNull();
+    expect(transformSetext(source, "paragraph", source.indexOf("="))).toBeNull();
+  });
   it("applies multiple selections atomically and maps selections", () => {
     const result = transformMarkdown("one two three", [{anchor: 0, head: 3}, {anchor: 8, head: 13}], "emphasis");
     expect(result).not.toBeNull();
@@ -131,6 +192,24 @@ describe("exact Markdown transformations", () => {
   it("does not unwrap escaped delimiters or emit overlapping line edits", () => {
     expect(apply("\\**literal**", "bold", 1, 12).source).toBe("\\****literal****");
     expect(transformMarkdown("one line", [{anchor: 0, head: 3}, {anchor: 4, head: 8}], "heading2")).toBeNull();
+  });
+  it.each([2, 4])("unwraps real delimiters preceded by %s literal backslashes", count => {
+    const prefix = "\\".repeat(count);
+    const source = `${prefix}**word**`;
+    expect(apply(source, "bold", prefix.length, source.length).source).toBe(`${prefix}word`);
+    expect(apply(source, "bold", prefix.length + 2, source.length - 2).source).toBe(`${prefix}word`);
+  });
+  it.each([
+    ["`word`", "word"], ["`` a`b ``", "a`b"], ["`` `literal ``", "`literal"], ["`   `", "   "],
+  ])("unwraps a completely selected code span %j without retaining padding", (source, expected) => {
+    expect(apply(source, "inlineCode", 0, source.length).source).toBe(expected);
+  });
+  it("does not mistake separate or unmatched code spans for one enclosing span", () => {
+    for (const source of ["`one` and `two`", "```unmatched``"]) {
+      const result = apply(source, "inlineCode", 0, source.length);
+      const selection = result.result.selections[0];
+      expect(result.source.slice(selection.anchor, selection.head)).toBe(source);
+    }
   });
   it("inserts exact links, callouts, and a bounded table", () => {
     expect(apply("claim", "standardLink", 0, 5, "https://example.test").source).toBe("[claim](https://example.test)");
@@ -160,6 +239,29 @@ describe("exact Markdown transformations", () => {
     expect(applySourceChanges(source, result!.changes)).toBe(
       "[^1] and second.[^2]\n\n[^2]: Existing\n\n[^1]: First\n",
     );
+  });
+  it("keeps every selected paragraph inside the newly inserted footnote", () => {
+    const content = "First line\nSecond line\n\n- Nested item\n  continuation";
+    const source = `${content}\n\nFollowing prose.`;
+    const result = transformMarkdown(source, [{anchor: 0, head: content.length}], "insertFootnote")!;
+    const changed = applySourceChanges(source, result.changes);
+    expect(changed).toBe("[^1]\n\nFollowing prose.\n\n[^1]: First line\n  Second line\n  \n  - Nested item\n    continuation\n");
+    const presentation = footnotePresentation(changed);
+    expect(presentation.definitions).toHaveLength(1);
+    expect(presentation.definitions[0].content).toBe(content);
+    expect(changed.slice(result.selections[0].anchor, result.selections[0].head))
+      .toBe(content.replaceAll("\n", "\n  "));
+  });
+  it.each(["", "Text", "Text\n"])("inserts a resolvable footnote at the end of %j", source => {
+    const head = source.length;
+    const result = transformMarkdown(source, [{anchor: head, head}], "insertFootnote")!;
+    const changed = EditorState.create({doc: source}).update({changes: result.changes}).newDoc.toString();
+    expect(applySourceChanges(source, result.changes)).toBe(changed);
+    const projection = footnotePresentation(changed);
+    expect(projection.definitions).toHaveLength(1);
+    expect(projection.references).toHaveLength(1);
+    expect(projection.references[0].definitionFrom).toBe(projection.definitions[0].from);
+    expect(result.selections[0].head).toBe(projection.definitions[0].contentFrom);
   });
   it("inserts inline footnotes at one or several exact selections", () => {
     const empty = transformMarkdown("Claim.", [{anchor: 5, head: 5}], "insertInlineFootnote");

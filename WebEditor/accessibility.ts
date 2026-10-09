@@ -18,7 +18,7 @@ export function editorAccessibilityAttributes(mode: EditorMode) {
 }
 
 export function activeConstructAccessibilityDescription(context: EditorContext): string | undefined {
-  const heading = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
+  const heading = context.activeBlockConstructs.find((construct) => /^(?:ATXHeading[1-6]|SetextHeading[12])$/.test(construct));
   if (heading) return localizedTemplate("Heading level {level}", {level: heading.at(-1) ?? ""});
   if (context.activeInlineConstructs.includes("Link")) return localized("Link");
   if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");

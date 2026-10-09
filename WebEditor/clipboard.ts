@@ -1,19 +1,28 @@
 import {inlineCodeMarkers} from "./transformations";
 
 export interface ClipboardPayload { plainText: string; html?: string }
+const maximumClipboardLength = 2_000_000;
 
 function escapeHTML(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 export function sanitizeClipboardHTML(html: string) {
-  let safe = html.slice(0, 2_000_000);
+  if (html.length > maximumClipboardLength) throw new RangeError("Clipboard HTML exceeds its size limit.");
+  let safe = html;
   safe = safe.replace(/<!--([\s\S]*?)-->/g, "");
   safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
   safe = safe.replace(/<(script|style|iframe|object|embed|svg|math|canvas|template)\b[^>]*\/?\s*>/gi, "");
   safe = safe.replace(/<img\b([^>]*)>/gi, (_match, attributes: string) => {
     const alt = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
-    return alt ? escapeHTML(alt[1] ?? alt[2] ?? alt[3] ?? "") : "";
+    if (!alt) return "";
+    // Decode once in attribute context, where ambiguous named references
+    // differ from text context. Only this inert span reaches the parser;
+    // resource-bearing image markup never does.
+    const raw = (alt[1] ?? alt[2] ?? alt[3] ?? "")
+      .replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    const parsed = new DOMParser().parseFromString(`<span data-alt="${raw}"></span>`, "text/html");
+    return escapeHTML(parsed.querySelector("span")?.getAttribute("data-alt") ?? "");
   });
   safe = safe.replace(/<(?:video|audio|source|track|picture|link|meta)\b[^>]*\/?\s*>/gi, "");
   safe = safe.replace(/\s(?:src|srcset|poster|background|style|formaction)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
@@ -32,7 +41,24 @@ function safeLinkDestination(value: string) {
 }
 
 function collapseBlankLines(value: string) {
-  return value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const lines: string[] = [];
+  let fence: string | null = null;
+  for (const line of value.split("\n")) {
+    // Only the converter emits unescaped fences; its enclosing list/quote
+    // prefixes contain these characters. Keep recognition linear in line size.
+    const marker = /^[ \t>*+\-.\d]*(`{3,})[ \t]*$/.exec(line)?.[1];
+    if (fence !== null) {
+      lines.push(line);
+      if (marker === fence) fence = null;
+    } else if (marker) {
+      fence = marker;
+      lines.push(line);
+    } else {
+      const trimmed = line.replace(/[ \t]+$/, "");
+      if (trimmed || lines.at(-1) !== "") lines.push(trimmed);
+    }
+  }
+  return lines.join("\n").trim();
 }
 
 function renderChildren(node: Node): string {
@@ -47,22 +73,23 @@ function literalCodeText(node: Node): string {
 
 function renderList(node: Element, ordered: boolean) {
   let index = 1;
-  return Array.from(node.children).flatMap((child) => {
+  return "\n" + Array.from(node.children).flatMap((child) => {
     if (child.tagName.toLowerCase() !== "li") return [];
     const prefix = ordered ? `${index++}. ` : "- ";
-    const content = collapseBlankLines(renderChildren(child)).replaceAll("\n", "\n  ");
+    const content = collapseBlankLines(renderChildren(child)).replaceAll("\n", `\n${" ".repeat(prefix.length)}`);
     return [`${prefix}${content}\n`];
   }).join("") + "\n";
 }
 
 function renderTable(node: Element) {
-  const rows = Array.from(node.querySelectorAll("tr")).map((row) => Array.from(row.children).flatMap((cell) => {
-    if (!["td", "th"].includes(cell.tagName.toLowerCase())
-        || cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")) return [];
-    return [collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")];
-  }));
-  if (rows.length === 0 || rows[0].length < 2 || rows.some((row) => row.length !== rows[0].length)) {
-    return `${collapseBlankLines(renderChildren(node))}\n\n`;
+  const cells = Array.from(node.querySelectorAll("tr"))
+    .filter(row => row.closest("table") === node)
+    .map(row => Array.from(row.children).filter(cell => ["td", "th"].includes(cell.tagName.toLowerCase())));
+  const rows = cells.map(row => row.map(cell =>
+    collapseBlankLines(renderChildren(cell)).replaceAll("|", "\\|").replaceAll("\n", " ")));
+  if (rows.length === 0 || rows[0].length < 2 || rows.some(row => row.length !== rows[0].length)
+      || cells.some(row => row.some(cell => cell.hasAttribute("rowspan") || cell.hasAttribute("colspan")))) {
+    return `${rows.map(row => row.join("\t")).join("\n")}\n\n`;
   }
   const line = (row: string[]) => `| ${row.join(" | ")} |`;
   return `${line(rows[0])}\n${line(rows[0].map(() => "---"))}\n${rows.slice(1).map(line).join("\n")}\n\n`;
@@ -86,10 +113,10 @@ function renderNode(node: Node): string {
     return opening + text + closing;
   }
   if (tag === "pre") {
-    const raw = element.textContent ?? "";
+    const raw = literalCodeText(element);
     const run = Math.max(3, ...Array.from(raw.matchAll(/`+/g), (match) => match[0].length + 1));
     const fence = "`".repeat(run);
-    return `${fence}\n${raw}\n${fence}\n\n`;
+    return `${fence}\n${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}\n\n`;
   }
   if (tag === "blockquote") return `${collapseBlankLines(content()).split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
   if (tag === "ul") return renderList(element, false);
@@ -124,8 +151,10 @@ export function decodeClipboardPayload(argument: string | undefined): ClipboardP
   if (!argument) return undefined;
   try {
     const value = JSON.parse(argument) as Partial<ClipboardPayload>;
-    if (typeof value.plainText === "string" && (value.html === undefined || typeof value.html === "string")) {
-      return {plainText: value.plainText.slice(0, 2_000_000), html: value.html?.slice(0, 2_000_000)};
+    if (typeof value.plainText === "string" && value.plainText.length <= maximumClipboardLength
+        && (value.html === undefined || typeof value.html === "string")) {
+      return {plainText: value.plainText,
+        html: value.html && value.html.length <= maximumClipboardLength ? value.html : undefined};
     }
   } catch { /* malformed clipboard payload */ }
   return undefined;

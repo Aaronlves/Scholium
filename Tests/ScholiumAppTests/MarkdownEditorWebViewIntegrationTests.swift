@@ -10,6 +10,143 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Inline Code can unwrap a complete parsed span while partial literal selections remain protected")
+    func inlineCodeCommandRespectsParsedSelection() async throws {
+        let source = "Lead `` a`b `` after.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 8, toUTF16: 9)
+        try await harness.waitUntilSelection(head: 9)
+        #expect(harness.session.context?.availableCommands.contains(.inlineCode) == false)
+        harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 14)
+        try await harness.waitUntilSelection(head: 14)
+        #expect(harness.session.context?.availableCommands.contains(.inlineCode) == true)
+        try await harness.session.perform(.inlineCode)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "Lead a`b after.\r\n")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Replace All keeps normalization-only partial characters intact and separates later typing in Undo")
+    func findReplacementPreservesUnicodeAndHistory() async throws {
+        let source = "ﬀ f é e\u{301}.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.session.performDocumentFind(DocumentFindQuery(
+            query: "f", replacement: "X", caseSensitive: true, wholeWord: false, action: .replaceAll))
+        let replaced = "ﬀ X é e\u{301}.\r\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == replaced)
+        let end = replaced.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '!');")
+        #expect(try await harness.session.currentText(for: harness.documentID) == replaced + "!")
+        let undo = "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        _ = try await harness.callPageJavaScript(undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == replaced)
+        _ = try await harness.callPageJavaScript(undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Setext formatting operates on its complete parsed heading and retains exact Undo", arguments: [MarkdownEditorCommand.paragraph, .heading2, .heading3])
+    func setextFormattingPreservesSource(command: MarkdownEditorCommand) async throws {
+        let heading = "Heading 中文\r\ncontinued\r\n====="
+        let source = "\u{FEFF}Lead 😀 e\u{301}.\r\n\r\n" + heading + "\r\n\r\nAfter."
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let caret = try #require(normalized.range(of: "=====")?.lowerBound).utf16Offset(in: normalized) + 2
+        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        try await harness.waitUntilSelection(head: caret)
+        try await harness.session.perform(command)
+        let replacement = command == .paragraph ? "Heading 中文\r\ncontinued"
+            : command == .heading2 ? "Heading 中文\r\ncontinued\r\n-----" : "### Heading 中文 continued"
+        #expect(try await harness.session.currentText(for: harness.documentID)
+            == source.replacingOccurrences(of: heading, with: replacement))
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Footnote previews retain parsed headings, task completion and literal code across native HTML transfer")
+    func footnotePreviewRetainsBlockSemantics() async throws {
+        let source = "Claim[^note].\r\n\r\n[^note]: Preview heading\r\n  ======\r\n\r\n  - [x] Finished **task**\r\n\r\n  After tasks.\r\n\r\n      literal <tag>\r\n\r\nAfter."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-live-footnote-reference-widget .footnote-reference').dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));")
+        _ = try await harness.waitUntilPresentation(stage: "block footnote preview") { !$0.previewPopoverHidden }
+        let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+        #expect(try await preview.evaluateJavaScript("document.querySelector('h1')?.textContent === 'Preview heading'") as? Bool == true)
+        #expect(try await preview.evaluateJavaScript("document.querySelector('input[type=checkbox]')?.checked === true && document.querySelector('input[type=checkbox]')?.disabled === true") as? Bool == true)
+        #expect(try await preview.evaluateJavaScript("document.querySelector('strong')?.textContent === 'task'") as? Bool == true)
+        let code = try await preview.evaluateJavaScript("document.querySelector('pre code')?.textContent ?? null") as? String
+        #expect(code == "literal <tag>")
+        #expect(try await preview.evaluateJavaScript("document.querySelector('tag') === null") as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Table header commands publish valid availability and preserve exact CRLF source through Undo")
+    func tableHeaderCommandsPreserveStructure() async throws {
+        let source = "Lead 😀 e\u{301}.\r\n\r\n| First | Second |\r\n| --- | --- |\r\n| Exact | Open |\r\n\r\nAfter."
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let caret = try #require(normalized.range(of: "First")?.lowerBound).utf16Offset(in: normalized)
+        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        try await harness.waitUntilSelection(head: caret)
+        #expect(harness.session.context?.availableCommands.contains(.tableInsertRowBefore) == false)
+        #expect(harness.session.context?.availableCommands.contains(.tableDeleteRow) == false)
+        #expect(harness.session.context?.availableCommands.contains(.tableDeleteColumn) == true)
+        #expect(harness.session.context?.availableCommands.contains(.tableInsertRowAfter) == true)
+        try await harness.session.perform(.tableInsertRowAfter)
+        #expect(try await harness.session.currentText(for: harness.documentID)
+            == source.replacingOccurrences(of: "| --- | --- |\r\n", with: "| --- | --- |\r\n|  |  |\r\n"))
+        #expect(harness.session.context?.tablePosition?.row == 1)
+        #expect(harness.session.context?.availableCommands.contains(.tableDeleteRow) == true)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Tab in table-shaped literal code indents its source instead of entering table navigation", arguments: [false, true], [false, true])
+    func literalTableTabUsesCodeIndentation(indented: Bool, header: Bool) async throws {
+        let rows = "| A | B |\n| --- | --- |\n| One | Two |"
+        let source = indented
+            ? rows.split(separator: "\n").map { "    " + $0 }.joined(separator: "\n") + "\n\nAfter."
+            : "```text\n" + rows + "\n```\n\nAfter."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let caret = try #require(source.range(of: header ? "A" : "Two")?.upperBound).utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        try await harness.waitUntilSelection(head: caret)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', code: 'Tab', bubbles: true, cancelable: true}));")
+        let row = header ? "| A | B |" : "| One | Two |"
+        let expected = source.replacingOccurrences(of: row, with: "  " + row)
+        #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+        #expect(harness.session.context?.undoLabel == "Indent")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Projected table clicks follow exact formatting offsets and retained DOM rebasing")
     func projectedTablePointerRetainsExactSource() async throws {
         let source = "Lead 😀 e\u{301}.\r\n\r\n| First | Second |\r\n| --- | --- |\r\n| **bold** a \\| b | [[Target]] |\r\n\r\nAfter.\r\n"
@@ -3903,6 +4040,20 @@ struct MarkdownEditorWebViewIntegrationTests {
                 return row?.querySelector('.cm-live-heading-source-marker')?.textContent ?? '';
                 """) as? String
             #expect(underline == (text == "Heading" ? "==========" : ""))
+            if text == "Heading" {
+                #expect(harness.session.context?.activeBlockConstructs.contains("SetextHeading1") == true)
+                // The bridge selection receipt precedes the coalesced frame
+                // that publishes its accessibility description.
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                var description: String?
+                repeat {
+                    description = try await harness.callPageJavaScript(
+                        "return document.querySelector('.cm-content').getAttribute('aria-description');") as? String
+                    if description == "Heading level 1" { break }
+                    try await Task.sleep(for: .milliseconds(20))
+                } while ContinuousClock.now < deadline
+                #expect(description == "Heading level 1")
+            }
             #expect(try await harness.callPageJavaScript(
                 "return document.querySelectorAll('.cm-live-heading-marker-line .cm-syntax-token[data-syntax-kind=prefix]').length;") as? Int == 0)
         }

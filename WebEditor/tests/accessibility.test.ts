@@ -37,6 +37,8 @@ describe("editor accessibility contract", () => {
 
   it("describes the active semantic construct without replacing the editable source", () => {
     expect(activeConstructAccessibilityDescription(context(["ATXHeading2"]))).toBe("Heading level 2");
+    expect(activeConstructAccessibilityDescription(context(["SetextHeading1"]))).toBe("Heading level 1");
+    expect(activeConstructAccessibilityDescription(context(["SetextHeading2"]))).toBe("Heading level 2");
     expect(activeConstructAccessibilityDescription(context([], ["Link"]))).toBe("Link");
     expect(activeConstructAccessibilityDescription(context(["Callout"]))).toBe("Callout");
   });

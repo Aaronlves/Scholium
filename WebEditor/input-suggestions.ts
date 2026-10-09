@@ -147,6 +147,7 @@ const suggestionSymbolByType: Record<SuggestionType, WebSystemSymbolKey> = {
 
 function isLiveSuggestionContext(options: InputSuggestionOptions, state: EditorState) {
   return options.mode(state) === "livePreview"
+    && !state.readOnly && state.facet(EditorView.editable)
     && !options.isComposing()
     && state.selection.ranges.length === 1
     && state.selection.main.empty;
@@ -170,6 +171,10 @@ function positionIsProtected(
   );
 }
 
+function suggestionSpanIsProtected(options: InputSuggestionOptions, state: EditorState, from: number, to: number) {
+  return options.protectedRanges(state).some(range => from < range.to && to > range.from);
+}
+
 function analysisReferenceContext(options: InputSuggestionOptions, state: EditorState, position: number) {
   if (!isLiveSuggestionContext(options, state)) return null;
   const line = state.doc.lineAt(position);
@@ -178,7 +183,7 @@ function analysisReferenceContext(options: InputSuggestionOptions, state: Editor
   const match = /(^|[\s([{])@([^\n@|\]]{0,512})$/u.exec(beforeCursor);
   if (!match || match[2].length > 512) return null;
   const from = scanFrom + match.index + match[1].length;
-  if (positionIsProtected(options, state, from)) return null;
+  if (suggestionSpanIsProtected(options, state, from, position)) return null;
   return {from, query: match[2]};
 }
 
@@ -772,7 +777,7 @@ export function createEditorInputSuggestions(
     if (!match) return null;
     const typed = match[1];
     const from = scanFrom + match.index + 2;
-    if (positionIsProtected(options, context.state, from - 2)) return null;
+    if (suggestionSpanIsProtected(options, context.state, from - 2, context.pos)) return null;
 
     const requestID = boundedUUID();
     const candidates = new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
@@ -812,7 +817,6 @@ export function createEditorInputSuggestions(
     const reference = analysisReferenceContext(options, context.state, context.pos);
     if (!reference) return null;
     const {from, query} = reference;
-    if (options.protectedRanges(context.state).some(range => from < range.to && context.pos > range.from)) return null;
     const source = context.state.field(exactSourceState, false)?.text;
     if (source === undefined) return null;
     const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
@@ -976,7 +980,7 @@ export function createEditorInputSuggestions(
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
       if (!anchor || this.view.root.activeElement !== this.view.contentDOM
-        || this.view.composing || options.isComposing()) {
+        || this.view.composing || !isLiveSuggestionContext(options, this.view.state)) {
         options.nativeFloating.hide(nativeID);
         this.signature = "";
         return;
@@ -991,7 +995,7 @@ export function createEditorInputSuggestions(
       }
       const valid = () => !this.destroyed && state.doc === this.view.state.doc
         && state.selection.eq(this.view.state.selection)
-        && !this.view.composing && !options.isComposing()
+        && !this.view.composing && isLiveSuggestionContext(options, this.view.state)
         && this.view.root.activeElement === this.view.contentDOM;
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
       if (signature === this.signature) return;

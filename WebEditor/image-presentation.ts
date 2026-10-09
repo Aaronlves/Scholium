@@ -5,6 +5,7 @@ import type {LiveProjectionIndexController} from "./live-projection-index";
 import type {LiveSelectionController} from "./live-selection";
 import {selectionActivatesSyntax, transactionChangedSyntaxTree} from "./projection-update";
 import {preserveLivePresentationLayout} from "./live-presentation-layout";
+import {projectedPointerSelection} from "./projected-pointer-selection";
 import {semanticProjectionRanges, type SemanticInlineProjection, type SemanticProjectionRanges} from "./semantic-projection";
 
 export function imageDestination(source: string): string | null {
@@ -138,17 +139,15 @@ class ImageWidget extends WidgetType {
     image.src = this.presentation.resource;
     shell.append(image);
     shell.addEventListener("mousedown", event => {
-      if (event.button !== 0 || view.composing) return;
+      if (event.button !== 0 || view.compositionStarted) return;
       event.preventDefault();
       event.stopPropagation();
       const rect = image.getBoundingClientRect();
       const position = event.clientX <= rect.left + rect.width / 2
         ? this.presentation.sourceFrom : this.presentation.sourceTo;
       if (position > view.state.doc.length) return;
-      view.dispatch({selection: {
-        anchor: event.shiftKey ? view.state.selection.main.anchor : position,
-        head: position,
-      }, scrollIntoView: true, annotations: Transaction.userEvent.of("select.pointer")});
+      view.dispatch({selection: projectedPointerSelection(view.state, event, position),
+        scrollIntoView: true, annotations: Transaction.userEvent.of("select.pointer")});
       view.focus();
     });
     return shell;

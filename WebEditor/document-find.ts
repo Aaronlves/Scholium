@@ -1,9 +1,11 @@
 import {EditorSelection, EditorState, Transaction} from "@codemirror/state";
+import {isolateHistory} from "@codemirror/commands";
 import {
   closeSearchPanel,
   openSearchPanel,
   search,
   searchPanelOpen,
+  SearchCursor,
   SearchQuery,
   setSearchQuery,
 } from "@codemirror/search";
@@ -11,6 +13,7 @@ import {EditorView} from "@codemirror/view";
 import {exactSourceFitsChanges} from "./exact-source-history";
 import {normalizedDocumentText} from "./state";
 import {localized} from "./localization";
+import {documentFindWordBoundary, type DocumentFindMatch} from "./document-find-matching";
 
 export type DocumentFindAction =
   | "present" | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
@@ -30,7 +33,7 @@ export interface DocumentFindResult {
   undoLabel?: string;
 }
 
-export interface DocumentFindMatch {from: number; to: number}
+interface LocatedFindMatch extends DocumentFindMatch {precise: boolean}
 
 /**
  * CodeMirror owns matching and visible highlights, while Scholium's native
@@ -55,24 +58,21 @@ function searchQuery(request: DocumentFindRequest) {
     literal: true,
     regexp: false,
     wholeWord: request.wholeWord,
+    test: request.wholeWord ? (_match, state, from, to) =>
+      documentFindWordBoundary(state.doc, from, to)
+      : undefined,
   });
 }
 
-function matchingRanges(state: EditorState, query: SearchQuery): DocumentFindMatch[] {
+function matchingRanges(state: EditorState, query: SearchQuery): LocatedFindMatch[] {
   if (!query.valid) return [];
-  const matches: DocumentFindMatch[] = [];
+  const matches: LocatedFindMatch[] = [];
   const cursor = query.getCursor(state);
   for (let next = cursor.next(); !next.done; next = cursor.next()) {
-    matches.push({from: next.value.from, to: next.value.to});
+    matches.push({from: next.value.from, to: next.value.to,
+      precise: cursor instanceof SearchCursor && cursor.value.precise});
   }
   return matches;
-}
-
-export function documentFindMatches(
-  source: string,
-  request: DocumentFindRequest,
-): DocumentFindMatch[] {
-  return matchingRanges(EditorState.create({doc: source}), searchQuery(request));
 }
 
 function selectMatch(view: EditorView, match: DocumentFindMatch | null) {
@@ -140,31 +140,37 @@ export function performDocumentFind(
     selectMatch(view, previousMatch(view, query, view.state.selection.main.from));
     break;
   case "replaceCurrent": {
+    if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
     const match = currentMatch(view, query)
       ?? forwardMatch(view, query, view.state.selection.main.from);
-    if (match) {
+    if (match?.precise) {
       const changes = [{from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement)}];
       if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({
         changes,
-        annotations: Transaction.userEvent.of("input.replace"),
+        annotations: [Transaction.userEvent.of("input.replace"), isolateHistory.of("full")],
       });
       sourceChanged = true;
       undoLabel = "Replace";
       selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
+    } else if (match) {
+      // As in CodeMirror's replacement command, a normalization-only match
+      // cannot authorize replacing the larger source character it covers.
+      selectMatch(view, forwardMatch(view, query, match.to));
     }
     break;
   }
   case "replaceAll": {
-    const changes = matchingRanges(view.state, query).map((match) => ({
-      ...match,
+    if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
+    const changes = matchingRanges(view.state, query).filter(match => match.precise).map((match) => ({
+      from: match.from, to: match.to,
       insert: normalizedDocumentText(request.replacement),
     }));
     if (changes.length > 0) {
       if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({
         changes,
-        annotations: Transaction.userEvent.of("input.replace.all"),
+        annotations: [Transaction.userEvent.of("input.replace.all"), isolateHistory.of("full")],
       });
       sourceChanged = true;
       undoLabel = "Replace All";

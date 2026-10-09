@@ -1,5 +1,5 @@
 import type {MarkdownEditorCommand, SelectionRange} from "./protocol";
-import {Text} from "@codemirror/state";
+import {ChangeSet, EditorSelection, Text} from "@codemirror/state";
 
 export interface TableSourceChange { from: number; to: number; insert: string }
 export interface TableTransformation {
@@ -62,7 +62,7 @@ function parseRow(source: Text, from: number, to: number): ParsedTableRow | null
       contentTo: from + Math.max(rawFrom + leading, rawTo - trailing),
     });
   }
-  return cells.length >= 2 ? {lineFrom: from, lineTo: to, cells} : null;
+  return cells.length >= 1 ? {lineFrom: from, lineTo: to, cells} : null;
 }
 
 function isSeparatorCell(source: Text, cell: ParsedTableCell) {
@@ -116,6 +116,22 @@ function blankRow(columnCount: number) {
   return `|${Array.from({length: columnCount}, () => "  ").join("|")}|`;
 }
 
+function mappedTableSelections(source: string, changes: TableSourceChange[], selections: SelectionRange[]) {
+  const changeSet = ChangeSet.of(changes, source.length);
+  return selections.map(({anchor, head}) => {
+    const mapped = EditorSelection.range(anchor, head).map(changeSet);
+    return {anchor: mapped.anchor, head: mapped.head};
+  });
+}
+
+export function tableCommandAvailable(command: string, position: ParsedTable["position"] | undefined): boolean {
+  if (!position || !tableCommands.has(command as MarkdownEditorCommand)) return false;
+  if (command === "tableInsertRowBefore") return position.row > 0;
+  if (command === "tableDeleteRow") return position.row > 0 && position.rowCount > 2;
+  if (command === "tableDeleteColumn") return position.columnCount > 1;
+  return true;
+}
+
 export function transformTableCommand(
   source: string,
   selections: SelectionRange[],
@@ -124,20 +140,22 @@ export function transformTableCommand(
   if (!tableCommands.has(command) || selections.length !== 1) return null;
   const selection = selections[0];
   const table = tableAt(source, selection.head);
-  if (!table) return null;
+  if (!table || !tableCommandAvailable(command, table.position)) return null;
   const rawRow = table.position.row === 0 ? 0 : table.position.row + 1;
   const row = table.rows[rawRow];
   const column = table.position.column;
 
   if (command === "tableInsertRowBefore" || command === "tableInsertRowAfter") {
     const before = command === "tableInsertRowBefore";
-    const point = before ? row.lineFrom : row.lineTo;
+    // A header must remain adjacent to its delimiter row. The first body row
+    // is inserted below both source rows, never between them.
+    const point = before ? row.lineFrom
+      : table.position.row === 0 ? table.rows[table.separatorIndex].lineTo : row.lineTo;
     const insert = before ? `${blankRow(table.position.columnCount)}\n` : `\n${blankRow(table.position.columnCount)}`;
     const cellOffset = insert.indexOf("  ") + 1;
     return {changes: [{from: point, to: point, insert}], selections: [{anchor: point + cellOffset, head: point + cellOffset}], undoLabel: before ? "Insert Table Row Before" : "Insert Table Row After"};
   }
   if (command === "tableDeleteRow") {
-    if (table.position.row === 0 || table.position.rowCount <= 2) return null;
     const hasFollowingNewline = row.lineTo < source.length;
     const from = hasFollowingNewline ? row.lineFrom : Math.max(0, row.lineFrom - 1);
     const to = hasFollowingNewline ? row.lineTo + 1 : row.lineTo;
@@ -148,12 +166,12 @@ export function transformTableCommand(
     const current = source.slice(separator.contentFrom, separator.contentTo);
     const dashes = "-".repeat(Math.max(3, current.replaceAll(":", "").length));
     const insert = command === "tableAlignLeft" ? `:${dashes}` : command === "tableAlignRight" ? `${dashes}:` : `:${dashes}:`;
-    return {changes: [{from: separator.contentFrom, to: separator.contentTo, insert}], selections, undoLabel: "Align Table Column"};
+    const changes = [{from: separator.contentFrom, to: separator.contentTo, insert}];
+    return {changes, selections: mappedTableSelections(source, changes, selections), undoLabel: "Align Table Column"};
   }
 
   const inserting = command === "tableInsertColumnBefore" || command === "tableInsertColumnAfter";
   if (!inserting && command !== "tableDeleteColumn") return null;
-  if (command === "tableDeleteColumn" && table.position.columnCount <= 2) return null;
   const changes: TableSourceChange[] = [];
   for (let index = 0; index < table.rows.length; index += 1) {
     const target = table.rows[index].cells[column];
@@ -171,7 +189,7 @@ export function transformTableCommand(
       }
     }
   }
-  return {changes, selections, undoLabel: inserting ? "Insert Table Column" : "Delete Table Column"};
+  return {changes, selections: mappedTableSelections(source, changes, selections), undoLabel: inserting ? "Insert Table Column" : "Delete Table Column"};
 }
 
 export function tableTabAction(

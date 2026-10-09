@@ -1,3 +1,5 @@
+import {documentFindMatches} from "./document-find-matching";
+
 export interface ReviewFindRequest {
   operation?: "clear";
   action?: "present" | "update" | "next" | "previous";
@@ -67,10 +69,6 @@ function rangeFor(nodes: Text[], start: number, end: number): Range | null {
   return range;
 }
 
-function isWord(character: string | undefined): boolean {
-  return Boolean(character) && /[\p{L}\p{N}_]/u.test(character ?? "");
-}
-
 function searchableLines(): Element[] {
   const root = document.querySelector("main");
   if (!root) return [];
@@ -81,27 +79,15 @@ function searchableLines(): Element[] {
 
 function rangesFor(request: ReviewFindRequest): Range[] {
   if (!request.query) return [];
-  const collator = request.caseSensitive
-    ? null
-    : new Intl.Collator(undefined, {usage: "search", sensitivity: "accent"});
   const result: Range[] = [];
   for (const line of searchableLines()) {
     const nodes = textNodesIn(line);
     const text = nodes.map((node) => node.data).join("");
-    for (let index = 0; index <= text.length - request.query.length;) {
-      const candidate = text.slice(index, index + request.query.length);
-      const equal = request.caseSensitive
-        ? candidate === request.query
-        : collator?.compare(candidate, request.query) === 0;
-      const whole = !request.wholeWord
-        || (!isWord(text[index - 1]) && !isWord(text[index + request.query.length]));
-      if (equal && whole) {
-        const range = rangeFor(nodes, index, index + request.query.length);
-        if (range) result.push(range);
-        index += Math.max(1, request.query.length);
-      } else {
-        index += 1;
-      }
+    for (const match of documentFindMatches(text, {
+      query: request.query, caseSensitive: request.caseSensitive, wholeWord: request.wholeWord,
+    })) {
+      const range = rangeFor(nodes, match.from, match.to);
+      if (range) result.push(range);
     }
   }
   return result;
@@ -136,13 +122,18 @@ export function installReviewFind(): {
   };
   const present = (scrollToMatch: boolean) => {
     clear();
-    if (matches.length === 0 || !registry || current < 0) return;
-    const ordinary = matches.filter((_, index) => index !== current);
-    if (ordinary.length > 0) registry.set(allName, new Highlight(...ordinary));
-    registry.set(currentName, new Highlight(matches[current]));
+    if (matches.length === 0 || current < 0) return;
+    if (registry) {
+      const ordinary = matches.filter((_, index) => index !== current);
+      if (ordinary.length > 0) registry.set(allName, new Highlight(...ordinary));
+      registry.set(currentName, new Highlight(matches[current]));
+    }
     if (scrollToMatch) {
-      matches[current].startContainer.parentElement
-        ?.scrollIntoView({block: "center", behavior: "auto"});
+      const target = matches[current].startContainer.parentElement;
+      for (let ancestor = target; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName.toLowerCase() === "details") ancestor.setAttribute("open", "");
+      }
+      target?.scrollIntoView({block: "center", behavior: "auto"});
     }
   };
 
