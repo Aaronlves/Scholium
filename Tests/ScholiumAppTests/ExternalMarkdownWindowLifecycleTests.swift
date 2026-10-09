@@ -181,7 +181,7 @@ struct ExternalMarkdownWindowLifecycleTests {
 
                 // The production view, not this test, must allocate, attach and
                 // initialize the editor when its owning model first requests Edit.
-                model.selectMode(.livePreview)
+                try await host.selectModeWhenAvailable(.livePreview)
                 try await host.waitForEditor(containing: expectedBodyText)
                 let editor = model.editorSession
                 let webView = try #require(editor.webView)
@@ -194,20 +194,20 @@ struct ExternalMarkdownWindowLifecycleTests {
                 #expect(!model.isDirty && model.error == nil && editor.errorMessage == nil)
                 #expect(try Data(contentsOf: url) == Data(source.utf8))
 
-                model.selectMode(.source)
+                try await host.selectModeWhenAvailable(.source)
                 try await host.waitForEditor(containing: expectedBodyText)
                 #expect(model.mode == .source && editor.presentedMode == .source)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
                 #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
 
-                model.selectMode(.read)
+                try await host.selectModeWhenAvailable(.read)
                 try await host.waitUntil("return to Review") { model.mode == .read && !model.isBusy }
                 try await host.waitForReadText(expectedBodyText)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(webView.isHidden && webView.isHiddenOrHasHiddenAncestor)
 
-                model.selectMode(.livePreview)
+                try await host.selectModeWhenAvailable(.livePreview)
                 try await host.waitForEditor(containing: expectedBodyText)
                 #expect(model.editorSession === editor && editor.webView === webView)
                 #expect(editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)])
@@ -965,6 +965,16 @@ struct ExternalMarkdownWindowLifecycleTests {
             hosting.view.autoresizingMask = [.width, .height]
             hosting.view.layoutSubtreeIfNeeded()
             #expect(!window.isVisible)
+        }
+
+        func selectModeWhenAvailable(_ requested: NotePresentationMode) async throws {
+            try await waitUntil("\(requested.rawValue) mode admission") {
+                guard let model = self.model, model.canSelectMode(requested) else { return false }
+                // A file refresh may start while the test awaits WebKit. Admit
+                // the action and issue it in one actor turn, as the UI does.
+                model.selectMode(requested)
+                return true
+            }
         }
 
         func waitForEditor(containing expectedBodyText: String) async throws {

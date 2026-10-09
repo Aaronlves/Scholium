@@ -4,8 +4,8 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前 Core App Beta：**[v0.3.3-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.3.3-beta.10) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.3.3-beta.10/Scholium-v0.3.3-beta.10-macos-arm64.dmg)
+**当前 Core App Beta：**[v0.3.3-beta.11](https://github.com/Aaronlves/Scholium/releases/tag/v0.3.3-beta.11) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.3.3-beta.11/Scholium-v0.3.3-beta.11-macos-arm64.dmg)
 
 这是当前的 App 单一发行 Beta。UI 与辅助功能验收由发布负责人另行完成；本次发布准备
 不将这些检查声明为自动化证据。

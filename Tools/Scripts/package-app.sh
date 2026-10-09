@@ -164,7 +164,7 @@ cp "${PROVENANCE}" \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
 
 [[ "${MARKETING_VERSION}" == "0.3.3" ]]
-[[ "${BUILD_NUMBER}" == "16" ]]
+[[ "${BUILD_NUMBER}" == "17" ]]
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
