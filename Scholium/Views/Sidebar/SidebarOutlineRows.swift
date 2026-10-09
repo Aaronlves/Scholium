@@ -91,8 +91,27 @@ final class SidebarOutlineLabel: NSTextField {
 
 @MainActor
 final class SidebarOutlineCell: NSTableCellView {
+    private struct Content: Equatable {
+        let label: String
+        let accessibilityIdentifier: String
+        let isFolder: Bool
+        let isEmpty: Bool
+        let isExpanded: Bool
+        let locale: Locale?
+        let presentation: SidebarSourceListRowPresentation
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.label.utf8.elementsEqual(rhs.label.utf8)
+                && lhs.accessibilityIdentifier.utf8.elementsEqual(rhs.accessibilityIdentifier.utf8)
+                && lhs.isFolder == rhs.isFolder && lhs.isEmpty == rhs.isEmpty
+                && lhs.isExpanded == rhs.isExpanded && lhs.locale == rhs.locale
+                && lhs.presentation == rhs.presentation
+        }
+    }
+
     let titleLabel = SidebarOutlineLabel(labelWithString: "")
     private let itemImageView = NSImageView()
+    private var representedContent: Content?
     private(set) var representationGeneration: UInt64 = 0
 
     override init(frame frameRect: NSRect) {
@@ -145,24 +164,49 @@ final class SidebarOutlineCell: NSTableCellView {
         presentation: SidebarSourceListRowPresentation
     ) {
         let label = item.node.note?.title ?? item.node.note?.displayName ?? item.node.name
-        if (objectValue as? SidebarOutlineItem) !== item { representationGeneration &+= 1 }
-        objectValue = item
-        titleLabel.stringValue = label
-        titleLabel.font = .systemFont(ofSize: presentation.textPointSize)
-        titleLabel.setAccessibilityLabel(label)
-        titleLabel.setAccessibilityIdentifier(
-            item.node.isFolder ? "scholium.folderRow.\(item.id)" : "scholium.noteRow.\(item.id)"
+        if (objectValue as? SidebarOutlineItem) !== item {
+            representationGeneration &+= 1
+            objectValue = item
+        }
+        let content = Content(
+            label: label,
+            accessibilityIdentifier: item.node.isFolder ? "scholium.folderRow.\(item.id)" : "scholium.noteRow.\(item.id)",
+            isFolder: item.node.isFolder,
+            isEmpty: item.children.isEmpty,
+            isExpanded: item.node.isFolder && isExpanded,
+            locale: item.node.isFolder ? nativeStrings.locale : nil,
+            presentation: presentation
         )
-        titleLabel.folderState =
-            item.node.isFolder
-            ? nativeStrings.folderAccessibilityValue(isEmpty: item.children.isEmpty, isExpanded: isExpanded)
-            : nil
-        titleLabel.toolTip = label
-        toolTip = label
-        itemImageView.image = NSImage(
-            systemSymbolName: item.node.isFolder ? ScholiumSidebarItem.folder.symbol : ScholiumSidebarItem.note.symbol,
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(.init(pointSize: presentation.textPointSize, weight: .regular))
+        if content != representedContent {
+            let previous = representedContent
+            representedContent = content
+            if previous.map({ !content.label.utf8.elementsEqual($0.label.utf8) }) ?? true {
+                titleLabel.stringValue = label
+                titleLabel.setAccessibilityLabel(label)
+                titleLabel.toolTip = label
+                toolTip = label
+            }
+            if previous.map({ !content.accessibilityIdentifier.utf8.elementsEqual($0.accessibilityIdentifier.utf8) }) ?? true {
+                titleLabel.setAccessibilityIdentifier(content.accessibilityIdentifier)
+            }
+            if content.isFolder != previous?.isFolder || content.isEmpty != previous?.isEmpty
+                || content.isExpanded != previous?.isExpanded || content.locale != previous?.locale
+            {
+                titleLabel.folderState =
+                    content.isFolder
+                    ? nativeStrings.folderAccessibilityValue(isEmpty: content.isEmpty, isExpanded: content.isExpanded)
+                    : nil
+            }
+            if content.presentation != previous?.presentation {
+                titleLabel.font = .systemFont(ofSize: presentation.textPointSize)
+            }
+            if content.isFolder != previous?.isFolder || content.presentation != previous?.presentation {
+                itemImageView.image = NSImage(
+                    systemSymbolName: content.isFolder ? ScholiumSidebarItem.folder.symbol : ScholiumSidebarItem.note.symbol,
+                    accessibilityDescription: nil
+                )?.withSymbolConfiguration(.init(pointSize: presentation.textPointSize, weight: .regular))
+            }
+        }
         updateForeground()
     }
 
@@ -178,6 +222,7 @@ final class SidebarOutlineCell: NSTableCellView {
     override func prepareForReuse() {
         super.prepareForReuse()
         representationGeneration &+= 1
+        representedContent = nil
         titleLabel.actionProvider = nil
         titleLabel.folderState = nil
         titleLabel.setAccessibilityIdentifier(nil)

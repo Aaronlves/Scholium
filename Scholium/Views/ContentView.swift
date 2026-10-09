@@ -488,6 +488,11 @@ struct ContentView: View {
         let propertyFilterOptions = appState.availablePropertyFilterOptions
         let preorderedNotes = appState.filteredNotes
         let folders = appState.currentLibraryFolders
+        let canMutateLibrary =
+            appState.currentRegisteredVault != nil
+            && !libraryMutationController.isCreatingNote
+            && !libraryMutationController.isMutatingFolder
+            && !libraryMutationController.isBatchWorking
         let selectedLibraryDocumentPath =
             appState.currentDocumentVaultID
                 == appState.currentRegisteredVault?.id
@@ -501,7 +506,16 @@ struct ContentView: View {
             ),
             allNotes: appState.notes,
             folders: folders,
-            pathComparisonPolicy: appState.currentLibraryPathComparisonPolicy,
+            dropInventory: appState.libraryPresentationCache.drop(
+                vaultID: appState.currentRegisteredVault?.id,
+                sourceScope: appState.noteSourceScope,
+                role: appState.currentVaultRole,
+                canMutate: canMutateLibrary,
+                notes: appState.notes,
+                folders: folders,
+                policy: appState.currentLibraryPathComparisonPolicy,
+                pendingNotes: libraryMutationController.pendingNoteDrops,
+                pendingFolders: libraryMutationController.pendingFolderDrops),
             disclosureScope: appState.currentRegisteredVault.map {
                 LibraryDisclosureScope(
                     vaultID: $0.id,
@@ -513,10 +527,7 @@ struct ContentView: View {
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
             requestedWorkspaceSlot: appState.requestedWorkspaceSelection,
-            canMutateLibrary: appState.currentRegisteredVault != nil
-                && !appState.libraryMutationController.isCreatingNote
-                && !appState.libraryMutationController.isMutatingFolder
-                && !appState.libraryMutationController.isBatchWorking,
+            canMutateLibrary: canMutateLibrary,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
                 graphIsAvailable: appState.linkGraph != nil,
@@ -540,8 +551,6 @@ struct ContentView: View {
             createUntitledFolder: {
                 appState.libraryMutationController.requestUntitledFolderCreation(in: $0)
             },
-            pendingNoteMoves: libraryMutationController.pendingNoteDrops,
-            pendingFolderMoves: libraryMutationController.pendingFolderDrops,
             requestNoteDrop: { target, destination in
                 libraryMutationController.requestNoteDrop(target, to: destination)
             },

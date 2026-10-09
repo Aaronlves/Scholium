@@ -30,7 +30,8 @@ extension WindowModel {
                 $0.filterableProperties()[key]?.contains(value) == true
             }
         }
-        return result.sorted(by: notesAreOrdered)
+        return libraryPresentationCache.ordered(
+            result, sortOrder: discoveryController.library.sortOrder, by: notesAreOrdered)
     }
 
     private var currentAttentionPaths: Set<String>? {

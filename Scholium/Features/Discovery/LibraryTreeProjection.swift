@@ -219,6 +219,29 @@ struct LibraryTreeProjectionVersion {
     let value: LibraryTreeProjection
 }
 
+/// String equality permits canonically equivalent Unicode, while file routes
+/// must retain the current exact spelling. Shared immutable array storage is
+/// already exact; distinct cohorts additionally compare each path's bytes.
+func libraryNoteCohortsMatch(_ lhs: [WindowDocumentLocation], _ rhs: [WindowDocumentLocation]) -> Bool {
+    guard lhs == rhs else { return false }
+    return lhs.withUnsafeBufferPointer { left in
+        rhs.withUnsafeBufferPointer { right in
+            left.baseAddress == right.baseAddress
+                || zip(left, right).allSatisfy { $0.relativePath.utf8.elementsEqual($1.relativePath.utf8) }
+        }
+    }
+}
+
+func libraryFolderInventoriesMatch(_ lhs: [String], _ rhs: [String]) -> Bool {
+    guard lhs == rhs else { return false }
+    return lhs.withUnsafeBufferPointer { left in
+        rhs.withUnsafeBufferPointer { right in
+            left.baseAddress == right.baseAddress
+                || zip(left, right).allSatisfy { $0.utf8.elementsEqual($1.utf8) }
+        }
+    }
+}
+
 /// Exact-window memoization for the immutable Library hierarchy. This cache is
 /// deliberately outside SwiftUI view identity: a `SidebarView` value may be
 /// recreated for document loading, selection, focus, or toolbar state while
@@ -228,6 +251,11 @@ final class LibraryTreeProjectionCache {
     private struct Input: Equatable {
         let preorderedNotes: [WindowDocumentLocation]
         let folderRelativePaths: [String]
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            libraryNoteCohortsMatch(lhs.preorderedNotes, rhs.preorderedNotes)
+                && libraryFolderInventoriesMatch(lhs.folderRelativePaths, rhs.folderRelativePaths)
+        }
     }
 
     private var input: Input?

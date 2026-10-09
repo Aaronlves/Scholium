@@ -101,7 +101,7 @@ struct AgentChatConversationListView: View {
         .accessibilityIdentifier("scholium.chat.archived")
     }
 
-    private var visibleConversations: [AgentChatConversation] {
+    private func visibleConversations(query: String) -> [AgentChatConversation] {
         controller.conversations.filter { ($0.archivedAt != nil) == state.showsArchived }
             .filter {
                 !$0.messages.isEmpty || AgentChatListFilter.hasDraft($0) || $0.archivedAt != nil
@@ -109,10 +109,12 @@ struct AgentChatConversationListView: View {
             .filter {
                 state.filter.includes(
                     $0,
-                    needsInput: controller.questionCount(in: $0.id) > 0 || controller.approvalCount(in: $0.id) > 0,
-                    inProgress: [.working, .compacting, .branching, .stopping].contains(controller.state(for: $0.id)))
+                    needsInput: state.filter == .needsInput
+                        && (controller.questionCount(in: $0.id) > 0 || controller.approvalCount(in: $0.id) > 0),
+                    inProgress: state.filter == .inProgress
+                        && [.working, .compacting, .branching, .stopping].contains(controller.state(for: $0.id)))
             }
-            .filter { AgentChatSearch.contains($0, query: AgentChatSearch.query(state.query)) }
+            .filter { AgentChatSearch.contains($0, query: query) }
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -124,33 +126,34 @@ struct AgentChatConversationListView: View {
     }
 
     private var conversationList: some View {
-        let conversations = visibleConversations
+        let query = AgentChatSearch.query(state.query)
+        let conversations = visibleConversations(query: query)
         return List {
             ForEach(conversationOrder.arrange(conversations)) { conversation in
-                conversationRow(conversation)
+                conversationRow(conversation, query: query)
                     .listRowSeparator(.visible, edges: .bottom)
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("scholium.chat.conversations")
-        .onAppear { conversationOrder.reset(visibleConversations.map(\.id)) }
-        .onChange(of: visibleConversations.map(\.id)) { _, ids in conversationOrder.reconcile(ids) }
-        .onChange(of: state.showsArchived) { _, _ in conversationOrder.reset(visibleConversations.map(\.id)) }
+        .onAppear { conversationOrder.reset(conversations.map(\.id)) }
+        .onChange(of: conversations.map(\.id)) { _, ids in conversationOrder.reconcile(ids) }
+        .onChange(of: state.showsArchived) { _, _ in conversationOrder.reset(conversations.map(\.id)) }
         .overlay(alignment: .top) {
             if !controller.isLoaded && controller.error == nil {
                 ScholiumSidebarState(Text("Loading Conversations…"), indicator: .progress)
                     .accessibilityIdentifier("scholium.chat.loading")
             } else if conversations.isEmpty && controller.isLoaded {
-                conversationEmptyState
+                conversationEmptyState(isFiltered: state.filter != .all || !query.isEmpty)
             }
         }
     }
 
     @ViewBuilder
-    private func conversationRow(_ conversation: AgentChatConversation) -> some View {
+    private func conversationRow(_ conversation: AgentChatConversation, query: String) -> some View {
         let row = AgentChatConversationRow(
-            conversation: conversation, query: AgentChatSearch.query(state.query),
+            conversation: conversation, query: query,
             status: AgentChatListPresentation.status(
                 conversation,
                 questions: controller.questionCount(in: conversation.id),
@@ -199,9 +202,8 @@ struct AgentChatConversationListView: View {
         }
     }
 
-    private var conversationEmptyState: some View {
-        let isFiltered = state.filter != .all || !AgentChatSearch.query(state.query).isEmpty
-        return ScholiumSidebarState(
+    private func conversationEmptyState(isFiltered: Bool) -> some View {
+        ScholiumSidebarState(
             isFiltered ? Text("No Matching Conversations") : state.showsArchived ? Text("No Archived Chats") : Text("No Conversations"),
             detail: isFiltered
                 ? Text("Try another search or clear the conversation filter.")

@@ -261,6 +261,7 @@ final class WindowModel: ObservableObject {
         }
     )
     private let libraryTreeProjectionCache = LibraryTreeProjectionCache()
+    let libraryPresentationCache = LibraryPresentationCache()
     lazy var commandObservation = WindowCommandObservation(
         shellState: shellState,
         chatSidebarPreferences: chatSidebarPreferences,

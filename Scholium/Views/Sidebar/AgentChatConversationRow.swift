@@ -48,8 +48,7 @@ enum AgentChatListPresentation {
         }
     }
 
-    static func summary(_ conversation: AgentChatConversation, query: String) -> String {
-        let preview = preview(conversation, query: query)
+    static func summary(_ conversation: AgentChatConversation, query: String, preview: String) -> String {
         guard query.isEmpty, AgentChatListFilter.hasDraft(conversation) else { return preview }
         return [String(localized: "Draft"), preview].filter { !$0.isEmpty }.joined(separator: " · ")
     }
@@ -81,6 +80,7 @@ struct AgentChatConversationRow: View {
     }
 
     var body: some View {
+        let preview = AgentChatListPresentation.preview(conversation, query: query)
         HStack(alignment: .top, spacing: ScholiumSidebarLayout.itemSpacing) {
             Image(systemName: AgentChatListPresentation.unreadSymbol)
                 .font(.caption2)
@@ -106,7 +106,7 @@ struct AgentChatConversationRow: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(AgentChatListPresentation.summary(conversation, query: query))
+                Text(AgentChatListPresentation.summary(conversation, query: query, preview: preview))
                     .font(.callout).foregroundStyle(.secondary)
                     .lineLimit(2, reservesSpace: true)
                 if let status {
@@ -122,7 +122,7 @@ struct AgentChatConversationRow: View {
         .accessibilityLabel(Text(title))
         .accessibilityValue(
             Text(
-                [context, AgentChatListPresentation.preview(conversation, query: query)]
+                [context, preview]
                     .filter { !$0.isEmpty }.joined(separator: " · ")))
     }
 }

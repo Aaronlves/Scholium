@@ -460,6 +460,82 @@ struct SidebarTreeTests {
     }
 
     @MainActor
+    @Test("Native cells reuse unchanged content while refreshing titles, disclosure, locale and row size")
+    func nativeCellContentRefresh() throws {
+        _ = NSApplication.shared
+        let strings = SidebarNativeStrings(locale: Locale(identifier: "en_US"))
+        let presentation = SidebarSourceListRowPresentation(effectiveRowSizeStyle: .default)
+        let note = WindowDocumentLocation.syntheticPreview(relativePath: "Original.md", rawContent: "")
+        let item = SidebarOutlineItem(node: try #require(LibraryTreeProjection(preorderedNotes: [note]).roots.first))
+        let cell = SidebarOutlineCell(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        let image = try #require(cell.imageView?.image)
+        let generation = cell.representationGeneration
+        cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(cell.imageView?.image === image)
+        #expect(cell.representationGeneration == generation)
+
+        let renamed = WindowDocumentLocation.syntheticPreview(relativePath: "Renamed.md", rawContent: "")
+        item.node = try #require(LibraryTreeProjection(preorderedNotes: [renamed]).roots.first)
+        cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.stringValue == "Renamed")
+        #expect(cell.titleLabel.accessibilityLabel() == "Renamed")
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.Renamed.md")
+        #expect(cell.titleLabel.toolTip == "Renamed")
+        #expect(cell.imageView?.image === image)
+
+        let nested = WindowDocumentLocation.syntheticPreview(relativePath: "Folder/Nested.md", rawContent: "")
+        let folder = SidebarOutlineItem(node: try #require(LibraryTreeProjection(preorderedNotes: [nested]).roots.first))
+        folder.children = folder.node.children.map(SidebarOutlineItem.init)
+        cell.configure(item: folder, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.folderRow.Folder")
+        #expect(cell.titleLabel.accessibilityValue() as? String == "Collapsed")
+        let folderImage = try #require(cell.imageView?.image)
+        cell.configure(item: folder, isExpanded: true, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.accessibilityValue() as? String == "Expanded")
+        #expect(cell.imageView?.image === folderImage)
+
+        let chinese = SidebarNativeStrings(locale: Locale(identifier: "zh-Hans"))
+        cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: presentation)
+        #expect(cell.titleLabel.accessibilityValue() as? String == "已展开")
+        let large = SidebarSourceListRowPresentation(effectiveRowSizeStyle: .large)
+        cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: large)
+        #expect(cell.titleLabel.font?.pointSize == NSFont.systemFontSize(for: .large))
+        let expectedLargeImage = try #require(
+            NSImage(systemSymbolName: ScholiumSidebarItem.folder.symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: large.textPointSize, weight: .regular)))
+        #expect(cell.imageView?.image?.size == expectedLargeImage.size)
+        folder.children = []
+        cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: large)
+        #expect(cell.titleLabel.accessibilityValue() as? String == "空文件夹")
+        folder.children = folder.node.children.map(SidebarOutlineItem.init)
+
+        cell.prepareForReuse()
+        cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: large)
+        #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.folderRow.Folder")
+        #expect(cell.titleLabel.accessibilityLabel() == "Folder")
+        #expect(cell.titleLabel.accessibilityValue() as? String == "已展开")
+    }
+
+    @MainActor
+    @Test("A canonically equivalent rename refreshes exact row identity and label bytes")
+    func nativeCellExactPathRefresh() throws {
+        let cell = SidebarOutlineCell(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        let strings = SidebarNativeStrings(locale: Locale(identifier: "en_US"))
+        let presentation = SidebarSourceListRowPresentation(effectiveRowSizeStyle: .default)
+        let first = WindowDocumentLocation.syntheticPreview(relativePath: "Caf\u{e9}.md", rawContent: "")
+        let renamed = WindowDocumentLocation.syntheticPreview(relativePath: "Cafe\u{301}.md", rawContent: "")
+        let item = SidebarOutlineItem(node: try #require(LibraryTreeProjection(preorderedNotes: [first]).roots.first))
+        cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        item.node = try #require(LibraryTreeProjection(preorderedNotes: [renamed]).roots.first)
+        cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
+        #expect(cell.titleLabel.stringValue.utf8.elementsEqual("Cafe\u{301}".utf8))
+        #expect(cell.titleLabel.accessibilityIdentifier().utf8.elementsEqual("scholium.noteRow.Cafe\u{301}.md".utf8))
+        #expect(cell.titleLabel.accessibilityLabel()?.utf8.elementsEqual("Cafe\u{301}".utf8) == true)
+        #expect(cell.titleLabel.toolTip?.utf8.elementsEqual("Cafe\u{301}".utf8) == true)
+    }
+
+    @MainActor
     @Test("Captured row menus and accessibility actions reject hidden, removed and detached targets")
     func contextualActionsRejectStaleLifecycle() throws {
         let vaultID = UUID()

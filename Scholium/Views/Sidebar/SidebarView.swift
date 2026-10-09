@@ -25,7 +25,7 @@ struct SidebarContext {
     let treeProjection: LibraryTreeProjectionVersion
     let allNotes: [WindowDocumentLocation]
     let folders: [String]
-    let pathComparisonPolicy: VaultPathComparisonPolicy?
+    let dropInventory: SidebarTreeDropInventory
     let disclosureScope: LibraryDisclosureScope?
     let selectedDocumentPath: String?
     let libraryFocusRequestGeneration: UInt64
@@ -40,8 +40,6 @@ struct SidebarContext {
     let selectTriptychWorkspace: (WorkspaceVaultSlot) -> Void
     let createUntitledNote: (String?) -> Void
     let createUntitledFolder: (String?) -> Void
-    let pendingNoteMoves: Set<SidebarNoteDragID>
-    let pendingFolderMoves: Set<SidebarFolderDragID>
     let requestNoteDrop: (NoteMutationTarget, String) -> Void
     let requestFolderDrop: (FolderMutationTarget, String) -> Void
     let requestNoteBatchMove: ([NoteMutationTarget]) -> Void
@@ -175,7 +173,7 @@ struct SidebarView: View {
                     usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                     selectedDocumentPath: context.selectedDocumentPath,
                     context: treeContext,
-                    dropInventory: dropInventory,
+                    dropInventory: context.dropInventory,
                     revealRequest: controller.libraryRevealRequest,
                     disclosureScope: context.disclosureScope,
                     focusRequestGeneration: context.libraryFocusRequestGeneration,
@@ -364,20 +362,6 @@ struct SidebarView: View {
         )
     }
 
-    private var dropInventory: SidebarTreeDropInventory {
-        SidebarTreeDropInventory(
-            currentVaultID: context.disclosureScope?.vaultID,
-            sourceScope: controller.library.sourceScope,
-            currentVaultRole: context.currentVaultRole,
-            canMutate: context.canMutateLibrary,
-            notes: context.allNotes,
-            folderRelativePaths: Set(context.folders),
-            pathComparisonPolicy: context.pathComparisonPolicy,
-            pendingNoteMoves: context.pendingNoteMoves,
-            pendingFolderMoves: context.pendingFolderMoves
-        )
-    }
-
     private func performNoteDrop(
         _ items: [SidebarNoteDragItem],
         into folderRelativePath: String?
@@ -386,7 +370,7 @@ struct SidebarView: View {
             let destinations = sidebarValidatedNotesDropDestinations(
                 items: items,
                 folderRelativePath: folderRelativePath,
-                inventory: dropInventory
+                inventory: context.dropInventory
             )
         else { return }
         if items.count > 1 {
@@ -404,7 +388,7 @@ struct SidebarView: View {
             let destination = sidebarValidatedFolderDropDestination(
                 item: item,
                 folderRelativePath: folderRelativePath,
-                inventory: dropInventory
+                inventory: context.dropInventory
             )
         else { return }
         context.requestFolderDrop(item.mutationTarget, destination)

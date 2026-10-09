@@ -16,7 +16,11 @@ struct SidebarLayoutTests {
         let context = SidebarContext(
             workspaceNoteCounts: .init(values: [:]),
             treeProjection: .init(revision: 1, value: LibraryTreeProjection(preorderedNotes: notes)),
-            allNotes: notes, folders: [], pathComparisonPolicy: nil,
+            allNotes: notes, folders: [],
+            dropInventory: SidebarTreeDropInventory(
+                currentVaultID: nil, sourceScope: .library, currentVaultRole: .topicKnowledge,
+                canMutate: true, notes: notes, folderRelativePaths: [], pathComparisonPolicy: nil,
+                pendingNoteMoves: [], pendingFolderMoves: []),
             disclosureScope: .init(vaultID: UUID(), sourceScope: .library),
             selectedDocumentPath: nil, libraryFocusRequestGeneration: 0,
             currentVaultRole: .topicKnowledge, currentWorkspaceSlot: .topicKnowledge,
@@ -24,7 +28,6 @@ struct SidebarLayoutTests {
             filterOptions: .init(catalogIsAvailable: true, graphIsAvailable: true, tags: [], authors: [], propertyKeys: [], propertyValues: [:]),
             openNote: { _, _ in }, canAddNoteToChat: { _ in false }, addNoteToChat: { _ in },
             selectTriptychWorkspace: { _ in }, createUntitledNote: { _ in }, createUntitledFolder: { _ in },
-            pendingNoteMoves: [], pendingFolderMoves: [],
             requestNoteDrop: { _, _ in }, requestFolderDrop: { _, _ in }, requestNoteBatchMove: { _ in },
             requestNoteBatchTrash: { _ in }, moveNotesDrop: { _, _ in }, hasBatchOutcome: true, showBatchOutcome: {},
             requestFolderFileOperation: { _ in }, requestFolderSystemTrash: { _ in },
