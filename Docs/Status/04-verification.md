@@ -31,6 +31,10 @@ Logs: `.build/verification/` and `.build/verification-release/`; local candidate
 
 ## Current feature coverage
 
+**2026-10-10 — Retrieval:** Long-focus title/alias and identity-lifecycle
+regressions pass with exact source/highlight checks (`.build/long-focus-proof/`).
+Usefulness and native latency remain open.
+
 **2026-10-08 UTC — Coordinated development checkpoint:**
 `.build/coordinated-checkpoint-20261008T131206Z/result.json` binds source, checks
 and review, including prior daily/headless and citation/offscreen evidence.

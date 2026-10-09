@@ -37,8 +37,6 @@
   explicit no-embeddings-contract decision, measured multilingual quality, packaging
   and resource fit, model-bound index lifecycle and safe absent-service behavior.
   Chat model choices do not configure embeddings.
-- Long-focus sampling drops named titles/aliases; implement §13's admission across
-  recall, scoring and local witnesses without arbitrary score floors.
 
 ## Agent collaboration and integrations
 

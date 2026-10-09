@@ -5,7 +5,7 @@ import Foundation
 /// Search semantics.
 public enum RelatedContentContract {
     public static let currentVersion = 17
-    public static let rankingPolicyVersion = 14
+    public static let rankingPolicyVersion = 15
     public static let maximumGraphCandidates = 12
     public static let maximumGraphPathsPerCandidate = 3
     public static let maximumGraphNeighbors = 256

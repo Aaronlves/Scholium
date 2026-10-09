@@ -999,7 +999,7 @@ public actor TriptychSearchIndex {
                 document: document,
                 profile: profile
             )
-            let material = RelatedContentSeedMaterial(
+            var material = RelatedContentSeedMaterial(
                 projection: projection,
                 focuses: request.seed.focuses
             )
@@ -1017,14 +1017,20 @@ public actor TriptychSearchIndex {
                 )
             }
 
+            let focused = !request.seed.focuses.isEmpty
             let identity = try relatedIdentityCandidates(
                 material: material,
                 excluding: request.seed.noteID,
                 candidateRoles: request.candidateRoles,
-                limit: request.identityLimit
+                scan: focused || request.identityLimit > 0
             )
+            material.includeUnsampledFocusedIdentities(identity.flatMap { $0.reason.mentions })
+            let identityResults = identity.prefix(request.identityLimit).map { item in
+                RelatedContentCandidate(
+                    note: item.document.noteID, vaultRole: item.document.vaultRole, title: item.document.title,
+                    fingerprint: item.document.fingerprint, reason: .identityMention(item.reason))
+            }
             let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
-            let focused = !request.seed.focuses.isEmpty
             let scoringTerms = focused ? focusedTerms : material.combinedTerms
             let preparationKey = RelatedContentBackgroundPreparation.Key(
                 seed: request.seed, generation: currentGeneration, roles: request.candidateRoles)
@@ -1062,7 +1068,7 @@ public actor TriptychSearchIndex {
                 )
             }
             let hasCandidates =
-                !identity.candidates.isEmpty
+                !identityResults.isEmpty
                 || !lexicalResults.isEmpty
             return RelatedContentResponse(
                 requestID: request.id,
@@ -1070,9 +1076,9 @@ public actor TriptychSearchIndex {
                 freshnessToken: freshness,
                 availability: availability,
                 state: hasCandidates ? .current : .empty,
-                identityCandidates: identity.candidates,
+                identityCandidates: identityResults,
                 lexicalCandidates: Array(lexicalResults),
-                identityHasMore: identity.hasMore,
+                identityHasMore: request.identityLimit > 0 && identity.count > request.identityLimit,
                 lexicalHasMore: lexicalHasMore
             )
         }
@@ -1326,9 +1332,9 @@ public actor TriptychSearchIndex {
         material: RelatedContentSeedMaterial,
         excluding seed: VaultQualifiedNoteID,
         candidateRoles: [RelatedContentCandidateRole],
-        limit: Int
-    ) throws -> (candidates: [RelatedContentCandidate], hasMore: Bool) {
-        guard limit > 0 else { return ([], false) }
+        scan: Bool
+    ) throws -> [RelatedIdentityCandidate] {
+        guard scan else { return [] }
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
         let bindings =
@@ -1383,18 +1389,7 @@ public actor TriptychSearchIndex {
                 ))
         }
         matches.sort(by: RelatedIdentityCandidate.precedes)
-        return (
-            matches.prefix(limit).map { item in
-                RelatedContentCandidate(
-                    note: item.document.noteID,
-                    vaultRole: item.document.vaultRole,
-                    title: item.document.title,
-                    fingerprint: item.document.fingerprint,
-                    reason: .identityMention(item.reason)
-                )
-            },
-            matches.count > limit
-        )
+        return matches
     }
 
     private func relatedContentCandidates(

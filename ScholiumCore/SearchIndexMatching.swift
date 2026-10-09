@@ -126,9 +126,20 @@ struct RelatedContentSeedTermGroup {
 
 struct RelatedContentSeedMaterial {
     private let segments: [RelatedContentSeedSegment]
-    let termGroups: [RelatedContentSeedTermGroup]
-    let combinedTerms: [String]
-    let termMatcher: RelatedContentTermMatcher
+    private(set) var termGroups: [RelatedContentSeedTermGroup]
+    private(set) var termMatcher: RelatedContentTermMatcher
+
+    var combinedTerms: [String] {
+        var terms: [String] = []
+        var seen = Set<String>()
+        for kind in RelatedContentSeedKind.rankingOrder {
+            for term in termGroups.first(where: { $0.kind == kind })?.terms ?? []
+            where terms.count < RelatedContentContract.maximumCombinedSeedTerms {
+                if seen.insert(term).inserted { terms.append(term) }
+            }
+        }
+        return terms
+    }
 
     init(
         projection: SearchDocumentProjection,
@@ -175,18 +186,24 @@ struct RelatedContentSeedMaterial {
             ))
         termGroups = groups
         termMatcher = RelatedContentTermMatcher(terms: Array(Set(groups.flatMap(\.terms))).sorted())
+    }
 
-        var terms: [String] = []
-        var seen = Set<String>()
-        for kind in RelatedContentSeedKind.rankingOrder {
-            for term in groups.first(where: { $0.kind == kind })?.terms ?? []
-            where terms.count
-                < RelatedContentContract.maximumCombinedSeedTerms
-            {
-                if seen.insert(term).inserted { terms.append(term) }
-            }
+    /// Keep a complete authored name when ordinary bounded sampling retained
+    /// none of its lexical witnesses. Existing name terms gain no extra weight.
+    /// These exact literals retain the focus that actually named the Note.
+    mutating func includeUnsampledFocusedIdentities(_ mentions: [RelatedContentIdentityMention]) {
+        let focusedMentions = mentions.filter(RelatedContentRecommendationPolicy.isFocusedIdentity)
+        for index in termGroups.indices where termGroups[index].kind != .sourceNote {
+            let group = termGroups[index]
+            let matcher = RelatedContentTermMatcher(terms: group.terms)
+            let names = Set(
+                focusedMentions.filter { $0.seedKind == group.kind }.map {
+                    SearchTextNormalization.lexicalNormalize($0.matchedIdentity)
+                })
+            let missing = names.filter { matcher.matchingTerms(in: $0).isEmpty }.sorted()
+            termGroups[index] = .init(kind: group.kind, terms: group.terms + missing)
         }
-        combinedTerms = terms
+        termMatcher = .init(terms: Array(Set(termGroups.flatMap(\.terms))).sorted())
     }
 
     func identityMentionReason(

@@ -9,23 +9,20 @@ enum RelatedContentRecommendationPolicy {
     /// is a lexical witness even when surrounding prose dilutes term coverage.
     /// Metadata alone, a partial name, or a name only in the surrounding Note
     /// cannot supply this witness. It changes admission, not relevance scores.
-    static func focusedIdentities(in document: NoteDocument, material: RelatedContentSeedMaterial) -> [String] {
+    static func focusedIdentityMentions(in document: NoteDocument, material: RelatedContentSeedMaterial) -> [RelatedContentIdentityMention] {
         // Reuse the identity matcher over the verified current source. The
         // bounded identity candidate channel must not decide paragraph admission.
         let properties = SearchPropertyProjection(document: document)
         let reason = material.identityMentionReason(
             title: ResearchNoteTitleResolver.resolve(document: document), aliases: properties.textValues(forExactKey: "aliases"))
-        return Array(
-            Set(
-                (reason?.mentions ?? []).compactMap { mention -> String? in
-                    guard mention.seedKind != .sourceNote,
-                        RelatedContentQueryTerms.orderedTokens(in: mention.matchedIdentity).contains(where: {
-                            !["not", "no", "never", "cannot", "only"].contains($0)
-                        })
-                    else { return nil }
-                    return mention.matchedIdentity
-                })
-        ).sorted()
+        return (reason?.mentions ?? []).filter(isFocusedIdentity)
+    }
+
+    static func isFocusedIdentity(_ mention: RelatedContentIdentityMention) -> Bool {
+        mention.seedKind != .sourceNote
+            && RelatedContentQueryTerms.orderedTokens(in: mention.matchedIdentity).contains {
+                !["not", "no", "never", "cannot", "only"].contains($0)
+            }
     }
 
     static func locallyMatchesFocusedIdentity(_ identities: [String], normalizedText: String) -> Bool {

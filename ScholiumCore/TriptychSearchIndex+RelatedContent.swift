@@ -22,7 +22,33 @@ extension TriptychSearchIndex {
         project: (RelatedContentSource) throws -> RelatedContentSourceProjection?
     ) throws -> [RelatedContentPassage] {
         let seedDocument = NoteDocument(relativePath: request.seed.noteID.relativePath, rawContent: request.seed.source)
-        let material = RelatedContentSeedMaterial(projection: SearchDocumentProjection(document: seedDocument), focuses: request.seed.focuses)
+        var material = RelatedContentSeedMaterial(projection: SearchDocumentProjection(document: seedDocument), focuses: request.seed.focuses)
+        let focused = !request.seed.focuses.isEmpty
+        var seenSources = Set<VaultQualifiedNoteID>()
+        var currentSources: [RelatedContentSource] = []
+        var identityMentions: [RelatedContentIdentityMention] = []
+        var focusedIdentitiesByNote: [VaultQualifiedNoteID: [String]] = [:]
+        for source in sources {
+            try Task.checkCancellation()
+            guard source.document.fingerprint == source.candidate.fingerprint,
+                source.document.relativePath.utf8.elementsEqual(source.candidate.note.relativePath.utf8),
+                source.candidate.note != request.seed.noteID,
+                request.candidateRoles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
+                seenSources.insert(source.candidate.note).inserted
+            else {
+                record?(.init(note: source.candidate.note, range: nil, stage: .rejectedSource))
+                continue
+            }
+            currentSources.append(source)
+            if focused {
+                let mentions = RelatedContentRecommendationPolicy.focusedIdentityMentions(in: source.document, material: material)
+                identityMentions.append(contentsOf: mentions)
+                if !mentions.isEmpty {
+                    focusedIdentitiesByNote[source.candidate.note] = Array(Set(mentions.map(\.matchedIdentity))).sorted()
+                }
+            }
+        }
+        material.includeUnsampledFocusedIdentities(identityMentions)
         let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
         let distinctFocusTermCount = Set(focusedTerms).count
         let requiredFocusMatches = min(2, distinctFocusTermCount)
@@ -33,7 +59,6 @@ extension TriptychSearchIndex {
                     $0.literalAlternatives.isEmpty ? RelatedContentQueryTerms.quotedPhrases(in: $0.text) : []
                 })
         ).sorted()
-        let focused = !request.seed.focuses.isEmpty
         var ranked:
             [(
                 passage: RelatedContentPassage, score: Double, documentIndex: Int, focusCoverage: Int, phraseCoverage: Double,
@@ -46,17 +71,8 @@ extension TriptychSearchIndex {
         var noteRoles: [VaultRole] = []
         var noteIndices: [VaultQualifiedNoteID: Int] = [:]
         var noteRelevance: [VaultQualifiedNoteID: Double] = [:]
-        var seenSources = Set<VaultQualifiedNoteID>()
-        for source in sources {
+        for source in currentSources {
             try Task.checkCancellation()
-            guard source.document.fingerprint == source.candidate.fingerprint,
-                source.candidate.note != request.seed.noteID,
-                request.candidateRoles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
-                seenSources.insert(source.candidate.note).inserted
-            else {
-                record?(.init(note: source.candidate.note, range: nil, stage: .rejectedSource))
-                continue
-            }
             guard let projection = try project(source) else {
                 record?(.init(note: source.candidate.note, range: nil, stage: .unavailableProjection))
                 continue
@@ -81,7 +97,6 @@ extension TriptychSearchIndex {
             noteIndices[source.candidate.note] = noteDocuments.count
             noteDocuments.append(projection.noteScoringDocument)
             noteRoles.append(source.candidate.vaultRole)
-            var focusedIdentities: [String]?
             for unit in projection.paragraphs {
                 try Task.checkCancellation()
                 guard
@@ -124,13 +139,8 @@ extension TriptychSearchIndex {
                     excerpt: "", excerptMatches: [], matches: matches)
                 var localIdentity = false
                 if focused, focusCoverage < requiredFocusMatches, phraseCoverage == 0 {
-                    // Only ambiguous single-term admission needs current-source
-                    // names. Prepare them once per Note, not once per paragraph.
-                    if focusedIdentities == nil {
-                        focusedIdentities = RelatedContentRecommendationPolicy.focusedIdentities(in: source.document, material: material)
-                    }
                     localIdentity = RelatedContentRecommendationPolicy.locallyMatchesFocusedIdentity(
-                        focusedIdentities!, normalizedText: normalized)
+                        focusedIdentitiesByNote[source.candidate.note] ?? [], normalizedText: normalized)
                 }
                 ranked.append((passage, 0, documentIndex, focusCoverage, phraseCoverage, localIdentity, unit.exactReadableText))
             }
