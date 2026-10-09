@@ -325,6 +325,7 @@ struct MarkdownFileOpeningLaunchTests {
             let identity = model.documentID
             let editor = model.editorSession
             await opening.retryExternalOwnership(model)
+            try await waitUntil { !model.isBusy }
             #expect(model.permitsSourceActions)
             #expect(!model.canRetryOwnership)
             #expect(model.canSelectMode(.source) && model.canSelectMode(.livePreview))
@@ -351,6 +352,7 @@ struct MarkdownFileOpeningLaunchTests {
             #expect(!model.permitsSourceActions)
             try FileManager.default.removeItem(at: registryURL(root))
             await opening.retryExternalOwnership(model)
+            try await waitUntil { !model.isBusy }
             #expect(model.permitsSourceActions)
             #expect(model.canImport)
             #expect(workspaceRoutes.values.isEmpty)

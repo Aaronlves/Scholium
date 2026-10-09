@@ -375,9 +375,9 @@ run_swift_test_product() {
   local -a parallelism_arguments selection_arguments
   parallelism_arguments=()
   selection_arguments=(--filter "${test_product}")
-  if [[ "${test_product}" == "ScholiumCoreTests" || "${test_product}" == "ScholiumAppTests" ]]; then
-    # Core's bounded URLSession fixtures need CPU time within their unchanged
-    # resource deadlines; App owns shared AppKit windows and WebKit processes.
+  if [[ "${test_product}" == "ScholiumCoreTests" || "${test_product}" == "ScholiumApplicationTests" || "${test_product}" == "ScholiumAppTests" ]]; then
+    # Core's URLSession fixtures and Application's large bridge payloads need
+    # CPU time within unchanged deadlines; App shares AppKit/WebKit resources.
     # Serialize top-level tests while preserving each test's concurrent tasks.
     parallelism_arguments=(--no-parallel)
   fi
