@@ -36,6 +36,38 @@ const inlineMarkerNodes = new Set([
   "EmphasisMark", "CodeMark", "LinkMark", "URL", "StrikethroughMark",
 ]);
 
+// Rendered text is disposable, but its caret locations must come from the
+// parser's exact slices, never a search for matching visible characters.
+const renderedTextLocations = new WeakMap<Node, {at(offset: number): number; shift: number}>();
+
+export function renderedTextSourceOffset(node: Node, offset: number): number | null {
+  const location = renderedTextLocations.get(node);
+  return location ? location.at(Math.max(0, Math.min(offset, node.textContent?.length ?? 0))) + location.shift : null;
+}
+
+/** Rebind an unchanged table DOM after an edit before its source range. */
+export function rebaseRenderedSourceLocations(root: HTMLElement, delta: number) {
+  const visit = (node: Node) => {
+    const location = renderedTextLocations.get(node);
+    if (location) location.shift += delta;
+    for (const child of node.childNodes) visit(child);
+  };
+  visit(root);
+  for (const element of root.querySelectorAll<HTMLElement>("[data-scholium-source-caret]")) {
+    for (const key of ["scholiumSourceFrom", "scholiumSourceTo", "scholiumSourceCaret"] as const) {
+      const value = element.dataset[key];
+      if (value !== undefined && Number.isSafeInteger(Number(value))) element.dataset[key] = String(Number(value) + delta);
+    }
+  }
+}
+
+function appendLocatedText(text: string, parent: HTMLElement | DocumentFragment,
+  options: MarkdownFragmentOptions, from = 0) {
+  const node = documentFor(parent).createTextNode(text);
+  renderedTextLocations.set(node, {at: offset => locatedOffset(options, from + offset), shift: 0});
+  parent.append(node);
+}
+
 function documentFor(parent: Node): Document {
   if (parent.nodeType === 9) return parent as Document;
   const owner = parent.ownerDocument;
@@ -52,25 +84,27 @@ function applyTextLanguage(element: HTMLElement, text: string) {
 function appendTextWithLanguage(
   text: string,
   parent: HTMLElement | DocumentFragment,
+  options: MarkdownFragmentOptions = {},
+  from = 0,
 ) {
   const ranges = cjkPresentationRanges(text);
   if (ranges.length === 0) {
-    parent.append(documentFor(parent).createTextNode(text));
+    appendLocatedText(text, parent, options, from);
     return;
   }
   let position = 0;
   const document = documentFor(parent);
   for (const range of ranges) {
     if (range.from > position) {
-      parent.append(document.createTextNode(text.slice(position, range.from)));
+      appendLocatedText(text.slice(position, range.from), parent, options, from + position);
     }
     const cjk = document.createElement("span");
     cjk.lang = "zh-Hans";
-    cjk.textContent = text.slice(range.from, range.to);
+    appendLocatedText(text.slice(range.from, range.to), cjk, options, from + range.from);
     parent.append(cjk);
     position = range.to;
   }
-  if (position < text.length) parent.append(document.createTextNode(text.slice(position)));
+  if (position < text.length) appendLocatedText(text.slice(position), parent, options, from + position);
 }
 
 function locatedOffset(options: MarkdownFragmentOptions, offset: number) {
@@ -125,9 +159,20 @@ function appendInlineMarkdownNode(
     code.dir = "ltr";
     const opening = raw.match(/^`+/)?.[0] ?? "";
     const closing = raw.endsWith(opening) ? opening.length : 0;
-    const text = raw.slice(opening.length, raw.length - closing).replace(/\r\n?|\n/g, " ");
-    code.textContent = text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text)
-      ? text.slice(1, -1) : text;
+    let text = "";
+    let offsets: number[] = [];
+    for (let position = opening.length; position < raw.length - closing; position++) {
+      offsets.push(cursor.from + position);
+      const character = raw[position];
+      text += /[\r\n]/.test(character) ? " " : character;
+      if (character === "\r" && raw[position + 1] === "\n") position++;
+    }
+    offsets.push(cursor.to - closing);
+    if (text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text)) {
+      text = text.slice(1, -1);
+      offsets = offsets.slice(1, -1);
+    }
+    appendLocatedText(text, code, optionsWithMap(options, offsets));
     parent.append(code);
     return;
   }
@@ -145,7 +190,7 @@ function appendInlineMarkdownNode(
       } catch {
         // Malformed managed metadata remains inspectable and cannot become an
         // ordinary application URL or projected link.
-        appendTextWithLanguage(raw, parent);
+        appendTextWithLanguage(raw, parent, options, cursor.from);
       }
       return;
     }
@@ -153,7 +198,7 @@ function appendInlineMarkdownNode(
     const span = document.createElement("span");
     span.className = "cm-live-link";
     span.dir = "auto";
-    appendTextWithLanguage(link?.[1] ?? raw, span);
+    appendTextWithLanguage(link?.[1] ?? raw, span, options, cursor.from + (link ? 1 : 0));
     if (link) {
       identifyProjectedLink(
         span,
@@ -170,7 +215,7 @@ function appendInlineMarkdownNode(
   if (cursor.name === "WikiLink") {
     const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
     if (!link) {
-      parent.append(document.createTextNode(raw));
+      appendLocatedText(raw, parent, options, cursor.from);
       return;
     }
     const span = document.createElement("span");
@@ -181,7 +226,10 @@ function appendInlineMarkdownNode(
     span.dir = "auto";
     const target = link[2].trim();
     const alias = link[3]?.trim();
-    appendTextWithLanguage(alias || target, span);
+    const labelSource = alias ? link[3] : link[2];
+    const labelFrom = (alias ? raw.indexOf("|") + 1 : embed ? 3 : 2)
+      + labelSource.length - labelSource.trimStart().length;
+    appendTextWithLanguage(alias || target, span, options, cursor.from + labelFrom);
     // A rendered Wikilink behaves as one projected object on first entry.
     // Its exact half-open source end is the stable insertion point after `]]`;
     // one subsequent backward move can then reveal and enter the syntax.
@@ -190,13 +238,16 @@ function appendInlineMarkdownNode(
     return;
   }
   if (cursor.name === "Escape") {
-    appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
+    appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent, options,
+      cursor.from + (raw.startsWith("\\") ? 1 : 0));
     return;
   }
   if (cursor.name === "Entity") {
     const entity = document.createElement("span");
     entity.innerHTML = raw;
-    appendTextWithLanguage(entity.textContent ?? "", parent);
+    const text = entity.textContent ?? "";
+    appendTextWithLanguage(text, parent, optionsWithMap(options,
+      Array.from({length: text.length + 1}, (_, index) => index === text.length ? cursor.to : cursor.from)));
     return;
   }
 
@@ -209,17 +260,17 @@ function appendInlineMarkdownNode(
   if (cursor.firstChild()) {
     do {
       if (cursor.from > position) {
-        appendTextWithLanguage(source.slice(position, cursor.from), destination);
+        appendTextWithLanguage(source.slice(position, cursor.from), destination, options, position);
       }
       appendInlineMarkdownNode(cursor, source, destination, options);
       position = cursor.to;
     } while (cursor.nextSibling());
     cursor.parent();
     if (position < cursor.to) {
-      appendTextWithLanguage(source.slice(position, cursor.to), destination);
+      appendTextWithLanguage(source.slice(position, cursor.to), destination, options, position);
     }
   } else if (!wrapperName) {
-    appendTextWithLanguage(raw, destination);
+    appendTextWithLanguage(raw, destination, options, cursor.from);
   }
   if (wrapperName) parent.append(destination);
 }
@@ -237,12 +288,15 @@ function appendInlineMarkdownPlain(
 function appendMath(
   expression: MathProjection,
   parent: HTMLElement | DocumentFragment,
+  options: MarkdownFragmentOptions,
+  source: string,
 ) {
   const document = documentFor(parent);
   const element = document.createElement(expression.kind === "display" ? "div" : "span");
   element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
   element.dir = "ltr";
   element.dataset.scholiumProtected = "math";
+  element.dataset.scholiumSourceCaret = String(locatedOffset(options, expression.from));
   const runtime = document.defaultView?.scholiumMath;
   const rendered = runtime?.version === 1
     ? runtime.render({source: expression.content, kind: expression.kind})
@@ -255,10 +309,7 @@ function appendMath(
     const exact = document.createElement("code");
     exact.className = "scholium-math-source";
     exact.dir = "ltr";
-    const delimiter = "$".repeat(expression.delimiterLength);
-    exact.textContent = expression.kind === "display"
-      ? `${delimiter}\n${expression.content}\n${delimiter}`
-      : `${delimiter}${expression.content}${delimiter}`;
+    exact.textContent = source;
     element.append(exact);
   }
   parent.append(element);
@@ -368,7 +419,7 @@ export function appendInlineMarkdown(
         optionsAt(options, position),
       );
     }
-    appendMath({...expression, from: 0, to: expression.to - expression.from}, parent);
+    appendMath(expression, parent, options, source.slice(expression.from, expression.to));
     position = expression.to;
   }
   if (position < source.length) {
@@ -401,7 +452,17 @@ function tableCellDOM(
   if (header) element.setAttribute("scope", "col");
   if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
   element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
-  appendInlineMarkdown(cell.source, element, options);
+  // GFM removes an escaped pipe even inside code spans. Preserve a boundary
+  // map while applying that display rule so subsequent text never shifts left.
+  let source = "";
+  const offsets: number[] = [];
+  for (let position = 0; position < cell.source.length; position++) {
+    if (cell.source[position] === "\\" && cell.source[position + 1] === "|") position++;
+    offsets.push(cell.sourceOffset + position);
+    source += cell.source[position];
+  }
+  offsets.push(cell.sourceOffset + cell.source.length);
+  appendInlineMarkdown(source, element, optionsWithMap(options, offsets));
   return element;
 }
 
@@ -633,7 +694,7 @@ function appendMarkdownBlockNode(
   }
   case "Table": {
     const presentation = tablePresentation(raw, 0, raw.length);
-    if (presentation) parent.append(createTableDOM(presentation, document, options));
+    if (presentation) parent.append(createTableDOM(presentation, document, optionsAt(options, cursor.from)));
     return;
   }
   case "ATXHeading1":
@@ -691,7 +752,7 @@ export function appendMarkdownBlocks(
           optionsAt(options, position),
         );
       }
-      appendMath(expression, parent);
+      appendMath(expression, parent, options, source.slice(expression.from, expression.to));
       position = expression.to;
     }
     if (position < source.length) {

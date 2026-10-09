@@ -25,7 +25,7 @@ function alignmentFor(separator: string): TableColumnAlignment {
 }
 
 function cellSource(source: string, from: number, to: number) {
-  return source.slice(from, to).replaceAll("\\|", "|");
+  return source.slice(from, to);
 }
 
 /**

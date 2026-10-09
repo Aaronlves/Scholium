@@ -18,7 +18,7 @@ interface LiveDisplayMathProjectionState {
 export function createLiveDisplayMathProjection(options: {
   selection: LiveSelectionController;
   projections: LiveProjectionIndexController;
-  widget(expression: MathProjection): WidgetType;
+  widget(expression: MathProjection, source: string): WidgetType;
   shouldRefreshRuntime(transaction: Transaction): boolean;
 }): {extension: Extension} {
   function decorations(
@@ -30,7 +30,7 @@ export function createLiveDisplayMathProjection(options: {
         selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
-        widget: options.widget(presentation),
+        widget: options.widget(presentation, state.doc.sliceString(presentation.from, presentation.to)),
         block: true,
       }).range(presentation.from, presentation.to)];
     }), true);

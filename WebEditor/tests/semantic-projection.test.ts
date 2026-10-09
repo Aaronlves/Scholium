@@ -110,6 +110,42 @@ describe("Lezer-backed semantic projection", () => {
     expect(image?.markerRanges.map(range => source.slice(range.from, range.to))).toEqual(["![", "]", "(", ")"]);
   });
 
+  it.each([
+    ["[![alt](inner.png)](outer.md)", "![alt](inner.png)"],
+    ["[outer ![alt](inner.png) tail](outer.md)", "outer ![alt](inner.png) tail"],
+  ])("keeps a linked image's outer label and destination independent: %s", (source, label) => {
+    const ranges = completeProjection(source);
+    const link = ranges.inlines.find(inline => inline.kind === "link");
+    const image = ranges.inlines.find(inline => inline.kind === "image");
+
+    expect(link?.targetRange && source.slice(link.targetRange.from, link.targetRange.to)).toBe("outer.md");
+    expect(link?.visibleRanges.map(range => source.slice(range.from, range.to))).toEqual([label]);
+    expect(link?.markerRanges.map(range => source.slice(range.from, range.to))).toEqual(["[", "]", "(", ")"]);
+    expect(image?.targetRange && source.slice(image.targetRange.from, image.targetRange.to)).toBe("inner.png");
+    expect(image?.visibleRanges.map(range => source.slice(range.from, range.to))).toEqual(["alt"]);
+  });
+
+  it.each([
+    ["**outer *inner* tail**", "strong", "emphasis", "**", "*", "outer *inner* tail"],
+    ["*outer **inner** tail*", "emphasis", "strong", "*", "**", "outer **inner** tail"],
+    ["~~outer ~~inner~~ tail~~", "strikethrough", "strikethrough", "~~", "~~", "outer ~~inner~~ tail"],
+  ])("keeps nested inline delimiters owned by their exact construct: %s", (
+    source, parentKind, childKind, parentMark, childMark, body,
+  ) => {
+    const inlines = completeProjection(source).inlines;
+    const parent = inlines.find(inline => inline.kind === parentKind && inline.from === 0);
+    const child = inlines.find(inline => inline.kind === childKind && inline.from > 0);
+
+    expect(parent?.markerRanges.map(range => source.slice(range.from, range.to)))
+      .toEqual([parentMark, parentMark]);
+    expect(parent?.visibleRanges.map(range => source.slice(range.from, range.to))).toEqual([body]);
+    expect(child?.markerRanges.map(range => source.slice(range.from, range.to)))
+      .toEqual([childMark, childMark]);
+    expect(child?.markerRanges.every(marker =>
+      !parent?.markerRanges.some(owned => owned.from === marker.from && owned.to === marker.to)))
+      .toBe(true);
+  });
+
   it("resolves definitions outside the projection viewport and maps their separate URL ranges", () => {
     const imageSource = "![caption][figure]";
     const source = `${imageSource}\n\n${"Distant paragraph.\n\n".repeat(250)}[figure]: images/photo.png`;
@@ -135,7 +171,8 @@ describe("Lezer-backed semantic projection", () => {
     expect(anchors.map((anchor) => source.slice(anchor.from, anchor.to))).toEqual(["^identity-1"]);
     expect(anchors[0].visibleRanges).toEqual([]);
     expect(anchors[0].markerRanges).toEqual([{from: source.indexOf("^identity-1"), to: source.indexOf("^identity-1") + 11}]);
-    for (const protectedSource of ["- Listed ^no", "> Quoted ^no", "%%\n\nHidden ^no\n\n%%", "Math $x$ ^no", "Inline ^[note] ^no", "^orphan"]) {
+    for (const protectedSource of ["- Listed ^no", "> Quoted ^no", "%%\n\nHidden ^no\n\n%%",
+      "Text %%comment%% ^no", "Text <!-- comment --> ^no", "Math $x$ ^no", "Inline ^[note] ^no", "^orphan"]) {
       expect(completeProjection(protectedSource).inlines.filter((inline) => inline.kind === "blockAnchor")).toEqual([]);
     }
     const standalone = "Paragraph.\n\n^one\n\nNext.";

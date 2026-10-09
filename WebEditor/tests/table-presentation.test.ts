@@ -10,7 +10,7 @@ describe("semantic table presentation", () => {
     expect(table?.header.map((cell) => cell.source)).toEqual(["Claim", "Status", "Count"]);
     expect(table?.header.map((cell) => cell.alignment)).toEqual(["left", "center", "right"]);
     expect(table?.body.map((row) => row.map((cell) => cell.source))).toEqual([
-      ["A | B", "Open", "2"],
+      ["A \\| B", "Open", "2"],
     ]);
     expect(table?.body[0][0].sourceOffset).toBe(source.indexOf("A \\| B"));
   });

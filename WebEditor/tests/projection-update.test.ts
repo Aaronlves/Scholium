@@ -5,6 +5,7 @@ import {
   activeProjectionSignature,
   frontmatterPresentationNeedsRebuild,
   selectionAffectedProjectionRanges,
+  selectionProjectionRefreshRanges,
   selectionActivatesSyntax,
   selectionProjectionSignature,
   selectionIntersectsPhysicalLine,
@@ -88,6 +89,49 @@ describe("frontmatter envelope presentation rebuilds", () => {
 });
 
 describe("empty projection update fast path", () => {
+  it("refreshes distant delimiters of a long active construct within mounted coverage", () => {
+    const doc = EditorState.create({doc: "x\n".repeat(50_000)}).doc;
+    const caret = (head: number) => ({from: head, to: head, head, empty: true});
+    const constructs = [{from: 100, to: 20_000}];
+    const covered = [{from: 0, to: 500}, {from: 9_500, to: 10_500}, {from: 19_500, to: 20_500}];
+    for (const [before, after] of [[50, 10_000], [10_000, 50]]) {
+      expect(selectionProjectionRefreshRanges(doc, [caret(before)], [caret(after)],
+        constructs, covered)).toEqual([
+        {from: 0, to: 500}, {from: 9_500, to: 10_500}, {from: 19_500, to: 20_001},
+      ]);
+    }
+  });
+
+  it("keeps a move inside the same long construct local and merges nested activation", () => {
+    const doc = EditorState.create({doc: "x\n".repeat(50_000)}).doc;
+    const caret = (head: number) => ({from: head, to: head, head, empty: true});
+    const constructs = [{from: 100, to: 20_000}, {from: 8_000, to: 12_000}];
+    expect(selectionProjectionRefreshRanges(doc, [caret(10_000)], [caret(10_001)],
+      constructs, [{from: 0, to: 100_000}])).toEqual([{from: 8_000, to: 12_001}]);
+    expect(selectionProjectionRefreshRanges(doc, [caret(50)], [caret(10_000)],
+      constructs, [{from: 0, to: 100_000}])).toEqual([{from: 0, to: 20_001}]);
+  });
+
+  it("honors construct endpoints without activating an adjacent range selection", () => {
+    const doc = EditorState.create({doc: "x\n".repeat(15_000)}).doc;
+    const before = {from: 0, to: 0, head: 0, empty: true};
+    const construct = {from: 4_000, to: 20_000};
+    expect(selectionProjectionRefreshRanges(doc, [before], [
+      {from: 4_000, to: 4_000, head: 4_000, empty: true},
+    ], [construct], [{from: 0, to: 30_000}])).toEqual([{from: 0, to: 20_001}]);
+    expect(selectionProjectionRefreshRanges(doc, [before], [
+      {from: 3_999, to: 4_000, head: 4_000, empty: false},
+    ], [construct], [{from: 0, to: 30_000}])).toEqual([{from: 0, to: 6_001}]);
+  });
+
+  it("refreshes mounted prefix and style tails on a long physical line without scanning unmounted source", () => {
+    const doc = EditorState.create({doc: `> ${"x".repeat(99_998)}\nAfter`}).doc;
+    const caret = (head: number) => ({from: head, to: head, head, empty: true});
+    const covered = [{from: 0, to: 500}, {from: 48_000, to: 51_000}];
+    expect(selectionProjectionRefreshRanges(doc, [caret(100_001)], [caret(49_000)],
+      [], covered)).toEqual(covered);
+  });
+
   it("detects a parse-tree-only state update", () => {
     const state = EditorState.create({doc: "# Claim\n"});
     const transaction = state.update({

@@ -18,6 +18,7 @@ import {
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
 import {normalizedDocumentText} from "../state";
+import type {NativeSuggestionPort} from "../native-floating";
 
 function inlineContinuationHarness(source = "A claim about res", options: {
   composing?: boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
@@ -38,6 +39,8 @@ function inlineContinuationHarness(source = "A claim about res", options: {
     requestWritingContinuation: id => { requests.push(id); },
     cancelWritingContinuation: id => { cancelled.push(id); }, didApply: label => labels.push(label),
   });
+  state = state.update({effects: StateEffect.appendConfig.of(suggestions.extension),
+    annotations: Transaction.addToHistory.of(false)}).state;
   const view = {get state() {return state;}, composing: false, hasFocus: true,
     dispatch(spec: TransactionSpec) { state = state.update(spec).state; }} as unknown as EditorView;
   // A detached plugin exercises scheduling without pretending to establish WebKit input acceptance.
@@ -65,6 +68,23 @@ function renderedInlineWidget(decorations: DecorationSet) {
 }
 
 describe("AI-first inline continuation", () => {
+  it("rejects a visible ghost as soon as composition starts before its first text change", async () => {
+    vi.useFakeTimers();
+    const options = {composing: false, aiEnabled: false};
+    const h = inlineContinuationHarness("res", options);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(h.terms).toHaveLength(1);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "",
+      detail: "", path: "term.md", isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.plugin.decorations.size).toBe(1);
+    options.composing = true;
+    expect(h.view.composing).toBe(false);
+    expect(h.plugin.accept()).toBe(false);
+    expect(h.state().doc.toString()).toBe("res");
+    h.plugin.clear();
+    vi.useRealTimers();
+  });
   it("requests only after an unfinished current sentence", async () => {
     vi.useFakeTimers();
     for (const source of ["A completed claim. ", "A completed claim。", "A completed claim.”"]) {
@@ -372,6 +392,106 @@ function applyOption(source: CompletionSource, text: string, label: string) {
 }
 
 describe("Edit input suggestions", () => {
+  it("hides native candidates and rejects queued native actions for the entire composition lifetime", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {setTimeout, clearTimeout});
+    const callbacks: Array<Parameters<NativeSuggestionPort["show"]>[1]> = [];
+    const nativeFloating: NativeSuggestionPort = {
+      show: vi.fn((_surface, actions) => { callbacks.push(actions); return 1; }),
+      hide: vi.fn(),
+    };
+    let composing = false;
+    const suggestions = createEditorInputSuggestions({nativeFloating, mode: () => "livePreview",
+      dialect: () => dialect, isComposing: () => composing, protectedRanges: () => [],
+      requestLinkCompletions: () => {}, didApply: () => {}});
+    const state = EditorState.create({doc: "> [!sta", selection: {anchor: 7}});
+    const measurement = {state, status: "active", items: [{label: "State", detail: ""}],
+      anchor: {left: 0, top: 0, bottom: 20}, selected: 0};
+    const writes: Array<(value: typeof measurement) => void> = [];
+    const contentDOM = {};
+    const dispatch = vi.fn();
+    const view = {state, composing: false, contentDOM, root: {activeElement: contentDOM}, dispatch,
+      requestMeasure(request: {write(value: typeof measurement): void}) { writes.push(request.write); },
+    } as unknown as EditorView;
+    const definition = (suggestions.extension as Extension[])[3] as unknown as {
+      create(view: EditorView): {destroy(): void};
+    };
+    const plugin = definition.create(view);
+    try {
+      writes[0](measurement);
+      expect(callbacks).toHaveLength(1);
+      composing = true;
+      expect(view.composing).toBe(false);
+      callbacks[0].select?.(0);
+      expect(callbacks[0].choose?.(0)).toBe(false);
+      expect(dispatch).not.toHaveBeenCalled();
+      writes[0](measurement);
+      expect(nativeFloating.hide).toHaveBeenCalledWith(1);
+      expect(callbacks).toHaveLength(1);
+    } finally {
+      plugin.destroy();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+  it("suppresses every caret suggestion while the composition lifetime gate is active", () => {
+    const {suggestions, request} = controller("livePreview", [], true);
+    for (const [source, text] of [
+      [suggestions.slashCompletionSource, "/"],
+      [suggestions.calloutCompletionSource, "> [!"],
+      [suggestions.wikilinkCompletionSource, "[["],
+      [suggestions.analysisReferenceCompletionSource, "@"],
+      [suggestions.citationCompletionSource, "@"],
+      [suggestions.writingCompletionSource, "res"],
+    ] as const) {
+      expect(synchronousResult(source, text)).toBeNull();
+    }
+    expect(request()).toBeNull();
+  });
+  function expectCompletionUndo(mutable: ReturnType<typeof mutableView>, original: string) {
+    const completed = mutable.state().doc.toString();
+    const range = mutable.state().selection.main;
+    mutable.view.dispatch({changes: {from: range.from, to: range.to, insert: "x"},
+      selection: {anchor: range.from + 1}, userEvent: "input.type"});
+    expect(undo({state: mutable.state(), dispatch: mutable.view.dispatch})).toBe(true);
+    expect(mutable.state().doc.toString()).toBe(completed);
+    expect(undo({state: mutable.state(), dispatch: mutable.view.dispatch})).toBe(true);
+    expect(mutable.state().doc.toString()).toBe(original);
+  }
+
+  it.each(["Date", "Code Block", "Footnote"])("isolates %s slash acceptance from subsequent typing", label => {
+    const {suggestions} = controller();
+    const mutable = mutableView(EditorState.create({doc: "/", selection: {anchor: 1},
+      extensions: [history(), suggestions.extension]}));
+    const result = suggestions.slashCompletionSource(
+      new CompletionContext(mutable.state(), 1, false),
+    ) as CompletionResult;
+    const completion = result.options.find(option => option.label === label)!;
+    expect(typeof completion.apply).toBe("function");
+    if (typeof completion.apply === "function") {
+      completion.apply(mutable.view, completion, result.from, 1);
+    }
+    expectCompletionUndo(mutable, "/");
+  });
+
+  it.each(["wikilink", "analysisReference"] as const)("isolates %s acceptance from subsequent typing", async kind => {
+    const {suggestions, request} = controller();
+    const source = kind === "wikilink" ? "[[Val" : "@Val";
+    const mutable = mutableView(EditorState.create({doc: source, selection: {anchor: source.length},
+      extensions: [history(), suggestions.extension]}));
+    const completionSource = kind === "wikilink"
+      ? suggestions.wikilinkCompletionSource : suggestions.analysisReferenceCompletionSource;
+    const pending = completionSource(new CompletionContext(mutable.state(), source.length, false));
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "Value", insertion: "Value",
+      displayText: "Value", detail: "", path: "Value.md", isAmbiguous: false}]);
+    const result = (await pending)!;
+    const completion = result.options[0];
+    expect(typeof completion.apply).toBe("function");
+    if (typeof completion.apply === "function") {
+      completion.apply(mutable.view, completion, result.from, source.length);
+    }
+    expectCompletionUndo(mutable, source);
+  });
   it("offers every context-available slash command and filters while editing", () => {
     const {suggestions} = controller();
     const block = synchronousResult(suggestions.slashCompletionSource, "/")!;
@@ -427,6 +547,56 @@ describe("Edit input suggestions", () => {
     expect(update("> [!sta")!.options.map(option => option.label)).toEqual(["State"]);
     expect(update("> [!")!.options.map(option => option.label)).toEqual(["Orient", "State"]);
     expect(update("> [!state] text")).toBeNull();
+  });
+
+  it("reuses a closing Callout bracket and preserves authored folding and title text", () => {
+    for (const [text, expected] of [
+      ["> [!sta]", "> [!state] "],
+      ["> [!sta] Title", "> [!state] Title"],
+      ["> [!sta]+ Title", "> [!state]+ Title"],
+      ["> [!sta]-\tTitle", "> [!state]-\tTitle"],
+      ["> [!sta]  Title", "> [!state]  Title"],
+    ]) {
+      const {suggestions} = controller();
+      const position = text.indexOf("]");
+      const state = EditorState.create({doc: text, selection: {anchor: position}});
+      const result = suggestions.calloutCompletionSource(
+        new CompletionContext(state, position, false),
+      ) as CompletionResult;
+      const completion = result.options[0];
+      const mutable = mutableView(state);
+      expect(typeof completion.apply).toBe("function");
+      if (typeof completion.apply === "function") {
+        completion.apply(mutable.view, completion, result.from, position);
+      }
+      expect(mutable.state().doc.toString()).toBe(expected);
+      expect(mutable.state().sliceDoc(0, mutable.state().selection.main.head))
+        .toMatch(/^> \[!state\][+-]?[ \t]$/);
+    }
+  });
+
+  it("keeps Callout completion separate from subsequent typing in Undo", () => {
+    const {suggestions} = controller();
+    const query = "> [!sta]";
+    const position = query.indexOf("]");
+    const mutable = mutableView(EditorState.create({doc: query,
+      selection: {anchor: position}, extensions: [history(), suggestions.extension]}));
+    const result = suggestions.calloutCompletionSource(
+      new CompletionContext(mutable.state(), position, false),
+    ) as CompletionResult;
+    const completion = result.options[0];
+    expect(typeof completion.apply).toBe("function");
+    if (typeof completion.apply === "function") {
+      completion.apply(mutable.view, completion, result.from, position);
+    }
+    const completed = mutable.state().doc.toString();
+    const head = mutable.state().selection.main.head;
+    mutable.view.dispatch({changes: {from: head, insert: "Title"},
+      selection: {anchor: head + 5}, userEvent: "input.type"});
+    expect(undo({state: mutable.state(), dispatch: mutable.view.dispatch})).toBe(true);
+    expect(mutable.state().doc.toString()).toBe(completed);
+    expect(undo({state: mutable.state(), dispatch: mutable.view.dispatch})).toBe(true);
+    expect(mutable.state().doc.toString()).toBe(query);
   });
 
   it("inserts bounded structural templates and chains Callout role choice", () => {

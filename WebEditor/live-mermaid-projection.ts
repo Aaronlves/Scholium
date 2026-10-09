@@ -40,6 +40,7 @@ export function createLiveMermaidProjection(options: {
   refreshThemeEffect: StateEffectType<number>;
 }): {extension: Extension; presentations(state: EditorState): readonly MermaidPresentation[]} {
   const abortControllers = new WeakMap<HTMLElement, AbortController>();
+  const renderedThemes = new WeakMap<HTMLElement, number>();
 
   class MermaidWidget extends WidgetType {
     constructor(
@@ -49,6 +50,10 @@ export function createLiveMermaidProjection(options: {
 
     eq(other: MermaidWidget) {
       return other.presentation.source === this.presentation.source
+        && other.presentation.from === this.presentation.from
+        && other.presentation.to === this.presentation.to
+        && other.presentation.contentFrom === this.presentation.contentFrom
+        && other.presentation.contentTo === this.presentation.contentTo
         && other.themeRevision === this.themeRevision;
     }
 
@@ -56,6 +61,7 @@ export function createLiveMermaidProjection(options: {
       const slot = document.createElement("div");
       slot.className = "cm-live-mermaid-slot cm-live-mermaid-widget";
       options.widgets.setMermaid(slot, this.presentation);
+      renderedThemes.set(slot, this.themeRevision);
       const wrapper = document.createElement("figure");
       wrapper.className = "scholium-mermaid";
       wrapper.dataset.scholiumProtected = "mermaid";
@@ -136,9 +142,20 @@ export function createLiveMermaidProjection(options: {
       return slot;
     }
 
+    updateDOM(dom: HTMLElement) {
+      const previous = options.widgets.mermaid(dom);
+      if (!previous || previous.source !== this.presentation.source
+          || renderedThemes.get(dom) !== this.themeRevision) return false;
+      // Source edits before an unchanged diagram map its exact activation
+      // coordinates without replacing the already rendered illustration.
+      options.widgets.setMermaid(dom, this.presentation);
+      return true;
+    }
+
     destroy(dom: HTMLElement) {
       abortControllers.get(dom)?.abort();
       abortControllers.delete(dom);
+      renderedThemes.delete(dom);
     }
 
     ignoreEvent(event: Event) { return event.type !== "mousedown"; }

@@ -1,6 +1,8 @@
 import type {FootnoteReferencePresentation} from "./footnote-presentation";
 import type {MermaidPresentation} from "./mermaid-presentation";
 import type {TablePresentation} from "./table-presentation";
+import {findClusterBreak} from "@codemirror/state";
+import {renderedTextSourceOffset} from "./markdown-fragment";
 
 function projectedSourceOffsetAt(
   event: MouseEvent,
@@ -11,7 +13,8 @@ function projectedSourceOffsetAt(
   const caretDocument = document as Document & {
     caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null;
   };
-  const caret = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+  const hit = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+  const caret = hit && root.contains(hit.startContainer) ? hit : null;
   const caretElement = caret?.startContainer instanceof Element
     ? caret.startContainer
     : caret?.startContainer.parentElement;
@@ -28,24 +31,22 @@ function projectedSourceOffsetAt(
     ?? root;
   const base = Number(mapped.dataset.sourceOffset);
   if (!Number.isSafeInteger(base)) return fallback;
-  let visibleOffset = 0;
-  if (caret && mapped.contains(caret.startContainer)) {
-    const range = document.createRange();
-    range.setStart(mapped, 0);
-    range.setEnd(caret.startContainer, caret.startOffset);
-    visibleOffset = range.toString().length;
-  } else if (mapped !== root || pointMapped) {
+  if (caret) {
+    const exact = renderedTextSourceOffset(caret.startContainer, caret.startOffset);
+    if (exact !== null) return Math.max(fallback, Math.min(upperBound, exact));
+  }
+  let sourceOffset = base;
+  if (mapped !== root || pointMapped) {
     const walker = document.createTreeWalker(mapped, NodeFilter.SHOW_TEXT);
-    let textOffset = 0;
     let bestScore = Number.POSITIVE_INFINITY;
-    let bestOffset = 0;
     let node: Node | null;
     while ((node = walker.nextNode())) {
       const content = node.textContent ?? "";
-      for (let index = 0; index < content.length; index += 1) {
+      for (let index = 0, end = 0; index < content.length; index = end) {
+        end = findClusterBreak(content, index);
         const range = document.createRange();
         range.setStart(node, index);
-        range.setEnd(node, index + 1);
+        range.setEnd(node, end);
         const rect = range.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) continue;
         const verticalDistance = event.clientY < rect.top
@@ -59,16 +60,16 @@ function projectedSourceOffsetAt(
             ? event.clientX - rect.right
             : 0;
         const score = verticalDistance * 1_000 + horizontalDistance;
-        if (score < bestScore) {
+        const offset = event.clientX > (rect.left + rect.right) / 2 ? end : index;
+        const exact = renderedTextSourceOffset(node, offset);
+        if (exact !== null && score < bestScore) {
           bestScore = score;
-          bestOffset = textOffset + index + (event.clientX > (rect.left + rect.right) / 2 ? 1 : 0);
+          sourceOffset = exact;
         }
       }
-      textOffset += content.length;
     }
-    visibleOffset = bestOffset;
   }
-  return Math.max(fallback, Math.min(upperBound - 1, base + visibleOffset));
+  return Math.max(fallback, Math.min(upperBound, sourceOffset));
 }
 
 export interface ProjectedWidgetRegistry {

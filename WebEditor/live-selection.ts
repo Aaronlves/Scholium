@@ -6,7 +6,7 @@ import {
   type EditorState,
   type Extension,
 } from "@codemirror/state";
-import {Decoration, EditorView, ViewPlugin} from "@codemirror/view";
+import {Decoration, EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 
 type PointerProjectionPhase = "idle" | "deferred" | "immediate";
 
@@ -107,6 +107,14 @@ export function createLiveSelectionController(options: {
 
     constructor(readonly view: EditorView) {}
 
+    update(update: ViewUpdate) {
+      if (!update.docChanged || !this.gestureActive) return;
+      // The field and CodeMirror both end pointer ownership after input.
+      // Cancel the listeners and any queued completion of that old gesture.
+      this.gestureActive = false;
+      this.removeWindowListeners();
+    }
+
     private readonly finish = () => {
       if (!this.gestureActive) return;
       this.removeWindowListeners();
@@ -118,7 +126,7 @@ export function createLiveSelectionController(options: {
         if (this.destroyed || !this.gestureActive) return;
         this.gestureActive = false;
         this.view.dispatch({
-          selection: this.view.composing ? undefined
+          selection: this.view.composing || this.view.compositionStarted ? undefined
             : options.completeSelection?.(this.view.state, this.view.state.selection),
           effects: commitPointerSelection.of(null),
           userEvent: "select.pointer",
@@ -177,7 +185,7 @@ export function createLiveSelectionController(options: {
     }
 
     mousedown(event: MouseEvent) {
-      if (event.button !== 0 || this.view.composing) return false;
+      if (event.button !== 0 || this.view.composing || this.view.compositionStarted) return false;
       if (options.handleModifiedLink(this.view, event)) return true;
 
       // A semantic block widget maps one discrete press directly to an exact

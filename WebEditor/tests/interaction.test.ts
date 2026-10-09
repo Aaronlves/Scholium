@@ -22,6 +22,37 @@ describe("guarded list interaction", () => {
       expect(applySourceChanges(source, result!.changes)).toBe("Before\n");
     }
   });
+  it("yields Return before and inside list prefixes, including empty items", () => {
+    for (const [source, prefix] of [
+      ["- claim", "- "],
+      ["  12) claim", "  12) "],
+      ["- [x] checked", "- [x] "],
+      [">   - nested", ">   - "],
+      ["- ", "- "],
+    ]) {
+      for (let head = 0; head < prefix.length; head += 1) {
+        expect(continueList(source, [{anchor: head, head}])).toBeNull();
+      }
+    }
+  });
+  it("continues at the exact list body start without rewriting the following text", () => {
+    for (const [source, prefix, continued] of [
+      ["- claim", "- ", "- "],
+      ["  12) claim", "  12) ", "  13) "],
+      ["- [x] checked", "- [x] ", "- [ ] "],
+      [">   - nested", ">   - ", ">   - "],
+    ]) {
+      const head = prefix.length;
+      const result = continueList(source, [{anchor: head, head}]);
+      expect(applySourceChanges(source, result!.changes))
+        .toBe(`${prefix}\n${continued}${source.slice(head)}`);
+    }
+  });
+  it("yields the entire multi-caret Return when any caret edits a prefix", () => {
+    const source = "- first\n- second";
+    expect(continueList(source, [{anchor: 1, head: 1},
+      {anchor: source.length, head: source.length}])).toBeNull();
+  });
   it("indents only proven list lines", () => {
     const source = "- one\n- two";
     const result = indentList(source, [{anchor: 0, head: source.length}], false);
@@ -83,6 +114,49 @@ describe("guarded list interaction", () => {
 });
 
 describe("guarded Callout interaction", () => {
+  it("yields Return before and inside Callout and nested list prefixes", () => {
+    for (const [line, prefix] of [
+      ["> [!orient]+ Reading route", "> [!orient]+ "],
+      ["> text", "> "],
+      [">   - nested", ">   - "],
+      ["> - [x] checked", "> - [x] "],
+      ["> > nested quote", "> > "],
+      ["> > [!orient]+ Nested route", "> > [!orient]+ "],
+      ["> >   - nested item", "> >   - "],
+      ["> ", "> "],
+    ]) {
+      const before = "> [!state] Claims\n";
+      const source = before + line;
+      for (let offset = 0; offset < prefix.length; offset += 1) {
+        const head = before.length + offset;
+        expect(continueCallout(source, [{anchor: head, head}])).toBeNull();
+      }
+    }
+  });
+  it("continues at the exact Callout header, prose, or nested-list body start", () => {
+    for (const [line, prefix, continued] of [
+      ["> [!orient]+ Reading route", "> [!orient]+ ", "> "],
+      ["> text", "> ", "> "],
+      [">   - nested", ">   - ", ">   - "],
+      ["> - [x] checked", "> - [x] ", "> - [ ] "],
+      ["> > nested quote", "> > ", "> > "],
+      ["> > [!orient]+ Nested route", "> > [!orient]+ ", "> > "],
+      ["> >   - nested item", "> >   - ", "> >   - "],
+    ]) {
+      const before = "> [!state] Claims\n";
+      const source = before + line;
+      const head = before.length + prefix.length;
+      const result = continueCallout(source, [{anchor: head, head}]);
+      expect(applySourceChanges(source, result!.changes))
+        .toBe(`${before}${prefix}\n${continued}${line.slice(prefix.length)}`);
+    }
+  });
+  it("yields the entire Callout Return when one caret edits a structural prefix", () => {
+    const source = "> [!state] Claims\n> - first\n> - second";
+    const head = source.indexOf("first") - 1;
+    expect(continueCallout(source, [{anchor: head, head},
+      {anchor: source.length, head: source.length}])).toBeNull();
+  });
   it("continues a semantic Callout with its exact quote prefix", () => {
     const source = "> [!orient] Reading route";
     const result = continueCallout(source, [{anchor: source.length, head: source.length}]);
@@ -91,6 +165,27 @@ describe("guarded Callout interaction", () => {
       .toBe("> [!orient] Reading route\n> ");
     expect(result!.selections).toEqual([{anchor: source.length + 3, head: source.length + 3}]);
     expect(result!.undoLabel).toBe("Continue Callout");
+  });
+  it("preserves every authored quote level when continuing nested Callout prose", () => {
+    for (const source of [
+      "> [!state] Claims\n> > nested quote",
+      "> > [!state] Nested claims\n> > prose",
+      "> [!state] Claims\n>  >\t nested quote",
+    ]) {
+      const head = source.length;
+      const prefix = source.startsWith("> [!state] Claims\n>  >") ? ">  >\t" : "> > ";
+      const result = continueCallout(source, [{anchor: head, head}]);
+      expect(applySourceChanges(source, result!.changes)).toBe(`${source}\n${prefix}`);
+    }
+  });
+  it("exits one empty quote level without removing the containing Callout", () => {
+    const source = "> [!state] Claims\n> > ";
+    const result = continueCallout(source, [{anchor: source.length, head: source.length}]);
+    expect(applySourceChanges(source, result!.changes)).toBe("> [!state] Claims\n> ");
+  });
+  it("does not mistake a completed nested Callout for a containing Callout", () => {
+    const source = "> > [!state] Nested claims\n> ordinary quotation";
+    expect(continueCallout(source, [{anchor: source.length, head: source.length}])).toBeNull();
   });
 
   it("exits on Return from an empty quoted Callout line", () => {

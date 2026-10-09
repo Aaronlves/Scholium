@@ -30101,7 +30101,7 @@ ${blankRow(table.position.columnCount)}`;
     return null;
   }
   function cellSource(source, from, to) {
-    return source.slice(from, to).replaceAll("\\|", "|");
+    return source.slice(from, to);
   }
   function tablePresentation(source, from, to) {
     if (from < 0 || to <= from || to > source.length) return null;
@@ -30408,14 +30408,14 @@ ${blankRow(table.position.columnCount)}`;
     let runStart;
     for (let offset = 0; offset < text.length; ) {
       const codePoint = text.codePointAt(offset) ?? 0;
-      const width = codePoint > 65535 ? 2 : 1;
+      const next = findClusterBreak2(text, offset);
       if (isCJKPresentationCharacter(codePoint)) {
         if (runStart === void 0) runStart = offset;
       } else if (runStart !== void 0) {
         ranges.push({ from: runStart, to: offset });
         runStart = void 0;
       }
-      offset += width;
+      offset = next;
     }
     if (runStart !== void 0) ranges.push({ from: runStart, to: text.length });
     return ranges;
@@ -30487,6 +30487,30 @@ ${blankRow(table.position.columnCount)}`;
     "URL",
     "StrikethroughMark"
   ]);
+  var renderedTextLocations = /* @__PURE__ */ new WeakMap();
+  function renderedTextSourceOffset(node, offset) {
+    const location = renderedTextLocations.get(node);
+    return location ? location.at(Math.max(0, Math.min(offset, node.textContent?.length ?? 0))) + location.shift : null;
+  }
+  function rebaseRenderedSourceLocations(root, delta) {
+    const visit = (node) => {
+      const location = renderedTextLocations.get(node);
+      if (location) location.shift += delta;
+      for (const child of node.childNodes) visit(child);
+    };
+    visit(root);
+    for (const element of root.querySelectorAll("[data-scholium-source-caret]")) {
+      for (const key of ["scholiumSourceFrom", "scholiumSourceTo", "scholiumSourceCaret"]) {
+        const value = element.dataset[key];
+        if (value !== void 0 && Number.isSafeInteger(Number(value))) element.dataset[key] = String(Number(value) + delta);
+      }
+    }
+  }
+  function appendLocatedText(text, parent, options, from = 0) {
+    const node = documentFor(parent).createTextNode(text);
+    renderedTextLocations.set(node, { at: (offset) => locatedOffset(options, from + offset), shift: 0 });
+    parent.append(node);
+  }
   function documentFor(parent) {
     if (parent.nodeType === 9) return parent;
     const owner = parent.ownerDocument;
@@ -30497,25 +30521,25 @@ ${blankRow(table.position.columnCount)}`;
     const language2 = languageForText(text);
     if (language2) element.lang = language2;
   }
-  function appendTextWithLanguage(text, parent) {
+  function appendTextWithLanguage(text, parent, options = {}, from = 0) {
     const ranges = cjkPresentationRanges(text);
     if (ranges.length === 0) {
-      parent.append(documentFor(parent).createTextNode(text));
+      appendLocatedText(text, parent, options, from);
       return;
     }
     let position = 0;
     const document2 = documentFor(parent);
     for (const range of ranges) {
       if (range.from > position) {
-        parent.append(document2.createTextNode(text.slice(position, range.from)));
+        appendLocatedText(text.slice(position, range.from), parent, options, from + position);
       }
       const cjk = document2.createElement("span");
       cjk.lang = "zh-Hans";
-      cjk.textContent = text.slice(range.from, range.to);
+      appendLocatedText(text.slice(range.from, range.to), cjk, options, from + range.from);
       parent.append(cjk);
       position = range.to;
     }
-    if (position < text.length) parent.append(document2.createTextNode(text.slice(position)));
+    if (position < text.length) appendLocatedText(text.slice(position), parent, options, from + position);
   }
   function locatedOffset(options, offset) {
     return options.sourceOffset?.(offset) ?? offset;
@@ -30550,8 +30574,20 @@ ${blankRow(table.position.columnCount)}`;
       code2.dir = "ltr";
       const opening = raw.match(/^`+/)?.[0] ?? "";
       const closing2 = raw.endsWith(opening) ? opening.length : 0;
-      const text = raw.slice(opening.length, raw.length - closing2).replace(/\r\n?|\n/g, " ");
-      code2.textContent = text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text) ? text.slice(1, -1) : text;
+      let text = "";
+      let offsets = [];
+      for (let position2 = opening.length; position2 < raw.length - closing2; position2++) {
+        offsets.push(cursor.from + position2);
+        const character = raw[position2];
+        text += /[\r\n]/.test(character) ? " " : character;
+        if (character === "\r" && raw[position2 + 1] === "\n") position2++;
+      }
+      offsets.push(cursor.to - closing2);
+      if (text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text)) {
+        text = text.slice(1, -1);
+        offsets = offsets.slice(1, -1);
+      }
+      appendLocatedText(text, code2, optionsWithMap(options, offsets));
       parent.append(code2);
       return;
     }
@@ -30570,7 +30606,7 @@ ${blankRow(table.position.columnCount)}`;
           );
           parent.append(span2);
         } catch {
-          appendTextWithLanguage(raw, parent);
+          appendTextWithLanguage(raw, parent, options, cursor.from);
         }
         return;
       }
@@ -30578,7 +30614,7 @@ ${blankRow(table.position.columnCount)}`;
       const span = document2.createElement("span");
       span.className = "cm-live-link";
       span.dir = "auto";
-      appendTextWithLanguage(link?.[1] ?? raw, span);
+      appendTextWithLanguage(link?.[1] ?? raw, span, options, cursor.from + (link ? 1 : 0));
       if (link) {
         identifyProjectedLink(
           span,
@@ -30595,7 +30631,7 @@ ${blankRow(table.position.columnCount)}`;
     if (cursor.name === "WikiLink") {
       const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
       if (!link) {
-        parent.append(document2.createTextNode(raw));
+        appendLocatedText(raw, parent, options, cursor.from);
         return;
       }
       const span = document2.createElement("span");
@@ -30604,19 +30640,30 @@ ${blankRow(table.position.columnCount)}`;
       span.dir = "auto";
       const target = link[2].trim();
       const alias = link[3]?.trim();
-      appendTextWithLanguage(alias || target, span);
+      const labelSource = alias ? link[3] : link[2];
+      const labelFrom = (alias ? raw.indexOf("|") + 1 : embed ? 3 : 2) + labelSource.length - labelSource.trimStart().length;
+      appendTextWithLanguage(alias || target, span, options, cursor.from + labelFrom);
       identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
       parent.append(span);
       return;
     }
     if (cursor.name === "Escape") {
-      appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
+      appendTextWithLanguage(
+        raw.startsWith("\\") ? raw.slice(1) : raw,
+        parent,
+        options,
+        cursor.from + (raw.startsWith("\\") ? 1 : 0)
+      );
       return;
     }
     if (cursor.name === "Entity") {
       const entity = document2.createElement("span");
       entity.innerHTML = raw;
-      appendTextWithLanguage(entity.textContent ?? "", parent);
+      const text = entity.textContent ?? "";
+      appendTextWithLanguage(text, parent, optionsWithMap(
+        options,
+        Array.from({ length: text.length + 1 }, (_, index) => index === text.length ? cursor.to : cursor.from)
+      ));
       return;
     }
     const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
@@ -30625,17 +30672,17 @@ ${blankRow(table.position.columnCount)}`;
     if (cursor.firstChild()) {
       do {
         if (cursor.from > position) {
-          appendTextWithLanguage(source.slice(position, cursor.from), destination);
+          appendTextWithLanguage(source.slice(position, cursor.from), destination, options, position);
         }
         appendInlineMarkdownNode(cursor, source, destination, options);
         position = cursor.to;
       } while (cursor.nextSibling());
       cursor.parent();
       if (position < cursor.to) {
-        appendTextWithLanguage(source.slice(position, cursor.to), destination);
+        appendTextWithLanguage(source.slice(position, cursor.to), destination, options, position);
       }
     } else if (!wrapperName) {
-      appendTextWithLanguage(raw, destination);
+      appendTextWithLanguage(raw, destination, options, cursor.from);
     }
     if (wrapperName) parent.append(destination);
   }
@@ -30644,12 +30691,13 @@ ${blankRow(table.position.columnCount)}`;
     const cursor = tree.cursor();
     appendInlineMarkdownNode(cursor, source, parent, options);
   }
-  function appendMath(expression, parent) {
+  function appendMath(expression, parent, options, source) {
     const document2 = documentFor(parent);
     const element = document2.createElement(expression.kind === "display" ? "div" : "span");
     element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
     element.dir = "ltr";
     element.dataset.scholiumProtected = "math";
+    element.dataset.scholiumSourceCaret = String(locatedOffset(options, expression.from));
     const runtime = document2.defaultView?.scholiumMath;
     const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
     if (rendered?.ok) {
@@ -30660,10 +30708,7 @@ ${blankRow(table.position.columnCount)}`;
       const exact = document2.createElement("code");
       exact.className = "scholium-math-source";
       exact.dir = "ltr";
-      const delimiter = "$".repeat(expression.delimiterLength);
-      exact.textContent = expression.kind === "display" ? `${delimiter}
-${expression.content}
-${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
+      exact.textContent = source;
       element.append(exact);
     }
     parent.append(element);
@@ -30758,7 +30803,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           optionsAt(options, position)
         );
       }
-      appendMath({ ...expression, from: 0, to: expression.to - expression.from }, parent);
+      appendMath(expression, parent, options, source.slice(expression.from, expression.to));
       position = expression.to;
     }
     if (position < source.length) {
@@ -30779,7 +30824,15 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     if (header) element.setAttribute("scope", "col");
     if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
     element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
-    appendInlineMarkdown(cell.source, element, options);
+    let source = "";
+    const offsets = [];
+    for (let position = 0; position < cell.source.length; position++) {
+      if (cell.source[position] === "\\" && cell.source[position + 1] === "|") position++;
+      offsets.push(cell.sourceOffset + position);
+      source += cell.source[position];
+    }
+    offsets.push(cell.sourceOffset + cell.source.length);
+    appendInlineMarkdown(source, element, optionsWithMap(options, offsets));
     return element;
   }
   function createTableDOM(presentation, document2, options = {}) {
@@ -30988,7 +31041,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       case "Table": {
         const presentation = tablePresentation(raw, 0, raw.length);
-        if (presentation) parent.append(createTableDOM(presentation, document2, options));
+        if (presentation) parent.append(createTableDOM(presentation, document2, optionsAt(options, cursor.from)));
         return;
       }
       case "ATXHeading1":
@@ -31038,7 +31091,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             optionsAt(options, position)
           );
         }
-        appendMath(expression, parent);
+        appendMath(expression, parent, options, source.slice(expression.from, expression.to));
         position = expression.to;
       }
       if (position < source.length) {
@@ -32436,18 +32489,47 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
 
+  // projected-pointer-selection.ts
+  function projectedPointerSelection(state, event, sourceOffset, assoc = 0) {
+    const head = Math.max(0, Math.min(sourceOffset, state.doc.length));
+    const range = EditorSelection.cursor(head, assoc);
+    const selection = state.selection;
+    if (event.shiftKey) {
+      return selection.replaceRange(selection.main.extend(range.from, range.to, range.assoc));
+    }
+    const modifiers2 = state.facet(EditorView.clickAddsSelectionRange);
+    const multiple = state.facet(EditorState.allowMultipleSelections) && (modifiers2.length ? modifiers2[0](event) : event.metaKey);
+    if (!multiple) return EditorSelection.create([range]);
+    if (event.detail === 1 && selection.ranges.length > 1) {
+      const index = selection.ranges.findIndex((candidate) => candidate.from <= head && candidate.to >= head);
+      if (index >= 0) {
+        const ranges = selection.ranges.slice(0, index).concat(selection.ranges.slice(index + 1));
+        const main = selection.mainIndex === index ? 0 : selection.mainIndex - (selection.mainIndex > index ? 1 : 0);
+        return EditorSelection.create(ranges, main);
+      }
+    }
+    return selection.addRange(range);
+  }
+
   // live-cursor-geometry.ts
   function readLiveCursorGeometry(view) {
-    const selection = view.state.selection.main;
-    if (!selection.empty) return null;
-    const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
-    if (!rect) return null;
-    return { left: rect.left, top: rect.top, bottom: rect.bottom };
+    const state = view.state;
+    const cursors = [];
+    for (const selection of state.selection.ranges) {
+      if (!selection.empty) continue;
+      const rect = view.coordsAtPos(selection.head, selection.assoc || 1);
+      if (rect) cursors.push({
+        primary: selection === state.selection.main,
+        left: rect.left,
+        top: rect.top,
+        bottom: rect.bottom
+      });
+    }
+    return cursors.length > 0 ? { state, cursors } : null;
   }
   function readLiveCursorSurfaceGeometry(view) {
     const outer = view.scrollDOM.getBoundingClientRect();
-    const scaleX = view.scaleX ?? 1;
-    const scaleY = view.scaleY ?? 1;
+    const { scaleX, scaleY } = view;
     return {
       outerLeft: outer.left,
       outerRight: outer.right,
@@ -32461,14 +32543,17 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
   function writeLiveCursorGeometry(view, geometry, surface) {
-    if (!geometry) return;
-    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
-    if (!cursor) return;
+    if (!geometry || geometry.state !== view.state) return;
+    const cursors = [...view.scrollDOM.querySelectorAll(".cm-cursorLayer > .cm-cursor")];
+    if (cursors.length !== geometry.cursors.length || cursors.some((cursor, index) => cursor.classList.contains("cm-cursor-primary") !== geometry.cursors[index].primary)) return;
     const baseLeft = surface.direction === Direction.LTR ? surface.outerLeft - surface.scrollLeft : surface.outerRight - surface.clientWidth * surface.scaleX - surface.scrollLeft;
     const baseTop = surface.outerTop - surface.scrollTop;
-    cursor.style.left = `${(geometry.left - baseLeft) / surface.scaleX}px`;
-    cursor.style.top = `${(geometry.top - baseTop) / surface.scaleY}px`;
-    cursor.style.height = `${(geometry.bottom - geometry.top) / surface.scaleY}px`;
+    cursors.forEach((cursor, index) => {
+      const position = geometry.cursors[index];
+      cursor.style.left = `${position.left - baseLeft}px`;
+      cursor.style.top = `${position.top - baseTop}px`;
+      cursor.style.height = `${position.bottom - position.top}px`;
+    });
   }
 
   // syntax-presentation.ts
@@ -33202,14 +33287,18 @@ ${fence}`;
     const ordered = match.orderedNumber === null || match.orderedSuffix === null ? null : `${match.orderedNumber + 1}${match.orderedSuffix}`;
     return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
   }
-  function calloutQuotePrefix(line) {
-    return /^(\s*>[ \t]?)/.exec(line);
+  function calloutHeaderPrefix(line) {
+    return /^[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]+|$)/.exec(line)?.[0];
   }
   function lineBelongsToCallout(document2, lineNumber) {
+    let quoteDepth = Number.POSITIVE_INFINITY;
     for (let number2 = lineNumber; number2 >= 1; number2 -= 1) {
       const line = document2.line(number2).text;
-      if (!calloutQuotePrefix(line)) return false;
-      if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
+      const prefix = blockquotePrefix(line);
+      if (!prefix) return false;
+      const depth2 = prefix.split(">").length - 1;
+      if (depth2 <= quoteDepth && calloutHeaderPrefix(line.slice(prefix.length))) return true;
+      quoteDepth = Math.min(quoteDepth, depth2);
     }
     return false;
   }
@@ -33219,10 +33308,13 @@ ${fence}`;
     const entries = selections.map((selection) => {
       const bounds = document2.lineAt(selection.head);
       if (options.lineIsProtected?.(bounds)) return null;
-      const prefix = calloutQuotePrefix(bounds.text)?.[1];
+      const prefix = blockquotePrefix(bounds.text);
       if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
       const quotedContent = bounds.text.slice(prefix.length);
       const nestedList = listPrefix(quotedContent);
+      const headerPrefix = calloutHeaderPrefix(quotedContent);
+      const contentFrom = bounds.from + prefix.length + (nestedList?.sourcePrefix.length ?? headerPrefix?.length ?? 0);
+      if (selection.head < contentFrom) return null;
       if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
         return {
           change: {
@@ -33235,9 +33327,10 @@ ${fence}`;
         };
       }
       if (quotedContent.trim().length === 0) {
+        const parentPrefix = blockquotePrefix(prefix.slice(0, prefix.lastIndexOf(">")));
         return {
-          change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" },
-          localSelection: bounds.from,
+          change: { from: bounds.from + parentPrefix.length, to: bounds.from + prefix.length, insert: "" },
+          localSelection: bounds.from + parentPrefix.length,
           undoLabel: "Exit Callout"
         };
       }
@@ -33272,6 +33365,7 @@ ${continuedPrefix}` },
       const line = bounds.text;
       const match = listPrefix(line);
       if (!match || options.lineIsProtected?.(bounds)) return null;
+      if (selection.head < bounds.from + match.sourcePrefix.length) return null;
       const content2 = line.slice(match.sourcePrefix.length);
       if (content2.trim().length === 0) {
         const from = bounds.from + match.quotePrefix.length;
@@ -33565,10 +33659,12 @@ ${fence}
     visit(root);
     return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
   }
-  function directChildRanges(root, name2) {
+  function directChildRanges(root, names) {
     const ranges = [];
     for (let child = root.firstChild; child; child = child.nextSibling) {
-      if (child.name === name2) ranges.push({ from: child.from, to: child.to });
+      if (typeof names === "string" ? child.name === names : names.has(child.name)) {
+        ranges.push({ from: child.from, to: child.to });
+      }
     }
     return ranges;
   }
@@ -33656,7 +33752,7 @@ ${fence}
       case "comment":
         break;
     }
-    const markerRanges = kind === "image" ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
+    const markerRanges = directChildRanges(node, markerNames);
     let targetRange = null;
     let aliasRange = null;
     let linkRange = null;
@@ -33680,7 +33776,7 @@ ${fence}
       }
       visibleRanges = [alt];
     } else if (kind === "link") {
-      const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
+      const explicitVisible = directChildRanges(node, "URL");
       if (explicitVisible.length === 0) return null;
       targetRange = explicitVisible[0];
       if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
@@ -33881,10 +33977,10 @@ ${fence}
     });
     const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
     for (const block of result.blocks) {
-      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+      if (block.kind !== "paragraph") continue;
       const paragraph = source.slice(block.from, block.to);
       const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
-      if (!match) continue;
+      if (!match || paragraphIsProtected(block)) continue;
       const markerFrom = block.from + match.index + match[0].indexOf("^");
       const markerTo = markerFrom + match[1].length + 1;
       if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
@@ -34415,6 +34511,38 @@ ${fence}
         to: selection.to
       })),
       margin
+    ));
+  }
+  function selectionProjectionRefreshRanges(doc2, previousSelections, nextSelections, constructs, coveredRanges) {
+    const candidates = /* @__PURE__ */ new Set();
+    for (const selection of [...previousSelections, ...nextSelections]) {
+      for (const construct of projectionRangesIntersecting(
+        constructs,
+        selection.empty ? Math.max(0, selection.head - 1) : selection.from,
+        selection.empty ? selection.head + 1 : selection.to
+      )) {
+        candidates.add(construct);
+      }
+    }
+    const changed = [...candidates].filter((construct) => previousSelections.some((selection) => selectionActivatesSyntax(selection, construct)) !== nextSelections.some((selection) => selectionActivatesSyntax(selection, construct)));
+    const affected = boundedProjectionRanges(doc2.length, [
+      ...selectionAffectedProjectionRanges(doc2.length, previousSelections, nextSelections),
+      ...changed
+    ].map((range) => ({
+      // Inline decorations and prefix activation are emitted per physical line.
+      // Replacing a fragment would remove a whole intersecting old mark and lose
+      // its tails, or leave a distant heading/quote prefix in its old state.
+      from: doc2.lineAt(range.from).from,
+      to: doc2.lineAt(range.to).to
+    })), 0);
+    return immutableProjectionRanges(boundedProjectionRanges(
+      doc2.length,
+      coveredRanges.flatMap((covered) => affected.flatMap((range) => {
+        const from = Math.max(covered.from, range.from);
+        const to = Math.min(covered.to, range.to);
+        return to > from ? [{ from, to }] : [];
+      })),
+      0
     ));
   }
   function transactionChangedSyntaxTree(transaction) {
@@ -36107,7 +36235,7 @@ ${fence}
               view.dispatch({
                 changes: { from: context.pos, insert: text },
                 selection: { anchor: context.pos + text.length },
-                annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]
+                annotations: Transaction.userEvent.of("input.complete.scholium.writing")
               });
               options.didApply("Complete Term");
               return true;
@@ -36213,7 +36341,7 @@ ${fence}
                 this.view.dispatch({
                   changes: { from: position, insert: text },
                   selection: { anchor: position + text.length },
-                  annotations: [Transaction.userEvent.of("input.complete.scholium.continuation"), isolateHistory.of("full")]
+                  annotations: Transaction.userEvent.of("input.complete.scholium.continuation")
                 });
                 options.didApply("Accept AI Continuation");
                 return true;
@@ -36422,9 +36550,22 @@ ${fence}
           label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role",
           apply: (view, completion, from, to) => {
-            const insert2 = `${callout.identifier}] `;
+            let end = to;
+            let folding = "";
+            if (view.state.sliceDoc(end, end + 1) === "]") {
+              end += 1;
+              const marker = view.state.sliceDoc(end, end + 1);
+              if (marker === "+" || marker === "-") {
+                folding = marker;
+                end += 1;
+              }
+            }
+            const following = view.state.sliceDoc(end, end + 1);
+            const separator = /^[ \t]$/.test(following) ? following : " ";
+            if (following === separator) end += 1;
+            const insert2 = `${callout.identifier}]${folding}${separator}`;
             view.dispatch({
-              changes: { from, to, insert: insert2 },
+              changes: { from, to: end, insert: insert2 },
               selection: { anchor: from + insert2.length },
               annotations: [
                 pickedCompletion.of(completion),
@@ -36466,7 +36607,7 @@ ${fence}
         if (this.destroyed) return;
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
-        if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
+        if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing || options.isComposing()) {
           options.nativeFloating.hide(nativeID);
           this.signature = "";
           return;
@@ -36477,7 +36618,7 @@ ${fence}
           this.signature = "";
           return;
         }
-        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
+        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && !options.isComposing() && this.view.root.activeElement === this.view.contentDOM;
         const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
         if (signature === this.signature) return;
         this.signature = signature;
@@ -36557,41 +36698,50 @@ ${fence}
       setWritingContinuationStatus: setContinuationStatus,
       resolveWritingContinuation: resolveContinuation,
       writingCompletionSource,
-      extension: [autocompletion({
-        override: [
-          slashCompletionSource,
-          calloutCompletionSource,
-          wikilinkCompletionSource,
-          citationCompletionSource,
-          analysisReferenceCompletionSource
-        ],
-        activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
-        maxRenderedOptions: 7,
-        icons: false,
-        tooltipClass: () => "scholium-editor-suggestions",
-        addToOptions: [{ render: suggestionSymbol, position: 20 }]
-      }), inlineWriting, Prec.highest(keymap.of([
-        { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
-        { key: "Escape", run: (view) => {
-          const plugin = view.plugin(inlineWriting);
-          if (!plugin) return false;
-          const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
-          plugin.clear();
-          view.dispatch({});
-          return visible;
-        } }
-      ])), nativePresentation, EditorView.baseTheme({
-        ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px" },
-        ".scholium-writing-ghost-text": { textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em" },
-        ".scholium-writing-ghost-key": { display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
-        ".scholium-writing-ghost-error-badge": { fontSize: "0.65em", marginInlineStart: "0.4em" },
-        // Keep CodeMirror's single accessible list and aria-activedescendant relation.
-        // Native rows are a pointer/visual projection and do not duplicate that AX tree.
-        ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
-          clipPath: "inset(100%)",
-          pointerEvents: "none"
-        }
-      })],
+      extension: [
+        autocompletion({
+          override: [
+            slashCompletionSource,
+            calloutCompletionSource,
+            wikilinkCompletionSource,
+            citationCompletionSource,
+            analysisReferenceCompletionSource
+          ],
+          activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
+          maxRenderedOptions: 7,
+          icons: false,
+          tooltipClass: () => "scholium-editor-suggestions",
+          addToOptions: [{ render: suggestionSymbol, position: 20 }]
+        }),
+        inlineWriting,
+        Prec.highest(keymap.of([
+          { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
+          { key: "Escape", run: (view) => {
+            const plugin = view.plugin(inlineWriting);
+            if (!plugin) return false;
+            const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
+            plugin.clear();
+            view.dispatch({});
+            return visible;
+          } }
+        ])),
+        nativePresentation,
+        // One acceptance boundary includes our sources and CodeMirror snippets,
+        // retaining their complete transactions while separating later typing.
+        EditorState.transactionExtender.of((transaction) => transaction.isUserEvent("input.complete") ? { annotations: isolateHistory.of("full") } : null),
+        EditorView.baseTheme({
+          ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px" },
+          ".scholium-writing-ghost-text": { textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em" },
+          ".scholium-writing-ghost-key": { display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
+          ".scholium-writing-ghost-error-badge": { fontSize: "0.65em", marginInlineStart: "0.4em" },
+          // Keep CodeMirror's single accessible list and aria-activedescendant relation.
+          // Native rows are a pointer/visual projection and do not duplicate that AX tree.
+          ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
+            clipPath: "inset(100%)",
+            pointerEvents: "none"
+          }
+        })
+      ],
       wikilinkCompletionSource,
       analysisReferenceCompletionSource,
       citationCompletionSource,
@@ -36862,6 +37012,11 @@ ${fence}
       view;
       gestureActive = false;
       destroyed = false;
+      update(update) {
+        if (!update.docChanged || !this.gestureActive) return;
+        this.gestureActive = false;
+        this.removeWindowListeners();
+      }
       finish = () => {
         if (!this.gestureActive) return;
         this.removeWindowListeners();
@@ -36869,7 +37024,7 @@ ${fence}
           if (this.destroyed || !this.gestureActive) return;
           this.gestureActive = false;
           this.view.dispatch({
-            selection: this.view.composing ? void 0 : options.completeSelection?.(this.view.state, this.view.state.selection),
+            selection: this.view.composing || this.view.compositionStarted ? void 0 : options.completeSelection?.(this.view.state, this.view.state.selection),
             effects: commitPointerSelection.of(null),
             userEvent: "select.pointer"
           });
@@ -36917,7 +37072,7 @@ ${fence}
         event.stopImmediatePropagation();
       };
       mousedown(event) {
-        if (event.button !== 0 || this.view.composing) return false;
+        if (event.button !== 0 || this.view.composing || this.view.compositionStarted) return false;
         if (options.handleModifiedLink(this.view, event)) return true;
         if (options.handleProjectedPointerStart(this.view, event)) return true;
         this.removeWindowListeners();
@@ -37830,7 +37985,8 @@ ${fence}
   // projected-widget-registry.ts
   function projectedSourceOffsetAt(event, root, fallback, upperBound) {
     const caretDocument = document;
-    const caret = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+    const hit = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+    const caret = hit && root.contains(hit.startContainer) ? hit : null;
     const caretElement = caret?.startContainer instanceof Element ? caret.startContainer : caret?.startContainer.parentElement;
     const pointMapped = document.elementsFromPoint(event.clientX, event.clientY).flatMap((element) => {
       const candidate = element.closest("[data-source-offset]");
@@ -37839,39 +37995,37 @@ ${fence}
     const mapped = caretElement?.closest("[data-source-offset]") ?? pointMapped ?? (event.target instanceof Element ? event.target.closest("[data-source-offset]") : null) ?? root;
     const base2 = Number(mapped.dataset.sourceOffset);
     if (!Number.isSafeInteger(base2)) return fallback;
-    let visibleOffset = 0;
-    if (caret && mapped.contains(caret.startContainer)) {
-      const range = document.createRange();
-      range.setStart(mapped, 0);
-      range.setEnd(caret.startContainer, caret.startOffset);
-      visibleOffset = range.toString().length;
-    } else if (mapped !== root || pointMapped) {
+    if (caret) {
+      const exact = renderedTextSourceOffset(caret.startContainer, caret.startOffset);
+      if (exact !== null) return Math.max(fallback, Math.min(upperBound, exact));
+    }
+    let sourceOffset = base2;
+    if (mapped !== root || pointMapped) {
       const walker = document.createTreeWalker(mapped, NodeFilter.SHOW_TEXT);
-      let textOffset = 0;
       let bestScore = Number.POSITIVE_INFINITY;
-      let bestOffset = 0;
       let node;
       while (node = walker.nextNode()) {
         const content2 = node.textContent ?? "";
-        for (let index = 0; index < content2.length; index += 1) {
+        for (let index = 0, end = 0; index < content2.length; index = end) {
+          end = findClusterBreak2(content2, index);
           const range = document.createRange();
           range.setStart(node, index);
-          range.setEnd(node, index + 1);
+          range.setEnd(node, end);
           const rect = range.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) continue;
           const verticalDistance = event.clientY < rect.top ? rect.top - event.clientY : event.clientY > rect.bottom ? event.clientY - rect.bottom : 0;
           const horizontalDistance = event.clientX < rect.left ? rect.left - event.clientX : event.clientX > rect.right ? event.clientX - rect.right : 0;
           const score2 = verticalDistance * 1e3 + horizontalDistance;
-          if (score2 < bestScore) {
+          const offset = event.clientX > (rect.left + rect.right) / 2 ? end : index;
+          const exact = renderedTextSourceOffset(node, offset);
+          if (exact !== null && score2 < bestScore) {
             bestScore = score2;
-            bestOffset = textOffset + index + (event.clientX > (rect.left + rect.right) / 2 ? 1 : 0);
+            sourceOffset = exact;
           }
         }
-        textOffset += content2.length;
       }
-      visibleOffset = bestOffset;
     }
-    return Math.max(fallback, Math.min(upperBound - 1, base2 + visibleOffset));
+    return Math.max(fallback, Math.min(upperBound, sourceOffset));
   }
   function createProjectedWidgetRegistry() {
     const tables = /* @__PURE__ */ new WeakMap();
@@ -37942,6 +38096,7 @@ ${fence}
   }
   function createLiveMermaidProjection(options) {
     const abortControllers = /* @__PURE__ */ new WeakMap();
+    const renderedThemes = /* @__PURE__ */ new WeakMap();
     class MermaidWidget extends WidgetType {
       constructor(presentation, themeRevision) {
         super();
@@ -37951,12 +38106,13 @@ ${fence}
       presentation;
       themeRevision;
       eq(other) {
-        return other.presentation.source === this.presentation.source && other.themeRevision === this.themeRevision;
+        return other.presentation.source === this.presentation.source && other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.contentFrom === this.presentation.contentFrom && other.presentation.contentTo === this.presentation.contentTo && other.themeRevision === this.themeRevision;
       }
       toDOM(view) {
         const slot = document.createElement("div");
         slot.className = "cm-live-mermaid-slot cm-live-mermaid-widget";
         options.widgets.setMermaid(slot, this.presentation);
+        renderedThemes.set(slot, this.themeRevision);
         const wrapper = document.createElement("figure");
         wrapper.className = "scholium-mermaid";
         wrapper.dataset.scholiumProtected = "mermaid";
@@ -38033,9 +38189,16 @@ ${fence}
         });
         return slot;
       }
+      updateDOM(dom) {
+        const previous = options.widgets.mermaid(dom);
+        if (!previous || previous.source !== this.presentation.source || renderedThemes.get(dom) !== this.themeRevision) return false;
+        options.widgets.setMermaid(dom, this.presentation);
+        return true;
+      }
       destroy(dom) {
         abortControllers.get(dom)?.abort();
         abortControllers.delete(dom);
+        renderedThemes.delete(dom);
       }
       ignoreEvent(event) {
         return event.type !== "mousedown";
@@ -38143,7 +38306,9 @@ ${fence}
     const delta = block.top - anchor.top;
     if (Math.abs(delta) < 0.25) return null;
     return {
-      delta,
+      // Height-map positions use measured screen pixels; scrollTop uses CSS
+      // pixels. Match CodeMirror's own scaled scroll-anchor correction.
+      delta: delta / view.scaleY,
       scrollTop: scroll.scrollTop,
       maximumScrollTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
       cursor: readLiveCursorGeometry(view),
@@ -38193,8 +38358,11 @@ ${fence}
             const scaleY = correction.surface.scaleY;
             writeLiveCursorGeometry(this.view, correction.cursor && {
               ...correction.cursor,
-              top: correction.cursor.top - applied * scaleY,
-              bottom: correction.cursor.bottom - applied * scaleY
+              cursors: correction.cursor.cursors.map((cursor) => ({
+                ...cursor,
+                top: cursor.top - applied * scaleY,
+                bottom: cursor.bottom - applied * scaleY
+              }))
             }, {
               ...correction.surface,
               scrollTop: correction.surface.scrollTop + applied * scaleY
@@ -38272,6 +38440,7 @@ ${fence}
         elements.forEach((element, index) => {
           element.dataset.sourceOffset = String(nextOffsets[index]);
         });
+        rebaseRenderedSourceLocations(dom, this.presentation.from - previous.from);
         options.widgets.setTable(dom, this.presentation);
         options.reuseCounts.table += 1;
         return true;
@@ -38350,6 +38519,7 @@ ${fence}
       title;
       foldable;
       collapsed;
+      static rendered = /* @__PURE__ */ new WeakMap();
       eq(other) {
         return this.from === other.from && this.bodyFrom === other.bodyFrom && this.foldTo === other.foldTo && this.label === other.label && this.title === other.title && this.foldable === other.foldable && this.collapsed === other.collapsed;
       }
@@ -38357,6 +38527,7 @@ ${fence}
         const root = document.createElement("span");
         root.className = "cm-live-callout-heading-control";
         root.dataset.calloutFrom = String(this.from);
+        CalloutHeadingWidget.rendered.set(root, this);
         if (this.foldable) {
           const button = document.createElement("button");
           button.type = "button";
@@ -38366,12 +38537,15 @@ ${fence}
           button.setAttribute("aria-label", localizedTemplate("Callout: {title}", { title: this.title || this.label }));
           button.addEventListener("mousedown", (event) => event.preventDefault());
           button.addEventListener("click", () => {
-            const from = Number(root.dataset.calloutFrom);
-            const collapsed = button.getAttribute("aria-expanded") === "true";
+            if (view.composing || view.compositionStarted) return;
+            const current = CalloutHeadingWidget.rendered.get(root);
+            if (!current) return;
+            const { from, bodyFrom, foldTo } = current;
+            const collapsed = !current.collapsed;
             view.dispatch({
               ...collapsed ? { selection: { anchor: from } } : {},
               effects: [
-                preserveLivePresentationLayout.of({ from: this.bodyFrom, to: this.foldTo }),
+                preserveLivePresentationLayout.of({ from: bodyFrom, to: foldTo }),
                 setCalloutFold.of({ from, collapsed })
               ]
             });
@@ -38390,6 +38564,7 @@ ${fence}
         const button = root.querySelector("button");
         const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
         if (!!button !== this.foldable || !!label !== !!this.label) return false;
+        CalloutHeadingWidget.rendered.set(root, this);
         root.dataset.calloutFrom = String(this.from);
         if (button) {
           button.textContent = "";
@@ -38591,7 +38766,7 @@ ${fence}
         const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
-          widget: options.widget(presentation),
+          widget: options.widget(presentation, state.doc.sliceString(presentation.from, presentation.to)),
           block: true
         }).range(presentation.from, presentation.to)];
       }), true);
@@ -38687,10 +38862,6 @@ ${fence}
           localizedTemplate("Footnote {ordinal}", { ordinal: this.reference.ordinal })
         );
         marker.textContent = String(this.reference.ordinal);
-        if (this.reference.definitionFrom === null) {
-          marker.setAttribute("aria-disabled", "true");
-          marker.classList.add("footnote-reference-missing");
-        }
         wrapper.append(marker);
         cluster.append(wrapper, this.trailingPunctuation);
         options.widgets.setFootnote(cluster, this.reference);
@@ -38723,6 +38894,7 @@ ${fence}
         }
       }
       for (const reference of presentation.references) {
+        if (reference.definitionFrom === null) continue;
         const containedByDefinition = presentation.definitions.some((definition) => !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
         const trailing = trailingFootnotePunctuation(state, reference.to);
         const projectionTo = reference.to + trailing.length;
@@ -38871,7 +39043,7 @@ ${fence}
       return Math.max(projection.from, previous);
     }
     function revealForVerticalMove(view, forward, extend) {
-      if (options.mode(view.state) !== "livePreview" || view.composing || view.state.selection.ranges.length !== 1) return false;
+      if (options.mode(view.state) !== "livePreview" || view.composing || view.compositionStarted || view.state.selection.ranges.length !== 1) return false;
       const selection = view.state.selection.main;
       if (!extend && !selection.empty) return false;
       const moved = view.moveVertically(selection, forward);
@@ -38903,7 +39075,7 @@ ${fence}
       });
       const expectedDocument = view.state.doc;
       const expectedSelection = view.state.selection;
-      const current = () => !view.composing && options.mode(view.state) === "livePreview" && view.state.doc === expectedDocument && view.state.selection.eq(expectedSelection, true);
+      const current = () => !view.composing && !view.compositionStarted && options.mode(view.state) === "livePreview" && view.state.doc === expectedDocument && view.state.selection.eq(expectedSelection, true);
       view.requestMeasure({
         read: () => {
           if (!current()) return null;
@@ -38937,7 +39109,7 @@ ${fence}
       return true;
     }
     function revealForHorizontalMove(view, forward, extend) {
-      if (options.mode(view.state) !== "livePreview" || view.composing || view.state.selection.ranges.length !== 1) return false;
+      if (options.mode(view.state) !== "livePreview" || view.composing || view.compositionStarted || view.state.selection.ranges.length !== 1) return false;
       const selection = view.state.selection.main;
       if (!extend && !selection.empty) return false;
       const listStep = stepInsideListPrefix(view, forward, extend);
@@ -38945,9 +39117,8 @@ ${fence}
       const projection = horizontalRangeAt(view.state, selection.head, forward);
       if (!projection) return false;
       const alreadyActive = selectionActivatesSyntax(selection, projection);
-      const isProjectedLink = projection.kind === "wikilink";
       if (alreadyActive) return false;
-      const head = forward ? isProjectedLink ? projection.to : projection.from : sourceEntryHead(view.state, projection, false);
+      const head = forward ? projection.from : sourceEntryHead(view.state, projection, false);
       if (head === selection.head) return false;
       view.dispatch({
         selection: { anchor: extend ? selection.anchor : head, head },
@@ -39020,13 +39191,14 @@ ${fence}
         if (!this.value.task) {
           projected.textContent = this.value.ordered ? this.value.marker : this.value.depth > 0 ? "\u25E6" : "\u2022";
           span.addEventListener("mousedown", (event) => {
-            if (event.button !== 0 || view.composing) return;
+            if (event.button !== 0 || view.compositionStarted) return;
             event.preventDefault();
             event.stopPropagation();
             if (this.value.markerFrom < 0 || this.value.markerTo <= this.value.markerFrom || this.value.markerTo > view.state.doc.length) return;
             view.dispatch({
-              selection: { anchor: this.value.markerFrom },
-              scrollIntoView: true
+              selection: projectedPointerSelection(view.state, event, this.value.markerFrom),
+              scrollIntoView: true,
+              annotations: Transaction.userEvent.of("select.pointer")
             });
             view.focus();
           });
@@ -39056,7 +39228,7 @@ ${fence}
       }
       toggleTask(view) {
         const { taskMarkerFrom, taskMarkerTo } = this.value;
-        if (view.composing || taskMarkerFrom === null || taskMarkerTo === null) return;
+        if (view.compositionStarted || taskMarkerFrom === null || taskMarkerTo === null) return;
         const current = view.state.doc.sliceString(taskMarkerFrom, taskMarkerTo);
         const insert2 = toggledTaskMarker(current);
         if (insert2 === null) return;
@@ -39178,14 +39350,16 @@ ${fence}
       }
     }
     class MathWidget extends WidgetType {
-      constructor(expression) {
+      constructor(expression, source) {
         super();
         this.expression = expression;
+        this.source = source;
       }
       expression;
+      source;
       runtimeReady = window.scholiumMath?.version === 1;
       eq(other) {
-        return other.runtimeReady === this.runtimeReady && other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
+        return other.runtimeReady === this.runtimeReady && other.source === this.source && other.expression.from === this.expression.from && other.expression.to === this.expression.to && other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
       }
       toDOM(view) {
         const element = document.createElement("span");
@@ -39204,11 +39378,8 @@ ${fence}
           element.append(output);
         } else {
           const source = document.createElement("code");
-          const delimiter = "$".repeat(this.expression.delimiterLength);
           source.className = "scholium-math-source";
-          source.textContent = this.expression.kind === "display" ? `${delimiter}
-${this.expression.content}
-${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
+          source.textContent = this.source;
           element.classList.add("scholium-math-error");
           element.setAttribute(
             "aria-label",
@@ -39217,14 +39388,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           element.append(source);
         }
         element.addEventListener("mousedown", (event) => {
-          if (event.button !== 0 || view.composing) return;
+          if (event.button !== 0 || view.compositionStarted) return;
           event.preventDefault();
           event.stopPropagation();
           const rect = element.getBoundingClientRect();
           const midpoint = rect.left + Math.max(0, rect.width) / 2;
           const position = event.clientX <= midpoint ? this.expression.from : this.expression.to;
           if (position < 0 || position > view.state.doc.length) return;
-          view.dispatch({ selection: { anchor: position }, scrollIntoView: true });
+          view.dispatch({
+            selection: projectedPointerSelection(view.state, event, position),
+            scrollIntoView: true,
+            annotations: Transaction.userEvent.of("select.pointer")
+          });
           view.focus();
         });
         if (this.expression.kind === "display") {
@@ -39244,7 +39419,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       embeddedNote: (preview, target, sourceCaret) => new EmbeddedNoteWidget(preview, target, sourceCaret),
       listIndent,
       listMarker: (value) => new ListMarkerWidget(value),
-      math: (expression) => new MathWidget(expression),
+      math: (expression, source) => new MathWidget(expression, source),
       linkAnnotation: (markdown2, target) => new LinkAnnotationWidget(markdown2, target)
     };
   }
@@ -40581,26 +40756,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (!block.fenced) return false;
     return block.markerRanges.some((range) => doc2.lineAt(range.from).from === lineFrom);
   }
-  function selectionAffectedProjectionAndCodeBlockRanges(state, previousSelections, nextSelections) {
-    const changedCodeBlocks = liveProjectionIndex.index(state).literals.codeBlocks.filter((block) => {
-      const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, block));
-      const isActive = nextSelections.some((selection) => selectionActivatesSyntax(selection, block));
-      return wasActive !== isActive;
-    });
-    return immutableProjectionRanges([
-      ...selectionAffectedProjectionRanges(
-        state.doc.length,
-        previousSelections,
-        nextSelections
-      ),
-      ...changedCodeBlocks
-    ]);
-  }
   function dispatchProjectedPointerSelection(view, event, sourceOffset) {
-    const head = Math.max(0, Math.min(sourceOffset, view.state.doc.length));
-    const anchor = event.shiftKey ? view.state.selection.main.anchor : head;
     view.dispatch({
-      selection: { anchor, head },
+      selection: projectedPointerSelection(view.state, event, sourceOffset),
       scrollIntoView: true,
       annotations: Transaction.userEvent.of("select.pointer")
     });
@@ -40630,11 +40788,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
     });
   }
-  function headingContentBounds(heading2) {
+  function headingContentBounds(view, heading2) {
     const rect = heading2.getBoundingClientRect();
     const style = getComputedStyle(heading2);
-    const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-    const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+    const paddingTop = (Number.parseFloat(style.paddingTop) || 0) * view.scaleY;
+    const paddingBottom = (Number.parseFloat(style.paddingBottom) || 0) * view.scaleY;
     const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
     return {
       rect,
@@ -40645,51 +40803,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function headingPointerIsContent(view, event) {
     const heading2 = headingAtPointer(view, event);
     if (!heading2) return false;
-    const { contentTop, contentBottom } = headingContentBounds(heading2);
+    const { contentTop, contentBottom } = headingContentBounds(view, heading2);
     return contentBottom > contentTop && event.clientY >= contentTop && event.clientY <= contentBottom;
   }
   function projectedHeadingSourceOffset(view, event) {
     const heading2 = headingAtPointer(view, event);
     if (!heading2) return null;
-    const { rect, contentTop, contentBottom } = headingContentBounds(heading2);
+    const { rect, contentTop, contentBottom } = headingContentBounds(view, heading2);
     if (contentBottom > contentTop && event.clientY >= contentTop && event.clientY <= contentBottom) return null;
     const contentY = contentBottom > contentTop ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5)) : (rect.top + rect.bottom) / 2;
     const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
     const caretNode = caret && heading2.contains(caret.startContainer) ? caret.startContainer : null;
     if (caretNode) {
-      const caretOffset = caret.startOffset;
-      const visible = heading2.textContent ?? "";
-      const visibleRange = document.createRange();
-      visibleRange.setStart(heading2, 0);
-      visibleRange.setEnd(caretNode, caretOffset);
-      const visibleOffset = Math.max(0, Math.min(visibleRange.toString().length, visible.length));
-      const domStart = view.posAtDOM(heading2, 0);
-      const parsedHeading = liveProjectionIndex.index(view.state).syntax.blocks.filter((block) => block.kind === "heading").reduce((nearest, block) => {
-        if (!nearest) return block;
-        return Math.abs(block.from - domStart) < Math.abs(nearest.from - domStart) ? block : nearest;
-      }, null);
-      const sourcePosition = parsedHeading?.from ?? view.posAtDOM(heading2, heading2.childNodes.length);
-      const sourceLine = view.state.doc.lineAt(
-        Math.max(0, Math.min(sourcePosition, view.state.doc.length))
-      );
-      const source = sourceLine.text;
-      const directStart = visible ? source.indexOf(visible) : -1;
-      if (directStart >= 0) {
-        return sourceLine.from + directStart + visibleOffset;
-      }
-      const sourceOffsets = [];
-      let sourceCursor = 0;
-      for (let visibleIndex = 0; visibleIndex < visible.length; visibleIndex += 1) {
-        const found = source.indexOf(visible[visibleIndex], sourceCursor);
-        if (found < 0) break;
-        sourceOffsets.push(found);
-        sourceCursor = found + 1;
-      }
-      if (sourceOffsets.length === visible.length && sourceOffsets.length > 0) {
-        const sourceOffset = visibleOffset >= sourceOffsets.length ? sourceOffsets.at(-1) + 1 : sourceOffsets[visibleOffset];
-        return sourceLine.from + sourceOffset;
-      }
-      return view.posAtDOM(caretNode, caretOffset);
+      return view.posAtDOM(caretNode, caret.startOffset);
     }
     return event.clientX <= rect.left + rect.width / 2 ? view.posAtDOM(heading2, 0) : view.posAtDOM(heading2, heading2.childNodes.length);
   }
@@ -40731,7 +40857,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveDisplayMathProjection = createLiveDisplayMathProjection({
     selection: liveSelection,
     projections: liveProjectionIndex,
-    widget: (expression) => liveInlineWidgets.math(expression),
+    widget: (expression, source) => liveInlineWidgets.math(expression, source),
     shouldRefreshRuntime: (transaction) => transaction.effects.some(
       (effect) => effect.is(refreshLivePreviewEffect)
     )
@@ -40820,28 +40946,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       decorations2.push(range);
       atomicRanges2.push(range);
     };
-    const addMultilineAtomicReplacement = (decoration, from, to) => {
+    const atomicAnnotations = /* @__PURE__ */ new Set();
+    const addMultilineAtomicReplacement = (decoration, from, to, scanFrom, scanTo) => {
       if (to <= from) return;
-      atomicRanges2.push(Decoration.mark({}).range(from, to));
-      const firstLineNumber = doc2.lineAt(from).number;
-      let line = doc2.lineAt(from);
-      let placedWidget = false;
-      while (line.from < to || line.from === from) {
-        const segmentFrom = Math.max(from, line.from);
-        const segmentTo = Math.min(to, line.to);
-        if (segmentTo > segmentFrom) {
-          decorations2.push(
-            (placedWidget ? hiddenSyntax : decoration).range(segmentFrom, segmentTo)
-          );
-          placedWidget = true;
-        }
-        if (line.number !== firstLineNumber && from <= line.from && to >= line.to) {
-          decorations2.push(Decoration.line({
-            attributes: { class: "cm-live-link-annotation-source-line" }
-          }).range(line.from));
-        }
-        if (line.to >= to || line.to === doc2.length) break;
-        line = doc2.line(line.number + 1);
+      const key = rangeKey(from, to);
+      if (!atomicAnnotations.has(key)) {
+        atomicAnnotations.add(key);
+        atomicRanges2.push(Decoration.mark({}).range(from, to));
+      }
+      const line = doc2.lineAt(scanFrom);
+      const segmentFrom = Math.max(from, scanFrom);
+      const segmentTo = Math.min(to, scanTo);
+      if (segmentTo > segmentFrom) {
+        decorations2.push((segmentFrom === from ? decoration() : hiddenSyntax).range(segmentFrom, segmentTo));
+      }
+      if (line.number !== doc2.lineAt(from).number && from <= line.from && to >= line.to) {
+        decorations2.push(Decoration.line({
+          attributes: { class: "cm-live-link-annotation-source-line" }
+        }).range(line.from));
       }
     };
     const addMark = (from, to, className) => {
@@ -40875,8 +40997,34 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       if (activeConstruct) continue;
       addAtomicReplacement(Decoration.replace({
-        widget: liveInlineWidgets.math(expression)
+        widget: liveInlineWidgets.math(expression, doc2.sliceString(expression.from, expression.to))
       }), expression.from, expression.to);
+    }
+    for (const covered of coveredRanges) {
+      for (const construct of projectionRangesIntersecting(parsedProjection.inlines, covered.from, covered.to)) {
+        const annotation = construct.annotationRange;
+        const content2 = construct.annotationContentRange;
+        const label = construct.aliasRange ?? construct.targetRange;
+        if (!annotation || !content2 || !label || projectionSelections.some((range) => selectionActivatesSyntax(range, construct))) continue;
+        const from = Math.max(covered.from, annotation.from);
+        const to = Math.min(covered.to, annotation.to);
+        if (to <= from) continue;
+        let line = doc2.lineAt(from);
+        while (line.from < to) {
+          addMultilineAtomicReplacement(
+            () => Decoration.replace({ widget: liveInlineWidgets.linkAnnotation(
+              doc2.sliceString(content2.from, content2.to),
+              doc2.sliceString(label.from, label.to)
+            ) }),
+            annotation.from,
+            annotation.to,
+            Math.max(from, line.from),
+            Math.min(to, line.to)
+          );
+          if (line.to >= to || line.number === doc2.lines) break;
+          line = doc2.line(line.number + 1);
+        }
+      }
     }
     literals2.sort((left, right) => left.from - right.from || left.to - right.to);
     for (const visible of coveredRanges) {
@@ -40952,8 +41100,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           }
           const heading2 = semanticBlocksOnLine.find((block) => block.kind === "heading");
           if (heading2 && heading2.headingLevel !== null) {
+            const setext = heading2.nodeName.startsWith("SetextHeading");
+            const headingActive = setext ? projectionSelections.some((range) => selectionActivatesSyntax(
+              range,
+              { from: doc2.lineAt(heading2.from).from, to: heading2.to }
+            )) : activeLine;
             const lineMarkers = heading2.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from);
-            if (!activeLine) {
+            if (!headingActive) {
               for (const marker of lineMarkers) {
                 addHidden(
                   Math.max(line.from, marker.from),
@@ -40962,6 +41115,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               }
             } else {
               for (const marker of lineMarkers) {
+                if (setext) {
+                  decorations2.push(liveMark("cm-live-heading-source-marker").range(
+                    Math.max(line.from, marker.from),
+                    Math.min(line.to, marker.to)
+                  ));
+                  continue;
+                }
                 addMark(
                   Math.max(line.from, marker.from),
                   Math.min(line.to, marker.to),
@@ -41098,17 +41258,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           ).filter((candidate) => candidate.kind === "wikilink")) {
             const linkRange = construct.linkRange ?? { from: construct.from, to: construct.to };
-            if (linkRange.from < scanFrom || linkRange.to > scanTo || overlaps3(excluded, construct.from, construct.to) || overlaps3(structuralInlineExclusions, construct.from, construct.to)) continue;
+            if (overlaps3(excluded, linkRange.from, linkRange.to) || overlaps3(structuralInlineExclusions, linkRange.from, linkRange.to)) continue;
             const targetRange = construct.targetRange;
             if (!targetRange) continue;
             excluded.push({ from: construct.from, to: construct.to });
             if (inlineConstructIsActive(construct.from, construct.to)) continue;
             const embed = doc2.sliceString(linkRange.from, Math.min(linkRange.to, linkRange.from + 3)) === "![[";
             const target = doc2.sliceString(targetRange.from, targetRange.to);
-            const alias = construct.aliasRange ? doc2.sliceString(construct.aliasRange.from, construct.aliasRange.to) : void 0;
             const displayRange = construct.aliasRange ?? targetRange;
             const previewIndex = linkPreviewIndexByRange.get(rangeKey(linkRange.from, linkRange.to));
             const preview = previewIndex === void 0 ? void 0 : linkPreviews[previewIndex];
+            if (linkRange.from < scanFrom || linkRange.to > scanTo) continue;
             if (embed && preview?.isEmbedded) {
               addAtomicReplacement(
                 Decoration.replace({
@@ -41140,21 +41300,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               );
             }
             addHidden(displayRange.to, linkRange.to);
-            if (construct.annotationRange && construct.annotationContentRange) {
-              addMultilineAtomicReplacement(
-                Decoration.replace({
-                  widget: liveInlineWidgets.linkAnnotation(
-                    doc2.sliceString(
-                      construct.annotationContentRange.from,
-                      construct.annotationContentRange.to
-                    ),
-                    alias || target
-                  )
-                }),
-                construct.annotationRange.from,
-                construct.annotationRange.to
-              );
-            }
           }
           for (const construct of projectionRangesIntersecting(
             parsedProjection.inlines,
@@ -41297,18 +41442,21 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           this.atomicRanges = retainDecorationsInRanges(this.atomicRanges, coveredRanges);
         }
         this.coveredRanges = coveredRanges;
-      } else if (liveSelection.changed(update.startState, update.state)) {
+      }
+      if (!update.docChanged && !explicitlyRefreshed && !syntaxTreeChanged && liveSelection.changed(update.startState, update.state)) {
         const projectionIndex = liveProjectionIndex.index(update.state);
         const inlineRanges = projectionIndex.inlineRanges;
         const codeBlockRanges = projectionIndex.literals.codeBlocks.map((block) => codeBlockActivationRange(update.state.doc, block));
-        const codeBlockActivationUnchanged = activeProjectionSignature(
+        const setextRanges = projectionIndex.syntax.blocks.filter((block) => block.kind === "heading" && block.nodeName.startsWith("SetextHeading")).map((block) => ({ from: update.state.doc.lineAt(block.from).from, to: block.to }));
+        const blockActivationRanges = immutableProjectionRanges([...codeBlockRanges, ...setextRanges]);
+        const blockActivationUnchanged = activeProjectionSignature(
           liveSelection.selection(update.startState).ranges,
-          codeBlockRanges
+          blockActivationRanges
         ) === activeProjectionSignature(
           liveSelection.selection(update.state).ranges,
-          codeBlockRanges
+          blockActivationRanges
         );
-        if (!update.view.composing && codeBlockActivationUnchanged && selectionProjectionSignature(
+        if (!update.view.composing && blockActivationUnchanged && selectionProjectionSignature(
           update.startState.doc,
           liveSelection.selection(update.startState).ranges,
           inlineRanges,
@@ -41321,10 +41469,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         )) {
           return;
         }
-        const affected = selectionAffectedProjectionAndCodeBlockRanges(
-          update.state,
+        const affected = selectionProjectionRefreshRanges(
+          update.state.doc,
           liveSelection.selection(update.startState).ranges,
-          liveSelection.selection(update.state).ranges
+          liveSelection.selection(update.state).ranges,
+          immutableProjectionRanges([...inlineRanges, ...codeBlockRanges, ...setextRanges]),
+          this.coveredRanges
         );
         const projection = buildLiveDecorations(update.view, affected);
         this.decorations = replacingDecorationsInRanges(
@@ -41753,7 +41903,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     canInsertCitation: (state) => citationInsertionAvailable(state),
     mode: configuredEditorMode,
     dialect: () => editingDialect,
-    isComposing: () => editor.composing,
+    isComposing: () => editor.compositionStarted || compositionGate.active,
     protectedRanges: protectedCommandRanges,
     requestLinkCompletions: (requestID, completionKind, query) => {
       post({ type: "linkCompletionQuery", requestID, completionKind, query });

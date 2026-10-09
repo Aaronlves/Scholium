@@ -1,6 +1,6 @@
 import {Range, StateEffect, StateField, type EditorState, type Extension} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType, type ViewUpdate} from "@codemirror/view";
-import {createTableDOM} from "./markdown-fragment";
+import {createTableDOM, rebaseRenderedSourceLocations} from "./markdown-fragment";
 import {localizedTemplate} from "./localization";
 import {calloutDefinition, calloutHeader} from "./callout-presentation";
 import type {MarkdownEditingDialect} from "./protocol";
@@ -92,6 +92,7 @@ export function createLiveStructuredBlockProjections(options: {
       elements.forEach((element, index) => {
         element.dataset.sourceOffset = String(nextOffsets[index]);
       });
+      rebaseRenderedSourceLocations(dom, this.presentation.from - previous.from);
       options.widgets.setTable(dom, this.presentation);
       options.reuseCounts.table += 1;
       return true;
@@ -164,6 +165,8 @@ export function createLiveStructuredBlockProjections(options: {
   }
 
   class CalloutHeadingWidget extends WidgetType {
+    private static readonly rendered = new WeakMap<HTMLElement, CalloutHeadingWidget>();
+
     constructor(
       readonly from: number,
       readonly bodyFrom: number,
@@ -183,6 +186,7 @@ export function createLiveStructuredBlockProjections(options: {
       const root = document.createElement("span");
       root.className = "cm-live-callout-heading-control";
       root.dataset.calloutFrom = String(this.from);
+      CalloutHeadingWidget.rendered.set(root, this);
       if (this.foldable) {
         const button = document.createElement("button");
         button.type = "button";
@@ -192,12 +196,15 @@ export function createLiveStructuredBlockProjections(options: {
         button.setAttribute("aria-label", localizedTemplate("Callout: {title}", {title: this.title || this.label}));
         button.addEventListener("mousedown", event => event.preventDefault());
         button.addEventListener("click", () => {
-          const from = Number(root.dataset.calloutFrom);
-          const collapsed = button.getAttribute("aria-expanded") === "true";
+          if (view.composing || view.compositionStarted) return;
+          const current = CalloutHeadingWidget.rendered.get(root);
+          if (!current) return;
+          const {from, bodyFrom, foldTo} = current;
+          const collapsed = !current.collapsed;
           view.dispatch({
             ...(collapsed ? {selection: {anchor: from}} : {}),
             effects: [
-              preserveLivePresentationLayout.of({from: this.bodyFrom, to: this.foldTo}),
+              preserveLivePresentationLayout.of({from: bodyFrom, to: foldTo}),
               setCalloutFold.of({from, collapsed}),
             ],
           });
@@ -218,6 +225,7 @@ export function createLiveStructuredBlockProjections(options: {
       const button = root.querySelector("button");
       const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
       if (!!button !== this.foldable || !!label !== !!this.label) return false;
+      CalloutHeadingWidget.rendered.set(root, this);
       root.dataset.calloutFrom = String(this.from);
       if (button) {
         button.textContent = "";

@@ -171,10 +171,12 @@ function childRanges(
   return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
-function directChildRanges(root: ProjectionSyntaxNode, name: string) {
+function directChildRanges(root: ProjectionSyntaxNode, names: string | ReadonlySet<string>) {
   const ranges: SemanticSourceRange[] = [];
   for (let child = root.firstChild; child; child = child.nextSibling) {
-    if (child.name === name) ranges.push({from: child.from, to: child.to});
+    if (typeof names === "string" ? child.name === names : names.has(child.name)) {
+      ranges.push({from: child.from, to: child.to});
+    }
   }
   return ranges;
 }
@@ -282,8 +284,10 @@ function inlinePresentation(
     break;
   case "comment": break;
   }
-  const markerRanges = kind === "image"
-    ? directChildRanges(node, "LinkMark") : childRanges(node, markerNames);
+  // Each inline construct owns its immediate delimiters. Descendant
+  // constructs keep their own activation boundary: a strong span cannot own
+  // nested emphasis marks, and a link cannot borrow its image label's marks.
+  const markerRanges = directChildRanges(node, markerNames);
   let targetRange: SemanticSourceRange | null = null;
   let aliasRange: SemanticSourceRange | null = null;
   let linkRange: SemanticSourceRange | null = null;
@@ -310,7 +314,7 @@ function inlinePresentation(
     }
     visibleRanges = [alt];
   } else if (kind === "link") {
-    const explicitVisible = childRanges(node, new Set(["URL"]));
+    const explicitVisible = directChildRanges(node, "URL");
     // The Markdown parser can retain a recoverable Link node for an unfinished
     // `[label](` prefix. Without a URL child there is no proven destination,
     // so it remains ordinary editable source instead of becoming an active
@@ -540,10 +544,10 @@ export function semanticProjectionRanges(
         ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind)
           && candidate.from < block.to && candidate.to > block.from);
   for (const block of result.blocks) {
-    if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+    if (block.kind !== "paragraph") continue;
     const paragraph = source.slice(block.from, block.to);
     const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
-    if (!match) continue;
+    if (!match || paragraphIsProtected(block)) continue;
     const markerFrom = block.from + match.index + match[0].indexOf("^");
     const markerTo = markerFrom + match[1].length + 1;
     if (paragraph.trim() === source.slice(markerFrom, markerTo)) {

@@ -7,6 +7,7 @@ import type {LinkPreview} from "./previews";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {toggledTaskMarker} from "./transformations";
 import {appendMarkdownBlocks} from "./markdown-fragment";
+import {projectedPointerSelection} from "./projected-pointer-selection";
 
 interface ListMarkerOptions {
   marker: string;
@@ -78,15 +79,16 @@ export function createLiveInlineWidgets(options: {
           ? this.value.marker
           : this.value.depth > 0 ? "◦" : "•";
         span.addEventListener("mousedown", (event) => {
-          if (event.button !== 0 || view.composing) return;
+          if (event.button !== 0 || view.compositionStarted) return;
           event.preventDefault();
           event.stopPropagation();
           if (this.value.markerFrom < 0
               || this.value.markerTo <= this.value.markerFrom
               || this.value.markerTo > view.state.doc.length) return;
           view.dispatch({
-            selection: {anchor: this.value.markerFrom},
+            selection: projectedPointerSelection(view.state, event, this.value.markerFrom),
             scrollIntoView: true,
+            annotations: Transaction.userEvent.of("select.pointer"),
           });
           view.focus();
         });
@@ -118,7 +120,7 @@ export function createLiveInlineWidgets(options: {
 
     private toggleTask(view: EditorView) {
       const {taskMarkerFrom, taskMarkerTo} = this.value;
-      if (view.composing || taskMarkerFrom === null || taskMarkerTo === null) return;
+      if (view.compositionStarted || taskMarkerFrom === null || taskMarkerTo === null) return;
       const current = view.state.doc.sliceString(taskMarkerFrom, taskMarkerTo);
       const insert = toggledTaskMarker(current);
       if (insert === null) return;
@@ -250,10 +252,13 @@ export function createLiveInlineWidgets(options: {
   class MathWidget extends WidgetType {
     readonly runtimeReady = window.scholiumMath?.version === 1;
 
-    constructor(readonly expression: MathProjection) { super(); }
+    constructor(readonly expression: MathProjection, readonly source: string) { super(); }
 
     eq(other: MathWidget) {
       return other.runtimeReady === this.runtimeReady
+        && other.source === this.source
+        && other.expression.from === this.expression.from
+        && other.expression.to === this.expression.to
         && other.expression.kind === this.expression.kind
         && other.expression.content === this.expression.content
         && other.expression.delimiterLength === this.expression.delimiterLength;
@@ -279,11 +284,8 @@ export function createLiveInlineWidgets(options: {
         element.append(output);
       } else {
         const source = document.createElement("code");
-        const delimiter = "$".repeat(this.expression.delimiterLength);
         source.className = "scholium-math-source";
-        source.textContent = this.expression.kind === "display"
-          ? `${delimiter}\n${this.expression.content}\n${delimiter}`
-          : `${delimiter}${this.expression.content}${delimiter}`;
+        source.textContent = this.source;
         element.classList.add("scholium-math-error");
         element.setAttribute(
           "aria-label",
@@ -299,7 +301,7 @@ export function createLiveInlineWidgets(options: {
       // boundary, keeping pointer placement predictable for inline and block
       // expressions alike.
       element.addEventListener("mousedown", (event) => {
-        if (event.button !== 0 || view.composing) return;
+        if (event.button !== 0 || view.compositionStarted) return;
         event.preventDefault();
         event.stopPropagation();
         const rect = element.getBoundingClientRect();
@@ -308,7 +310,11 @@ export function createLiveInlineWidgets(options: {
           ? this.expression.from
           : this.expression.to;
         if (position < 0 || position > view.state.doc.length) return;
-        view.dispatch({selection: {anchor: position}, scrollIntoView: true});
+        view.dispatch({
+          selection: projectedPointerSelection(view.state, event, position),
+          scrollIntoView: true,
+          annotations: Transaction.userEvent.of("select.pointer"),
+        });
         view.focus();
       });
       if (this.expression.kind === "display") {
@@ -329,7 +335,7 @@ export function createLiveInlineWidgets(options: {
       new EmbeddedNoteWidget(preview, target, sourceCaret),
     listIndent,
     listMarker: (value: ListMarkerOptions) => new ListMarkerWidget(value),
-    math: (expression: MathProjection) => new MathWidget(expression),
+    math: (expression: MathProjection, source: string) => new MathWidget(expression, source),
     linkAnnotation: (markdown: string, target: string) =>
       new LinkAnnotationWidget(markdown, target),
   };

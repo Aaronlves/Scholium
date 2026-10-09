@@ -91,7 +91,9 @@ function readLayoutCorrection(view: EditorView, anchor: LayoutAnchor): LayoutCor
   const delta = block.top - anchor.top;
   if (Math.abs(delta) < 0.25) return null;
   return {
-    delta,
+    // Height-map positions use measured screen pixels; scrollTop uses CSS
+    // pixels. Match CodeMirror's own scaled scroll-anchor correction.
+    delta: delta / view.scaleY,
     scrollTop: scroll.scrollTop,
     maximumScrollTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
     cursor: readLiveCursorGeometry(view),
@@ -155,8 +157,11 @@ export const livePresentationLayout = ViewPlugin.fromClass(class {
           const scaleY = correction.surface.scaleY;
           writeLiveCursorGeometry(this.view, correction.cursor && {
             ...correction.cursor,
-            top: correction.cursor.top - applied * scaleY,
-            bottom: correction.cursor.bottom - applied * scaleY,
+            cursors: correction.cursor.cursors.map(cursor => ({
+              ...cursor,
+              top: cursor.top - applied * scaleY,
+              bottom: cursor.bottom - applied * scaleY,
+            })),
           }, {
             ...correction.surface,
             scrollTop: correction.surface.scrollTop + applied * scaleY,

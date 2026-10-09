@@ -66,15 +66,19 @@ function continuedListPrefix(match: ListPrefix) {
   return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
 }
 
-function calloutQuotePrefix(line: string) {
-  return /^(\s*>[ \t]?)/.exec(line);
+function calloutHeaderPrefix(line: string) {
+  return /^[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]+|$)/.exec(line)?.[0];
 }
 
 function lineBelongsToCallout(document: Text, lineNumber: number) {
+  let quoteDepth = Number.POSITIVE_INFINITY;
   for (let number = lineNumber; number >= 1; number -= 1) {
     const line = document.line(number).text;
-    if (!calloutQuotePrefix(line)) return false;
-    if (/^\s*>[ \t]*\[![^\]\r\n]+\](?:[+-])?(?:[ \t]|$)/.test(line)) return true;
+    const prefix = blockquotePrefix(line);
+    if (!prefix) return false;
+    const depth = prefix.split(">").length - 1;
+    if (depth <= quoteDepth && calloutHeaderPrefix(line.slice(prefix.length))) return true;
+    quoteDepth = Math.min(quoteDepth, depth);
   }
   return false;
 }
@@ -94,10 +98,17 @@ export function continueCallout(
   const entries = selections.map((selection) => {
     const bounds = document.lineAt(selection.head);
     if (options.lineIsProtected?.(bounds)) return null;
-    const prefix = calloutQuotePrefix(bounds.text)?.[1];
+    const prefix = blockquotePrefix(bounds.text);
     if (!prefix || !lineBelongsToCallout(document, bounds.number)) return null;
     const quotedContent = bounds.text.slice(prefix.length);
     const nestedList = listPrefix(quotedContent);
+    const headerPrefix = calloutHeaderPrefix(quotedContent);
+    const contentFrom = bounds.from + prefix.length
+      + (nestedList?.sourcePrefix.length ?? headerPrefix?.length ?? 0);
+    // Prefix editing belongs to the normal Markdown/Newline commands. A
+    // continuation inserted before the body would duplicate or split the
+    // quote, Callout header, or nested list marker being edited.
+    if (selection.head < contentFrom) return null;
     if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
       return {
         change: {
@@ -110,9 +121,10 @@ export function continueCallout(
       };
     }
     if (quotedContent.trim().length === 0) {
+      const parentPrefix = blockquotePrefix(prefix.slice(0, prefix.lastIndexOf(">")));
       return {
-        change: {from: bounds.from, to: bounds.from + prefix.length, insert: ""},
-        localSelection: bounds.from,
+        change: {from: bounds.from + parentPrefix.length, to: bounds.from + prefix.length, insert: ""},
+        localSelection: bounds.from + parentPrefix.length,
         undoLabel: "Exit Callout",
       };
     }
@@ -155,6 +167,7 @@ export function continueList(
     const line = bounds.text;
     const match = listPrefix(line);
     if (!match || options.lineIsProtected?.(bounds)) return null;
+    if (selection.head < bounds.from + match.sourcePrefix.length) return null;
     const content = line.slice(match.sourcePrefix.length);
     if (content.trim().length === 0) {
       const from = bounds.from + match.quotePrefix.length;

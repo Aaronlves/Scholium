@@ -18,9 +18,9 @@ import {
 } from "@codemirror/autocomplete";
 import {
   EditorSelection,
+  EditorState,
   Prec,
   Transaction,
-  type EditorState,
   type Extension,
 } from "@codemirror/state";
 import {
@@ -624,7 +624,7 @@ export function createEditorInputSuggestions(
             const text = termSuffix(context.state, context.pos, candidate)!;
             if (!exactSourceFitsChanges(view.state, [{from: context.pos, to: context.pos, insert: text}])) return false;
             view.dispatch({changes: {from: context.pos, insert: text}, selection: {anchor: context.pos + text.length},
-              annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]});
+              annotations: Transaction.userEvent.of("input.complete.scholium.writing")});
             options.didApply("Complete Term");
             return true;
           },
@@ -711,7 +711,7 @@ export function createEditorInputSuggestions(
               }
               this.clear();
               this.view.dispatch({changes: {from: position, insert: text}, selection: {anchor: position + text.length},
-                annotations: [Transaction.userEvent.of("input.complete.scholium.continuation"), isolateHistory.of("full")]});
+                annotations: Transaction.userEvent.of("input.complete.scholium.continuation")});
               options.didApply("Accept AI Continuation");
               return true;
             };
@@ -924,9 +924,19 @@ export function createEditorInputSuggestions(
           label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role" satisfies SuggestionType,
           apply: (view, completion, from, to) => {
-            const insert = `${callout.identifier}] `;
+            let end = to;
+            let folding = "";
+            if (view.state.sliceDoc(end, end + 1) === "]") {
+              end += 1;
+              const marker = view.state.sliceDoc(end, end + 1);
+              if (marker === "+" || marker === "-") { folding = marker; end += 1; }
+            }
+            const following = view.state.sliceDoc(end, end + 1);
+            const separator = /^[ \t]$/.test(following) ? following : " ";
+            if (following === separator) end += 1;
+            const insert = `${callout.identifier}]${folding}${separator}`;
             view.dispatch({
-              changes: {from, to, insert},
+              changes: {from, to: end, insert},
               selection: {anchor: from + insert.length},
               annotations: [
                 pickedCompletion.of(completion),
@@ -965,7 +975,8 @@ export function createEditorInputSuggestions(
       if (this.destroyed) return;
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
-      if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
+      if (!anchor || this.view.root.activeElement !== this.view.contentDOM
+        || this.view.composing || options.isComposing()) {
         options.nativeFloating.hide(nativeID);
         this.signature = "";
         return;
@@ -980,7 +991,8 @@ export function createEditorInputSuggestions(
       }
       const valid = () => !this.destroyed && state.doc === this.view.state.doc
         && state.selection.eq(this.view.state.selection)
-        && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
+        && !this.view.composing && !options.isComposing()
+        && this.view.root.activeElement === this.view.contentDOM;
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
       if (signature === this.signature) return;
       this.signature = signature;
@@ -1071,7 +1083,12 @@ export function createEditorInputSuggestions(
         const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
         plugin.clear(); view.dispatch({}); return visible;
       }},
-    ])), nativePresentation, EditorView.baseTheme({
+    ])), nativePresentation,
+    // One acceptance boundary includes our sources and CodeMirror snippets,
+    // retaining their complete transactions while separating later typing.
+    EditorState.transactionExtender.of(transaction => transaction.isUserEvent("input.complete")
+      ? {annotations: isolateHistory.of("full")} : null),
+    EditorView.baseTheme({
       ".scholium-writing-ghost": {color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px"},
       ".scholium-writing-ghost-text": {textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em"},
       ".scholium-writing-ghost-key": {display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap"},

@@ -49,6 +49,7 @@ function navigation(options: {
   const view = {
     get state() { return state; },
     composing: false,
+    compositionStarted: false,
     dispatch,
     contentDOM: {getBoundingClientRect: () => ({left: 10})},
     coordsAtPos: vi.fn((_position: number, _side?: number) =>
@@ -83,6 +84,24 @@ function navigation(options: {
 }
 
 describe("Live Preview keyboard projection entry", () => {
+  it.each(["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"])("yields %s as soon as composition starts", key => {
+    const harness = navigation({selection: EditorSelection.single(5)});
+    harness.view.compositionStarted = true;
+    expect(harness.run(key)).toBe(false);
+    expect(harness.view.moveVertically).not.toHaveBeenCalled();
+    expect(harness.view.moveByChar).not.toHaveBeenCalled();
+    expect(harness.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pending vertical-entry commit when composition starts before its first text change", async () => {
+    const harness = navigation({selection: EditorSelection.single(5)});
+    expect(harness.run("ArrowDown")).toBe(true);
+    const measure = harness.pending.shift()!;
+    measure.write(measure.read());
+    harness.view.compositionStarted = true;
+    await Promise.resolve();
+    expect(harness.dispatch).toHaveBeenCalledTimes(1);
+  });
   it("enters admitted image blocks vertically through the existing measured source handoff", async () => {
     const imageSource = "Before.\n\n![Alt](Attachments/a.png)\n\nAfter.";
     const from = imageSource.indexOf("![Alt]"), to = imageSource.indexOf("\n\nAfter");
@@ -290,6 +309,18 @@ describe("Live Preview keyboard projection entry", () => {
     expect(selectCharRight(harness.view as unknown as EditorView)).toBe(true);
     expect(harness.view.state.selection.main).toMatchObject({anchor: link.from, head: link.from + 1});
     expect(harness.view.state.sliceDoc(link.from, link.from + 1)).toBe("[");
+  });
+
+  it("lets an existing Shift selection enter an inactive Wikilink one character at a time", () => {
+    const linkSource = "text [[Target]]";
+    const link = {from: 5, to: linkSource.length, kind: "wikilink"};
+    const harness = navigation({doc: linkSource,
+      selection: EditorSelection.single(0, link.from), blocks: [], links: [link]});
+    expect(harness.run("Shift-ArrowRight")).toBe(false);
+    expect(harness.dispatch).not.toHaveBeenCalled();
+    expect(selectCharRight(harness.view as unknown as EditorView)).toBe(true);
+    expect(harness.view.state.selection.main).toMatchObject({anchor: 0, head: link.from + 1});
+    expect(harness.view.state.doc.toString()).toBe(linkSource);
   });
 
   it.each(["list", "heading"])("lets Shift-Right extend past an inactive %s's incoming edge", kind => {

@@ -127,7 +127,7 @@ export function createLiveProjectionNavigation(options: {
     forward: boolean,
     extend: boolean,
   ) {
-    if (options.mode(view.state) !== "livePreview" || view.composing
+    if (options.mode(view.state) !== "livePreview" || view.composing || view.compositionStarted
         || view.state.selection.ranges.length !== 1) return false;
     const selection = view.state.selection.main;
     // Plain movement collapses an existing selection through CodeMirror's
@@ -165,7 +165,7 @@ export function createLiveProjectionNavigation(options: {
     });
     const expectedDocument = view.state.doc;
     const expectedSelection = view.state.selection;
-    const current = () => !view.composing
+    const current = () => !view.composing && !view.compositionStarted
       && options.mode(view.state) === "livePreview"
       && view.state.doc === expectedDocument
       && view.state.selection.eq(expectedSelection, true);
@@ -205,7 +205,7 @@ export function createLiveProjectionNavigation(options: {
     forward: boolean,
     extend: boolean,
   ) {
-    if (options.mode(view.state) !== "livePreview" || view.composing
+    if (options.mode(view.state) !== "livePreview" || view.composing || view.compositionStarted
         || view.state.selection.ranges.length !== 1) return false;
     const selection = view.state.selection.main;
     if (!extend && !selection.empty) return false;
@@ -214,10 +214,9 @@ export function createLiveProjectionNavigation(options: {
     const projection = horizontalRangeAt(view.state, selection.head, forward);
     if (!projection) return false;
     const alreadyActive = selectionActivatesSyntax(selection, projection);
-    const isProjectedLink = projection.kind === "wikilink";
     if (alreadyActive) return false;
     const head = forward
-      ? isProjectedLink ? projection.to : projection.from
+      ? projection.from
       : sourceEntryHead(view.state, projection, false);
     // A Shift selection ending at the incoming edge has not activated the
     // source yet. Let CodeMirror extend it rather than consuming a no-op.

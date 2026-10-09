@@ -80,10 +80,6 @@ export function createLiveFootnoteProjection(options: {
         localizedTemplate("Footnote {ordinal}", {ordinal: this.reference.ordinal}),
       );
       marker.textContent = String(this.reference.ordinal);
-      if (this.reference.definitionFrom === null) {
-        marker.setAttribute("aria-disabled", "true");
-        marker.classList.add("footnote-reference-missing");
-      }
       wrapper.append(marker);
       cluster.append(wrapper, this.trailingPunctuation);
       options.widgets.setFootnote(cluster, this.reference);
@@ -126,6 +122,9 @@ export function createLiveFootnoteProjection(options: {
       }
     }
     for (const reference of presentation.references) {
+      // An unresolved identifier remains exact editable source. Giving it an
+      // ordinal would hide the only authored destination available to repair.
+      if (reference.definitionFrom === null) continue;
       const containedByDefinition = presentation.definitions.some((definition) =>
         !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
       const trailing = trailingFootnotePunctuation(state, reference.to);

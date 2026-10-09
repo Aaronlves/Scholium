@@ -1,4 +1,4 @@
-import {type Extension, type Range} from "@codemirror/state";
+import {findClusterBreak, type Extension, type Range} from "@codemirror/state";
 import {Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 
 export type ScholiumTextLanguage = "zh-Hans" | "en";
@@ -35,14 +35,14 @@ export function cjkPresentationRanges(text: string): ScholiumTextRange[] {
   let runStart: number | undefined;
   for (let offset = 0; offset < text.length;) {
     const codePoint = text.codePointAt(offset) ?? 0;
-    const width = codePoint > 0xffff ? 2 : 1;
+    const next = findClusterBreak(text, offset);
     if (isCJKPresentationCharacter(codePoint)) {
       if (runStart === undefined) runStart = offset;
     } else if (runStart !== undefined) {
       ranges.push({from: runStart, to: offset});
       runStart = undefined;
     }
-    offset += width;
+    offset = next;
   }
   if (runStart !== undefined) ranges.push({from: runStart, to: text.length});
   return ranges;

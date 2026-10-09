@@ -7,6 +7,7 @@ import {editorSuspension, editorSuspensionState, setEditorSuspension} from "./ed
 import {createDocumentTitle} from "./document-title";
 import {passageReplacement} from "./passage-replacement";
 import {createSelectionActions} from "./selection-actions";
+import {projectedPointerSelection} from "./projected-pointer-selection";
 import {canRetainSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
 import {createNativeFloatingPorts} from "./native-floating";
@@ -104,18 +105,16 @@ import {
   boundedProjectionRanges,
   boundedLinePrefix,
   rangeKey,
-  type SemanticBlockProjection,
   type SemanticInlineProjection,
 } from "./semantic-projection";
 import {
   activeProjectionSignature,
-  selectionAffectedProjectionRanges,
+  selectionProjectionRefreshRanges,
   selectionActivatesSyntax,
   selectionProjectionSignature,
   frontmatterPresentationNeedsRebuild,
   selectionIntersectsPhysicalLine,
   transactionChangedSyntaxTree,
-  type ProjectionSelectionRange,
   type ProjectionSourceRange,
 } from "./projection-update";
 import {
@@ -348,37 +347,13 @@ function isFencedDelimiterLine(doc: Text, block: SemanticCodeBlockRange, lineFro
   return block.markerRanges.some((range) => doc.lineAt(range.from).from === lineFrom);
 }
 
-function selectionAffectedProjectionAndCodeBlockRanges(
-  state: EditorState,
-  previousSelections: readonly ProjectionSelectionRange[],
-  nextSelections: readonly ProjectionSelectionRange[],
-) {
-  const changedCodeBlocks = liveProjectionIndex.index(state).literals.codeBlocks.filter((block) => {
-    const wasActive = previousSelections.some((selection) =>
-      selectionActivatesSyntax(selection, block));
-    const isActive = nextSelections.some((selection) =>
-      selectionActivatesSyntax(selection, block));
-    return wasActive !== isActive;
-  });
-  return immutableProjectionRanges([
-    ...selectionAffectedProjectionRanges(
-      state.doc.length,
-      previousSelections,
-      nextSelections,
-    ),
-    ...changedCodeBlocks,
-  ]);
-}
-
 function dispatchProjectedPointerSelection(
   view: EditorView,
   event: MouseEvent,
   sourceOffset: number,
 ) {
-  const head = Math.max(0, Math.min(sourceOffset, view.state.doc.length));
-  const anchor = event.shiftKey ? view.state.selection.main.anchor : head;
   view.dispatch({
-    selection: {anchor, head},
+    selection: projectedPointerSelection(view.state, event, sourceOffset),
     scrollIntoView: true,
     annotations: Transaction.userEvent.of("select.pointer"),
   });
@@ -416,11 +391,11 @@ function headingAtPointer(view: EditorView, event: MouseEvent) {
       });
 }
 
-function headingContentBounds(heading: HTMLElement) {
+function headingContentBounds(view: EditorView, heading: HTMLElement) {
   const rect = heading.getBoundingClientRect();
   const style = getComputedStyle(heading);
-  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-  const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+  const paddingTop = (Number.parseFloat(style.paddingTop) || 0) * view.scaleY;
+  const paddingBottom = (Number.parseFloat(style.paddingBottom) || 0) * view.scaleY;
   const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
   return {
     rect,
@@ -432,7 +407,7 @@ function headingContentBounds(heading: HTMLElement) {
 function headingPointerIsContent(view: EditorView, event: MouseEvent) {
   const heading = headingAtPointer(view, event);
   if (!heading) return false;
-  const {contentTop, contentBottom} = headingContentBounds(heading);
+  const {contentTop, contentBottom} = headingContentBounds(view, heading);
   return contentBottom > contentTop
     && event.clientY >= contentTop
     && event.clientY <= contentBottom;
@@ -446,7 +421,7 @@ function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
   // Let CodeMirror own pointer selection on its content row so both drag
   // directions retain the native anchor/head semantics. Only the visual
   // padding needs a source-local fallback because it has no text geometry.
-  const {rect, contentTop, contentBottom} = headingContentBounds(heading);
+  const {rect, contentTop, contentBottom} = headingContentBounds(view, heading);
   if (contentBottom > contentTop
       && event.clientY >= contentTop
       && event.clientY <= contentBottom) return null;
@@ -465,51 +440,10 @@ function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
     ? caret.startContainer
     : null;
   if (caretNode) {
-    const caretOffset = caret!.startOffset;
-    const visible = heading.textContent ?? "";
-    const visibleRange = document.createRange();
-    visibleRange.setStart(heading, 0);
-    visibleRange.setEnd(caretNode, caretOffset);
-    const visibleOffset = Math.max(0, Math.min(visibleRange.toString().length, visible.length));
-    const domStart = view.posAtDOM(heading, 0);
-    const parsedHeading = liveProjectionIndex.index(view.state).syntax.blocks
-      .filter((block) => block.kind === "heading")
-      .reduce<SemanticBlockProjection | null>((nearest, block) => {
-        if (!nearest) return block;
-        return Math.abs(block.from - domStart) < Math.abs(nearest.from - domStart)
-          ? block
-          : nearest;
-      }, null);
-    const sourcePosition = parsedHeading?.from
-      ?? view.posAtDOM(heading, heading.childNodes.length);
-    const sourceLine = view.state.doc.lineAt(
-      Math.max(0, Math.min(sourcePosition, view.state.doc.length)),
-    );
-    const source = sourceLine.text;
-    const directStart = visible ? source.indexOf(visible) : -1;
-    if (directStart >= 0) {
-      return sourceLine.from + directStart + visibleOffset;
-    }
-
-    // Inline Markdown markers can make the visible heading non-contiguous in
-    // source. Align its UTF-16 code units as an ordered subsequence so hidden
-    // emphasis/link syntax remains accounted for without duplicating parser
-    // state in the DOM.
-    const sourceOffsets: number[] = [];
-    let sourceCursor = 0;
-    for (let visibleIndex = 0; visibleIndex < visible.length; visibleIndex += 1) {
-      const found = source.indexOf(visible[visibleIndex], sourceCursor);
-      if (found < 0) break;
-      sourceOffsets.push(found);
-      sourceCursor = found + 1;
-    }
-    if (sourceOffsets.length === visible.length && sourceOffsets.length > 0) {
-      const sourceOffset = visibleOffset >= sourceOffsets.length
-        ? sourceOffsets.at(-1)! + 1
-        : sourceOffsets[visibleOffset];
-      return sourceLine.from + sourceOffset;
-    }
-    return view.posAtDOM(caretNode, caretOffset);
+    // CodeMirror already maps decorated text nodes to exact source offsets.
+    // Matching displayed characters against source can land in a hidden URL,
+    // delimiter or an earlier repeated word in this same heading.
+    return view.posAtDOM(caretNode, caret!.startOffset);
   }
   return event.clientX <= rect.left + rect.width / 2
     ? view.posAtDOM(heading, 0)
@@ -562,7 +496,7 @@ const liveStructuredBlockProjections = createLiveStructuredBlockProjections({
 const liveDisplayMathProjection = createLiveDisplayMathProjection({
   selection: liveSelection,
   projections: liveProjectionIndex,
-  widget: (expression) => liveInlineWidgets.math(expression),
+  widget: (expression, source) => liveInlineWidgets.math(expression, source),
   shouldRefreshRuntime: (transaction) => transaction.effects.some(
     (effect) => effect.is(refreshLivePreviewEffect)),
 });
@@ -684,35 +618,34 @@ function buildLiveDecorations(
     decorations.push(range);
     atomicRanges.push(range);
   };
-  // ViewPlugin decorations cannot replace line breaks. Keep the complete
-  // annotation atomic while projecting its exact per-line source segments,
-  // and collapse continuation lines that contain annotation source only.
+  // ViewPlugin decorations cannot replace line breaks. Project only the
+  // current mounted segment; a distant annotation opening must not make us
+  // walk every continuation line, and scrolling into its tail must still
+  // derive the same hidden source from the current selection.
+  const atomicAnnotations = new Set<string>();
   const addMultilineAtomicReplacement = (
-    decoration: Decoration,
+    decoration: () => Decoration,
     from: number,
     to: number,
+    scanFrom: number,
+    scanTo: number,
   ) => {
     if (to <= from) return;
-    atomicRanges.push(Decoration.mark({}).range(from, to));
-    const firstLineNumber = doc.lineAt(from).number;
-    let line = doc.lineAt(from);
-    let placedWidget = false;
-    while (line.from < to || line.from === from) {
-      const segmentFrom = Math.max(from, line.from);
-      const segmentTo = Math.min(to, line.to);
-      if (segmentTo > segmentFrom) {
-        decorations.push(
-          (placedWidget ? hiddenSyntax : decoration).range(segmentFrom, segmentTo),
-        );
-        placedWidget = true;
-      }
-      if (line.number !== firstLineNumber && from <= line.from && to >= line.to) {
-        decorations.push(Decoration.line({
-          attributes: {class: "cm-live-link-annotation-source-line"},
-        }).range(line.from));
-      }
-      if (line.to >= to || line.to === doc.length) break;
-      line = doc.line(line.number + 1);
+    const key = rangeKey(from, to);
+    if (!atomicAnnotations.has(key)) {
+      atomicAnnotations.add(key);
+      atomicRanges.push(Decoration.mark({}).range(from, to));
+    }
+    const line = doc.lineAt(scanFrom);
+    const segmentFrom = Math.max(from, scanFrom);
+    const segmentTo = Math.min(to, scanTo);
+    if (segmentTo > segmentFrom) {
+      decorations.push((segmentFrom === from ? decoration() : hiddenSyntax).range(segmentFrom, segmentTo));
+    }
+    if (line.number !== doc.lineAt(from).number && from <= line.from && to >= line.to) {
+      decorations.push(Decoration.line({
+        attributes: {class: "cm-live-link-annotation-source-line"},
+      }).range(line.from));
     }
   };
   /** @param {number} from @param {number} to @param {string} className */
@@ -749,8 +682,35 @@ function buildLiveDecorations(
     );
     if (activeConstruct) continue;
     addAtomicReplacement(Decoration.replace({
-      widget: liveInlineWidgets.math(expression),
+      widget: liveInlineWidgets.math(expression, doc.sliceString(expression.from, expression.to)),
     }), expression.from, expression.to);
+  }
+
+  // An annotation owns its complete body, including code or mathematical
+  // source inside it. Project its mounted segments before line-specific
+  // literal branches, which may otherwise leave those continuation rows open.
+  for (const covered of coveredRanges) {
+    for (const construct of rangesIntersecting(parsedProjection.inlines, covered.from, covered.to)) {
+      const annotation = construct.annotationRange;
+      const content = construct.annotationContentRange;
+      const label = construct.aliasRange ?? construct.targetRange;
+      if (!annotation || !content || !label || projectionSelections.some(range =>
+        selectionActivatesSyntax(range, construct))) continue;
+      const from = Math.max(covered.from, annotation.from);
+      const to = Math.min(covered.to, annotation.to);
+      if (to <= from) continue;
+      let line = doc.lineAt(from);
+      while (line.from < to) {
+        addMultilineAtomicReplacement(
+          () => Decoration.replace({widget: liveInlineWidgets.linkAnnotation(
+            doc.sliceString(content.from, content.to), doc.sliceString(label.from, label.to))}),
+          annotation.from, annotation.to,
+          Math.max(from, line.from), Math.min(to, line.to),
+        );
+        if (line.to >= to || line.number === doc.lines) break;
+        line = doc.line(line.number + 1);
+      }
+    }
   }
 
   literals.sort((left, right) => left.from - right.from || left.to - right.to);
@@ -845,9 +805,12 @@ function buildLiveDecorations(
 
         const heading = semanticBlocksOnLine.find((block) => block.kind === "heading");
         if (heading && heading.headingLevel !== null) {
+          const setext = heading.nodeName.startsWith("SetextHeading");
+          const headingActive = setext ? projectionSelections.some(range => selectionActivatesSyntax(range,
+            {from: doc.lineAt(heading.from).from, to: heading.to})) : activeLine;
           const lineMarkers = heading.markerRanges.filter((range) =>
             range.from < lineQueryTo && range.to > line.from);
-          if (!activeLine) {
+          if (!headingActive) {
             for (const marker of lineMarkers) {
               addHidden(
                 Math.max(line.from, marker.from),
@@ -856,6 +819,12 @@ function buildLiveDecorations(
             }
           } else {
             for (const marker of lineMarkers) {
+              if (setext) {
+                // The underline owns a source row, never a borrowing prefix.
+                decorations.push(liveMark("cm-live-heading-source-marker").range(
+                  Math.max(line.from, marker.from), Math.min(line.to, marker.to)));
+                continue;
+              }
               addMark(
                 Math.max(line.from, marker.from),
                 Math.min(line.to, marker.to),
@@ -1036,9 +1005,8 @@ function buildLiveDecorations(
           lineQueryTo,
         ).filter((candidate) => candidate.kind === "wikilink")) {
           const linkRange = construct.linkRange ?? {from: construct.from, to: construct.to};
-          if (linkRange.from < scanFrom || linkRange.to > scanTo
-              || overlaps(excluded, construct.from, construct.to)
-              || overlaps(structuralInlineExclusions, construct.from, construct.to)) continue;
+          if (overlaps(excluded, linkRange.from, linkRange.to)
+              || overlaps(structuralInlineExclusions, linkRange.from, linkRange.to)) continue;
           const targetRange = construct.targetRange;
           if (!targetRange) continue;
           excluded.push({from: construct.from, to: construct.to});
@@ -1046,12 +1014,10 @@ function buildLiveDecorations(
 
           const embed = doc.sliceString(linkRange.from, Math.min(linkRange.to, linkRange.from + 3)) === "![[";
           const target = doc.sliceString(targetRange.from, targetRange.to);
-          const alias = construct.aliasRange
-            ? doc.sliceString(construct.aliasRange.from, construct.aliasRange.to)
-            : undefined;
           const displayRange = construct.aliasRange ?? targetRange;
           const previewIndex = linkPreviewIndexByRange.get(rangeKey(linkRange.from, linkRange.to));
           const preview = previewIndex === undefined ? undefined : linkPreviews[previewIndex];
+          if (linkRange.from < scanFrom || linkRange.to > scanTo) continue;
           if (embed && preview?.isEmbedded) {
             addAtomicReplacement(
               Decoration.replace({
@@ -1084,21 +1050,6 @@ function buildLiveDecorations(
             );
           }
           addHidden(displayRange.to, linkRange.to);
-          if (construct.annotationRange && construct.annotationContentRange) {
-            addMultilineAtomicReplacement(
-              Decoration.replace({
-                widget: liveInlineWidgets.linkAnnotation(
-                  doc.sliceString(
-                    construct.annotationContentRange.from,
-                    construct.annotationContentRange.to,
-                  ),
-                  alias || target,
-                ),
-              }),
-              construct.annotationRange.from,
-              construct.annotationRange.to,
-            );
-          }
         }
 
         for (const construct of rangesIntersecting(
@@ -1286,20 +1237,29 @@ class LivePreviewPlugin {
         this.atomicRanges = retainDecorationsInRanges(this.atomicRanges, coveredRanges);
       }
       this.coveredRanges = coveredRanges;
-    } else if (liveSelection.changed(update.startState, update.state)) {
+    }
+    // Scrolling and caret movement can arrive in the same view update. The
+    // newly entered viewport edge does not refresh activation in its retained
+    // overlap, so selection invalidation must run after viewport maintenance.
+    if (!update.docChanged && !explicitlyRefreshed && !syntaxTreeChanged
+        && liveSelection.changed(update.startState, update.state)) {
       const projectionIndex = liveProjectionIndex.index(update.state);
       const inlineRanges = projectionIndex.inlineRanges;
       const codeBlockRanges = projectionIndex.literals.codeBlocks.map((block) =>
         codeBlockActivationRange(update.state.doc, block));
-      const codeBlockActivationUnchanged = activeProjectionSignature(
+      const setextRanges = projectionIndex.syntax.blocks.filter(block =>
+        block.kind === "heading" && block.nodeName.startsWith("SetextHeading"))
+        .map(block => ({from: update.state.doc.lineAt(block.from).from, to: block.to}));
+      const blockActivationRanges = immutableProjectionRanges([...codeBlockRanges, ...setextRanges]);
+      const blockActivationUnchanged = activeProjectionSignature(
         liveSelection.selection(update.startState).ranges,
-        codeBlockRanges,
+        blockActivationRanges,
       ) === activeProjectionSignature(
         liveSelection.selection(update.state).ranges,
-        codeBlockRanges,
+        blockActivationRanges,
       );
       if (!update.view.composing
-          && codeBlockActivationUnchanged
+          && blockActivationUnchanged
           && selectionProjectionSignature(
             update.startState.doc,
             liveSelection.selection(update.startState).ranges,
@@ -1313,10 +1273,12 @@ class LivePreviewPlugin {
           )) {
         return;
       }
-      const affected = selectionAffectedProjectionAndCodeBlockRanges(
-        update.state,
+      const affected = selectionProjectionRefreshRanges(
+        update.state.doc,
         liveSelection.selection(update.startState).ranges,
         liveSelection.selection(update.state).ranges,
+        immutableProjectionRanges([...inlineRanges, ...codeBlockRanges, ...setextRanges]),
+        this.coveredRanges,
       );
       const projection = buildLiveDecorations(update.view, affected);
       this.decorations = replacingDecorationsInRanges(
@@ -1856,7 +1818,7 @@ const inputSuggestions = createEditorInputSuggestions({
   canInsertCitation: state => citationInsertionAvailable(state),
   mode: configuredEditorMode,
   dialect: () => editingDialect,
-  isComposing: () => editor.composing,
+  isComposing: () => editor.compositionStarted || compositionGate.active,
   protectedRanges: protectedCommandRanges,
   requestLinkCompletions: (requestID, completionKind, query) => {
     post({type: "linkCompletionQuery", requestID, completionKind, query});

@@ -10,6 +10,149 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Projected table clicks follow exact formatting offsets and retained DOM rebasing")
+    func projectedTablePointerRetainsExactSource() async throws {
+        let source = "Lead 😀 e\u{301}.\r\n\r\n| First | Second |\r\n| --- | --- |\r\n| **bold** a \\| b | [[Target]] |\r\n\r\nAfter.\r\n"
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let offset = try #require(try await harness.callPageJavaScript(
+            """
+            const strong = document.querySelector('.cm-live-table-widget td strong');
+            const node = strong.firstChild;
+            const range = document.createRange(); range.setStart(node, 2); range.setEnd(node, 3);
+            const rect = range.getBoundingClientRect(), x = rect.left + 0.5, y = (rect.top + rect.bottom) / 2;
+            const nativeOffset = document.caretRangeFromPoint(x, y).startOffset;
+            strong.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+            return nativeOffset;
+            """) as? Int)
+        let bold = try #require(normalized.range(of: "bold")?.lowerBound).utf16Offset(in: normalized)
+        try await harness.waitUntilSelection(head: bold + offset, stage: "formatted table cell")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: 2)
+        try await harness.waitUntilSelection(head: 2)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript(
+            "window.retainedTable = document.querySelector('.cm-live-table-widget'); document.execCommand('insertText', false, '前');")
+        try await harness.waitUntilSelection(head: 3)
+        #expect(try await harness.callPageJavaScript(
+            "return window.retainedTable === document.querySelector('.cm-live-table-widget');") as? Bool == true)
+        _ = try await harness.callPageJavaScript(
+            """
+            const link = document.querySelector('.cm-live-table-widget .cm-live-wiki-link');
+            const rect = link.getBoundingClientRect();
+            link.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                button: 0, buttons: 1, detail: 1, clientX: rect.left + 1, clientY: (rect.top + rect.bottom) / 2}));
+            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+            """)
+        let linkEnd = try #require(normalized.range(of: "[[Target]]")?.upperBound).utf16Offset(in: normalized) + 1
+        try await harness.waitUntilSelection(head: linkEnd, stage: "rebased table link")
+        #expect(try await harness.session.currentText(for: harness.documentID) == "Le前" + source.dropFirst(2))
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Heading padding maps through CodeMirror rather than hidden link destination text")
+    func headingPaddingRetainsExactSourceAroundLinks() async throws {
+        let source = "Lead.\n\n# [a](https://example.test/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) a\n\nAfter.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callPageJavaScript(
+            """
+            const heading = document.querySelector('.cm-live-h1');
+            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+            let node, last;
+            while ((node = walker.nextNode())) if (node.textContent.endsWith(' a')) last = node;
+            const range = document.createRange(); range.setStart(last, last.length - 1); range.setEnd(last, last.length);
+            const glyph = range.getBoundingClientRect(), box = heading.getBoundingClientRect();
+            heading.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                button: 0, buttons: 1, detail: 1, clientX: glyph.left + 0.5, clientY: box.top + 1}));
+            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+            """)
+        let trailing = try #require(source.range(of: ") a")?.upperBound).utf16Offset(in: source) - 1
+        try await harness.waitUntilSelection(head: trailing, stage: "authored a after hidden destination")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Every projected caret follows native glyph geometry under scale", arguments: [1.0, 1.25])
+    func multipleCaretsFollowScaledProjection(scale: Double) async throws {
+        let source = "# 中文标题\n\nOrdinary English text.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let body = try #require(source.range(of: "English")?.lowerBound).utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: body, toUTF16: body)
+        try await harness.waitUntilSelection(head: body)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript(
+            """
+            const editor = document.querySelector('.cm-editor');
+            editor.style.transformOrigin = 'top left'; editor.style.transform = `scale(${scale})`;
+            window.dispatchEvent(new Event('resize'));
+            await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+            const heading = document.querySelector('.cm-live-h1');
+            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+            let node; while ((node = walker.nextNode())) if (node.textContent.includes('中文标题')) break;
+            const range = document.createRange(); range.setStart(node, 1); range.setEnd(node, 2);
+            const rect = range.getBoundingClientRect(), x = rect.left + 0.5, y = heading.getBoundingClientRect().top + 1;
+            heading.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                button: 0, buttons: 1, detail: 1, metaKey: true, clientX: x, clientY: y}));
+            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+            """, arguments: ["scale": scale])
+        _ = try await harness.session.currentScrollAnchor()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var errors: [Double] = []
+        while ContinuousClock.now < deadline {
+            errors = (try await harness.callPageJavaScript(
+                """
+                const glyphs = [];
+                for (const text of ['文', 'English']) {
+                    const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
+                    let node;
+                    while ((node = walker.nextNode())) {
+                        const offset = node.textContent.indexOf(text); if (offset < 0) continue;
+                        const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+                        const box = range.getBoundingClientRect(); glyphs.push(box); break;
+                    }
+                }
+                const cursors = [...document.querySelectorAll('.cm-cursorLayer > .cm-cursor')];
+                const rect = node => { const r = node.getBoundingClientRect(); return {left:r.left, top:r.top, bottom:r.bottom}; };
+                window.caretProjectionProbe = {glyphs: glyphs.map(r => ({left:r.left,top:r.top,bottom:r.bottom})),
+                    cursors:cursors.map(node => ({...rect(node), style:node.style.cssText, kind:node.className})),
+                    layer:rect(document.querySelector('.cm-cursorLayer')),
+                    transform:getComputedStyle(document.querySelector('.cm-cursorLayer')).transform,
+                    scroll:rect(document.querySelector('.cm-scroller'))};
+                return cursors.length !== 2 || glyphs.length !== 2 ? [999] : cursors.map((node, index) => {
+                    // Background WKWebViews may hide cursor elements. Their
+                    // native layer retains geometry; its inverse scale cancels
+                    // the editor scale, leaving screen-pixel marker deltas.
+                    const layer = node.parentElement.getBoundingClientRect(), glyph = glyphs[index];
+                    const left = layer.left + parseFloat(node.style.left);
+                    const top = layer.top + parseFloat(node.style.top), height = parseFloat(node.style.height);
+                    return Math.max(Math.abs(left - glyph.left), Math.abs((top * 2 + height - glyph.top - glyph.bottom) / 2));
+                });
+                """) as? [Double]) ?? [999]
+            if errors.count == 2 && errors.allSatisfy({ $0 < 4 }) { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        if errors.count != 2 || !errors.allSatisfy({ $0 < 4 }) {
+            print("Caret projection scale \(scale), selection \(String(describing: harness.session.context?.selections)): \(String(describing: try await harness.callPageJavaScript("return window.caretProjectionProbe;")))")
+        }
+        #expect(errors.count == 2 && errors.allSatisfy({ $0 < 4 }), "Scale \(scale): \(errors)")
+        #expect(harness.session.context?.selections.count == 2)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit caret remains on the approached side of a soft-wrap boundary")
     func editCaretRetainsSoftWrapAffinity() async throws {
         let source = String(repeating: "中文文字甲乙丙丁", count: 30)
@@ -3734,6 +3877,41 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Nested syntax keeps delimiter ownership and Setext reveals its separate source row")
+    func nestedAndSetextSyntaxActivation() async throws {
+        let source = "Lead.\r\n\r\n**outer *inner* tail**\r\n\r\nHeading 中文\r\n==========\r\n\r\nAfter.\r\n"
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let generation = harness.session.generation
+        for (text, markers) in [("outer", ["**", "**"]), ("inner", ["**", "*", "*", "**"])] {
+            let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            let actual = try await harness.callPageJavaScript(
+                "return [...document.querySelectorAll('.cm-live-syntax-marker')].map(node => node.textContent);") as? [String]
+            #expect(actual == markers)
+        }
+        for text in ["Heading", "After"] {
+            let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            let underline = try await harness.callPageJavaScript(
+                """
+                const row = document.querySelector('.cm-live-heading-marker-line');
+                return row?.querySelector('.cm-live-heading-source-marker')?.textContent ?? '';
+                """) as? String
+            #expect(underline == (text == "Heading" ? "==========" : ""))
+            #expect(try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-heading-marker-line .cm-syntax-token[data-syntax-kind=prefix]').length;") as? Int == 0)
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == generation)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit reveals only the selected inline construct and preserves its semantic style")
     func editInlineSyntaxActivationIsConstructScoped() async throws {
         let probe = "INLINE_SYNTAX_PROBE"
@@ -7160,6 +7338,36 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(CGFloat(bitmap.pixelsHigh) >= image.size.height * 4 - 1)
             #expect(css.contains("--scholium-system-symbol-\(symbol.webToken):"))
         }
+    }
+
+    @Test("Long annotated links hide literal continuation rows and reveal their entire source on entry")
+    func longAnnotationActivationRetainsLiteralRows() async throws {
+        let source = "Lead.\n\n[[Support]]{{First `reason`.\n"
+            + String(repeating: "Continuation 中文 argument.\n", count: 180)
+            + "`ANNOTATION_CODE`\n```text\nANNOTATION_FENCE\n```\nLast reason.}}\n\nAfter.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelector('.cm-live-wiki-link')?.textContent;") as? String == "Support")
+        for (token, active) in [("Last reason", true), ("After", false)] {
+            let position = try #require(source.range(of: token)?.lowerBound).utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
+            try await harness.waitUntilSelection(head: position, stage: token)
+            _ = try await harness.session.currentScrollAnchor()
+            let annotationState = try #require(try await harness.callPageJavaScript(
+                """
+                const rows = [...document.querySelectorAll('.cm-line')].filter(row =>
+                    row.textContent.includes('ANNOTATION_CODE') || row.textContent.includes('ANNOTATION_FENCE'));
+                return {sourceRows: rows.length,
+                    hiddenRows: document.querySelectorAll('.cm-live-link-annotation-source-line').length};
+                """) as? [String: Int])
+            #expect(annotationState["sourceRows"] == (active ? 2 : 0), "\(token): \(annotationState)")
+            if !active { #expect(try #require(annotationState["hiddenRows"]) > 0) }
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
     }
 
     @Test("Edit previews Command-armed links and annotated links in the native surface without reflow")
