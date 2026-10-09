@@ -240,11 +240,16 @@ extension AgentChatController {
         {
             activity.detail = String(localized: "Preview") + ": " + from + " → " + to
         }
+        let contextNote = request.tool == .readContext && response.error == nil ? result["note"]?.objectValue : nil
         let returnedPath =
-            (request.tool == .previewMove ? result["source_relative_path"]?.stringValue : nil)
+            contextNote?["relative_path"]?.stringValue
+            ?? (request.tool == .previewMove ? result["source_relative_path"]?.stringValue : nil)
             ?? result["relative_path"]?.stringValue
             ?? result["original_location"]?.objectValue?["relative_path"]?.stringValue ?? path
-        let returnedID = result["note_id"]?.stringValue.flatMap(UUID.init(uuidString:)) ?? noteID
+        let returnedID =
+            request.tool == .readContext && response.error == nil
+            ? contextNote?["note_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+            : result["note_id"]?.stringValue.flatMap(UUID.init(uuidString:)) ?? noteID
         if !returnedPath.isEmpty {
             activity.subject = returnedPath
             var effect: AgentChatActivity.File.Effect?

@@ -1306,6 +1306,95 @@ struct AgentChatTests {
         await controller.disconnect()
     }
 
+    @Test("Kept context reads retain their returned Note target without inferring unresolved identities", arguments: [true, false])
+    func keptContextReadTarget(resolved: Bool) async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "Scholium.ChatContextReadTarget.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AgentContextAccessPreferences(defaults: defaults)
+        preferences.chatWorkingTextAccess = true
+        let triptychID = UUID()
+        let noteID = UUID()
+        let vaultID = UUID()
+        let scope = AgentChatDisplayScope(windowID: UUID(), registrationID: UUID())
+        let path = "Ideas/理由.md"
+        let text = "Historical kept paragraph.\n"
+        let fingerprint = DocumentFingerprint(content: text)
+        let fingerprintValue = AgentWindowObservation.fingerprintValue(fingerprint)
+        let note = WorkspaceCatalogNote(
+            reference: .init(
+                vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                relativePath: path, stableNoteID: noteID.uuidString),
+            title: "理由", fingerprint: fingerprint, validationWarnings: [])
+        let controller = fixtureChatController(
+            triptychID: triptychID, root: root, methodDefaults: defaults,
+            contextAccessPreferences: preferences, displayWindow: { _ in scope }
+        ) { request in
+            #expect(request.tool == .readContext)
+            #expect(request.arguments["kind"] == .string("kept_passage"))
+            #expect(request.arguments["note_id"] == nil && request.arguments["relative_path"] == nil)
+            return try! .init(
+                requestID: request.requestID,
+                result: .object([
+                    "kind": .string("kept_passage"), "origin": .string("kept_snapshot"),
+                    "note": .object([
+                        "vault_id": .string(vaultID.uuidString.lowercased()),
+                        "note_id": resolved ? .string(noteID.uuidString.lowercased()) : .null,
+                        "role": .string("topics"), "relative_path": .string(path),
+                    ]),
+                    "fingerprint": fingerprintValue, "text_fingerprint": fingerprintValue,
+                    "source_locator": .object([
+                        "start_utf16": .integer(0), "end_utf16": .integer(text.utf16.count),
+                        "start_line": .integer(1), "start_column": .integer(1),
+                        "end_line": .integer(2), "end_column": .integer(1),
+                    ]),
+                    "kept_passage_id": .string("kept-fixture"), "text": .string(text),
+                    "coverage": .object([
+                        "basis": .string("context"), "total_utf8": .integer(text.utf8.count),
+                        "start_utf8": .integer(0), "end_utf8": .integer(text.utf8.count),
+                        "has_more": .bool(false), "next_start_utf8": .null,
+                    ]),
+                ]))
+        }
+        do {
+            try await connect(controller)
+            controller.editDraft("hold context reading")
+            controller.send()
+            try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+            let token = try #require(controller.token)
+            let response = await controller.handle(
+                .init(
+                    tool: .readContext,
+                    arguments: [
+                        "triptych_id": .string(triptychID.uuidString.lowercased()),
+                        "window_id": .string(scope.windowID.uuidString.lowercased()),
+                        "kind": .string("kept_passage"), "kept_passage_id": .string("kept-fixture"),
+                        "expected_fingerprint": fingerprintValue,
+                    ], conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
+            #expect(response.error == nil && controller.approvals.isEmpty)
+            let activity = try #require(controller.selected?.messages.last?.activity)
+            #expect(activity.kind == .read && activity.status == .completed)
+            #expect(activity.files.count == 1)
+            let file = try #require(activity.files.first)
+            #expect(file.path == path && file.effect == .read)
+            #expect(file.noteID == (resolved ? noteID : nil))
+            let target = AgentChatActivityProjection.noteTarget(activity, notes: [note])
+            if resolved {
+                #expect(target?.noteID == noteID && target?.vaultID == vaultID && target?.title == note.title)
+            } else {
+                #expect(target == nil)
+            }
+            controller.stop()
+            try await eventually { controller.state == .ready }
+            await controller.disconnect()
+        } catch {
+            await controller.disconnect()
+            throw error
+        }
+    }
+
     @Test("Display stays with its admitted window instance and selected conversation")
     func displayAdmission() async throws {
         let root = try root()
