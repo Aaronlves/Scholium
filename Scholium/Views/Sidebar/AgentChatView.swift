@@ -46,6 +46,7 @@ struct AgentChatView: View {
     }
     @State private var readingStore = AgentChatReadingStore()
     @State private var composerStore = AgentChatComposerSessionStore()
+    @State private var noteCatalogCache = AgentChatNoteCatalogCache()
     @State private var focusRequest: UUID?
     @State private var replyNavigation: AgentChatReplyNavigation?
     @State private var showsAccountUsage = false
@@ -187,6 +188,7 @@ struct AgentChatView: View {
         AgentChatConversationDetailView(
             controller: controller, isVisible: isVisible && !showsConversationList,
             addSelection: addSelection, noteChoices: noteChoices, prepareNotes: prepareNotes,
+            noteCatalogCache: noteCatalogCache,
             openReference: openReference, openAttachment: openAttachment,
             showInLibrary: showInLibrary, showChanges: showChanges,
             showConversationChanges: showConversationChanges,

@@ -88,18 +88,21 @@ struct LibraryInspectorLifecycleTests {
             try await window.prepareWorkspaceSelection(.topicKnowledge, sourceScope: .library)
             await drainScheduledWork()
             let active = try #require(window.selectedDocument)
-            let before = ConnectionsProjection.make(
+            let before = PreparedConnectionsProjection(
                 graph: window.linkGraph, catalogNotes: window.workspaceCatalog?.notes,
-                current: active, direction: .outgoing)
-            #expect(before.items.count == 1)
+                current: active)
+            #expect(before.groups(direction: .outgoing, query: "").flatMap(\.items).count == 1)
             let generation = window.linkGraph?.generation
             let changed = Fixture.source + "\nA second authored occurrence: [[Peer]].\n"
             try Data(changed.utf8).write(to: fixture.analyses.appendingPathComponent("Shared.md"))
             let refreshed = try #require(await window.refreshAfterResearchHandoff())
-            let after = ConnectionsProjection.make(
+            let after = PreparedConnectionsProjection(
                 graph: window.linkGraph, catalogNotes: window.workspaceCatalog?.notes,
-                current: active, direction: .outgoing)
-            #expect(after.items.count == 2)
+                current: active)
+            let updatedItems = after.groups(direction: .outgoing, query: "").flatMap(\.items)
+            #expect(updatedItems.count == 2)
+            #expect(updatedItems.allSatisfy { $0.source?.fingerprint == DocumentFingerprint(content: changed) })
+            #expect(before.groups(direction: .outgoing, query: "").flatMap(\.items).count == 1)
             #expect(window.linkGraph?.generation == refreshed.discovery.catalog.graph?.generation)
             #expect(window.linkGraph?.generation != generation)
             #expect(

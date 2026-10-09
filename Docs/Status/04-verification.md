@@ -53,7 +53,7 @@ Scenario/assertion maps and logs: `.build/feature-review/RESULTS.md` and
 | --- | --- | --- | --- | --- |
 | Triptych setup/access | Create/connect three roles | Native File/pickers | Wrong folder, cancellation, restore/relaunch | Bootstrap lifecycle; native setup/access |
 | Library navigation | Roles, tree, disclosure, filters/sort | Native rows/arrows, multi-selection | Filtered empty, unavailable, retained Document | Sidebar/Discovery; native navigation/organization |
-| New Note/Folder and title | Immediate creation, inline rename | File/Add, body focus, title field | Collision, repeated creation, stale selection | Fixed selected-folder routing; three owning regressions |
+| New Note/Folder and title | Immediate creation, inline rename | File/Add, body focus, title field | Collision, repeated creation, stale selection | Source-ahead regressions; native creation/Edit/save; `.build/managed-note-opening-20261009/` |
 | Opening, tabs and history | Repeat/open/new tab, Back/Forward | Menus, tab/window routes | Failed hydration, retained session, close failure | Fixed cross-role origin preservation; opening regressions |
 | Review/Edit/Source | Exact source, YAML, semantic Markdown | Mode/Format/Insert, task/footnote actions | Malformed/protected syntax, Undo, composition | Window-owned mode; native roles/tabs/caret/viewport/Undo; editor/Callouts/clipboard |
 | Find and completion | Find/Replace, slash/Wikilink/Analysis candidates | Return/Tab/Escape, named fields | No match, cancellation, Undo, marked text | Editor Find/completion; native journeys |

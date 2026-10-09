@@ -15,8 +15,8 @@ extension WindowModel {
         do {
             let sourceAheadSnapshot = commit.sourceAheadSnapshot
             guard
-                workspaceProjectionController.recordCommittedNote(
-                    sourceAheadSnapshot.summary,
+                workspaceProjectionController.recordCommittedNoteCreation(
+                    commit,
                     visibleVaultID: currentRegisteredVault?.id,
                     visibleSourceScope: noteSourceScope
                 ) != nil
@@ -48,6 +48,8 @@ extension WindowModel {
                 synchronizeDocumentTabs(after: .place(.replaceSelected))
             }
             revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)
+            reportCommittedMutationWarnings(outcome)
+        } catch is CancellationError {
             reportCommittedMutationWarnings(outcome)
         } catch {
             reportCommittedMutationWarnings(

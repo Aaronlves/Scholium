@@ -5,6 +5,7 @@ import SwiftUI
 struct AgentChatNotePicker: View {
     struct Target: Identifiable { let id: UUID }
     let notes: [WorkspaceCatalogNote]
+    var noteCatalogCache = AgentChatNoteCatalogCache()
     let prepare: @MainActor (WorkspaceCatalogNote) throws -> (@MainActor () async throws -> Void)
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -13,21 +14,17 @@ struct AgentChatNotePicker: View {
     @State private var error: String?
 
     private var visibleNotes: [WorkspaceCatalogNote] {
-        let needle = AgentChatSearch.query(query)
-        return notes.filter { note in
-            note.reference.stableNoteID.flatMap(UUID.init(uuidString:)) != nil
-                && (needle.isEmpty || AgentChatSearch.matches(note.title, query: needle)
-                    || AgentChatSearch.matches(note.reference.relativePath, query: needle))
-        }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        noteCatalogCache.catalog(notes: notes).matchingNotes(query: query)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let visible = visibleNotes
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Choose Note").font(.headline).accessibilityAddTraits(.isHeader)
             ContextSearchField(text: $query, prompt: "Search Notes", identifier: "scholium.chat.notePicker.search")
                 .disabled(operation != nil)
             List(selection: $selectedID) {
-                ForEach(visibleNotes) { note in
+                ForEach(visible) { note in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(note.title).lineLimit(2)
                         Text(LocalizedStringKey(note.reference.vaultRole.displayName)).font(.caption).foregroundStyle(.secondary)
@@ -36,7 +33,7 @@ struct AgentChatNotePicker: View {
                 }
             }
             .overlay {
-                if visibleNotes.isEmpty {
+                if visible.isEmpty {
                     Text(notes.isEmpty ? "No Notes Available" : "No Matching Notes").foregroundStyle(.secondary)
                 }
             }
@@ -51,7 +48,7 @@ struct AgentChatNotePicker: View {
                     dismiss()
                 }.keyboardShortcut(.cancelAction)
                 Button("Add") {
-                    guard let note = visibleNotes.first(where: { $0.id == selectedID }), operation == nil else { return }
+                    guard let note = visible.first(where: { $0.id == selectedID }), operation == nil else { return }
                     error = nil
                     let work: @MainActor () async throws -> Void
                     do { work = try prepare(note) } catch {
@@ -68,7 +65,7 @@ struct AgentChatNotePicker: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(operation != nil || !visibleNotes.contains(where: { $0.id == selectedID }))
+                .disabled(operation != nil || !visible.contains(where: { $0.id == selectedID }))
             }
         }
         .padding(20).frame(width: 440, height: 430)

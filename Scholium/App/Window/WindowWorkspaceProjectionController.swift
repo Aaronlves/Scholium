@@ -92,6 +92,12 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     private let catalogRefreshDelay: Duration
     private var runtimeIdentity: TriptychRuntimeIdentity?
     private var acceptedGeneration: UInt64?
+    private var acceptedSnapshot: WorkspaceSnapshot?
+    private struct PendingCreation {
+        let note: WorkspaceNoteSummary
+        let baseSourceInventoryRevision: UInt64
+    }
+    private var pendingCreations: [VaultQualifiedNoteID: PendingCreation] = [:]
     private var catalogRevision: UInt64 = 0
     private var catalogRefreshDelayTask: Task<Void, Never>?
     private var catalogNeedsAnotherRefresh = false
@@ -141,8 +147,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         generation: UInt64 = 0,
         context: WindowWorkspaceProjectionContext
     ) -> WindowWorkspaceProjectionCommit {
-        if self.runtimeIdentity?.triptychID != runtimeIdentity.triptychID {
+        if self.runtimeIdentity != runtimeIdentity {
             state = State()
+            acceptedSnapshot = nil
+            pendingCreations.removeAll()
         }
         self.runtimeIdentity = runtimeIdentity
         acceptedGeneration = generation
@@ -156,14 +164,20 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     }
 
     /// Accepts only the active runtime and an increasing Application event.
-    /// Research-configuration invalidation advances ordering without replaying
-    /// an unchanged Workspace projection.
+    /// Configuration-only invalidation skips an unchanged projection; a
+    /// coalesced event carrying newer source inventory still resynchronizes it.
     func canReceive(
         _ event: WorkspaceEvent,
         runtimeIdentity: TriptychRuntimeIdentity
     ) -> Bool {
         self.runtimeIdentity == runtimeIdentity
             && (acceptedGeneration.map { event.generation > $0 } ?? true)
+    }
+
+    func advancesSourceInventory(_ snapshot: WorkspaceSnapshot) -> Bool {
+        acceptedSnapshot.map {
+            snapshot.sourceInventoryRevision > $0.sourceInventoryRevision
+        } ?? true
     }
 
     func receive(
@@ -175,7 +189,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             return nil
         }
         acceptedGeneration = event.generation
-        if case .researchConfigurationInvalidated = event {
+        if case .researchConfigurationInvalidated = event,
+            !advancesSourceInventory(event.snapshot)
+        {
             return nil
         }
         return commit(
@@ -201,7 +217,65 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         invalidateCatalogLoad()
         runtimeIdentity = nil
         acceptedGeneration = nil
+        acceptedSnapshot = nil
+        pendingCreations.removeAll()
         state = State()
+    }
+
+    /// Event delivery order does not establish source inventory freshness.
+    /// Reuse committed local inventory for the same cohort, and carry a new
+    /// Note across pre-creation cohorts until a rebuilt inventory covers it.
+    func effectiveSnapshot(_ incoming: WorkspaceSnapshot) -> WorkspaceSnapshot {
+        let source: WorkspaceSnapshot
+        let vaults: [WorkspaceVaultSnapshot]
+        if let acceptedSnapshot,
+            incoming.sourceInventoryRevision <= acceptedSnapshot.sourceInventoryRevision
+        {
+            source = acceptedSnapshot
+            vaults = source.vaults.map { state.vaultSnapshotsByID[$0.vault.id] ?? $0 }
+        } else {
+            source = incoming
+            vaults = incoming.vaults
+        }
+        let projectedVaults = vaults.map { vault -> WorkspaceVaultSnapshot in
+            let pending = pendingCreations.values.filter {
+                $0.note.id.vaultID == vault.vault.id
+                    && source.sourceInventoryRevision <= $0.baseSourceInventoryRevision
+            }
+            guard !pending.isEmpty else { return vault }
+            var documents = vault.documents
+            for creation in pending {
+                // A subsequent save or move may already have advanced this
+                // exact committed Note while its first rebuild is pending.
+                let note =
+                    state.vaultSnapshotsByID[vault.vault.id]?.documents.first {
+                        if let id = creation.note.stableIdentity.resolvedID {
+                            return $0.stableIdentity.resolvedID == id
+                        }
+                        return $0.id == creation.note.id
+                    } ?? creation.note
+                if let index = documents.firstIndex(where: {
+                    $0.id == note.id
+                        || (note.stableIdentity.resolvedID != nil
+                            && $0.stableIdentity.resolvedID == note.stableIdentity.resolvedID)
+                }) {
+                    documents[index] = note
+                } else {
+                    documents.append(note)
+                }
+            }
+            return WorkspaceVaultSnapshot(
+                slot: vault.slot, vault: vault.vault,
+                pathComparisonPolicy: vault.pathComparisonPolicy,
+                documents: documents, folders: vault.folders,
+                identityRecovery: vault.identityRecovery)
+        }
+        return WorkspaceSnapshot(
+            triptych: source.triptych, mode: source.mode, phase: source.phase,
+            generatedAt: source.generatedAt, vaults: projectedVaults,
+            discovery: source.discovery, research: incoming.research,
+            sourceInventoryRevision: source.sourceInventoryRevision,
+            documentChangesGeneration: incoming.documentChangesGeneration)
     }
 
     func vaultSnapshot(id: UUID) -> WorkspaceVaultSnapshot? {
@@ -269,6 +343,37 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         }
         installVisibleNotes(refreshed, in: &next)
         state = next
+    }
+
+    func recordCommittedNoteCreation(
+        _ commit: WorkspaceManagedNoteCommit,
+        visibleVaultID: UUID?,
+        visibleSourceScope: LibrarySourceScope?
+    ) -> RegisteredVault? {
+        if let acceptedSnapshot,
+            acceptedSnapshot.sourceInventoryRevision > commit.baseSourceInventoryRevision
+        {
+            // A rebuild can win the race with the mutation return. It already
+            // owns the Note's current existence, bytes and location.
+            guard let vault = state.vaultSnapshotsByID[commit.id.vaultID],
+                vault.documents.contains(where: {
+                    $0.stableIdentity.resolvedID == commit.stableIdentity.resolvedID
+                        && $0.id == commit.id
+                        && (commit.stableIdentity.resolvedID != nil
+                            || $0.hasSameSourceBinding(as: commit.sourceAheadSummary))
+                })
+            else { return nil }
+            return vault.vault
+        }
+        guard
+            let vault = recordCommittedNote(
+                commit.sourceAheadSummary, visibleVaultID: visibleVaultID,
+                visibleSourceScope: visibleSourceScope)
+        else { return nil }
+        pendingCreations[commit.id] = PendingCreation(
+            note: commit.sourceAheadSummary,
+            baseSourceInventoryRevision: commit.baseSourceInventoryRevision)
+        return vault
     }
 
     /// Updates the cached vault and visible Library as one projection commit.
@@ -622,10 +727,33 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     }
 
     private func commit(
-        snapshot: WorkspaceSnapshot,
-        status: WorkspaceDerivedRefreshStatus,
+        snapshot incoming: WorkspaceSnapshot,
+        status incomingStatus: WorkspaceDerivedRefreshStatus,
         context: WindowWorkspaceProjectionContext
     ) -> WindowWorkspaceProjectionCommit {
+        let snapshot = effectiveSnapshot(incoming)
+        let advancesInventory = advancesSourceInventory(incoming)
+        if advancesInventory {
+            acceptedSnapshot = incoming
+        }
+        pendingCreations = pendingCreations.filter {
+            snapshot.sourceInventoryRevision <= $0.value.baseSourceInventoryRevision
+        }
+        let status: WorkspaceDerivedRefreshStatus
+        if case .current = incomingStatus, !advancesInventory,
+            let previousStatus = state.derivedRefreshStatus,
+            previousStatus.isAwaitingRefresh
+        {
+            status = previousStatus
+        } else if case .current = incomingStatus, !pendingCreations.isEmpty {
+            status = .stale(
+                .init(
+                    reason: "Committed source is awaiting derived workspace refresh.",
+                    affectedVaultIDs: Set(pendingCreations.values.map { $0.note.id.vaultID }),
+                    lastKnownGood: .init(snapshot: incoming)))
+        } else {
+            status = incomingStatus
+        }
         invalidateCatalogLoad()
         let previousSearchGeneration = state.searchGeneration
         var next = state
@@ -717,5 +845,14 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         catalogRefreshDelayTask?.cancel()
         catalogRefreshDelayTask = nil
         catalogNeedsAnotherRefresh = false
+    }
+}
+
+private extension WorkspaceDerivedRefreshStatus {
+    var isAwaitingRefresh: Bool {
+        switch self {
+        case .stale, .failed: true
+        case .opening, .current: false
+        }
     }
 }

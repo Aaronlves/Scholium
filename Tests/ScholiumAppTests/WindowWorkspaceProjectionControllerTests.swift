@@ -174,7 +174,7 @@ struct WindowWorkspaceProjectionControllerTests {
 
         let configurationOnly = WorkspaceResearchConfigurationInvalidatedEvent(
             generation: 6,
-            snapshot: newer
+            snapshot: initial
         )
         #expect(
             controller.receive(
@@ -375,11 +375,12 @@ struct WindowWorkspaceProjectionControllerTests {
             ),
             vaultRole: fixture.vault.role,
             stableIdentity: .resolved(noteID),
-            document: document
+            document: document,
+            baseSourceInventoryRevision: initial.sourceInventoryRevision
         )
 
-        _ = controller.recordCommittedNote(
-            commit.sourceAheadSummary,
+        _ = controller.recordCommittedNoteCreation(
+            commit,
             visibleVaultID: fixture.vault.id,
             visibleSourceScope: .library
         )
@@ -396,6 +397,146 @@ struct WindowWorkspaceProjectionControllerTests {
             return
         }
         #expect(issue.affectedVaultIDs == [fixture.vault.id])
+    }
+
+    @Test(
+        "Older and equal inventory metadata events preserve a committed creation until a fresh inventory includes it",
+        arguments: [1, 2])
+    func creationSurvivesMetadataReplay(windowSourceRevision: Int) throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "# Before\n", searchSequence: windowSourceRevision)
+        let older = fixture.snapshot(activeSource: "# Before\n", searchSequence: 1)
+        // The producer's base may already be newer than the window. Accepting
+        // that pre-creation inventory still cannot erase the returned commit.
+        let creationBase = fixture.snapshot(activeSource: "# Before\n", searchSequence: 2)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        let context = fixture.context(sourceScope: .library)
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: context)
+        let created = fixture.note(path: "Untitled.md", source: "---\nkeywords: [created]\n---\n", stableID: UUID())
+        let noteID = try #require(created.stableIdentity.resolvedID)
+        let commit = WorkspaceManagedNoteCommit(
+            id: created.id, vaultRole: fixture.vault.role, stableIdentity: created.stableIdentity,
+            document: created.document, baseSourceInventoryRevision: creationBase.sourceInventoryRevision)
+        _ = controller.recordCommittedNoteCreation(commit, visibleVaultID: fixture.vault.id, visibleSourceScope: .library)
+        let events: [WorkspaceEvent] = [
+            .citationAuthorityInvalidated(
+                .init(generation: 1, snapshot: older, derivedRefreshStatus: .current(.init(snapshot: older)))),
+            .citationAuthorityInvalidated(
+                .init(generation: 2, snapshot: creationBase, derivedRefreshStatus: .current(.init(snapshot: creationBase)))),
+            .derivedStateChanged(
+                .init(
+                    generation: 3,
+                    status: .failed(.init(reason: "Synthetic metadata refresh failure.", lastKnownGood: .init(snapshot: creationBase))),
+                    discovery: creationBase.discovery, snapshot: creationBase)),
+        ]
+        for event in events {
+            _ = controller.receive(event, runtimeIdentity: fixture.runtimeIdentity, context: context)
+            let cached = try #require(controller.cachedNote(vaultID: fixture.vault.id, stableNoteID: noteID, relativePath: "Untitled.md"))
+            #expect(cached.id == created.id)
+            #expect(cached.fingerprint == created.fingerprint)
+            #expect(cached.derivedProjectionState == .sourceAhead)
+            #expect(controller.notes.contains { $0.summary.id == created.id && $0.summary.fingerprint == created.fingerprint })
+            #expect(
+                controller.cachedNote(vaultID: fixture.vault.id, stableNoteID: fixture.activeNoteID, relativePath: "Active.md")?.fingerprint
+                    == DocumentFingerprint(content: "# Before\n"))
+            if case .citationAuthorityInvalidated = event {
+                guard case .stale? = controller.derivedRefreshStatus else {
+                    Issue.record("The pre-creation citation inventory claimed current derived state for the new Note.")
+                    return
+                }
+            }
+        }
+        guard case .failed? = controller.derivedRefreshStatus else {
+            Issue.record("Preserving the source inventory erased the failed-refresh status.")
+            return
+        }
+        let fresh = fixture.snapshot(activeSource: "# Before\n", additionalNotes: [created], searchSequence: 3)
+        _ = controller.receive(
+            .snapshot(.init(generation: 4, snapshot: fresh)), runtimeIdentity: fixture.runtimeIdentity, context: context)
+        #expect(controller.cachedNote(vaultID: fixture.vault.id, stableNoteID: noteID, relativePath: "Untitled.md") == created.summary)
+        guard case .current? = controller.derivedRefreshStatus else {
+            Issue.record("The complete inventory containing the creation retained a source-ahead overlay.")
+            return
+        }
+    }
+
+    @Test("A fresh inventory arriving before the creation return keeps its current Note projection")
+    func freshCreationInventoryWinsCommitReturnRace() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "# Before\n", searchSequence: 1)
+        let created = fixture.note(path: "Untitled.md", source: "# Created\n", stableID: UUID())
+        let fresh = fixture.snapshot(activeSource: "# Before\n", additionalNotes: [created], searchSequence: 2)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        let context = fixture.context(sourceScope: .library)
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: context)
+        _ = controller.receive(
+            .snapshot(.init(generation: 1, snapshot: fresh)), runtimeIdentity: fixture.runtimeIdentity, context: context)
+        let commit = WorkspaceManagedNoteCommit(
+            id: created.id, vaultRole: fixture.vault.role, stableIdentity: created.stableIdentity,
+            document: created.document, baseSourceInventoryRevision: initial.sourceInventoryRevision)
+        let vault = controller.recordCommittedNoteCreation(commit, visibleVaultID: fixture.vault.id, visibleSourceScope: .library)
+        #expect(vault?.id == fixture.vault.id)
+        let cached = try #require(
+            controller.cachedNote(
+                vaultID: fixture.vault.id, stableNoteID: created.stableIdentity.resolvedID, relativePath: "Untitled.md"))
+        #expect(cached == created.summary)
+        #expect(cached.derivedProjectionState == .current)
+        #expect(controller.notes.filter { $0.summary.id == created.id }.count == 1)
+        guard case .current? = controller.derivedRefreshStatus else {
+            Issue.record("The late mutation return downgraded a complete current creation inventory.")
+            return
+        }
+    }
+
+    @Test(
+        "A late unresolved creation can use a fresh inventory only when its exact source is still present",
+        arguments: [false, true])
+    func unresolvedCreationRequiresExactFreshSource(freshSourceChanged: Bool) throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "# Before\n", searchSequence: 1)
+        let committedDocument = NoteDocument(relativePath: "Untitled.md", rawContent: "\u{FEFF}Created 中文 😀 e\u{301}。\r\n")
+        let freshDocument = NoteDocument(
+            relativePath: committedDocument.relativePath,
+            rawContent: freshSourceChanged ? "\u{FEFF}Externally replaced 中文。\r\n" : committedDocument.rawContent)
+        let freshNote = WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(vaultID: fixture.vault.id, relativePath: freshDocument.relativePath),
+            vaultRole: fixture.vault.role,
+            stableIdentity: .unresolved,
+            document: freshDocument,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: freshDocument.sourceBytes.count, creationDate: nil, modificationDate: nil),
+            graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0))
+        let fresh = fixture.snapshot(activeSource: "# Before\n", additionalNotes: [freshNote], searchSequence: 2)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        let context = fixture.context(sourceScope: .library)
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: context)
+        _ = controller.receive(
+            .snapshot(.init(generation: 1, snapshot: fresh)), runtimeIdentity: fixture.runtimeIdentity, context: context)
+        let commit = WorkspaceManagedNoteCommit(
+            id: freshNote.id, vaultRole: fixture.vault.role, stableIdentity: .unresolved,
+            document: committedDocument, baseSourceInventoryRevision: initial.sourceInventoryRevision)
+
+        let vault = controller.recordCommittedNoteCreation(commit, visibleVaultID: fixture.vault.id, visibleSourceScope: .library)
+
+        if freshSourceChanged {
+            #expect(vault == nil)
+            #expect(freshDocument.sourceBytes != committedDocument.sourceBytes)
+        } else {
+            #expect(vault?.id == fixture.vault.id)
+            #expect(freshDocument.sourceBytes == committedDocument.sourceBytes)
+        }
+        let cached = try #require(controller.cachedNote(vaultID: fixture.vault.id, relativePath: "Untitled.md"))
+        #expect(cached == freshNote.summary)
+        #expect(cached.stableIdentity == .unresolved)
+        #expect(cached.fingerprint == freshDocument.fingerprint)
+        #expect(cached.derivedProjectionState == .current)
+        let listed = try #require(controller.notes.first { $0.summary.id == freshNote.id })
+        #expect(listed.summary == freshNote.summary)
+        #expect(controller.notes.filter { $0.summary.id == freshNote.id }.count == 1)
+        guard case .current? = controller.derivedRefreshStatus else {
+            Issue.record("The late unresolved commit replaced the fresh inventory with unavailable source bytes.")
+            return
+        }
     }
 
     @Test("A committed Folder claim is installed without replacing Note projections")
@@ -720,6 +861,7 @@ struct WindowWorkspaceProjectionControllerTests {
             activeSource: String?,
             activePath: String = "Active.md",
             folders: [VaultRelativeFolderPath] = [],
+            additionalNotes: [WorkspaceNoteSnapshot] = [],
             searchSequence: Int,
             phase: WorkspaceSnapshotPhase = .complete
         ) -> WorkspaceSnapshot {
@@ -744,6 +886,7 @@ struct WindowWorkspaceProjectionControllerTests {
                     source: "# Removed\n",
                     stableID: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
                 ))
+            documents.append(contentsOf: additionalNotes)
             let vaultSnapshot = WorkspaceVaultSnapshot(
                 slot: .paperAnalysis,
                 vault: vault,
@@ -777,7 +920,8 @@ struct WindowWorkspaceProjectionControllerTests {
                         )
                         : nil
                 ),
-                research: WorkspaceResearchSnapshot(healthIssues: [])
+                research: WorkspaceResearchSnapshot(healthIssues: []),
+                sourceInventoryRevision: UInt64(searchSequence)
             )
         }
 

@@ -271,15 +271,19 @@ struct WorkspaceToolbarTests {
                 in: toolbar
             ))
         let modeControl = try #require(inspectorModes.view as? ScholiumTooltippedSegmentedControl)
-        #expect(ResearchInspectorMode.allCases == [.links, .related])
+        #expect(ResearchInspectorMode.allCases == [.related, .links])
         #expect(modeControl.segmentCount == 2)
         #expect(modeControl.segmentDistribution == .fillEqually)
+        #expect(modeControl.selectedSegment == 1)
         #expect(
             modeControl.segmentToolTipMessages == [
-                ScholiumL10n.localized(ResearchInspectorMode.links.interfaceTitleResource),
                 ScholiumL10n.localized(ResearchInspectorMode.related.interfaceTitleResource),
+                ScholiumL10n.localized(ResearchInspectorMode.links.interfaceTitleResource),
             ])
-        #expect(inspectorModes.menuFormRepresentation?.submenu?.items.count == 2)
+        #expect(
+            inspectorModes.menuFormRepresentation?.submenu?.items.compactMap {
+                $0.representedObject as? String
+            } == [ResearchInspectorMode.related.rawValue, ResearchInspectorMode.links.rawValue])
         #expect(
             inspector.possibleLabels == [
                 "Hide Research Inspector",

@@ -70,11 +70,11 @@ enum AgentChatActivityProjection {
     /// report is not enough to turn a technical subject into a Note link.
     static func noteTarget(
         _ activity: AgentChatActivity,
-        notes: [WorkspaceCatalogNote]
+        catalog: @autoclosure () -> AgentChatNoteCatalog
     ) -> AgentChatActivityNoteTarget? {
         guard activity.source == .scholium, activity.files.count == 1,
             let file = activity.files.first, let noteID = file.noteID,
-            let note = notes.first(where: { $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID })
+            let note = catalog().note(noteID)
         else { return nil }
         let title = note.title.isEmpty ? (file.path as NSString).lastPathComponent : note.title
         guard !title.isEmpty else { return nil }

@@ -1380,7 +1380,7 @@ struct AgentChatTests {
             let file = try #require(activity.files.first)
             #expect(file.path == path && file.effect == .read)
             #expect(file.noteID == (resolved ? noteID : nil))
-            let target = AgentChatActivityProjection.noteTarget(activity, notes: [note])
+            let target = AgentChatActivityProjection.noteTarget(activity, catalog: AgentChatNoteCatalog(notes: [note]))
             if resolved {
                 #expect(target?.noteID == noteID && target?.vaultID == vaultID && target?.title == note.title)
             } else {

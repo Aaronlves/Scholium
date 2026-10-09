@@ -89,6 +89,7 @@ struct ConnectionsInspectorMeasurementTests {
         #expect(unfiltered.map(\.id) == expectedAllIDs)
         let allGroups = InspectorLinkGroup.make(unfiltered)
         #expect(allGroups.flatMap(\.items).map(\.id) == expectedAllIDs)
+        let prepared = PreparedConnectionsProjection(graph: graph, catalogNotes: catalog.notes, current: current)
         print(
             "LINKS_MEASURE fixture_notes=\(allNotes.count) graph_edges=\(graph.outgoing.values.reduce(0) { $0 + $1.count })"
                 + " graph_diagnostics=\(graph.diagnostics.count) qa_topic_incoming=\(edges.count) qa_topic_groups=\(allGroups.count) samples=31 configuration=debug"
@@ -108,6 +109,13 @@ struct ConnectionsInspectorMeasurementTests {
             #expect(result.map(\.id) == allGroups.map(\.id))
             #expect(result.map { $0.items.count } == allGroups.map { $0.items.count })
         }
+        measure("projection-external", samples: 31) {
+            ConnectionsProjection.make(
+                graph: graph, catalogNotes: catalog.notes, current: current, direction: .external
+            ).items
+        } check: {
+            #expect($0.isEmpty)
+        }
         measure("rows-expanded", samples: 31) {
             InspectorLinkRow.make(
                 groups: allGroups, external: [], collapsedGroups: [], freshness: .current,
@@ -116,6 +124,12 @@ struct ConnectionsInspectorMeasurementTests {
         } check: { result in
             #expect(result.count == allGroups.count + edges.count)
             #expect(Set(result.map(\.id)).count == result.count)
+        }
+        measure("prepare-directions", samples: 31) {
+            PreparedConnectionsProjection(graph: graph, catalogNotes: catalog.notes, current: current)
+        } check: {
+            #expect($0.groups(direction: .incoming, query: "").flatMap(\.items).map(\.id) == expectedAllIDs)
+            #expect($0.groups(direction: .external, query: "").isEmpty)
         }
 
         for query in ["", "QA Work", "晨光", "measurement-no-such-link"] {
@@ -153,6 +167,18 @@ struct ConnectionsInspectorMeasurementTests {
                 #expect(result.2.count == expectedRows)
                 #expect(Set(result.2.map(\.id)).count == result.2.count)
             }
+            measure("prepared-pipeline-query=\(query.isEmpty ? "empty" : query)", samples: 31) {
+                let groups = prepared.groups(direction: .incoming, query: query)
+                let rows = InspectorLinkRow.make(
+                    groups: groups, external: [], collapsedGroups: collapsed, freshness: .current,
+                    emptyAnnouncement: "No Results")
+                return (groups, rows)
+            } check: { result in
+                #expect(result.0.flatMap(\.items).map(\.id) == expectedItems.map(\.id))
+                #expect(result.0.map(\.id) == expectedGroups.map(\.id))
+                #expect(result.1.count == expectedRows)
+                #expect(Set(result.1.map(\.id)).count == result.1.count)
+            }
         }
 
         let session = LinksInspectorSession()
@@ -182,6 +208,7 @@ struct ConnectionsInspectorMeasurementTests {
             "LINKS_MEASURE no_op_each=1000 scroll_publications=\(scrollPublications) query_publications=\(queryPublications)"
                 + " disclosure_publications=\(disclosurePublications) meaningful_changes=3 meaningful_publications=\(publications - beforeChanges)"
         )
+
     }
 
     private func occurrenceID(_ edge: LinkGraphEdge) -> String {

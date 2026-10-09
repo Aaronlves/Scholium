@@ -437,8 +437,9 @@ Eligible direct Undo is offered only for that exact receipt and its current
 revision requirement, never for a cumulative Changes comparison or reviewed
 batch.
 
-An icon-only native single-choice Inspector toolbar group selects Links or Related
-Material, with Help and accessible names. Panes share content-edge insets, top
+An icon-only native single-choice Inspector toolbar group places Related Material
+at the logical leading edge and Links at the trailing edge, with Help and accessible
+names. Panes share content-edge insets, top
 spacing, system semantic colors and native selection/interaction feedback.
 Content crossfades; toolbar and Document stay still. Panes retain scroll position;
 the hidden one loses input and accessibility immediately. Reduce Motion switches

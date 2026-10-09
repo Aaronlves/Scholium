@@ -101,9 +101,15 @@ enum SourceCatalogPreparation: Sendable {
 
 enum WorkspaceRefreshCycleError: LocalizedError {
     case graphGenerationExhausted
+    case sourceInventoryRevisionExhausted
 
     var errorDescription: String? {
-        "Workspace graph generation IDs were exhausted."
+        switch self {
+        case .graphGenerationExhausted:
+            "Workspace graph generation IDs were exhausted."
+        case .sourceInventoryRevisionExhausted:
+            "Workspace source inventory revision IDs were exhausted."
+        }
     }
 }
 
@@ -284,6 +290,9 @@ extension WorkspaceHandle {
         let sourcePreparationDuration: Duration
         let buildDuration: Duration
         do {
+            guard currentSnapshot.sourceInventoryRevision < UInt64.max else {
+                throw WorkspaceRefreshCycleError.sourceInventoryRevisionExhausted
+            }
             let preparationStart = clock.now
             if mode == .live,
                 !currentSnapshot.phase.isComplete,
@@ -359,6 +368,8 @@ extension WorkspaceHandle {
         }
         snapshot = snapshot.withDocumentChangesGeneration(
             currentSnapshot.documentChangesGeneration
+        ).withSourceInventoryRevision(
+            currentSnapshot.sourceInventoryRevision + 1
         )
         currentSnapshot = snapshot
         sourceAheadIdentityRecords.removeAll(keepingCapacity: true)

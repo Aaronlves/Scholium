@@ -908,6 +908,17 @@ extension ScholiumUITests {
         let editor = app.descendants(matching: .any)["Markdown source editor"].firstMatch
         XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == originalSource })
         _ = selectResearchInspectorDirection("outgoing")
+        let orderedModeControl = workspace.descendants(matching: .any)["scholium.inspectorMode"].firstMatch
+        let relatedMode = orderedModeControl.descendants(matching: .any)["Related Material"].firstMatch
+        let linksMode = orderedModeControl.descendants(matching: .any)["Links"].firstMatch
+        XCTAssertTrue(relatedMode.exists && linksMode.exists)
+        XCTAssertLessThan(relatedMode.frame.minX, linksMode.frame.minX)
+        _ = selectResearchInspectorMode("related")
+        XCTAssertEqual(orderedModeControl.value as? String, "Related Material")
+        _ = selectResearchInspectorMode("links")
+        XCTAssertEqual(orderedModeControl.value as? String, "Links")
+        XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
+        XCTAssertEqual(editor.value as? String, originalSource)
         let outgoing = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@",

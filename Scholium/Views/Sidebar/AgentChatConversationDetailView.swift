@@ -14,6 +14,7 @@ struct AgentChatConversationDetailView: View {
     let addSelection: (UUID) async -> Bool
     let noteChoices: [WorkspaceCatalogNote]
     let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
+    var noteCatalogCache = AgentChatNoteCatalogCache()
     let openReference: (URL) -> Bool
     let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let showInLibrary: (URL) -> Void
@@ -70,7 +71,7 @@ struct AgentChatConversationDetailView: View {
             AgentChatChildInspector(child: child, openReference: openReference)
         }
         .sheet(item: $presentation.notePickerTarget) { target in
-            AgentChatNotePicker(notes: noteChoices) { note in try prepareNote(note, in: target.id) }
+            AgentChatNotePicker(notes: noteChoices, noteCatalogCache: noteCatalogCache) { note in try prepareNote(note, in: target.id) }
         }
         .sheet(item: $presentation.pdfPagesTarget) { target in AgentChatPDFPagesView(controller: controller, target: target) }
         .sheet(item: $presentation.comparisonRequest) { request in
@@ -744,7 +745,7 @@ struct AgentChatConversationDetailView: View {
             let diagnosticsAnchor = AgentChatDiagnosticsPresentation.Anchor.activityMessage(message.id)
             let isCurrent = isVisible && activeActivityID == message.id
             let orbStyle = isCurrent ? AgentChatActivityOrbStyle.style(for: activity) : nil
-            let noteTarget = AgentChatActivityProjection.noteTarget(activity, notes: noteChoices)
+            let noteTarget = AgentChatActivityProjection.noteTarget(activity, catalog: noteCatalogCache.catalog(notes: noteChoices))
             VStack(alignment: .leading, spacing: 4) {
                 if let report = activity.delegation {
                     AgentChatDelegationView(
@@ -1080,7 +1081,10 @@ struct AgentChatConversationDetailView: View {
                 canRefresh: controller.capabilities.isConnected && !controller.capabilities.isRefreshing)
         case "@":
             let isPreparing = controller.selectedID.map { controller.preparingMaterials.contains($0) } ?? false
-            candidates = AgentChatComposerCatalog.materials(notes: isPreparing ? [] : noteChoices)
+            candidates =
+                isPreparing
+                ? AgentChatComposerCatalog.materials(preorderedNotes: [])
+                : noteCatalogCache.catalog(notes: noteChoices).materialCandidates
         default:
             candidates = AgentChatComposerCatalog.commands(
                 isBusy: controller.isBusy, hasChanges: !conversationChangeIDs.isEmpty,

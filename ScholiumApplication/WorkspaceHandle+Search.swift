@@ -98,6 +98,14 @@ private func currentNoteCompletionTerms(
 }
 
 extension WorkspaceHandle {
+    /// Recommendation projections depend on exact Markdown only. Keep these
+    /// fresh, authorized source reads separate from managed-document hydration.
+    private func loadRelatedContentSource(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
+        try requireActive()
+        let repository = try repository(vaultID: id.vaultID)
+        return try await repository.load(relativePath: id.relativePath)
+    }
+
     struct RelatedContentPreparationMeasurement: Sendable {
         var sourceCount = 0
         var peakBufferedSourceCount = 0
@@ -151,7 +159,7 @@ extension WorkspaceHandle {
             try Task.checkCancellation()
             let document: NoteDocument
             do {
-                document = try await loadDocument(candidate.note)
+                document = try await loadRelatedContentSource(candidate.note)
             } catch is CancellationError { throw CancellationError() } catch { continue }
             try Task.checkCancellation()
             guard document.fingerprint == candidate.fingerprint,
@@ -243,7 +251,7 @@ extension WorkspaceHandle {
         for candidate in identityCandidates + lexicalCandidates + graphCandidates where seen.insert(candidate.note).inserted {
             try Task.checkCancellation()
             do {
-                let document = try await loadDocument(candidate.note)
+                let document = try await loadRelatedContentSource(candidate.note)
                 guard document.fingerprint == candidate.fingerprint,
                     document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
                 else {

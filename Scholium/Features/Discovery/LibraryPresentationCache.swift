@@ -16,6 +16,23 @@ final class LibraryPresentationCache {
         }
     }
 
+    private struct FolderOrderingInput: Equatable {
+        let folders: [VaultRelativeFolderPath]
+        let localeIdentifier: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            guard lhs.localeIdentifier == rhs.localeIdentifier, lhs.folders == rhs.folders else { return false }
+            return lhs.folders.withUnsafeBufferPointer { left in
+                rhs.folders.withUnsafeBufferPointer { right in
+                    left.baseAddress == right.baseAddress
+                        || zip(left, right).allSatisfy {
+                            $0.rawValue.utf8.elementsEqual($1.rawValue.utf8)
+                        }
+                }
+            }
+        }
+    }
+
     private struct DropInput: Equatable {
         let vaultID: UUID?
         let sourceScope: LibrarySourceScope
@@ -38,6 +55,8 @@ final class LibraryPresentationCache {
 
     private var orderingInput: OrderingInput?
     private var orderedNotes: [WindowDocumentLocation] = []
+    private var folderOrderingInput: FolderOrderingInput?
+    private var orderedFolderPaths: [String] = []
     private var dropInput: DropInput?
     private var dropInventory: SidebarTreeDropInventory?
 
@@ -53,6 +72,20 @@ final class LibraryPresentationCache {
             orderingInput = input
         }
         return orderedNotes
+    }
+
+    func orderedFolders(
+        _ folders: [VaultRelativeFolderPath],
+        localeIdentifier: String = Locale.current.identifier
+    ) -> [String] {
+        let input = FolderOrderingInput(folders: folders, localeIdentifier: localeIdentifier)
+        if input != folderOrderingInput {
+            orderedFolderPaths = folders.map(\.rawValue).sorted {
+                $0.localizedStandardCompare($1) == .orderedAscending
+            }
+            folderOrderingInput = input
+        }
+        return orderedFolderPaths
     }
 
     func drop(

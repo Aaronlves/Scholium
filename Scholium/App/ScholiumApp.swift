@@ -939,9 +939,7 @@ final class WindowModel: ObservableObject {
                 id: vaultID
             )
         else { return [] }
-        return snapshot.folders
-            .map(\.rawValue)
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return libraryPresentationCache.orderedFolders(snapshot.folders)
     }
 
     var currentLibraryPathComparisonPolicy: VaultPathComparisonPolicy? {

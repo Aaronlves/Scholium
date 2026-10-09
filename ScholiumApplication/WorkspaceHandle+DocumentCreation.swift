@@ -231,6 +231,7 @@ extension WorkspaceHandle {
             await barrier()
         }
         let mutationLease = try await beginSourceMutation(admission: admission)
+        let baseSourceInventoryRevision = currentSnapshot.sourceInventoryRevision
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
@@ -412,6 +413,7 @@ extension WorkspaceHandle {
                         vaultRole: registeredVault.role,
                         stableIdentity: stableIdentity,
                         document: committedDocument,
+                        baseSourceInventoryRevision: baseSourceInventoryRevision,
                     ),
                     identityRecoveryWarning: identityRecoveryWarning
                 )

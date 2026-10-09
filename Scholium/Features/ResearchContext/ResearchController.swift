@@ -3,8 +3,8 @@ import Foundation
 import ScholiumContracts
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
-    case links
     case related
+    case links
 
     var id: Self { self }
 

@@ -181,9 +181,9 @@ struct ConnectionsInspectorTests {
             resolutionScope: .sourceVault
         )
         let sourceID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: source.relativePath)
-        let items = ConnectionsProjection.make(
-            graph: graph, catalogNotes: nil, current: sourceID, direction: .outgoing
-        ).items
+        let items = PreparedConnectionsProjection(
+            graph: graph, catalogNotes: nil, current: sourceID
+        ).groups(direction: .outgoing, query: "").flatMap(\.items)
         let byTarget = Dictionary(grouping: items, by: { $0.edge.occurrence.target })
 
         #expect(byTarget["Missing"]?.first?.diagnostic?.code == .broken)
@@ -237,18 +237,22 @@ struct ConnectionsInspectorTests {
             )
         }
         let currentID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: current.relativePath)
-        let items = ConnectionsProjection.make(
+        let prepared = PreparedConnectionsProjection(
             graph: graph,
             catalogNotes: catalogNotes,
-            current: currentID,
-            direction: .outgoing
-        ).items
+            current: currentID
+        )
 
-        let groups = InspectorLinkGroup.make(items)
+        let groups = prepared.groups(direction: .outgoing, query: "")
+        let items = groups.flatMap(\.items)
         #expect(groups.count == 2)
         #expect(groups.allSatisfy { $0.title == "Target" })
         #expect(groups.compactMap(\.relativePath).sorted() == ["One/Target.md", "Two/Target.md"])
         #expect(groups.compactMap(\.directoryContext).sorted() == ["Topics / One", "Topics / Two"])
+        let filtered = prepared.groups(direction: .outgoing, query: "One/")
+        #expect(filtered.compactMap(\.relativePath) == ["One/Target.md"])
+        #expect(filtered.first?.directoryContext == nil)
+        #expect(prepared.groups(direction: .external, query: "Target").isEmpty)
 
         let expandedRows = InspectorLinkRow.make(
             groups: groups, external: [], collapsedGroups: [],

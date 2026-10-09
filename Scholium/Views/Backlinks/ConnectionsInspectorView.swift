@@ -142,6 +142,16 @@ struct ConnectionsProjection {
         current: VaultQualifiedNoteID?,
         direction: ConnectionDirection
     ) -> Self {
+        guard let graph, let current, direction != .external else {
+            return Self(items: [])
+        }
+        let edges: [LinkGraphEdge] =
+            switch direction {
+            case .incoming: graph.incoming[current] ?? []
+            case .outgoing: graph.outgoing[current] ?? []
+            case .external: []
+            }
+        guard !edges.isEmpty else { return Self(items: []) }
         let notesByID = Dictionary(
             uniqueKeysWithValues: (catalogNotes ?? []).map {
                 (
@@ -151,20 +161,10 @@ struct ConnectionsProjection {
                     ), $0
                 )
             })
-        guard let graph, let current else {
-            return Self(items: [])
-        }
         let diagnosticsByLocation = Dictionary(
             grouping: graph.diagnostics,
             by: { OccurrenceLocation(source: $0.source, span: $0.span) }
         )
-
-        let edges: [LinkGraphEdge] =
-            switch direction {
-            case .incoming: graph.incoming[current] ?? []
-            case .outgoing: graph.outgoing[current] ?? []
-            case .external: []
-            }
         let items = edges.map { edge in
             let peerID = direction == .incoming ? edge.source : edge.destination?.note
             let peer = peerID.flatMap { notesByID[$0] }
@@ -233,6 +233,47 @@ struct InspectorLinkGroup: Identifiable {
     }
 }
 
+/// Immutable current-Note inputs; location changes only filter existing items.
+struct PreparedConnectionsProjection {
+    private let incomingItems: [InspectorLinkItem]
+    private let outgoingItems: [InspectorLinkItem]
+    private let incomingGroups: [InspectorLinkGroup]
+    private let outgoingGroups: [InspectorLinkGroup]
+
+    init(
+        graph: GraphSnapshot?,
+        catalogNotes: [WorkspaceCatalogNote]?,
+        current: VaultQualifiedNoteID?
+    ) {
+        let incoming = ConnectionsProjection.make(
+            graph: graph, catalogNotes: catalogNotes, current: current, direction: .incoming
+        ).items
+        let outgoing = ConnectionsProjection.make(
+            graph: graph, catalogNotes: catalogNotes, current: current, direction: .outgoing
+        ).items
+        incomingItems = incoming
+        outgoingItems = outgoing
+        incomingGroups = InspectorLinkGroup.make(incoming)
+        outgoingGroups = InspectorLinkGroup.make(outgoing)
+    }
+
+    func groups(direction: ConnectionDirection, query: String) -> [InspectorLinkGroup] {
+        let items: [InspectorLinkItem]
+        let groups: [InspectorLinkGroup]
+        switch direction {
+        case .incoming:
+            items = incomingItems
+            groups = incomingGroups
+        case .outgoing:
+            items = outgoingItems
+            groups = outgoingGroups
+        case .external:
+            return []
+        }
+        return query.isEmpty ? groups : InspectorLinkGroup.make(items.filter { $0.matches(query) })
+    }
+}
+
 /// One immutable native List row per element. Disclosure changes the input
 /// collection rather than the number of rows emitted by a nested ForEach.
 enum InspectorLinkRow: Identifiable {
@@ -279,6 +320,25 @@ struct ConnectionsInspectorView: View {
     let keepLink: (InspectorLinkItem) -> Void
     let openKept: (KeptPassage) -> Void
     var isActive = true
+    private let prepared: PreparedConnectionsProjection
+
+    init(
+        context: ConnectionsInspectorContext,
+        session: LinksInspectorSession,
+        keptPassages: KeptPassagesSession,
+        keepLink: @escaping (InspectorLinkItem) -> Void,
+        openKept: @escaping (KeptPassage) -> Void,
+        isActive: Bool = true
+    ) {
+        self.context = context
+        _session = ObservedObject(wrappedValue: session)
+        _keptPassages = ObservedObject(wrappedValue: keptPassages)
+        self.keepLink = keepLink
+        self.openKept = openKept
+        self.isActive = isActive
+        prepared = PreparedConnectionsProjection(
+            graph: context.graph, catalogNotes: context.catalog?.notes, current: context.current)
+    }
 
     private var direction: ConnectionDirection { session.direction }
     private var locationKey: String {
@@ -294,11 +354,7 @@ struct ConnectionsInspectorView: View {
         let key = locationKey
         let location = session.location(for: key)
         let term = location.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let items = ConnectionsProjection.make(
-            graph: context.graph, catalogNotes: context.catalog?.notes,
-            current: context.current, direction: direction
-        ).items.filter { $0.matches(term) }
-        let groups = InspectorLinkGroup.make(items)
+        let groups = prepared.groups(direction: direction, query: term)
         let external =
             direction == .external
             ? context.externalLinks.filter {

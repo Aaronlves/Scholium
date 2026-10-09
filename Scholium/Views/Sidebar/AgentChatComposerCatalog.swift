@@ -34,18 +34,12 @@ enum AgentChatComposerCatalog {
         return candidates
     }
 
-    static func materials(notes: [WorkspaceCatalogNote]) -> [Candidate] {
-        let noteCandidates = notes.enumerated()
-            .filter { $0.element.reference.stableNoteID.flatMap(UUID.init(uuidString:)) != nil }
-            .sorted {
-                let order = $0.element.title.localizedStandardCompare($1.element.title)
-                return order == .orderedSame ? $0.offset < $1.offset : order == .orderedAscending
-            }
-            .map { _, note in
-                Candidate(
-                    id: "material:note:" + note.id, title: note.title, detail: note.reference.relativePath,
-                    symbol: "doc.text", action: .note(note))
-            }
+    static func materials(preorderedNotes notes: [WorkspaceCatalogNote]) -> [Candidate] {
+        let noteCandidates = notes.map { note in
+            Candidate(
+                id: "material:note:" + note.id, title: note.title, detail: note.reference.relativePath,
+                symbol: "doc.text", action: .note(note))
+        }
         return noteCandidates + [
             .init(
                 id: "material:file", title: ScholiumL10n.string("Choose File…"), detail: "",
@@ -85,12 +79,25 @@ enum AgentChatComposerCatalog {
         var prefix: [Candidate] = []
         var other: [Candidate] = []
         for candidate in candidates {
-            let fields = [candidate.title, candidate.id, candidate.detail]
-            if fields.contains(where: { $0.compare(needle, options: .caseInsensitive) == .orderedSame }) {
+            var isExact = false
+            var isPrefix = false
+            var contains = false
+            // One search per field establishes presence and prefix together.
+            // Compare only matching fields to retain Foundation's exact tier.
+            for field in [candidate.title, candidate.id, candidate.detail] {
+                guard let range = field.range(of: needle, options: .caseInsensitive) else { continue }
+                if field.compare(needle, options: .caseInsensitive) == .orderedSame {
+                    isExact = true
+                    break
+                }
+                isPrefix = isPrefix || range.lowerBound == field.startIndex
+                contains = true
+            }
+            if isExact {
                 exact.append(candidate)
-            } else if fields.contains(where: { $0.range(of: needle, options: [.caseInsensitive, .anchored]) != nil }) {
+            } else if isPrefix {
                 prefix.append(candidate)
-            } else if fields.contains(where: { AgentChatSearch.matches($0, query: needle) }) {
+            } else if contains {
                 other.append(candidate)
             }
         }

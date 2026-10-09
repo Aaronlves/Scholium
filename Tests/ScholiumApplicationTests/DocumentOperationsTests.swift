@@ -352,6 +352,73 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Creation records its inventory base while metadata preserves and full refresh advances it")
+    func managedCreationSourceInventoryRevision() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await handle.snapshot().sourceInventoryRevision == 0)
+        let before = try await handle.refresh()
+        #expect(before.sourceInventoryRevision == 1)
+
+        let events = await handle.events.events()
+        var iterator = events.makeAsyncIterator()
+        let initialEvent = try #require(await iterator.next())
+        let gate = ManagedCreationTestGate()
+        await handle.setManagedCreationPostSourceBarrierForTesting {
+            await gate.wait()
+        }
+        let creation = Task {
+            try await handle.documents.createUntitledNote(
+                inVault: fixture.targetID.vaultID,
+                folderRelativePath: nil
+            ).committedValue
+        }
+        #expect(await gate.waitUntilArrived())
+        // The source mutation lease holds back inventory refresh while a
+        // metadata event advances delivery over the pre-creation inventory.
+        await handle.publishDocumentChangesChanged()
+        let pendingMetadata = await iterator.next()
+        await gate.release()
+        let committed = try await creation.value
+        await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+        let metadata = try #require(pendingMetadata)
+        if case .documentChangesChanged = metadata {
+        } else {
+            Issue.record("Expected a Changes metadata publication during source creation.")
+        }
+        #expect(metadata.generation > initialEvent.generation)
+        #expect(metadata.snapshot.sourceInventoryRevision == before.sourceInventoryRevision)
+        #expect(metadata.snapshot.documentChangesGeneration == before.documentChangesGeneration + 1)
+        #expect(metadata.snapshot.document(id: committed.id) == nil)
+        #expect(committed.baseSourceInventoryRevision == before.sourceInventoryRevision)
+
+        let publication = try #require(await iterator.next())
+        guard case .sourceCommitted(let event) = publication else {
+            Issue.record("Expected the owned source-commit inventory refresh.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(event.note.id == committed.id)
+        #expect(event.snapshot.sourceInventoryRevision == committed.baseSourceInventoryRevision + 1)
+        #expect(event.snapshot.document(id: committed.id)?.fingerprint == committed.document.fingerprint)
+        #expect(event.snapshot.documentChangesGeneration == metadata.snapshot.documentChangesGeneration)
+
+        await handle.publishDocumentChangesChanged()
+        let afterMetadata = try #require(await iterator.next())
+        if case .documentChangesChanged = afterMetadata {
+        } else {
+            Issue.record("Expected a Changes metadata publication after inventory refresh.")
+        }
+        #expect(afterMetadata.snapshot.sourceInventoryRevision == event.snapshot.sourceInventoryRevision)
+        #expect(afterMetadata.snapshot.documentChangesGeneration == event.snapshot.documentChangesGeneration + 1)
+        let refreshed = try await handle.refresh()
+        #expect(refreshed.sourceInventoryRevision == event.snapshot.sourceInventoryRevision + 1)
+        #expect(refreshed.documentChangesGeneration == afterMetadata.snapshot.documentChangesGeneration)
+        await runtime.shutdown()
+    }
+
     @Test("Managed creation treats a source-absent portable identity as an occupied path")
     func managedCreationDoesNotReusePortableIdentity() async throws {
         let fixture = try await LifecycleFixture.make()

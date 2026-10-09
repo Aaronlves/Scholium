@@ -15,6 +15,7 @@ struct WritingReferencesPerformanceTests {
         let count = Int(environment["SCHOLIUM_REFERENCE_NOTE_COUNT"] ?? "500") ?? 500
         let label = environment["SCHOLIUM_REFERENCE_MEASUREMENT_LABEL"] ?? "diagnostic"
         let threeVaults = environment["SCHOLIUM_REFERENCE_THREE_VAULTS"] == "1"
+        let initialOnly = environment["SCHOLIUM_REFERENCE_INITIAL_ONLY"] == "1"
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let artifacts = repository.appendingPathComponent(".build/writing-references-performance", isDirectory: true)
@@ -204,7 +205,7 @@ struct WritingReferencesPerformanceTests {
             print("Search: \(count) notes, \(scenario), \(String(format: "%.3f", elapsed)) s, \(notes.count) current results")
         }
 
-        do {
+        measuredScenarios: do {
             let configureStarted = ContinuousClock.now
             let handle = try await activeRuntime.configureTriptych(
                 paperAnalysisURL: analyses, topicKnowledgeURL: topics, outputURL: works,
@@ -216,13 +217,14 @@ struct WritingReferencesPerformanceTests {
             let vault = try #require(handle.assignment.vault(for: .output)?.id)
 
             // Preserve the original three samples and source shape for comparison with earlier reports.
-            for sample in 0..<3 {
+            for sample in 0..<(initialOnly ? 1 : 3) {
                 let response = try await measureRecommendation(
                     handle, vault: vault, scenario: "initial_session", sample: sample,
                     source: draft + String(repeating: "\n", count: sample))
                 if let expectedPassages { #expect(response.passages == expectedPassages) } else { expectedPassages = response.passages }
             }
             await activeRuntime.shutdown()
+            if initialOnly { break measuredScenarios }
 
             activeRuntime = WorkspaceRuntime(configuration: configuration)
             let reopenStarted = ContinuousClock.now
@@ -360,6 +362,7 @@ struct WritingReferencesPerformanceTests {
             "ranking_policy": RelatedContentContract.rankingPolicyVersion,
             "label": label, "notes": count, "paragraphs_per_note": 16,
             "three_vault_corpus": threeVaults, "corpus_note_counts": corpusRoleCounts, "additional_works_seed_notes": 1,
+            "initial_scenario_only": initialOnly,
             "measurement":
                 "Backend diagnostics only; excludes editor capture, debounce, link-action preparation and native publication; native end-to-end latency is unmeasured. Lifecycle timings reported separately.",
             "stage_semantics":
@@ -367,7 +370,9 @@ struct WritingReferencesPerformanceTests {
             "oracle":
                 "Exact current source fingerprints, roles and UTF-16 source slices; full ordered passage equality within each workload. Ordered result digest compares role/path/fingerprint/range/source across disposable runs, excluding random vault UUIDs.",
             "sampling":
-                "Initial three samples preserve historical trailing-newline seed variants. Other recommendation workloads run three identical inputs. Summaries split first/repeat calls and exact inputs; no p95 claim.",
+                initialOnly
+                ? "One initial-session query; no repeated-sample distribution or percentile claim."
+                : "Initial three samples preserve historical trailing-newline seed variants. Other recommendation workloads run three identical inputs. Summaries split first/repeat calls and exact inputs; no p95 claim.",
             "recommendation_summaries": summaries,
             "samples": samples, "search_samples": searchSamples, "lifecycle_samples": lifecycleSamples,
         ]

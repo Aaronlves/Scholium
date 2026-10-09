@@ -42,7 +42,8 @@ extension WindowModel {
                     context: workspaceProjectionContext
                 )
             else { return nil }
-            let reconciliation = reconcilePublishedDocuments(snapshot)
+            let reconciliation = reconcilePublishedDocuments(
+                workspaceProjectionController.effectiveSnapshot(snapshot))
             applyWorkspaceProjectionCommit(commit, documentReconciliation: reconciliation)
             refreshStatusText = nil
             workspaceProjectionController.reportCatalogError(nil)
@@ -106,7 +107,9 @@ extension WindowModel {
             )
         }
 
-        if case .inventoryChanged(let change) = event {
+        if case .inventoryChanged(let change) = event,
+            workspaceProjectionController.advancesSourceInventory(event.snapshot)
+        {
             for move in change.moved
             where move.previousLocation.vaultID == move.location.vaultID {
                 migrateInMemoryPath(
@@ -119,7 +122,9 @@ extension WindowModel {
             }
         }
 
-        if case .researchConfigurationInvalidated = event {
+        if case .researchConfigurationInvalidated = event,
+            !workspaceProjectionController.advancesSourceInventory(event.snapshot)
+        {
             documentController.refreshCitationSnapshots(affectedNoteIDs: nil)
             _ = workspaceProjectionController.receive(
                 event,
@@ -129,7 +134,8 @@ extension WindowModel {
             return
         }
 
-        let documentReconciliation = reconcilePublishedDocuments(event.snapshot)
+        let documentReconciliation = reconcilePublishedDocuments(
+            workspaceProjectionController.effectiveSnapshot(event.snapshot))
         // Events are coalesced; any delivered generation can follow a citation
         // invalidation. Recheck only retained Notes, keeping source summaries light.
         documentController.refreshCitationSnapshots(affectedNoteIDs: nil)

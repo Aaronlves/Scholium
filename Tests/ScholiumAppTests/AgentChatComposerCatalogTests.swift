@@ -31,7 +31,7 @@ struct AgentChatComposerCatalogTests {
         let notes =
             (1...9).reversed().map { note("Note \($0)", stableID: UUID().uuidString) }
             + [note("Unresolved", stableID: nil), note("Invalid", stableID: "not-a-uuid")]
-        let candidates = AgentChatComposerCatalog.materials(notes: notes)
+        let candidates = AgentChatNoteCatalog(notes: notes).materialCandidates
         #expect(candidates.count == 12)
         #expect(Array(candidates.prefix(9)).map(\.title) == (1...9).map { "Note \($0)" })
         #expect(candidates.allSatisfy { $0.id.hasPrefix("material:") })

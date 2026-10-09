@@ -49,7 +49,7 @@ struct AgentChatActivityRefinementTests {
             kind: .read, source: .scholium,
             files: [.init(path: note.reference.relativePath, noteID: noteID, effect: .read)])
 
-        let target = AgentChatActivityProjection.noteTarget(activity, notes: [note])
+        let target = AgentChatActivityProjection.noteTarget(activity, catalog: AgentChatNoteCatalog(notes: [note]))
         #expect(target?.noteID == noteID)
         #expect(target?.vaultID == vaultID)
         #expect(target?.title == note.title)
@@ -59,12 +59,12 @@ struct AgentChatActivityRefinementTests {
         runtimeActivity = .init(
             kind: activity.kind, status: activity.status, source: .runtime,
             files: activity.files)
-        #expect(AgentChatActivityProjection.noteTarget(runtimeActivity, notes: [note]) == nil)
+        #expect(AgentChatActivityProjection.noteTarget(runtimeActivity, catalog: AgentChatNoteCatalog(notes: [note])) == nil)
 
         let unresolved = AgentChatActivity(
             kind: .read, source: .scholium,
             files: [.init(path: note.reference.relativePath, effect: .read)])
-        #expect(AgentChatActivityProjection.noteTarget(unresolved, notes: [note]) == nil)
+        #expect(AgentChatActivityProjection.noteTarget(unresolved, catalog: AgentChatNoteCatalog(notes: [note])) == nil)
     }
 
     @Test("Reply actions keep supplied materials separate from explicit sources")

@@ -332,8 +332,11 @@ extension WindowModel {
                     )
                 }
             },
-            operation: { isCurrent in
+            operation: { [weak self] isCurrent in
+                guard let self else { throw CancellationError() }
                 failurePhase = .operation
+                self.activeDocumentTransitionCurrency = isCurrent
+                defer { self.activeDocumentTransitionCurrency = nil }
                 try await operation(isCurrent)
             },
             didFail: { [weak self] error in

@@ -292,17 +292,22 @@ public struct WorkspaceManagedNoteCommit: Sendable {
     public let vaultRole: VaultRole
     public let stableIdentity: WorkspaceNoteIdentityState
     public let document: NoteDocument
+    /// The source inventory held when creation acquired its mutation lease.
+    /// Only a later authoritative inventory can supersede the source-ahead Note.
+    public let baseSourceInventoryRevision: UInt64
 
     public init(
         id: VaultQualifiedNoteID,
         vaultRole: VaultRole,
         stableIdentity: WorkspaceNoteIdentityState,
-        document: NoteDocument
+        document: NoteDocument,
+        baseSourceInventoryRevision: UInt64
     ) {
         self.id = id
         self.vaultRole = vaultRole
         self.stableIdentity = stableIdentity
         self.document = document
+        self.baseSourceInventoryRevision = baseSourceInventoryRevision
     }
 
     /// A bounded window presentation while the matching complete Workspace
@@ -426,6 +431,9 @@ public struct WorkspaceSnapshot: Sendable {
     public let vaults: [WorkspaceVaultSnapshot]
     public let discovery: WorkspaceDiscoverySnapshot
     public let research: WorkspaceResearchSnapshot
+    /// Monotonic successful source-inventory publication within one Workspace
+    /// runtime. Initial opening is zero; metadata and failed refreshes preserve it.
+    public let sourceInventoryRevision: UInt64
     /// Monotonic machine-local Changes metadata revision. It rides every
     /// workspace event so a coalesced stream still invalidates stale UI state.
     public let documentChangesGeneration: UInt64
@@ -438,6 +446,7 @@ public struct WorkspaceSnapshot: Sendable {
         vaults: [WorkspaceVaultSnapshot],
         discovery: WorkspaceDiscoverySnapshot,
         research: WorkspaceResearchSnapshot,
+        sourceInventoryRevision: UInt64 = 0,
         documentChangesGeneration: UInt64 = 0
     ) {
         self.triptych = triptych
@@ -447,6 +456,7 @@ public struct WorkspaceSnapshot: Sendable {
         self.vaults = vaults
         self.discovery = discovery
         self.research = research
+        self.sourceInventoryRevision = sourceInventoryRevision
         self.documentChangesGeneration = documentChangesGeneration
     }
 
@@ -455,7 +465,18 @@ public struct WorkspaceSnapshot: Sendable {
             triptych: triptych, mode: mode, phase: phase,
             generatedAt: generatedAt, vaults: vaults,
             discovery: discovery, research: research,
+            sourceInventoryRevision: sourceInventoryRevision,
             documentChangesGeneration: generation
+        )
+    }
+
+    public func withSourceInventoryRevision(_ revision: UInt64) -> Self {
+        Self(
+            triptych: triptych, mode: mode, phase: phase,
+            generatedAt: generatedAt, vaults: vaults,
+            discovery: discovery, research: research,
+            sourceInventoryRevision: revision,
+            documentChangesGeneration: documentChangesGeneration
         )
     }
 

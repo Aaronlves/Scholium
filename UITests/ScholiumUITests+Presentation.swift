@@ -194,6 +194,13 @@ extension ScholiumUITests {
                 return paths.filter { $0.hasPrefix("Untitled") && $0.hasSuffix(".md") }.count == 2
             })
         XCTAssertEqual(try String(contentsOf: created, encoding: .utf8), body)
+        let secondName = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(atPath: vault.appendingPathComponent("文件夹甲").path)
+                .first { $0.hasPrefix("Untitled") && $0.hasSuffix(".md") && $0 != created.lastPathComponent })
+        let second = vault.appendingPathComponent("文件夹甲").appendingPathComponent(secondName)
+        XCTAssertTrue(waitForDocumentTitle(second.deletingPathExtension().lastPathComponent, timeout: 10))
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        XCTAssertEqual(try Data(contentsOf: second), Data())
         app.menuBars.menuBarItems["View"].click()
         app.menuItems["Appearance"].firstMatch.hover()
         app.menuItems["Dark"].click()
@@ -370,6 +377,17 @@ extension ScholiumUITests {
         create.click()
         let composer = app.textViews["scholium.chat.message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        typeCommittedText("First sidebar draft", into: composer, in: app, clickWithinVisibleFrame: true)
+
+        typeCommittedText("First sidebar draft @QA", into: composer, in: app, clickWithinVisibleFrame: true)
+        let suggestions = app.descendants(matching: .any)["scholium.chat.suggestions"].firstMatch
+        XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            suggestions.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "QA Autosave A,")).firstMatch.waitForExistence(timeout: 5))
+        typeCommittedText("First sidebar draft @NoSuchFixtureLabel123", into: composer, in: app, clickWithinVisibleFrame: true)
+        XCTAssertTrue(suggestions.staticTexts["No Matches"].firstMatch.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(composer.value as? String, "First sidebar draft @NoSuchFixtureLabel123")
         typeCommittedText("First sidebar draft", into: composer, in: app, clickWithinVisibleFrame: true)
 
         app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.click()
@@ -924,6 +942,13 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertTrue(row.exists)
+        app.descendants(matching: .any)["scholium.libraryCreate"].firstMatch.click()
+        app.menuItems["New Folder"].click()
+        let createdFolder = triptychDirectory.appendingPathComponent("01-analyses/Untitled Folder")
+        XCTAssertTrue(waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: createdFolder.path) })
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.folderRow.Untitled Folder"].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
     }
 

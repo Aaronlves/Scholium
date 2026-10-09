@@ -173,15 +173,16 @@ source. Mutation targets keep vault/document identity, stable Note ID and exact
 revision together. Application re-resolves identity inside the source lease,
 preventing stale gestures or sheets from acting on reused paths.
 
-After a proven create or move, the exact window may install source-ahead Note
-and Folder projections for immediate activation/reveal. Placeholder graph values
-authorize nothing; complete generation replaces them. Creation reserves only its
-own identity; control-store compare-and-swap and scoped rollback cannot displace a
-foreign identity, even at identical source bytes. Link rewrites advance exact
-affected identities before another batch item. Batches retain per-item outcomes,
-stop remaining work on failure and exclude completed effects from fresh retries.
-Import tasks bind their initiating workspace/window; reassignment or committed
-close stops remaining files without reclassifying prior commits.
+After a proven create or move, the window installs source-ahead Note/Folder
+projections. Application advances source-inventory revisions after successful
+rebuild; metadata preserves them. Creation returns its base revision. Window
+projection retains committed source until newer inventory confirms existence or
+deletion; placeholder graph values authorize nothing. Identity compare-and-swap
+and scoped rollback preserve foreign identities, including identical bytes.
+Link rewrites advance affected identities between batch items. Batches retain
+per-item outcomes, stop on failure and exclude completed effects from retries.
+Import binds its initiating workspace/window; reassignment or committed close
+stops remaining files without reclassifying prior commits.
 
 Folder moves freeze descendant inventory, commit one descriptor-relative
 no-replace rename, rewrite proved links and rebind identities. Other

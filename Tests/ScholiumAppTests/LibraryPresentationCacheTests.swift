@@ -7,6 +7,49 @@ import Testing
 @Suite("Library presentation reuse")
 @MainActor
 struct LibraryPresentationCacheTests {
+    @Test("Folder ordering reuses unchanged inventory and follows additions and removals")
+    func folderOrderingInvalidation() throws {
+        let cache = LibraryPresentationCache()
+        let folders = try ["Folder-10", "Folder-2"].map(VaultRelativeFolderPath.init)
+        let first = cache.orderedFolders(folders)
+        #expect(first == ["Folder-2", "Folder-10"])
+        #expect(sharesStorage(first, cache.orderedFolders(folders)))
+        let equalInventory = try ["Folder-10", "Folder-2"].map(VaultRelativeFolderPath.init)
+        #expect(sharesStorage(first, cache.orderedFolders(equalInventory)))
+
+        let added = try folders + [VaultRelativeFolderPath("Folder-1")]
+        #expect(cache.orderedFolders(added) == ["Folder-1", "Folder-2", "Folder-10"])
+        #expect(cache.orderedFolders(Array(added.suffix(2))) == ["Folder-1", "Folder-2"])
+        #expect(cache.orderedFolders([]).isEmpty)
+        #expect(cache.orderedFolders(folders) == first)
+    }
+
+    @Test("Folder locale changes rebuild ordering while retaining the exact inventory")
+    func folderOrderingLocaleInvalidation() throws {
+        let cache = LibraryPresentationCache()
+        let folders = try ["Folder-10", "Folder-2"].map(VaultRelativeFolderPath.init)
+        let first = cache.orderedFolders(folders, localeIdentifier: "en")
+        #expect(sharesStorage(first, cache.orderedFolders(folders, localeIdentifier: "en")))
+        let revised = cache.orderedFolders(folders, localeIdentifier: "zh")
+        #expect(revised == ["Folder-2", "Folder-10"])
+        #expect(!sharesStorage(first, revised))
+        #expect(sharesStorage(revised, cache.orderedFolders(folders, localeIdentifier: "zh")))
+    }
+
+    @Test("Folder ordering rejects canonically equivalent obsolete path spelling")
+    func folderOrderingExactPathSpelling() throws {
+        let cache = LibraryPresentationCache()
+        let composed = "Caf\u{e9}"
+        let decomposed = "Cafe\u{301}"
+        let first = try ["A", composed].map(VaultRelativeFolderPath.init)
+        let renamed = try ["A", decomposed].map(VaultRelativeFolderPath.init)
+        #expect(first == renamed)
+        _ = cache.orderedFolders(first)
+        let current = cache.orderedFolders(renamed)
+        #expect(current.count == 2)
+        #expect(current.last?.utf8.elementsEqual(decomposed.utf8) == true)
+    }
+
     @Test("Ordering reuse retains exact current metadata and filtered membership")
     func orderingInvalidation() {
         let cache = LibraryPresentationCache()
@@ -111,6 +154,12 @@ struct LibraryPresentationCacheTests {
         let renamedEmpty = emptyCache.projection(preorderedNotes: [], folderRelativePaths: [decomposed])
         #expect(renamedEmpty.revision == empty.revision + 1)
         #expect(renamedEmpty.value.roots.first?.id.utf8.elementsEqual(decomposed.utf8) == true)
+    }
+
+    private func sharesStorage(_ lhs: [String], _ rhs: [String]) -> Bool {
+        lhs.withUnsafeBufferPointer { left in
+            rhs.withUnsafeBufferPointer { right in left.baseAddress == right.baseAddress }
+        }
     }
 
     private func note(_ vaultID: UUID, _ stableID: UUID, path: String, source: String, modified: TimeInterval) -> WindowDocumentLocation {
