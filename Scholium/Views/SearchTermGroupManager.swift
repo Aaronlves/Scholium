@@ -34,20 +34,30 @@ struct SearchTermGroupManager: View {
                 ) {
                     ForEach(controller.termGroups) { group in Text(group.name).tag(group.id) }
                 }
-                .frame(minWidth: 150)
+                .frame(width: ScholiumMetrics.Search.termGroupListWidth)
                 .disabled(isSaving || isDirty)
-                Form {
-                    TextField("Group Name", text: $name)
-                        .accessibilityLabel("Group Name")
-                        .disabled(isSaving)
-                    VStack(alignment: .leading) {
-                        Text("Terms, one per line")
-                        TextEditor(text: $terms).frame(minHeight: 160).disabled(isSaving)
-                            .accessibilityLabel("Terms, one per line")
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                        Text("Group Name")
+                        TextField("Group Name", text: $name)
+                            .labelsHidden()
+                            .accessibilityLabel("Group Name")
+                            .disabled(isSaving)
                     }
-                    Text("1–24 terms; each is inserted as literal text.").font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                        Text("Terms, one per line")
+                        TextEditor(text: $terms)
+                            .frame(maxHeight: .infinity)
+                            .disabled(isSaving)
+                            .accessibilityLabel("Terms, one per line")
+                        Text("1–24 terms; each is inserted as literal text.")
+                            .font(ScholiumTypography.interface(.small))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .formStyle(.grouped)
+                .font(ScholiumTypography.interface(.body))
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let issue = failure ?? controller.termGroupError {
                 Text(ScholiumL10n.dynamicString(issue)).scholiumForeground(.destructive).textSelection(.enabled)

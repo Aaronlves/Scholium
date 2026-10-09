@@ -33,8 +33,8 @@ struct SearchResultNavigationTests {
             let origin = try #require(window.currentDocumentDescriptor)
             let session = window.documentController.session(for: origin)
             session.suppressAutosave = true
-            session.editingSource = "Unsaved draft must remain exact."
-            defer { session.editingSource = String(decoding: fixture.originalDraft, as: UTF8.self) }
+            let restoreSource = try editSource("Unsaved draft must remain exact.", session: session, in: window)
+            defer { restoreSource() }
             let gate = TransitionGate()
             defer { gate.release() }
             window.documentTransitionCoordinator.enqueue(
@@ -66,8 +66,8 @@ struct SearchResultNavigationTests {
                 let originSession = window.documentController.session(for: origin)
                 originSession.suppressAutosave = true
                 let originText = dirty ? "Unsaved origin must not be prepared." : String(decoding: fixture.originalDraft, as: UTF8.self)
-                originSession.editingSource = originText
-                defer { originSession.editingSource = String(decoding: fixture.originalDraft, as: UTF8.self) }
+                let restoreOrigin = try editSource(originText, session: originSession, in: window)
+                defer { restoreOrigin() }
                 let gate = TransitionGate()
                 defer { gate.release() }
                 window.documentTransitionCoordinator.enqueue(
@@ -80,8 +80,10 @@ struct SearchResultNavigationTests {
                 let destination = try #require(peer.currentDocumentDescriptor)
                 let targetSession = peer.documentController.session(for: destination)
                 targetSession.suppressAutosave = true
-                if dirty { targetSession.editingSource = "Unsaved target must retain its position." }
-                defer { targetSession.editingSource = String(decoding: fixture.originalSource, as: UTF8.self) }
+                let restoreTarget = try editSource(
+                    dirty ? "Unsaved target must retain its position." : String(decoding: fixture.originalSource, as: UTF8.self),
+                    session: targetSession, in: peer)
+                defer { restoreTarget() }
                 peer.documentController.requestSourceLocation(line: nil)
                 gate.release()
                 await window.waitForPendingDocumentTransitionsForTesting()
@@ -117,8 +119,9 @@ struct SearchResultNavigationTests {
             let session = window.documentController.session(for: origin)
             session.suppressAutosave = true
             let draft = "Unsaved draft must not leave for a stale result."
-            session.editingSource = edited ? draft : String(decoding: fixture.originalDraft, as: UTF8.self)
-            defer { session.editingSource = String(decoding: fixture.originalDraft, as: UTF8.self) }
+            let restoreSource = try editSource(
+                edited ? draft : String(decoding: fixture.originalDraft, as: UTF8.self), session: session, in: window)
+            defer { restoreSource() }
             let gate = TransitionGate()
             defer { gate.release() }
             window.documentTransitionCoordinator.enqueue(
@@ -168,8 +171,8 @@ struct SearchResultNavigationTests {
             window.documentController.requestSourceLocation(line: nil)
             let session = window.documentController.session(for: target)
             session.suppressAutosave = true
-            session.editingSource = "Unsaved target shifts the source range."
-            defer { session.editingSource = String(decoding: fixture.originalSource, as: UTF8.self) }
+            let restoreSource = try editSource("Unsaved target shifts the source range.", session: session, in: window)
+            defer { restoreSource() }
             await window.openSearchSelection(.result(.note(fixture.result)), disposition: .replaceCurrent)
             await window.waitForPendingDocumentTransitionsForTesting()
             #expect(window.currentDocumentDescriptor?.sessionKey == target.sessionKey)
@@ -208,8 +211,10 @@ struct SearchResultNavigationTests {
             let session = window.documentController.session(for: descriptor)
             session.suppressAutosave = true
             let changed = "Changed first line.\r\n\r\n" + String(decoding: fixture.originalSource, as: UTF8.self)
-            if dirty { session.editingSource = changed } else { try Data(changed.utf8).write(to: fixture.sourceFile) }
-            defer { session.editingSource = String(decoding: fixture.originalSource, as: UTF8.self) }
+            let restoreSource = try editSource(
+                dirty ? changed : String(decoding: fixture.originalSource, as: UTF8.self), session: session, in: window)
+            if !dirty { try Data(changed.utf8).write(to: fixture.sourceFile) }
+            defer { restoreSource() }
             await window.openWorkspaceReference(
                 route.reference, line: route.sourceLocator?.line, sourceFingerprint: route.sourceFingerprint)
             await window.waitForPendingDocumentTransitionsForTesting()
@@ -223,6 +228,33 @@ struct SearchResultNavigationTests {
                 #expect(try Data(contentsOf: fixture.sourceFile) == Data(changed.utf8))
             }
         }
+    }
+
+    private func editSource(_ source: String, session: DocumentSessionModel, in window: WindowModel) throws -> () -> Void {
+        let snapshot = try #require(window.documentController.activeSnapshot)
+        try #require(snapshot.stableIdentity.resolvedID == session.key?.noteID)
+        guard !source.utf8.elementsEqual(snapshot.document.rawContent.utf8) else { return {} }
+        let editor = session.editorSession
+        // Managed editor input starts from the Note's checked citation identity,
+        // including companion absence, and updates the exact-source mirror.
+        let restore = {
+            editor.loadDocument(
+                snapshot.document.rawContent, documentID: editor.bridgeDocumentID,
+                mode: session.retainedEditorMode, citationSnapshot: snapshot.document.citationSnapshot)
+            session.editingSource = snapshot.document.rawContent
+        }
+        restore()
+        try #require(
+            editor.acceptEditorChanges(
+                [
+                    .init(
+                        from: 0, to: EditorSourceOffsetMap(source: snapshot.document.rawContent).editorUTF16Length,
+                        insert: source.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: source)
+                ],
+                baseGeneration: 0, resultingGeneration: 1, citationManaged: true,
+                citationData: snapshot.document.citationSnapshot?.data))
+        session.editingSource = source
+        return restore
     }
 
     @MainActor private final class TransitionGate {

@@ -539,6 +539,9 @@ final class DiscoveryController: ObservableObject {
         let request = DiscoverySearchRequest(id: UUID(), criteria: canonicalCriteria)
         activeSearchRequestID = request.id
         updateSearchState { search in
+            if search.criteria != canonicalCriteria {
+                search.selectedResultID = nil
+            }
             search.criteria = canonicalCriteria
             search.responseRequestID = nil
             search.freshnessToken = nil
@@ -564,7 +567,11 @@ final class DiscoveryController: ObservableObject {
         guard isCurrent(request), response.requestID == request.id else { return }
         updateSearchState { search in
             search.results = response.results
-            search.selectedResultID = nil
+            if let selected = search.selectedResultID,
+                !response.results.contains(where: { $0.id == selected })
+            {
+                search.selectedResultID = nil
+            }
             search.responseRequestID = response.requestID
             search.freshnessToken = response.freshnessToken
             search.explanation = response.explanation

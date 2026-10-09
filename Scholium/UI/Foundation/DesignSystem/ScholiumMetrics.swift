@@ -285,6 +285,7 @@ enum ScholiumMetrics {
     enum Search {
         static let responsiveMargin = ScholiumGrid.Spacing.regionContentInset
         static let resultContentSpacing = ScholiumGrid.foundationUnit * 2.5
+        static let termGroupListWidth = ScholiumGrid.foundationUnit * 45
         static let diagnosticBottomInset = ScholiumGrid.foundationUnit * 1.75
         static let availabilityDetailSpacing = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let availabilityVerticalInset = ScholiumGrid.foundationUnit * 2.25

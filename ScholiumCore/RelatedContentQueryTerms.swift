@@ -5,7 +5,7 @@ import ScholiumContracts
 /// selection; it does not infer conceptual importance or corpus rarity.
 enum RelatedContentQueryTerms {
     private static let ignoredLatinTerms: Set<String> = [
-        "a", "an", "and", "are", "as", "at", "be", "been", "being", "but",
+        "a", "an", "and", "are", "as", "at", "be", "been", "but",
         "by", "for", "from", "had", "has", "have", "if", "in", "is", "it",
         "its", "of", "on", "or", "that", "the", "these", "this",
         "those", "to", "was", "we", "were", "with",
@@ -14,8 +14,18 @@ enum RelatedContentQueryTerms {
     static func terms(in value: String, limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         let tokens = orderedTokens(in: value)
+        let phrases = quotedPhrases(in: value)
+        // Explicit quotes may name a word that ordinary prose filtering drops
+        // ("I", "is") or consist entirely of such words ("as if").
+        // Keep otherwise-erased wording as one exact literal rather than
+        // expanding its function words into independently matching terms.
+        let quotedTerms = phrases.flatMap { phrase in
+            let words = orderedTokens(in: phrase)
+            return words.isEmpty ? [phrase] : words
+        }
+        let literalQuotes = phrases.filter { orderedTokens(in: $0).isEmpty }
         var seen = Set<String>()
-        let distinct = tokens.filter { seen.insert($0).inserted }
+        let distinct = (tokens + literalQuotes).filter { seen.insert($0).inserted }
         guard distinct.count > limit else { return distinct }
 
         // Use actual ending occurrences before deduplication: a concluding
@@ -24,7 +34,7 @@ enum RelatedContentQueryTerms {
         var selected = Set(distinct.indices.filter { ending.contains(distinct[$0]) })
 
         // Explicitly quoted wording receives up to half the query budget.
-        let quoted = Set(quotedPhrases(in: value).flatMap { orderedTokens(in: $0) })
+        let quoted = Set(quotedTerms)
         let quotedIndices = distinct.indices.filter { quoted.contains(distinct[$0]) && !selected.contains($0) }
         selected.formUnion(quotedIndices.prefix(min(limit / 2, limit - selected.count)))
 
@@ -145,9 +155,11 @@ enum RelatedContentQueryTerms {
                 if character == expected {
                     let phrase = SearchTextNormalization.lexicalNormalize(current)
                         .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                    let literalWords = phrase.split { !SearchTokenization.isTokenCharacter($0) }
+                    let hasBoundedLiteralWording = !literalWords.isEmpty && literalWords.allSatisfy { $0.utf8.count <= 128 }
                     if !phrase.isEmpty, phrase.utf8.count <= 256,
                         phrase.split(whereSeparator: \.isWhitespace).count <= 16,
-                        !orderedTokens(in: phrase).isEmpty,
+                        !orderedTokens(in: phrase).isEmpty || hasBoundedLiteralWording,
                         seen.insert(phrase).inserted
                     {
                         result.append(phrase)

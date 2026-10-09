@@ -1469,6 +1469,7 @@ extension ScholiumUITests {
     @MainActor
     func testSearchOpensTheSelectedResultFromTheKeyboard() throws {
         waitForCurrentDocumentSurface()
+        openNote("QA Autosave B.md", expectedTitle: "QA Autosave B", in: app.windows.firstMatch)
         selectDocumentMode("Review")
 
         app.typeKey("f", modifierFlags: [.command, .shift])
@@ -1496,6 +1497,12 @@ extension ScholiumUITests {
         selectionAttachment.lifetime = .keepAlways
         add(selectionAttachment)
 
+        // An external change in this disposable Triptych adds another match.
+        // The replacement response must retain the existing keyboard target.
+        try write(
+            "---\ntitle: QA Autosave A companion\n---\n\nSynthetic refresh fixture.\n",
+            to: triptychDirectory.appendingPathComponent("01-analyses/QA Autosave B.md"))
+        XCTAssertTrue(searchResult(named: "QA Autosave B").waitForExistence(timeout: 15))
         field.typeKey(.return, modifierFlags: [])
 
         XCTAssertTrue(advanced.exists, "Opening a result retains the advanced search window.")
@@ -1537,6 +1544,24 @@ extension ScholiumUITests {
             },
             "Accepting a lexical completion must replace only the active query token."
         )
+
+        typeCommittedText("paragraph:(syn", into: field, in: app)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        field.typeKey(.downArrow, modifierFlags: [])
+        field.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { (field.value as? String) == "paragraph:(synthetic" })
+        field.typeText(") AND title:\"QA Autosave A\"")
+        XCTAssertTrue(searchResult(named: "QA Autosave A").waitForExistence(timeout: 10))
+        XCTAssertEqual(field.value as? String, "paragraph:(synthetic) AND title:\"QA Autosave A\"")
+
+        typeCommittedText("\"syn", into: field, in: app)
+        let quotedSuggestion = advanced.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\"synthetic\",")
+        )
+        .firstMatch
+        XCTAssertTrue(quotedSuggestion.waitForExistence(timeout: 10))
+        quotedSuggestion.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { (field.value as? String) == "\"synthetic\"" })
     }
 
     @MainActor

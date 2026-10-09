@@ -126,7 +126,8 @@ public extension SearchCapabilities {
         let token = String(rawQuery[tokenPrefixRange])
         let partial: String
         let field: SearchLexicalField?
-        if let colon = token.firstIndex(of: ":") {
+        if !token.hasPrefix("\""), let colon = token.firstIndex(of: ":") {
+            guard !inParagraph else { return nil }
             let rawField = String(token[..<colon]).lowercased()
             guard let lexicalField = SearchLexicalField(rawValue: rawField),
                 fields(for: provider, scope: scope).contains(where: {
@@ -134,20 +135,20 @@ public extension SearchCapabilities {
                 })
             else { return nil }
             partial = String(token[token.index(after: colon)...])
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
             field = lexicalField
         } else {
             partial = token
             field = inherited.flatMap(SearchLexicalField.init(rawValue:))
         }
 
-        let normalized = SearchTextNormalization.lexicalNormalize(partial)
-        guard !normalized.isEmpty, !partial.hasSuffix("*"),
-            !["AND", "OR", "NOT"].contains(partial)
+        guard let value = Self.lexicalCompletionValue(partial) else { return nil }
+        let normalized = SearchTextNormalization.lexicalNormalize(value.text)
+        guard !normalized.isEmpty,
+            value.quoted || (!partial.hasSuffix("*") && !["AND", "OR", "NOT"].contains(partial))
         else { return nil }
-        let containsCJK = partial.unicodeScalars.contains(where: SearchTokenization.isCJK)
+        let containsCJK = value.text.unicodeScalars.contains(where: SearchTokenization.isCJK)
         guard containsCJK || normalized.utf8.count >= 2 else { return nil }
-        return SearchCompletionLookup(partial: partial, field: field)
+        return SearchCompletionLookup(partial: value.text, field: field)
     }
 
     /// Completion shares the parser's lexer and replaces only the active token (or field/key),
@@ -165,7 +166,7 @@ public extension SearchCapabilities {
         let active = tokens.first { $0.range.lowerBound < caret && $0.range.upperBound >= caret && !["(", ")", "-"].contains($0.raw) }
         let start = active?.range.lowerBound ?? caret
         var end = active?.range.upperBound ?? caret
-        if let active, let colon = active.raw.firstIndex(of: ":"), start + colon.utf16Offset(in: active.raw) >= caret {
+        if let active, !active.raw.hasPrefix("\""), let colon = active.raw.firstIndex(of: ":"), start + colon.utf16Offset(in: active.raw) >= caret {
             end = start + colon.utf16Offset(in: active.raw) + 1
         } else if let active, active.raw.hasPrefix("property:"), let equal = SearchQueryParser.propertyEqualityIndex(in: active.raw),
             start + equal.utf16Offset(in: active.raw) >= caret
@@ -194,7 +195,8 @@ public extension SearchCapabilities {
             else { return [] }
         }
         let synthetic = inherited.map { $0 + ":" + token } ?? token
-        let atomics = inParagraph ? [] : atomicCompletions(for: synthetic, scope: scope, provider: provider, context: context, limit: limit)
+        let atomics = atomicCompletions(
+            for: synthetic, scope: scope, provider: provider, context: context, limit: limit, lexicalOnly: inParagraph)
         var replacements = atomics.map { item -> (String, String) in
             let replacement = inherited.map { String(item.replacementText.dropFirst($0.count + 1)) } ?? item.replacementText
             return (replacement, item.detail)
@@ -225,7 +227,8 @@ public extension SearchCapabilities {
         scope: SearchPresentationScope,
         provider: SearchProvider = .note,
         context: SearchCompletionContext = .empty,
-        limit: Int = 8
+        limit: Int = 8,
+        lexicalOnly: Bool = false
     ) -> [SearchCompletion] {
         guard limit > 0,
             let tokenRange = Self.trailingTokenRange(in: rawQuery)
@@ -239,7 +242,9 @@ public extension SearchCapabilities {
         guard !fields.isEmpty else { return [] }
 
         var candidates: [(replacement: String, display: String, detail: String)]
-        if let colon = token.firstIndex(of: ":") {
+        if lexicalOnly || token.hasPrefix("\"") {
+            candidates = Self.lexicalTermCandidates(matching: token, field: nil, context: context)
+        } else if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
             let rawPartialValue = String(token[token.index(after: colon)...])
             let partialValue = rawPartialValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"")).lowercased()
@@ -293,7 +298,7 @@ public extension SearchCapabilities {
             {
                 candidates.append(
                     contentsOf: Self.lexicalTermCandidates(
-                        matching: partialValue,
+                        matching: rawPartialValue,
                         field: lexicalField,
                         context: context
                     ))
@@ -307,7 +312,7 @@ public extension SearchCapabilities {
             }
             candidates.append(
                 contentsOf: Self.lexicalTermCandidates(
-                    matching: partial,
+                    matching: token,
                     field: nil,
                     context: context
                 ))
@@ -335,7 +340,10 @@ public extension SearchCapabilities {
         field: SearchLexicalField?,
         context: SearchCompletionContext
     ) -> [(replacement: String, display: String, detail: String)] {
-        let normalizedPartial = SearchTextNormalization.lexicalNormalize(partial)
+        guard let value = lexicalCompletionValue(partial),
+            value.quoted || (!partial.hasSuffix("*") && !["AND", "OR", "NOT"].contains(partial))
+        else { return [] }
+        let normalizedPartial = SearchTextNormalization.lexicalNormalize(value.text)
         guard !normalizedPartial.isEmpty else { return [] }
         return context.lexicalTerms
             .filter { term in
@@ -361,9 +369,25 @@ public extension SearchCapabilities {
                 return lhsNormalized < rhsNormalized
             }
             .map { term in
-                let replacement = field.map { "\($0.rawValue):\(queryValue(term.text))" } ?? queryValue(term.text)
+                let literal = queryValue(term.text, forceQuoted: value.quoted)
+                let replacement = field.map { "\($0.rawValue):\(literal)" } ?? literal
                 return (replacement, replacement, "Search term")
             }
+    }
+
+    /// Let the query parser decode escapes and reject malformed literals. The
+    /// extra closing quote permits a still-open phrase while the researcher types.
+    private static func lexicalCompletionValue(_ raw: String) -> (text: String, quoted: Bool)? {
+        guard raw.hasPrefix("\"") else {
+            guard !raw.contains("\"") else { return nil }
+            return (raw, false)
+        }
+        let parsed = SearchQueryParser.parse(raw).ast ?? SearchQueryParser.parse(raw + "\"").ast
+        guard let parsed, parsed.clauses.count == 1,
+            case .lexical(let clause) = parsed.clauses[0], clause.field == nil,
+            case .phrase(let value) = clause.value
+        else { return nil }
+        return (value, true)
     }
 
     private static func uniqueSorted(_ values: [String]) -> [String] {
@@ -388,8 +412,10 @@ public extension SearchCapabilities {
             .replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
-    private static func queryValue(_ value: String) -> String {
-        guard ["AND", "OR", "NOT", "NEAR"].contains(value) || value.hasPrefix("-") || value.contains(where: { $0.isWhitespace || "\"\\():".contains($0) })
+    private static func queryValue(_ value: String, forceQuoted: Bool = false) -> String {
+        guard
+            forceQuoted || ["AND", "OR", "NOT", "NEAR"].contains(value) || value.hasPrefix("-")
+                || value.contains(where: { $0.isWhitespace || "\"\\():".contains($0) })
         else { return value }
         let escaped =
             value

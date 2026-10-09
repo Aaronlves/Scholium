@@ -524,16 +524,18 @@ struct ResearchSearchView<Library: View>: View {
                     Button {
                         apply(completion)
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Search.resultContentSpacing) {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
                             Text(completion.displayText)
-                                .font(ScholiumTypography.exact(.body))
+                                .font(ScholiumTypography.interface(.body, emphasis: .medium))
+                                .lineLimit(1)
                             Text(ScholiumL10n.dynamicString(completion.detail))
                                 .font(ScholiumTypography.interface(.small))
                                 .scholiumForeground(.secondaryText)
-                            Spacer(minLength: 0)
+                                .lineLimit(1)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                        .frame(minHeight: 32)
+                        .frame(minHeight: ScholiumMetrics.Completion.detailedRowHeight)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -549,8 +551,8 @@ struct ResearchSearchView<Library: View>: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 32)
-            .frame(height: CGFloat(min(6, visibleCompletions.count)) * 44)
+            .environment(\.defaultMinListRowHeight, ScholiumMetrics.Completion.detailedRowHeight)
+            .frame(height: CGFloat(min(6, visibleCompletions.count)) * ScholiumMetrics.Completion.detailedRowHeight)
             .onChange(of: completionSelection) { _, index in
                 if let index { proxy.scrollTo(index) }
             }
@@ -887,13 +889,12 @@ struct ResearchSearchView<Library: View>: View {
         let accessibilityLabel: String =
             switch result {
             case .note(let note):
-                "\(note.title), \(note.context ?? localizedMatchedField(note.matchedField)), \(note.vaultName), "
-                    + String(localized: "Line \(note.sourceLine)")
-                    + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
+                SearchResultAccessibilityPresentation.label(for: note)
             }
         let card = WorkspaceSearchResultRow(
             result: result,
-            compact: !isAdvanced
+            compact: !isAdvanced,
+            isSelected: controller.search.selectedResultID == resultID
         )
         .onTapGesture {
             controller.selectSearchResult(resultID)
@@ -948,7 +949,6 @@ struct ResearchSearchView<Library: View>: View {
 
     private func scheduleSearch(immediately: Bool = false) {
         searchTask?.cancel()
-        controller.selectSearchResult(nil)
         searchTask = Task {
             if !immediately {
                 do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
@@ -1051,10 +1051,6 @@ struct ResearchSearchView<Library: View>: View {
 
     private func localizedDiagnostic(_ diagnostic: SearchQueryDiagnostic) -> String {
         SearchDiagnosticPresentation.message(diagnostic)
-    }
-
-    private func localizedMatchedField(_ field: SearchMatchedField) -> String {
-        SearchQueryExplanationPresentation.field(field)
     }
 
 }
@@ -1229,6 +1225,23 @@ enum SearchDiagnosticPresentation {
     }
 }
 
+enum SearchResultAccessibilityPresentation {
+    static func label(for note: NoteSearchResult) -> String {
+        var parts = [
+            note.title,
+            note.context ?? SearchQueryExplanationPresentation.field(note.matchedField),
+            note.vaultName,
+        ]
+        if let range = note.sourceRange {
+            parts.append(String(localized: "Line \(range.line)"))
+        }
+        if let reason = note.searchStructuredReasonDescription {
+            parts.append(reason)
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
 private extension NoteSearchResult {
     var hasYAMLMatch: Bool {
         if matchedField == .summary || matchedField == .tag { return true }
@@ -1272,11 +1285,12 @@ private extension NoteSearchResult {
 private struct WorkspaceSearchResultRow: View {
     let result: SearchResult
     let compact: Bool
+    let isSelected: Bool
 
     @ViewBuilder
     var body: some View {
         switch result {
-        case .note(let note): NoteSearchResultRow(note: note, compact: compact)
+        case .note(let note): NoteSearchResultRow(note: note, compact: compact, isSelected: isSelected)
         }
     }
 }
@@ -1284,13 +1298,14 @@ private struct WorkspaceSearchResultRow: View {
 private struct NoteSearchResultRow: View {
     let note: NoteSearchResult
     let compact: Bool
+    let isSelected: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: compact ? ScholiumSidebarLayout.itemSpacing : 10) {
+        HStack(alignment: .top, spacing: compact ? ScholiumSidebarLayout.itemSpacing : ScholiumMetrics.Search.resultContentSpacing) {
             Image(systemName: "doc.text")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(note.title)
                     .font(ScholiumTypography.interface(.rowTitle))
                     .scholiumContentControlInk(
@@ -1298,24 +1313,37 @@ private struct NoteSearchResultRow: View {
                         emphasized: .accent
                     )
                     .lineLimit(1)
-                if !note.hasYAMLMatch && !note.snippet.isEmpty {
+                if !note.hasYAMLMatch && !note.snippet.isEmpty && !snippetRepeatsTitle {
                     Text(highlightedSnippet)
-                        .font(ScholiumTypography.interface(.small))
-                        .foregroundStyle(.secondary)
+                        .font(ScholiumTypography.interface(snippetTypographyRole))
+                        .scholiumForeground(detailTextRole)
                         .lineLimit(compact ? 1 : 2)
                         .multilineTextAlignment(.leading)
                 }
                 Text("\(compact ? note.vaultName : location) · \(note.searchStructuredReasonDescription ?? rankDescription)")
                     .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
+                    .scholiumForeground(detailTextRole)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, compact ? ScholiumSidebarLayout.itemSpacing : 6)
+        .padding(.vertical, compact ? ScholiumSidebarLayout.itemSpacing : ScholiumGrid.Spacing.inlineControlGap)
         .contentShape(Rectangle())
         .help("\(note.vaultName)/\(note.relativePath)")
+    }
+
+    private var snippetTypographyRole: ScholiumTypography.InterfaceRole {
+        compact ? .compact : .body
+    }
+
+    private var detailTextRole: ScholiumColorRole {
+        isSelected ? .primaryText : .secondaryText
+    }
+
+    private var snippetRepeatsTitle: Bool {
+        let snippet = note.snippet.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !snippet.isEmpty && snippet == note.title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var location: String {
@@ -1338,7 +1366,7 @@ private struct NoteSearchResultRow: View {
             guard let lower = AttributedString.Index(lower, within: result),
                 let upper = AttributedString.Index(upper, within: result)
             else { continue }
-            result[lower..<upper].font = ScholiumTypography.interface(.small, emphasis: .strong)
+            result[lower..<upper].font = ScholiumTypography.interface(snippetTypographyRole, emphasis: .strong)
         }
         return result
     }

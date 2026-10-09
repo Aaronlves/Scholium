@@ -686,12 +686,13 @@ enum NoteSearchResultBuilder {
     ) -> NoteSearchResult {
         let document = candidate.document
         let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
-        let primary = matchedFields.first ?? .title
+        let preferredField = matchedFields.first ?? .title
         let paragraphs = SearchMatcher.paragraphWitnesses(ast, document: document)
         let paragraphLead = paragraphs.first
         let snippetAST = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.ast ?? ast) : ast
         let snippetDocument = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.document ?? document) : document
-        let matched = firstMatch(ast: snippetAST, document: snippetDocument, preferredField: primary)
+        let matched = bestMatch(ast: snippetAST, document: snippetDocument, preferredField: preferredField)
+        let primary = matched?.segment.field ?? preferredField
         let reasons = matchReasons(
             ast: ast,
             document: document,
@@ -705,7 +706,7 @@ enum NoteSearchResultBuilder {
         if let matched {
             presentation = snippet(
                 segment: matched.segment,
-                normalizedRange: matched.range,
+                normalizedRange: matched.contextRange,
                 positiveClauses: snippetAST.positiveLexicalClauses
             )
         } else if let property,
@@ -788,7 +789,8 @@ enum NoteSearchResultBuilder {
                     let presentation = snippet(
                         segment: segment,
                         normalizedRange: range,
-                        positiveClauses: ast.positiveLexicalClauses
+                        positiveClauses: ast.positiveLexicalClauses,
+                        occurrenceClause: lead
                     )
                     hits.append(
                         NoteSearchResult(
@@ -874,24 +876,100 @@ enum NoteSearchResultBuilder {
         return reasons
     }
 
-    static func firstMatch(
+    struct SnippetMatch {
+        let segment: SearchTextSegment
+        let range: Range<Int>
+        let contextRange: Range<Int>
+        let coverage: Int
+    }
+
+    private static func lexicalKey(_ clause: SearchLexicalClause) -> SearchLexicalClause {
+        let text = SearchTextNormalization.lexicalNormalize(clause.value.text)
+        let value: SearchLexicalValue =
+            switch clause.value {
+            case .term: .term(text)
+            case .phrase: .phrase(text)
+            case .prefix: .prefix(text)
+            }
+        return .init(field: clause.field, value: value, sourceRange: 0..<0)
+    }
+
+    private static func applies(_ clause: SearchLexicalClause, to segment: SearchTextSegment) -> Bool {
+        clause.field == nil || clause.field?.rawValue == segment.field.rawValue
+    }
+
+    /// Choose a compact cluster covering distinct successful predicates. Repeated
+    /// words do not displace a passage answering more of the query. Scanning is
+    /// once per predicate/segment, then bounded by the query's predicate count;
+    /// source normalization is never repeated for every candidate window.
+    static func bestMatch(
         ast: SearchQueryAST,
         document: StoredSearchDocument,
         preferredField: SearchMatchedField
-    ) -> (segment: SearchTextSegment, range: Range<Int>)? {
-        for clause in ast.positiveLexicalClauses {
-            let segments = SearchMatcher.matchingSegments(for: clause, in: document)
-                .sorted { ($0.field == preferredField ? 0 : 1) < ($1.field == preferredField ? 0 : 1) }
-            for segment in segments {
-                if let range = SearchMatcher.occurrences(
-                    of: clause.value,
-                    in: segment.normalizedText
-                ).first {
-                    return (segment, range)
+    ) -> SnippetMatch? {
+        var seen: Set<SearchLexicalClause> = []
+        let clauses = ast.positiveLexicalClauses.map(lexicalKey).filter { seen.insert($0).inserted }
+        var best: SnippetMatch?
+        func retain(_ candidate: SnippetMatch) {
+            if let current = best {
+                if candidate.coverage != current.coverage {
+                    guard candidate.coverage > current.coverage else { return }
+                } else if (candidate.segment.field == preferredField) != (current.segment.field == preferredField) {
+                    guard candidate.segment.field == preferredField else { return }
+                } else if (candidate.segment.sourceRange != nil) != (current.segment.sourceRange != nil) {
+                    guard candidate.segment.sourceRange != nil else { return }
+                } else if candidate.segment.ordinal != current.segment.ordinal {
+                    guard candidate.segment.ordinal < current.segment.ordinal else { return }
+                } else {
+                    guard candidate.range.lowerBound < current.range.lowerBound else { return }
+                }
+            }
+            best = candidate
+        }
+        for segment in document.segments {
+            var occurrences: [(predicate: Int, range: Range<Int>)] = []
+            for (predicate, clause) in clauses.enumerated() where applies(clause, to: segment) {
+                occurrences.append(
+                    contentsOf: SearchMatcher.occurrences(
+                        of: clause.value, in: segment.normalizedText,
+                        normalizedNeedle: clause.value.text
+                    ).map { (predicate, $0) })
+            }
+            let displayRanges = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+                in: segment.text, requestedRanges: occurrences.map(\.range))
+            let displayed = zip(occurrences, displayRanges).compactMap { occurrence, displayRange in
+                displayRange.map { (predicate: occurrence.predicate, range: occurrence.range, displayRange: $0) }
+            }.sorted {
+                if $0.displayRange.upperBound != $1.displayRange.upperBound { return $0.displayRange.upperBound < $1.displayRange.upperBound }
+                if $0.displayRange.lowerBound != $1.displayRange.lowerBound { return $0.displayRange.lowerBound < $1.displayRange.lowerBound }
+                return $0.predicate < $1.predicate
+            }
+            var latest: [Int: (range: Range<Int>, displayRange: Range<Int>)] = [:]
+            for occurrence in displayed {
+                if latest[occurrence.predicate].map({ $0.displayRange.lowerBound < occurrence.displayRange.lowerBound }) ?? true {
+                    latest[occurrence.predicate] = (occurrence.range, occurrence.displayRange)
+                }
+                // Measure the authored display span, since normalized text
+                // collapses whitespace. UTF-16 is a conservative bound within
+                // the existing 240-character match-centered context budget.
+                let active = latest.values.filter { occurrence.displayRange.upperBound - $0.displayRange.lowerBound <= 160 }
+                if let anchor = active.min(by: {
+                    if $0.range.lowerBound != $1.range.lowerBound { return $0.range.lowerBound < $1.range.lowerBound }
+                    return $0.range.upperBound < $1.range.upperBound
+                }) {
+                    retain(
+                        .init(
+                            segment: segment, range: anchor.range,
+                            contextRange: anchor.range.lowerBound..<occurrence.range.upperBound,
+                            coverage: active.count))
+                } else {
+                    // A long exact phrase remains a usable anchor even when it
+                    // cannot share a compact window with another predicate.
+                    retain(.init(segment: segment, range: occurrence.range, contextRange: occurrence.range, coverage: 1))
                 }
             }
         }
-        return nil
+        return best
     }
 
     static func sourceRange(
@@ -931,17 +1009,29 @@ enum NoteSearchResultBuilder {
     static func snippet(
         segment: SearchTextSegment?,
         normalizedRange: Range<Int>?,
-        positiveClauses: [SearchLexicalClause]
+        positiveClauses: [SearchLexicalClause],
+        occurrenceClause: SearchLexicalClause? = nil
     ) -> (text: String, highlights: [SearchHighlight]) {
         guard let segment else { return ("", []) }
         let source = segment.text
-        let targetUTF16 =
-            normalizedRange.flatMap {
-                SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
-                    in: source,
-                    requestedRange: $0
-                )
-            } ?? 0..<0
+        var seen: Set<SearchLexicalClause> = []
+        let occurrenceKey = occurrenceClause.map(lexicalKey)
+        var highlightRanges: [Range<Int>] = []
+        for clause in positiveClauses where applies(clause, to: segment) {
+            let key = lexicalKey(clause)
+            guard seen.insert(key).inserted else { continue }
+            if key == occurrenceKey, let normalizedRange {
+                highlightRanges.append(normalizedRange)
+            } else {
+                highlightRanges.append(
+                    contentsOf: SearchMatcher.occurrences(
+                        of: clause.value, in: segment.normalizedText,
+                        normalizedNeedle: key.value.text))
+            }
+        }
+        let mappedRanges = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+            in: source, requestedRanges: [normalizedRange ?? 0..<0] + highlightRanges)
+        let targetUTF16 = mappedRanges[0] ?? 0..<0
         let boundedLower = min(max(0, targetUTF16.lowerBound), source.utf16.count)
         let boundedUpper = min(max(boundedLower, targetUTF16.upperBound), source.utf16.count)
         let boundedTarget = boundedLower..<boundedUpper
@@ -990,36 +1080,24 @@ enum NoteSearchResultBuilder {
         let contextUpperUTF16 = upper.utf16Offset(in: source)
         let prefixUTF16 = prefix.utf16.count
         var highlights: [SearchHighlight] = []
-        for (clauseIndex, clause) in positiveClauses.enumerated() {
-            let occurrences =
-                clauseIndex == 0 && normalizedRange != nil
-                ? [normalizedRange!]
-                : SearchMatcher.occurrences(
-                    of: clause.value,
-                    in: segment.normalizedText
-                )
-            for normalizedOccurrence in occurrences {
-                guard
-                    let original = SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
-                        in: source,
-                        requestedRange: normalizedOccurrence
-                    ), original.lowerBound >= contextLowerUTF16,
-                    original.upperBound <= contextUpperUTF16
-                else { continue }
-                let relativeLower = original.lowerBound - contextLowerUTF16
-                let relativeUpper = original.upperBound - contextLowerUTF16
-                let relative = relativeLower..<relativeUpper
-                let overlapping = displayOffsets.filter {
-                    $0.original.lowerBound < relative.upperBound
-                        && $0.original.upperBound > relative.lowerBound
-                }
-                guard let first = overlapping.first, let last = overlapping.last else { continue }
-                highlights.append(
-                    SearchHighlight(
-                        utf16LowerBound: prefixUTF16 + first.displayed.lowerBound,
-                        utf16UpperBound: prefixUTF16 + last.displayed.upperBound
-                    ))
+        for mapped in mappedRanges.dropFirst() {
+            guard let original = mapped,
+                original.lowerBound >= contextLowerUTF16,
+                original.upperBound <= contextUpperUTF16
+            else { continue }
+            let relativeLower = original.lowerBound - contextLowerUTF16
+            let relativeUpper = original.upperBound - contextLowerUTF16
+            let relative = relativeLower..<relativeUpper
+            let overlapping = displayOffsets.filter {
+                $0.original.lowerBound < relative.upperBound
+                    && $0.original.upperBound > relative.lowerBound
             }
+            guard let first = overlapping.first, let last = overlapping.last else { continue }
+            highlights.append(
+                SearchHighlight(
+                    utf16LowerBound: prefixUTF16 + first.displayed.lowerBound,
+                    utf16UpperBound: prefixUTF16 + last.displayed.upperBound
+                ))
         }
         let uniqueHighlights = Array(Set(highlights)).sorted {
             if $0.utf16LowerBound != $1.utf16LowerBound {

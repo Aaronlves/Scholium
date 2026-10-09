@@ -110,6 +110,43 @@ struct RelatedContentQueryTermsTests {
         #expect(RelatedContentQueryTerms.quotedPhrases(in: "\\\"not a quote\\\"") == [])
     }
 
+    @Test("Explicit quotes preserve otherwise-erased lexical wording without broadening ordinary prose")
+    func quotedFilteredWording() {
+        let quoted = "“being” and \"I\" and 「is」 and 『as if』"
+        #expect(RelatedContentQueryTerms.terms(in: quoted, limit: 32) == ["being", "i", "is", "as if"])
+        #expect(RelatedContentQueryTerms.quotedPhrases(in: quoted) == ["being", "i", "is", "as if"])
+        #expect(RelatedContentQueryTerms.terms(in: "Being", limit: 32) == ["being"])
+        #expect(RelatedContentQueryTerms.terms(in: "I is as if", limit: 32).isEmpty)
+        #expect(RelatedContentQueryTerms.terms(in: "“not being”", limit: 32) == ["not", "being"])
+        #expect(RelatedContentQueryTerms.quotedPhrases(in: "“not being”") == ["not being"])
+        for source in ["\\\"I\\\"", "“is", "\"...\"", "“— + =”"] {
+            #expect(RelatedContentQueryTerms.terms(in: source, limit: 32).isEmpty)
+            #expect(RelatedContentQueryTerms.quotedPhrases(in: source).isEmpty)
+        }
+        let longestToken = String(repeating: "x", count: 128)
+        #expect(RelatedContentQueryTerms.terms(in: "\"\(longestToken)\"", limit: 32) == [longestToken])
+        #expect(RelatedContentQueryTerms.terms(in: "\"\(longestToken)x\"", limit: 32).isEmpty)
+        #expect(RelatedContentQueryTerms.quotedPhrases(in: "\"\(longestToken)x\"").isEmpty)
+    }
+
+    @Test("Otherwise-erased quoted wording shares the bounded budget with a complete long focus")
+    func quotedFilteredWordingBudget() {
+        let context = (0..<100).map { "context\($0)" }
+        let focus =
+            context.prefix(40).joined(separator: " ") + " “as if” "
+            + context.dropFirst(40).joined(separator: " ") + " freedom autonomy"
+        let terms = RelatedContentQueryTerms.terms(in: focus, limit: 32)
+        #expect(terms.count == 32)
+        #expect(Set(terms).count == 32)
+        #expect(Set(["context0", "as if", "freedom", "autonomy"]).isSubset(of: Set(terms)))
+        #expect(!terms.contains("as"))
+        #expect(!terms.contains("if"))
+        for limit in 0...32 {
+            #expect(RelatedContentQueryTerms.terms(in: focus, limit: limit).count == limit)
+        }
+        #expect(terms == RelatedContentQueryTerms.terms(in: focus, limit: 32))
+    }
+
     @Test("Prepared ASCII runs retain the original Unicode token sequence and length bounds")
     func normalizedRunEquivalence() {
         let sources = [
@@ -131,7 +168,7 @@ struct RelatedContentQueryTermsTests {
     /// ASCII preparation must retain this Unicode and pure-CJK projection.
     private func referenceTokens(in value: String) -> [String] {
         let ignored = Set(
-            "a an and are as at be been being but by for from had has have if in is it its of on or that the these this those to was we were with".split(
+            "a an and are as at be been but by for from had has have if in is it its of on or that the these this those to was we were with".split(
                 separator: " "
             ).map(String.init))
         var result: [String] = []

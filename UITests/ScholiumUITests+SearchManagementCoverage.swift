@@ -1,7 +1,206 @@
+import AppKit
 import Foundation
 @preconcurrency import XCTest
 
 extension ScholiumUITests {
+    /// Exercises Search entirely inside the Library, including compact recovery states.
+    @MainActor
+    func testSidebarSearchRemainsReadableAndRestoresLibrary() throws {
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let workspace = stableWorkspaceWindow(app.windows.firstMatch)
+        let originalNotes = try searchManagementNoteBytes()
+        let field = workspace.searchFields["scholium.searchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+
+        // Query setup must not depend on the host's selected input method.
+        // Restore only our clipboard write, preserving any intervening user copy.
+        func enterQuery(_ text: String) throws {
+            let pasteboard = NSPasteboard.general
+            let savedItems =
+                pasteboard.pasteboardItems?.map { item in
+                    item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { values, type in
+                        values[type] = item.data(forType: type)
+                    }
+                } ?? []
+            try setPasteboardText(text)
+            let ownedChangeCount = pasteboard.changeCount
+            defer {
+                if pasteboard.changeCount == ownedChangeCount {
+                    pasteboard.clearContents()
+                    if !savedItems.isEmpty {
+                        pasteboard.writeObjects(
+                            savedItems.map { values in
+                                let item = NSPasteboardItem()
+                                for (type, data) in values { item.setData(data, forType: type) }
+                                return item
+                            })
+                    }
+                }
+            }
+            field.click()
+            field.typeKey("a", modifierFlags: [.command])
+            field.typeKey("v", modifierFlags: [.command])
+            XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == text })
+        }
+
+        func capture(_ name: String) {
+            XCTAssertFalse(app.windows["scholium.advancedSearchWindow"].exists)
+            XCTAssertTrue(workspace.frame.contains(field.frame))
+            let attachment = XCTAttachment(screenshot: workspace.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+
+        selectResearchSearchScope("This Vault", in: app)
+        try enterQuery("syn")
+        let completion = workspace.buttons["synthetic, Search term"].firstMatch
+        XCTAssertTrue(completion.waitForExistence(timeout: 20))
+        field.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(completion.isSelected)
+        capture("Normal Search selected suggestion Light")
+        field.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == "synthetic" })
+        XCTAssertTrue(searchResult(named: "QA Autosave A", in: workspace).waitForExistence(timeout: 10))
+
+        try enterQuery("synthetic 编辑")
+        XCTAssertTrue(searchResult(named: "QA Autosave B", in: workspace).waitForExistence(timeout: 10))
+        XCTAssertTrue(workspace.buttons["编辑, Search term"].firstMatch.waitForExistence(timeout: 10))
+        capture("Normal Search bilingual results Light")
+        // Dismiss only suggestions, then move the native keyboard target to B.
+        field.typeKey(.escape, modifierFlags: [])
+        field.typeKey(.downArrow, modifierFlags: [])
+        field.typeKey(.downArrow, modifierFlags: [])
+        capture("Normal Search selected result Light")
+        field.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 10))
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteList"].waitForExistence(timeout: 5))
+
+        try enterQuery("\"unfinished")
+        let invalid = workspace.staticTexts.matching(
+            NSPredicate(format: "value BEGINSWITH %@", "Invalid Search Query")
+        ).firstMatch
+        XCTAssertTrue(invalid.waitForExistence(timeout: 10))
+        XCTAssertTrue(accessibilityText(of: invalid).contains("The quoted phrase is not closed."))
+        XCTAssertTrue(workspace.frame.contains(invalid.frame))
+        capture("Normal Search invalid query Light")
+        try enterQuery("qa-absent-sidebar-result")
+        let empty = workspace.descendants(matching: .any)["scholium.searchEmpty"]
+        XCTAssertTrue(empty.waitForExistence(timeout: 10))
+        capture("Normal Search empty results Light")
+
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].firstMatch.click()
+        resizeProofWindow(workspace, toWidth: 780, height: 640)
+        try enterQuery("合成")
+        selectResearchSearchScope("Triptych", in: app)
+        XCTAssertEqual(field.value as? String, "合成", "Changing scope must preserve normal Search input.")
+        let populatedResults = workspace.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.searchResult."))
+        XCTAssertTrue(waitUntil(timeout: 20) { populatedResults.count > 2 })
+        capture("Normal Search populated Triptych Dark narrow")
+
+        try enterQuery("synthetic 编辑")
+        XCTAssertTrue(searchResult(named: "QA Autosave A", in: workspace).waitForExistence(timeout: 10))
+        capture("Normal Search bilingual results Dark narrow")
+        XCTAssertTrue(workspace.buttons["编辑, Search term"].firstMatch.waitForExistence(timeout: 10))
+        field.typeKey(.escape, modifierFlags: [])
+        field.typeKey(.downArrow, modifierFlags: [])
+        field.typeKey(.downArrow, modifierFlags: [])
+        capture("Normal Search selected result Dark narrow")
+        field.buttons["cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == "" })
+        XCTAssertTrue(workspace.descendants(matching: .any)["scholium.noteList"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 5))
+        capture("Normal Search cleared to Library Dark narrow")
+        XCTAssertEqual(try searchManagementNoteBytes(), originalNotes)
+    }
+
+    /// Keeps bilingual Search content and its native actions readable at both densities.
+    @MainActor
+    func testSearchPresentationFitsCompactAndAdvancedLayouts() throws {
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let workspace = stableWorkspaceWindow(app.windows.firstMatch)
+        let originalNotes = try searchManagementNoteBytes()
+
+        func capture(_ element: XCUIElement, named name: String) {
+            let attachment = XCTAttachment(screenshot: element.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        let field = advanced.searchFields["scholium.searchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        selectResearchSearchScope("This Vault", in: app)
+        typeCommittedText("syn", into: field, in: app)
+        let completion = advanced.buttons["synthetic, Search term"].firstMatch
+        XCTAssertTrue(completion.waitForExistence(timeout: 20))
+        field.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(completion.isSelected)
+        capture(advanced, named: "Search proportional suggestions Light")
+        completion.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { field.value as? String == "synthetic" })
+
+        typeCommittedText("synthetic 编辑", into: field, in: app)
+        let result = searchResult(named: "QA Autosave A", in: advanced)
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        capture(advanced, named: "Search bilingual excerpts Light")
+        typeCommittedText(#"title:"QA Autosave A""#, into: field, in: app)
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        capture(advanced, named: "Search title match Light")
+
+        advanced.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !advanced.exists })
+        let compactField = workspace.searchFields["scholium.searchField"]
+        typeCommittedText("synthetic 编辑", into: compactField, in: app)
+        XCTAssertTrue(searchResult(named: "QA Autosave A", in: workspace).waitForExistence(timeout: 10))
+        capture(workspace, named: "Search compact bilingual results Light")
+
+        focusWorkspaceWindow(workspace)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Appearance"].firstMatch.hover()
+        app.menuItems["Dark"].firstMatch.click()
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        resizeProofWindow(advanced, toWidth: 600, height: 412)
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        XCTAssertTrue(advanced.frame.contains(result.frame))
+        capture(advanced, named: "Search bilingual excerpts Dark minimum width")
+
+        let manager = openSearchTermGroupManager(in: advanced)
+        manager.buttons["New Group"].click()
+        typeCommittedText("Bilingual alternatives 双语词群", into: manager.textFields["Group Name"], in: app)
+        typeCommittedText("synthetic\n编辑", into: manager.textViews["Terms, one per line"], in: app)
+        assertSearchManagerLayout(manager, in: advanced, name: "Search proportional term editor Dark minimum width")
+        manager.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !manager.exists })
+        XCTAssertEqual(field.value as? String, "synthetic 编辑")
+
+        typeCommittedText("qa-absent-visual-result", into: field, in: app)
+        XCTAssertTrue(advanced.staticTexts["No Search Results"].waitForExistence(timeout: 10))
+        capture(advanced, named: "Search empty results Dark minimum width")
+        typeCommittedText("synthetic 编辑", into: field, in: app)
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        XCTAssertEqual(try searchManagementNoteBytes(), originalNotes)
+    }
+
     /// One native management journey owns the distinction between reusable input
     /// groups, the visible query, and persisted Saved Search definitions.
     @MainActor
@@ -53,6 +252,7 @@ extension ScholiumUITests {
         XCTAssertTrue(termEditor.waitForExistence(timeout: 5))
         typeCommittedText(groupName, into: nameField, in: app)
         typeCommittedText(terms, into: termEditor, in: app)
+        assertSearchManagerLayout(manager, in: advanced, name: "Term Groups bilingual draft at minimum size")
         XCTAssertTrue(manager.buttons["Save"].isEnabled)
         XCTAssertFalse(manager.buttons["New Group"].isEnabled, "An unsaved group cannot be silently discarded.")
         manager.buttons["Save"].click()
@@ -202,12 +402,14 @@ extension ScholiumUITests {
     private func assertSearchManagerLayout(_ manager: XCUIElement, in advanced: XCUIElement, name: String) {
         let nameField = manager.textFields["Group Name"]
         let terms = manager.textViews["Terms, one per line"]
+        let hint = manager.staticTexts["1–24 terms; each is inserted as literal text."]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5))
         XCTAssertTrue(terms.waitForExistence(timeout: 5))
-        for control in [nameField, terms, manager.buttons["Cancel"], manager.buttons["Save"], manager.buttons["New Group"]] {
+        for control in [nameField, terms, hint, manager.buttons["Cancel"], manager.buttons["Save"], manager.buttons["New Group"]] {
             XCTAssertTrue(control.exists)
             XCTAssertTrue(manager.frame.contains(control.frame), "Every management field and action must fit the actual native sheet.")
         }
+        XCTAssertLessThanOrEqual(hint.frame.maxY, manager.buttons["Save"].frame.minY, "The term limit must remain above the fixed footer.")
         XCTAssertGreaterThanOrEqual(advanced.frame.width, manager.frame.width - 2)
         let capture = XCTAttachment(screenshot: manager.screenshot())
         capture.name = name

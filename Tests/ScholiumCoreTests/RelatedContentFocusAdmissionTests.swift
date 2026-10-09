@@ -6,6 +6,57 @@ import Testing
 
 @Suite("Related content focus admission")
 struct RelatedContentFocusAdmissionTests {
+    @Test("The selected concept Being remains retrievable without quotation marks")
+    func selectedBeing() async throws {
+        let result = try await evaluate(
+            focus: "Being",
+            notes: [
+                "Exact.md": "Being names the topic of this authored paragraph.",
+                "Nonexact.md": "Beings names a different literal word.",
+                "Metadata.md": "---\nkeywords: [being]\n---\n\nA paragraph about unrelated catering expenses.",
+            ])
+        #expect(result.paths == ["Exact.md"])
+        #expect(result.passages.first?.matches.filter { $0.seedKind == .selectedPassage }.flatMap(\.terms) == ["being"])
+        #expect(result.stages["Metadata.md"]?.contains(.noLocalMatch) == true)
+    }
+
+    @Test(
+        "Explicit quotes recall short and ordinary-filtered wording only when it occurs locally",
+        arguments: [
+            ("being", "beings"), ("I", "identity"), ("is", "isness"), ("as if", "as something if"),
+        ])
+    func quotedFilteredWording(input: (String, String)) async throws {
+        let (literal, nonexact) = input
+        let result = try await evaluate(
+            focus: "\"\(literal)\"",
+            notes: [
+                "Exact.md": "The authored expression \(literal) occurs in this paragraph.",
+                "Nonexact.md": "The authored expression \(nonexact) occurs in this paragraph.",
+                "Metadata.md": "---\nkeywords: [\"\(literal)\"]\n---\n\nA paragraph about unrelated catering expenses.",
+            ])
+        #expect(result.paths == ["Exact.md"])
+        #expect(result.passages.first?.matches.filter { $0.seedKind == .selectedPassage }.flatMap(\.terms) == [literal.lowercased()])
+        #expect(result.stages["Metadata.md"]?.contains(.noLocalMatch) == true)
+    }
+
+    @Test("An otherwise-filtered quotation remains a local witness inside a long writing focus")
+    func quotedFilteredWordingInLongFocus() async throws {
+        let context = (0..<100).map { "context\($0)" }
+        let focus =
+            context.prefix(40).joined(separator: " ") + " “as if” "
+            + context.dropFirst(40).joined(separator: " ") + " freedom autonomy"
+        let result = try await evaluate(
+            focus: focus,
+            notes: [
+                "Exact.md": "As if names the explicitly authored wording in this paragraph.",
+                "Nonexact.md": "As something if separates the two authored words.",
+                "Metadata.md": "---\nkeywords: [as if]\n---\n\nAn unrelated paragraph about catering.",
+            ])
+        #expect(result.paths == ["Exact.md"])
+        #expect(result.passages.first?.matches.filter { $0.seedKind == .selectedPassage }.flatMap(\.terms) == ["as if"])
+        #expect(result.stages["Exact.md"]?.contains(.eligible) == true)
+    }
+
     @Test("One authored translation admits a paragraph without its other language")
     func oneLiteralAlternative() async throws {
         let notes = ["Source.md": "我们在这里讨论自由的限度。"]

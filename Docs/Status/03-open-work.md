@@ -23,15 +23,13 @@
   and assistive-technology acceptance.
   Include minimum width, Light/Dark, Increase Contrast, Reduce Transparency and
   Reduce Motion; scoped/offscreen development evidence does not close this set.
-- Complete Writing References native usable-card latency and researcher-judged
-  recommendation quality over standard and expanded nonprivate Triptychs.
-  The dated private-copy evaluation in [Verification](04-verification.md) records
-  a task-specific authorization,
-  not general permission to test private vaults. Measure debounce, source
-  retrieval, ranking, link-action preparation and native publication separately.
-  Backend timings do not establish native 3–5-second acceptance. Evaluate
-  paraphrases, cross-language recall and same-word ambiguity; synthetic cases
-  and agent-judged pools do not establish philosophical usefulness.
+- Verify Writing References usable-card latency and researcher-judged quality on
+  standard and expanded nonprivate Triptychs. [Verification](04-verification.md)
+  records task-specific private-copy authorization only. Measure debounce,
+  retrieval, ranking, link-action preparation and native publication separately;
+  backend timings do not prove native 3–5-second acceptance. Evaluate paraphrases,
+  cross-language recall and same-word ambiguity; synthetic cases and agent
+  judgments do not establish philosophical usefulness.
 - Native Apple sentence models have not established a shared multilingual retrieval
   space. The ignored multilingual prototype is not an App dependency or shipping
   backend; model integration is deferred while native retrieval is optimized.
@@ -39,6 +37,8 @@
   explicit no-embeddings-contract decision, measured multilingual quality, packaging
   and resource fit, model-bound index lifecycle and safe absent-service behavior.
   Chat model choices do not configure embeddings.
+- Long-focus sampling drops named titles/aliases; implement §13's admission across
+  recall, scoring and local witnesses without arbitrary score floors.
 
 ## Agent collaboration and integrations
 
