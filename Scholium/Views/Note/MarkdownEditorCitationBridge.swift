@@ -1,5 +1,38 @@
+import AppKit
 import Foundation
 import ScholiumContracts
+
+/// Native button order and Zotero's response values are distinct protocols.
+enum MarkdownEditorCitationAlert: Int, Sendable {
+    case ok = 0
+    case okCancel = 1
+    case yesNo = 2
+    case yesNoCancel = 3
+
+    var buttonTitles: [String] {
+        switch self {
+        case .ok: ["OK"]
+        case .okCancel: ["OK", "Cancel"]
+        case .yesNo: ["Yes", "No"]
+        case .yesNoCancel: ["Yes", "No", "Cancel"]
+        }
+    }
+
+    func reply(for response: NSApplication.ModalResponse) -> ZoteroDocumentReply? {
+        switch (self, response) {
+        case (.ok, .alertFirstButtonReturn), (.okCancel, .alertFirstButtonReturn), (.yesNo, .alertFirstButtonReturn):
+            .alert(1)
+        case (.okCancel, .alertSecondButtonReturn), (.yesNo, .alertSecondButtonReturn), (.yesNoCancel, .alertThirdButtonReturn):
+            .alert(0)
+        case (.yesNoCancel, .alertFirstButtonReturn):
+            .alert(2)
+        case (.yesNoCancel, .alertSecondButtonReturn):
+            .alert(1)
+        default:
+            nil
+        }
+    }
+}
 
 enum MarkdownEditorCitationState: String, Codable, Hashable, Sendable {
     case current, stale, unresolved

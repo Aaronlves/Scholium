@@ -11,6 +11,68 @@ import WebKit
 @Suite("Synthetic Zotero citation editor integration", .serialized)
 @MainActor
 struct ZoteroCitationEditorIntegrationTests {
+    @Test("Refresh remains available after the final citation is deleted and Undo restores its stale metadata", arguments: [false, true])
+    func refreshAfterLastCitationDeletion(managed: Bool) async throws {
+        let prose = "\u{FEFF}---\r\nunknown: 'keep' # literal\n---\r\nArgument 😀\r\nTail e\u{301} without newline"
+        let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}]}"#
+        let preferences = "<data><prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>"
+        let data = ZoteroCitationData(
+            fields: [.init(id: "deleted", kind: .citation, code: code, text: "Deleted")],
+            documentData: preferences, acceptedFields: [.init(id: "deleted", code: code)])
+        let embedded = try JSONSerialization.data(withJSONObject: [
+            "data": preferences, "acceptedFields": [["id": "deleted", "code": code]],
+        ])
+        // This is the saved state after deleting the last visible field: its
+        // accepted membership remains until Zotero explicitly refreshes it.
+        let source = managed ? prose : prose + "\r\n\r\n<!--scholium-zotero-document:1:\(embedded.base64EncodedString())-->"
+        let snapshot: ZoteroCitationSnapshot? =
+            managed
+            ? .init(
+                noteID: UUID(), vaultID: UUID(), revision: DocumentFingerprint(content: "synthetic companion"),
+                sourceFingerprint: DocumentFingerprint(content: source), data: data, status: .available)
+            : nil
+        let transcript = ManagedTranscript()
+        let session = MarkdownEditorSession(
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            citationIntegration: ZoteroDocumentIntegration(transport: { try await transcript.send($0) }))
+        let host = OffscreenEditor(session: session, source: source, sourceHead: prose.utf16.count, citationSnapshot: snapshot)
+        defer { host.close() }
+        try await waitForManagedEditor(session, sourceHead: prose.utf16.count)
+        #expect(session.context?.citationState == .stale)
+        // Inspect actual bridge availability used by both the menu and notice,
+        // rather than bypassing the disabled command with a direct invocation.
+        #expect(session.interactionAvailability?.availableCommands.contains(.refreshCitations) == true)
+        let staleData = session.checkedCitationData
+        await transcript.prepare(
+            documentID: session.bridgeDocumentID, command: .refresh,
+            steps: [
+                .init("Document.getDocumentData", expected: .exact(.string(preferences))),
+                .init("Document.getFields", [.string("Http")], expected: .exact(.array([]))),
+            ])
+        try await session.perform(.refreshCitations)
+        let refreshedSource = try await session.currentText()
+        let refreshed = ZoteroMarkdownFields(
+            parsing: NoteDocument(
+                relativePath: "Synthetic.md", rawContent: refreshedSource, citationSnapshot: session.currentCitationSnapshot))
+        #expect(refreshed.fields.isEmpty && !refreshed.citationStateStale && refreshed.diagnostics.isEmpty)
+        #expect(refreshedSource.hasPrefix(prose))
+        if managed {
+            #expect(Data(refreshedSource.utf8) == Data(source.utf8))
+            #expect(session.checkedCitationData?.acceptedFields == [] && session.isDirty)
+        }
+        try await citationHistory(session, redo: false)
+        #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+        #expect(session.checkedCitationData == staleData)
+        #expect(
+            ZoteroMarkdownFields(
+                parsing: NoteDocument(
+                    relativePath: "Synthetic.md", rawContent: session.checkedSource,
+                    citationSnapshot: session.currentCitationSnapshot)
+            ).citationStateStale)
+        #expect(await transcript.completedCommands == 1)
+        await host.closeAndDrain()
+    }
+
     @Test("Accepted managed conversion saves the exact pair and one Undo restores embedded source and companion absence")
     func managedConversionUndoRedoAndPairedSave() async throws {
         let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}],"opaque":"é 😀"}"#

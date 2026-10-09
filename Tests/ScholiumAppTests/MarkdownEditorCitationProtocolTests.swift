@@ -1,11 +1,48 @@
+import AppKit
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumApp
 
 @Suite("Citation editor protocol")
 struct MarkdownEditorCitationProtocolTests {
+    @Test("Citation alert choices preserve Zotero's button-specific protocol values")
+    func citationAlertChoices() throws {
+        // Zotero HTTP protocol: the three-button set assigns Yes=2, No=1,
+        // Cancel=0; the two-button sets assign Yes/OK=1, No/Cancel=0.
+        let cases: [(buttons: Int, titles: [String], replies: [Int])] = [
+            (0, ["OK"], [1]),
+            (1, ["OK", "Cancel"], [1, 0]),
+            (2, ["Yes", "No"], [1, 0]),
+            (3, ["Yes", "No", "Cancel"], [2, 1, 0]),
+        ]
+        let responses: [NSApplication.ModalResponse] = [.alertFirstButtonReturn, .alertSecondButtonReturn, .alertThirdButtonReturn]
+        for item in cases {
+            let presentation = try #require(MarkdownEditorCitationAlert(rawValue: item.buttons))
+            #expect(presentation.buttonTitles == item.titles)
+            for (response, expected) in zip(responses, item.replies) {
+                #expect(presentation.reply(for: response) == .alert(expected))
+            }
+            for response in responses.dropFirst(item.replies.count) {
+                #expect(presentation.reply(for: response) == nil)
+            }
+        }
+    }
+
+    @Test("Aborted or unexpected citation sheets never become affirmative Zotero replies")
+    func citationAlertDismissal() throws {
+        for buttons in 0...3 {
+            let presentation = try #require(MarkdownEditorCitationAlert(rawValue: buttons))
+            for response in [NSApplication.ModalResponse.abort, .cancel, .stop, .init(rawValue: 1003)] {
+                #expect(presentation.reply(for: response) == nil)
+            }
+        }
+        #expect(MarkdownEditorCitationAlert(rawValue: -1) == nil)
+        #expect(MarkdownEditorCitationAlert(rawValue: 4) == nil)
+    }
+
     private var intent: [String: Any] {
         [
             "type": "requestCitationInsertion", "protocolVersion": markdownEditorProtocolVersion,

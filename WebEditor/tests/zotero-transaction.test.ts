@@ -305,6 +305,36 @@ describe("source-owned Zotero callback transaction", () => {
     expect(() => unverified.finalize(state, capture, complete)).toThrow(/verify/);
   });
 
+  it("refreshes standalone document state after the final citation is deleted in a separate Undo", () => {
+    const field = {id: "last", kind: "citation" as const, code: code(1), text: "[1]"};
+    const source = "\uFEFF" + encodeDocumentData("<data />", null, [{id: field.id, code: field.code}])
+      + "\r\n\r\nArgument 😀 " + encodeField(field) + "\r\nTail é";
+    const before = initial(source, 0), range = projectFields(source).fields[0].range;
+    const deleted = before.update({changes: {
+      from: normalizedDocumentText(source.slice(0, range.from)).length,
+      to: normalizedDocumentText(source.slice(0, range.to)).length,
+    }, userEvent: "delete.backward"}).state;
+    const deletedSource = deleted.field(exactSourceState).text;
+    expect(projectFields(deletedSource).citationStateStale).toBe(true);
+
+    const capture = {...context, command: "refresh" as const};
+    const refresh = ZoteroMarkdownTransaction.capture(deleted, capture);
+    expect(refresh.applyCallback(deleted, capture, {type: "getFields"})).toEqual({kind: "fields", value: []});
+    const operation = refresh.finalize(deleted, capture, complete)!;
+    expect(operation).not.toBeNull();
+    const refreshed = commit(deleted, operation), refreshedSource = refreshed.field(exactSourceState).text;
+    expect(refreshedSource).toBe(deletedSource.replace(
+      encodeDocumentData("<data />", null, [{id: field.id, code: field.code}]), encodeDocumentData("<data />", null, [])));
+    expect(projectFields(refreshedSource).citationStateStale).toBe(false);
+    expect(undoDepth(refreshed)).toBe(2);
+
+    const undone = perform(refreshed, undo);
+    expect(undone.field(exactSourceState).text).toBe(deletedSource);
+    expect(projectFields(deletedSource).citationStateStale).toBe(true);
+    expect(perform(undone, undo).field(exactSourceState).text).toBe(source);
+    expect(perform(undone, redo).field(exactSourceState).text).toBe(refreshedSource);
+  });
+
   it("preserves a citation before its bibliography through Zotero's refresh deletion transcript", () => {
     const citation = {id: "cite", kind: "citation" as const, code: code(1), text: "[1]"};
     const bibliography = {id: "bib", kind: "bibliography" as const, code: bibCode,

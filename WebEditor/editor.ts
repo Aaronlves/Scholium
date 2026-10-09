@@ -2135,7 +2135,7 @@ function currentEditorContext(view = editor): EditorContext {
     const inField = head !== null && fieldProjection.fields.some(field => head >= field.range.from && head < field.range.to);
     if (inField || citationInsertionAvailable(state)) availableCommands.push("insertCitation", "insertBibliography");
     availableCommands.push("citationStyle");
-    if (fieldProjection.fields.length) availableCommands.push("refreshCitations");
+    if (fieldProjection.fields.length || fieldProjection.citationStateStale) availableCommands.push("refreshCitations");
   }
   return {
     selections: editorSelections(state),

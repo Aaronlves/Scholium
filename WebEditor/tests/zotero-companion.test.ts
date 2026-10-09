@@ -275,6 +275,33 @@ describe("managed Zotero citation companions", () => {
     expect(projectFieldsForState(perform(deleted, undo)).fields[0].id).toBe("cfirst");
   });
 
+  it("refreshes an empty citation list after deletion without changing source or merging its Undo", () => {
+    const before = initial(), field = projectFieldsForState(before).fields[0];
+    const from = normalizedDocumentText(source.slice(0, field.range.from)).length;
+    const to = normalizedDocumentText(source.slice(0, field.range.to)).length;
+    const deleted = before.update({changes: {from, to}, userEvent: "delete.backward"}).state;
+    const deletedSource = deleted.field(exactSourceState).text;
+    expect(projectFieldsForState(deleted).citationStateStale).toBe(true);
+
+    const refresh = ZoteroMarkdownTransaction.capture(deleted, context);
+    expect(refresh.applyCallback(deleted, context, {type: "getFields"})).toEqual({kind: "fields", value: []});
+    const operation = refresh.finalize(deleted, context, complete)!;
+    expect(operation).not.toBeNull();
+    expect(operation.changes).toEqual([]);
+    const refreshed = commit(deleted, operation);
+    expect(refreshed.field(exactSourceState).text).toBe(deletedSource);
+    expect(refreshed.field(citationState)?.data).toEqual({...data, fields: [], acceptedFields: []});
+    expect(projectFieldsForState(refreshed).citationStateStale).toBe(false);
+    expect(undoDepth(refreshed)).toBe(2);
+
+    const undone = perform(refreshed, undo);
+    expect(undone.field(exactSourceState).text).toBe(deletedSource);
+    expect(undone.field(citationState)?.data).toEqual(data);
+    expect(projectFieldsForState(undone).citationStateStale).toBe(true);
+    expect(perform(undone, undo).field(exactSourceState).text).toBe(source);
+    expect(perform(undone, redo).field(citationState)?.data).toEqual(refreshed.field(citationState)?.data);
+  });
+
   it("does not treat a prose cite: mention as an occurrence but rejects reserved links in unsupported contexts", () => {
     const text = "Use cite: identifiers in this discussion.";
     expect(projectFields(text, data).diagnostics).toEqual([]);

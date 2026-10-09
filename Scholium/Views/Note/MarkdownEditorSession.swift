@@ -2104,19 +2104,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             return .none
         case .displayAlert(let text, let icon, let buttons):
             guard let window = webView.window else { throw SessionError.unavailable }
+            guard let presentation = MarkdownEditorCitationAlert(rawValue: buttons) else { throw SessionError.invalidResult }
             let alert = NSAlert()
             alert.messageText = "Zotero"
             alert.informativeText = text
             alert.alertStyle = icon == 0 ? .critical : .warning
-            let titles = buttons == 0 ? ["OK"] : buttons == 1 ? ["OK", "Cancel"] : buttons == 2 ? ["Yes", "No"] : ["Yes", "No", "Cancel"]
-            for title in titles { alert.addButton(withTitle: ScholiumL10n.dynamicString(title)) }
+            for title in presentation.buttonTitles { alert.addButton(withTitle: ScholiumL10n.dynamicString(title)) }
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)
             let response = await withCheckedContinuation { continuation in
                 alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
             }
-            let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-            return .alert(index == 0 ? 1 : index == 1 ? 0 : 2)
+            guard let reply = presentation.reply(for: response) else { throw SessionError.staleRequest }
+            return reply
         default:
             let value = try MarkdownEditorCitationCallback(callback)
             do {
