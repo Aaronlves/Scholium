@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Scholium could not leave the current note, so it kept it open. %@": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium could not leave the current note, so it kept it open. %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法离开当前笔记，因此 Scholium 保留了其打开状态。%@"}}}},
     "No diff text was supplied.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No diff text was supplied."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "未提供差异文本。"}}}},
     "Retry Stop": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry Stop"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试停止"}}}},
     "The turn may still be running. Retry stopping it.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The turn may still be running. Retry stopping it."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "本轮可能仍在运行。请重试停止。"}}}},

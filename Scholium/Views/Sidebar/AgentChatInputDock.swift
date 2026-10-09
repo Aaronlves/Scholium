@@ -15,7 +15,7 @@ struct AgentChatInputDockState {
 }
 
 struct AgentChatInputDock<Request: View, Composer: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let requestID: String?
     let requestTitle: String
     let requestCount: Int
@@ -35,6 +35,10 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         !expanded && presentation.requestID == nil && requestID != nil && mayExpandRequest
     }
 
+    private var presentationAnimation: Animation? {
+        isActive && !reduceMotion ? .smooth(duration: 0.22) : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
             if requestID != nil && (!expanded || requestCount > 1) && !isAwaitingAutomaticExpansion {
@@ -42,9 +46,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
                     if !expanded {
                         Button {
                             composerIsFocused = false
-                            withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) {
-                                presentation.isExpanded = true
-                            }
+                            presentation.isExpanded = true
                         } label: {
                             Text(requestTitle)
                         }
@@ -79,17 +81,14 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         }
         .buttonStyle(ScholiumContentActionButtonStyle())
         .padding(ScholiumSidebarLayout.rowInset)
+        // Scope the resize and crossfade to this shell in both directions.
+        // Resolution changes `expanded` before receive() restores draft focus;
+        // animating only receive() misses that outgoing request transition.
+        .animation(presentationAnimation, value: expanded)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
         .tint(nil as Color?)
-        .onChange(of: requestID, initial: true) { previousID, id in
-            let restoreDraft: Bool
-            if previousID != id && id != nil && mayExpandRequest {
-                restoreDraft = withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) {
-                    presentation.receive(id, mayExpand: true)
-                }
-            } else {
-                restoreDraft = presentation.receive(id, mayExpand: mayExpandRequest)
-            }
+        .onChange(of: requestID, initial: true) { _, id in
+            let restoreDraft = presentation.receive(id, mayExpand: mayExpandRequest)
             if restoreDraft && isActive && !isReadingHistory {
                 composerIsFocused = true
             } else if expanded {

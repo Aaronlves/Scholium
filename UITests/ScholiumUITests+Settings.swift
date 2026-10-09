@@ -367,7 +367,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func openSettingsForTransactionTest() -> XCUIElement {
+    func openSettingsForTransactionTest() -> XCUIElement {
         app.menuBars.menuBarItems["Scholium QA"].click()
         app.menuItems["Settings…"].click()
         let window = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch

@@ -366,6 +366,54 @@ struct AgentChatSidebarLifecycleTests {
         await controller.disconnect()
     }
 
+    @Test("Cold entry hydrates Markdown readers without waiting for a native async-question row")
+    func coldEntryWithNativeAsyncQuestion() async throws {
+        _ = NSApplication.shared
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/native-question-entry-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await settle { controller.isLoaded }
+        let conversationID = try #require(controller.selectedID)
+        var question = AgentChatMessage(id: "native-question", role: .assistant, text: "Which passage should I compare?")
+        question.asyncQuestion = .init(questions: [
+            .init(id: "passage", prompt: "Which passage should I compare?", options: [], allowsOther: true, isSecret: false)
+        ])
+        controller.update {
+            $0.messages = [
+                .init(id: "request", role: .user, text: "Compare these two synthetic passages."),
+                .init(id: "reply", role: .assistant, text: "A retained **synthetic reply**. 中文。", phase: .finalAnswer),
+                question,
+            ]
+        }
+        let session = AgentChatReadingSession()
+        let native = AgentChatComposerSession(conversationID: conversationID)
+        let host = NSHostingView(
+            rootView: AgentChatConversationDetailView(
+                controller: controller, isVisible: true, addSelection: { _ in false },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
+                openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
+                showConversationChanges: { _ in }, presentation: AgentChatDetailPresentation(),
+                readingSession: session, nativeSession: native,
+                focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+                newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
+                showAccountUsage: {}, diagnosticsPresentation: .constant(nil)))
+        let window = mount(host)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        try await settle(host) { session.initialTranscriptPhase == .visible && session.viewportRequest == nil }
+        func readerCount(in view: NSView) -> Int {
+            (view is AgentChatReadWebView ? 1 : 0) + view.subviews.reduce(0) { $0 + readerCount(in: $1) }
+        }
+        #expect(readerCount(in: host) == 2)
+        #expect(session.markers[question.id]?.view?.window === window)
+        #expect(controller.selected?.messages.last?.asyncQuestion?.questions.first?.prompt == question.text)
+        #expect(controller.connectionState == .disconnected)
+    }
+
     @Test("Retained readers keep their native identity and reading anchor through hidden resizing")
     func retainedTranscriptSurvivesHiddenResize() async throws {
         _ = NSApplication.shared

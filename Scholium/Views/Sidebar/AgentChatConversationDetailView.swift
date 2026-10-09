@@ -248,14 +248,18 @@ struct AgentChatConversationDetailView: View {
         return Array(items[readingSession.history.range(in: items.map(\.id))])
     }
 
-    private var visibleReplyReaderIDs: Set<String> {
+    private var replyReaderIDs: Set<String> {
         Set(
-            visibleTimelineItems
+            timelineItems
                 .filter { !$0.isProcess }
                 .flatMap(\.messages)
-                .filter { !$0.text.isEmpty }
+                .filter { $0.asyncQuestion == nil && !$0.text.isEmpty }
                 .map(\.id)
         )
+    }
+
+    private var visibleReplyReaderIDs: Set<String> {
+        replyReaderIDs.intersection(visibleTimelineItems.map(\.id))
     }
 
     private func revealMessage(_ id: String) {
@@ -482,12 +486,15 @@ struct AgentChatConversationDetailView: View {
         .onAppear {
             if presentation.showsFind { refreshFind() }
             presentation.arrivalBaseline = Set(projection.messages.map(\.id))
-            readingSession.mount(in: projection.ids, readerIDs: visibleReplyReaderIDs)
+            readingSession.mount(in: projection.ids, readerIDs: replyReaderIDs)
             recordEntryMountIfNeeded()
         }
         .onChange(of: isVisible) { _, visible in if visible { recordEntryMountIfNeeded() } }
         .onChange(of: projection.ids) { _, ids in
-            readingSession.contentDidChange(in: ids, readerIDs: visibleReplyReaderIDs)
+            readingSession.contentDidChange(in: ids, readerIDs: replyReaderIDs)
+        }
+        .onChange(of: replyReaderIDs) { _, readerIDs in
+            readingSession.contentDidChange(in: projection.ids, readerIDs: readerIDs)
         }
         .onDisappear { presentation.arrivalBaseline = nil }
         .onChange(of: hasConversationAccessories) { _, hasAccessories in

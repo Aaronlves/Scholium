@@ -8,7 +8,19 @@ import WebKit
 @Suite("Window document opening preparation", .serialized)
 @MainActor
 struct WindowDocumentOpeningPreparationTests {
-    private enum FixtureFailure: Error { case save }
+    private enum FixtureFailure: LocalizedError {
+        case save
+        case capture
+        case destination
+
+        var errorDescription: String? {
+            switch self {
+            case .save: "Synthetic save acknowledgement failure."
+            case .capture: "Synthetic editor capture failure."
+            case .destination: "Synthetic destination failure."
+            }
+        }
+    }
 
     @Test("A cross-role hydration failure retains the exact origin Library and document")
     func crossRoleHydrationFailurePreservesOrigin() async throws {
@@ -59,6 +71,7 @@ struct WindowDocumentOpeningPreparationTests {
         let window = fixture.window
         let document = try #require(window.documentController.selectedDocument)
         let descriptor = try #require(document.workspaceDescriptor)
+        let committedSnapshot = try #require(window.documentController.snapshots[descriptor.sessionKey])
         let dispatcher = CloseCommitDispatcher()
         let session = DocumentSessionModel(
             key: descriptor.sessionKey,
@@ -67,7 +80,7 @@ struct WindowDocumentOpeningPreparationTests {
         window.documentController.receiveSessionTransfer(
             .init(
                 document: document, session: session,
-                snapshot: window.documentController.snapshots[descriptor.sessionKey], mode: .source
+                snapshot: committedSnapshot, mode: .source
             ))
         session.beginEditing(in: .source)
         session.originalEditingSource = OpeningFixture.source
@@ -86,6 +99,13 @@ struct WindowDocumentOpeningPreparationTests {
         }
         do {
             try await editor.waitUntilReady()
+            // The shared harness defaults to a standalone document. A managed
+            // Note starts with its repository-owned citation identity, even
+            // when the companion is absent, before accepting any input.
+            session.editorSession.loadDocument(
+                committedSnapshot.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
+                mode: .source, citationSnapshot: committedSnapshot.document.citationSnapshot)
+            try #require(try await session.editorSession.waitUntilLoadedForSave())
             try await session.editorSession.perform(.pastePlain, argument: "Saved edit 中文 😀.\r\n")
             let saved = try await session.editorSession.currentText()
             let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
@@ -137,6 +157,9 @@ struct WindowDocumentOpeningPreparationTests {
 
     private final class CloseCommitDispatcher: MarkdownEditorBridgeDispatching {
         var failNextCommit = false
+        var failCaptureNumber: Int?
+        var onFirstCapture: (@MainActor () throws -> Void)?
+        private(set) var captureCount = 0
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
 
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
@@ -145,8 +168,162 @@ struct WindowDocumentOpeningPreparationTests {
                 failNextCommit = false
                 throw FixtureFailure.save
             }
+            if case .suspendForDetachment = request.operation {
+                captureCount += 1
+                let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+                if captureCount == 1 { try onFirstCapture?() }
+                if captureCount == failCaptureNumber {
+                    // The input freeze succeeded but its reply was lost. The
+                    // ordinary failure path must retain and resume this Note.
+                    throw FixtureFailure.capture
+                }
+                return result
+            }
             return try await production.dispatch(requestJSON: requestJSON, in: webView)
         }
+    }
+
+    enum DepartureFailure: CaseIterable { case initialCapture, saveAcknowledgement, finalCapture, saveConflict }
+
+    @Test("Replacement distinguishes a failed save from capture before or after a successful commit", arguments: DepartureFailure.allCases)
+    func replacementFailureDescribesItsActualStage(failure: DepartureFailure) async throws {
+        let fixture = try await OpeningFixture.make()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let window = fixture.window
+        let document = try #require(window.documentController.selectedDocument)
+        let descriptor = try #require(document.workspaceDescriptor)
+        let committedSnapshot = try #require(window.documentController.snapshots[descriptor.sessionKey])
+        let dispatcher = CloseCommitDispatcher()
+        let session = DocumentSessionModel(
+            key: descriptor.sessionKey,
+            editorSession: MarkdownEditorSession(bridgeDispatcher: dispatcher))
+        window.documentController.receiveSessionTransfer(
+            .init(
+                document: document, session: session,
+                snapshot: committedSnapshot, mode: .source))
+        session.beginEditing(in: .source)
+        session.originalEditingSource = OpeningFixture.source
+        session.editingSource = OpeningFixture.source
+        session.editingRevision = DocumentFingerprint(content: OpeningFixture.source)
+        session.suppressAutosave = true
+        let editor = MarkdownEditorWebViewIntegrationTests.EditorHarness(
+            source: OpeningFixture.source, usesSessionDocumentIdentity: true,
+            suppliedSession: session.editorSession, initialMode: .source)
+        defer {
+            session.cancelScheduledWork()
+            editor.close()
+        }
+        do {
+            try await editor.waitUntilReady()
+            session.editorSession.loadDocument(
+                committedSnapshot.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
+                mode: .source, citationSnapshot: committedSnapshot.document.citationSnapshot)
+            try #require(try await session.editorSession.waitUntilLoadedForSave())
+            try await session.editorSession.perform(.pastePlain, argument: "Retained draft 中文 😀.\r\n")
+            let exactDraft = try await session.editorSession.currentText()
+            let externalSource = "External source 中文 😀.\r\n"
+            switch failure {
+            case .initialCapture: dispatcher.failCaptureNumber = 1
+            case .saveAcknowledgement: dispatcher.failNextCommit = true
+            case .finalCapture: dispatcher.failCaptureNumber = 2
+            case .saveConflict:
+                dispatcher.onFirstCapture = {
+                    try Data(externalSource.utf8).write(to: fixture.works.appendingPathComponent("Origin.md"))
+                }
+            }
+            var reachedDestination = false
+            window.enqueueDocumentTransition { reachedDestination = true }
+            await window.waitForDocumentTransitions()
+            await session.detachmentResumeTask?.value
+            #expect(!reachedDestination)
+            #expect(window.documentController.selectedDocument == document)
+            #expect(window.documentTabController.selectedTab?.document == document)
+            #expect(Data(session.editorSession.checkedSource.utf8) == Data(exactDraft.utf8))
+            let expectedDisk =
+                switch failure {
+                case .initialCapture: OpeningFixture.source
+                case .saveConflict: externalSource
+                case .saveAcknowledgement, .finalCapture: exactDraft
+                }
+            #expect(try Data(contentsOf: fixture.works.appendingPathComponent("Origin.md")) == Data(expectedDisk.utf8))
+            let issue = try #require(window.shellState.operationIssues.last)
+            if failure == .saveConflict {
+                #expect(window.lastSaveError != nil)
+                #expect(!session.canRetrySave)
+                #expect(issue.message.contains("could not be saved"))
+                let conflict = try #require(session.conflict)
+                #expect(Data(conflict.editorSource.utf8) == Data(exactDraft.utf8))
+                #expect(Data(conflict.diskSource.utf8) == Data(externalSource.utf8))
+                #expect(session.hasUnsavedChanges)
+            } else {
+                #expect(window.lastSaveError == nil)
+                #expect(!session.canRetrySave)
+                #expect(issue.message.contains("could not leave the current note"))
+                #expect(!issue.message.contains("could not be saved"))
+                let expectedFailure = failure == .saveAcknowledgement ? FixtureFailure.save : .capture
+                #expect(issue.message.contains(expectedFailure.localizedDescription))
+            }
+            if failure == .saveAcknowledgement || failure == .finalCapture {
+                #expect(session.originalEditingSource.utf8.elementsEqual(exactDraft.utf8))
+                #expect(session.pendingEditorCommit == nil)
+            }
+            if failure == .finalCapture { #expect(dispatcher.captureCount == 2) }
+            await editor.closeAndDrain()
+            await fixture.store.shutdownApplicationRuntime()
+        } catch {
+            await window.waitForDocumentTransitions()
+            await editor.closeAndDrain()
+            await fixture.store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test("Destination failures retain their own meaning after departure succeeds", arguments: [false, true])
+    func destinationFailureIsNotReportedAsSaveFailure(currencyAware: Bool) async throws {
+        let (model, background, outgoing) = makeModel()
+        defer {
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        let document = model.documentController.selectedDocument
+        if currencyAware {
+            model.enqueueCurrencyAwareDocumentTransition { _ in throw FixtureFailure.destination }
+        } else {
+            model.enqueueDocumentTransition { throw FixtureFailure.destination }
+        }
+        await model.waitForDocumentTransitions()
+        #expect(model.documentController.selectedDocument == document)
+        #expect(model.lastSaveError == nil)
+        #expect(!outgoing.hasUnsavedChanges)
+        #expect(!outgoing.canRetrySave)
+        #expect(model.shellState.operationIssues.last?.message == FixtureFailure.destination.localizedDescription)
+    }
+
+    @Test("A registered editor capture failure after flushing retains the Note without declaring a failed save")
+    func registeredCaptureFailureDoesNotInventSaveFailure() async throws {
+        let (model, background, outgoing) = makeModel()
+        let document = model.documentController.selectedDocument
+        var flushCount = 0
+        model.registerEditorFlush(
+            for: try #require(model.selectedDocumentPath), token: UUID(),
+            flush: { flushCount += 1 },
+            captureForReconstruction: { throw FixtureFailure.capture })
+        defer {
+            model.editorFlushCoordinator.clearCurrentEditor()
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        var reachedDestination = false
+        model.enqueueCurrencyAwareDocumentTransition { _ in reachedDestination = true }
+        await model.waitForDocumentTransitions()
+        #expect(flushCount == 1)
+        #expect(!reachedDestination)
+        #expect(model.documentController.selectedDocument == document)
+        #expect(model.lastSaveError == nil)
+        #expect(!outgoing.canRetrySave)
+        let issue = try #require(model.shellState.operationIssues.last)
+        #expect(issue.message.contains(FixtureFailure.capture.localizedDescription))
+        #expect(!issue.message.contains("could not be saved"))
     }
 
     @MainActor

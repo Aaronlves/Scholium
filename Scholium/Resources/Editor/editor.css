@@ -78,7 +78,8 @@ body,
    geometry, so it remains transparent while the cursor layer follows the
    authoritative EditorSelection. Stock selection rectangles stay suppressed;
    Scholium's source-character marks below remain the only range paint. */
-#editor .cm-editor .cm-cursor {
+#editor .cm-editor .cm-cursor,
+#editor .cm-editor .cm-dropCursor {
   border-left: 2px solid var(--scholium-color-accent);
   margin-left: -1px;
 }

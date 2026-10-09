@@ -3,6 +3,23 @@ import AppKit
 
 extension ScholiumUITests {
     @MainActor
+    func ensureChatSidebarIsVisible() {
+        guard !sidebarModeControl("Chat").exists else { return }
+        // Preference-file seeding can leave Chat hidden in the QA session.
+        // Establish this journey's precondition through the native setting.
+        let settings = openSettingsForTransactionTest()
+        let search = settings.searchFields["scholium.settings.search"]
+        typeCommittedText("Chat", into: search, in: app)
+        selectSettingsSearchResult("agents.chatSidebar", in: settings)
+        let toggle = settings.checkBoxes["scholium.settings.chatSidebarEnabled"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        if !selectionControlIsSelected(toggle) { toggle.click() }
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 3) { !settings.exists })
+        XCTAssertTrue(sidebarModeControl("Chat").waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testChatEntryWithReducedMotionKeepsHiddenDetailInert() throws {
         waitForCurrentDocumentSurface()
         let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
@@ -14,6 +31,7 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
         sidebarModeControl("Chat").click()
         let composer = app.textViews["scholium.chat.message"].firstMatch
         for item in [fixture.short, fixture.long, fixture.short] {

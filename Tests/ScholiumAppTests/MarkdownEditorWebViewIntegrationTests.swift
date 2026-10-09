@@ -990,8 +990,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test(
         "DOM text drops preserve the old selection, restore focus and isolate exact Undo",
-        arguments: [MarkdownEditorMode.livePreview, .source])
-    func textDropDOMEventsPreserveSelectionAndExactUndo(mode: MarkdownEditorMode) async throws {
+        arguments: [MarkdownEditorMode.livePreview, .source], [false, true])
+    func textDropDOMEventsPreserveSelectionAndExactUndo(mode: MarkdownEditorMode, dark: Bool) async throws {
         let source = "\u{FEFF}Selected passage remains.\r\n\r\nDrop target remains.\nTail."
         let droppedText = "新😀e\u{301}\n段 "
         let target = (source as NSString).range(of: "Drop target remains.")
@@ -1006,6 +1006,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilPresentedMode(mode)
         try await harness.waitUntilSelection(head: 9)
         let webView = try #require(harness.session.webView)
+        let container = try #require(webView.superview as? DocumentWebViewContainer)
+        container.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         webView.window?.makeKeyAndOrderFront(nil)
         try await harness.session.focusAndWait()
         try await harness.waitUntilFocused()
@@ -1059,6 +1061,13 @@ struct MarkdownEditorWebViewIntegrationTests {
                   content.dispatchEvent(event('dragover'));
                   await frame();
                   const cursorBefore = document.querySelectorAll('.cm-dropCursor').length;
+                  const cursor = document.querySelector('.cm-dropCursor');
+                  const accent = document.createElement('span');
+                  accent.style.color = 'var(--scholium-color-accent)';
+                  document.body.appendChild(accent);
+                  const accentColor = getComputedStyle(accent).color;
+                  accent.remove();
+                  const cursorColor = cursor && getComputedStyle(cursor).borderLeftColor;
                   const drop = event('drop');
                   content.dispatchEvent(drop);
                   await frame();
@@ -1066,6 +1075,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                   return {
                     consumed: drop.defaultPrevented,
                     cursorBefore,
+                    cursorColor,
+                    accentColor,
                     cursorAfter: document.querySelectorAll('.cm-dropCursor').length,
                     activeEditor: document.activeElement === content
                   };
@@ -1091,6 +1102,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         let accepted = try await dispatchDrop(duringComposition: false)
         #expect(accepted["consumed"] as? Bool == true)
         #expect(accepted["cursorBefore"] as? Int == 1)
+        let cursorColor = try #require(accepted["cursorColor"] as? String)
+        let accentColor = try #require(accepted["accentColor"] as? String)
+        #expect(cursorColor == accentColor)
         #expect(accepted["cursorAfter"] as? Int == 0)
         #expect(accepted["activeEditor"] as? Bool == true)
         #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
@@ -1239,13 +1253,114 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("System Accent refresh reaches the retained editor without changing source or selection")
     func nativeSystemAccentRefreshPreservesEditor() async throws {
-        let source = "# Accent\r\n\r\nA selected passage 😀.\r\n"
-        let harness = EditorHarness(source: source, initialSourceRange: 15..<23)
+        let source = "\u{FEFF}Selected passage remains.\r\n\r\nDrop target remains.\nTail."
+        let harness = EditorHarness(source: source, initialSourceRange: 9..<9, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 9)
         let webView = try #require(harness.session.webView)
         let container = try #require(webView.superview as? DocumentWebViewContainer)
+        container.appearance = NSAppearance(named: .aqua)
         let selection = harness.session.context?.selections
+        webView.window?.makeKeyAndOrderFront(nil)
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+
+        let preview = try #require(
+            try await harness.callPageJavaScript(
+                """
+                await document.fonts.ready;
+                const content = document.querySelector('.cm-content');
+                if (!content) throw new Error('Missing editor content');
+                const frame = () => Promise.race([
+                  new Promise(resolve => requestAnimationFrame(resolve)),
+                  new Promise(resolve => setTimeout(resolve, 50))
+                ]);
+                await frame();
+                const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+                let node, offset = -1;
+                while ((node = walker.nextNode())) {
+                  offset = node.nodeValue.indexOf('Drop target remains.');
+                  if (offset >= 0) break;
+                }
+                if (!node) throw new Error('Drag-preview target has no visible source text');
+                node.parentElement.scrollIntoView({block: 'nearest'});
+                await frame();
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                if (!rect.width || !rect.height) throw new Error('Drag-preview target has no text geometry');
+                const x = rect.left + Math.min(0.5, rect.width / 4);
+                const y = (rect.top + rect.bottom) / 2;
+                if (x < 0 || x >= innerWidth || y < 0 || y >= innerHeight
+                    || !content.contains(document.elementFromPoint(x, y))) {
+                  throw new Error('Drag-preview target is outside the visible editor');
+                }
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', 'Synthetic drop preview');
+                transfer.effectAllowed = 'copy';
+                const externalFocus = document.createElement('button');
+                externalFocus.textContent = 'Fixture focus outside the editor';
+                externalFocus.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0';
+                document.body.appendChild(externalFocus);
+                try {
+                  externalFocus.focus();
+                  if (document.activeElement !== externalFocus) throw new Error('Could not leave editor focus');
+                  const event = new DragEvent('dragover', {bubbles: true, cancelable: true,
+                    dataTransfer: transfer, clientX: x, clientY: y});
+                  content.dispatchEvent(event);
+                  const deadline = performance.now() + 2000;
+                  while (document.querySelectorAll('.cm-dropCursor').length !== 1
+                      && performance.now() < deadline) await frame();
+                  const count = document.querySelectorAll('.cm-dropCursor').length;
+                  const targetStyle = getComputedStyle(node.parentElement);
+                  const scroller = content.closest('.cm-scroller');
+                  return {created: count === 1, diagnostics: JSON.stringify({
+                    dropCursorCount: count,
+                    ordinaryCursorCount: document.querySelectorAll('.cm-cursor-primary').length,
+                    activeElement: {tag: document.activeElement?.tagName, classes: document.activeElement?.className},
+                    documentFocused: document.hasFocus(), contentEditable: content.contentEditable,
+                    editorClasses: content.closest('.cm-editor').className,
+                    point: {x, y}, target: {left: rect.left, top: rect.top, width: rect.width, height: rect.height},
+                    targetStyle: {display: targetStyle.display, visibility: targetStyle.visibility,
+                      lineHeight: targetStyle.lineHeight, paddingTop: targetStyle.paddingTop,
+                      paddingBottom: targetStyle.paddingBottom},
+                    viewport: {width: innerWidth, height: innerHeight},
+                    scroller: {scrollTop: scroller.scrollTop, clientHeight: scroller.clientHeight,
+                      scrollHeight: scroller.scrollHeight},
+                    consumed: event.defaultPrevented
+                  })};
+                } finally {
+                  externalFocus.remove();
+                }
+                """) as? [String: Any])
+        try #require(preview["created"] as? Bool == true, "Drag preview: \(preview["diagnostics"] ?? "missing diagnostics")")
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+
+        func verifyCursorAccent() async throws {
+            let colors = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    await Promise.race([
+                      new Promise(resolve => requestAnimationFrame(resolve)),
+                      new Promise(resolve => setTimeout(resolve, 50))
+                    ]);
+                    const ordinary = document.querySelector('.cm-cursor-primary');
+                    const drop = document.querySelector('.cm-dropCursor');
+                    if (!ordinary || !drop) throw new Error('Missing retained caret or drag preview');
+                    const accent = document.createElement('span');
+                    accent.style.color = 'var(--scholium-color-accent)';
+                    document.body.appendChild(accent);
+                    const accentColor = getComputedStyle(accent).color;
+                    accent.remove();
+                    return {accent: accentColor, ordinary: getComputedStyle(ordinary).borderLeftColor,
+                      drop: getComputedStyle(drop).borderLeftColor};
+                    """) as? [String: String])
+            #expect(colors["ordinary"] == colors["accent"])
+            #expect(colors["drop"] == colors["accent"])
+        }
 
         func waitForNativeAccent() async throws {
             let expected = String(
@@ -1271,17 +1386,28 @@ struct MarkdownEditorWebViewIntegrationTests {
         // An explicit native projection is required even on a machine whose
         // current Accent happens to match WebKit's default blue.
         try await waitForNativeAccent()
+        try await verifyCursorAccent()
         _ = try await harness.callPageJavaScript(
             "document.documentElement.style.removeProperty('--scholium-color-accent');"
         )
         NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
         try await waitForNativeAccent()
+        try await verifyCursorAccent()
 
         container.appearance = NSAppearance(named: .darkAqua)
         try await waitForNativeAccent()
+        try await verifyCursorAccent()
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
         try await waitForNativeAccent()
+        try await verifyCursorAccent()
+        let previewCleared =
+            try await harness.callPageJavaScript(
+                """
+                document.querySelector('.cm-content').dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+                return document.querySelectorAll('.cm-dropCursor').length === 0;
+                """) as? Bool
+        #expect(previewCleared == true)
         #expect(harness.session.webView === webView)
         #expect(harness.session.context?.selections == selection)
         #expect(try await harness.session.currentText() == source)

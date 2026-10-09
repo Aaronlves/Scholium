@@ -448,6 +448,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         installQATerminationObserverIfEnabled()
         startupTask?.cancel()
         documentLoadTask?.cancel()
+        documentLoadTask = nil
         focusHandoffTask?.cancel()
         startupTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
@@ -463,6 +464,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         cancelModeTransition()
         startupTask?.cancel()
         documentLoadTask?.cancel()
+        documentLoadTask = nil
         focusHandoffTask?.cancel()
         self.webView = nil
         removeQATerminationObserver()
@@ -1377,26 +1379,46 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         // chance to install the task.
         let expectedDocumentID = documentID
         let expectedWebView = webView
-        if let documentLoadTask {
-            await documentLoadTask.value
-            try Task.checkCancellation()
-            guard documentID == expectedDocumentID, webView === expectedWebView else { return false }
-            return isReady && isLoaded && webView != nil
-        }
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: maximumWait)
-        while clock.now < deadline {
+        while true {
             try Task.checkCancellation()
-            try await clock.sleep(for: .milliseconds(50))
+            guard documentID == expectedDocumentID,
+                expectedWebView == nil || webView === expectedWebView
+            else { return false }
             if isReady, isLoaded, webView != nil { return true }
+            if case .unavailable = presentation.documentPhase, errorMessage != nil { return false }
+            // The handshake may install the current load after this waiter
+            // starts. Join that task as soon as it exists, rather than a load
+            // cancelled by an earlier WebView attachment.
+            if let documentLoadTask {
+                let loadEpoch = requestEpoch
+                await documentLoadTask.value
+                try Task.checkCancellation()
+                guard documentID == expectedDocumentID,
+                    expectedWebView == nil || webView === expectedWebView
+                else { return false }
+                // A clean external publication can replace the pending load
+                // without changing the Note or its native attachment.
+                if loadEpoch != requestEpoch { continue }
+                return isReady && isLoaded && webView != nil
+            }
+            guard clock.now < deadline else { return false }
+            try await clock.sleep(for: .milliseconds(50))
         }
-        return isReady && isLoaded && webView != nil
     }
 
     /// Captures CodeMirror's exact source, selection, and bounded history before
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
     func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
+        if suspendForDetachment, hasAttachedWebView, !isReady || !isLoaded {
+            // Departure can arrive before the current document's bootstrap
+            // acknowledges readiness. Join that lifecycle before freezing its
+            // authoritative buffer; loading is not a failed save, and a clean
+            // native mirror cannot prove that WebKit has no pending input.
+            guard try await waitUntilLoadedForSave() else { throw SessionError.unavailable }
+        }
         if suspendForDetachment { citationInteractionRevision &+= 1 }
         var expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
@@ -2543,6 +2565,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         )
                     }
                 }
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID,
+                    self.webView === webView
+                else { return }
                 updatePresentation { $0.complete(appliedMode) }
                 // Initial image reads can finish during scroll or focus
                 // restoration after convergence. Publish only a still-pending
@@ -2569,6 +2595,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID,
+                    self.webView === webView
+                else { return }
                 updatePresentation { $0.fail(ScholiumErrorLocalization.message(error)) }
             }
         }

@@ -1,6 +1,12 @@
 import Foundation
 import ScholiumContracts
 
+private enum DocumentTransitionFailurePhase: Equatable {
+    case preparation
+    case saving
+    case operation
+}
+
 /// Serialised document transitions preserve retained editors and save the
 /// outgoing document when its tab is replaced or closed.
 extension WindowModel {
@@ -141,6 +147,7 @@ extension WindowModel {
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
+        var failurePhase = DocumentTransitionFailurePhase.operation
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
@@ -158,6 +165,7 @@ extension WindowModel {
                 switch resolvedPreparation {
                 case .saveSelectedDocument:
                     if let document = self.documentController.selectedDocument {
+                        failurePhase = .preparation
                         let session = self.documentController.session(for: document.editingTarget)
                         defer {
                             preservedEditor = (document, session.editorSession.detachmentSuspensionID)
@@ -166,7 +174,17 @@ extension WindowModel {
                         // opening a destination must not escape the saved base.
                         try await self.documentController.prepareSessionTransfer(document)
                         try validateBeforePreparation()
-                        try await self.documentController.flushDocumentBeforeDeparture(document, capturingEditorState: false)
+                        failurePhase = .saving
+                        do {
+                            try await self.documentController.flushDocumentBeforeDeparture(document, capturingEditorState: false)
+                        } catch {
+                            // A proven commit can still be awaiting its editor
+                            // acknowledgement. Retain the Note without claiming
+                            // that its exact Markdown was not saved.
+                            if session.pendingEditorCommit != nil { failurePhase = .preparation }
+                            throw error
+                        }
+                        failurePhase = .preparation
                         if session.editorSession.hasAttachedWebView {
                             // A commit rebases the editor identity. Capture its
                             // final source/history while input remains frozen.
@@ -175,6 +193,7 @@ extension WindowModel {
                     }
                 case .preserveSelectedDocument:
                     if let document = self.documentController.selectedDocument {
+                        failurePhase = .preparation
                         let session = self.documentController.session(for: document.editingTarget)
                         defer {
                             preservedEditor = (document, session.editorSession.detachmentSuspensionID)
@@ -196,6 +215,7 @@ extension WindowModel {
             },
             operation: { [weak self] isCurrent in
                 guard let self, isCurrent() else { throw CancellationError() }
+                failurePhase = .operation
                 self.activeDocumentTransitionCurrency = isCurrent
                 defer { self.activeDocumentTransitionCurrency = nil }
                 if case .openingDocument(let placement, let retainedTab) = preparation,
@@ -225,7 +245,7 @@ extension WindowModel {
                 }
                 if let navigationError = error as? WindowNavigationError {
                     self.documentTransitionIssueID = self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
-                } else if case .saveSelectedDocument = resolvedPreparation {
+                } else if failurePhase == .saving {
                     self.lastSaveError = error.localizedDescription
                     self.documentTransitionIssueID = self.reportOperationIssue(
                         String(
@@ -235,6 +255,9 @@ extension WindowModel {
                         ),
                         kind: .error
                     )
+                } else if failurePhase == .preparation {
+                    self.documentTransitionIssueID = self.reportOperationIssue(
+                        Self.retainedNotePreparationFailureMessage(error), kind: .error)
                 } else {
                     self.documentTransitionIssueID = self.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
@@ -271,6 +294,14 @@ extension WindowModel {
         )
     }
 
+    private static func retainedNotePreparationFailureMessage(_ error: Error) -> String {
+        String(
+            localized: "Scholium could not leave the current note, so it kept it open. \(error.localizedDescription)",
+            table: "Localizable",
+            bundle: .module
+        )
+    }
+
     func enqueueCurrencyAwareDocumentTransition(
         preservingCurrentEditorState: Bool = true,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
@@ -284,11 +315,13 @@ extension WindowModel {
         didFinish: (@MainActor () -> Void)? = nil
     ) {
         guard !windowCloseCoordinator.isPreparingOrFinalized else { return }
+        var failurePhase = DocumentTransitionFailurePhase.operation
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 try validateBeforePreparation()
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
+                if self.documentController.selectedDocument != nil { failurePhase = .preparation }
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
@@ -299,7 +332,10 @@ extension WindowModel {
                     )
                 }
             },
-            operation: operation,
+            operation: { isCurrent in
+                failurePhase = .operation
+                try await operation(isCurrent)
+            },
             didFail: { [weak self] error in
                 guard let self else { return }
                 self.revealRetainedDocumentAfterTransitionFailure()
@@ -315,16 +351,11 @@ extension WindowModel {
                         navigationError.localizedDescription,
                         kind: .warning
                     )
-                } else {
-                    self.lastSaveError = error.localizedDescription
+                } else if failurePhase == .preparation {
                     self.documentTransitionIssueID = self.reportOperationIssue(
-                        String(
-                            localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
-                            table: "Localizable",
-                            bundle: .module
-                        ),
-                        kind: .error
-                    )
+                        Self.retainedNotePreparationFailureMessage(error), kind: .error)
+                } else {
+                    self.documentTransitionIssueID = self.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
             didSucceed: { [weak self] in

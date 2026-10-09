@@ -170,6 +170,30 @@ struct AgentChatReadingTests {
         #expect(window.range(in: []).isEmpty)
     }
 
+    @Test("Initial hydration follows the mounted window when a new reply evicts its first reader", arguments: [false, true])
+    func initialHydrationTracksMountedReaders(initiallyReady: Bool) throws {
+        let session = AgentChatReadingSession()
+        let initialIDs = ["a", "b", "c", "d"]
+        session.mount(in: initialIDs, readerIDs: Set(initialIDs))
+        session.observeReplyHydration(["a": initiallyReady, "b": true, "c": true, "d": true])
+        #expect(session.initialTranscriptPhase == (initiallyReady ? .positioning : .hydrating))
+
+        let updatedIDs = initialIDs + ["e"]
+        session.contentDidChange(in: updatedIDs, readerIDs: Set(updatedIDs))
+        #expect(session.history.range(in: updatedIDs) == 1..<5)
+        #expect(session.initialTranscriptPhase == .hydrating)
+
+        // The evicted reader never reports readiness again. The newly mounted
+        // reader still has to finish before the transcript can become visible.
+        session.observeReplyHydration(["b": true, "c": true, "d": true, "e": false])
+        #expect(session.initialTranscriptPhase == .hydrating)
+        session.observeReplyHydration(["b": true, "c": true, "d": true, "e": true])
+        #expect(session.initialTranscriptPhase == .positioning)
+        session.acknowledge(try #require(session.viewportRequest))
+        #expect(session.isInitialTranscriptReady)
+        #expect(session.viewportRequest == nil)
+    }
+
     @Test("Independent conversations retain reading and disclosure choices")
     func independentSessions() {
         let store = AgentChatReadingStore()

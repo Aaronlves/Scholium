@@ -94,37 +94,34 @@ final class AgentChatReadingSession {
     }
     func mount(in ids: [String], readerIDs: Set<String> = []) {
         if initialTranscriptPhase == .unmounted {
-            expectedReaderIDs = readerIDs
-            initialTranscriptPhase = readerIDs.isEmpty ? .positioning : .hydrating
-            advanceInitialHydrationIfReady()
+            initialTranscriptPhase = .hydrating
         }
         switch position {
         case .followingLatest:
             history.latest(in: ids)
             enqueue(.latest)
         case .retaining(let anchor):
-            guard let anchor, ids.contains(anchor.id) else {
+            if let anchor, ids.contains(anchor.id) {
+                history.reveal(anchor.id, in: ids)
+                enqueue(.anchor(anchor))
+            } else {
                 viewport?.scheduleLayout()
-                return
             }
-            history.reveal(anchor.id, in: ids)
-            enqueue(.anchor(anchor))
         }
+        reconcileInitialReaders(in: ids, readerIDs: readerIDs)
     }
     func contentDidChange(in ids: [String], readerIDs: Set<String> = []) {
-        if initialTranscriptPhase == .hydrating || initialTranscriptPhase == .positioning {
-            expectedReaderIDs = readerIDs
-            advanceInitialHydrationIfReady()
-        }
         switch position {
         case .followingLatest:
             history.latest(in: ids)
             enqueue(.latest)
         case .retaining(let anchor):
-            guard let anchor, ids.contains(anchor.id), viewportRequest == nil else { return }
-            history.reveal(anchor.id, in: ids)
-            enqueue(.anchor(anchor))
+            if let anchor, ids.contains(anchor.id), viewportRequest == nil {
+                history.reveal(anchor.id, in: ids)
+                enqueue(.anchor(anchor))
+            }
         }
+        reconcileInitialReaders(in: ids, readerIDs: readerIDs)
     }
     func observeReplyHydration(_ states: [String: Bool]) {
         readerHydration = states
@@ -158,6 +155,17 @@ final class AgentChatReadingSession {
         guard expectedReaderIDs.allSatisfy({ readerHydration[$0] == true }) else { return }
         initialTranscriptPhase = .positioning
         viewport?.scheduleLayout()
+    }
+
+    private func reconcileInitialReaders(in ids: [String], readerIDs: Set<String>) {
+        guard initialTranscriptPhase == .hydrating || initialTranscriptPhase == .positioning else { return }
+        // The history window can move while readers are loading. Wait only for
+        // readers in its resulting range, never an already unmounted prefix.
+        expectedReaderIDs = readerIDs.intersection(ids[history.range(in: ids)])
+        if !expectedReaderIDs.allSatisfy({ readerHydration[$0] == true }) {
+            initialTranscriptPhase = .hydrating
+        }
+        advanceInitialHydrationIfReady()
     }
 }
 

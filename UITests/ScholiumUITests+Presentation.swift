@@ -363,6 +363,7 @@ extension ScholiumUITests {
     @MainActor
     func testChatSidebarPageTransitionsRetainDraftAndFind() throws {
         waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
         sidebarModeControl("Chat").click()
         let create = app.buttons["scholium.chat.newConversation"]
         XCTAssertTrue(create.waitForExistence(timeout: 5))
@@ -446,7 +447,9 @@ extension ScholiumUITests {
         let window = app.windows.firstMatch
         resizeProofWindow(window, toWidth: 960, height: 640)
         XCTAssertTrue(window.frame.contains(composer.frame))
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.isHittable)
+        app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch.click()
+        XCTAssertTrue(app.menuItems["Choose Note…"].waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
         app.menuBars.menuBarItems["View"].click()
         app.menuItems["Appearance"].firstMatch.hover()
         app.menuItems["Light"].click()

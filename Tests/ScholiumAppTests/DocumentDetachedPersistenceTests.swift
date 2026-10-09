@@ -9,6 +9,208 @@ import WebKit
 @MainActor
 @Suite("Detached document persistence")
 struct DocumentDetachedPersistenceTests {
+    @Test("Departure before the ready handshake waits for the current attachment, including a reopened Note", arguments: [false, true])
+    func departureBeforeReadyHandshake(reopened: Bool) async throws {
+        let source = "\u{FEFF}中文 🦉\r\n"
+        let dispatcher = CaptureDispatcher()
+        let editor: MarkdownEditorSession
+        if reopened {
+            let existing = try await makeEditor(source: source)
+            editor = existing.editor
+            editor.detach(existing.webView)
+        } else {
+            editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        }
+        let webView = WKWebView()
+        editor.attach(webView)
+        defer { editor.detach(webView) }
+        editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source)
+        var started = false
+        let departure = Task {
+            started = true
+            try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        }
+        defer { departure.cancel() }
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        editor.editorBecameReady()
+        try await departure.value
+        #expect(editor.detachmentSuspensionID != nil)
+        #expect(Data(editor.checkedSource.utf8) == Data(source.utf8))
+        editor.detach(webView)
+        let snapshot = try await editor.persistenceSnapshot(expectedRevision: DocumentFingerprint(content: source))
+        #expect(Data(snapshot.text.utf8) == Data(source.utf8))
+    }
+
+    enum LoadingInterruption: CaseIterable { case replacement, detachment, failure, cancellation }
+
+    @Test("Cancellation after joining initialization never freezes the departing editor")
+    func cancelledInitializationCapture() async throws {
+        let fixture = try await makeEditor(holdInitialization: true)
+        defer {
+            fixture.dispatcher.releaseInitializationReply()
+            fixture.editor.detach(fixture.webView)
+        }
+        var started = false
+        let capture = Task {
+            started = true
+            try await fixture.editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        }
+        defer { capture.cancel() }
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        capture.cancel()
+        fixture.dispatcher.releaseInitializationReply()
+        await #expect(throws: CancellationError.self) { try await capture.value }
+        #expect(fixture.editor.detachmentSuspensionID == nil)
+        #expect(fixture.dispatcher.suspensionID == nil)
+    }
+
+    @Test("An old initialization failure cannot mark a refreshed Note unavailable after its blur completes")
+    func staleInitializationFailureDoesNotReplaceReadiness() async throws {
+        let dispatcher = CaptureDispatcher()
+        dispatcher.failNextInitialization = true
+        dispatcher.holdNextBlurReply = true
+        let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        let webView = WKWebView()
+        editor.attach(webView)
+        defer {
+            dispatcher.releaseBlurReply()
+            editor.detach(webView)
+        }
+        editor.loadDocument("Original\r\n", documentID: editor.bridgeDocumentID, mode: .source)
+        editor.editorBecameReady()
+        try await waitForBridgeBoundary { dispatcher.hasBlurReply }
+        var started = false
+        let waiter = Task {
+            started = true
+            return try await editor.waitUntilLoadedForSave()
+        }
+        defer { waiter.cancel() }
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        editor.loadDocument("Refreshed 中文\r\n", documentID: editor.bridgeDocumentID, mode: .source)
+        dispatcher.releaseBlurReply()
+        #expect(try await waiter.value)
+        #expect(editor.isLoaded)
+        #expect(editor.errorMessage == nil)
+        #expect(editor.checkedSource == "Refreshed 中文\r\n")
+    }
+
+    @Test("A source refresh during initialization joins the replacement load of the same Note")
+    func sameNoteRefreshDuringInitialization() async throws {
+        let fixture = try await makeEditor(holdInitialization: true)
+        defer {
+            fixture.dispatcher.releaseInitializationReply()
+            fixture.editor.detach(fixture.webView)
+        }
+        var started = false
+        let waiter = Task {
+            started = true
+            return try await fixture.editor.waitUntilLoadedForSave()
+        }
+        defer { waiter.cancel() }
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        fixture.dispatcher.holdInitializationReply = true
+        let initializeCount = fixture.dispatcher.initializeCount
+        fixture.editor.loadDocument("Refreshed 中文\r\n", documentID: fixture.editor.bridgeDocumentID, mode: .source)
+        fixture.dispatcher.releaseInitializationReply()
+        try await waitForBridgeBoundary {
+            fixture.dispatcher.initializeCount > initializeCount && fixture.dispatcher.hasInitializationReply
+        }
+        fixture.dispatcher.releaseInitializationReply()
+        #expect(try await waiter.value)
+        #expect(fixture.editor.checkedSource == "Refreshed 中文\r\n")
+    }
+
+    @Test("A readiness waiter cannot capture another Note or survive failed, detached, or cancelled loading", arguments: LoadingInterruption.allCases)
+    func interruptedLoading(interruption: LoadingInterruption) async throws {
+        let editor = MarkdownEditorSession(bridgeDispatcher: CaptureDispatcher())
+        let webView = WKWebView()
+        editor.attach(webView)
+        defer { editor.detach(webView) }
+        editor.loadDocument("Original\r\n", documentID: "original", mode: .source)
+        var started = false
+        let waiter = Task {
+            started = true
+            return try await editor.waitUntilLoadedForSave(maximumWait: .seconds(1))
+        }
+        defer { waiter.cancel() }
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        switch interruption {
+        case .replacement:
+            editor.loadDocument("Replacement\r\n", documentID: "replacement", mode: .source)
+            editor.editorBecameReady()
+        case .detachment: editor.detach(webView)
+        case .failure: editor.reportError("Synthetic startup failure")
+        case .cancellation: waiter.cancel()
+        }
+        if interruption == .cancellation {
+            await #expect(throws: CancellationError.self) { try await waiter.value }
+        } else {
+            #expect(try await waiter.value == false)
+        }
+        #expect(editor.detachmentSuspensionID == nil)
+    }
+
+    @Test("Rapid replacement joins document initialization and selects only the last Note without a save error")
+    func rapidReplacementDuringInitialization() async throws {
+        let source = "\u{FEFF}Researcher's cafe\u{301} 中文 🦉\r\n"
+        let fixture = try await makeEditor(source: source, holdInitialization: true)
+        defer {
+            fixture.dispatcher.releaseInitializationReply()
+            fixture.editor.detach(fixture.webView)
+        }
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let document = WindowSelectedDocument.workspace(
+            .init(
+                sessionKey: key,
+                reference: .init(
+                    vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                    relativePath: "Loading.md", stableNoteID: key.noteID.uuidString)))
+        let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
+        session.beginEditing(in: .source)
+        session.editingSource = source
+        session.originalEditingSource = source
+        session.editingRevision = fixture.revision
+        let controller = DocumentController()
+        controller.receiveSessionTransfer(.init(document: document, session: session, snapshot: nil, mode: .source))
+        defer { session.cancelScheduledWork() }
+        let coordinator = DocumentTransitionCoordinator()
+        var started = false
+        var selected: [String] = []
+        var failures: [String] = []
+        func request(_ name: String) {
+            coordinator.enqueue(
+                prepare: {
+                    started = true
+                    try await controller.prepareSessionTransfer(document)
+                    try await controller.flushDocumentBeforeDeparture(document, capturingEditorState: false)
+                },
+                operation: { selected.append(name) },
+                didFail: { failures.append($0.localizedDescription) },
+                didFinish: {
+                    controller.resumeAutosave(afterTransferOf: document, suspensionID: fixture.editor.detachmentSuspensionID)
+                })
+        }
+        #expect(!fixture.editor.isLoaded)
+        request("A")
+        for _ in 0..<100 where !started { await Task.yield() }
+        try #require(started)
+        request("B")
+        request("C")
+        fixture.dispatcher.releaseInitializationReply()
+        await coordinator.waitForIdle()
+        #expect(selected == ["C"])
+        #expect(failures.isEmpty)
+        #expect(session.editError == nil)
+        #expect(!session.canRetrySave)
+        #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+        #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
+    }
+
     @Test("Only a frozen full capture authorizes a detached save, and a later delta invalidates it")
     func detachedCaptureAdmission() async throws {
         let fixture = try await makeEditor()
@@ -286,16 +488,38 @@ struct DocumentDetachedPersistenceTests {
         }
     }
 
-    private func makeEditor(source: String = "Original\r\n", citationSnapshot: ZoteroCitationSnapshot? = nil) async throws -> Fixture {
+    private func makeEditor(
+        source: String = "Original\r\n", citationSnapshot: ZoteroCitationSnapshot? = nil,
+        holdInitialization: Bool = false
+    ) async throws -> Fixture {
         let dispatcher = CaptureDispatcher()
+        dispatcher.holdInitializationReply = holdInitialization
         let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
         let webView = WKWebView()
         editor.attach(webView)
         editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source, citationSnapshot: citationSnapshot)
         editor.editorBecameReady()
-        let loaded = try await editor.waitUntilLoadedForSave()
-        try #require(loaded)
+        if holdInitialization {
+            do {
+                try await waitForBridgeBoundary { dispatcher.hasInitializationReply }
+            } catch {
+                dispatcher.releaseInitializationReply()
+                editor.detach(webView)
+                throw error
+            }
+        } else {
+            let loaded = try await editor.waitUntilLoadedForSave()
+            try #require(loaded)
+        }
         return Fixture(editor: editor, webView: webView, dispatcher: dispatcher, revision: DocumentFingerprint(content: source))
+    }
+
+    private func waitForBridgeBoundary(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !condition() {
+            guard ContinuousClock.now < deadline else { throw MarkdownEditorSession.SessionError.unavailable }
+            try await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     @MainActor
@@ -332,12 +556,32 @@ struct DocumentDetachedPersistenceTests {
         var failNextAcknowledgement = false
         var holdNextResumeReply = false
         var holdNextScrollReply = false
+        var holdInitializationReply = false
+        var failNextInitialization = false
+        var holdNextBlurReply = false
+        private(set) var initializeCount = 0
         var scrollDidStart: (() -> Void)?
         var resumeDidStart: (() -> Void)?
         private(set) var resumeDispatchCount = 0
         private var resumeReply: CheckedContinuation<Void, Never>?
         private var scrollReply: CheckedContinuation<Void, Never>?
+        private var initializationReply: CheckedContinuation<Void, Never>?
+        private var blurReply: CheckedContinuation<Void, Never>?
         private var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
+        var hasInitializationReply: Bool { initializationReply != nil }
+        var hasBlurReply: Bool { blurReply != nil }
+
+        func releaseInitializationReply() {
+            let reply = initializationReply
+            initializationReply = nil
+            reply?.resume()
+        }
+
+        func releaseBlurReply() {
+            let reply = blurReply
+            blurReply = nil
+            reply?.resume()
+        }
 
         func releaseResumeReply() {
             let reply = resumeReply
@@ -358,12 +602,30 @@ struct DocumentDetachedPersistenceTests {
             var commitSuperseded: Bool?
             switch request.operation {
             case .initialize(let source, _, _, let initialSelection, let citationSnapshot):
+                initializeCount += 1
+                if failNextInitialization {
+                    failNextInitialization = false
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
                 self.source = source
                 self.citationSnapshot = citationSnapshot
                 citationData = citationSnapshot?.data
                 generation = 0
                 suspensionID = nil
                 selections = initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                if holdInitializationReply {
+                    holdInitializationReply = false
+                    await withCheckedContinuation { reply in
+                        initializationReply = reply
+                    }
+                }
+            case .blur:
+                if holdNextBlurReply {
+                    holdNextBlurReply = false
+                    await withCheckedContinuation { reply in
+                        blurReply = reply
+                    }
+                }
             case .suspendForDetachment(let id):
                 suspensionID = id
                 recovery = snapshot(request)

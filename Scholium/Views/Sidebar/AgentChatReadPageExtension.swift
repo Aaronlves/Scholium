@@ -12,7 +12,26 @@ enum ReadReplyEvent {
 }
 
 /// Identifies inline rich content to the transcript-owned wheel boundary.
-final class AgentChatReadWebView: WKWebView {}
+final class AgentChatReadWebView: WKWebView {
+    private(set) var isChatInteractive = true
+
+    func setChatInteractive(_ interactive: Bool) {
+        guard isChatInteractive != interactive else { return }
+        isChatInteractive = interactive
+        setAccessibilityHidden(!interactive)
+        if !interactive, let responder = window?.firstResponder as? NSView,
+            responder === self || responder.isDescendant(of: self)
+        {
+            window?.makeFirstResponder(nil)
+        }
+    }
+
+    override var acceptsFirstResponder: Bool { isChatInteractive && super.acceptsFirstResponder }
+    override func hitTest(_ point: NSPoint) -> NSView? { isChatInteractive ? super.hitTest(point) : nil }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        isChatInteractive && super.performKeyEquivalent(with: event)
+    }
+}
 
 /// Untrusted DOM geometry is a bounded presentation projection, never content authority.
 struct ReadReplyObject: Identifiable, Equatable {
@@ -54,13 +73,17 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     private var replyPageFingerprint: String?
     private var replyUpdateTask: Task<Void, Never>?
     private var replyPageGeneration: UInt64 = 0
+    private var isInteractive = true
+    private weak var nativeView: AgentChatReadWebView?
 
     init(onEvent: ((ReadReplyEvent) -> Void)? = nil) {
         self.onEvent = onEvent
     }
 
-    func update(onEvent: @escaping (ReadReplyEvent) -> Void) {
+    func update(onEvent: @escaping (ReadReplyEvent) -> Void, isInteractive: Bool) {
         self.onEvent = onEvent
+        self.isInteractive = isInteractive
+        nativeView?.setChatInteractive(isInteractive)
     }
 
     var requiresDedicatedWebView: Bool { true }
@@ -68,7 +91,10 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     var replyProjectionEnabled: Bool { true }
 
     func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
-        AgentChatReadWebView(frame: .zero, configuration: configuration)
+        let view = AgentChatReadWebView(frame: .zero, configuration: configuration)
+        nativeView = view
+        view.setChatInteractive(isInteractive)
+        return view
     }
 
     func preservesPage(
@@ -186,7 +212,14 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         webView: WKWebView?
     ) -> Bool {
         switch type {
+        case "floatingSurface":
+            guard !isInteractive else { return false }
+            // Back keeps the outgoing page painted. A queued preview must not
+            // reopen above the list, but its existing surface may still close.
+            if case .dismiss? = DocumentFloatingEvent.decode(payload["event"]) { return false }
+            return true
         case "replyInteraction":
+            guard isInteractive else { return true }
             onEvent?(.interaction)
         case "replyLayout":
             guard let height = payload["height"] as? Double, height.isFinite, height > 0,
@@ -200,6 +233,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
             else { return true }
             onEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }, objects: objects))
         case "replyNoteContext":
+            guard isInteractive else { return true }
             guard let rawURL = payload["url"] as? String, rawURL.utf8.count <= 8_192,
                 let url = URL(string: rawURL), AgentChatReference.parse(url) != nil,
                 let left = payload["left"] as? Double, let top = payload["top"] as? Double,
@@ -208,6 +242,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
             else { return true }
             onEvent?(.noteContext(url, point: NSPoint(x: left, y: top), view: view))
         case "replySelectionContext":
+            guard isInteractive else { return true }
             guard let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536,
                 let left = payload["left"] as? Double, let top = payload["top"] as? Double,
                 left.isFinite, top.isFinite, let view = webView,
@@ -215,6 +250,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
             else { return true }
             onEvent?(.selectionContext(text, point: NSPoint(x: left, y: top), view: view))
         case "replyQuote":
+            guard isInteractive else { return true }
             if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
                 onEvent?(.quote(text))
             }
@@ -238,6 +274,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
 /// HTML, source locations and WebKit lifetime; this view supplies only the
 /// transcript-specific page extension and callback.
 struct AgentChatReadWebViewSurface: View {
+    @Environment(\.isEnabled) private var isEnabled
     let documentID: String
     let documentTitle: String
     let fingerprint: String
@@ -288,7 +325,7 @@ struct AgentChatReadWebViewSurface: View {
     }
 
     var body: some View {
-        let _ = pageExtension.update(onEvent: onEvent)
+        let _ = pageExtension.update(onEvent: onEvent, isInteractive: isEnabled)
         SafeMarkdownReadWebView(
             documentID: documentID,
             documentTitle: documentTitle,
@@ -297,8 +334,8 @@ struct AgentChatReadWebViewSurface: View {
             htmlBody: htmlBody,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
-            onLinkClick: onLinkClick,
-            onOpenExternalURL: onOpenExternalURL,
+            onLinkClick: { if isEnabled { onLinkClick($0) } },
+            onOpenExternalURL: { if isEnabled { onOpenExternalURL($0) } },
             selectionSurfaceIsActive: false,
             renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
             onRenderingFailure: onRenderingFailure,

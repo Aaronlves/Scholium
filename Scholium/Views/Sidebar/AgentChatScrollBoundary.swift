@@ -8,8 +8,9 @@ import WebKit
 /// retain their own normal scrolling. This view owns no offset or geometry.
 struct AgentChatScrollBoundary: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
+    @Environment(\.isEnabled) private var isEnabled
     func makeNSView(context: Context) -> BoundaryView { BoundaryView() }
-    func updateNSView(_ view: BoundaryView, context: Context) { view.setActive(surfaceVisibility.isActive) }
+    func updateNSView(_ view: BoundaryView, context: Context) { view.setActive(surfaceVisibility.isActive && isEnabled) }
     static func dismantleNSView(_ view: BoundaryView, coordinator: ()) { view.invalidate() }
 
     final class BoundaryView: NSView {
