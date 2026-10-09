@@ -105,6 +105,11 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         attachmentID: UUID,
         for target: SourceAttachmentTarget
     ) async throws -> DocumentAttachmentPreviewLease
+    func prepareSourceImagePreview(
+        destination: String,
+        source: String,
+        for target: SourceAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease
     func releaseDocumentAttachmentPreview(
         accessToken: UUID
     ) async

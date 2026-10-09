@@ -273,11 +273,11 @@ navigation uses a short smooth reveal and the existing transient arrival marker.
 Reduce Motion uses immediate positioning and static feedback. The rail hides
 before it would compress or cover readable Document content.
 
-Attachments remain file links or image embeds. Review and inactive Edit
-add quiet file-type symbols beside authored link labels without changing source
-or activation. File-menu insertion uses the editor selection; system Quick Look
-owns file opening/dismissal. No attachment sidebar, global manager or persistent
-reader is added.
+Review and inactive Edit add quiet, source-neutral, noninteractive file-type
+symbols. Standalone images fit reading width, proportionally height-limited and
+centered; inline sizes stay intrinsic. Review click, Edit Command-click and
+keyboard menus preview image originals in Quick Look without saving, restoring
+focus. Enclosing links navigate. No attachment sidebar, manager or persistent reader.
 
 Edit entry restores fingerprint-valid title/body focus and selection; otherwise
 it maps an exact Review selection or places the caret at the first body position

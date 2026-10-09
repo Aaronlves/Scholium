@@ -289,16 +289,24 @@ python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
 # Xcode beta's Swift Testing helper can crash while multiple test products
 # tear down their event graphs (and AppKit/WebKit resources) in one invocation.
 # Run the complete product set serially; no suite or test is excluded.
+swift_test_success_summary() {
+  local log="$1"
+  local last_run_event
+  if rg -q 'No matching test cases were run|recorded an issue|Test run with .* failed|Suite .* failed|fatal error|unexpected signal code' "${log}"; then
+    return 1
+  fi
+  # A helper may exit zero after only part of a run. An earlier completed run
+  # cannot establish success if another run started and never finished.
+  last_run_event="$(rg -o 'Test run (started\.|with .*)' "${log}" | tail -n 1 || true)"
+  print -r -- "${last_run_event}" | rg -x \
+    'Test run with [1-9][0-9]* tests?( in [1-9][0-9]* suites?)? passed after [0-9]+(\.[0-9]+)? seconds\.'
+}
+
 report_swift_test_success() {
   local label="$1"
   local log="$2"
-  local summary
-  summary="$(rg -o 'Test run with .* passed after [0-9.]+ seconds\.' "${log}" | tail -n 1 || true)"
-  if [[ -n "${summary}" ]]; then
-    print "${label}: ${summary}"
-  else
-    print "${label}: passed"
-  fi
+  local summary="$3"
+  print "${label}: ${summary}"
 
   if rg -q 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT' "${log}"; then
     rg 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
@@ -317,16 +325,12 @@ report_swift_test_failure() {
   print -u2 "Complete log: ${log}"
 }
 
-swift_test_selected_no_cases() {
-  rg -q 'No matching test cases were run' "$1"
-}
-
 run_swift_test_once() {
   local label="$1"
   local log_name="$2"
   shift 2
   local log="${SCRATCH}/${log_name}.log"
-  local command_status
+  local command_status summary
 
   mkdir -p "${SCRATCH}"
   set +e
@@ -337,12 +341,12 @@ run_swift_test_once() {
   command_status=$?
   set -e
   if (( command_status == 0 )); then
-    if swift_test_selected_no_cases "${log}"; then
-      print -u2 "${label} returned success without executing a matching test case."
+    if ! summary="$(swift_test_success_summary "${log}")"; then
+      print -u2 "${label} returned success without a complete, positive Swift Testing success summary."
       report_swift_test_failure "${label}" "${log}"
       return 65
     fi
-    report_swift_test_success "${label}" "${log}"
+    report_swift_test_success "${label}" "${log}" "${summary}"
     return 0
   fi
   report_swift_test_failure "${label}" "${log}"
@@ -367,7 +371,7 @@ run_measurement_test() {
 
 run_swift_test_product() {
   local test_product="$1"
-  local attempt log command_status
+  local attempt log command_status summary
   local -a parallelism_arguments selection_arguments
   parallelism_arguments=()
   selection_arguments=(--filter "${test_product}")
@@ -402,12 +406,12 @@ run_swift_test_product() {
     command_status=$?
     set -e
     if (( command_status == 0 )); then
-      if swift_test_selected_no_cases "${log}"; then
-        print -u2 "${test_product} returned success without executing a matching test case."
+      if ! summary="$(swift_test_success_summary "${log}")"; then
+        print -u2 "${test_product} returned success without a complete, positive Swift Testing success summary."
         report_swift_test_failure "${test_product}" "${log}"
         return 65
       fi
-      report_swift_test_success "${test_product}" "${log}"
+      report_swift_test_success "${test_product}" "${log}" "${summary}"
       return 0
     fi
     if (( attempt < 3 )) \
@@ -420,6 +424,8 @@ run_swift_test_product() {
     return "${command_status}"
   done
 }
+
+python3 "${ROOT}/Tools/Tests/test-verify-swift-results.py"
 
 for test_product in \
   ScholiumCoreTests \

@@ -177,7 +177,7 @@ struct EditorLinkCompletionQueryMessage: Equatable, Sendable {
     let completionKind: EditorLinkCompletionKind
 }
 
-struct EditorLinkActivationMessage: Equatable, Sendable {
+struct EditorResourceActivationMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let target: String
 }
@@ -221,7 +221,8 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
     case writingContinuationQuery(EditorWritingContinuationQueryMessage)
     case cancelWritingContinuation(EditorWritingContinuationCancellationMessage)
-    case linkActivated(EditorLinkActivationMessage)
+    case linkActivated(EditorResourceActivationMessage)
+    case imagePreview(EditorResourceActivationMessage)
     case contextMenuRequested(EditorContextMenuMessage)
     case scrollChanged(EditorScrollMessage)
 
@@ -246,7 +247,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .linkCompletionQuery(let message): message.envelope
         case .writingContinuationQuery(let message): message.envelope
         case .cancelWritingContinuation(let message): message.envelope
-        case .linkActivated(let message): message.envelope
+        case .linkActivated(let message), .imagePreview(let message): message.envelope
         case .contextMenuRequested(let message): message.envelope
         case .scrollChanged(let message): message.envelope
         }
@@ -505,16 +506,13 @@ enum EditorBridgeMessageDecoder {
                     query: query,
                     completionKind: completionKind
                 ))
-        case "linkActivated":
+        case "linkActivated", "imagePreview":
             guard hasOnlyKeys(object, additional: ["type", "target"]),
                 let target = boundedString(object["target"], maximumUTF8Bytes: 8_192),
                 !target.isEmpty
             else { return nil }
-            return .linkActivated(
-                EditorLinkActivationMessage(
-                    envelope: envelope,
-                    target: target
-                ))
+            let activation = EditorResourceActivationMessage(envelope: envelope, target: target)
+            return type == "imagePreview" ? .imagePreview(activation) : .linkActivated(activation)
         case "contextMenuRequested":
             guard
                 hasOnlyKeys(
@@ -525,6 +523,7 @@ enum EditorBridgeMessageDecoder {
                 let clientX = finiteDouble(object["clientX"]),
                 let clientY = finiteDouble(object["clientY"]),
                 let context: MarkdownEditorContext = decodable(object["context"]),
+                context.imageTarget.map({ !$0.isEmpty && $0.utf8.count <= 8_192 }) ?? true,
                 let rawMode = boundedString(object["mode"], maximumUTF8Bytes: 32),
                 let mode = MarkdownEditorMode(rawValue: rawMode)
             else { return nil }

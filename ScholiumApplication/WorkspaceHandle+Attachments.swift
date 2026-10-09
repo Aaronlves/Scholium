@@ -483,6 +483,91 @@ extension WorkspaceHandle {
         }
     }
 
+    /// Prepares the original of a parser-proven image in the current checked
+    /// source, including unsaved references. Display data URLs never grant file
+    /// access, and preview preparation never persists the Note.
+    func prepareSourceImagePreview(
+        destination: String,
+        source: String,
+        for target: SourceAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease {
+        try requireActive()
+        try Task.checkCancellation()
+        guard source.utf8.count <= VaultSourceReadLimits.maximumNoteByteCount,
+            !source.contains("\0")
+        else { throw DocumentExportImageError.unavailable(destination) }
+        let repository = try await verifiedDocumentAttachmentTarget(target)
+        try Task.checkCancellation()
+        let document = NoteDocument(relativePath: target.relativePath, rawContent: source)
+        let selected = ExportMarkdownImageReferences.references(in: document).first {
+            if case .local(let file) = $0 {
+                return file.destination.utf8.elementsEqual(destination.utf8)
+            }
+            return false
+        }
+        guard case .local(let reference)? = selected else {
+            throw DocumentExportImageError.unavailable(destination)
+        }
+
+        let records = try await services.controlStore.attachmentRecords()
+            .filter { $0.vaultID == target.vaultID }
+        try Task.checkCancellation()
+        var externalAccessToken: UUID?
+        do {
+            let attachmentID: UUID
+            let fileURL: URL
+            let bytes: Data
+            if let path = reference.relativePath {
+                let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+                bytes = try await store.readContent(
+                    relativePath: path,
+                    maximumByteCount: RenderedMarkdownImage.maximumByteCount
+                )
+                guard let url = try await store.documentURLIfAvailable(relativePath: path) else {
+                    throw DocumentExportImageError.unavailable(destination)
+                }
+                fileURL = url
+                attachmentID =
+                    records.first { $0.location == .vaultRelative(path) }?.id
+                    ?? SourceResourceReferences.derivedID(vaultID: target.vaultID, path: path.rawValue)
+            } else if let path = reference.absolutePath {
+                let filename = URL(fileURLWithPath: path).lastPathComponent
+                let location = AttachmentLocation.external(try ExternalAttachmentReference(filename: filename))
+                guard let id = try await services.indexedAttachmentAccessStore.attachmentID(forAbsolutePath: path),
+                    records.contains(where: { $0.id == id && $0.location == location })
+                else { throw DocumentExportImageError.unavailable(destination) }
+                let access = try await services.indexedAttachmentAccessStore.beginAccess(
+                    attachmentID: id, expectedFilename: filename
+                )
+                externalAccessToken = access.token
+                try Task.checkCancellation()
+                bytes = try await VaultAttachmentStore(vaultURL: URL(fileURLWithPath: "/"))
+                    .readContent(
+                        relativePath: AttachmentRelativePath(String(access.url.path.dropFirst())),
+                        maximumByteCount: RenderedMarkdownImage.maximumByteCount
+                    )
+                fileURL = access.url
+                attachmentID = id
+            } else {
+                throw DocumentExportImageError.unavailable(destination)
+            }
+            try Task.checkCancellation()
+            _ = try ExportImageDataValidator.validate(bytes, destination: destination)
+            _ = try await verifiedDocumentAttachmentTarget(target)
+            try requireActive()
+            try Task.checkCancellation()
+            return DocumentAttachmentPreviewLease(
+                accessToken: externalAccessToken ?? UUID(), attachmentID: attachmentID,
+                filename: fileURL.lastPathComponent, fileURL: fileURL
+            )
+        } catch {
+            if let externalAccessToken {
+                await services.indexedAttachmentAccessStore.endAccess(externalAccessToken)
+            }
+            throw error
+        }
+    }
+
     func releaseDocumentAttachmentPreview(accessToken: UUID) async {
         await services.indexedAttachmentAccessStore.endAccess(accessToken)
     }

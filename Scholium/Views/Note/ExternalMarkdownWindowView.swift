@@ -107,7 +107,7 @@ struct ExternalMarkdownWindowView: View {
                         onRequestFind: handleFindShortcut,
                         onRequestDocumentTitleRename: { _, _ in throw ExternalMarkdownWindowIssue.renameUnavailable },
                         onPasteImage: { _ in false },
-                        onLinkActivation: { _ in },
+                        onLinkActivation: { _ in }, onImagePreview: { _ in },
                         onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }
                     )
                     .id(model.editorSession.viewReconstructionID)

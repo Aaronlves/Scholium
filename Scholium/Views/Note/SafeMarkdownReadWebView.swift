@@ -28,6 +28,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     /// document-load identity or hashing bounded HTML on every SwiftUI pass.
     var linkPreviewRevision: String? = nil
     let onLinkClick: (String) -> Void
+    var onImagePreview: ((String) -> Void)? = nil
     let onOpenExternalURL: (URL) -> Void
     var onAskAgent: AgentSelectionInquiryHandler? = nil
     var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)? = nil
@@ -65,6 +66,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: documentID,
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
+            onImagePreview: onImagePreview,
             onOpenExternalURL: onOpenExternalURL,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
@@ -166,6 +168,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: documentID,
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
+            onImagePreview: onImagePreview,
             onOpenExternalURL: onOpenExternalURL,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
@@ -225,6 +228,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var documentID: String
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
+        private var onImagePreview: ((String) -> Void)?
         private var onOpenExternalURL: (URL) -> Void
         var onAskAgent: AgentSelectionInquiryHandler?
         var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)?
@@ -283,6 +287,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
+            onImagePreview: ((String) -> Void)? = nil,
             onOpenExternalURL: @escaping (URL) -> Void,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
@@ -303,6 +308,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.documentID = documentID
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
+            self.onImagePreview = onImagePreview
             self.onOpenExternalURL = onOpenExternalURL
             self.onSelectionChange = onSelectionChange
             selectionCoordinator = SafeMarkdownReadSelectionCoordinator(
@@ -328,6 +334,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentID: String,
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
+            onImagePreview: ((String) -> Void)? = nil,
             onOpenExternalURL: @escaping (URL) -> Void,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
@@ -370,6 +377,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.documentID = documentID
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
+            self.onImagePreview = onImagePreview
             self.onOpenExternalURL = onOpenExternalURL
             self.onSelectionChange = onSelectionChange
             self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
@@ -413,7 +421,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 desiredPresentationCSS = presentationCSS
                 desiredUserCSS = userCSS
             }
-            let capabilitySignature = "\(onSelectionChange != nil)"
+            let capabilitySignature = "\(onSelectionChange != nil):\(onImagePreview != nil)"
             let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
             let signature =
                 configurationRevision.map {
@@ -617,6 +625,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         fingerprint: fingerprint,
                         loadGeneration: loadGeneration,
                         selectionEnabled: onSelectionChange != nil,
+                        imagePreviewsEnabled: onImagePreview != nil,
                         replyProjection: pageExtension?.replyProjectionEnabled == true,
                         linkPreviews: linkPreviews,
                         presentationCSS: presentationCSS,
@@ -821,6 +830,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 else { return }
                 onLinkClick(target)
 
+            case "imagePreview":
+                guard surfaceVisibility.isActive,
+                    let webView = message.webView, activeWebView === webView,
+                    payload["fingerprint"] as? String == fingerprint,
+                    let target = imagePreviewTarget(payload)
+                else { return }
+                onImagePreview?(target)
+
+            case "imageContextMenu":
+                guard surfaceVisibility.isActive,
+                    payload["payloadFingerprint"] as? String == fingerprint,
+                    let webView = message.webView
+                else { return }
+                presentImageContextMenu(payload, in: webView)
+
             case "passageContextMenu":
                 guard surfaceVisibility.isActive else { return }
                 if let webView = message.webView { presentPassageMenu(payload, in: webView) }
@@ -838,6 +862,45 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             default:
                 return
+            }
+        }
+
+        private func imagePreviewTarget(_ payload: [String: Any]) -> String? {
+            guard onImagePreview != nil,
+                let target = payload["target"] as? String,
+                !target.isEmpty, target.utf8.count <= 8_192
+            else { return nil }
+            return target
+        }
+
+        private func presentImageContextMenu(_ payload: [String: Any], in webView: WKWebView) {
+            guard activeWebView === webView, let target = imagePreviewTarget(payload),
+                let x = payload["clientX"] as? Double, let y = payload["clientY"] as? Double,
+                x.isFinite, y.isFinite
+            else { return }
+            let generation = loadGeneration
+            let capturedFingerprint = fingerprint
+            let menu = NSMenu()
+            let item = PassageMenuItem(title: ScholiumL10n.string("View Original Image"), enabled: true) {
+                [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView,
+                    self.surfaceVisibility.isActive,
+                    self.loadGeneration == generation, self.fingerprint == capturedFingerprint
+                else { return }
+                self.onImagePreview?(target)
+            }
+            item.identifier = NSUserInterfaceItemIdentifier("scholium.image.viewOriginal")
+            menu.addItem(item)
+            menu.autoenablesItems = false
+            let point = NSPoint(
+                x: min(max(0, x), webView.bounds.width),
+                y: webView.isFlipped ? y : webView.bounds.height - y)
+            DispatchQueue.main.async { [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView, webView.window != nil,
+                    self.surfaceVisibility.isActive,
+                    self.loadGeneration == generation, self.fingerprint == capturedFingerprint
+                else { return }
+                menu.popUp(positioning: nil, at: point, in: webView)
             }
         }
 
@@ -1700,6 +1763,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let fingerprint: String
             let loadGeneration: UInt64
             let selectionEnabled: Bool
+            let imagePreviewsEnabled: Bool
             let replyProjection: Bool
             let testingEnabled: Bool
             let presentationCSS: String
@@ -1717,6 +1781,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             loadGeneration: UInt64,
             selectionEnabled: Bool,
+            imagePreviewsEnabled: Bool = false,
             replyProjection: Bool = false,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
@@ -1748,6 +1813,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
+                imagePreviewsEnabled: imagePreviewsEnabled,
                 replyProjection: replyProjection,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,

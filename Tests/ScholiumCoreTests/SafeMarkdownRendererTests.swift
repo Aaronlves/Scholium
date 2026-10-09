@@ -43,9 +43,51 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.htmlBody.components(separatedBy: "<img ").count - 1 == 1)
         #expect(rendered.htmlBody.contains("src=\"data:image/png;base64,"))
         #expect(rendered.htmlBody.contains("alt=\"图 &amp; review\""))
+        #expect(rendered.htmlBody.contains("data-scholium-image-target=\"Attachments/a&amp;b.png\""))
         #expect(!rendered.htmlBody.contains("data-scholium-protected=\"embed\""))
         #expect(rendered.semanticDocument.fingerprint == document.fingerprint)
         #expect(Data(document.rawContent.utf8) == Data(source.utf8))
+    }
+
+    @Test(
+        "Image preview targets retain parser percent spelling for native-only resolution",
+        arguments: [
+            "Attachments/Image%20one.png", "Attachments/100%2525.png", "Attachments/a%23b.png",
+            "Attachments/extensionless", "/outside/indexed%20image.png",
+        ])
+    func imagePreviewDestination(target: String) throws {
+        let image = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), mimeType: "image/png")
+        let source = "![🦉 e\u{301}](\(target))"
+        let document = NoteDocument(relativePath: "Images.md", rawContent: source)
+        let html = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [try #require(target.removingPercentEncoding): image]
+        ).htmlBody
+        #expect(html.contains("data-scholium-image-target=\"\(target)\""))
+        #expect(!html.contains("role=\"button\""))
+        #expect(!html.contains("tabindex=\"0\""))
+        #expect(Data(document.rawContent.utf8) == Data(source.utf8))
+    }
+
+    @Test(
+        "Standalone image layout follows parsed paragraph ownership",
+        arguments: [
+            ("![figure](local.png)", "block"),
+            ("[![figure](local.png)](https://example.com)", "block"),
+            ("> ![figure](local.png)", "block"),
+            ("Before ![figure](local.png) after.", "inline"),
+            ("![figure](local.png) ![second](local.png)", "inline"),
+        ])
+    func imageParagraphLayout(source: String, layout: String) throws {
+        let image = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), mimeType: "image/png")
+        let html = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "Images.md", rawContent: source),
+            embeddedImages: ["local.png": image]
+        ).htmlBody
+        #expect(html.contains("data-scholium-image-layout=\"\(layout)\""))
+        if source.hasPrefix("[!") { #expect(html.contains("href=\"https://example.com\"")) }
     }
 
     @Test("Image admission retains unavailable-resource and wiki Note linked fallbacks")
@@ -75,6 +117,7 @@ struct SafeMarkdownRendererTests {
         ).htmlBody
 
         #expect(html.components(separatedBy: "<img ").count - 1 == 1)
+        #expect(html.components(separatedBy: "data-scholium-image-target=").count - 1 == 1)
         #expect(html.components(separatedBy: "data-scholium-protected=\"embed\"").count - 1 == 4)
         #expect(html.contains("href=\"scholium-note:Attachments/missing.png\""))
         #expect(html.contains("href=\"scholium-note:Peer%20Note\""))

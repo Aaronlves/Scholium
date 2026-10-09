@@ -53,6 +53,31 @@ describe("animation-frame interaction reporting", () => {
     expect(observed).toEqual([2]);
   });
 
+  it("flushes the latest selection before native menu tracking without duplicate scheduled reports", () => {
+    const frames: FrameRequestCallback[] = [];
+    const watchdogs: Array<() => void> = [];
+    const canceled: string[] = [];
+    const observed: number[] = [];
+    const coalescer = new AnimationFrameCoalescer(
+      callback => { frames.push(callback); return frames.length; },
+      id => canceled.push(`frame:${id}`),
+      callback => { watchdogs.push(callback); return watchdogs.length; },
+      id => canceled.push(`watchdog:${id}`),
+    );
+    coalescer.schedule(() => observed.push(1));
+    coalescer.schedule(() => observed.push(2));
+    coalescer.flushNow();
+    expect(observed).toEqual([2]);
+    expect(canceled).toEqual(["frame:1", "watchdog:1"]);
+    coalescer.schedule(() => observed.push(3));
+    frames[0](16); watchdogs[0]();
+    expect(observed).toEqual([2]);
+    frames[1](32);
+    expect(observed).toEqual([2, 3]);
+    coalescer.flushNow();
+    expect(observed).toEqual([2, 3]);
+  });
+
   it("publishes availability when a collapsed selection becomes nonempty", () => {
     const context = {
       selections: [{anchor: 4, head: 4}],

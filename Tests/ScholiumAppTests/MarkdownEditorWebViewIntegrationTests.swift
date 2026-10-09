@@ -25,7 +25,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.session.perform(.inlineCode)
         #expect(try await harness.session.currentText(for: harness.documentID) == "Lead a`b after.\r\n")
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -36,8 +37,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        _ = try await harness.session.performDocumentFind(DocumentFindQuery(
-            query: "f", replacement: "X", caseSensitive: true, wholeWord: false, action: .replaceAll))
+        _ = try await harness.session.performDocumentFind(
+            DocumentFindQuery(
+                query: "f", replacement: "X", caseSensitive: true, wholeWord: false, action: .replaceAll))
         let replaced = "ﬀ X é e\u{301}.\r\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == replaced)
         let end = replaced.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
@@ -46,7 +48,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '!');")
         #expect(try await harness.session.currentText(for: harness.documentID) == replaced + "!")
-        let undo = "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        let undo =
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
         _ = try await harness.callPageJavaScript(undo)
         #expect(try await harness.session.currentText(for: harness.documentID) == replaced)
         _ = try await harness.callPageJavaScript(undo)
@@ -54,7 +57,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Setext formatting operates on its complete parsed heading and retains exact Undo", arguments: [MarkdownEditorCommand.paragraph, .heading2, .heading3])
+    @Test(
+        "Setext formatting operates on its complete parsed heading and retains exact Undo", arguments: [MarkdownEditorCommand.paragraph, .heading2, .heading3])
     func setextFormattingPreservesSource(command: MarkdownEditorCommand) async throws {
         let heading = "Heading 中文\r\ncontinued\r\n====="
         let source = "\u{FEFF}Lead 😀 e\u{301}.\r\n\r\n" + heading + "\r\n\r\nAfter."
@@ -66,28 +70,37 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
         try await harness.waitUntilSelection(head: caret)
         try await harness.session.perform(command)
-        let replacement = command == .paragraph ? "Heading 中文\r\ncontinued"
+        let replacement =
+            command == .paragraph
+            ? "Heading 中文\r\ncontinued"
             : command == .heading2 ? "Heading 中文\r\ncontinued\r\n-----" : "### Heading 中文 continued"
-        #expect(try await harness.session.currentText(for: harness.documentID)
-            == source.replacingOccurrences(of: heading, with: replacement))
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == source.replacingOccurrences(of: heading, with: replacement))
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
     @Test("Footnote previews retain parsed headings, task completion and literal code across native HTML transfer")
     func footnotePreviewRetainsBlockSemantics() async throws {
-        let source = "Claim[^note].\r\n\r\n[^note]: Preview heading\r\n  ======\r\n\r\n  - [x] Finished **task**\r\n\r\n  After tasks.\r\n\r\n      literal <tag>\r\n\r\nAfter."
+        let source =
+            "Claim[^note].\r\n\r\n[^note]: Preview heading\r\n  ======\r\n\r\n  - [x] Finished **task**\r\n\r\n  After tasks.\r\n\r\n      literal <tag>\r\n\r\nAfter."
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-live-footnote-reference-widget .footnote-reference').dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));")
+            "document.querySelector('.cm-live-footnote-reference-widget .footnote-reference').dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));"
+        )
         _ = try await harness.waitUntilPresentation(stage: "block footnote preview") { !$0.previewPopoverHidden }
         let preview = try #require(harness.session.floatingSurfaces.previewWebView)
         #expect(try await preview.evaluateJavaScript("document.querySelector('h1')?.textContent === 'Preview heading'") as? Bool == true)
-        #expect(try await preview.evaluateJavaScript("document.querySelector('input[type=checkbox]')?.checked === true && document.querySelector('input[type=checkbox]')?.disabled === true") as? Bool == true)
+        #expect(
+            try await preview.evaluateJavaScript(
+                "document.querySelector('input[type=checkbox]')?.checked === true && document.querySelector('input[type=checkbox]')?.disabled === true")
+                as? Bool == true)
         #expect(try await preview.evaluateJavaScript("document.querySelector('strong')?.textContent === 'task'") as? Bool == true)
         let code = try await preview.evaluateJavaScript("document.querySelector('pre code')?.textContent ?? null") as? String
         #expect(code == "literal <tag>")
@@ -112,12 +125,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.context?.availableCommands.contains(.tableDeleteColumn) == true)
         #expect(harness.session.context?.availableCommands.contains(.tableInsertRowAfter) == true)
         try await harness.session.perform(.tableInsertRowAfter)
-        #expect(try await harness.session.currentText(for: harness.documentID)
-            == source.replacingOccurrences(of: "| --- | --- |\r\n", with: "| --- | --- |\r\n|  |  |\r\n"))
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == source.replacingOccurrences(of: "| --- | --- |\r\n", with: "| --- | --- |\r\n|  |  |\r\n"))
         #expect(harness.session.context?.tablePosition?.row == 1)
         #expect(harness.session.context?.availableCommands.contains(.tableDeleteRow) == true)
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -125,7 +140,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Tab in table-shaped literal code indents its source instead of entering table navigation", arguments: [false, true], [false, true])
     func literalTableTabUsesCodeIndentation(indented: Bool, header: Bool) async throws {
         let rows = "| A | B |\n| --- | --- |\n| One | Two |"
-        let source = indented
+        let source =
+            indented
             ? rows.split(separator: "\n").map { "    " + $0 }.joined(separator: "\n") + "\n\nAfter."
             : "```text\n" + rows + "\n```\n\nAfter."
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
@@ -142,7 +158,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == expected)
         #expect(harness.session.context?.undoLabel == "Indent")
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -154,18 +171,19 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let offset = try #require(try await harness.callPageJavaScript(
-            """
-            const strong = document.querySelector('.cm-live-table-widget td strong');
-            const node = strong.firstChild;
-            const range = document.createRange(); range.setStart(node, 2); range.setEnd(node, 3);
-            const rect = range.getBoundingClientRect(), x = rect.left + 0.5, y = (rect.top + rect.bottom) / 2;
-            const nativeOffset = document.caretRangeFromPoint(x, y).startOffset;
-            strong.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
-                button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
-            document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
-            return nativeOffset;
-            """) as? Int)
+        let offset = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const strong = document.querySelector('.cm-live-table-widget td strong');
+                const node = strong.firstChild;
+                const range = document.createRange(); range.setStart(node, 2); range.setEnd(node, 3);
+                const rect = range.getBoundingClientRect(), x = rect.left + 0.5, y = (rect.top + rect.bottom) / 2;
+                const nativeOffset = document.caretRangeFromPoint(x, y).startOffset;
+                strong.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                    button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+                document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+                return nativeOffset;
+                """) as? Int)
         let bold = try #require(normalized.range(of: "bold")?.lowerBound).utf16Offset(in: normalized)
         try await harness.waitUntilSelection(head: bold + offset, stage: "formatted table cell")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -176,8 +194,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript(
             "window.retainedTable = document.querySelector('.cm-live-table-widget'); document.execCommand('insertText', false, '前');")
         try await harness.waitUntilSelection(head: 3)
-        #expect(try await harness.callPageJavaScript(
-            "return window.retainedTable === document.querySelector('.cm-live-table-widget');") as? Bool == true)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return window.retainedTable === document.querySelector('.cm-live-table-widget');") as? Bool == true)
         _ = try await harness.callPageJavaScript(
             """
             const link = document.querySelector('.cm-live-table-widget .cm-live-wiki-link');
@@ -190,7 +209,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: linkEnd, stage: "rebased table link")
         #expect(try await harness.session.currentText(for: harness.documentID) == "Le前" + source.dropFirst(2))
         _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));")
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -249,40 +269,43 @@ struct MarkdownEditorWebViewIntegrationTests {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         var errors: [Double] = []
         while ContinuousClock.now < deadline {
-            errors = (try await harness.callPageJavaScript(
-                """
-                const glyphs = [];
-                for (const text of ['文', 'English']) {
-                    const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
-                    let node;
-                    while ((node = walker.nextNode())) {
-                        const offset = node.textContent.indexOf(text); if (offset < 0) continue;
-                        const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
-                        const box = range.getBoundingClientRect(); glyphs.push(box); break;
+            errors =
+                (try await harness.callPageJavaScript(
+                    """
+                    const glyphs = [];
+                    for (const text of ['文', 'English']) {
+                        const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            const offset = node.textContent.indexOf(text); if (offset < 0) continue;
+                            const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+                            const box = range.getBoundingClientRect(); glyphs.push(box); break;
+                        }
                     }
-                }
-                const cursors = [...document.querySelectorAll('.cm-cursorLayer > .cm-cursor')];
-                const rect = node => { const r = node.getBoundingClientRect(); return {left:r.left, top:r.top, bottom:r.bottom}; };
-                window.caretProjectionProbe = {glyphs: glyphs.map(r => ({left:r.left,top:r.top,bottom:r.bottom})),
-                    cursors:cursors.map(node => ({...rect(node), style:node.style.cssText, kind:node.className})),
-                    layer:rect(document.querySelector('.cm-cursorLayer')),
-                    transform:getComputedStyle(document.querySelector('.cm-cursorLayer')).transform,
-                    scroll:rect(document.querySelector('.cm-scroller'))};
-                return cursors.length !== 2 || glyphs.length !== 2 ? [999] : cursors.map((node, index) => {
-                    // Background WKWebViews may hide cursor elements. Their
-                    // native layer retains geometry; its inverse scale cancels
-                    // the editor scale, leaving screen-pixel marker deltas.
-                    const layer = node.parentElement.getBoundingClientRect(), glyph = glyphs[index];
-                    const left = layer.left + parseFloat(node.style.left);
-                    const top = layer.top + parseFloat(node.style.top), height = parseFloat(node.style.height);
-                    return Math.max(Math.abs(left - glyph.left), Math.abs((top * 2 + height - glyph.top - glyph.bottom) / 2));
-                });
-                """) as? [Double]) ?? [999]
+                    const cursors = [...document.querySelectorAll('.cm-cursorLayer > .cm-cursor')];
+                    const rect = node => { const r = node.getBoundingClientRect(); return {left:r.left, top:r.top, bottom:r.bottom}; };
+                    window.caretProjectionProbe = {glyphs: glyphs.map(r => ({left:r.left,top:r.top,bottom:r.bottom})),
+                        cursors:cursors.map(node => ({...rect(node), style:node.style.cssText, kind:node.className})),
+                        layer:rect(document.querySelector('.cm-cursorLayer')),
+                        transform:getComputedStyle(document.querySelector('.cm-cursorLayer')).transform,
+                        scroll:rect(document.querySelector('.cm-scroller'))};
+                    return cursors.length !== 2 || glyphs.length !== 2 ? [999] : cursors.map((node, index) => {
+                        // Background WKWebViews may hide cursor elements. Their
+                        // native layer retains geometry; its inverse scale cancels
+                        // the editor scale, leaving screen-pixel marker deltas.
+                        const layer = node.parentElement.getBoundingClientRect(), glyph = glyphs[index];
+                        const left = layer.left + parseFloat(node.style.left);
+                        const top = layer.top + parseFloat(node.style.top), height = parseFloat(node.style.height);
+                        return Math.max(Math.abs(left - glyph.left), Math.abs((top * 2 + height - glyph.top - glyph.bottom) / 2));
+                    });
+                    """) as? [Double]) ?? [999]
             if errors.count == 2 && errors.allSatisfy({ $0 < 4 }) { break }
             try await Task.sleep(for: .milliseconds(20))
         }
         if errors.count != 2 || !errors.allSatisfy({ $0 < 4 }) {
-            print("Caret projection scale \(scale), selection \(String(describing: harness.session.context?.selections)): \(String(describing: try await harness.callPageJavaScript("return window.caretProjectionProbe;")))")
+            print(
+                "Caret projection scale \(scale), selection \(String(describing: harness.session.context?.selections)): \(String(describing: try await harness.callPageJavaScript("return window.caretProjectionProbe;")))"
+            )
         }
         #expect(errors.count == 2 && errors.allSatisfy({ $0 < 4 }), "Scale \(scale): \(errors)")
         #expect(harness.session.context?.selections.count == 2)
@@ -4026,19 +4049,21 @@ struct MarkdownEditorWebViewIntegrationTests {
             let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
             harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
-            let actual = try await harness.callPageJavaScript(
-                "return [...document.querySelectorAll('.cm-live-syntax-marker')].map(node => node.textContent);") as? [String]
+            let actual =
+                try await harness.callPageJavaScript(
+                    "return [...document.querySelectorAll('.cm-live-syntax-marker')].map(node => node.textContent);") as? [String]
             #expect(actual == markers)
         }
         for text in ["Heading", "After"] {
             let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
             harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
-            let underline = try await harness.callPageJavaScript(
-                """
-                const row = document.querySelector('.cm-live-heading-marker-line');
-                return row?.querySelector('.cm-live-heading-source-marker')?.textContent ?? '';
-                """) as? String
+            let underline =
+                try await harness.callPageJavaScript(
+                    """
+                    const row = document.querySelector('.cm-live-heading-marker-line');
+                    return row?.querySelector('.cm-live-heading-source-marker')?.textContent ?? '';
+                    """) as? String
             #expect(underline == (text == "Heading" ? "==========" : ""))
             if text == "Heading" {
                 #expect(harness.session.context?.activeBlockConstructs.contains("SetextHeading1") == true)
@@ -4047,15 +4072,17 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let deadline = ContinuousClock.now.advanced(by: .seconds(2))
                 var description: String?
                 repeat {
-                    description = try await harness.callPageJavaScript(
-                        "return document.querySelector('.cm-content').getAttribute('aria-description');") as? String
+                    description =
+                        try await harness.callPageJavaScript(
+                            "return document.querySelector('.cm-content').getAttribute('aria-description');") as? String
                     if description == "Heading level 1" { break }
                     try await Task.sleep(for: .milliseconds(20))
                 } while ContinuousClock.now < deadline
                 #expect(description == "Heading level 1")
             }
-            #expect(try await harness.callPageJavaScript(
-                "return document.querySelectorAll('.cm-live-heading-marker-line .cm-syntax-token[data-syntax-kind=prefix]').length;") as? Int == 0)
+            #expect(
+                try await harness.callPageJavaScript(
+                    "return document.querySelectorAll('.cm-live-heading-marker-line .cm-syntax-token[data-syntax-kind=prefix]').length;") as? Int == 0)
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(harness.session.generation == generation)
@@ -7493,26 +7520,29 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Long annotated links hide literal continuation rows and reveal their entire source on entry")
     func longAnnotationActivationRetainsLiteralRows() async throws {
-        let source = "Lead.\n\n[[Support]]{{First `reason`.\n"
+        let source =
+            "Lead.\n\n[[Support]]{{First `reason`.\n"
             + String(repeating: "Continuation 中文 argument.\n", count: 180)
             + "`ANNOTATION_CODE`\n```text\nANNOTATION_FENCE\n```\nLast reason.}}\n\nAfter.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        #expect(try await harness.callPageJavaScript(
-            "return document.querySelector('.cm-live-wiki-link')?.textContent;") as? String == "Support")
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.cm-live-wiki-link')?.textContent;") as? String == "Support")
         for (token, active) in [("Last reason", true), ("After", false)] {
             let position = try #require(source.range(of: token)?.lowerBound).utf16Offset(in: source)
             harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
             try await harness.waitUntilSelection(head: position, stage: token)
             _ = try await harness.session.currentScrollAnchor()
-            let annotationState = try #require(try await harness.callPageJavaScript(
-                """
-                const rows = [...document.querySelectorAll('.cm-line')].filter(row =>
-                    row.textContent.includes('ANNOTATION_CODE') || row.textContent.includes('ANNOTATION_FENCE'));
-                return {sourceRows: rows.length,
-                    hiddenRows: document.querySelectorAll('.cm-live-link-annotation-source-line').length};
-                """) as? [String: Int])
+            let annotationState = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const rows = [...document.querySelectorAll('.cm-line')].filter(row =>
+                        row.textContent.includes('ANNOTATION_CODE') || row.textContent.includes('ANNOTATION_FENCE'));
+                    return {sourceRows: rows.length,
+                        hiddenRows: document.querySelectorAll('.cm-live-link-annotation-source-line').length};
+                    """) as? [String: Int])
             #expect(annotationState["sourceRows"] == (active ? 2 : 0), "\(token): \(annotationState)")
             if !active { #expect(try #require(annotationState["hiddenRows"]) > 0) }
         }
@@ -8923,6 +8953,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         var lifecycleSource: String { sourceBox.source }
         var latestScrollAnchor: EditorScrollAnchor? { sourceBox.scrollAnchor }
         var activatedLinks: [String] { sourceBox.activatedLinks }
+        var previewedImages: [String] { sourceBox.previewedImages }
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var isClosed = false
@@ -9703,6 +9734,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var imageResourceContextKey = "image-harness"
         var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
         var activatedLinks: [String] = []
+        var previewedImages: [String] = []
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
             self.source = source
@@ -9794,6 +9826,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 onRequestDocumentTitleRename: onTitleRename,
                 onPasteImage: { _ in false },
                 onLinkActivation: { sourceBox.activatedLinks.append($0) },
+                onImagePreview: { sourceBox.previewedImages.append($0) },
                 onScrollFractionChange: { _ in },
                 onScrollAnchorChange: { sourceBox.scrollAnchor = $0 },
                 writingContinuationEnabled: sourceBox.writingContinuationEnabled,

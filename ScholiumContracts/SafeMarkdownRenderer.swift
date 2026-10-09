@@ -1130,13 +1130,22 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "</a>"
     }
     mutating func visitImage(_ image: Image) {
-        if let embedded = SafeMarkdownRenderer.admittedImage(source: image.source, embeddedImages: embeddedImages) {
+        if let source = image.source,
+            let embedded = SafeMarkdownRenderer.admittedImage(source: source, embeddedImages: embeddedImages)
+        {
             let title =
                 image.title.map {
                     " title=\"\(SafeMarkdownRenderer.escapeAttribute($0))\""
                 } ?? ""
+            var container = image.parent
+            if let link = container as? Link, link.childCount == 1 { container = link.parent }
+            let layout = container is Paragraph && container?.childCount == 1 ? "block" : "inline"
+            // This is the parser's destination, not a file URL inferred from
+            // the thumbnail. Native attachment resolution owns percent decoding
+            // and rechecks access when the researcher requests the original.
+            let target = SafeMarkdownRenderer.escapeAttribute(source)
             result +=
-                "<img class=\"scholium-embedded-image\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
+                "<img class=\"scholium-embedded-image\" data-scholium-image-target=\"\(target)\" data-scholium-image-layout=\"\(layout)\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
             return
         }
         result += "<span class=\"scholium-media-placeholder\">Image"

@@ -955,7 +955,7 @@ struct MarkdownEditorReuseTests {
                     onRequestFind: { _ in },
                     onRequestDocumentTitleRename: { _, requested in requested },
                     onPasteImage: { _ in false },
-                    onLinkActivation: { _ in },
+                    onLinkActivation: { _ in }, onImagePreview: { _ in },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { _ in })
             }

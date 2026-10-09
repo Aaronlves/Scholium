@@ -623,8 +623,10 @@ struct NoteContentView<ShellNotices: View>: View {
             await checkIndexedImageAvailability()
         }
         .quickLookPreview(Binding(get: { quickLook.url }, set: { if $0 == nil { quickLook.dismiss() } }))
+        .onChange(of: presentationMode) { _, _ in quickLook.dismiss(restoringFocus: false) }
+        .onChange(of: editorSession.openingPresentationID) { _, _ in quickLook.dismiss(restoringFocus: false) }
         .onDisappear {
-            quickLook.dismiss()
+            quickLook.dismiss(restoringFocus: false)
             unpublishEditorActions()
             controller.dismissFindForDisappearingPresentation(
                 target: target, session: documentSession,
@@ -835,6 +837,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 },
                 onPasteImage: handlePastedImage,
                 onLinkActivation: openAuthoredLink,
+                onImagePreview: previewOriginalImage,
                 onScrollFractionChange: {
                     guard isEditing,
                         editorSession.openingPresentationID == openingPresentationID
@@ -1117,6 +1120,7 @@ struct NoteContentView<ShellNotices: View>: View {
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             linkPreviewRevision: readLinkPreviewRevision,
             onLinkClick: openAuthoredLink,
+            onImagePreview: previewOriginalImage,
             onOpenExternalURL: { openAuthoredLink($0.absoluteString) },
             onAskAgent: actions.askAgent,
             onPassageAction: { actions.passageAction($0, $1) },
@@ -1299,6 +1303,77 @@ struct NoteContentView<ShellNotices: View>: View {
         "\(note.id.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
     }
 
+    private func previewOriginalImage(_ destination: String) {
+        guard !editorIsComposing, let attachmentTarget = documentAttachmentTarget,
+            editorSession.openingPresentationID == openingPresentationID
+        else { return }
+        let session = editorSession
+        let mode = presentationMode
+        let documentID = session.documentID
+        let generation = session.generation
+        prepareDocumentPreview(
+            acquire: { current in
+                let source: String
+                if mode == .read {
+                    source = note.document.rawContent
+                } else {
+                    let snapshot = try await session.currentTextSnapshot(for: documentID)
+                    guard current(), snapshot.generation == generation else { throw CancellationError() }
+                    source = snapshot.text
+                }
+                guard current() else { throw CancellationError() }
+                return try await controller.prepareSourceImagePreview(
+                    destination: destination, source: source, for: attachmentTarget)
+            },
+            onFailure: { _ in
+                actions.notify(ScholiumL10n.string("The image could not be previewed. It may be unavailable or unsupported."), .error)
+            })
+    }
+
+    private func prepareDocumentPreview(
+        acquire: @escaping @MainActor (@escaping () -> Bool) async throws -> DocumentAttachmentPreviewAccess,
+        onFailure: @escaping (any Error) -> Void
+    ) {
+        let session = editorSession
+        let mode = presentationMode
+        let sessionID = session.sessionID
+        let documentID = session.documentID
+        let generation = session.generation
+        let fingerprint = noteFingerprint.sha256
+        let selection = session.context?.selections
+        let current: () -> Bool = {
+            guard controller.selectedDocument?.editingTarget == target,
+                controller.retainsSession(documentSession, for: target),
+                session.openingPresentationID == openingPresentationID,
+                documentSession.presentationMode == mode
+            else { return false }
+            if mode == .read {
+                return documentSession.renderedReadReadyFingerprint == fingerprint
+            }
+            return session.sessionID == sessionID && session.documentID == documentID
+                && session.generation == generation && session.context?.selections == selection
+                && session.isLoaded && !session.isComposing
+        }
+        guard current() else { return }
+        let originWindow = NSApp.keyWindow
+        let originResponder = originWindow?.firstResponder
+        quickLook.prepare(
+            isCurrent: current,
+            acquire: { try await acquire(current) },
+            onFailure: onFailure,
+            returnFocus: { [weak originWindow, weak originResponder] in
+                // Let Quick Look finish returning key-window ownership. A later
+                // document, selection, or another active window owns its own focus.
+                DispatchQueue.main.async {
+                    guard current(), let window = originWindow, NSApp.keyWindow === window,
+                        let responder = originResponder,
+                        (responder as? NSView)?.window === window
+                    else { return }
+                    window.makeFirstResponder(responder)
+                }
+            })
+    }
+
     private func openAuthoredLink(_ destination: String) {
         guard
             !ZoteroMarkdownFields.isCitationDestination(
@@ -1320,12 +1395,13 @@ struct NoteContentView<ShellNotices: View>: View {
             actions.openInternalLink(destination)
             return
         }
-        Task { @MainActor in
-            do {
+        prepareDocumentPreview(
+            acquire: { current in
                 if isEditing {
                     await controller.persistEditingSource(session: documentSession, target: target)
-                    guard documentSession.editError == nil, documentSession.conflict == nil else { return }
+                    guard documentSession.editError == nil, documentSession.conflict == nil else { throw CancellationError() }
                 }
+                guard current() else { throw CancellationError() }
                 let snapshots = try await controller.documentAttachments(for: attachmentTarget)
                 let matching: DocumentAttachmentSnapshot?
                 if let path = file.relativePath {
@@ -1334,15 +1410,13 @@ struct NoteContentView<ShellNotices: View>: View {
                     // Resolve exact absolute path through the machine-local bookmark owner.
                     matching = try await controller.sourceAttachment(for: destination, target: attachmentTarget)
                 }
+                guard current() else { throw CancellationError() }
                 guard let matching else { throw DocumentAttachmentError.unavailable(destination) }
-                let lease = try await controller.prepareDocumentAttachmentPreview(attachmentID: matching.record.id, for: attachmentTarget)
-                guard documentAttachmentTarget == attachmentTarget else {
-                    await controller.releaseDocumentAttachmentPreview(accessToken: lease.accessToken)
-                    return
-                }
-                quickLook.present(lease) { token in await controller.releaseDocumentAttachmentPreview(accessToken: token) }
-            } catch { actions.notify(ScholiumErrorLocalization.message(error), .error) }
-        }
+                return try await controller.prepareDocumentAttachmentPreview(attachmentID: matching.record.id, for: attachmentTarget)
+            },
+            onFailure: { error in
+                if !(error is CancellationError) { actions.notify(ScholiumErrorLocalization.message(error), .error) }
+            })
     }
 
     private func requestDocumentAttachment(_ mode: DocumentAttachmentSelectionMode) {

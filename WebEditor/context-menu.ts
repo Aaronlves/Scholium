@@ -90,10 +90,26 @@ export function createEditorContextMenuExtension(options: {
     // menu for a click on a non-editable projected construct.
     view.dom.addEventListener("mousedown", handleSecondaryPress, {capture: true});
     view.dom.addEventListener("contextmenu", handleContextMenu, {capture: true});
+    const handleKeyboardMenu = (event: KeyboardEvent) => {
+      if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey
+          || event.isComposing || event.keyCode === 229 || view.compositionStarted || view.composing
+          || options.context(view).composing
+          || event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      view.focus();
+      const bounds = view.coordsAtPos(view.state.selection.main.head);
+      options.request({clientX: bounds?.left ?? 0, clientY: bounds?.bottom ?? 0,
+        mode: options.mode(view), context: options.context(view)});
+    };
+    view.dom.addEventListener("keydown", handleKeyboardMenu, {capture: true});
     return {
       destroy() {
         view.dom.removeEventListener("mousedown", handleSecondaryPress, {capture: true});
         view.dom.removeEventListener("contextmenu", handleContextMenu, {capture: true});
+        view.dom.removeEventListener("keydown", handleKeyboardMenu, {capture: true});
       },
     };
   });

@@ -155,6 +155,7 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let undoLabel: String?
     let redoLabel: String?
     var citationState: MarkdownEditorCitationState? = nil
+    var imageTarget: String? = nil
 }
 
 /// The comparatively small, Equatable part of editor interaction state that
@@ -170,6 +171,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
     let undoLabel: String?
     let redoLabel: String?
     let citationState: MarkdownEditorCitationState?
+    let imageTarget: String?
 
     init(context: MarkdownEditorContext) {
         activeInlineConstructs = context.activeInlineConstructs
@@ -181,6 +183,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
         undoLabel = context.undoLabel
         redoLabel = context.redoLabel
         citationState = context.citationState
+        imageTarget = context.imageTarget
     }
 
     func context(
@@ -195,7 +198,8 @@ struct EditorInteractionAvailability: Hashable, Sendable {
             availableCommands: availableCommands,
             undoLabel: undoLabel,
             redoLabel: redoLabel,
-            citationState: citationState
+            citationState: citationState,
+            imageTarget: imageTarget
         )
     }
 }

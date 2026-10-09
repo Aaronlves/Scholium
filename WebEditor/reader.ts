@@ -20,6 +20,7 @@ import {AnimationFrameCoalescer} from "./interaction-reporting";
 import {decorateAttachmentLinks} from "./attachment-presentation";
 import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
+import {installReviewImageActivation} from "./review-image-activation";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -48,6 +49,7 @@ type ReaderWindow = Window & {
   scholiumRead?: {initialize(value: unknown): Promise<void>};
   scholiumReviewFind?: {perform(request: ReviewFindRequest): ReviewFindResult};
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
+  scholiumReviewImages?: ReturnType<typeof installReviewImageActivation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
   scholiumSetPresentationCSS?: (presentationCSS: string, userCSS: string) => Promise<boolean>;
@@ -101,6 +103,15 @@ async function initializeReader(value: unknown): Promise<void> {
   const post = (type: string, extra: Record<string, unknown> = {}) => handler?.postMessage({
     version, documentID, fingerprint, loadGeneration, type, ...extra,
   });
+  readerWindow.scholiumReviewImages?.destroy();
+  readerWindow.scholiumReviewImages = installReviewImageActivation(documentRoot, config.imagePreviewsEnabled ? {
+    label: name => localized('Preview image {name}', {name}),
+    preview: target => post('imagePreview', {target}),
+    contextMenu: (target, clientX, clientY) => post('imageContextMenu', {
+      target, clientX, clientY, payloadFingerprint: fingerprint,
+    }),
+  } : null);
+  window.addEventListener('pagehide', () => readerWindow.scholiumReviewImages?.destroy(), {once: true});
 
   const popover = requiredElement('scholium-preview-popover');
   popover.remove();
@@ -369,6 +380,7 @@ async function initializeReader(value: unknown): Promise<void> {
       localizeRenderedInterface(documentRoot, localized);
       decorateAttachmentLinks(documentRoot);
       decorateChatReplyLinks(documentRoot);
+      readerWindow.scholiumReviewImages?.refresh();
       fingerprint = update.fingerprint;
       presentationStyle.textContent = update.presentationCSS;
       userStyle.textContent = update.userCSS;

@@ -53,6 +53,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         ) async throws -> String
     let onPasteImage: (EditorPastedImageSource) -> Bool
     let onLinkActivation: (String) -> Void
+    let onImagePreview: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
@@ -83,6 +84,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestDocumentTitleRename: onRequestDocumentTitleRename,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
+            onImagePreview: onImagePreview,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange
         )
@@ -206,6 +208,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.activeWebView = webView
         webView.editorSession = session
         webView.onPasteImage = onPasteImage
+        webView.onImagePreview = onImagePreview
         webView.onPassageAction = onPassageAction
         webView.navigationDelegate = coordinator
         webView.setValue(false, forKey: "drawsBackground")
@@ -234,6 +237,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
         coordinator.linkCompletionQuery = linkCompletionQuery
         coordinator.onLinkActivation = onLinkActivation
+        coordinator.onImagePreview = onImagePreview
         coordinator.onScrollFractionChange = onScrollFractionChange
         coordinator.onScrollAnchorChange = onScrollAnchorChange
         session.setPresentationCSS(presentationCSS)
@@ -297,6 +301,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
             webView.onPasteImage = onPasteImage
+            webView.onImagePreview = onImagePreview
             webView.onPassageAction = onPassageAction
         }
         context.coordinator.onAskAgent = onAskAgent
@@ -322,6 +327,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setWritingIndexContext(writingIndexContextKey)
         }
         context.coordinator.onLinkActivation = onLinkActivation
+        context.coordinator.onImagePreview = onImagePreview
         context.coordinator.onScrollFractionChange = onScrollFractionChange
         context.coordinator.onScrollAnchorChange = onScrollAnchorChange
         context.coordinator.initialScrollFraction = initialScrollFraction
@@ -374,6 +380,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView.onFirstWindowAttachment = nil
             webView.editorSession = nil
             webView.onPasteImage = nil
+            webView.onImagePreview = nil
             webView.onPassageAction = nil
         }
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
@@ -459,6 +466,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var writingIndexContextKey = ""
         var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         var onLinkActivation: (String) -> Void
+        var onImagePreview: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var surfaceVisibility: DocumentSurfaceVisibility = .active
@@ -507,6 +515,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     String
                 ) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
+            onImagePreview: @escaping (String) -> Void,
             onScrollFractionChange: @escaping (Double) -> Void,
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
         ) {
@@ -518,6 +527,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onRequestDocumentTitleRename = onRequestDocumentTitleRename
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
+            self.onImagePreview = onImagePreview
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             super.init()
@@ -797,6 +807,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .linkActivated(let activation):
                 guard surfaceVisibility.isActive, validEnvelope(activation.envelope) else { return }
                 onLinkActivation(activation.target)
+            case .imagePreview(let activation):
+                guard surfaceVisibility.isActive, validEnvelope(activation.envelope), !session.isComposing else { return }
+                onImagePreview(activation.target)
             case .contextMenuRequested(let request):
                 guard surfaceVisibility.isActive,
                     validEnvelope(request.envelope),

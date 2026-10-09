@@ -543,18 +543,22 @@ final class DocumentController: ObservableObject {
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget
-    ) async throws -> DocumentAttachmentPreviewLease {
-        try await requireOperations().prepareDocumentAttachmentPreview(
+    ) async throws -> DocumentAttachmentPreviewAccess {
+        let owner = try requireOperations()
+        let lease = try await owner.prepareDocumentAttachmentPreview(
             attachmentID: attachmentID,
             for: target
         )
+        return .init(lease: lease, releaseAccess: { await owner.releaseDocumentAttachmentPreview(accessToken: $0) })
     }
 
-    func releaseDocumentAttachmentPreview(accessToken: UUID) async {
-        guard let operations else { return }
-        await operations.releaseDocumentAttachmentPreview(
-            accessToken: accessToken
-        )
+    func prepareSourceImagePreview(
+        destination: String, source: String, for target: SourceAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewAccess {
+        let owner = try requireOperations()
+        let lease = try await owner.prepareSourceImagePreview(
+            destination: destination, source: source, for: target)
+        return .init(lease: lease, releaseAccess: { await owner.releaseDocumentAttachmentPreview(accessToken: $0) })
     }
 
     func save(

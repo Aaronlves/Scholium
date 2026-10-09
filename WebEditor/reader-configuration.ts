@@ -15,6 +15,7 @@ export interface ReaderConfiguration {
   fingerprint: string;
   loadGeneration: number;
   selectionEnabled: boolean;
+  imagePreviewsEnabled: boolean;
   replyProjection?: boolean;
   testingEnabled: boolean;
   presentationCSS: string;
@@ -33,6 +34,7 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || config.fingerprint.length > 256
       || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0
       || typeof config.selectionEnabled !== "boolean"
+      || typeof config.imagePreviewsEnabled !== "boolean"
       || (config.replyProjection !== undefined && typeof config.replyProjection !== "boolean")
       || typeof config.testingEnabled !== "boolean"
       || typeof config.presentationCSS !== "string"

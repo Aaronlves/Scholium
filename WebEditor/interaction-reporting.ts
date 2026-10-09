@@ -5,6 +5,7 @@ export function interactionAvailabilitySignature(context: EditorContext) {
     activeInlineConstructs: context.activeInlineConstructs,
     activeBlockConstructs: context.activeBlockConstructs,
     tablePosition: context.tablePosition ?? null,
+    imageTarget: context.imageTarget ?? null,
     composing: context.composing,
     hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
     availableCommands: context.availableCommands,
@@ -51,6 +52,14 @@ export class AnimationFrameCoalescer {
     this.watchdog = null;
     this.latest = null;
     this.generation += 1;
+  }
+
+  /** Native modal tracking must start with the finalized selection already
+   * delivered; its nested event loop can defer later bridge messages. */
+  flushNow() {
+    const latest = this.latest;
+    this.cancel();
+    latest?.();
   }
 
   private flush(source: "frame" | "watchdog", generation: number) {

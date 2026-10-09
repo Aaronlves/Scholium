@@ -348,6 +348,32 @@ struct MarkdownEditorProtocolTests {
         #expect(message.context.availableCommands == [.toggleTask])
     }
 
+    @Test("Image previews have a distinct source destination message with bounded envelope")
+    func imagePreviewMessageDecoding() throws {
+        let object: [String: Any] = [
+            "type": "imagePreview",
+            "protocolVersion": markdownEditorProtocolVersion,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "topics:Scope.md",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+            "target": "../Images/A&B%2520.png",
+        ]
+        guard case .imagePreview(let message) = try #require(EditorBridgeMessageDecoder.decode(object)) else {
+            Issue.record("Image preview was not decoded separately from link activation")
+            return
+        }
+        #expect(message.target == "../Images/A&B%2520.png")
+        #expect(message.envelope.documentVersion == 3)
+        for invalid: [String: Any] in [
+            ["target": ""], ["target": String(repeating: "x", count: 8_193)],
+            ["target": 123], ["documentVersion": -1],
+            ["protocolVersion": markdownEditorProtocolVersion - 1], ["fileURL": "file:///private/image.png"],
+        ] {
+            #expect(EditorBridgeMessageDecoder.decode(object.merging(invalid) { _, next in next }) == nil)
+        }
+    }
+
     @Test("Document title rename request is typed and bounded")
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [

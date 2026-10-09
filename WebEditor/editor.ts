@@ -511,6 +511,7 @@ const liveImageProjection = createImageProjection({
   projections: liveProjectionIndex,
   bodyIsActive: () => lastDocumentFocusTarget !== "title",
   shouldRefresh: transaction => transaction.effects.some(effect => effect.is(refreshLivePreviewEffect)),
+  activateLink: (target, isImage) => post({type: isImage ? "imagePreview" : "linkActivated", target}),
 });
 
 interface LiveInlineProjectionState {
@@ -1891,9 +1892,14 @@ const sourceMode = [
 const editorContextMenu = createEditorContextMenuExtension({
   context: (view) => currentEditorContext(view),
   mode: (view) => configuredEditorMode(view.state),
-  positionAtEvent: (view, event) => projectedWidgetSourceOffset(view, event)
+  positionAtEvent: (view, event) => liveImageProjection.contextPositionAtEvent(view.state, event)
+    ?? projectedWidgetSourceOffset(view, event)
     ?? view.posAtCoords({x: event.clientX, y: event.clientY}),
-  request: (request) => post({type: "contextMenuRequested", ...request}),
+  request: (request) => {
+    scheduleEditorInteractionReport(true);
+    interactionReporter.flushNow();
+    post({type: "contextMenuRequested", ...request});
+  },
 });
 
 const editorExtensions = [
@@ -2131,6 +2137,8 @@ function currentEditorContext(view = editor): EditorContext {
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
     tablePosition: currentTablePosition,
+    imageTarget: state.selection.ranges.length === 1
+      ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? undefined : undefined,
     composing: view.composing || compositionGate.active,
     availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state)
       ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter(command =>

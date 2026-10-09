@@ -1,4 +1,5 @@
 export const webInterfaceLocalizationKeys = [
+  "Preview image {name}",
   "Tab",
   "AI",
   "Index",

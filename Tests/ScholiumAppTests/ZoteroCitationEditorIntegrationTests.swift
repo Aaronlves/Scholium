@@ -923,7 +923,8 @@ struct ZoteroCitationEditorIntegrationTests {
                 linkCompletionQuery: { _, _ in [] }, linkPreviews: [], initialScrollFraction: 0, initialScrollAnchor: nil,
                 onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
                 onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },
-                onLinkActivation: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }, citationSnapshot: citationSnapshot)
+                onLinkActivation: { _ in }, onImagePreview: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in },
+                citationSnapshot: citationSnapshot)
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
                 styleMask: [.titled], backing: .buffered, defer: false)

@@ -30157,6 +30157,7 @@ ${blankRow(table.position.columnCount)}`;
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "Preview image {name}",
     "Tab",
     "AI",
     "Index",
@@ -35643,6 +35644,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       activeInlineConstructs: context.activeInlineConstructs,
       activeBlockConstructs: context.activeBlockConstructs,
       tablePosition: context.tablePosition ?? null,
+      imageTarget: context.imageTarget ?? null,
       composing: context.composing,
       hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
       availableCommands: context.availableCommands,
@@ -35685,6 +35687,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       this.watchdog = null;
       this.latest = null;
       this.generation += 1;
+    }
+    /** Native modal tracking must start with the finalized selection already
+     * delivered; its nested event loop can defer later bridge messages. */
+    flushNow() {
+      const latest = this.latest;
+      this.cancel();
+      latest?.();
     }
     flush(source, generation) {
       if (generation !== this.generation) return;
@@ -35981,10 +35990,27 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       };
       view.dom.addEventListener("mousedown", handleSecondaryPress, { capture: true });
       view.dom.addEventListener("contextmenu", handleContextMenu, { capture: true });
+      const handleKeyboardMenu = (event) => {
+        if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing || event.keyCode === 229 || view.compositionStarted || view.composing || options.context(view).composing || event.target instanceof Element && event.target.closest("[data-scholium-title-input]")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        view.focus();
+        const bounds = view.coordsAtPos(view.state.selection.main.head);
+        options.request({
+          clientX: bounds?.left ?? 0,
+          clientY: bounds?.bottom ?? 0,
+          mode: options.mode(view),
+          context: options.context(view)
+        });
+      };
+      view.dom.addEventListener("keydown", handleKeyboardMenu, { capture: true });
       return {
         destroy() {
           view.dom.removeEventListener("mousedown", handleSecondaryPress, { capture: true });
           view.dom.removeEventListener("contextmenu", handleContextMenu, { capture: true });
+          view.dom.removeEventListener("keydown", handleKeyboardMenu, { capture: true });
         }
       };
     });
@@ -40693,7 +40719,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   }
 
   // image-presentation.ts
-  function imageDestination(source) {
+  function markdownDestination(source) {
     let destination = source;
     if (destination.startsWith("<") && destination.endsWith(">")) destination = destination.slice(1, -1);
     destination = destination.replace(/&(?:#[xX][\da-fA-F]{1,8}|#\d{1,8}|[a-zA-Z][\da-zA-Z]{1,31});/g, (reference) => {
@@ -40707,6 +40733,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return decoder.firstElementChild?.getAttribute("data-destination") ?? reference;
     });
     destination = destination.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~])/g, "$1");
+    return destination;
+  }
+  function imageDestination(source) {
+    const destination = markdownDestination(source);
     if (!destination || destination.startsWith("//") || /[?#\u0000-\u001f\u007f]/.test(destination) || /^[a-z][a-z\d+.-]*:/i.test(destination)) return null;
     try {
       return decodeURIComponent(destination);
@@ -40719,9 +40749,21 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const destination = imageDestination(state.doc.sliceString(image.targetRange.from, image.targetRange.to));
     const resource = destination === null || !Object.hasOwn(resources, destination) ? void 0 : resources[destination];
     if (!resource) return null;
-    const firstLine = state.doc.lineAt(image.from);
-    const lastLine = state.doc.lineAt(image.to);
-    const block = /^\s*$/.test(state.doc.sliceString(firstLine.from, image.from)) && /^\s*$/.test(state.doc.sliceString(image.to, lastLine.to));
+    const outerLink = syntax?.inlines.find((inline) => inline.kind === "link" && inline.from < image.from && inline.to > image.to);
+    const label = outerLink?.visibleRanges.length === 1 ? outerLink.visibleRanges[0] : null;
+    const imageOnlyLabel = label && label.from <= image.from && label.to >= image.to && /^\s*$/.test(state.doc.sliceString(label.from, image.from)) && /^\s*$/.test(state.doc.sliceString(image.to, label.to));
+    const owner = imageOnlyLabel ? outerLink : image;
+    const firstLine = state.doc.lineAt(owner.from);
+    const lastLine = state.doc.lineAt(owner.to);
+    const block = /^\s*$/.test(state.doc.sliceString(firstLine.from, owner.from)) && /^\s*$/.test(state.doc.sliceString(owner.to, lastLine.to));
+    let linked = false;
+    for (let node = syntaxTree(state).resolveInner(image.from, 1); node; node = node.parent) {
+      if (node.name === "Link") {
+        linked = true;
+        break;
+      }
+    }
+    const targetRange = outerLink?.targetRange ?? (linked ? null : image.targetRange);
     return {
       from: block ? firstLine.from : image.from,
       to: block ? lastLine.to : image.to,
@@ -40729,7 +40771,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       sourceTo: image.to,
       resource,
       alt: imageAlternativeText(state, image, syntax),
-      block
+      block,
+      activation: targetRange ? {
+        target: markdownDestination(state.doc.sliceString(targetRange.from, targetRange.to)),
+        isImage: !linked
+      } : null
     };
   }
   function imageAlternativeText(state, image, syntax = semanticProjectionRanges(state, image.visibleRanges, 0)) {
@@ -40773,14 +40819,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }).join("");
   }
   var ImageWidget = class extends WidgetType {
-    constructor(presentation) {
+    constructor(presentation, activateLink) {
       super();
       this.presentation = presentation;
+      this.activateLink = activateLink;
     }
     presentation;
+    activateLink;
     eq(other) {
       const a = this.presentation, b = other.presentation;
-      return a.sourceFrom === b.sourceFrom && a.sourceTo === b.sourceTo && a.resource === b.resource && a.alt === b.alt && a.block === b.block;
+      return a.from === b.from && a.to === b.to && a.sourceFrom === b.sourceFrom && a.sourceTo === b.sourceTo && a.resource === b.resource && a.alt === b.alt && a.block === b.block && a.activation?.target === b.activation?.target && a.activation?.isImage === b.activation?.isImage;
     }
     toDOM(view) {
       const shell = document.createElement(this.presentation.block ? "div" : "span");
@@ -40789,20 +40837,30 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       shell.dataset.scholiumSourceFrom = String(this.presentation.sourceFrom);
       shell.dataset.scholiumSourceTo = String(this.presentation.sourceTo);
       const image = document.createElement("img");
-      image.className = "scholium-embedded-image";
+      image.className = this.presentation.block ? "scholium-embedded-image scholium-embedded-image-block" : "scholium-embedded-image";
       image.alt = this.presentation.alt;
       image.draggable = false;
       const measure = () => {
+        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+          image.style.setProperty("--scholium-image-aspect-ratio", String(image.naturalWidth / image.naturalHeight));
+        }
         if (shell.isConnected) view.requestMeasure();
       };
       image.addEventListener("load", measure);
       image.addEventListener("error", measure);
       image.src = this.presentation.resource;
       shell.append(image);
+      let pending = null;
+      const opensImage = (event) => event.button === 0 && event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
       shell.addEventListener("mousedown", (event) => {
+        pending = null;
         if (event.button !== 0 || view.compositionStarted) return;
         event.preventDefault();
         event.stopPropagation();
+        if (event.target === image && opensImage(event)) {
+          pending = { doc: view.state.doc, x: event.clientX, y: event.clientY };
+          return;
+        }
         const rect = image.getBoundingClientRect();
         const position = event.clientX <= rect.left + rect.width / 2 ? this.presentation.sourceFrom : this.presentation.sourceTo;
         if (position > view.state.doc.length) return;
@@ -40812,6 +40870,29 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           annotations: Transaction.userEvent.of("select.pointer")
         });
         view.focus();
+      });
+      shell.addEventListener("mousemove", (event) => {
+        if (pending && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > 4) pending = null;
+      });
+      shell.addEventListener("mouseleave", () => {
+        pending = null;
+      });
+      shell.addEventListener("dragstart", (event) => {
+        pending = null;
+        event.preventDefault();
+      });
+      shell.addEventListener("pointercancel", () => {
+        pending = null;
+      });
+      shell.addEventListener("click", (event) => {
+        const started = pending;
+        pending = null;
+        if (event.target !== image || !opensImage(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const activation = this.presentation.activation;
+        if (!started || view.compositionStarted || view.state.doc !== started.doc || Math.hypot(event.clientX - started.x, event.clientY - started.y) > 4 || !shell.isConnected || !activation) return;
+        this.activateLink(activation.target, activation.isImage);
       });
       return shell;
     }
@@ -40847,7 +40928,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const presentation = imagePresentation(state, image, resources, index.syntax);
         if (!presentation) continue;
         if (options.bodyIsActive() && options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation))) continue;
-        ranges.push(Decoration.replace({ widget: new ImageWidget(presentation), block: presentation.block }).range(presentation.from, presentation.to));
+        ranges.push(Decoration.replace({ widget: new ImageWidget(presentation, options.activateLink), block: presentation.block }).range(presentation.from, presentation.to));
       }
       return Decoration.set(ranges, true);
     }
@@ -40859,6 +40940,29 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           if (decoration.spec.block === true) result.push({ from, to });
         });
         return result;
+      },
+      imageTargetAt(state, selection) {
+        const index = options.projections.index(state);
+        if (index.hasUnclosedFrontmatter) return null;
+        let outerImageTo = -1;
+        for (const image of index.syntax.inlines) {
+          if (image.kind !== "image" || image.to <= outerImageTo) continue;
+          outerImageTo = image.to;
+          if (selection.from < image.from || selection.to > image.to || selection.from >= image.to) continue;
+          if (!imagePresentation(state, image, resources, index.syntax) || !image.targetRange) return null;
+          return markdownDestination(state.doc.sliceString(image.targetRange.from, image.targetRange.to));
+        }
+        return null;
+      },
+      contextPositionAtEvent(state, event) {
+        const target = event.target instanceof Element ? event.target : null;
+        const shell = target?.closest(".cm-live-image[data-scholium-protected='image']");
+        const from = Number(shell?.dataset.scholiumSourceFrom);
+        const to = Number(shell?.dataset.scholiumSourceTo);
+        if (!shell || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from || to > state.doc.length) return null;
+        const index = options.projections.index(state);
+        if (!index.syntax.inlines.some((image) => image.kind === "image" && image.from === from && image.to === to) || !this.imageTargetAt(state, { from, to })) return null;
+        return from;
       },
       setResources(value, view) {
         resources = value;
@@ -41101,7 +41205,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     selection: liveSelection,
     projections: liveProjectionIndex,
     bodyIsActive: () => lastDocumentFocusTarget !== "title",
-    shouldRefresh: (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect))
+    shouldRefresh: (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect)),
+    activateLink: (target, isImage) => post({ type: isImage ? "imagePreview" : "linkActivated", target })
   });
   var liveSemanticLayout = createLiveSemanticLayout({
     selection: liveSelection,
@@ -42193,8 +42298,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var editorContextMenu = createEditorContextMenuExtension({
     context: (view) => currentEditorContext(view),
     mode: (view) => configuredEditorMode(view.state),
-    positionAtEvent: (view, event) => projectedWidgetSourceOffset(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }),
-    request: (request) => post({ type: "contextMenuRequested", ...request })
+    positionAtEvent: (view, event) => liveImageProjection.contextPositionAtEvent(view.state, event) ?? projectedWidgetSourceOffset(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }),
+    request: (request) => {
+      scheduleEditorInteractionReport(true);
+      interactionReporter.flushNow();
+      post({ type: "contextMenuRequested", ...request });
+    }
   });
   var editorExtensions = [
     citationHistory,
@@ -42448,6 +42557,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
+      imageTarget: state.selection.ranges.length === 1 ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? void 0 : void 0,
       composing: view.composing || compositionGate.active,
       availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter((command2) => command2 === "inlineCode" && canUnwrapInlineCode || ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command2)) : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,

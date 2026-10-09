@@ -21,6 +21,7 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
     var onPasteImage: ((EditorPastedImageSource) -> Bool)?
     weak var editorSession: MarkdownEditorSession?
     var onPassageAction: ((DocumentPassageAction) -> Void)?
+    var onImagePreview: ((String) -> Void)?
     var scholiumIsComposing: Bool { editorSession?.isComposing == true }
 
     override func viewDidMoveToWindow() {
@@ -145,6 +146,21 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
         menu.identifier = NSUserInterfaceItemIdentifier("scholium.editor.contextMenu")
         menu.autoenablesItems = false
         let hasSelection = context.selections.contains(where: \.isNonempty)
+
+        if let imageTarget = context.imageTarget, onImagePreview != nil {
+            let generation = editorSession?.generation
+            let sessionID = editorSession?.sessionID
+            let item = PassageMenuItem(title: ScholiumL10n.string("View Original Image"), enabled: !context.composing) { [weak self] in
+                guard let self, let session = self.editorSession,
+                    session.generation == generation, session.sessionID == sessionID,
+                    session.context?.selections == context.selections, !session.isComposing
+                else { return }
+                self.onImagePreview?(imageTarget)
+            }
+            item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.viewOriginalImage")
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
 
         menu.addItem(
             standardEditItem(

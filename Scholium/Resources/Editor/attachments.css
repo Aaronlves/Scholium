@@ -23,6 +23,18 @@
   display: block;
 }
 
+/* A decoded image supplies its intrinsic ratio. The image box, not only its
+   fitted pixels, then fits both the reading measure and the height ceiling. */
+.scholium-embedded-image-block {
+  display: block;
+  inline-size: min(100%, calc(min(70vh, 40rem) * var(--scholium-image-aspect-ratio)));
+  margin-inline: auto;
+}
+
+.scholium-image-preview {
+  cursor: zoom-in;
+}
+
 .scholium-attachment-link::before,
 .scholium-attachment-icon {
   content: "";

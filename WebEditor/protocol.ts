@@ -80,6 +80,7 @@ export interface EditorContext {
   activeInlineConstructs: string[];
   activeBlockConstructs: string[];
   tablePosition?: {row: number; column: number; rowCount: number; columnCount: number};
+  imageTarget?: string;
   composing: boolean;
   availableCommands: MarkdownEditorCommand[];
   undoLabel?: string;

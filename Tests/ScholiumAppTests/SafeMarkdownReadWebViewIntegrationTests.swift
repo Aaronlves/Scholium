@@ -7,6 +7,162 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review original-image activation preserves reading context and authored linked-image navigation")
+    func reviewOriginalImageActivation() async throws {
+        let target = "Attachments/图%23%2525.png"
+        let source = """
+            Retained 🦉 é selection [focus](Anchor.md).
+
+            ![Bare](\(target))
+
+            [![Linked](Attachments/linked.png)](Other.md)
+            """
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let image = try InlineImageFixture.inlinePNG.image()
+        let rendered = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [
+                try #require(target.removingPercentEncoding): image, "Attachments/linked.png": image,
+            ])
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true,
+            imagePreviewsEnabled: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitForReviewImageDecoding()
+        _ = try await harness.callBridgeJavaScript(
+            """
+            const origin = document.querySelector('#scholium-document a'); origin.id = 'focus-origin';
+            origin.focus({preventScroll:true});
+            const text = document.querySelector('#scholium-document p').firstChild;
+            const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, 19);
+            window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+            window.imageContextBefore = {selection: window.getSelection().toString(),
+                focus: document.activeElement.id, scroll: window.scrollY};
+            """)
+        try await harness.clickReviewImage(alt: "Bare")
+        try await harness.waitForImagePreviews(1)
+        #expect(harness.imagePreviewTargets == [target])
+        #expect(
+            try await harness.callBridgeJavaScript(
+                "return window.getSelection().toString() === imageContextBefore.selection && document.activeElement.id === imageContextBefore.focus && Math.abs(window.scrollY-imageContextBefore.scroll)<1;"
+            ) as? Bool == true)
+
+        _ = try await harness.callBridgeJavaScript(
+            """
+            const image = document.querySelector('img[alt="Bare"]');
+            image.focus({preventScroll:true});
+            image.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+            """)
+        try await harness.waitForImagePreviews(2)
+        #expect(harness.imagePreviewTargets == [target, target])
+        _ = try await harness.callBridgeJavaScript("document.querySelector('img[alt=\"Linked\"]').click();")
+        try await harness.waitForReadLinks(1)
+        #expect(harness.readLinkTargets == ["Other.md"])
+        #expect(harness.imagePreviewTargets.count == 2)
+
+        // Exercise the keyboard route in the named reader world, but capture
+        // only the popup request: actual native menu tracking belongs to QA.
+        let receipt = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                const handler = window.webkit.messageHandlers.scholiumRead;
+                const original = handler.postMessage;
+                const requests = [];
+                handler.postMessage = function(message) {
+                    if (message.type === 'imageContextMenu') { requests.push(message); return; }
+                    return original.call(this, message);
+                };
+                try {
+                    const link = document.querySelector('img[alt="Linked"]').closest('a');
+                    link.focus({preventScroll:true});
+                    window.linkedImageContextBefore = {selection:window.getSelection().toString(), scroll:window.scrollY};
+                    const event = new KeyboardEvent('keydown', {key:'F10', shiftKey:true, bubbles:true, cancelable:true});
+                    link.dispatchEvent(event);
+                    return {requests, prevented:event.defaultPrevented};
+                } finally { handler.postMessage = original; }
+                """) as? [String: Any])
+        #expect(receipt["prevented"] as? Bool == true)
+        let requests = try #require(receipt["requests"] as? [[String: Any]])
+        #expect(requests.count == 1)
+        let request = try #require(requests.first)
+        let envelope = try harness.readBridgeEnvelope()
+        #expect(request["type"] as? String == "imageContextMenu")
+        #expect(request["target"] as? String == "Attachments/linked.png")
+        for key in ["documentID", "fingerprint"] {
+            #expect(request[key] as? String == envelope[key] as? String)
+        }
+        for key in ["version", "loadGeneration"] {
+            #expect(request[key] as? Int == envelope[key] as? Int)
+        }
+        #expect(request["payloadFingerprint"] as? String == document.fingerprint.sha256)
+        #expect(try #require(request["clientX"] as? Double).isFinite)
+        #expect(try #require(request["clientY"] as? Double).isFinite)
+        #expect(harness.imagePreviewTargets == [target, target])
+        #expect(harness.readLinkTargets == ["Other.md"])
+        #expect(
+            try await harness.callBridgeJavaScript(
+                "return document.activeElement === document.querySelector('img[alt=\"Linked\"]').closest('a') && window.getSelection().toString() === linkedImageContextBefore.selection && Math.abs(window.scrollY-linkedImageContextBefore.scroll)<1;"
+            ) as? Bool == true)
+        #expect(document.rawContent.utf8.elementsEqual(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review image actions reject failed media, missing capability, and stale bridge receipts")
+    func reviewOriginalImageAdmission() async throws {
+        let target = "Attachments/valid%20image.png"
+        let source = "![Valid](\(target))\n\n![Failed](Attachments/broken.png)\n\n![Missing](Attachments/missing.png)"
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let valid = try InlineImageFixture.inlinePNG.image()
+        let malformed = try RenderedMarkdownImage(
+            data: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), mimeType: "image/png")
+        let rendered = SafeMarkdownRenderer.render(
+            document,
+            embeddedImages: [
+                "Attachments/valid image.png": valid, "Attachments/broken.png": malformed,
+            ])
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0, imagePreviewsEnabled: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitForReviewImageDecoding()
+        #expect(
+            try await harness.callBridgeJavaScript(
+                """
+                const images = [...document.querySelectorAll('img.scholium-embedded-image')];
+                const failed = images.find(image => image.alt === 'Failed');
+                failed.click();
+                return images.length === 2 && failed.complete && failed.naturalWidth === 0
+                    && !failed.hasAttribute('role') && !failed.hasAttribute('tabindex')
+                    && !document.querySelector('[data-scholium-image-target="Attachments/missing.png"]');
+                """) as? Bool == true)
+        let oldEnvelope = try harness.readBridgeEnvelope()
+        let mutations: [[String: Any]] = [
+            ["fingerprint": "stale"], ["loadGeneration": -1], ["documentID": "Other.md"],
+            ["target": ""], ["target": String(repeating: "🦉", count: 2_049)],
+        ]
+        for mutation in mutations {
+            try await harness.postImageMessage(target: target, envelope: oldEnvelope, overrides: mutation)
+        }
+        try await harness.postImageMessage(target: target, envelope: oldEnvelope)
+        try await harness.waitForImagePreviews(1)
+        #expect(harness.imagePreviewTargets == [target])
+
+        harness.setImagePreviewsEnabled(false)
+        try await harness.waitForImageCapability(false)
+        try await harness.postImageMessage(target: target, envelope: harness.readBridgeEnvelope())
+        _ = try await harness.callBridgeJavaScript("document.querySelector('img[alt=\"Valid\"]').click();")
+        harness.setImagePreviewsEnabled(true)
+        try await harness.waitForImageCapability(true)
+        try await harness.postImageMessage(target: target, envelope: oldEnvelope)
+        try await harness.postImageMessage(target: target, envelope: harness.readBridgeEnvelope())
+        try await harness.waitForImagePreviews(2)
+        #expect(harness.imagePreviewTargets == [target, target])
+        await harness.closeAndDrain()
+    }
+
     @Test("Dismantling Review releases its named-world handler and captured callbacks")
     func reviewNamedWorldHandlerReleasesCoordinator() async throws {
         final class CallbackSentinel {
@@ -2153,6 +2309,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var isReady = false
         var diagramSize: CGSize?
         var replyEvents: [ReadReplyEvent] = []
+        var imagePreviewTargets: [String] = []
+        var readLinkTargets: [String] = []
+        @Published var imagePreviewsEnabled = false
         var chatPageExtension: AgentChatReadPageExtension?
         @Published var restoration: Restoration?
         @Published var capturedAnchor: EditorScrollAnchor?
@@ -2276,7 +2435,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0,
             laysOutForNativePreview: Bool = false,
-            replyProjection: Bool = false
+            replyProjection: Bool = false,
+            imagePreviewsEnabled: Bool = false
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -2290,6 +2450,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 testingForcesFinalizationFailure: testingForcesFinalizationFailure,
                 testingScrollRestoreDelayMilliseconds: testingScrollRestoreDelayMilliseconds
             )
+            sourceBox.imagePreviewsEnabled = imagePreviewsEnabled
             if replyProjection {
                 let box = sourceBox
                 sourceBox.chatPageExtension = AgentChatReadPageExtension {
@@ -2449,6 +2610,86 @@ extension MarkdownEditorWebViewIntegrationTests {
                     modifierFlags: [], timestamp: 0, windowNumber: previewWindow.windowNumber,
                     context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
             if entered { container.mouseEntered(with: event) } else { container.mouseExited(with: event) }
+        }
+
+        var imagePreviewTargets: [String] { sourceBox.imagePreviewTargets }
+        var readLinkTargets: [String] { sourceBox.readLinkTargets }
+
+        func setImagePreviewsEnabled(_ enabled: Bool) { sourceBox.imagePreviewsEnabled = enabled }
+
+        func waitForReviewImageDecoding() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while try await callBridgeJavaScript(
+                "return [...document.querySelectorAll('img.scholium-embedded-image')].every(image => image.complete);") as? Bool != true
+            {
+                try #require(ContinuousClock.now < deadline, "Review image decoding did not settle")
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitForImageCapability(_ enabled: Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while true {
+                let current =
+                    try? await callBridgeJavaScript(
+                        "return document.querySelector('img[alt=\"Valid\"]')?.getAttribute('role') === 'button';") as? Bool
+                let configured = try? readBridgeEnvelope()["imagePreviewsEnabled"] as? Bool
+                if current == enabled, configured == enabled, sourceBox.isReady { return }
+                try #require(ContinuousClock.now < deadline, "Review image capability did not converge")
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitForImagePreviews(_ count: Int) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while imagePreviewTargets.count < count {
+                try #require(ContinuousClock.now < deadline, "Expected \(count) image previews, observed \(imagePreviewTargets)")
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitForReadLinks(_ count: Int) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while readLinkTargets.count < count {
+                try #require(ContinuousClock.now < deadline, "Expected \(count) links, observed \(readLinkTargets)")
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func readBridgeEnvelope() throws -> [String: Any] {
+            let rootView = try #require(window.contentViewController?.view)
+            let webView = try #require(findWebView(in: rootView))
+            let script = try #require(
+                webView.configuration.userContentController.userScripts.first {
+                    $0.source.contains("const encodedConfiguration = \"")
+                })
+            let prefix = try #require(script.source.range(of: "const encodedConfiguration = \""))
+            let encoded = script.source[prefix.upperBound...].prefix { $0 != "\"" }
+            let data = try #require(Data(base64Encoded: String(encoded)))
+            return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+
+        func postImageMessage(target: String, envelope: [String: Any], overrides: [String: Any] = [:]) async throws {
+            var payload = envelope
+            payload["type"] = "imagePreview"
+            payload["target"] = target
+            payload.merge(overrides) { _, override in override }
+            _ = try await callBridgeJavaScript(
+                "window.webkit.messageHandlers.scholiumRead.postMessage(payload);", arguments: ["payload": payload])
+        }
+
+        func clickReviewImage(alt: String) async throws {
+            // This verifies WebKit gesture/bridge admission. Actual AppKit
+            // pointer delivery belongs to the isolated QA app journey.
+            _ = try await callBridgeJavaScript(
+                """
+                const image = [...document.querySelectorAll('img')].find(image => image.alt === alt);
+                const rect = image.getBoundingClientRect();
+                for (const type of ['mousedown', 'mouseup', 'click']) {
+                  image.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, button:0, detail:1,
+                    clientX:rect.left + rect.width/2, clientY:rect.top + rect.height/2}));
+                }
+                """, arguments: ["alt": alt])
         }
 
         func callPageJavaScript(
@@ -3177,7 +3418,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 configurationRevision: "read-harness",
                 linkPreviews: sourceBox.linkPreviews,
                 linkPreviewRevision: sourceBox.linkPreviewRevision,
-                onLinkClick: { _ in },
+                onLinkClick: { sourceBox.readLinkTargets.append($0) },
+                onImagePreview: sourceBox.imagePreviewsEnabled ? { sourceBox.imagePreviewTargets.append($0) } : nil,
                 onOpenExternalURL: { _ in },
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,

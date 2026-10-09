@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The image could not be previewed. It may be unavailable or unsupported." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The image could not be previewed. It may be unavailable or unsupported."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法预览图片。文件可能不可用或格式不受支持。"}}}},
+    "View Original Image" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "View Original Image"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "查看原图"}}}},
     "Agent Context Access — This Mac": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Agent Context Access — This Mac"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "智能体上下文访问 — 本机"}}}},
     "Allow Chat agents to inspect Scholium state": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Allow Chat agents to inspect Scholium state"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "允许聊天智能体查看 Scholium 状态"}}}},
     "Allow external agents to inspect Scholium state": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Allow external agents to inspect Scholium state"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "允许外部智能体查看 Scholium 状态"}}}},

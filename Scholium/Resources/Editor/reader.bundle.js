@@ -4628,6 +4628,7 @@
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "Preview image {name}",
     "Tab",
     "AI",
     "Index",
@@ -4842,7 +4843,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.imagePreviewsEnabled !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     const localization = validatedInterfaceLocalization(config.localization);
     if (!localization) return null;
     return { ...config, localization };
@@ -4888,6 +4889,13 @@
       this.watchdog = null;
       this.latest = null;
       this.generation += 1;
+    }
+    /** Native modal tracking must start with the finalized selection already
+     * delivered; its nested event loop can defer later bridge messages. */
+    flushNow() {
+      const latest = this.latest;
+      this.cancel();
+      latest?.();
     }
     flush(source, generation) {
       if (generation !== this.generation) return;
@@ -4948,6 +4956,177 @@
     });
   }
 
+  // review-image-activation.ts
+  var imageSelector = "img.scholium-embedded-image[data-scholium-image-target]";
+  function installReviewImageActivation(root, actions) {
+    let spaceTarget = null;
+    let pointer = null;
+    const targetFor = (image) => {
+      if (!root.contains(image) || !image.matches(imageSelector) || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return null;
+      const target = image.dataset.scholiumImageTarget;
+      return target && new TextEncoder().encode(target).length <= 8192 ? target : null;
+    };
+    const imageFor = (target) => {
+      if (!(target instanceof Element)) return null;
+      if (target.matches(imageSelector)) return target;
+      const link = target.closest("a");
+      const images = link?.querySelectorAll(imageSelector);
+      return images?.length === 1 ? images[0] : null;
+    };
+    const refreshImage = (image) => {
+      const target = targetFor(image);
+      const block = image.dataset.scholiumImageLayout === "block";
+      image.classList.toggle("scholium-embedded-image-block", block);
+      if (target) image.style.setProperty("--scholium-image-aspect-ratio", String(image.naturalWidth / image.naturalHeight));
+      else image.style.removeProperty("--scholium-image-aspect-ratio");
+      const directPreview = Boolean(actions && target && !image.closest("a"));
+      image.classList.toggle("scholium-image-preview", directPreview);
+      if (directPreview) {
+        let filename = target.slice(target.lastIndexOf("/") + 1);
+        try {
+          filename = decodeURIComponent(filename);
+        } catch {
+        }
+        const alt = image.alt.trim();
+        const name = alt && alt !== filename ? `${alt} (${filename})` : filename;
+        image.setAttribute("role", "button");
+        image.setAttribute("tabindex", "0");
+        image.setAttribute("aria-label", actions.label(name));
+      } else {
+        image.removeAttribute("role");
+        image.removeAttribute("tabindex");
+        image.removeAttribute("aria-label");
+        if (spaceTarget?.image === image) spaceTarget = null;
+        if (pointer?.image === image) pointer = null;
+      }
+    };
+    const refresh = () => root.querySelectorAll(imageSelector).forEach(refreshImage);
+    const loadChanged = (event) => {
+      const image = imageFor(event.target);
+      if (image) refreshImage(image);
+    };
+    const unmodified = (event) => !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    const mouseDown = (event) => {
+      pointer = null;
+      const image = imageFor(event.target);
+      const target = image && targetFor(image);
+      const contextClick = event.button === 2 || event.button === 0 && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+      if (actions && image && target && (contextClick || event.button === 0 && unmodified(event) && !image.closest("a"))) {
+        event.preventDefault();
+        if (!contextClick) pointer = { image, target, x: event.clientX, y: event.clientY, released: false };
+      }
+    };
+    const pointerMatches = (event) => pointer && event.target === pointer.image && targetFor(pointer.image) === pointer.target && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) <= 4;
+    const mouseMove = (event) => {
+      if (pointer && !pointerMatches(event)) pointer = null;
+    };
+    const mouseUp = (event) => {
+      if (event.button === 0 && pointerMatches(event)) pointer.released = true;
+      else pointer = null;
+    };
+    const cancelPointer = () => {
+      pointer = null;
+    };
+    const mouseOut = (event) => {
+      if (pointer && event.target === pointer.image) pointer = null;
+    };
+    const click = (event) => {
+      const started = pointer;
+      const completed = pointerMatches(event);
+      pointer = null;
+      const image = imageFor(event.target);
+      const target = image && targetFor(image);
+      if (!actions || !image || !target || image.closest("a") || event.button !== 0 || !unmodified(event)) return;
+      if (event.detail !== 0 && (!completed || !started?.released)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      actions.preview(target);
+    };
+    const openContextMenu = (image, target, clientX = 0, clientY = 0) => {
+      if (clientX === 0 && clientY === 0) {
+        const bounds = image.getBoundingClientRect();
+        clientX = bounds.left + bounds.width / 2;
+        clientY = bounds.top + bounds.height / 2;
+      }
+      actions?.contextMenu(target, clientX, clientY);
+    };
+    const keyDown = (event) => {
+      pointer = null;
+      const image = imageFor(event.target);
+      const target = image && targetFor(image);
+      if (!actions || !image || !target || event.isComposing || event.keyCode === 229) return;
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && (event.key === "ContextMenu" || event.key === "F10" && event.shiftKey)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) openContextMenu(image, target);
+        return;
+      }
+      if (image.closest("a") || !unmodified(event)) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if (event.key === "Enter") actions.preview(target);
+      else spaceTarget = { image, target };
+    };
+    const keyUp = (event) => {
+      if (event.key !== " ") return;
+      const started = spaceTarget;
+      spaceTarget = null;
+      if (!actions || !started || event.target !== started.image || event.isComposing || !unmodified(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const target = targetFor(started.image);
+      if (target === started.target) actions.preview(target);
+    };
+    const focusOut = () => {
+      spaceTarget = null;
+      pointer = null;
+    };
+    const contextMenu = (event) => {
+      const image = imageFor(event.target);
+      const target = image && targetFor(image);
+      if (!actions || !image || !target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openContextMenu(image, target, event.clientX, event.clientY);
+    };
+    refresh();
+    root.addEventListener("load", loadChanged, true);
+    root.addEventListener("error", loadChanged, true);
+    root.addEventListener("mousedown", mouseDown);
+    root.addEventListener("mousemove", mouseMove);
+    root.addEventListener("mouseup", mouseUp);
+    root.addEventListener("mouseout", mouseOut);
+    root.addEventListener("dragstart", cancelPointer);
+    root.addEventListener("pointercancel", cancelPointer);
+    root.addEventListener("click", click);
+    root.addEventListener("keydown", keyDown);
+    root.addEventListener("keyup", keyUp);
+    root.addEventListener("focusout", focusOut);
+    root.addEventListener("contextmenu", contextMenu);
+    return {
+      refresh,
+      destroy() {
+        spaceTarget = null;
+        pointer = null;
+        root.removeEventListener("load", loadChanged, true);
+        root.removeEventListener("error", loadChanged, true);
+        root.removeEventListener("mousedown", mouseDown);
+        root.removeEventListener("mousemove", mouseMove);
+        root.removeEventListener("mouseup", mouseUp);
+        root.removeEventListener("mouseout", mouseOut);
+        root.removeEventListener("dragstart", cancelPointer);
+        root.removeEventListener("pointercancel", cancelPointer);
+        root.removeEventListener("click", click);
+        root.removeEventListener("keydown", keyDown);
+        root.removeEventListener("keyup", keyUp);
+        root.removeEventListener("focusout", focusOut);
+        root.removeEventListener("contextmenu", contextMenu);
+      }
+    };
+  }
+
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -4998,6 +5177,18 @@
       type,
       ...extra
     });
+    readerWindow.scholiumReviewImages?.destroy();
+    readerWindow.scholiumReviewImages = installReviewImageActivation(documentRoot, config.imagePreviewsEnabled ? {
+      label: (name) => localized("Preview image {name}", { name }),
+      preview: (target) => post("imagePreview", { target }),
+      contextMenu: (target, clientX, clientY) => post("imageContextMenu", {
+        target,
+        clientX,
+        clientY,
+        payloadFingerprint: fingerprint
+      })
+    } : null);
+    window.addEventListener("pagehide", () => readerWindow.scholiumReviewImages?.destroy(), { once: true });
     const popover = requiredElement("scholium-preview-popover");
     popover.remove();
     const nativeFloating = createNativeFloatingPorts((event) => post("floatingSurface", { event }));
@@ -5245,6 +5436,7 @@
         localizeRenderedInterface(documentRoot, localized);
         decorateAttachmentLinks(documentRoot);
         decorateChatReplyLinks(documentRoot);
+        readerWindow.scholiumReviewImages?.refresh();
         fingerprint = update.fingerprint;
         presentationStyle.textContent = update.presentationCSS;
         userStyle.textContent = update.userCSS;

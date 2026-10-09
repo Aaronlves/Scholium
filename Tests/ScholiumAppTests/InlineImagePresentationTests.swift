@@ -6,7 +6,7 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
-    @Test("Admitted inline images retain proportion and full height in Edit and Review", arguments: InlineImageFixture.allCases)
+    @Test("Images preserve proportion, fill block width within the height cap, and retain inline size", arguments: InlineImageFixture.allCases)
     func inlineImageGeometry(fixture: InlineImageFixture) async throws {
         let image = try fixture.image()
         let destination =
@@ -23,6 +23,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             case .numericDestinationPNG: "![fixture](Attachments/a&#38;b.png)"
             case .encodedReservedDestinationPNG: "![fixture](Attachments/a%23b%3Fc.png)"
             case .nestedAltPNG: "![fixture![](Attachments/figure)](Attachments/figure)"
+            case .linkedPNG: "[![fixture](Attachments/figure)](https://example.test)"
             default: "![fixture](Attachments/figure)"
             }
         let source = "Before fixture.\n\n" + imageLine + "\n\nAfter fixture.\n"
@@ -576,7 +577,26 @@ extension MarkdownEditorWebViewIntegrationTests {
         let height = value["height"] ?? 0
         #expect(width > 0 && height > 0, "Image geometry: \(value)")
         #expect(abs(width / max(1, height) - Double(fixture.width) / Double(fixture.height)) < 0.02, "Image proportion: \(value)")
-        #expect(width <= Double(fixture.width) + 1, "A small image retains its native size: \(value)")
+        let isBlock = fixture != .inlinePNG
+        #expect(value["isBlock"] == (isBlock ? 1 : 0), "Only standalone images use block sizing: \(value)")
+        let heightCap = value["heightCap"] ?? 0
+        #expect(height <= heightCap + 1, "Images remain inside the reading height cap: \(value)")
+        if isBlock {
+            let ratio = Double(fixture.width) / Double(fixture.height)
+            let containerWidth = value["containerWidth"] ?? 0
+            let expectedWidth = min(containerWidth, heightCap * ratio)
+            #expect(abs(width - expectedWidth) < 1.5, "A standalone image fills the available width until its height reaches the cap: \(value)")
+            let leadingSpace = (value["left"] ?? 0) - (value["containerLeft"] ?? 0)
+            let trailingSpace = (value["containerRight"] ?? 0) - (value["right"] ?? 0)
+            #expect(abs(leadingSpace - trailingSpace) < 1.5, "A height-limited image remains centered: \(value)")
+            if heightCap * ratio < containerWidth - 1 {
+                #expect(abs(height - heightCap) < 1.5, "A tall image uses the height cap without changing its aspect ratio: \(value)")
+            } else {
+                #expect(abs(width - containerWidth) < 1.5, "A wide image reaches the full reading measure: \(value)")
+            }
+        } else {
+            #expect(width <= Double(fixture.width) + 1, "An inline image is not enlarged beyond its native size: \(value)")
+        }
         #expect(width <= (value["containerWidth"] ?? 0) + 1, "Image fits the reading width: \(value)")
         #expect(width <= (value["readingWidth"] ?? 0) + 1, "Image fits the resized reading viewport: \(value)")
         #expect((value["containerHeight"] ?? 0) + 1 >= height, "The containing image block must not collapse to a strip: \(value)")
@@ -609,15 +629,20 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     private static let inlineImageGeometryProbe = """
         const image = document.querySelector('img.scholium-embedded-image[alt="fixture"]');
-        if (!image || !image.complete || !image.naturalWidth) return null;
+        if (!image || !image.complete || !image.naturalWidth
+          || !image.style.getPropertyValue('--scholium-image-aspect-ratio')) return null;
         const rect = image.getBoundingClientRect();
-        const container = image.closest('.cm-live-image-block') || image.parentElement;
+        const container = image.closest('.cm-live-image-block') || image.closest('p') || image.parentElement;
         const block = container.getBoundingClientRect();
         const reading = document.querySelector('.cm-content') || document.querySelector('#scholium-document');
         return {width: rect.width, height: rect.height, naturalWidth: image.naturalWidth,
           naturalHeight: image.naturalHeight, bottom: rect.bottom,
+          left: rect.left, right: rect.right,
+          isBlock: image.classList.contains('scholium-embedded-image-block') ? 1 : 0,
+          heightCap: Math.min(innerHeight * .7, parseFloat(getComputedStyle(document.documentElement).fontSize) * 40),
           readingWidth: reading.getBoundingClientRect().width,
-          containerWidth: block.width, containerHeight: block.height, containerBottom: block.bottom};
+          containerWidth: block.width, containerHeight: block.height, containerBottom: block.bottom,
+          containerLeft: block.left, containerRight: block.right};
         """
 }
 
@@ -625,11 +650,11 @@ enum InlineImageFixture: String, CaseIterable, Sendable {
     case landscapePNG, portraitJPEG, tinyGIF, panoramaPNG, inlinePNG, referencePNG
     case entityDestinationPNG, numericDestinationPNG
     case encodedReservedDestinationPNG
-    case nestedAltPNG
+    case nestedAltPNG, linkedPNG
 
     var width: Int {
         switch self {
-        case .landscapePNG, .referencePNG: 1_200
+        case .landscapePNG, .referencePNG, .linkedPNG: 1_200
         case .portraitJPEG: 300
         case .tinyGIF: 24
         case .panoramaPNG: 1_600
@@ -638,7 +663,7 @@ enum InlineImageFixture: String, CaseIterable, Sendable {
     }
     var height: Int {
         switch self {
-        case .landscapePNG, .referencePNG: 600
+        case .landscapePNG, .referencePNG, .linkedPNG: 600
         case .portraitJPEG: 900
         case .tinyGIF: 18
         case .panoramaPNG: 80

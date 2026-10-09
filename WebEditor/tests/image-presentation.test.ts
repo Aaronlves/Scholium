@@ -1,6 +1,7 @@
 import {EditorSelection, EditorState, type TransactionSpec} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
 import {EditorView} from "@codemirror/view";
+import {history, undoDepth} from "@codemirror/commands";
 import {describe, expect, it, vi} from "vitest";
 import {parseHTML} from "linkedom";
 import {createImageProjection, imageDestination, imagePresentation} from "../image-presentation";
@@ -14,20 +15,48 @@ import {createLiveSelectionController} from "../live-selection";
 
 const png = "data:image/png;base64,iVBORw0KGgo=";
 describe("source-backed local image presentation", () => {
-  function projectedState(source: string, resources: Readonly<Record<string, string>>) {
+  function projectedEditor(source: string, resources: Readonly<Record<string, string>>,
+    activateLink = (_target: string, _isImage: boolean) => {}) {
     const selection = createLiveSelectionController({
       handleModifiedLink: () => false,
       handleProjectedPointerStart: () => false,
     });
     const projections = createLiveProjectionIndexController({editingDialect: () => null, recordMetric: () => {}});
-    const images = createImageProjection({selection, projections, bodyIsActive: () => true, shouldRefresh: () => false});
+    const images = createImageProjection({selection, projections, bodyIsActive: () => true,
+      shouldRefresh: () => false, activateLink});
     images.setResources(resources);
-    return EditorState.create({doc: source, selection: {anchor: source.length},
+    const state = EditorState.create({doc: source, selection: {anchor: source.length},
       extensions: [scholiumNoteLanguage, selection.extension, projections.extension, images.extension,
-        EditorState.allowMultipleSelections.of(true)]});
+        history(), EditorState.allowMultipleSelections.of(true)]});
+    return {state, images};
   }
 
-  it.each(["add", "extend", "composition"])("preserves %s selection behavior at a projected image", mode => {
+  function projectedState(source: string, resources: Readonly<Record<string, string>>) {
+    return projectedEditor(source, resources).state;
+  }
+
+  function imageWidget(state: EditorState) {
+    let widget: import("@codemirror/view").WidgetType | undefined;
+    for (const decorations of state.facet(EditorView.decorations)) {
+      if (typeof decorations !== "function") decorations.between(0, state.doc.length, (_from, _to, decoration) => {
+        if (decoration.spec.widget) widget = decoration.spec.widget;
+      });
+    }
+    expect(widget).toBeDefined();
+    return widget!;
+  }
+
+  function mouseEvent(document: Document, type: string, properties: Partial<MouseEvent> = {}) {
+    const event = document.createEvent("Event") as MouseEvent;
+    event.initEvent(type, true, true);
+    for (const [key, value] of Object.entries({button: 0, clientX: 10, clientY: 10,
+      metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...properties})) {
+      Object.defineProperty(event, key, {value});
+    }
+    return event;
+  }
+
+  it.each(["plain", "add", "extend", "composition"])("preserves %s selection behavior at a projected image", mode => {
     const {document} = parseHTML("<html><body></body></html>");
     vi.stubGlobal("document", document);
     try {
@@ -37,28 +66,114 @@ describe("source-backed local image presentation", () => {
       state = state.update({selection: EditorSelection.create([
         EditorSelection.cursor(2), EditorSelection.cursor(source.length),
       ], 1)}).state;
-      let widget: import("@codemirror/view").WidgetType | undefined;
-      for (const decorations of state.facet(EditorView.decorations)) {
-        if (typeof decorations !== "function") decorations.between(0, source.length, (_from, _to, decoration) => {
-          if (decoration.spec.widget) widget = decoration.spec.widget;
-        });
-      }
-      expect(widget).toBeDefined();
       const dispatch = vi.fn((spec: TransactionSpec) => {state = state.update(spec).state;});
       const view = {get state() {return state;}, composing: false,
         compositionStarted: mode === "composition", dispatch, focus: vi.fn()};
-      const dom = widget!.toDOM(view as unknown as EditorView);
+      const dom = imageWidget(state).toDOM(view as unknown as EditorView);
       dom.querySelector("img")!.getBoundingClientRect = () => ({left: 0, width: 100} as DOMRect);
-      const event = document.createEvent("Event") as unknown as MouseEvent;
-      event.initEvent("mousedown", true, true);
-      Object.defineProperties(event, {button: {value: 0}, clientX: {value: 10},
-        metaKey: {value: mode === "add"}, shiftKey: {value: mode === "extend"}});
-      dom.dispatchEvent(event);
+      dom.querySelector("img")!.dispatchEvent(mouseEvent(document, "mousedown", {
+        metaKey: mode === "add", altKey: mode === "add", shiftKey: mode === "extend",
+      }));
       if (mode === "composition") expect(dispatch).not.toHaveBeenCalled();
       else expect(state.selection.ranges.map(range => [range.anchor, range.head])).toEqual(mode === "add"
         ? [[2, 2], [imageFrom, imageFrom], [source.length, source.length]]
-        : [[2, 2], [source.length, imageFrom]]);
+        : mode === "extend" ? [[2, 2], [source.length, imageFrom]] : [[imageFrom, imageFrom]]);
       expect(state.doc.toString()).toBe(source);
+    } finally {vi.unstubAllGlobals();}
+  });
+
+  it("opens the admitted original only after a pure Command-click without changing selection, focus or Undo", () => {
+    const {document} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    try {
+      const source = "Before.\n\n![figure](Attachments/a%2520b&amp;c)\n\nAfter.";
+      const activateLink = vi.fn();
+      let {state} = projectedEditor(source, {"Attachments/a%20b&c": png}, activateLink);
+      state = state.update({changes: {from: source.length, insert: "!"}, userEvent: "input.type"}).state;
+      const selection = state.selection, depth = undoDepth(state);
+      const view = {get state() {return state;}, compositionStarted: false,
+        dispatch: vi.fn(), focus: vi.fn(), requestMeasure: vi.fn()};
+      const dom = imageWidget(state).toDOM(view as unknown as EditorView);
+      document.body.append(dom);
+      const image = dom.querySelector("img")!;
+      image.dispatchEvent(mouseEvent(document, "mousedown", {metaKey: true}));
+      expect(activateLink).not.toHaveBeenCalled();
+      image.dispatchEvent(mouseEvent(document, "click", {metaKey: true}));
+      expect(activateLink).toHaveBeenCalledExactlyOnceWith("Attachments/a%2520b&c", true);
+      expect(view.dispatch).not.toHaveBeenCalled();
+      expect(view.focus).not.toHaveBeenCalled();
+      expect(state.selection).toBe(selection);
+      expect(state.doc.toString()).toBe(source + "!");
+      expect(undoDepth(state)).toBe(depth);
+    } finally {vi.unstubAllGlobals();}
+  });
+
+  it.each(["no-start", "drag", "click-moved", "leave", "dragstart", "pointercancel", "composition", "source-change", "detached", "modifier-change"])(
+    "rejects an image preview after %s", interruption => {
+      const {document} = parseHTML("<html><body></body></html>");
+      vi.stubGlobal("document", document);
+      try {
+        const source = "Before.\n\n![figure](Attachments/figure)\n\nAfter.";
+        const activateLink = vi.fn();
+        let {state} = projectedEditor(source, {"Attachments/figure": png}, activateLink);
+        const view = {get state() {return state;}, compositionStarted: false,
+          dispatch: vi.fn(), focus: vi.fn(), requestMeasure: vi.fn()};
+        const dom = imageWidget(state).toDOM(view as unknown as EditorView);
+        document.body.append(dom);
+        const image = dom.querySelector("img")!;
+        if (interruption !== "no-start") image.dispatchEvent(mouseEvent(document, "mousedown", {metaKey: true}));
+        if (interruption === "drag") image.dispatchEvent(mouseEvent(document, "mousemove", {clientX: 30}));
+        if (["leave", "dragstart", "pointercancel"].includes(interruption)) {
+          dom.dispatchEvent(mouseEvent(document, interruption === "leave" ? "mouseleave" : interruption));
+        }
+        if (interruption === "composition") view.compositionStarted = true;
+        if (interruption === "source-change") state = state.update({changes: {from: 0, insert: "New.\n"}}).state;
+        if (interruption === "detached") dom.remove();
+        image.dispatchEvent(mouseEvent(document, "click", {metaKey: true,
+          clientX: interruption === "click-moved" ? 30 : 10, altKey: interruption === "modifier-change"}));
+        expect(activateLink).not.toHaveBeenCalled();
+        expect(view.dispatch).not.toHaveBeenCalled();
+      } finally {vi.unstubAllGlobals();}
+    },
+  );
+
+  it("preserves an authored outer link's destination and never substitutes the image original", () => {
+    const {document} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    try {
+      const source = "Before.\n\n[![figure](Attachments/figure)](<https://example.test/a%20b?x=1&amp;y=2>)\n\nAfter.";
+      const activateLink = vi.fn();
+      const {state} = projectedEditor(source, {"Attachments/figure": png}, activateLink);
+      const view = {state, compositionStarted: false, dispatch: vi.fn(), focus: vi.fn()};
+      const dom = imageWidget(state).toDOM(view as unknown as EditorView);
+      document.body.append(dom);
+      const image = dom.querySelector("img")!;
+      image.dispatchEvent(mouseEvent(document, "mousedown", {metaKey: true}));
+      image.dispatchEvent(mouseEvent(document, "click", {metaKey: true}));
+      expect(activateLink).toHaveBeenCalledExactlyOnceWith("https://example.test/a%20b?x=1&y=2", false);
+      expect(view.dispatch).not.toHaveBeenCalled();
+    } finally {vi.unstubAllGlobals();}
+  });
+
+  it("sizes only independent images from their decoded intrinsic ratio without changing source", () => {
+    const {document} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    try {
+      for (const source of ["Before.\n\n![figure](Attachments/figure)\n\nAfter.", "Before ![figure](Attachments/figure) after."]) {
+        const state = projectedState(source, {"Attachments/figure": png});
+        const view = {state, requestMeasure: vi.fn()};
+        const dom = imageWidget(state).toDOM(view as unknown as EditorView);
+        document.body.append(dom);
+        const image = dom.querySelector("img")!;
+        Object.defineProperties(image, {naturalWidth: {value: 300}, naturalHeight: {value: 600}});
+        const event = document.createEvent("Event");
+        event.initEvent("load", false, false);
+        image.dispatchEvent(event);
+        expect(image.style.getPropertyValue("--scholium-image-aspect-ratio")).toBe("0.5");
+        expect(image.classList.contains("scholium-embedded-image-block")).toBe(source.includes("\n\n"));
+        expect(view.requestMeasure).toHaveBeenCalledOnce();
+        expect(state.doc.toString()).toBe(source);
+      }
     } finally {vi.unstubAllGlobals();}
   });
 
@@ -98,7 +213,90 @@ describe("source-backed local image presentation", () => {
       + "[![linked](Attachments/figure)](https://example.test)\n\nAfter.";
     const state = projectedState(source, {"Attachments/figure": png});
     expect(imageReplacementRanges(state).map(range => source.slice(range.from, range.to)))
-      .toEqual(["![first](Attachments/figure)", "![second](Attachments/figure)", "![linked](Attachments/figure)"]);
+      .toEqual(["![first](Attachments/figure)", "![second](Attachments/figure)", "[![linked](Attachments/figure)](https://example.test)"]);
+  });
+
+  it("reveals the entire standalone linked image when the caret enters its authored outer link", () => {
+    const link = "[![figure](Attachments/figure)](https://example.test)";
+    const source = `Before.\n\n${link}\n\nAfter.`;
+    const from = source.indexOf(link);
+    const state = projectedState(source, {"Attachments/figure": png});
+    expect(imageReplacementRanges(state)).toEqual([{from, to: from + link.length, block: true}]);
+    for (const anchor of [from, source.indexOf("https:") + 3]) {
+      const revealed = state.update({selection: {anchor}}).state;
+      expect(imageReplacementRanges(revealed)).toEqual([]);
+      expect(revealed.doc.toString()).toBe(source);
+    }
+  });
+
+  it("keeps a linked image with authored label prose inline", () => {
+    const image = "![figure](Attachments/figure)";
+    const source = `Before.\n\n[See ${image} here](https://example.test)\n\nAfter.`;
+    const state = projectedState(source, {"Attachments/figure": png});
+    const from = source.indexOf(image);
+    expect(imageReplacementRanges(state)).toEqual([{from, to: from + image.length, block: false}]);
+  });
+
+  it("replaces a linked image widget after an outer destination or replacement range edit", () => {
+    const source = "Before.\n\n[![figure](Attachments/figure)](https://first.test)\n\nAfter.";
+    const state = projectedState(source, {"Attachments/figure": png});
+    const original = imageWidget(state);
+    const targetFrom = source.indexOf("first.test");
+    const updated = state.update({changes: {from: targetFrom, to: targetFrom + 10, insert: "other.test"}}).state;
+    expect(original.eq(imageWidget(updated))).toBe(false);
+    const expanded = state.update({changes: {from: source.indexOf(")\n\nAfter."), insert: ' "title"'}}).state;
+    expect(original.eq(imageWidget(expanded))).toBe(false);
+    const presentation = (imageWidget(updated) as unknown as {presentation: {activation: unknown}}).presentation;
+    expect(presentation.activation).toEqual({target: "https://other.test", isImage: false});
+    expect(imageReplacementRanges(expanded)[0].to).toBe(imageReplacementRanges(state)[0].to + 8);
+  });
+
+  it("never substitutes an image preview for an outer link without an admitted target", () => {
+    const source = "Before.\n\n[![figure](Attachments/figure)][target]\n\n[target]: https://example.test\n\nAfter.";
+    const state = projectedState(source, {"Attachments/figure": png});
+    const presentation = (imageWidget(state) as unknown as {presentation: {activation: unknown}}).presentation;
+    expect(presentation.activation).toBeNull();
+  });
+
+  it("offers one admitted image target for source-local menu selections, including authored linked images", () => {
+    const image = "![figure](Attachments/a%2520b&#38;c)";
+    const source = `Before.\n\n[${image}](https://example.test)\n\nAfter.`;
+    const {state, images} = projectedEditor(source, {"Attachments/a%20b&c": png});
+    const from = source.indexOf(image), to = from + image.length;
+    for (const selection of [{from, to: from}, {from: from + 3, to: from + 3}, {from, to}]) {
+      expect(images.imageTargetAt(state, selection)).toBe("Attachments/a%2520b&c");
+    }
+    for (const selection of [{from: to, to}, {from: from - 1, to}, {from, to: to + 1}]) {
+      expect(images.imageTargetAt(state, selection)).toBeNull();
+    }
+    images.setResources({});
+    expect(images.imageTargetAt(state, {from, to})).toBeNull();
+  });
+
+  it.each([false, true])("maps any context-click within an image to its validated source start (linked: %s)", linked => {
+    const {document, window} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("Element", window.Element);
+    try {
+      const imageSource = "![figure](Attachments/figure)";
+      const source = `Before.\n\n${linked ? `[${imageSource}](https://example.test)` : imageSource}\n\nAfter.`;
+      const {state, images} = projectedEditor(source, {"Attachments/figure": png});
+      const dom = imageWidget(state).toDOM({state} as EditorView);
+      const image = dom.querySelector("img")!;
+      const event = {target: image, button: 2, clientX: 600, clientY: 400} as unknown as MouseEvent;
+      const from = source.indexOf(imageSource);
+      expect(images.contextPositionAtEvent(state, event)).toBe(from);
+      expect(images.imageTargetAt(state, {from, to: from})).toBe("Attachments/figure");
+      expect(state.doc.toString()).toBe(source);
+
+      dom.dataset.scholiumSourceFrom = String(from + 1);
+      expect(images.contextPositionAtEvent(state, event)).toBeNull();
+      dom.dataset.scholiumSourceFrom = String(from);
+      const moved = state.update({changes: {from: 0, insert: "New.\n"}}).state;
+      expect(images.contextPositionAtEvent(moved, event)).toBeNull();
+      images.setResources({});
+      expect(images.contextPositionAtEvent(state, event)).toBeNull();
+    } finally {vi.unstubAllGlobals();}
   });
 
   it("admits bounded native raster payloads without admitting URLs or active media", () => {

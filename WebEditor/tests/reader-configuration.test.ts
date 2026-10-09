@@ -7,6 +7,7 @@ const currentConfiguration = {
   fingerprint: "a".repeat(64),
   loadGeneration: 3,
   selectionEnabled: true,
+  imagePreviewsEnabled: false,
   testingEnabled: true,
   presentationCSS: "",
   userCSS: "",
@@ -17,6 +18,9 @@ const currentConfiguration = {
 describe("reader configuration", () => {
   it("accepts the current bounded native configuration", () => {
     expect(validatedReaderConfiguration(currentConfiguration)).toEqual(currentConfiguration);
+    expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: true})?.imagePreviewsEnabled).toBe(true);
+    expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: undefined})).toBeNull();
+    expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: "true"})).toBeNull();
   });
 
   it("rejects unknown versions and unbounded identities", () => {

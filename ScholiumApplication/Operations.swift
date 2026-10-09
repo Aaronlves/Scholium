@@ -204,6 +204,17 @@ public actor DocumentOperations: DocumentUseCases {
         await handle.releaseDocumentAttachmentPreview(accessToken: accessToken)
     }
 
+    public func prepareSourceImagePreview(
+        destination: String,
+        source: String,
+        for target: SourceAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareSourceImagePreview(
+            destination: destination, source: source, for: target
+        )
+    }
+
     public func importMarkdownSource(
         _ source: String,
         at id: VaultQualifiedNoteID
