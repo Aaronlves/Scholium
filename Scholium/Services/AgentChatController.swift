@@ -80,6 +80,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     @Published var quotas: [AgentChatQuota] = []
     @Published var quotaError: String?
     @Published var isRefreshingQuota = false
+    @Published var isRefreshingRuntime = false
+    @Published var runtimeRefreshError: String?
+    @Published var runtimeRefreshedAt: Date?
+    var runtimeRefreshID: UUID?
+    var runtimeRefreshTask: Task<Void, Never>?
+    var runtimeAccountRevision: UInt64 = 0
     @Published var isLoaded = false
     @Published private(set) var isLoadingLocalHistory = true
     @Published private(set) var localHistoryError: String?

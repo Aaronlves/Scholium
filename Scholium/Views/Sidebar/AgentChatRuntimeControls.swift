@@ -7,12 +7,10 @@ struct AgentChatConfigurationMenu: View {
     let preferences: AgentChatPreferences
     let selectedModel: AgentChatModel?
     var selectedEffort: String? = nil
-    let permission: AgentChatPermission
     let isEnabled: Bool
     let canSelectModel: Bool
     let selectModel: (String?) -> Void
     let selectEffort: (String?) -> Void
-    let selectPermission: (AgentChatPermission) -> Void
     let selectWebSearch: (AgentChatPreferences.WebSearch) -> Void
 
     var body: some View {
@@ -54,15 +52,6 @@ struct AgentChatConfigurationMenu: View {
             }
             Divider()
             Menu {
-                Picker("Permission", selection: Binding(get: { permission }, set: { selectPermission($0) })) {
-                    Text("Ask for Approval", bundle: .module).tag(AgentChatPermission.ask)
-                    Text("Full Access", bundle: .module).tag(AgentChatPermission.fullAccess)
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Text("Permission", bundle: .module)
-            }
-            Menu {
                 Picker(
                     "Web Search",
                     selection: Binding(
@@ -91,15 +80,8 @@ struct AgentChatConfigurationMenu: View {
             [
                 selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale),
                 displayEffortLabel,
-                permissionLabel,
                 AgentChatControlLabels.webSearch(preferences.webSearch),
             ].joined(separator: ", "))
-    }
-
-    private var permissionLabel: String {
-        permission == .ask
-            ? ScholiumL10n.string("Ask for Approval", locale: locale)
-            : ScholiumL10n.string("Full Access", locale: locale)
     }
 
     private var modelLabel: String {
@@ -120,6 +102,35 @@ struct AgentChatConfigurationMenu: View {
 
     private var displayEffortLabel: String {
         effortLabel ?? ScholiumL10n.string("Default", locale: locale)
+    }
+}
+
+/// Permission is an icon control with named values, separate from model settings.
+/// The controller alone can grant or reduce access while the conversation is idle.
+struct AgentChatPermissionMenu: View {
+    let permission: AgentChatPermission
+    let isEnabled: Bool
+    let select: (AgentChatPermission) -> Void
+
+    var body: some View {
+        Menu {
+            Picker("Permission", selection: Binding(get: { permission }, set: { select($0) })) {
+                Text("Ask for Approval", bundle: .module).tag(AgentChatPermission.ask)
+                Text("Full Access", bundle: .module).tag(AgentChatPermission.fullAccess)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            AgentChatComposerIcon(content: .permission(permission))
+                .agentChatComposerControl()
+        }
+        .scholiumContentActionMenu()
+        .menuIndicator(.hidden)
+        .agentChatComposerControl()
+        .disabled(!isEnabled)
+        .help(Text(permission == .fullAccess ? "Full Access" : "Ask for Approval", bundle: .module))
+        .accessibilityLabel(Text("Permission", bundle: .module))
+        .accessibilityValue(Text(permission == .fullAccess ? "Full Access" : "Ask for Approval", bundle: .module))
+        .accessibilityIdentifier("scholium.chat.permission")
     }
 }
 

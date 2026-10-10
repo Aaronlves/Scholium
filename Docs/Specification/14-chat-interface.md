@@ -67,15 +67,18 @@ only when needed. Connection editing belongs in
 Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
 are borderless; a compact gauge shows current reasoning beside the input without a text label. Its
 accent arc extent and needle position encode the same selected effort. The selected model
-remains available in Chat Settings without occupying the resting footer. Full Access
-retains an explicit visible status when enabled; selected permissions remain named in Chat Settings.
+remains available in Chat Settings without occupying the resting footer. A named
+permission button sits immediately after Add to Chat. Distinct shield symbols
+identify permissions; Full Access uses system red. Help, accessibility and its
+menu retain the complete permission names.
 The circular Send button uses native control styling; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
 whitespace, is editable; text clicks position the native caret. Return sends when
 available; Shift-Return or Option-Return inserts a newline. Marked-text Return belongs
 to the input method. Native placeholder visibility includes composition and never overlaps marked text. Unavailable sending preserves the draft and selection, with a
 visible connection explanation when disconnected. Native selection and Undo remain
-within the current conversation. Sending starts a fresh draft Undo history;
+within the current conversation. Validated input appears in the transcript with sending or unconfirmed-delivery status
+beside that exact researcher message; confirmation clears the status. Sending starts a fresh draft Undo history;
 Chat input never shares that history with Document or another input.
 Back returns to conversations while work
 continues. User messages align trailing in content-sized shared-Accent bubbles with
@@ -407,11 +410,14 @@ Saving preserves queue identity, position and attached context. If already sent,
 the edit is not applied and remains available to copy. Hiding Chat dismisses its
 transient dialogs and preserves unsaved queued-message text for the editor's
 return; accepted material preparation continues unless explicitly cancelled.
-The composer places Add to Chat, a small Context indicator,
-the current reasoning gauge and delivery in one bottom row.
+The composer places Add to Chat and the permission shield on the leading side
+of one bottom row. The smaller Add glyph and larger delivery glyph retain centered
+alignment and complete hit regions. The delivery circle and nearest input corner
+share their center. The Context indicator and reasoning gauge sit
+before delivery; unreported context capacity hides its indicator.
 The composer has one enclosing surface. Its quote, Note and file summaries sit
 directly within it; they do not add nested card backgrounds. Secondary controls
-have quiet resting states, one shared target, matched optical size and line weight,
+have quiet resting states, one shared target, aligned glyphs and consistent line weight,
 and shared transient feedback.
 One trailing primary action expresses the current composer lifecycle. Exact previews and removal remain
 available, and sent materials retain their own transcript grouping.
@@ -422,10 +428,11 @@ popover anchored to that button. Occupancy leads; remaining capacity and token
 counts are secondary. One Details disclosure contains cumulative token use and
 the complete prepared-context list in a bounded scroll area. Compact Context
 remains in the footer with runtime-owned availability. Chat Settings at the reasoning gauge groups named Model,
-Reasoning, Permission and Web Search pickers. Selected values remain visible in
-those menus; the current model and complete configuration remain in Help and
+Reasoning and Web Search pickers. Selected values remain visible in
+those menus; the model, reasoning and search choices remain in Help and
 accessible values rather than a persistent model label.
-Full Access retains a visible status beside the input when enabled. Add Material
+The separate permission button opens its native named choices and retains idle-only
+availability. Add Material
 groups material and Skill selection. Execution controls do not belong in that menu.
 Transcript plans use one disclosure showing the current reported step while active
 and the completed-step count; full steps start collapsed and preserve explicit
@@ -436,9 +443,8 @@ An explicit web-search mode is distinguishable from Note Search.
 
 Conversation options own Outline, Find, Rename, Account Usage and Diagnostics; a branch also
 offers Open Original Conversation. Changes has its existing entry beside Agents
-and is not repeated in the detail header. While a request replaces the composer
-or a conversation is archived, conversation options provide the Context and Usage
-entry at that header. Only one Context presentation may be open. Switching
+and is not repeated in the detail header. While a request replaces the composer, a conversation is archived or its Context
+indicator is unavailable, conversation options retain the Context entry. Only one Context presentation may be open. Switching
 conversations, leaving the detail, or replacing the input closes it. It
 separates last-reported occupancy from cumulative consumption, with bounded native
 progress, token details and a state-valid Compact Context action. It never shows a

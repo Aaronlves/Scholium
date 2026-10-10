@@ -627,9 +627,7 @@ extension AgentChatController {
             return
         }
         if method == "account/login/completed" || method == "account/updated" {
-            if let runtime, let value = try? await runtime.request("account/read") { readAccount(value) }
-            rememberConnectedAccount()
-            if account != nil { refreshQuota() } else { quotas = [] }
+            refreshRuntime(refreshToken: false)
             return
         }
         if method == "account/rateLimits/updated" {

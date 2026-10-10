@@ -3,6 +3,42 @@ import Combine
 import ScholiumApplication
 import ScholiumContracts
 
+private struct AgentChatDraftContents: Equatable {
+    let text: String
+    let coordinationTarget: AgentChatCoordinationTarget?
+    let quotes: [AgentChatReplyQuote]?
+    let attachments: [AgentChatAttachment]
+    let materials: [AgentChatLocalMaterial]
+    let methods: [AgentChatMethodSelection]?
+
+    init(_ conversation: AgentChatConversation) {
+        text = conversation.draft
+        coordinationTarget = conversation.draftCoordinationTarget
+        quotes = conversation.draftReplyQuotes
+        attachments = conversation.attachments
+        materials = conversation.localMaterials
+        methods = conversation.selectedMethods
+    }
+
+    init(_ message: AgentChatMessage) {
+        text = message.text
+        coordinationTarget = message.coordinationTarget
+        quotes = message.replyQuotes
+        attachments = message.attachments
+        materials = message.localMaterials
+        methods = message.methods
+    }
+
+    func restore(in conversation: inout AgentChatConversation) {
+        conversation.draft = text
+        conversation.draftCoordinationTarget = coordinationTarget
+        conversation.draftReplyQuotes = quotes
+        conversation.attachments = attachments
+        conversation.localMaterials = materials
+        conversation.selectedMethods = methods
+    }
+}
+
 @MainActor
 extension AgentChatController {
     func submitDraft(whileWorking action: AgentChatInputBehavior) {
@@ -188,6 +224,8 @@ extension AgentChatController {
             }
             var receipt = AgentChatDeliveryReceipt.unavailable
             var hasPreparedMessage = false
+            var draftBeforeConsumption: AgentChatDraftContents?
+            var draftAfterConsumption: AgentChatDraftContents?
             defer {
                 if receipt == .unavailable, hasPreparedMessage {
                     if self.pendingDraftConsumption[conversationID] == message.id {
@@ -196,9 +234,15 @@ extension AgentChatController {
                     self.update(in: conversationID) { conversation in
                         conversation.messages.removeAll { $0.id == message.id }
                         if conversation.pendingMessageID == message.id { conversation.pendingMessageID = nil }
-                        // Keep edits made during preparation. If they replaced the
-                        // captured request, retain that unsent request in the queue.
-                        if consumesDraft, conversation.draft != message.text,
+                        // Restore only the unchanged fresh draft. Newer text or
+                        // materials keep their own composer identity; the old
+                        // unsent request returns to the queue instead.
+                        if let before = draftBeforeConsumption, let after = draftAfterConsumption,
+                            AgentChatDraftContents(conversation) == after
+                        {
+                            before.restore(in: &conversation)
+                        }
+                        if consumesDraft, AgentChatDraftContents(conversation) != AgentChatDraftContents(message),
                             !conversation.queuedMessages.contains(where: { $0.id == message.id })
                         {
                             conversation.queuedMessages.append(message)
@@ -286,6 +330,14 @@ extension AgentChatController {
                 if consumesDraft { self.pendingDraftConsumption[conversationID] = message.id }
                 try await self.saveNow()
                 guard self.connectionID == connectionID, !Task.isCancelled else { return }
+                if consumesDraft {
+                    self.update(in: conversationID) { conversation in
+                        draftBeforeConsumption = AgentChatDraftContents(conversation)
+                        self.consumeDraft(message, from: &conversation)
+                        draftAfterConsumption = AgentChatDraftContents(conversation)
+                    }
+                }
+                self.pendingDraftConsumption.removeValue(forKey: conversationID)
                 let thread: String
                 var params = try self.threadParameters(selected, configuration: self.executions[conversationID]?.configuration ?? [:])
                 if let existing = selected.threadID {
@@ -333,13 +385,12 @@ extension AgentChatController {
                         self.executions[conversationID]?.turnID == expectedTurnID
                     else { throw CancellationError() }
                 }
-                // The durable archive already contains this exact pending input.
-                // Only an actual delivery attempt consumes the live draft.
+                // The validated message and fresh draft are already durable.
+                // This boundary distinguishes a delivery attempt from a known
+                // setup failure, which restores input without resending it.
                 self.update(in: conversationID) {
                     if $0.title.isEmpty { $0.title = String(message.text.prefix(70)) }
-                    if consumesDraft { self.consumeDraft(message, from: &$0) }
                 }
-                self.pendingDraftConsumption.removeValue(forKey: conversationID)
                 receipt = .unconfirmed
                 self.persist()
                 if let expectedTurnID {
@@ -755,9 +806,18 @@ extension AgentChatController {
         }
     }
 
-    func confirmContinueAfterUncertainDelivery() {
-        guard !isBusy else { return }
-        update { conversation in
+    var uncertainDeliveryTarget: AgentChatDeliveryRecoveryTarget? {
+        guard let selectedID, !isBusy(in: selectedID),
+            let messageID = conversation(selectedID)?.pendingMessageID
+        else { return nil }
+        return .init(conversationID: selectedID, messageID: messageID)
+    }
+
+    func confirmContinueAfterUncertainDelivery(_ target: AgentChatDeliveryRecoveryTarget) {
+        guard selectedID == target.conversationID, !isBusy(in: target.conversationID),
+            conversation(target.conversationID)?.pendingMessageID == target.messageID
+        else { return }
+        update(in: target.conversationID) { conversation in
             if let pending = conversation.pendingMessageID {
                 for index in conversation.messages.indices where conversation.messages[index].asyncQuestion?.pendingMessageID == pending {
                     conversation.messages[index].asyncQuestion?.continuedAfterUncertainty = true
@@ -765,7 +825,7 @@ extension AgentChatController {
             }
             conversation.pendingMessageID = nil
         }
-        if let selectedID { executions[selectedID]?.error = nil }
+        executions[target.conversationID]?.error = nil
         persist()  // Deliberately never resends the uncertain message.
     }
 
@@ -926,6 +986,7 @@ extension AgentChatController {
 
     func closeConnection(retainingAutomaticConnection: Bool, forSettingsRenewal: Bool = false) async {
         if !forSettingsRenewal { cancelSettingsRenewal() }
+        cancelRuntimeRefresh()
         if !retainingAutomaticConnection {
             automaticConnection = false
             reconnectTask?.cancel()

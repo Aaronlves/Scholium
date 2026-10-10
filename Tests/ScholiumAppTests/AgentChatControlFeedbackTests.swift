@@ -8,8 +8,13 @@ import Testing
 @Suite("Chat control feedback", .serialized)
 @MainActor
 struct AgentChatControlFeedbackTests {
-    @Test("Composer menus and buttons have equal, nonoverlapping pointer regions")
-    func composerPointerRegions() async throws {
+    @Test(
+        "Composer menus and buttons have equal, nonoverlapping pointer regions",
+        arguments: [
+            (AgentChatPermission.ask, "en"), (AgentChatPermission.fullAccess, "en"),
+            (AgentChatPermission.ask, "zh-Hans"), (AgentChatPermission.fullAccess, "zh-Hans"),
+        ])
+    func composerPointerRegions(permission: AgentChatPermission, language: String) async throws {
         let geometry = ControlGeometryFixture()
         let content = HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Menu {
@@ -20,19 +25,25 @@ struct AgentChatControlFeedbackTests {
             }
             .scholiumContentActionMenu().menuIndicator(.hidden).agentChatComposerControl()
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[0] = $0 }
-            AgentChatContextMeter(usage: nil, open: {})
+            AgentChatPermissionMenu(permission: permission, isEnabled: true, select: { _ in })
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[4] = $0 }
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+            AgentChatContextMeter(usage: .init(lastTurnTokens: 2000, totalTokens: 2000, capacity: 8000), open: {})
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[1] = $0 }
             AgentChatConfigurationMenu(
                 models: [], preferences: .init(), selectedModel: nil,
-                permission: .ask, isEnabled: true, canSelectModel: false,
-                selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in }
+                isEnabled: true, canSelectModel: false,
+                selectModel: { _ in }, selectEffort: { _ in }, selectWebSearch: { _ in }
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[2] = $0 }
             AgentChatComposerActionButton(
                 state: .ready, hasInput: true, canSend: true, queuesInput: false, submit: {}, stop: {}
             )
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("controls")) }) { geometry.frames[3] = $0 }
-        }.coordinateSpace(name: "controls").padding().frame(width: 220, height: 80)
+        }.coordinateSpace(name: "controls")
+            .padding(ScholiumSidebarLayout.edgeInset + ScholiumSidebarLayout.rowInset)
+            .frame(width: ScholiumMetrics.Library.minimumReadableWidth, height: 80)
+            .environment(\.locale, Locale(identifier: language))
         let host = NSHostingView(rootView: content)
         let window = makeWindow(host)
         defer {
@@ -41,10 +52,72 @@ struct AgentChatControlFeedbackTests {
         }
         try await settle(host, window: window)
         #expect(!descendants(host).contains { $0 is ScholiumPointerTrackingView }, "Native controls must have no competing pointer-state owner")
-        try #require(geometry.frames.count == 4)
+        try #require(geometry.frames.count == 5)
         let frames = geometry.frames.values.sorted { $0.minX < $1.minX }
         for (left, right) in zip(frames, frames.dropFirst()) { #expect(left.maxX <= right.minX) }
         for frame in frames { #expect(frame.width >= 28 && frame.height >= 28) }
+        let centers = frames.map(\.midY)
+        #expect((centers.max() ?? 0) - (centers.min() ?? 0) < 1)
+        #expect(frames.allSatisfy { $0.maxX <= host.bounds.width })
+        for index in 0..<3 { #expect(geometry.frames[index]?.width == 28) }
+        #expect(geometry.frames[3]?.width == ScholiumMetrics.AgentChat.composerPrimaryControlTarget)
+    }
+
+    @Test("Unreported context has no button or empty control slot")
+    func unavailableContextIsAbsent() {
+        let absent = NSHostingView(rootView: AgentChatContextMeter(usage: nil, open: {}))
+        #expect(absent.fittingSize == .zero)
+        let unknownCapacity = NSHostingView(
+            rootView: AgentChatContextMeter(
+                usage: .init(lastTurnTokens: 2000, totalTokens: 2000, capacity: nil), open: {}))
+        #expect(unknownCapacity.fittingSize == .zero)
+        let reported = NSHostingView(
+            rootView: AgentChatContextMeter(
+                usage: .init(lastTurnTokens: 0, totalTokens: 0, capacity: 8000), open: {}))
+        #expect(reported.fittingSize.width >= 28 && reported.fittingSize.height >= 28)
+    }
+
+    @Test("The send circle and the nearest input corner have the same center")
+    func concentricSendAndInputCorner() async throws {
+        let geometry = ControlGeometryFixture()
+        let dock = AgentChatInputDock(
+            requestID: nil, requestTitle: "", requestCount: 0, isActive: true,
+            isReadingHistory: false, isEditingDraft: false, composerIsFocused: .constant(false),
+            request: { EmptyView() },
+            composer: {
+                AgentChatComposerLayout(
+                    hasPreparedContent: false, prepared: { EmptyView() },
+                    input: { _ in Text("Synthetic draft").frame(height: 40) },
+                    controls: {
+                        HStack {
+                            Spacer(minLength: 0)
+                            AgentChatComposerActionButton(
+                                state: .ready, hasInput: true, canSend: true, queuesInput: false,
+                                submit: {}, stop: {}
+                            )
+                            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("dock")) }) {
+                                geometry.frames[1] = $0
+                            }
+                        }
+                    })
+            }
+        )
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("dock")) }) { geometry.frames[0] = $0 }
+        .coordinateSpace(name: "dock")
+        .frame(width: ScholiumMetrics.Library.minimumReadableWidth)
+        let host = NSHostingView(rootView: dock)
+        let window = makeWindow(host)
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        try await settle(host, window: window)
+        let shell = try #require(geometry.frames[0])
+        let action = try #require(geometry.frames[1])
+        let radius = ScholiumMetrics.AgentChat.composerCornerRadius
+        #expect(abs(shell.maxX - radius - action.midX) < 1)
+        #expect(abs(shell.maxY - radius - action.midY) < 1)
+        #expect(action.width >= ScholiumMetrics.AgentChat.composerPrimaryVisualDiameter)
     }
 
     @Test("Unboxed content commands retain their geometry and distinguish availability")

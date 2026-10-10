@@ -6,6 +6,7 @@ import SwiftUI
 struct AgentChatConnectionStatus: View {
     @ObservedObject var controller: AgentChatController
     @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
+    var messageID: String? = nil
     @Environment(\.openSettings) private var openSettings
     @State private var showsDetails = false
 
@@ -44,9 +45,11 @@ struct AgentChatConnectionStatus: View {
         return controller.selectedID.flatMap { controller.executions[$0]?.error }
     }
     private var executionRecovery: AgentChatExecutionRecovery? {
+        let stored = controller.selectedID.flatMap { controller.executions[$0]?.recovery }
+        if let stored, stored != .deliveryUnconfirmed, !queueRecoveryIsResolved { return stored }
         if controller.selected?.pendingMessageID != nil, !controller.isBusy { return .deliveryUnconfirmed }
         if queueRecoveryIsResolved { return nil }
-        return controller.selectedID.flatMap { controller.executions[$0]?.recovery }
+        return stored
     }
     private var queueRecoveryIsResolved: Bool {
         guard controller.selectedID.flatMap({ controller.executions[$0]?.recovery }) == .queuedInputBlocked else { return false }
@@ -78,6 +81,26 @@ struct AgentChatConnectionStatus: View {
     }
 
     var statuses: [Status] {
+        if let messageID {
+            guard let conversation = controller.selected,
+                let message = conversation.messages.first(where: { $0.id == messageID }),
+                let delivery = AgentChatMessageDelivery.status(
+                    for: message, pendingMessageID: conversation.pendingMessageID,
+                    sendingMessageID: controller.executions[conversation.id]?.sendingMessageID)
+            else { return [] }
+            switch delivery {
+            case .sending:
+                return [Status(id: "delivery", title: ScholiumL10n.string("Sending…"), isProgress: true)]
+            case .unconfirmed:
+                return [
+                    Status(
+                        id: "delivery", title: AgentChatExecutionRecovery.deliveryUnconfirmed.title,
+                        explanation: AgentChatExecutionRecovery.deliveryUnconfirmed.explanation,
+                        error: controller.executions[conversation.id]?.recovery == .deliveryUnconfirmed ? executionError : nil,
+                        actions: controller.isBusy ? [] : [.continueWithoutResending])
+                ]
+            }
+        }
         if !controller.isLoaded {
             guard let error = controller.localHistoryError else { return [] }
             return [
@@ -137,6 +160,15 @@ struct AgentChatConnectionStatus: View {
                     id: "skills", title: ScholiumL10n.string("Skills Could Not Be Loaded"),
                     error: error, actions: [.refreshSkills]))
         }
+        // Delivery follows its retained message; shared connection and save
+        // failures remain above the conversation.
+        if executionRecovery == .deliveryUnconfirmed,
+            controller.selectedID.flatMap({ controller.executions[$0]?.recovery }) == .deliveryUnconfirmed || executionError == nil,
+            let conversation = controller.selected,
+            conversation.messages.contains(where: { $0.id == conversation.pendingMessageID && $0.role == .user })
+        {
+            result.removeAll { $0.id == "execution" }
+        }
         return result
     }
 
@@ -146,17 +178,19 @@ struct AgentChatConnectionStatus: View {
             let actions = primary.actions
             let visibleActions = directActions(for: primary, statuses: statuses)
             let hasDetails = primary.explanation != nil || statuses.count > 1 || statuses.contains { $0.error != nil }
-            VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
+            VStack(alignment: messageID == nil ? .leading : .trailing, spacing: ScholiumSidebarLayout.textSpacing) {
                 if !hasDetails, actions.count <= 1 {
                     HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                        if messageID != nil { Spacer(minLength: 0) }
                         statusTitle(primary)
-                        Spacer(minLength: ScholiumSidebarLayout.textSpacing)
+                        if messageID == nil { Spacer(minLength: ScholiumSidebarLayout.textSpacing) }
                         actionButtons(actions)
                     }
                 } else {
                     HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                        if messageID != nil { Spacer(minLength: 0) }
                         statusTitle(primary)
-                        Spacer(minLength: ScholiumSidebarLayout.textSpacing)
+                        if messageID == nil { Spacer(minLength: ScholiumSidebarLayout.textSpacing) }
                         Button {
                             showsDetails.toggle()
                         } label: {
@@ -180,12 +214,14 @@ struct AgentChatConnectionStatus: View {
             }
             .font(.callout)
             .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
-            .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
+            .padding(.horizontal, messageID == nil ? ScholiumSidebarLayout.edgeInset : 0)
             .padding(.top, ScholiumSidebarLayout.textSpacing)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(
-                primary.id == "localHistory"
-                    ? "scholium.chat.localHistoryFailure" : primary.id == "execution" ? "scholium.chat.executionRecovery" : "scholium.chat.connectionStatus"
+                primary.id == "delivery"
+                    ? "scholium.chat.messageDelivery"
+                    : primary.id == "localHistory"
+                        ? "scholium.chat.localHistoryFailure" : primary.id == "execution" ? "scholium.chat.executionRecovery" : "scholium.chat.connectionStatus"
             )
             .onChange(of: statuses.first?.id) { old, new in if old != new { showsDetails = false } }
             .onChange(of: controller.selectedID) { _, _ in showsDetails = false }
@@ -243,9 +279,10 @@ struct AgentChatConnectionStatus: View {
 
     private func actionButtons(_ actions: [Action]) -> some View {
         let stopRetryTarget = controller.stopRetryTarget
+        let deliveryTarget = controller.uncertainDeliveryTarget
         return ForEach(actions, id: \.self) { action in
-            Button(action.title) { perform(action, stopRetryTarget: stopRetryTarget) }
-                .disabled(!isEnabled(action))
+            Button(action.title) { perform(action, stopRetryTarget: stopRetryTarget, deliveryTarget: deliveryTarget) }
+                .disabled(!isEnabled(action) || (action == .continueWithoutResending && messageID != nil && deliveryTarget?.messageID != messageID))
                 .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
                 .accessibilityIdentifier(
                     action == .continueWithoutResending ? "scholium.chat.continueAfterUncertainDelivery" : "scholium.chat.status.\(action)")
@@ -265,7 +302,9 @@ struct AgentChatConnectionStatus: View {
         }
     }
 
-    private func perform(_ action: Action, stopRetryTarget: AgentChatStopRetryTarget?) {
+    private func perform(
+        _ action: Action, stopRetryTarget: AgentChatStopRetryTarget?, deliveryTarget: AgentChatDeliveryRecoveryTarget?
+    ) {
         switch action {
         case .retryLocalHistory: controller.retryLocalHistory()
         case .retryHistorySave: controller.retryHistorySave()
@@ -277,7 +316,8 @@ struct AgentChatConnectionStatus: View {
         case .retryHistory: controller.retryHistory()
         case .newConversation: controller.newConversation()
         case .refreshSkills: controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
-        case .continueWithoutResending: controller.confirmContinueAfterUncertainDelivery()
+        case .continueWithoutResending:
+            if let deliveryTarget { controller.confirmContinueAfterUncertainDelivery(deliveryTarget) }
         case .settings:
             SettingsNavigationRequest.reveal(.agentConnection)
             openSettings()

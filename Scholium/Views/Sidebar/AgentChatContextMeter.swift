@@ -7,14 +7,17 @@ struct AgentChatContextMeter: View {
     let open: () -> Void
 
     var body: some View {
-        Button(action: open) {
-            AgentChatComposerIcon(content: .context(AgentChatContextPresentation.fraction(usage)))
+        if let fraction = AgentChatContextPresentation.fraction(usage) {
+            Button(action: open) {
+                AgentChatComposerIcon(content: .context(fraction))
+                    .agentChatComposerControl()
+            }
+            .buttonStyle(ScholiumContentActionButtonStyle())
+            .agentChatComposerControl()
+            .help(AgentChatContextPresentation.summary(usage))
+            .accessibilityLabel("Context Window")
+            .accessibilityValue(AgentChatContextPresentation.summary(usage))
+            .accessibilityIdentifier("scholium.chat.contextMeter")
         }
-        .buttonStyle(ScholiumContentActionButtonStyle())
-        .agentChatComposerControl()
-        .help(AgentChatContextPresentation.summary(usage))
-        .accessibilityLabel("Context Window")
-        .accessibilityValue(AgentChatContextPresentation.summary(usage))
-        .accessibilityIdentifier("scholium.chat.contextMeter")
     }
 }

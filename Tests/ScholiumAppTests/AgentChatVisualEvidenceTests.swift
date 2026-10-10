@@ -733,8 +733,8 @@ struct AgentChatVisualEvidenceTests {
             let content = VStack(alignment: .leading, spacing: 16) {
                 AgentChatConfigurationMenu(
                     models: [model], preferences: .init(model: "fixture", effort: "high"),
-                    selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
-                    selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in })
+                    selectedModel: model, isEnabled: true, canSelectModel: true,
+                    selectModel: { _ in }, selectEffort: { _ in }, selectWebSearch: { _ in })
                 AgentChatPlanView(plan: plan)
                 AgentChatActivityText(text: "已读取笔记 · 行动理由.md")
                 AgentChatActivityText(text: "正在检索知识库 · 实践理性与行动理由之间的关系")
@@ -793,13 +793,14 @@ struct AgentChatVisualEvidenceTests {
                         }
                         .scholiumContentActionMenu()
                         .agentChatComposerControl()
+                        AgentChatPermissionMenu(permission: .fullAccess, isEnabled: true, select: { _ in })
+                        Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
                         AgentChatContextMeter(usage: usage, open: {})
                         AgentChatConfigurationMenu(
                             models: [model], preferences: .init(model: model.model, effort: effort),
-                            selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
-                            selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in },
+                            selectedModel: model, isEnabled: true, canSelectModel: true,
+                            selectModel: { _ in }, selectEffort: { _ in },
                             selectWebSearch: { _ in })
-                        Spacer(minLength: 0)
                         AgentChatComposerActionButton(
                             state: .ready, hasInput: true, canSend: true, queuesInput: false,
                             submit: {}, stop: {})
@@ -809,8 +810,8 @@ struct AgentChatVisualEvidenceTests {
                     .menuIndicator(.hidden)
                 }
                 .buttonStyle(.borderless)
-                .padding(ScholiumSidebarLayout.rowInset)
-                .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
+                .padding(ScholiumMetrics.AgentChat.composerContentInset)
+                .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: ScholiumMetrics.AgentChat.composerCornerRadius, style: .circular))
                 .padding(ScholiumSidebarLayout.edgeInset)
                 .frame(width: width)
                 .background(Color(nsColor: .windowBackgroundColor))

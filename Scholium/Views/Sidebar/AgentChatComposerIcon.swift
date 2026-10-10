@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumContracts
 import SwiftUI
 
 /// Image labels survive native Menu hosting without a second overlay or
@@ -10,8 +11,9 @@ struct AgentChatComposerIcon: View {
 
     enum Content {
         case add
-        case context(Double?)
+        case context(Double)
         case reasoning(Double)
+        case permission(AgentChatPermission)
         case action(String)
     }
 
@@ -26,7 +28,13 @@ struct AgentChatComposerIcon: View {
             .accessibilityHidden(true)
     }
 
-    private var diameter: CGFloat { ScholiumMetrics.AgentChat.composerControlVisualDiameter }
+    private var diameter: CGFloat {
+        switch content {
+        case .add: ScholiumMetrics.AgentChat.composerAddVisualDiameter
+        case .action: ScholiumMetrics.AgentChat.composerPrimaryVisualDiameter
+        case .context, .reasoning, .permission: ScholiumMetrics.AgentChat.composerControlVisualDiameter
+        }
+    }
 
     private var image: Image {
         switch content {
@@ -36,6 +44,8 @@ struct AgentChatComposerIcon: View {
             Image(nsImage: indicatorImage)
         case .action(let symbol):
             Image(systemName: symbol)
+        case .permission(let permission):
+            Image(systemName: permission == .fullAccess ? "exclamationmark.shield.fill" : "shield")
         }
     }
 
@@ -43,12 +53,13 @@ struct AgentChatComposerIcon: View {
         if case .action = content {
             return Color(nsColor: isEnabled ? .controlAccentColor : .disabledControlTextColor)
         }
+        if case .permission(.fullAccess) = content { return .red }
         return Color(nsColor: isEnabled ? .secondaryLabelColor : .disabledControlTextColor)
     }
 
     private var addImage: NSImage {
         let symbol = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: diameter, weight: .light))
+            .withSymbolConfiguration(.init(pointSize: diameter, weight: .regular))
         let image = NSImage(size: NSSize(width: diameter, height: diameter), flipped: false) { rect in
             if let symbol {
                 // SF Symbols include typographic ascent/descent padding.
@@ -57,10 +68,7 @@ struct AgentChatComposerIcon: View {
                 let source = CGRect(
                     x: (symbol.size.width - side) / 2,
                     y: symbol.alignmentRect.midY - side / 2, width: side, height: side)
-                // The open cross needs less optical span than the circular controls.
-                // Scaling its ink together also lightens the stroke without changing the hit target.
-                let inset = (rect.width - ScholiumGrid.Dimension.iconTrackWidth) / 2
-                symbol.draw(in: rect.insetBy(dx: inset, dy: inset), from: source, operation: .sourceOver, fraction: 1)
+                symbol.draw(in: rect, from: source, operation: .sourceOver, fraction: 1)
             }
             return true
         }
@@ -93,16 +101,11 @@ struct AgentChatComposerIcon: View {
                 }
 
                 switch content {
-                case .add, .action: break
+                case .add, .action, .permission: break
                 case .context(let fraction):
                     arc(from: -.pi / 2, through: .pi * 2, color: .tertiaryLabelColor)
-                    if let fraction {
-                        if fraction > 0 {
-                            arc(from: -.pi / 2, through: .pi * 2 * min(max(fraction, 0), 1), color: .secondaryLabelColor)
-                        }
-                    } else {
-                        context.setLineDash(phase: 0, lengths: [width, width * 2])
-                        arc(from: -.pi / 2, through: .pi * 2, color: .secondaryLabelColor)
+                    if fraction > 0 {
+                        arc(from: -.pi / 2, through: .pi * 2 * min(max(fraction, 0), 1), color: .secondaryLabelColor)
                     }
                 case .reasoning(let level):
                     // Center the visible open arc's bounding box, not its missing
@@ -138,11 +141,9 @@ struct AgentChatComposerIcon: View {
 extension View {
     /// Put this inside a Menu label as well as on the control so its native
     /// button-style activation includes the whitespace around the glyph.
-    func agentChatComposerControl() -> some View {
-        frame(
-            width: ScholiumGrid.Dimension.preferredCustomTarget,
-            height: ScholiumGrid.Dimension.preferredCustomTarget
-        )
-        .contentShape(.rect)
+    func agentChatComposerControl(primary: Bool = false) -> some View {
+        let target = primary ? ScholiumMetrics.AgentChat.composerPrimaryControlTarget : ScholiumGrid.Dimension.preferredCustomTarget
+        return frame(width: target, height: target)
+            .contentShape(.rect)
     }
 }

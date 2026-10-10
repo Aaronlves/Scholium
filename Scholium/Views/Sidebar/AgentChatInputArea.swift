@@ -14,7 +14,7 @@ struct AgentChatInputAreaLimits: Equatable {
 
     static func fitting(
         viewportHeight: CGFloat?, hasQueue: Bool, hasPreparedContent: Bool,
-        hasFooterStatus: Bool, lineHeight: CGFloat
+        lineHeight: CGFloat
     ) -> Self {
         guard let viewportHeight, viewportHeight.isFinite else { return .unconstrained }
         let availableHeight = max(0, viewportHeight)
@@ -28,7 +28,7 @@ struct AgentChatInputAreaLimits: Equatable {
         // the existing padding and control rows before proposing scroll sizes.
         let chrome =
             2 * ScholiumSidebarLayout.edgeInset + 2 * ScholiumSidebarLayout.rowInset
-            + target + 2 * gap + (hasFooterStatus ? lineHeight + gap : 0)
+            + ScholiumMetrics.AgentChat.composerPrimaryControlTarget + 2 * gap
         let queueChrome = hasQueue ? target + 12 + gap : 0
         let minimumQueue = hasQueue ? target + scrollPadding : 0
         let minimumHeight = chrome + queueChrome + minimumQueue + minimumEditor + minimumPreparation
@@ -47,7 +47,7 @@ struct AgentChatInputAreaLimits: Equatable {
             queueMaximumHeight: hasQueue ? queueHeight : nil,
             // Approvals may reflow their action row. Keep that extra native
             // control row outside the scrolling request body.
-            requestMaximumHeight: max(target, min(240, contentHeight - queueHeight - target)),
+            requestMaximumHeight: max(target, min(240, contentHeight - queueHeight - ScholiumMetrics.AgentChat.composerPrimaryControlTarget)),
             preparationMaximumHeight: hasPreparedContent ? max(minimumPreparation, inputHeight - editorHeight) : nil,
             editorMaximumHeight: editorHeight)
     }
@@ -79,7 +79,6 @@ struct AgentChatInputArea<Queue: View, Input: View, Candidates: View>: View {
     let hasQueue: Bool
     var viewportHeight: CGFloat? = nil
     var hasPreparedContent = false
-    var hasFooterStatus = false
     @ViewBuilder let queue: () -> Queue
     @ViewBuilder let input: () -> Input
     @ViewBuilder let candidates: () -> Candidates
@@ -90,7 +89,7 @@ struct AgentChatInputArea<Queue: View, Input: View, Candidates: View>: View {
     private var limits: AgentChatInputAreaLimits {
         .fitting(
             viewportHeight: viewportHeight, hasQueue: hasQueue,
-            hasPreparedContent: hasPreparedContent, hasFooterStatus: hasFooterStatus,
+            hasPreparedContent: hasPreparedContent,
             lineHeight: lineHeight)
     }
 

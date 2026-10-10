@@ -158,9 +158,14 @@ enum ScholiumMetrics {
     }
 
     enum AgentChat {
-        /// Composer controls keep a larger activation target while their
-        /// visible silhouettes share one compact optical diameter.
+        /// Activation targets remain larger than the optically balanced glyphs.
         static let composerControlVisualDiameter = ScholiumGrid.foundationUnit * 4.5
+        static let composerAddVisualDiameter = ScholiumGrid.foundationUnit * 4
+        static let composerPrimaryVisualDiameter = ScholiumGrid.foundationUnit * 7.5
+        static let composerPrimaryControlTarget = ScholiumGrid.foundationUnit * 8
+        static let composerContentInset = ScholiumGrid.Spacing.nestedContentInset
+        // The trailing action and the nearest shell corner share their center.
+        static let composerCornerRadius = composerContentInset + composerPrimaryControlTarget / 2
         static let composerControlStrokeWidth = ScholiumGrid.foundationUnit * 0.375
         static let materialTitleMaximumWidth = ScholiumGrid.foundationUnit * 35
     }

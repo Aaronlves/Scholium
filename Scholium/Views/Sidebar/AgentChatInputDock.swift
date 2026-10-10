@@ -80,12 +80,12 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
                 .focused($requestHasFocus)
         }
         .buttonStyle(ScholiumContentActionButtonStyle())
-        .padding(ScholiumSidebarLayout.rowInset)
+        .padding(ScholiumMetrics.AgentChat.composerContentInset)
         // Scope the resize and crossfade to this shell in both directions.
         // Resolution changes `expanded` before receive() restores draft focus;
         // animating only receive() misses that outgoing request transition.
         .animation(presentationAnimation, value: expanded)
-        .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
+        .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: ScholiumMetrics.AgentChat.composerCornerRadius, style: .circular))
         .tint(nil as Color?)
         .onChange(of: requestID, initial: true) { _, id in
             let restoreDraft = presentation.receive(id, mayExpand: mayExpandRequest)

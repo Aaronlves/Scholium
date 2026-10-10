@@ -17,6 +17,8 @@ struct AgentChatReadReply: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @StateObject private var renderer = AgentChatReplyProjection()
+    @State private var readerProjection: AgentChatReplyProjection.Snapshot?
+    @State private var hasHydratedReader = false
     @State private var ready = false
     @State private var hasMeasuredLayout = false
     @State private var height = ScholiumChatAppearance.messageLoadingHeight
@@ -35,9 +37,11 @@ struct AgentChatReadReply: View {
                     Button("Retry") {
                         self.failure = nil
                         ready = false
+                        hasMeasuredLayout = false
+                        hasHydratedReader = false
                     }
                 }
-            } else if let projection = renderer.snapshot {
+            } else if let projection = readerProjection {
                 // Keep the readable native projection as the row's geometry until
                 // the dedicated reader has reported both a loaded page and its
                 // actual height. Mounting WebKit at the one-line loading height
@@ -49,10 +53,14 @@ struct AgentChatReadReply: View {
                         source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
                         onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
                         renderingReadinessIsAcknowledged: ready,
-                        onRenderingFailure: { failure = $0 },
+                        onRenderingFailure: {
+                            failure = $0
+                            hasHydratedReader = false
+                        },
                         onRenderingLoading: {
                             ready = false
                             hasMeasuredLayout = false
+                            hasHydratedReader = false
                         },
                         onRenderingReady: { ready = true },
                         onEvent: { receive($0, expectedSource: projection.document.rawContent) }
@@ -102,7 +110,7 @@ struct AgentChatReadReply: View {
         // a retained reader must stay mounted while its source streams forward.
         .preference(
             key: AgentChatReplyReadyPreference.self,
-            value: ready || failure != nil || renderer.snapshot == nil
+            value: ready || failure != nil || readerProjection == nil
         )
         .preference(
             key: AgentChatReplyHydrationPreference.self,
@@ -111,6 +119,22 @@ struct AgentChatReadReply: View {
         .onDisappear {
             preview.close()
             renderer.cancel()
+            hasHydratedReader = false
+        }
+        .onChange(of: renderer.snapshot?.document.fingerprint, initial: true) { _, _ in
+            // Keep the first safe projection stable through navigation, bundled
+            // runtime setup and layout measurement. Streamed snapshots continue
+            // parsing/coalescing off the UI actor, but cannot restart this page
+            // or invalidate its fingerprint-bound initialization messages.
+            if readerProjection == nil || hasHydratedReader {
+                readerProjection = renderer.snapshot
+            }
+        }
+        .onChange(of: ready && hasMeasuredLayout) { _, hydrated in
+            if hydrated {
+                hasHydratedReader = true
+                readerProjection = renderer.snapshot
+            }
         }
         .onChange(of: isEnabled) { _, enabled in if !enabled { preview.close() } }
         .task(id: source) {
@@ -119,7 +143,7 @@ struct AgentChatReadReply: View {
             // Source revisions reconcile inside the retained page. Its measured
             // prefix stays readable while the next projection is prepared;
             // navigation or a replacement (not an append) invalidates readiness.
-            if let displayed = renderer.snapshot?.document.rawContent, !source.hasPrefix(displayed) {
+            if let displayed = readerProjection?.document.rawContent, !source.hasPrefix(displayed) {
                 ready = false
                 hasMeasuredLayout = false
             }
@@ -152,14 +176,14 @@ struct AgentChatReadReply: View {
     }
 
     private func receive(_ event: ReadReplyEvent, expectedSource: String) {
-        guard expectedSource == renderer.snapshot?.document.rawContent else { return }
+        guard expectedSource == readerProjection?.document.rawContent else { return }
         switch event {
         case .interaction: readingInteraction()
         case .layout(let value, let width, let objects):
             height = value
             hasMeasuredLayout = true
             intrinsicWidth = width
-            self.objects = objects.filter { renderer.snapshot?.objects[$0.id] != nil }
+            self.objects = objects.filter { readerProjection?.objects[$0.id] != nil }
             objectsSource = expectedSource
         case .quote(let text):
             guard expectedSource == source else { return }
@@ -201,7 +225,7 @@ struct AgentChatReadReply: View {
     }
 
     private func objectContent(_ id: String, expectedSource: String) -> RenderedMarkdownObject? {
-        guard expectedSource == source, let snapshot = renderer.snapshot,
+        guard expectedSource == source, let snapshot = readerProjection,
             expectedSource == snapshot.document.rawContent
         else { return nil }
         return snapshot.objects[id]

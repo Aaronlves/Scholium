@@ -149,7 +149,9 @@ struct AgentChatConversationDetailView: View {
                 }
                 Divider()
                 Button("Account Usage") { openAccountUsage() }
-                if pendingRequest != nil || controller.pendingAsyncQuestion != nil || controller.selected?.isAvailable == false {
+                if pendingRequest != nil || controller.pendingAsyncQuestion != nil || controller.selected?.isAvailable == false
+                    || AgentChatContextPresentation.fraction(controller.selected?.contextUsage) == nil
+                {
                     Button("Context Window") { presentation.contextAnchor = .conversation }
                 }
                 Button("Diagnostics…") {
@@ -570,6 +572,11 @@ struct AgentChatConversationDetailView: View {
                     isVisible: isVisible)
             }
             messageView(message)
+            if message.role == .user {
+                AgentChatConnectionStatus(
+                    controller: controller, diagnosticsPresentation: $diagnosticsPresentation,
+                    messageID: message.id)
+            }
             if message.role == .user && projection.carriesTurnStatus(item) {
                 let status = turnPresentation(message.turnID, projection: projection)
                 AgentChatTurnStatus(
@@ -1157,7 +1164,8 @@ struct AgentChatConversationDetailView: View {
         case .manageMethods:
             SettingsNavigationRequest.reveal(.agentSkills)
             openSettings()
-        case .context: presentation.contextAnchor = .composer
+        case .context:
+            presentation.contextAnchor = AgentChatContextPresentation.fraction(controller.selected?.contextUsage) == nil ? .conversation : .composer
         case .usage: openAccountUsage()
         case .find:
             openFind()
@@ -1216,8 +1224,7 @@ struct AgentChatConversationDetailView: View {
         let turnID = controller.currentTurnID
         return AgentChatInputArea(
             hasQueue: !controller.queuedMessages.isEmpty, viewportHeight: viewportHeight,
-            hasPreparedContent: hasPreparedComposerContent,
-            hasFooterStatus: controller.selected?.permission == .fullAccess
+            hasPreparedContent: hasPreparedComposerContent
         ) {
             AgentChatQueueView(
                 messages: controller.queuedMessages,
@@ -1277,6 +1284,7 @@ struct AgentChatConversationDetailView: View {
     private var composerBlockReason: String? {
         guard let conversation = controller.selected,
             !conversation.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            conversation.pendingMessageID == nil,
             !controller.preparingMaterials.contains(conversation.id),
             let reason = controller.sendBlockReason(message: controller.draftMessage(conversation), in: conversation),
             reason != controller.materialInputIssue && reason != controller.materialErrors[conversation.id],
@@ -1437,78 +1445,77 @@ struct AgentChatConversationDetailView: View {
 
     private var composerControls: some View {
         let conversationID = nativeSession.conversationID
-        return VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Menu {
-                    Button("Choose File…") { chooseFiles() }
-                        .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
-                    Button {
-                        if isCurrentConversation, let conversationID { presentation.notePickerTarget = .init(id: conversationID) }
-                    } label: {
-                        Text("Choose Note…", bundle: .module)
-                    }
-                    .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
-                    Button("Add Selection to Chat") {
-                        guard isCurrentConversation, let conversationID else { return }
-                        Task { @MainActor in
-                            if await addSelection(conversationID), isCurrentConversation, isVisible { presentation.messageIsFocused = true }
-                        }
-                    }
-                    .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
-                    Divider()
-                    Button {
-                        if isCurrentConversation { presentation.completion.begin("$") }
-                    } label: {
-                        Text("Skills", bundle: .module)
-                    }
-                    Divider()
-                    Button {
-                        if isCurrentConversation { presentation.completion.begin("/") }
-                    } label: {
-                        Text("Commands", bundle: .module)
-                    }
+        return HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Menu {
+                Button("Choose File…") { chooseFiles() }
+                    .disabled(fileSelectionTask != nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
+                Button {
+                    if isCurrentConversation, let conversationID { presentation.notePickerTarget = .init(id: conversationID) }
                 } label: {
-                    AgentChatComposerIcon(content: .add)
-                        .agentChatComposerControl()
+                    Text("Choose Note…", bundle: .module)
                 }
-                .scholiumContentActionMenu()
-                .agentChatComposerControl()
-                .help("Add to Chat").accessibilityLabel("Add to Chat")
-                .accessibilityIdentifier("scholium.chat.addMaterial")
-                AgentChatContextMeter(usage: controller.selected?.contextUsage) { presentation.contextAnchor = .composer }
-                    .popover(isPresented: contextIsPresented(at: .composer), arrowEdge: .bottom) {
-                        contextPanel
+                .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
+                Button("Add Selection to Chat") {
+                    guard isCurrentConversation, let conversationID else { return }
+                    Task { @MainActor in
+                        if await addSelection(conversationID), isCurrentConversation, isVisible { presentation.messageIsFocused = true }
                     }
-                AgentChatConfigurationMenu(
-                    models: controller.models,
-                    preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
-                    selectedEffort: controller.selectedEffort,
-                    permission: controller.selected?.permission ?? .ask,
-                    isEnabled: isCurrentConversation && !controller.isBusy, canSelectModel: controller.account != nil,
-                    selectModel: { if isCurrentConversation { controller.setModel($0) } },
-                    selectEffort: { if isCurrentConversation { controller.setEffort($0) } },
-                    selectPermission: { if isCurrentConversation { controller.setPermission($0) } },
-                    selectWebSearch: { if isCurrentConversation { controller.setWebSearch($0) } }
-                )
-                Spacer(minLength: 0)
-                AgentChatComposerActionButton(
-                    state: controller.state,
-                    hasInput: controller.selected?.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-                    canSend: controller.canSend,
-                    queuesInput: inputBehavior == .queue,
-                    submit: {
-                        guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
-                        controller.submitDraft(whileWorking: inputBehavior)
-                    },
-                    stop: { if isCurrentConversation { controller.stop() } })
+                }
+                .disabled(conversationID == nil || conversationID.map { controller.preparingMaterials.contains($0) } == true)
+                Divider()
+                Button {
+                    if isCurrentConversation { presentation.completion.begin("$") }
+                } label: {
+                    Text("Skills", bundle: .module)
+                }
+                Divider()
+                Button {
+                    if isCurrentConversation { presentation.completion.begin("/") }
+                } label: {
+                    Text("Commands", bundle: .module)
+                }
+            } label: {
+                AgentChatComposerIcon(content: .add)
+                    .agentChatComposerControl()
             }
-            .controlSize(.regular)
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            if controller.selected?.permission == .fullAccess {
-                Text("Full Access").font(.caption).foregroundStyle(.secondary)
-                    .accessibilityLabel("Permission").accessibilityValue("Full Access")
+            .scholiumContentActionMenu()
+            .agentChatComposerControl()
+            .help("Add to Chat").accessibilityLabel("Add to Chat")
+            .accessibilityIdentifier("scholium.chat.addMaterial")
+            AgentChatPermissionMenu(
+                permission: controller.selected?.permission ?? .ask,
+                isEnabled: isCurrentConversation && !controller.isBusy,
+                select: { if isCurrentConversation { controller.setPermission($0) } })
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+            if AgentChatContextPresentation.fraction(controller.selected?.contextUsage) != nil {
+                AgentChatContextMeter(usage: controller.selected?.contextUsage) { presentation.contextAnchor = .composer }
+                    .popover(isPresented: contextIsPresented(at: .composer), arrowEdge: .bottom) { contextPanel }
             }
+            AgentChatConfigurationMenu(
+                models: controller.models,
+                preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
+                selectedEffort: controller.selectedEffort,
+                isEnabled: isCurrentConversation && !controller.isBusy, canSelectModel: controller.account != nil,
+                selectModel: { if isCurrentConversation { controller.setModel($0) } },
+                selectEffort: { if isCurrentConversation { controller.setEffort($0) } },
+                selectWebSearch: { if isCurrentConversation { controller.setWebSearch($0) } }
+            )
+            AgentChatComposerActionButton(
+                state: controller.state,
+                hasInput: controller.selected?.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                canSend: controller.canSend,
+                queuesInput: inputBehavior == .queue,
+                submit: {
+                    guard controller.selectedID == conversationID, presentation.completion.canSubmit(in: conversationID) else { return }
+                    controller.submitDraft(whileWorking: inputBehavior)
+                },
+                stop: { if isCurrentConversation { controller.stop() } })
+        }
+        .controlSize(.regular)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .onChange(of: AgentChatContextPresentation.fraction(controller.selected?.contextUsage) != nil) { _, available in
+            if !available, presentation.contextAnchor == .composer { presentation.contextAnchor = nil }
         }
     }
 

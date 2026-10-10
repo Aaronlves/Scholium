@@ -138,11 +138,11 @@ changed/unverifiable revisions discard old coordinates with a notice.
 
 ### Input, interactions and recovery
 
-Sending captures draft/materials and persists a write-ahead delivery projection
-while the current draft remains editable. Confirmed dispatch consumes only captured
-input. Known pre-dispatch failure removes provisional history; newer draft text
-survives. Attempted-but-uncertain delivery retains identity for explicit recovery,
-never automatic replay. Stop during preparation cancels without a runtime turn.
+Sending validates input and durably records pending messages before clearing
+captured drafts/materials. Pre-dispatch failure restores unchanged input and
+removes provisional history; newer drafts/materials survive with original input
+queued. Uncertain delivery retains identity for explicit recovery, never automatic
+replay. Stop during preparation cancels without a runtime turn.
 
 Steering binds the captured active turn; completion during preparation cannot
 silently convert it into a new start. Queue advancement occurs once after matching

@@ -201,11 +201,12 @@ reconciliation and explicit continuation, never automatic resend.
 
 ### 8.7.2 Models, context and account use
 
-Each conversation retains its selected model, reasoning effort and web-search
-mode. Runtime Default remains an explicit choice. Choices come from runtime
-capabilities rather than a hardcoded model list. Unavailable saved choices are
-visible and block dependent sending until resolved; they never silently select
-another model. Settings cannot change an already executing turn.
+Conversations retain runtime-reported model, reasoning effort and web-search
+choices, including Runtime Default. Unavailable saved choices stay
+visible and block sending without silent substitution. Settings cannot alter
+executing turns. Refresh Runtime requests authentication renewal and reloads
+account, models and defaults; failed reads retain models/defaults. Refresh
+preserves history, drafts and work without replay.
 
 A saved choice and its application to a loaded runtime are distinct. If a
 thread-static setting requires runtime renewal, retain the choice as pending

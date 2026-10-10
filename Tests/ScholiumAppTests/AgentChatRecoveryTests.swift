@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
+import SwiftUI
 import Testing
 
 @testable import ScholiumApp
@@ -144,6 +145,88 @@ struct AgentChatRecoveryTests {
         execution.report(.deliveryUnconfirmed, detail: "Fixture delivery failure")
         execution.error = nil
         #expect(execution.recovery == nil)
+    }
+
+    @Test("Delivery continuation binds its rendered conversation and message while preserving a newer draft")
+    func capturedDeliveryContinuation() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/delivery-target-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try await withController(root: root, triptychID: UUID()) { controller in
+            try #require(await controller.waitUntilLoaded())
+            controller.newConversation()
+            let owner = try #require(controller.selectedID)
+            let original = AgentChatMessage(id: "original", role: .user, text: "Unconfirmed original request")
+            controller.update {
+                $0.messages = [original]
+                $0.pendingMessageID = original.id
+                $0.draft = "Next unsent draft"
+            }
+            let captured = try #require(controller.uncertainDeliveryTarget)
+            controller.newConversation()
+            let other = try #require(controller.selectedID)
+            controller.update { $0.pendingMessageID = original.id }
+            controller.confirmContinueAfterUncertainDelivery(captured)
+            #expect(controller.conversation(other)?.pendingMessageID == original.id)
+            #expect(controller.conversation(owner)?.pendingMessageID == original.id)
+
+            controller.select(owner)
+            // A matching acknowledgement can clear the old pending input, and
+            // a later delivery can become uncertain before this action runs.
+            controller.update { $0.pendingMessageID = "later" }
+            controller.confirmContinueAfterUncertainDelivery(captured)
+            #expect(controller.selected?.pendingMessageID == "later")
+            let later = try #require(controller.uncertainDeliveryTarget)
+            controller.executions[owner]?.sendingMessageID = later.messageID
+            #expect(controller.uncertainDeliveryTarget == nil)
+            controller.confirmContinueAfterUncertainDelivery(later)
+            #expect(controller.selected?.pendingMessageID == later.messageID)
+            controller.executions[owner]?.sendingMessageID = nil
+            controller.executions[owner]?.report(.deliveryUnconfirmed, detail: "Fixture uncertainty")
+            controller.confirmContinueAfterUncertainDelivery(later)
+            #expect(controller.selected?.pendingMessageID == nil && controller.executions[owner]?.error == nil)
+            #expect(controller.selected?.draft == "Next unsent draft" && controller.selected?.messages == [original])
+            #expect(controller.conversation(other)?.pendingMessageID == original.id)
+            #expect(controller.runtime == nil)
+        }
+    }
+
+    @Test("Pending delivery keeps independent history failure and Retry in the conversation status")
+    func deliveryKeepsHistoryRecovery() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/delivery-history-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try await withController(root: root, triptychID: UUID()) { controller in
+            try #require(await controller.waitUntilLoaded())
+            controller.newConversation()
+            let owner = try #require(controller.selectedID)
+            let request = AgentChatMessage(id: "pending", role: .user, text: "Unconfirmed request")
+            controller.update {
+                $0.messages = [request]
+                $0.pendingMessageID = request.id
+            }
+            controller.executions[owner]?.report(.historyRefreshFailed, detail: "Fixture history failure")
+            let top = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let history = try #require(top.first { $0.id == "execution" })
+            #expect(history.title == AgentChatExecutionRecovery.historyRefreshFailed.title)
+            #expect(history.actions.contains(.retryHistory) && history.error == "Fixture history failure")
+            let delivery = AgentChatConnectionStatus(
+                controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+            ).statuses
+            #expect(delivery.count == 1 && delivery.first?.error == nil)
+            controller.executions[owner]?.report(.deliveryUnconfirmed, detail: "Fixture delivery failure")
+            #expect(
+                !AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil))
+                    .statuses.contains { $0.id == "execution" })
+            #expect(
+                AgentChatConnectionStatus(
+                    controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+                )
+                .statuses.first?.error == "Fixture delivery failure")
+            controller.update { $0.pendingMessageID = nil }
+            #expect(
+                AgentChatConnectionStatus(
+                    controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+                ).statuses.isEmpty)
+        }
     }
 
     private func withController(

@@ -96,6 +96,95 @@ extension AgentChatController {
         account = result.objectValue?["account"]?.objectValue?["type"]?.stringValue
     }
 
+    var canRefreshRuntime: Bool {
+        connectionState == .ready && !isRefreshingRuntime && !isRenewingSettings
+    }
+
+    /// Refresh managed sign-in before rediscovering models. This reads the
+    /// current process without renewing threads, interrupting work or replaying input.
+    func refreshRuntime(refreshToken: Bool = true) {
+        // Account events invalidate an in-flight snapshot. Coalesce them in the
+        // same operation rather than dropping the event or renewing auth again.
+        if !refreshToken { runtimeAccountRevision &+= 1 }
+        if canRefreshRuntime || !refreshToken {
+            // A read begun for the previous account cannot supply this refresh
+            // or prevent the newly verified account from reading its own usage.
+            quotaTask?.cancel()
+            quotaTask = nil
+            isRefreshingQuota = false
+        }
+        guard canRefreshRuntime, let runtime, let connection = connectionID else { return }
+        let refresh = UUID()
+        runtimeRefreshID = refresh
+        isRefreshingRuntime = true
+        runtimeRefreshError = nil
+        runtimeRefreshedAt = nil
+        runtimeRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.runtimeRefreshID == refresh {
+                    self.runtimeRefreshID = nil
+                    self.runtimeRefreshTask = nil
+                    self.isRefreshingRuntime = false
+                }
+            }
+            do {
+                var renewToken = refreshToken
+                while true {
+                    let accountRevision = self.runtimeAccountRevision
+                    do {
+                        let requestsTokenRenewal = renewToken
+                        renewToken = false
+                        let result = try await runtime.request(
+                            "account/read", params: ["refreshToken": .bool(requestsTokenRenewal)])
+                        guard self.connectionID == connection, !Task.isCancelled else { return }
+                        guard self.runtimeAccountRevision == accountRevision else { continue }
+                        guard let accountValue = result.objectValue?["account"],
+                            accountValue == .null || accountValue.objectValue?["type"]?.stringValue != nil
+                        else { throw CodexConnectionError.invalidMessage }
+                        self.readAccount(result)
+                        self.rememberConnectedAccount()
+                        if self.account != nil {
+                            self.refreshQuota()
+                        } else {
+                            self.quotaTask?.cancel()
+                            self.quotaTask = nil
+                            self.isRefreshingQuota = false
+                            self.quotas = []
+                            self.quotaError = nil
+                        }
+                        let models = try await runtime.chatModels()
+                        let defaults = try await runtime.chatDefaults()
+                        guard self.connectionID == connection, !Task.isCancelled else { return }
+                        guard self.runtimeAccountRevision == accountRevision else { continue }
+                        // Publish a complete catalog/defaults pair. A failed
+                        // read keeps it and every saved conversation choice.
+                        self.models = models
+                        self.runtimeDefaults = defaults
+                        self.runtimeRefreshedAt = .now
+                        return
+                    } catch {
+                        guard self.connectionID == connection, !Task.isCancelled else { return }
+                        if self.runtimeAccountRevision != accountRevision { continue }
+                        throw error
+                    }
+                }
+            } catch {
+                guard self.connectionID == connection, !Task.isCancelled else { return }
+                self.runtimeRefreshError = ScholiumErrorLocalization.message(error)
+            }
+        }
+    }
+
+    func cancelRuntimeRefresh() {
+        runtimeRefreshID = nil
+        runtimeRefreshTask?.cancel()
+        runtimeRefreshTask = nil
+        isRefreshingRuntime = false
+        runtimeRefreshError = nil
+        runtimeRefreshedAt = nil
+    }
+
     func rememberConnectedAccount() {
         if automaticConnection, account != nil {
             connectionDefaults.set(true, forKey: connectionIntentKey)
@@ -134,7 +223,7 @@ extension AgentChatController {
     }
 
     func login() {
-        guard let runtime, connectionState == .ready, !hasActiveExecutions else { return }
+        guard let runtime, connectionState == .ready, !hasActiveExecutions, !isRefreshingRuntime else { return }
         connectionError = nil
         let connectionID = connectionID
         connectionTask = Task { [weak self] in

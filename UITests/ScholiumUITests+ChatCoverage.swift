@@ -219,6 +219,33 @@ extension ScholiumUITests {
         create.click()
         let composer = app.textViews["scholium.chat.message"].firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let addMaterial = app.descendants(matching: .any)["scholium.chat.addMaterial"].firstMatch
+        let permission = app.descendants(matching: .any)["scholium.chat.permission"].firstMatch
+        let context = app.buttons["scholium.chat.contextMeter"].firstMatch
+        let model = app.descendants(matching: .any)["scholium.chat.configuration"].firstMatch
+        let delivery = app.buttons["scholium.chat.primaryAction"].firstMatch
+        let controls = [addMaterial, permission, model, delivery]
+        XCTAssertFalse(context.exists, "Unreported context capacity has no composer button.")
+        for control in controls { XCTAssertTrue(control.waitForExistence(timeout: 5)) }
+        for (left, right) in zip(controls, controls.dropFirst()) {
+            XCTAssertLessThanOrEqual(left.frame.maxX, right.frame.minX + 1)
+            XCTAssertEqual(left.frame.midY, right.frame.midY, accuracy: 2)
+        }
+        for control in [addMaterial, permission, model] {
+            XCTAssertEqual(control.frame.width, addMaterial.frame.width, accuracy: 2)
+            XCTAssertEqual(control.frame.height, addMaterial.frame.height, accuracy: 2)
+        }
+        XCTAssertFalse(delivery.isEnabled)
+        permission.click()
+        let fullAccess = app.menuItems["Full Access"].firstMatch
+        XCTAssertTrue(fullAccess.waitForExistence(timeout: 5))
+        fullAccess.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { permission.value as? String == "Full Access" || permission.label.contains("Full Access") })
+        XCTAssertGreaterThan(delivery.frame.width, addMaterial.frame.width)
+        let controlsImage = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        controlsImage.name = "Chat controls retain aligned targets and a named permission button"
+        controlsImage.lifetime = .keepAlways
+        add(controlsImage)
         let draft = "Synthetic unsent draft. 保留原文。\n\nA second paragraph. 尚待核对。\n"
         typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
         XCTAssertEqual(composer.value as? String, draft)

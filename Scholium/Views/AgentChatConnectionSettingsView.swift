@@ -24,6 +24,23 @@ struct AgentChatConnectionSettingsView: View {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     connectionActions
                 }
+                if controller.isRefreshingRuntime {
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        ProgressView().controlSize(.small)
+                        Text("Refreshing Runtime…", bundle: .module)
+                    }
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
+                } else if let error = controller.runtimeRefreshError {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Text("Runtime refresh failed. Try again.", bundle: .module)
+                        Text(error).textSelection(.enabled)
+                    }
+                    .foregroundStyle(.secondary)
+                } else if controller.runtimeRefreshedAt != nil {
+                    Text("Runtime information updated.", bundle: .module)
+                        .foregroundStyle(.secondary)
+                }
                 if let error = controller.error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
@@ -69,8 +86,16 @@ struct AgentChatConnectionSettingsView: View {
         } else {
             if controller.account == nil {
                 Button("Sign in with ChatGPT") { controller.login() }
-                    .disabled(controller.isBusy)
+                    .disabled(controller.isBusy || controller.isRefreshingRuntime)
             }
+            Button {
+                controller.refreshRuntime()
+            } label: {
+                Text("Refresh Runtime", bundle: .module)
+            }
+            .disabled(!controller.canRefreshRuntime)
+            .help(Text("Refresh account, available models, and usage without interrupting conversations.", bundle: .module))
+            .accessibilityIdentifier("scholium.settings.agent.refreshRuntime")
             Button("Disconnect") { Task { await controller.disconnectByUser() } }
         }
     }

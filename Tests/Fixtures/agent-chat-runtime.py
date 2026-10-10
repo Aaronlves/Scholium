@@ -26,6 +26,7 @@ pending_questions = {}
 pending_approvals = {}
 pending_child_reads = []
 pending_turn_acks = []
+pending_thread_preparations = []
 pending_interrupt_replies = []
 client_capabilities = {}
 tool_config_file = home / 'fixture-tool-config.json'
@@ -80,13 +81,31 @@ for line in sys.stdin:
     if method == 'initialize':
         client_capabilities = params.get('capabilities', {})
     elif method == 'account/read':
-        result = {'account': {'type': 'chatgpt'}}
+        (home / 'last-account-read.json').write_text(json.dumps(params))
+        reads = home / 'runtime-account-reads.json'
+        values = json.loads(reads.read_text()) if reads.exists() else []
+        reads.write_text(json.dumps(values + [params]))
+        if params.get('refreshToken'):
+            (home / 'runtime-account-refreshed').touch()
+        result = {'account': None if (home / 'runtime-signed-out').exists() else {'type': 'chatgpt'}}
     elif method == 'model/list':
+        if (home / 'hold-runtime-model-list').exists():
+            (home / 'pending-runtime-model-list').touch()
+            time.sleep(0.5)
+        if (home / 'fail-runtime-model-list').exists():
+            write({'id': request['id'], 'error': {'code': -32603, 'message': 'Fixture model catalog unavailable'}})
+            continue
         result = {'data': [{'id': 'fixture-picker', 'model': 'fixture-model',
             'displayName': 'Fixture Model', 'isDefault': True, 'hidden': False,
             'defaultReasoningEffort': 'medium', 'inputModalities': ['text', 'image'],
             'supportedReasoningEfforts': [{'reasoningEffort': e, 'description': e}
                 for e in ['low', 'medium', 'high']]}]}
+        catalog = home / 'runtime-model-catalog.json'
+        recovered = home / 'recovered-runtime-model-catalog.json'
+        if recovered.exists() and (home / 'runtime-account-refreshed').exists():
+            catalog = recovered
+        if catalog.exists():
+            result = json.loads(catalog.read_text())
     elif method == 'config/read':
         if (home / 'hold-capability-config-read').exists():
             (home / 'pending-capability-config-read').touch()
@@ -186,6 +205,14 @@ for line in sys.stdin:
         result = {'authorizationUrl': 'file:///fixture' if (home / 'unsafe-auth-url').exists()
             else 'https://auth.example.test/authorize?state=fixture'}
     elif method == 'account/rateLimits/read':
+        preparation_release = home / 'release-thread-preparation'
+        if preparation_release.exists():
+            succeeded = preparation_release.read_text() == 'success'
+            preparation_release.unlink()
+            for request_id, prepared in pending_thread_preparations:
+                write({'id': request_id, 'result': prepared} if succeeded else {
+                    'id': request_id, 'error': {'code': -32603, 'message': 'Fixture thread preparation failed'}})
+            pending_thread_preparations.clear()
         interrupt_release = home / 'release-interrupt-reply'
         if interrupt_release.exists():
             interrupt_succeeded = interrupt_release.read_text() == 'success'
@@ -253,6 +280,10 @@ for line in sys.stdin:
         result = {'thread': threads[tid]}
         (home / 'configuration.json').write_text(json.dumps(params))
         save()
+        if (home / 'hold-thread-preparation').exists():
+            (home / 'pending-thread-preparation').write_text(method)
+            pending_thread_preparations.append((request['id'], result))
+            continue
     elif method in ('thread/read', 'thread/resume'):
         thread = threads.get(params['threadId'])
         if thread is None or (home / 'missing-thread-history').exists():
@@ -300,6 +331,10 @@ for line in sys.stdin:
             if params['threadId'] not in loaded_threads:
                 (home / 'configuration.json').write_text(json.dumps(params))
                 loaded_threads.add(params['threadId'])
+            if (home / 'hold-thread-preparation').exists():
+                (home / 'pending-thread-preparation').write_text(method)
+                pending_thread_preparations.append((request['id'], result))
+                continue
     elif method == 'thread/turns/list':
         thread = threads[params['threadId']]
         offset = int(params.get('cursor') or '0')

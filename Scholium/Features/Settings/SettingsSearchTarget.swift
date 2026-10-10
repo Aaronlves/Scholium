@@ -134,8 +134,8 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ["External working text", "MCP working text", "外部工作文本", "MCP 工作文本"]),
             Self(
                 "agents.connection", .agentConnection, "Chat in Scholium",
-                ["Agents & Chat", "connect", "sign in", "Codex", "聊天", "智能体", "连接", "登录"],
-                aliases: ["Open Connection and Chat"]),
+                ["Agents & Chat", "connect", "sign in", "Codex", "refresh runtime", "subscription", "models", "聊天", "智能体", "连接", "登录", "刷新运行时", "订阅", "模型"],
+                aliases: ["Open Connection and Chat", "Refresh Runtime"]),
             Self(
                 "agents.behavior", .agentBehavior, "Return while Agent is working",
                 ["return", "queue", "steer", "send", "回车", "排队", "发送行为"]),

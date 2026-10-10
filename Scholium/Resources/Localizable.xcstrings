@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Sending…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Sending…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在发送…"}}}},
+    "Refresh Runtime": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refresh Runtime"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "刷新运行时"}}}},
+    "Refreshing Runtime…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refreshing Runtime…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在刷新运行时…"}}}},
+    "Runtime refresh failed. Try again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Runtime refresh failed. Try again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "运行时刷新失败。请重试。"}}}},
+    "Runtime information updated.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Runtime information updated."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "运行时信息已更新。"}}}},
+    "Refresh account, available models, and usage without interrupting conversations.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Refresh account, available models, and usage without interrupting conversations."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "刷新账户、可用模型和用量，同时保留正在进行的对话。"}}}},
     "The image could not be previewed. It may be unavailable or unsupported." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The image could not be previewed. It may be unavailable or unsupported."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法预览图片。文件可能不可用或格式不受支持。"}}}},
     "View Original Image" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "View Original Image"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "查看原图"}}}},
     "Agent Context Access — This Mac": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Agent Context Access — This Mac"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "智能体上下文访问 — 本机"}}}},

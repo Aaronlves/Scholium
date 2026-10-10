@@ -381,7 +381,7 @@ struct AgentChatTests {
             await controller.disconnect()
             #expect(controller.pendingAsyncQuestion?.asyncQuestion?.pendingMessageID != nil)
             let userCount = controller.selected?.messages.filter { $0.role == .user }.count
-            controller.confirmContinueAfterUncertainDelivery()
+            controller.confirmContinueAfterUncertainDelivery(try #require(controller.uncertainDeliveryTarget))
             #expect(controller.pendingAsyncQuestion == nil)
             #expect(controller.selected?.messages.first { $0.id == request.id }?.asyncQuestion?.responses.isEmpty == true)
             #expect(controller.selected?.messages.filter { $0.role == .user }.count == userCount)

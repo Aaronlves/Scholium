@@ -12,7 +12,7 @@ struct AgentChatInputAreaLayoutTests {
         let height: CGFloat = 420
         let limits = AgentChatInputAreaLimits.fitting(
             viewportHeight: height, hasQueue: true, hasPreparedContent: true,
-            hasFooterStatus: true, lineHeight: 20)
+            lineHeight: 20)
         let maximum = try #require(limits.maximumHeight)
         let reading = try #require(limits.reservedTranscriptHeight)
         let queue = try #require(limits.queueMaximumHeight)
@@ -32,7 +32,7 @@ struct AgentChatInputAreaLayoutTests {
     func tallViewportPreservesLocalCaps() throws {
         let limits = AgentChatInputAreaLimits.fitting(
             viewportHeight: 1_400, hasQueue: true, hasPreparedContent: false,
-            hasFooterStatus: false, lineHeight: 20)
+            lineHeight: 20)
         #expect(limits.queueMaximumHeight == 144)
         #expect(limits.requestMaximumHeight == 240)
         let editorMaximum = try #require(limits.editorMaximumHeight)
@@ -41,7 +41,7 @@ struct AgentChatInputAreaLayoutTests {
         #expect(limits.preparationMaximumHeight == nil)
         let unmounted = AgentChatInputAreaLimits.fitting(
             viewportHeight: nil, hasQueue: true, hasPreparedContent: true,
-            hasFooterStatus: false, lineHeight: 20)
+            lineHeight: 20)
         #expect(unmounted == .unconstrained)
     }
 

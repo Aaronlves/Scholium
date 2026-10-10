@@ -65,10 +65,10 @@ struct AgentChatComposerActionButton: View {
         Button(action: { perform(action) }) {
             AgentChatComposerIcon(content: .action(action.symbol))
                 .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
-                .agentChatComposerControl()
+                .agentChatComposerControl(primary: true)
         }
         .buttonStyle(ScholiumContentActionButtonStyle())
-        .agentChatComposerControl()
+        .agentChatComposerControl(primary: true)
         .disabled(!action.isEnabled(canSend: canSend))
         .help(help(for: action))
         .accessibilityLabel(action.label)

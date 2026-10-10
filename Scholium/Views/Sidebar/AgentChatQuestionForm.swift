@@ -115,10 +115,10 @@ struct AgentChatQuestionForm: View {
                 if !isSubmitting, let question = currentQuestion, question.options.isEmpty || question.allowsOther {
                     Button(action: advance) {
                         AgentChatComposerIcon(content: .action(questionIndex == questions.count - 1 ? "arrow.up.circle.fill" : "arrow.right.circle.fill"))
-                            .agentChatComposerControl()
+                            .agentChatComposerControl(primary: true)
                     }
                     .buttonStyle(ScholiumContentActionButtonStyle())
-                    .agentChatComposerControl()
+                    .agentChatComposerControl(primary: true)
                     .help(Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module))
                     .accessibilityLabel(Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module))
                     .disabled(!hasCustomAnswer || (questionIndex == questions.count - 1 && !canSubmit))
