@@ -24,7 +24,6 @@ oauth_request = None
 oauth_signed_in = False
 pending_questions = {}
 pending_approvals = {}
-pending_child_reads = []
 pending_turn_acks = []
 pending_thread_preparations = []
 pending_interrupt_replies = []
@@ -107,9 +106,6 @@ for line in sys.stdin:
         if catalog.exists():
             result = json.loads(catalog.read_text())
     elif method == 'config/read':
-        if (home / 'hold-capability-config-read').exists():
-            (home / 'pending-capability-config-read').touch()
-            time.sleep(0.5)
         config = tool_config()
         if config['version'] > 0 and (home / 'fail-config-read-after-write').exists():
             write({'id': request['id'], 'error': {'code': -32603, 'message': 'Fixture readback unavailable'}})
@@ -170,7 +166,6 @@ for line in sys.stdin:
             write({'id': request['id'], 'error': {'code': -32602, 'message': 'Fixture refused method roots'}})
             continue
         extra_roots = params['extraRoots']
-        (home / 'applied-roots.json').write_text(json.dumps(extra_roots))
     elif method == 'skills/config/write':
         flag = home / 'method-disabled'
         if params['enabled']:
@@ -251,9 +246,6 @@ for line in sys.stdin:
                             item.update(status='completed', exitCode=exit_code)
                             event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': item})
             save()
-        for request_id, response in pending_child_reads:
-            write({'id': request_id, 'result': response})
-        pending_child_reads.clear()
         if (home / 'resolve-approvals').exists():
             for rid, tid in list(pending_approvals.items()):
                 event('serverRequest/resolved', {'threadId': tid, 'requestId': rid})
@@ -290,15 +282,6 @@ for line in sys.stdin:
             write({'id': request['id'], 'error': {'code': -32600, 'message': 'thread not loaded: ' + params['threadId']}})
             continue
         if thread.get('parentThreadId'):
-            marker = home / 'complete-parent-before-input'
-            if marker.exists():
-                marker.unlink()
-                parent = threads[thread['parentThreadId']]
-                parent['turns'][-1]['status'] = 'completed'
-                event('turn/completed', {'threadId': parent['id'], 'turn': parent['turns'][-1]})
-                pending_child_reads.append((request['id'], {'thread': copy.deepcopy(thread)}))
-                save()
-                continue
             (home / 'child-read-count').write_text(str(int((home / 'child-read-count').read_text()) + 1) if (home / 'child-read-count').exists() else '1')
             if (home / 'hold-child-read').exists():
                 continue
@@ -323,8 +306,6 @@ for line in sys.stdin:
             result['thread']['status'] = {'type': 'active' if active else 'idle'}
         if (home / 'settings-runtime-active').exists():
             result['thread']['status'] = {'type': 'active'}
-        if thread.get('parentThreadId') and (home / 'unrelated-child-parent').exists():
-            result['thread']['parentThreadId'] = 'unrelated-runtime-parent'
         if thread.get('parentThreadId') and not params.get('includeTurns'):
             result['thread']['turns'] = []
         if method == 'thread/resume':

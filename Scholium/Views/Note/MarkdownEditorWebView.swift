@@ -792,7 +792,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                                 "label": candidate.label,
                                 "insertion": candidate.insertion,
                                 "detail": candidate.detail,
-                                "path": candidate.path,
                                 "availability": candidate.availability.rawValue,
                             ] as [String: Any]
                         if let action = candidate.writingAction { value["writingAction"] = action }

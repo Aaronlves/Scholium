@@ -76,7 +76,7 @@ extension WindowModel {
             },
             linkTarget: { [weak self] reference in
                 guard let self else { return nil }
-                return await self.relatedLinkTarget(reference, from: descriptor)
+                return self.relatedLinkTarget(reference, from: descriptor)
             })
     }
 
@@ -85,15 +85,22 @@ extension WindowModel {
         findRelatedMaterials(refreshIndex: researchController.relatedMaterials.needsRefresh)
     }
 
-    @MainActor private func relatedLinkTarget(_ reference: VaultNoteReference, from descriptor: WindowDocumentDescriptor) async -> String? {
-        guard let catalog = workspaceCatalog,
-            let candidate = catalog.notes.first(where: { $0.reference == reference })
+    @MainActor private func relatedLinkTarget(_ reference: VaultNoteReference, from descriptor: WindowDocumentDescriptor) -> String? {
+        guard !Task.isCancelled, let catalog = workspaceCatalog,
+            catalog.notes.contains(where: { $0.reference == reference })
         else { return nil }
-        let items = await documentController.editorLinkCompletions(
-            kind: .wikilink, matching: candidate.title, sourcePath: descriptor.reference.relativePath,
-            currentVaultID: descriptor.reference.vaultID, catalogNotes: catalog.notes,
-            graphGeneration: catalog.graph?.generation ?? 0)
-        return items.first { $0.availability == .available && $0.path == "\(reference.vaultName)/\(reference.relativePath)" }?.insertion
+        let resolver = LinkResolutionCatalog(
+            catalog: catalog.notes.map {
+                LinkCatalogNote(
+                    id: .init(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath),
+                    title: $0.title, aliases: $0.aliases)
+            })
+        guard
+            case .available(let target) = resolver.wikilinkTarget(
+                for: .init(vaultID: reference.vaultID, relativePath: reference.relativePath),
+                from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
+        else { return nil }
+        return target
     }
 
     @MainActor
@@ -109,7 +116,7 @@ extension WindowModel {
         }
         let editor = documentController.session(for: descriptor).editorSession
         do {
-            guard let target = await relatedLinkTarget(card.reference, from: descriptor),
+            guard let target = relatedLinkTarget(card.reference, from: descriptor),
                 materials.seed?.request.id == seed.request.id, materials.insertionPoint == point,
                 editor.acceptsInsertionPoint(point)
             else { throw RelatedMaterialsError.insertionChanged }
@@ -145,7 +152,7 @@ extension WindowModel {
         }
         do {
             try validateDestination()
-            guard let noteLink = await relatedLinkTarget(card.reference, from: descriptor) else {
+            guard let noteLink = relatedLinkTarget(card.reference, from: descriptor) else {
                 throw RelatedMaterialsError.changedSource
             }
             try validateDestination()
@@ -200,7 +207,7 @@ extension WindowModel {
                     savedNewAnchor = true
                 }
             }
-            guard await relatedLinkTarget(card.reference, from: descriptor) == noteLink else {
+            guard relatedLinkTarget(card.reference, from: descriptor) == noteLink else {
                 throw RelatedMaterialsError.changedSource
             }
             let saved = try await capabilities.documents.load(card.candidate.note)

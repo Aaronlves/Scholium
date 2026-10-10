@@ -840,8 +840,7 @@ async function initializeReader(value: unknown): Promise<void> {
       const text = boundedReviewRangeText(range, reviewDocument, 32_000);
       if (!text) return null;
       const utf16Count = text.length;
-      const before = reviewContextBefore(range, reviewDocument, 80);
-      return {range, text, before, utf16Count};
+      return {range, utf16Count};
     };
     const selectionNodeIDs = new WeakMap<Node, number>();
     let nextSelectionNodeID = 0;

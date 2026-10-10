@@ -19648,7 +19648,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 47;
+  var EDITOR_PROTOCOL_VERSION = 48;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -19666,7 +19666,6 @@
     "showPreview",
     "showSelectionActions",
     "measureVisibleProjection",
-    "showPreviewAt",
     "announceStatus",
     "goToLine",
     "revealSourceRange",
@@ -19834,8 +19833,6 @@
         return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
       case "setWritingIndexContext":
         return typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
-      case "showPreviewAt":
-        return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
       case "goToLine":
         return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
       case "revealSourceRange":
@@ -35004,7 +35001,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     documentFind: "defer",
     clearDocumentFind: "defer",
     showPreview: "defer",
-    showPreviewAt: "defer",
     showSelectionActions: "reject",
     measureVisibleProjection: "defer",
     setScrollFraction: "defer",
@@ -35472,28 +35468,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       );
       return false;
     }
-    function showAtPoint(x, y) {
-      const startedAt = performance.now();
-      if (!editor2 || editor2.composing) return false;
-      const anchor = linkAnchorAt(document.elementFromPoint(x, y));
-      const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
-      if (footnote) {
-        hide();
-        return showFootnote(footnote);
-      }
-      if (!anchor) {
-        hide();
-        return false;
-      }
-      const preview = previewForAnchor(anchor);
-      if (preview) {
-        hide();
-        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt, anchor);
-        return true;
-      }
-      hide();
-      return false;
-    }
     function annotationButtonAt(target2) {
       return target2 instanceof Element ? target2.closest(".scholium-link-annotation-button") : null;
     }
@@ -35535,10 +35509,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }, 300);
     }
     const handlePointerMove = (event) => {
-      if (root && event.target instanceof Node && root.contains(event.target)) {
-        cancelHide();
-        return;
-      }
       const annotation = annotationButtonAt(event.target);
       const footnote = footnoteButtonAt(event.target);
       const link = linkAnchorAt(event.target);
@@ -35556,8 +35526,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
     };
-    const handlePreviewPointerEnter = () => cancelHide();
-    const handlePreviewPointerLeave = () => scheduleHide();
     const handleKeyUp = (event) => {
       if (event.key !== "Meta" && event.key !== "Control") return;
       setArmedLink(null);
@@ -35586,7 +35554,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const handleFocusOut = (event) => {
       const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
       if (!button) return;
-      if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
       scheduleHide();
     };
     const handleClick = (event) => {
@@ -35614,7 +35581,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         editor2.focus();
         return;
       }
-      if (hasPinnedPreview() && !(event.target instanceof Node && root?.contains(event.target))) hide();
+      if (hasPinnedPreview()) hide();
     };
     const handleMouseDown = (event) => {
       if (event.button !== 0 || !footnoteButtonAt(event.target)) return;
@@ -35647,8 +35614,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       body.setAttribute("role", "group");
       body.setAttribute("aria-label", localized("Preview content"));
       root.append(title, metadata, body);
-      root.addEventListener("pointerenter", handlePreviewPointerEnter);
-      root.addEventListener("pointerleave", handlePreviewPointerLeave);
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
       document.addEventListener("focusin", handleFocusIn);
       document.addEventListener("focusout", handleFocusOut);
@@ -35672,10 +35637,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("compositionstart", handleCompositionStart);
       view.scrollDOM.removeEventListener("scroll", handleViewportExit);
-      root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
-      root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
       window.removeEventListener("resize", handleViewportExit);
-      root?.remove();
       root = null;
       title = null;
       metadata = null;
@@ -35692,7 +35654,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         destroy: () => unmount(view)
       };
     });
-    return { extension, hide, canShowAtSelection, showAtSelection, showAtPoint };
+    return { extension, hide, canShowAtSelection, showAtSelection };
   }
 
   // interaction-reporting.ts
@@ -36015,7 +35977,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       scheduleGeometryReport,
       setAnchor,
       setFraction,
-      setTop,
       revealPosition
     };
   }
@@ -36370,7 +36331,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function validLinkCandidate(value) {
     if (!value || typeof value !== "object") return false;
     const candidate = value;
-    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && ["available", "ambiguous", "unsupportedSyntax", "unavailable"].includes(candidate.availability ?? "") && (candidate.unavailableReason === void 0 || typeof candidate.unavailableReason === "string") && (candidate.availability === "available" || Boolean(candidate.unavailableReason?.trim())) && (candidate.writingAction === void 0 || candidate.writingAction === "term") && (candidate.replacementUTF16Count === void 0 || Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128);
+    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && ["available", "ambiguous", "unsupportedSyntax", "unavailable"].includes(candidate.availability ?? "") && (candidate.unavailableReason === void 0 || typeof candidate.unavailableReason === "string") && (candidate.availability === "available" || Boolean(candidate.unavailableReason?.trim())) && (candidate.writingAction === void 0 || candidate.writingAction === "term") && (candidate.replacementUTF16Count === void 0 || Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128);
   }
   function suggestionSymbol(completion) {
     const key = suggestionSymbolByType[completion.type];
@@ -37124,172 +37085,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
   }
 
-  // footnote-presentation.ts
-  var scholiumFootnoteDialect = {
-    namedReferenceOpening: "[^",
-    namedReferenceClosing: "]",
-    definitionSeparator: ":",
-    inlineOpening: "^[",
-    continuationIndentSpaces: 2,
-    allowsTabContinuation: true,
-    caseSensitiveIdentifiers: true,
-    ordinalByFirstReference: true
-  };
-  function supportsFootnoteDialect(dialect) {
-    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
-  }
-  function sourceLines(source) {
-    if (source.length === 0) return [];
-    const lines = [];
-    let from = 0;
-    while (from < source.length) {
-      const newline3 = source.indexOf("\n", from);
-      const contentTo = newline3 < 0 ? source.length : newline3;
-      const to = newline3 < 0 ? source.length : newline3 + 1;
-      const raw = source.slice(from, contentTo);
-      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-      lines.push({ from, contentTo: from + text.length, to, text });
-      from = to;
-    }
-    return lines;
-  }
-  function overlaps2(ranges, from, to) {
-    return ranges.some((range) => range.from < to && range.to > from);
-  }
-  function isEscaped5(source, offset) {
-    let backslashes = 0;
-    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
-    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
-    const lines = sourceLines(source);
-    const rawDefinitions = [];
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (overlaps2(excluded, line.from, line.contentTo)) continue;
-      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
-      if (!match) continue;
-      const parts = [match[2]];
-      const firstLineContentFrom = line.contentTo - match[2].length;
-      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
-      let foundContentStart = /\S/.test(match[2]);
-      let to = line.to;
-      let continuation = index + 1;
-      while (continuation < lines.length) {
-        const candidate = lines[continuation];
-        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
-        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
-        if (!foundContentStart && /\S/.test(continuationText)) {
-          const removedIndent = candidate.text.length - continuationText.length;
-          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
-          contentFrom = candidate.from + removedIndent + leadingWhitespace;
-          foundContentStart = true;
-        }
-        parts.push(continuationText);
-        to = candidate.to;
-        continuation += 1;
-      }
-      rawDefinitions.push({
-        identifier: match[1],
-        content: parts.join("\n").trim(),
-        contentFrom,
-        from: line.from,
-        to,
-        isInline: false,
-        marker: { from: line.from, to: line.contentTo }
-      });
-      index = continuation - 1;
-    }
-    const rawReferences = [];
-    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
-      const from = match.index;
-      const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped5(source, from)) continue;
-      rawReferences.push({
-        identifier: match[1],
-        from,
-        to,
-        isInline: false,
-        inlineContent: null
-      });
-    }
-    let inlineCounter = 0;
-    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
-      const from = match.index;
-      const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || isEscaped5(source, from)) continue;
-      inlineCounter += 1;
-      const identifier5 = `inline-${inlineCounter}`;
-      rawReferences.push({
-        identifier: identifier5,
-        from,
-        to,
-        isInline: true,
-        inlineContent: match[1]
-      });
-      rawDefinitions.push({
-        identifier: identifier5,
-        content: match[1],
-        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
-        from,
-        to,
-        isInline: true,
-        marker: { from, to }
-      });
-    }
-    rawReferences.sort((left, right) => left.from - right.from);
-    const ordinalByIdentifier = /* @__PURE__ */ new Map();
-    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
-    for (const reference of rawReferences) {
-      if (!ordinalByIdentifier.has(reference.identifier)) {
-        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
-      }
-      occurrenceByIdentifier.set(
-        reference.identifier,
-        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
-      );
-    }
-    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
-    for (const definition of rawDefinitions) {
-      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
-        firstDefinitionByIdentifier.set(definition.identifier, definition);
-      }
-    }
-    occurrenceByIdentifier.clear();
-    const references = rawReferences.map((reference) => {
-      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
-      occurrenceByIdentifier.set(reference.identifier, occurrence);
-      const definition = firstDefinitionByIdentifier.get(reference.identifier);
-      return {
-        identifier: reference.identifier,
-        ordinal: ordinalByIdentifier.get(reference.identifier),
-        occurrence,
-        isInline: reference.isInline,
-        definitionFrom: definition?.from ?? null,
-        definitionContentFrom: definition?.contentFrom ?? null,
-        from: reference.from,
-        to: reference.to
-      };
-    });
-    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
-      identifier: definition.identifier,
-      content: definition.content,
-      contentFrom: definition.contentFrom,
-      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
-      isInline: definition.isInline,
-      from: definition.from,
-      to: definition.to
-    })).sort((left, right) => {
-      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
-      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
-      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
-    });
-    return { definitions, references };
-  }
-
   // previews.ts
   function validatedLinkPreviews(value, documentLength) {
     if (!Array.isArray(value)) return [];
@@ -37463,6 +37258,172 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return !selection(startState).eq(selection(state));
       }
     };
+  }
+
+  // footnote-presentation.ts
+  var scholiumFootnoteDialect = {
+    namedReferenceOpening: "[^",
+    namedReferenceClosing: "]",
+    definitionSeparator: ":",
+    inlineOpening: "^[",
+    continuationIndentSpaces: 2,
+    allowsTabContinuation: true,
+    caseSensitiveIdentifiers: true,
+    ordinalByFirstReference: true
+  };
+  function supportsFootnoteDialect(dialect) {
+    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
+  }
+  function sourceLines(source) {
+    if (source.length === 0) return [];
+    const lines = [];
+    let from = 0;
+    while (from < source.length) {
+      const newline3 = source.indexOf("\n", from);
+      const contentTo = newline3 < 0 ? source.length : newline3;
+      const to = newline3 < 0 ? source.length : newline3 + 1;
+      const raw = source.slice(from, contentTo);
+      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+      lines.push({ from, contentTo: from + text.length, to, text });
+      from = to;
+    }
+    return lines;
+  }
+  function overlaps2(ranges, from, to) {
+    return ranges.some((range) => range.from < to && range.to > from);
+  }
+  function isEscaped5(source, offset) {
+    let backslashes = 0;
+    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
+    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
+    const lines = sourceLines(source);
+    const rawDefinitions = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (overlaps2(excluded, line.from, line.contentTo)) continue;
+      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
+      if (!match) continue;
+      const parts = [match[2]];
+      const firstLineContentFrom = line.contentTo - match[2].length;
+      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
+      let foundContentStart = /\S/.test(match[2]);
+      let to = line.to;
+      let continuation = index + 1;
+      while (continuation < lines.length) {
+        const candidate = lines[continuation];
+        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
+        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
+        if (!foundContentStart && /\S/.test(continuationText)) {
+          const removedIndent = candidate.text.length - continuationText.length;
+          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
+          contentFrom = candidate.from + removedIndent + leadingWhitespace;
+          foundContentStart = true;
+        }
+        parts.push(continuationText);
+        to = candidate.to;
+        continuation += 1;
+      }
+      rawDefinitions.push({
+        identifier: match[1],
+        content: parts.join("\n").trim(),
+        contentFrom,
+        from: line.from,
+        to,
+        isInline: false,
+        marker: { from: line.from, to: line.contentTo }
+      });
+      index = continuation - 1;
+    }
+    const rawReferences = [];
+    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped5(source, from)) continue;
+      rawReferences.push({
+        identifier: match[1],
+        from,
+        to,
+        isInline: false,
+        inlineContent: null
+      });
+    }
+    let inlineCounter = 0;
+    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps2(excluded, from, to) || isEscaped5(source, from)) continue;
+      inlineCounter += 1;
+      const identifier5 = `inline-${inlineCounter}`;
+      rawReferences.push({
+        identifier: identifier5,
+        from,
+        to,
+        isInline: true,
+        inlineContent: match[1]
+      });
+      rawDefinitions.push({
+        identifier: identifier5,
+        content: match[1],
+        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
+        from,
+        to,
+        isInline: true,
+        marker: { from, to }
+      });
+    }
+    rawReferences.sort((left, right) => left.from - right.from);
+    const ordinalByIdentifier = /* @__PURE__ */ new Map();
+    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
+    for (const reference of rawReferences) {
+      if (!ordinalByIdentifier.has(reference.identifier)) {
+        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
+      }
+      occurrenceByIdentifier.set(
+        reference.identifier,
+        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
+      );
+    }
+    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
+    for (const definition of rawDefinitions) {
+      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
+        firstDefinitionByIdentifier.set(definition.identifier, definition);
+      }
+    }
+    occurrenceByIdentifier.clear();
+    const references = rawReferences.map((reference) => {
+      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
+      occurrenceByIdentifier.set(reference.identifier, occurrence);
+      const definition = firstDefinitionByIdentifier.get(reference.identifier);
+      return {
+        identifier: reference.identifier,
+        ordinal: ordinalByIdentifier.get(reference.identifier),
+        occurrence,
+        isInline: reference.isInline,
+        definitionFrom: definition?.from ?? null,
+        definitionContentFrom: definition?.contentFrom ?? null,
+        from: reference.from,
+        to: reference.to
+      };
+    });
+    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
+      identifier: definition.identifier,
+      content: definition.content,
+      contentFrom: definition.contentFrom,
+      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
+      isInline: definition.isInline,
+      from: definition.from,
+      to: definition.to
+    })).sort((left, right) => {
+      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
+      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
+      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
+    });
+    return { definitions, references };
   }
 
   // live-projection-index.ts
@@ -42911,9 +42872,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         );
         break;
       }
-      case "showPreviewAt":
-        previewPopover.showAtPoint(operation.x, operation.y);
-        break;
       case "announceStatus":
         announceEditorMessage(editor.contentDOM, operation.value);
         break;

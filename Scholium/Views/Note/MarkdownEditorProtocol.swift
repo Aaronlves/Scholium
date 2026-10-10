@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 47
+let markdownEditorProtocolVersion = 48
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -269,7 +269,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case showPreview
     case showSelectionActions
     case measureVisibleProjection
-    case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
     case goToLine(Int, focusesEditor: Bool)
     case revealSourceRange(fromUTF16: Int, toUTF16: Int)
@@ -318,7 +317,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
+        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
             enabled, contextKey, plainText, selections, transactionID, reference
         case citationSnapshot, expectedCitationData, committedCitationSnapshot
@@ -326,7 +325,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
             setWritingContinuation, setWritingIndexContext, showPreview, showSelectionActions,
-            measureVisibleProjection, showPreviewAt,
+            measureVisibleProjection,
             announceStatus
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
             queryPerformance
@@ -366,11 +365,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .showPreview: self = .showPreview
         case .showSelectionActions: self = .showSelectionActions
         case .measureVisibleProjection: self = .measureVisibleProjection
-        case .showPreviewAt:
-            self = try .showPreviewAt(
-                x: container.decode(Double.self, forKey: .x),
-                y: container.decode(Double.self, forKey: .y)
-            )
         case .announceStatus: self = try .announceStatus(container.decode(String.self, forKey: .value))
         case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line), focusesEditor: container.decode(Bool.self, forKey: .focusesEditor))
         case .revealSourceRange:
@@ -481,10 +475,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .showSelectionActions: try container.encode(Kind.showSelectionActions, forKey: .type)
         case .measureVisibleProjection:
             try container.encode(Kind.measureVisibleProjection, forKey: .type)
-        case .showPreviewAt(let x, let y):
-            try container.encode(Kind.showPreviewAt, forKey: .type)
-            try container.encode(x, forKey: .x)
-            try container.encode(y, forKey: .y)
         case .announceStatus(let value): try pair(.announceStatus, value, .value, into: &container)
         case .goToLine(let line, let focusesEditor):
             try pair(.goToLine, line, .line, into: &container)

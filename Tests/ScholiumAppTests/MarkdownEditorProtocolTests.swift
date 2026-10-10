@@ -111,17 +111,6 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .showPreview)
     }
 
-    @Test("Point-anchored preview request round trips as a nonmutating bridge operation")
-    func pointAnchoredPreviewOperationRoundTrip() throws {
-        let operation = MarkdownEditorOperation.showPreviewAt(x: 120.5, y: 80.25)
-        let data = try JSONEncoder().encode(operation)
-        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(object["type"] as? String == "showPreviewAt")
-        #expect(object["x"] as? Double == 120.5)
-        #expect(object["y"] as? Double == 80.25)
-        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
-    }
-
     @Test("Blur request round trips as a nonmutating bridge operation")
     func blurOperationRoundTrip() throws {
         let data = try JSONEncoder().encode(MarkdownEditorOperation.blur)

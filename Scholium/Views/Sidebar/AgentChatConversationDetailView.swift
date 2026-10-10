@@ -8,7 +8,6 @@ struct AgentChatConversationDetailView: View {
     @Environment(\.locale) private var locale
     @Environment(\.openSettings) private var openSettings
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var controller: AgentChatController
     let isVisible: Bool
     let addSelection: (UUID) async -> Bool

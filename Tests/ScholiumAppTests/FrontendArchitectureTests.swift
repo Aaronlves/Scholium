@@ -2065,12 +2065,6 @@ struct FrontendArchitectureTests {
         #expect(!toolbar.contains("static let documentCommands"))
         #expect(!toolbar.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
-
-        #expect(
-            ScholiumMetrics.Apparatus.sectionContentSpacing
-                == ScholiumGrid.Apparatus.headingToContentGap
-        )
-
     }
 
     @Test("Independent windows do not share presentation or document sessions")
@@ -2816,7 +2810,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.regionContentInset == 20)
         #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
-        #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 

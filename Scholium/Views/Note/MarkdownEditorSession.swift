@@ -400,23 +400,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         return checkedSource
     }
-    var canShowPreviewAtSelection: Bool {
-        guard pendingMode == .livePreview,
-            let selectionSnapshot = lastKnownSelectionSnapshot,
-            selectionSnapshot.isValid(
-                documentID: documentID,
-                fingerprint: startingFingerprint,
-                generation: generation,
-                editorUTF16Length: checkedEditorUTF16Length
-            ),
-            let head = selectionSnapshot.ranges.first?.head
-        else { return false }
-        if pendingLinkPreviews.contains(where: { head >= $0.from && head < $0.to }) {
-            return true
-        }
-        return false
-    }
-
     override convenience init() {
         self.init(
             bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
@@ -1168,13 +1151,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         reconvergePendingPresentationState()
     }
 
-    func showPreview() {
-        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.showPreview, in: webView)
-        }
-    }
-
     func showPreview(
         for preview: DocumentLinkPreview,
         previews: [DocumentLinkPreview],
@@ -1220,18 +1196,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.measureVisibleProjection, in: webView)
-        }
-    }
-
-    func showPreview(at point: CGPoint) {
-        guard canAttemptPreview, isReady, isLoaded, let webView,
-            point.x.isFinite, point.y.isFinite
-        else { return }
-        Task {
-            _ = try? await send(
-                .showPreviewAt(x: point.x, y: point.y),
-                in: webView
-            )
         }
     }
 

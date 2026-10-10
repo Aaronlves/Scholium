@@ -80,7 +80,7 @@ describe("scroll coordination across runtime reuse", () => {
     scrollDOM.dispatchEvent(new Event("scroll"));
     expect(dismiss).toHaveBeenCalledTimes(2);
     coordinator.revealPosition(state.selection.main.head);
-    coordinator.setTop(scrollDOM.scrollTop);
+    coordinator.setFraction(0.5);
     scrollDOM.dispatchEvent(new Event("scroll"));
     expect(dismiss).toHaveBeenCalledTimes(3);
   });

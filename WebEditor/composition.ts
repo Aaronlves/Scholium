@@ -17,7 +17,7 @@ const policies: Record<EditorOperation["type"], CompositionRequestPolicy> = {
   setPresentationCSS: "defer", setUserCSS: "defer", setLinkPreviews: "defer", setImageResources: "defer",
   goToLine: "defer", revealSourceRange: "defer", restoreRecovery: "defer",
   acknowledgeCommittedSnapshot: "defer", command: "defer", documentFind: "defer",
-  clearDocumentFind: "defer", showPreview: "defer", showPreviewAt: "defer", showSelectionActions: "reject",
+  clearDocumentFind: "defer", showPreview: "defer", showSelectionActions: "reject",
   measureVisibleProjection: "defer", setScrollFraction: "defer", setScrollAnchor: "defer",
   focus: "defer", focusTitle: "defer", blur: "defer",
   queryContext: "allow", queryScrollAnchor: "allow", queryPerformance: "allow", announceStatus: "allow",

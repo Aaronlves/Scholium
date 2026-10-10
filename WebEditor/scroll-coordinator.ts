@@ -26,7 +26,6 @@ export interface EditorScrollCoordinator {
   scheduleGeometryReport(snapshot?: EditorGeometrySnapshot): void;
   setAnchor(anchor: EditorScrollAnchor): void;
   setFraction(fraction: number): void;
-  setTop(top: number): void;
   revealPosition(position: number): void;
 }
 
@@ -338,7 +337,6 @@ export function createEditorScrollCoordinator(
     scheduleGeometryReport,
     setAnchor,
     setFraction,
-    setTop,
     revealPosition,
   };
 }

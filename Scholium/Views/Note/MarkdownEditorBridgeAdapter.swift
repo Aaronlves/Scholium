@@ -94,7 +94,6 @@ struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let label: String
     let insertion: String
     let detail: String
-    let path: String
     let displayText: String?
     let availability: EditorLinkCompletionAvailability
     let unavailableReason: String?

@@ -20,7 +20,6 @@ enum ScholiumGrid {
 
     enum Dimension {
         static let minimumCustomTarget = foundationUnit * 5
-        static let compactHierarchyRowHeight = foundationUnit * 6
         static let preferredCustomTarget = foundationUnit * 7
         static let regionHeaderHeight = foundationUnit * 12
         static let iconTrackWidth = foundationUnit * 4
@@ -33,11 +32,9 @@ enum ScholiumGrid {
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
 
-    /// Inspector-owned layout variables. Section hierarchy, content groups,
-    /// link occurrences, and Action rows each have a distinct cadence.
+    /// Inspector-owned layout variables. Content groups, link occurrences,
+    /// and Action rows each have a distinct cadence.
     enum Apparatus {
-        static let headingToContentGap = foundationUnit * 2.5
-        static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
         static let passageLineSpacing = foundationUnit / 2
         static let passageRowInset = foundationUnit / 2
@@ -124,7 +121,6 @@ enum ScholiumMetrics {
             static let idealWidth: CGFloat = 760
             static let minimumHeight: CGFloat = 420
             static let idealHeight: CGFloat = 560
-            static let changeColumnWidth: CGFloat = 180
             static let dateColumnWidth: CGFloat = 145
         }
 
@@ -272,9 +268,6 @@ enum ScholiumMetrics {
         /// One initial suggestion, mirroring the system inspector's ideal-width
         /// semantics. AppKit continues to own subsequent resizing.
         static let firstRevealWidth: CGFloat = 320
-        /// Internal section rhythm is deliberately separate from the spacing
-        /// between complete sections.
-        static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
         /// A fixed symbol track keeps every row's text on the same scan line,

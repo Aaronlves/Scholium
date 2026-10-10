@@ -80,7 +80,7 @@ describe("AI-first inline continuation", () => {
     await vi.advanceTimersByTimeAsync(300);
     expect(h.terms).toHaveLength(1);
     h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "",
-      detail: "", path: "term.md", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+      detail: "", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(1);
     options.composing = true;
@@ -162,7 +162,7 @@ describe("AI-first inline continuation", () => {
     const h = inlineContinuationHarness();
     await vi.advanceTimersByTimeAsync(9_200);
     expect(h.cancelled).toEqual(h.requests); expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
       availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: "different sentence."});
@@ -180,7 +180,7 @@ describe("AI-first inline continuation", () => {
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: "Offline"});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
       availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
     const fallback = renderedInlineWidget(h.plugin.decorations);
@@ -203,7 +203,7 @@ describe("AI-first inline continuation", () => {
     expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "topic.md",
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
       availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
     const ghost = renderedInlineWidget(h.plugin.decorations);
@@ -237,7 +237,7 @@ describe("AI-first inline continuation", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(h.terms).toHaveLength(1);
     h.suggestions.configureWritingIndexContext("catalog-2");
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "", path: "old.md",
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
       availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(0);
@@ -513,7 +513,7 @@ describe("Edit input suggestions", () => {
       ? suggestions.wikilinkCompletionSource : suggestions.analysisReferenceCompletionSource;
     const pending = completionSource(new CompletionContext(mutable.state(), source.length, false));
     suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "Value", insertion: "Value",
-      displayText: "Value", detail: "", path: "Value.md", availability: "available"}]);
+      displayText: "Value", detail: "", availability: "available"}]);
     const result = (await pending)!;
     const completion = result.options[0];
     expect(typeof completion.apply).toBe("function");
@@ -689,7 +689,6 @@ describe("Edit input suggestions", () => {
       label: "价值理论",
       insertion: "价值理论",
       detail: "Topics — 价值理论.md",
-      path: "Topics/价值理论.md",
       availability: "available",
     }]);
     const result = await pending;
@@ -718,7 +717,6 @@ describe("Edit input suggestions", () => {
       label: "Value Theory",
       insertion: "Axiology",
       detail: "Axiology — Topics/Value.md",
-      path: "Topics/Value.md",
       displayText: "Value Theory",
       availability: "available",
     }]);
@@ -745,7 +743,6 @@ describe("Edit input suggestions", () => {
       label: "T. M. Scanlon 1998",
       insertion: "What We Owe",
       detail: "What We Owe to Each Other — T. M. Scanlon — 1998",
-      path: "Analyses/What We Owe.md",
       displayText: "T. M. Scanlon 1998",
       availability: "available",
     }]);
@@ -792,7 +789,7 @@ describe("Edit input suggestions", () => {
     definition.create(mutable.view);
     const reason = "This Note has no unique Wikilink target from the current Note. Add a unique alias.";
     suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "Foo", insertion: "", detail: "Analyses/Foo.md",
-      path: "Analyses/Foo.md", displayText: "Foo", availability: "ambiguous", unavailableReason: reason}]);
+      displayText: "Foo", availability: "ambiguous", unavailableReason: reason}]);
     try {
       await vi.advanceTimersByTimeAsync(100);
       expect(currentCompletions(mutable.state())).toHaveLength(1);
@@ -818,7 +815,7 @@ describe("Edit input suggestions", () => {
       const completionSource = kind === "wikilink" ? suggestions.wikilinkCompletionSource : suggestions.analysisReferenceCompletionSource;
       const pending = completionSource(new CompletionContext(state, caret, false));
       suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "Foo", insertion: "Foo", detail: "Topics/Foo.md",
-        path: "Topics/Foo.md", displayText: "Foo", availability: "available"}]);
+        displayText: "Foo", availability: "available"}]);
       const result = (await pending)!;
       const mutable = mutableView(state);
       if (changed === "catalog") suggestions.configureWritingIndexContext("new-catalog");
@@ -872,7 +869,7 @@ describe("Edit input suggestions", () => {
       expect(requests).toHaveLength(2);
       const freshID = requests[1].id;
       expect(freshID).not.toBe(oldID);
-      suggestions.resolveLinkCompletionQuery(oldID, [{label: "Old", insertion: "Old", detail: "Old.md", path: "Old.md",
+      suggestions.resolveLinkCompletionQuery(oldID, [{label: "Old", insertion: "Old", detail: "Old.md",
         displayText: "Old", availability: "available"}]);
       await vi.advanceTimersByTimeAsync(0);
       expect(currentCompletions(state)).toEqual([]);
@@ -881,7 +878,7 @@ describe("Edit input suggestions", () => {
       expect(state.selection.main.anchor).toBe(caret);
       expect(state.selection.main.head).toBe(caret);
       expect(undoDepth(state)).toBe(0);
-      suggestions.resolveLinkCompletionQuery(freshID, [{label: "Fresh", insertion: "Fresh", detail: "Fresh.md", path: "Fresh.md",
+      suggestions.resolveLinkCompletionQuery(freshID, [{label: "Fresh", insertion: "Fresh", detail: "Fresh.md",
         displayText: "Fresh", availability: "available"}]);
       await vi.advanceTimersByTimeAsync(100);
       expect(currentCompletions(state).map(item => item.label)).toEqual(["Fresh"]);
@@ -901,7 +898,7 @@ describe("Edit input suggestions", () => {
     const oldID = request()!.id;
     suggestions.resetDocument();
     suggestions.resolveLinkCompletionQuery(oldID, [{
-      label: "Old note", insertion: "Old note", detail: "", path: "old.md", availability: "available",
+      label: "Old note", insertion: "Old note", detail: "", availability: "available",
     }]);
     expect(await pending).toBeNull();
 
@@ -909,7 +906,7 @@ describe("Edit input suggestions", () => {
       new CompletionContext(state, 5, false),
     ) as Promise<CompletionResult>;
     suggestions.resolveLinkCompletionQuery(request()!.id, [{
-      label: "New note", insertion: "New note", detail: "", path: "new.md", availability: "available",
+      label: "New note", insertion: "New note", detail: "", availability: "available",
     }]);
     expect((await next).options.map(option => option.label)).toEqual(["New note"]);
   });
@@ -928,7 +925,7 @@ describe("Indexed writing suggestions", () => {
       const pending = suggestions.writingCompletionSource(new CompletionContext(state, text.length, false));
       expect(request()?.kind).toBe("term");
       suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility",
-        detail: "Origin", path: "Origin.md", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+        detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
       const result = (await pending)!;
       const mutable = mutableView(state);
       const choice = result.options[0];
@@ -946,7 +943,7 @@ describe("Indexed writing suggestions", () => {
     const state = EditorState.create({doc: "res", selection: {anchor: 3}});
     const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
     expect(request()?.kind).toBe("term");
-    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", path: "Origin.md", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     const result = (await pending)!;
     const mutable = mutableView(state);
     const choice = result.options[0];
@@ -961,7 +958,7 @@ describe("Indexed writing suggestions", () => {
     const {suggestions, request} = controller();
     const state = EditorState.create({doc: "Res", selection: {anchor: 3}});
     const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
-    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", path: "Origin.md", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
     const result = (await pending)!;
     const mutable = mutableView(state);
     const choice = result.options[0];
@@ -1035,7 +1032,7 @@ describe("local citation completion", () => {
     ) as Promise<CompletionResult>;
     expect(h.queries[0]).toMatchObject({kind: "analysisReference", query: "Scanlon"});
     h.suggestions.resolveLinkCompletionQuery(h.queries[0].id, [{
-      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis", path: "Analyses/What We Owe.md",
+      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis",
       displayText: "T. M. Scanlon 1998", availability: "available",
     }]);
     expect((await pending).options.map(option => option.label)).toEqual(["T. M. Scanlon 1998"]);
@@ -1089,9 +1086,8 @@ describe("local citation completion", () => {
     expect(action.label).toBe("Insert Citation…");
     expect(action.actionID).toBe("insertCitation");
     expect(action.detail).toBe("Zotero");
-    expect(action).not.toHaveProperty("path");
     h.suggestions.resolveLinkCompletionQuery(h.queries[0].id, [{
-      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis", path: "Analyses/What We Owe.md",
+      label: "T. M. Scanlon 1998", insertion: "What We Owe", detail: "Analysis",
       displayText: "T. M. Scanlon 1998", availability: "available",
     }]);
     expect((await pending).options.map(option => option.label)).toEqual(["T. M. Scanlon 1998"]);

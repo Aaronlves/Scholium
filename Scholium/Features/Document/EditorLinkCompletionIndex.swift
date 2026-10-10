@@ -150,7 +150,6 @@ actor EditorLinkCompletionIndex {
                     detail: kind == .analysisReference
                         ? referenceDetail
                         : "\(candidate.note.title) — \(candidate.note.reference.vaultName) — \(candidate.note.reference.vaultRole.displayName) — \(candidate.note.reference.relativePath)",
-                    path: "\(candidate.note.reference.vaultName)/\(candidate.note.reference.relativePath)",
                     displayText: alias,
                     availability: availability,
                     unavailableReason: unavailableReason

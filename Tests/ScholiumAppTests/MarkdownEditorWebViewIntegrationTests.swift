@@ -2580,13 +2580,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.goToLine(1)
-        try await harness.waitUntilPreviewIsAvailable()
         let owner = try #require(harness.session.webView)
+        // Availability already holds at the initial caret. Await navigation
+        // and focus so neither can dismiss the preview after it is requested.
+        _ = try await harness.session.send(.goToLine(1, focusesEditor: true), in: owner)
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+        try await harness.waitUntilPreviewIsAvailable()
         let frame = owner.frame
         let selection = harness.session.context?.selections
         let undo = harness.session.context?.undoLabel
-        harness.session.showPreview()
+        try await harness.session.perform(.previewAtSelection)
         _ = try await harness.waitUntilPresentation(stage: "native Edit preview") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
         }
@@ -2602,7 +2606,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
-        harness.session.showPreview()
+        try await harness.session.perform(.previewAtSelection)
         _ = try await harness.waitUntilPresentation(stage: "preview before composition") {
             !$0.previewPopoverHidden
         }
@@ -8678,8 +8682,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(directFootnote.footnoteReferenceCount == 2)
             harness.session.goToLine(4)
             try await harness.waitUntilPreviewIsAvailable()
-            #expect(harness.session.canShowPreviewAtSelection)
-            harness.session.showPreview()
+            #expect(harness.session.context?.availableCommands.contains(.previewAtSelection) == true)
+            try await harness.session.perform(.previewAtSelection)
             // Native preview visibility is covered by nativeEditPreviewPreservesDocument
             // in a laid-out native host. This unconstrained bridge fixture verifies
             // the request and source/session state, not floating-window geometry.
@@ -9334,7 +9338,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         func waitUntilPreviewIsAvailable() async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(3))
-            while !session.canShowPreviewAtSelection {
+            while session.context?.availableCommands.contains(.previewAtSelection) != true {
                 if clock.now >= deadline {
                     Issue.record("The editor did not move the insertion point to a previewable construct.")
                     throw MarkdownEditorSession.SessionError.unavailable

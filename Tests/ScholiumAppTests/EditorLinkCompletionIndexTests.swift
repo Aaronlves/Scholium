@@ -62,10 +62,21 @@ struct EditorLinkCompletionIndexTests {
             let candidates = try await index.query(
                 kind: kind, "", sourcePath: source.relativePath,
                 currentVaultID: topics, generation: 1)
-            #expect(candidates.count == (kind == .wikilink ? notes.count : 3))
-            for candidate in candidates {
+            let displayedNotes =
+                kind == .wikilink
+                ? [notes[4], notes[3], notes[1], notes[0], notes[2], notes[5]]
+                : [notes[4], notes[3], notes[5]]
+            #expect(candidates.count == displayedNotes.count)
+            for (candidate, selected) in zip(candidates, displayedNotes) {
                 #expect(candidate.availability == .available)
-                let selected = try #require(notes.first { "\($0.reference.vaultName)/\($0.reference.relativePath)" == candidate.path })
+                if kind == .wikilink {
+                    #expect(
+                        candidate.detail
+                            == "\(selected.title) — \(selected.reference.vaultName) — \(selected.reference.vaultRole.displayName) — \(selected.reference.relativePath)"
+                    )
+                } else {
+                    #expect(candidate.detail.hasSuffix("\(selected.reference.vaultName)/\(selected.reference.relativePath)"))
+                }
                 let alias = candidate.displayText.map { "|\($0)" } ?? ""
                 let written = NoteDocument(relativePath: source.relativePath, rawContent: "[[\(candidate.insertion)\(alias)]]")
                 let snapshot = LinkGraphBuilder.build(
@@ -99,11 +110,11 @@ struct EditorLinkCompletionIndexTests {
         let candidates = try await index.query(
             kind: .wikilink, "", sourcePath: "Draft.md",
             currentVaultID: topics, generation: 1)
-        let ambiguous = try #require(candidates.first { $0.path == "Analyses/Research/Foo.md" })
+        let ambiguous = try #require(candidates.first { $0.detail.hasSuffix(" — Research/Foo.md") })
         #expect(ambiguous.availability == .ambiguous)
         #expect(ambiguous.insertion.isEmpty)
         #expect(ambiguous.unavailableReason?.isEmpty == false)
-        let unsupported = try #require(candidates.first { $0.path == "Analyses/A|B.md" })
+        let unsupported = try #require(candidates.first { $0.detail.hasSuffix(" — A|B.md") })
         #expect(unsupported.availability == .unsupportedSyntax)
         #expect(unsupported.insertion.isEmpty)
         #expect(unsupported.unavailableReason?.isEmpty == false)
@@ -193,7 +204,9 @@ struct EditorLinkCompletionIndexTests {
             limit: 1
         )
 
-        #expect(result.map(\.path) == ["Topics/Able/Same.md"])
+        #expect(result.count == 1)
+        #expect(result.first?.detail == "Same — Topics — \(VaultRole.topicKnowledge.displayName) — Able/Same.md")
+        #expect(result.first?.insertion == "Able/Same")
     }
 
     @Test("Alias matches preserve the canonical target and insert the selected display alias")

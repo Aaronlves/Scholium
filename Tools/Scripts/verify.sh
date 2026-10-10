@@ -308,8 +308,8 @@ report_swift_test_success() {
   local summary="$3"
   print "${label}: ${summary}"
 
-  if rg -q 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT' "${log}"; then
-    rg 'SEARCH_V9_PERFORMANCE_REPORT|SEARCH_V6_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
+  if rg -q 'SEARCH_V9_PERFORMANCE_REPORT' "${log}"; then
+    rg 'SEARCH_V9_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
       "${log}" || true
   fi
 }

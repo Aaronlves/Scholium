@@ -39,7 +39,6 @@ export interface EditorLinkCompletionCandidate {
   label: string;
   insertion: string;
   detail: string;
-  path: string;
   displayText?: string;
   availability: "available" | "ambiguous" | "unsupportedSyntax" | "unavailable";
   unavailableReason?: string;
@@ -476,7 +475,6 @@ function validLinkCandidate(value: unknown): value is EditorLinkCompletionCandid
   return typeof candidate.label === "string"
     && typeof candidate.insertion === "string"
     && typeof candidate.detail === "string"
-    && typeof candidate.path === "string"
     && (candidate.displayText === undefined || typeof candidate.displayText === "string")
     && ["available", "ambiguous", "unsupportedSyntax", "unavailable"].includes(candidate.availability ?? "")
     && (candidate.unavailableReason === undefined || typeof candidate.unavailableReason === "string")

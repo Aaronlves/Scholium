@@ -160,9 +160,10 @@ struct AgentChatConnectionStatus: View {
                     id: "skills", title: ScholiumL10n.string("Skills Could Not Be Loaded"),
                     error: error, actions: [.refreshSkills]))
         }
-        // Delivery follows its retained message; shared connection and save
-        // failures remain above the conversation.
+        // Delivery follows its retained message; independent Stop recovery,
+        // connection and save failures remain above the conversation.
         if executionRecovery == .deliveryUnconfirmed,
+            !controller.canRetryStop,
             controller.selectedID.flatMap({ controller.executions[$0]?.recovery }) == .deliveryUnconfirmed || executionError == nil,
             let conversation = controller.selected,
             conversation.messages.contains(where: { $0.id == conversation.pendingMessageID && $0.role == .user })

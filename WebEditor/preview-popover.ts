@@ -98,7 +98,6 @@ export interface PreviewPopoverController {
   hide(): void;
   canShowAtSelection(): boolean;
   showAtSelection(): boolean;
-  showAtPoint(x: number, y: number): boolean;
 }
 
 /** Owns cached-link, footnote, and source-owned annotation previews without owning source. */
@@ -359,26 +358,6 @@ export function createPreviewPopoverController(
     return false;
   }
 
-  function showAtPoint(x: number, y: number) {
-    const startedAt = performance.now();
-    if (!editor || editor.composing) return false;
-    const anchor = linkAnchorAt(document.elementFromPoint(x, y));
-    const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
-    if (footnote) {
-      hide();
-      return showFootnote(footnote);
-    }
-    if (!anchor) { hide(); return false; }
-    const preview = previewForAnchor(anchor);
-    if (preview) {
-      hide();
-      showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt, anchor);
-      return true;
-    }
-    hide();
-    return false;
-  }
-
   function annotationButtonAt(target: EventTarget | null) {
     return target instanceof Element
       ? target.closest<HTMLButtonElement>(".scholium-link-annotation-button")
@@ -431,10 +410,6 @@ export function createPreviewPopoverController(
   }
 
   const handlePointerMove = (event: PointerEvent) => {
-    if (root && event.target instanceof Node && root.contains(event.target)) {
-      cancelHide();
-      return;
-    }
     const annotation = annotationButtonAt(event.target);
     const footnote = footnoteButtonAt(event.target);
     const link = linkAnchorAt(event.target);
@@ -455,8 +430,6 @@ export function createPreviewPopoverController(
     }
     scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
   };
-  const handlePreviewPointerEnter = () => cancelHide();
-  const handlePreviewPointerLeave = () => scheduleHide();
   const handleKeyUp = (event: KeyboardEvent) => {
     if (event.key !== "Meta" && event.key !== "Control") return;
     setArmedLink(null);
@@ -485,7 +458,6 @@ export function createPreviewPopoverController(
   const handleFocusOut = (event: FocusEvent) => {
     const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
     if (!button) return;
-    if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
     scheduleHide();
   };
   const handleClick = (event: MouseEvent) => {
@@ -514,8 +486,7 @@ export function createPreviewPopoverController(
       editor.focus();
       return;
     }
-    if (hasPinnedPreview()
-        && !(event.target instanceof Node && root?.contains(event.target))) hide();
+    if (hasPinnedPreview()) hide();
   };
   const handleMouseDown = (event: MouseEvent) => {
     if (event.button !== 0 || !footnoteButtonAt(event.target)) return;
@@ -553,8 +524,6 @@ export function createPreviewPopoverController(
     body.setAttribute("aria-label", localized("Preview content"));
     root.append(title, metadata, body);
     // Detached content builder; the native floating container owns presentation.
-    root.addEventListener("pointerenter", handlePreviewPointerEnter);
-    root.addEventListener("pointerleave", handlePreviewPointerLeave);
     document.addEventListener("pointermove", handlePointerMove, {passive: true});
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
@@ -579,10 +548,7 @@ export function createPreviewPopoverController(
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("compositionstart", handleCompositionStart);
     view.scrollDOM.removeEventListener("scroll", handleViewportExit);
-    root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
-    root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
     window.removeEventListener("resize", handleViewportExit);
-    root?.remove();
     root = null;
     title = null;
     metadata = null;
@@ -601,5 +567,5 @@ export function createPreviewPopoverController(
     };
   });
 
-  return {extension, hide, canShowAtSelection, showAtSelection, showAtPoint};
+  return {extension, hide, canShowAtSelection, showAtSelection};
 }

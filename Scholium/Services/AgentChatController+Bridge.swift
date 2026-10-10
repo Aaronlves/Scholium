@@ -583,13 +583,6 @@ extension AgentChatController {
         return string
     }
 
-    private func agentOptionalBool(_ value: MCPJSONValue?, name: String) throws -> Bool? {
-        guard let value else { return nil }
-        if case .null = value { return nil }
-        guard let bool = value.boolValue else { throw agentInvalid(name, "Provide a boolean or null.") }
-        return bool
-    }
-
     private func agentRequiredStringArray(_ value: MCPJSONValue?, name: String) throws -> [String] {
         guard let values = value?.arrayValue else { throw agentInvalid(name, "Provide an array of strings.") }
         return try values.enumerated().map { index, value in
@@ -598,12 +591,6 @@ extension AgentChatController {
             }
             return string
         }
-    }
-
-    private func agentOptionalStringArray(_ value: MCPJSONValue?, name: String) throws -> [String]? {
-        guard let value else { return nil }
-        if case .null = value { return nil }
-        return try agentRequiredStringArray(value, name: name)
     }
 
     func receive(_ event: [String: MCPJSONValue]) async {

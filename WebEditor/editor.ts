@@ -2325,7 +2325,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     );
     break;
   }
-  case "showPreviewAt": previewPopover.showAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line, operation.focusesEditor); break;
   case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;

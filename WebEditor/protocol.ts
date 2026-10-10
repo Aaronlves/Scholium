@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 47;
+export const EDITOR_PROTOCOL_VERSION = 48;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -130,7 +130,6 @@ export type EditorOperation =
   | {type: "showPreview"}
   | {type: "showSelectionActions"}
   | {type: "measureVisibleProjection"}
-  | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number; focusesEditor: boolean}
   | {type: "revealSourceRange"; fromUTF16: number; toUTF16: number}
@@ -189,7 +188,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "showSelectionActions", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "showSelectionActions", "measureVisibleProjection", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -358,9 +357,6 @@ function validOperation(operation: Record<string, unknown>) {
     && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
   case "setWritingIndexContext": return typeof operation.contextKey === "string"
     && operation.contextKey.length <= 256;
-  case "showPreviewAt":
-    return typeof operation.x === "number" && Number.isFinite(operation.x)
-      && typeof operation.y === "number" && Number.isFinite(operation.y);
   case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
   case "revealSourceRange":
     return Number.isSafeInteger(operation.fromUTF16)
