@@ -462,50 +462,53 @@ struct FrontendArchitectureTests {
         #expect(gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: true))
 
         gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsLoaded: true, editorIsReady: false))
 
         gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
         #expect(
             !gate.allowsReadHitTesting(
                 documentID: "A",
                 presentsEditor: true,
-                editorIsReady: false,
+                editorIsLoaded: true, editorIsReady: false,
                 allowsPendingRecovery: false
             ))
         #expect(
             gate.allowsReadHitTesting(
                 documentID: "A",
                 presentsEditor: true,
-                editorIsReady: false,
+                editorIsLoaded: true, editorIsReady: false,
                 allowsPendingRecovery: true
             ))
 
         gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: true)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: true))
+        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: true))
         #expect(
             !gate.allowsReadHitTesting(
                 documentID: "A",
                 presentsEditor: true,
-                editorIsReady: true,
+                editorIsLoaded: true, editorIsReady: true,
                 allowsPendingRecovery: true
             ))
 
-        #expect(!gate.showsEditor(documentID: "B", presentsEditor: true, editorIsReady: false))
+        #expect(!gate.showsEditor(documentID: "B", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
 
         // A bridge-confirmed editor remains the visible surface while the
         // retained CodeMirror state atomically changes Edit <-> Source.
         gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
+        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
+
+        // A new source revision closes the cover even when native identity stays the same.
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: false, editorIsReady: false))
 
         #expect(
             gate.allowsReadHitTesting(
-                documentID: "A", presentsEditor: true, editorIsReady: false,
+                documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false,
                 allowsPendingRecovery: true
             ))
 
         gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsLoaded: true, editorIsReady: false))
 
         #expect(
             gate.allowsEditorFocus(
@@ -1680,11 +1683,12 @@ struct FrontendArchitectureTests {
         #expect(treeProjectionSource.contains("requestedInput == input"))
         #expect(treeProjectionSource.contains("LibraryTreeProjection("))
         #expect(treeProjectionSource.contains("preorderedNotes notes:"))
-        #expect(
-            treeProjectionSource.components(
-                separatedBy: ".sorted(by: notesAreOrdered)"
-            ).count == 2
-        )
+        #expect(!treeProjectionSource.contains("notesAreOrdered"))
+        #expect(!treeProjectionSource.contains("func buildTree("))
+        #expect(treeProjectionSource.contains("rootNotes.append(note)"))
+        #expect(treeProjectionSource.contains("notesByFolder[visibleFolder, default: []].append(note)"))
+        #expect(treeProjectionSource.contains(".map { noteNode($0, depth: depth + 1) }"))
+        #expect(treeProjectionSource.contains(".map { noteNode($0, depth: 0) }"))
         #expect(!treeProjectionSource.contains("folderMap.keys.compactMap"))
 
         #expect(!sidebarSource.contains("libraryDisclosureButton"))
@@ -2942,8 +2946,18 @@ struct FrontendArchitectureTests {
         #expect(sourceModeExtensions.contains("editorModeFacet.of(\"source\")"))
         #expect(sourceModeExtensions.contains("EditorView.editorAttributes.of"))
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
+        func installedEntryCount(_ entryName: String, in block: Substring) -> Int {
+            block.split(separator: "\n").filter {
+                let entry = $0.trimmingCharacters(in: .whitespaces)
+                return entry == entryName + "," || entry == "Prec.high(" + entryName + "),"
+            }.count
+        }
+        // Both modes reuse the derived semantic index without installing any
+        // Live presentation field, widget or navigation provider in Source.
+        #expect(installedEntryCount("liveProjectionIndex.extension", in: staticExtensions) == 1)
+        #expect(installedEntryCount("liveProjectionIndex.extension", in: liveModeExtensions) == 0)
+        #expect(installedEntryCount("liveProjectionIndex.extension", in: sourceModeExtensions) == 0)
         for liveOnlyExtension in [
-            "liveProjectionIndex.extension",
             "documentTitle.extension",
             "liveSemanticLayout.extension",
             "liveSelection.extension",
@@ -2960,17 +2974,17 @@ struct FrontendArchitectureTests {
         ] {
             // Check an installed extension entry, not a mode-name string inside
             // a shared callback (for example the text-transfer position adapter).
-            func installs(_ block: Substring) -> Bool {
-                block.split(separator: "\n").contains {
-                    let entry = $0.trimmingCharacters(in: .whitespaces)
-                    return entry == liveOnlyExtension + "," || entry == "Prec.high(" + liveOnlyExtension + "),"
-                }
-            }
-            #expect(installs(liveModeExtensions))
-            #expect(!installs(sourceModeExtensions))
-            #expect(!installs(staticExtensions))
+            #expect(installedEntryCount(liveOnlyExtension, in: liveModeExtensions) == 1)
+            #expect(installedEntryCount(liveOnlyExtension, in: sourceModeExtensions) == 0)
+            #expect(installedEntryCount(liveOnlyExtension, in: staticExtensions) == 0)
         }
-        #expect(staticExtensions.contains("modeCompartment.of(sourceMode)"))
+        #expect(editorSource.contains("const initialModeExtension = modeCompartment.of(sourceMode);"))
+        #expect(installedEntryCount("initialModeExtension", in: staticExtensions) == 1)
+        #expect(editorSource.contains("createMarkdownDocumentState(text, editorExtensions.map(extension =>"))
+        #expect(
+            editorSource.contains(
+                "extension === initialModeExtension ? modeCompartment.of(mode === \"livePreview\" ? livePreviewMode : sourceMode) : extension"
+            ))
         #expect(staticExtensions.contains("bidiIsolates()"))
         #expect(staticExtensions.contains("EditorView.perLineTextDirection.of(true)"))
         #expect(editorSource.contains(#"combine: (modes) => modes[0] ?? "source""#))
@@ -4209,7 +4223,26 @@ struct FrontendArchitectureTests {
         #expect(previewControllerSource.contains(#"addEventListener("scroll", handleViewportExit"#))
         #expect(previewControllerSource.contains(#"addEventListener("resize", handleViewportExit"#))
         #expect(!previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
-        #expect(previewControllerSource.contains("root?.remove()"))
+        let unmountStart = try #require(previewControllerSource.range(of: "function unmount(view: EditorView)"))
+        let unmountEnd = try #require(
+            previewControllerSource.range(
+                of: "const extension = ViewPlugin.define",
+                range: unmountStart.upperBound..<previewControllerSource.endIndex
+            ))
+        let unmount = previewControllerSource[unmountStart.lowerBound..<unmountEnd.lowerBound]
+        let hide = try #require(unmount.range(of: "hide();"))
+        let removeListeners = try #require(unmount.range(of: "document.removeEventListener"))
+        let clearRoot = try #require(unmount.range(of: "root = null;"))
+        #expect(hide.lowerBound < removeListeners.lowerBound)
+        #expect(removeListeners.lowerBound < clearRoot.lowerBound)
+        #expect(unmount.contains("view.scrollDOM.removeEventListener"))
+        #expect(unmount.contains("window.removeEventListener"))
+        #expect(unmount.contains("body = null;"))
+        #expect(unmount.contains("editor = null;"))
+        #expect(previewControllerSource.contains("options.nativeFloating.hide(nativeID)"))
+        #expect(previewControllerSource.contains("body?.replaceChildren()"))
+        #expect(!previewControllerSource.contains(".append(root)"))
+        #expect(!previewControllerSource.contains(".appendChild(root)"))
         #expect(!previewControllerSource.contains("mode()"))
     }
 

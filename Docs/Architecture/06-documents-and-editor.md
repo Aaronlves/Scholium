@@ -13,11 +13,11 @@ source, Undo, rendered content and previews without a closed-Note presentation
 cache. Window navigation visits own revision-bound return positions separately
 from open document sessions. Equal paths across vaults remain distinct.
 
-`DocumentController` owns one persisted window-wide mode. Sessions retain
+`DocumentController` owns persisted window mode. Sessions retain
 editor/flush identity, checked exact mirror, committed revision, presentation/
 pending intent, allocation/configuration, source-bound scroll, save and conflict/
 retry/comparison state across mode/layout/theme changes. Only active hosts receive
-input/accessibility; preparation measures actual layout behind its mask.
+input/accessibility; preparation measures layout behind an opaque native skeleton.
 Mount committed Review only for Review/read
 recovery; reconstruct after Edit/Source. Mode presentation awaits acknowledgment;
 unsafe Review retains editor/recovery.
@@ -28,14 +28,14 @@ fractions. Unmount Review outside Review or read recovery; restore its saved
 position when Review returns.
 
 Detachment atomically freezes input and captures exact source, selection and
-history. Detached saves require unchanged document/revision/generation proof;
+history. Frozen saves reuse unchanged document/revision/generation proof;
 cancelled transitions resume only their matching suspension. Committed snapshots
 update clean detached sessions atomically. Dirty sessions retain exact bytes for
 conflict comparison. External events reconcile all tabs by stable identity before
 changing paths/projections; clean deleted sessions release, unsafe sessions retain
 their buffers.
 
-Opening installs exact source, target mode and initial intent together.
+Opening atomically installs exact source, mode and intent before mounting.
 Mapped selection and measured geometry precede handoff; failure preserves source
 behind retry/Source. Clean external publication
 replaces pending source/boundary together. Revision changes invalidate stale

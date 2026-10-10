@@ -1340,8 +1340,9 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.selectedDocument == originalID)
         #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
-        #expect(firstSession.presentationMode == .read)
-        #expect(firstSession.pendingEditorMode == .livePreview)
+        #expect(firstSession.presentationMode == .livePreview)
+        #expect(firstSession.activeEditorMode == .livePreview)
+        #expect(firstSession.pendingEditorMode == nil)
         #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
@@ -1410,10 +1411,29 @@ struct AppCompositionRootTests {
         #expect(firstSession.conflict == nil)
         #expect(secondSession.conflict == nil)
         let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact editor bytes.\r\n"
+        let editor = firstSession.editorSession
+        try #require(editor.documentID == editor.bridgeDocumentID)
+        try #require(editor.checkedSource.utf8.elementsEqual(cleanSource.utf8))
+        try #require(editor.startingFingerprint == cleanCommit.document.fingerprint.sha256)
         firstSession.suppressAutosave = true
-        firstSession.beginEditing(in: .livePreview)
-        firstSession.editingSource = exactDirtyBuffer
+        let baseGeneration = editor.generation
+        try #require(
+            editor.acceptEditorChanges(
+                [
+                    EditorBridgeChange(
+                        from: 0, to: EditorSourceOffsetMap(source: cleanSource).editorUTF16Length,
+                        insert: exactDirtyBuffer.replacingOccurrences(of: "\r\n", with: "\n"),
+                        exactInsert: exactDirtyBuffer)
+                ],
+                baseGeneration: baseGeneration, resultingGeneration: baseGeneration + 1,
+                citationManaged: editor.committedCitationSnapshot != nil,
+                citationData: editor.checkedCitationData
+            ))
         firstSession.suppressAutosave = false
+        #expect(firstSession.hasUnsavedChanges)
+        #expect(editor.checkedSource.utf8.elementsEqual(exactDirtyBuffer.utf8))
+        #expect(firstSession.editingSource.utf8.elementsEqual(cleanSource.utf8))
+        #expect(firstSession.editingRevision == cleanCommit.document.fingerprint)
         let externalSource = "# Shared\n\nCommitted from the clean peer.\n"
         let externalCommit = try await secondWindow.documentController.save(
             NoteMutationTarget(documentID: originalID, stableNoteID: stableNoteID, revision: cleanCommit.document.fingerprint),
@@ -1431,16 +1451,16 @@ struct AppCompositionRootTests {
         #expect(secondSession.conflict == nil)
 
         // Model the researcher accepting the published disk revision before
-        // testing path migration. This changes only the first window's local
-        // editor state; both windows continue borrowing the same capability.
-        firstSession.suppressAutosave = true
-        firstSession.finishEditing()
-        firstSession.editingSource = externalSource
-        firstSession.originalEditingSource = externalSource
-        firstSession.editingRevision = externalCommit.document.fingerprint
-        firstSession.conflict = nil
-        firstSession.editError = nil
-        firstSession.suppressAutosave = false
+        // testing path migration through the conflict recovery owner.
+        try await firstWindow!.documentController.reloadFromDisk(
+            session: firstSession, target: .workspace(sessionKey))
+        #expect(!firstSession.hasUnsavedChanges)
+        #expect(firstSession.editingSource.utf8.elementsEqual(externalSource.utf8))
+        #expect(firstSession.originalEditingSource.utf8.elementsEqual(externalSource.utf8))
+        #expect(editor.checkedSource.utf8.elementsEqual(externalSource.utf8))
+        #expect(firstSession.editingRevision == externalCommit.document.fingerprint)
+        #expect(firstSession.conflict == nil)
+        #expect(firstSession.editError == nil)
 
         let firstSessionIdentity = ObjectIdentifier(firstSession)
         let secondSessionIdentity = ObjectIdentifier(secondSession)

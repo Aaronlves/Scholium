@@ -95,14 +95,7 @@ final class DocumentWebViewContainer: NSView {
     /// Window coordinates are unflipped; convert the actual chrome rectangle
     /// before intersecting. Tabs or notices may leave no overlap at all.
     var toolbarOverlap: NSRect {
-        guard let window, let contentView = window.contentView else { return .zero }
-        let content = contentView.convert(contentView.bounds, to: nil)
-        let lowerEdge = window.contentLayoutRect.maxY
-        let height = max(0, content.maxY - lowerEdge)
-        guard height > 0 else { return .zero }
-        let chrome = NSRect(x: content.minX, y: lowerEdge, width: content.width, height: height)
-        let overlap = bounds.intersection(convert(chrome, from: nil))
-        return overlap.isEmpty ? .zero : overlap
+        DocumentViewportGeometry.toolbarOverlap(in: self)
     }
 
     /// Top edge of the document region that can receive native controls.
@@ -151,6 +144,21 @@ final class DocumentWebViewContainer: NSView {
         // WKWebView's own AX tree does not include arbitrary native subviews.
         // The native parent exposes both owners without mirroring their content.
         surfaceVisibility.isActive && !isHidden ? subviews : []
+    }
+}
+
+@MainActor
+enum DocumentViewportGeometry {
+    /// Used by both the renderer and its preparation cover, in local coordinates.
+    static func toolbarOverlap(in view: NSView) -> NSRect {
+        guard let window = view.window, let contentView = window.contentView else { return .zero }
+        let content = contentView.convert(contentView.bounds, to: nil)
+        let lowerEdge = window.contentLayoutRect.maxY
+        let height = max(0, content.maxY - lowerEdge)
+        guard height > 0 else { return .zero }
+        let chrome = NSRect(x: content.minX, y: lowerEdge, width: content.width, height: height)
+        let overlap = view.bounds.intersection(view.convert(chrome, from: nil))
+        return overlap.isEmpty ? .zero : overlap
     }
 }
 

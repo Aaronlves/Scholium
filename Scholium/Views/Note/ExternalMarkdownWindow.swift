@@ -196,7 +196,10 @@ final class ExternalMarkdownWindowRegistry {
                     model.reveal()
                 }
             }
-            for model in current { await model.resumeInput() }
+            // A cancelled preparation still owns its in-flight freeze. Its
+            // cancellation check restores input after that reply arrives;
+            // joining it here would make the quit deadline wait on the bridge.
+            for model in current where !model.isPreparingTermination { await model.resumeInput() }
             throw error
         }
     }
@@ -839,7 +842,10 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         }
         if !isDirty { return true }
         let saved = await save(allowingLifecycle: true)
-        guard !Task.isCancelled else { return false }
+        guard !Task.isCancelled else {
+            await resumeInput()
+            return false
+        }
         if saved { return true }
         await resumeInput()
         reveal()

@@ -126,7 +126,7 @@ struct DocumentControllerConvergenceTests {
         var body: some View {
             let active = controller.activeSnapshot
             let state = DocumentFeatureState(
-                notes: projection.notes.map { .workspace($0.summary) }, activeNote: active,
+                activeNote: active,
                 selectedDocumentPath: controller.selectedDocumentPath,
                 ordinarySearchScope: .triptych, currentVaultID: active?.id.vaultID,
                 vaultRole: .sourceCorpus,
@@ -134,7 +134,7 @@ struct DocumentControllerConvergenceTests {
                     uniqueKeysWithValues: projection.notes.map {
                         ($0.id.relativePath, $0.stableIdentity.resolvedID!)
                     }),
-                workspaceCatalog: nil, canEdit: true, documentTextScale: 1, appearanceCSS: "", readCSS: "",
+                workspaceCatalog: nil, canEdit: true, documentTextScale: 1, documentAppearance: .defaultSettings, appearanceCSS: "", readCSS: "",
                 livePreviewCSS: "",
                 initialScrollFraction: 0, requestedPresentationMode: projection.requestedMode,
                 sourceLocationRequest: nil,
@@ -773,6 +773,118 @@ struct DocumentControllerConvergenceTests {
         #expect(controller.sourceLocationRequest == nil)
     }
 
+    @Test(
+        "A hydrated opening initializes exact Edit or Source state before any document view appears",
+        arguments: [MarkdownEditorMode.livePreview, .source])
+    func hydratedOpeningStartsInEditor(mode: MarkdownEditorMode) throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let source = "\u{FEFF}---\r\ntitle: \"Fresh\"\r\nunknown: [kept]\r\n---\r\n\r\nFirst e\u{301} paragraph 🦉.\r\n"
+        let opened = note(vaultID: vaultID, noteID: noteID, path: "Fresh.md", source: source)
+        let controller = DocumentController()
+        defer { controller.removeAll() }
+        controller.rememberPresentationMode(mode.presentationMode)
+
+        controller.installOpenedDocument(opened, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor)
+        #expect(controller.activeSnapshot?.fingerprint == opened.fingerprint)
+        #expect(session.isEditing)
+        #expect(session.presentationMode == mode.presentationMode)
+        #expect(session.activeEditorMode == mode)
+        #expect(session.pendingEditorMode == nil)
+        #expect(session.retainsEditorSurface)
+        #expect(session.editingSource.utf8.elementsEqual(source.utf8))
+        #expect(session.originalEditingSource.utf8.elementsEqual(source.utf8))
+        #expect(session.editingRevision == opened.fingerprint)
+        #expect(!session.editorSession.hasAttachedWebView)
+        #expect(!session.editorSession.isLoaded)
+    }
+
+    @Test(
+        "Identity recovery applies the selected Source mode without waiting for a view appearance",
+        arguments: [false, true])
+    func identityPublicationStartsPreparedEditor(committedSnapshot: Bool) throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let original = note(
+            vaultID: vaultID, noteID: noteID, path: "Original.md", source: "\u{FEFF}Exact cafe\u{301}\r\n")
+        let resolved = note(
+            vaultID: vaultID, noteID: noteID, path: "Recovering.md", source: original.document.rawContent)
+        let pending = WorkspaceNoteSnapshot(
+            id: resolved.id, stableIdentity: .pending(noteID), document: resolved.document,
+            fileMetadata: resolved.fileMetadata, graphCounts: resolved.graphCounts)
+        let rebinding = NoteIdentityPendingRebinding(
+            noteID: noteID, vaultID: vaultID,
+            previousRelativePath: original.id.relativePath, relativePath: pending.id.relativePath,
+            fingerprint: pending.fingerprint)
+        let controller = DocumentController()
+        defer { controller.removeAll() }
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor)
+        try controller.finishEditing(session: session, target: .workspace(descriptor.sessionKey))
+
+        controller.receive(workspace(vaultID: vaultID, notes: [pending], pendingRebindings: [rebinding]))
+
+        #expect(controller.activeSnapshot?.capabilities.canEditSource == false)
+        #expect(controller.selectedDocumentPath == pending.id.relativePath)
+        #expect(session.presentationMode == .read)
+        #expect(!session.isEditing)
+
+        if committedSnapshot {
+            controller.recordCommittedSnapshot(resolved, vaultName: "Topics", vaultRole: .topicKnowledge)
+        } else {
+            controller.receive(workspace(vaultID: vaultID, notes: [resolved]))
+        }
+
+        #expect(controller.activeSnapshot?.capabilities.canEditSource == true)
+        #expect(session.presentationMode == .source)
+        #expect(session.pendingEditorMode == nil)
+        #expect(session.isEditing && session.retainsEditorSurface)
+        #expect(session.editingSource.utf8.elementsEqual(resolved.document.rawContent.utf8))
+        #expect(session.originalEditingSource.utf8.elementsEqual(resolved.document.rawContent.utf8))
+        #expect(session.editingRevision == resolved.fingerprint)
+        #expect(!session.editorSession.hasAttachedWebView)
+    }
+
+    @Test("Committed publication preserves a nonediting recovery draft and its revision")
+    func committedPublicationPreservesNoneditingRecovery() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let original = note(
+            vaultID: vaultID, noteID: noteID, path: "Recovering.md",
+            source: "\u{FEFF}Saved e\u{301} source\r\n")
+        let external = note(
+            vaultID: vaultID, noteID: noteID, path: original.id.relativePath,
+            source: "\u{FEFF}External source 🦉\r\n")
+        let draft = original.document.rawContent + "Researcher's retained draft\r\n"
+        let controller = DocumentController()
+        defer { controller.removeAll() }
+        controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor)
+        try controller.finishEditing(session: session, target: .workspace(descriptor.sessionKey))
+        session.editingSource = draft
+        #expect(!session.isEditing && session.hasUnsavedChanges)
+        #expect(controller.currentPresentationMode == .livePreview)
+
+        controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        #expect(controller.activeSnapshot?.fingerprint == external.fingerprint)
+        #expect(!session.isEditing)
+        #expect(session.editingSource.utf8.elementsEqual(draft.utf8))
+        #expect(session.originalEditingSource.utf8.elementsEqual(original.document.rawContent.utf8))
+        #expect(session.editingRevision == original.fingerprint)
+        let conflict = try #require(session.conflict)
+        #expect(conflict.editorSource.utf8.elementsEqual(draft.utf8))
+        #expect(conflict.diskSource.utf8.elementsEqual(external.document.rawContent.utf8))
+        #expect(conflict.baseRevision == original.fingerprint)
+        #expect(conflict.diskRevision == external.fingerprint)
+    }
+
     @Test("Managed creation installs exact source directly into one Edit session")
     func managedCreationStartsInEdit() throws {
         let vaultID = UUID()
@@ -1087,7 +1199,7 @@ struct DocumentControllerConvergenceTests {
         )
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
-        session.preparePresentationMode(.source)
+        session.switchEditorMode(to: .source)
 
         controller.installOpenedDocument(
             note(
@@ -1103,8 +1215,9 @@ struct DocumentControllerConvergenceTests {
         let renamed = try #require(controller.activeDocument)
         #expect(renamed.reference.relativePath == "Chapters/Renamed Draft.md")
         #expect(controller.session(for: renamed) === session)
-        #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == .livePreview)
+        #expect(session.presentationMode == .livePreview)
+        #expect(session.activeEditorMode == .livePreview)
+        #expect(session.pendingEditorMode == nil)
     }
 
     @Test("Clean deleted documents close while dirty exact buffers remain recoverable")
@@ -1462,7 +1575,8 @@ struct DocumentControllerConvergenceTests {
 
     private func workspace(
         vaultID: UUID,
-        notes: [WorkspaceNoteSnapshot]
+        notes: [WorkspaceNoteSnapshot],
+        pendingRebindings: [NoteIdentityPendingRebinding] = []
     ) -> WorkspaceSnapshot {
         let vault = RegisteredVault(
             id: vaultID,
@@ -1497,7 +1611,7 @@ struct DocumentControllerConvergenceTests {
                     identityRecovery: NoteIdentityRecoveryState(
                         identities: [:],
                         ambiguities: [],
-                        pendingRebindings: [],
+                        pendingRebindings: pendingRebindings,
                         failures: []
                     )
                 )

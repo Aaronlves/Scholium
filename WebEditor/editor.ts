@@ -1,5 +1,4 @@
 import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets} from "./document-widget-readiness";
-import {beginDocumentPreparation, type DocumentPreparationHandle} from "./document-preparation";
 import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
 import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
@@ -299,7 +298,6 @@ const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
 let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 let appliedPresentation: EditorPresentationConfiguration | null = null;
-let documentPreparation: DocumentPreparationHandle | null = null;
 
 function setDocumentFocusTarget(target: EditorFocusTarget) {
   const changed = lastDocumentFocusTarget !== target;
@@ -2269,11 +2267,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       return rejected(request.requestID, documentVersion, "invalid initialization");
     }
     editingDialect = operation.dialect;
+    const stateStartedAt = performance.now();
     editorOperations.setDocument(
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
       operation.mode, operation.presentation, operation.initialSelection, operation.citationSnapshot,
     );
-    documentPreparation = beginDocumentPreparation(editor.dom);
+    recordEditorMetric("opening-atomic-state", stateStartedAt, {documentLength: editor.state.doc.length});
     recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
     sampleEditorMemory(editor.state.doc.length);
     return successfulResult(request.requestID);
@@ -2301,44 +2300,73 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setMode": editorOperations.setMode(operation.mode); break;
   case "setPresentation": applyPresentationConfiguration(operation.value); break;
   case "completePreparation": {
+    const preparationStartedAt = performance.now();
+    const phases = {
+      styleWorkMilliseconds: 0, fontsWaitMilliseconds: 0, projectionWorkMilliseconds: 0,
+      measureWorkMilliseconds: 0, scrollWorkMilliseconds: 0, measureCount: 0, loopCount: 0,
+      widgetWaitMilliseconds: 0, widgetWaitCount: 0, imageWaitMilliseconds: 0, imageWaitCount: 0,
+    };
+    let completed = false;
     const attachment = documentAttachment;
-    const preparation = documentPreparation;
     let expired = false;
     const isCurrent = () => !expired && request.expiresAt > Date.now()
       && attachment === documentAttachment && request.knownGeneration === documentVersion;
     const requireCurrent = () => { if (!isCurrent()) throw new Error("stale editor preparation"); };
-    const measure = () => measureMarkdownEditor(editor, () => {
-      requireCurrent();
-      editor.coordsAtPos(editor.state.selection.main.head);
-      scrollCoordinator.currentAnchor();
-    });
+    const measure = () => {
+      const startedAt = performance.now();
+      const measured = measureMarkdownEditor(editor, () => {
+        requireCurrent();
+        editor.coordsAtPos(editor.state.selection.main.head);
+        scrollCoordinator.currentAnchor();
+      });
+      phases.measureWorkMilliseconds += performance.now() - startedAt;
+      phases.measureCount += 1;
+      return measured;
+    };
+    const styleStartedAt = performance.now();
     flushPresentationStyleAndGeometry();
+    phases.styleWorkMilliseconds += performance.now() - styleStartedAt;
     let deadline: number | undefined;
     try {
+      const fontsStartedAt = performance.now();
       await Promise.race([
         document.fonts.ready.then(async () => {
+          phases.fontsWaitMilliseconds += performance.now() - fontsStartedAt;
           requireCurrent();
+          const projectionStartedAt = performance.now();
           convergeLivePreviewProjection();
+          phases.projectionWorkMilliseconds += performance.now() - projectionStartedAt;
           await measure();
           requireCurrent();
           const decoded = new Set<HTMLImageElement>();
           while (true) {
+            phases.loopCount += 1;
+            const scrollStartedAt = performance.now();
             if (operation.anchor) scrollCoordinator.setAnchor(operation.anchor);
             else if (operation.fraction !== undefined) scrollCoordinator.setFraction(operation.fraction);
+            phases.scrollWorkMilliseconds += performance.now() - scrollStartedAt;
             await measure();
             requireCurrent();
             if (configuredEditorMode(editor.state) !== "livePreview") break;
             if (document.fonts.status !== "loaded") {
+              const startedAt = performance.now();
               await document.fonts.ready;
+              phases.fontsWaitMilliseconds += performance.now() - startedAt;
               requireCurrent();
               await measure();
               requireCurrent();
               continue;
             }
-            if (await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent)) {
+            const widgetsStartedAt = performance.now();
+            const waitedForWidgets = await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent);
+            phases.widgetWaitMilliseconds += performance.now() - widgetsStartedAt;
+            if (waitedForWidgets) {
+              phases.widgetWaitCount += 1;
               requireCurrent();
               await measure();
+              const startedAt = performance.now();
               await document.fonts.ready;
+              phases.fontsWaitMilliseconds += performance.now() - startedAt;
               requireCurrent();
               await measure();
               requireCurrent();
@@ -2346,8 +2374,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
             }
             // The shared readiness owner includes actual Embedded Note images,
             // excludes popovers and preserves existing image/alt on failure.
-            if (await awaitVisibleDocumentImages(editor.contentDOM,
-              editor.scrollDOM.getBoundingClientRect(), decoded, requireCurrent, applyDecodedImagePresentation)) {
+            const imagesStartedAt = performance.now();
+            const waitedForImages = await awaitVisibleDocumentImages(editor.contentDOM,
+              editor.scrollDOM.getBoundingClientRect(), decoded, requireCurrent, applyDecodedImagePresentation);
+            phases.imageWaitMilliseconds += performance.now() - imagesStartedAt;
+            if (waitedForImages) {
+              phases.imageWaitCount += 1;
               // Decoding changes the real height map. Restore the authorized
               // target after measuring and inspect the materialized viewport.
               await measure();
@@ -2356,7 +2388,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
             }
             break;
           }
-          preparation?.refresh();
         }),
         new Promise<never>((_resolve, reject) => {
           deadline = window.setTimeout(() => {
@@ -2366,17 +2397,21 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         }),
       ]);
       requireCurrent();
-    } finally { window.clearTimeout(deadline); }
+      completed = true;
+    } finally {
+      window.clearTimeout(deadline);
+      recordEditorMetric("opening-preparation", preparationStartedAt, {...phases, completed: completed ? 1 : 0, expired: expired ? 1 : 0});
+    }
     break;
   }
   case "releasePreparation": {
-    // Native owns the stable mode/configuration decision. All completion
-    // retries keep the same mask until this explicit presentation handoff.
-    documentPreparation?.finish();
-    documentPreparation = null;
+    const releaseStartedAt = performance.now();
+    // Native covers the opening through this final authorized focus and
+    // geometry handoff, then exposes the active document surface.
     if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({preventScroll: true});
     else if (operation.focusTarget) editor.focus();
     editor.coordsAtPos(editor.state.selection.main.head);
+    recordEditorMetric("opening-release", releaseStartedAt);
     break;
   }
   case "showPreview": previewPopover.showAtSelection(); break;
@@ -2856,8 +2891,8 @@ function setDynamicStyle(id: string, css: string) {
 
 function flushPresentationStyleAndGeometry() {
   // Initiate style and font resolution before the opening measurement.
-  // The DOM paint mask keeps the opening covered while preserving real
-  // layout until native accepts the measured presentation handoff.
+  // Native covers the opening while preserving the real document layout
+  // until it accepts the measured presentation handoff.
   for (const selector of [
     ".cm-content",
     ".cm-live-h1",
@@ -2975,8 +3010,6 @@ const editorOperations = {
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string,
     mode: EditorMode, presentation: EditorPresentationConfiguration,
     initialSelection?: {anchor: number; head: number}, citationSnapshot?: ZoteroCitationSnapshot) {
-    documentPreparation?.finish();
-    documentPreparation = null;
     appliedPresentation = null;
     citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;

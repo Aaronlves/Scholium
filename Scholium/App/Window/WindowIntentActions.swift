@@ -139,7 +139,9 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
+        let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: reference.relativePath)
         if disposition == .separateWindow {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 do { _ = try await workspaceStore.documentLocations.openSeparate(reference, from: self) } catch {
@@ -148,17 +150,28 @@ extension WindowModel {
             }
             return
         }
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
+            return
+        }
         if disposition == .newTab {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             openInNewTab(reference)
             return
         }
-        enqueueDocumentTransition(preparation: openingPreparation(for: reference)) { [weak self] in
+        var destinationInstalled = false
+        enqueueDocumentTransition(
+            preparation: openingPreparation(for: reference), openingMeasurement: openingMeasurement
+        ) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,
-                tabActivation: .place(.replaceSelected)
+                tabActivation: .place(.replaceSelected),
+                openingMeasurement: openingMeasurement
             )
+            destinationInstalled = true
+        } didFinish: {
+            if !destinationInstalled { PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement) }
         }
     }
 

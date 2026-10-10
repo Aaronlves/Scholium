@@ -248,6 +248,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
+        let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: performanceDocumentID)
+        let openingSessionID = session.sessionID
+        PerformanceProbe.shared.bindNoteOpening(
+            attemptID: openingMeasurement, documentID: performanceDocumentID, editorSessionID: openingSessionID
+        )
+        coordinator.noteOpeningAttemptID = openingMeasurement
+        coordinator.noteOpeningSessionID = openingSessionID
         session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         session.webViewPool?.registerAttached(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
@@ -272,6 +279,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 PerformanceProbe.shared.markEditActivationAttached(
                     documentID: performanceDocumentID, reusedPage: true
                 )
+                PerformanceProbe.shared.markNoteOpeningPhase(
+                    .attached, attemptID: openingMeasurement, editorSessionID: openingSessionID
+                )
                 coordinator?.resumePreparedPage(in: webView, editorHTML: editorHTML)
             }
         } else {
@@ -280,6 +290,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard let webView else { return }
                 PerformanceProbe.shared.markEditActivationAttached(
                     documentID: performanceDocumentID, reusedPage: false
+                )
+                PerformanceProbe.shared.markNoteOpeningPhase(
+                    .attached, attemptID: openingMeasurement, editorSessionID: openingSessionID
                 )
                 webView.loadHTMLString(editorHTML, baseURL: nil)
             }
@@ -483,6 +496,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var documentID = ""
         var documentTitle = ""
         var performanceDocumentID: String
+        var noteOpeningAttemptID: UUID?
+        var noteOpeningSessionID: UUID?
         weak var activeWebView: WKWebView?
         var source = ""
         /// Diff cache for the last SwiftUI input delivered to the session.
@@ -1118,6 +1133,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             guard !hasSignaledReady else { return }
             hasSignaledReady = true
             PerformanceProbe.shared.markEditActivationRendererReady(documentID: performanceDocumentID)
+            PerformanceProbe.shared.markNoteOpeningPhase(
+                .rendererReady, attemptID: noteOpeningAttemptID, editorSessionID: noteOpeningSessionID
+            )
             session.editorBecameReady()
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)

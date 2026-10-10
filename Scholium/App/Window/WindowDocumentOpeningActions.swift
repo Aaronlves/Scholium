@@ -136,12 +136,16 @@ extension WindowModel {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil,
         committedSnapshot: WorkspaceNoteSnapshot? = nil,
+        openingMeasurement: UUID? = nil,
         validateDisplay: @MainActor () throws -> Void = {},
         validateSource: @MainActor () async throws -> Void = {}
     ) async throws {
         guard !transferInProgress else { throw CancellationError() }
         try validateDisplay()
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
+            return
+        }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
@@ -165,6 +169,7 @@ extension WindowModel {
             recordsNavigationHistory: recordsNavigationHistory,
             managedCreationBodyStartUTF16: managedCreationBodyStartUTF16,
             committedSnapshot: committedSnapshot,
+            openingMeasurement: openingMeasurement,
             validateDisplay: validateDisplay, validateSource: validateSource
         )
     }
@@ -175,10 +180,14 @@ extension WindowModel {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil,
         committedSnapshot: WorkspaceNoteSnapshot? = nil,
+        openingMeasurement: UUID? = nil,
         validateDisplay: @MainActor () throws -> Void = {},
         validateSource: @MainActor () async throws -> Void = {}
     ) async throws {
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
+            return
+        }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
@@ -211,11 +220,13 @@ extension WindowModel {
                     shellState.selectDocumentWorkspace(workspace)
                 }
                 synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
+                PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
                 return
             }
         }
         let hydrated: WorkspaceNoteSnapshot
         if let committedSnapshot {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             guard committedSnapshot.summary.hasSameSourceBinding(as: snapshot) else {
                 throw WorkspaceHydrationError.staleSnapshot
             }
@@ -229,15 +240,16 @@ extension WindowModel {
                 retained.fingerprint == snapshot.fingerprint,
                 retained.id.relativePath.utf8.elementsEqual(snapshot.id.relativePath.utf8)
             {
+                PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
                 hydrated = WorkspaceNoteSnapshot(
                     summary: snapshot, document: retained.document,
                     cachedSemanticDocument: retained.cachedSemanticDocument
                 )
             } else {
-                hydrated = try await hydrateForOpening(snapshot)
+                hydrated = try await hydrateForOpening(snapshot, openingMeasurement: openingMeasurement)
             }
         } else {
-            hydrated = try await hydrateForOpening(snapshot)
+            hydrated = try await hydrateForOpening(snapshot, openingMeasurement: openingMeasurement)
         }
         try await validateSource()
         try validateDisplay()
@@ -274,6 +286,7 @@ extension WindowModel {
             after: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory
         )
+        PerformanceProbe.shared.markNoteOpeningPhase(.documentInstalled, attemptID: openingMeasurement)
     }
 
     /// A document opening may change the browsed Library only after its exact
@@ -310,11 +323,14 @@ extension WindowModel {
         scheduleWorkspaceCatalogRefresh()
     }
 
-    private func hydrateForOpening(_ summary: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
+    private func hydrateForOpening(
+        _ summary: WorkspaceNoteSummary, openingMeasurement: UUID? = nil
+    ) async throws -> WorkspaceNoteSnapshot {
         guard let capabilities = windowWorkspaceController.activeCapabilities else {
             throw WindowNavigationError.noteUnavailable(summary.id.relativePath)
         }
         let runtimeIdentity = capabilities.runtimeIdentity
+        PerformanceProbe.shared.markNoteOpeningPhase(.hydrationStarted, attemptID: openingMeasurement)
         let hydrated: WorkspaceNoteSnapshot
         do {
             hydrated = try await capabilities.documents.hydrate(summary)
@@ -339,6 +355,7 @@ extension WindowModel {
                 relativePath: hydrated.id.relativePath
             ), currentSummary.hasSameSourceBinding(as: hydrated.summary)
         else { throw WorkspaceHydrationError.staleSnapshot }
+        PerformanceProbe.shared.markNoteOpeningPhase(.hydrated, attemptID: openingMeasurement)
         return WorkspaceNoteSnapshot(
             summary: currentSummary, document: hydrated.document,
             cachedSemanticDocument: hydrated.cachedSemanticDocument

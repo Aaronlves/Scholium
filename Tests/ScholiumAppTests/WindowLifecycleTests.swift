@@ -1012,6 +1012,99 @@ struct WindowLifecycleTests {
         #expect(controller.testingPageItem(for: secondID) == nil)
     }
 
+    @Test("Document page selection presents the committed projection across placeholder, close and reorder")
+    func documentTabAdapterKeepsSelectedProjection() throws {
+        _ = NSApplication.shared
+        let vaultID = UUID()
+        let first = DocumentTabItem(
+            id: UUID(), document: .unavailable(vaultID: vaultID, relativePath: "First.md"),
+            title: "First", toolTip: "First.md")
+        let second = DocumentTabItem(
+            id: UUID(), document: .unavailable(vaultID: vaultID, relativePath: "Second.md"),
+            title: "Second", toolTip: "Second.md")
+        var requestedSelections: [UUID] = []
+        let controller = ScholiumDocumentTabsViewController(
+            document: DocumentPageProjection(value: "Placeholder"), tabs: [], selectedTabID: nil,
+            selectTab: { requestedSelections.append($0) })
+        let window = testWindow()
+        let viewport = NSRect(origin: .zero, size: window.contentLayoutRect.size)
+        // A real split item supplies this viewport. Giving NSWindow a zero-sized
+        // controller root instead also shrinks the synthetic window's content.
+        controller.view.frame = viewport
+        window.contentViewController = controller
+        defer {
+            window.contentViewController = nil
+            window.close()
+        }
+
+        func update(_ tabs: [DocumentTabItem], selected: UUID?, projection: String) {
+            controller.update(
+                document: DocumentPageProjection(value: projection), tabs: tabs,
+                selectedTabID: selected, selectTab: { requestedSelections.append($0) })
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+
+        func expectSelected(_ tab: DocumentTabItem?, projection: String) throws {
+            let nativeTabView = controller.testingNativeTabView
+            let item = try #require(nativeTabView.selectedTabViewItem)
+            let host = try #require(item.viewController as? NSHostingController<DocumentPageProjection>)
+            #expect(window.contentLayoutRect.size == viewport.size)
+            #expect(controller.view.bounds.size == viewport.size)
+            #expect(nativeTabView.bounds.size == viewport.size)
+            #expect(host.rootView.value == projection)
+            if let tab {
+                #expect(item === controller.testingPageItem(for: tab.id))
+                #expect(item.identifier as? UUID == tab.id)
+            } else {
+                #expect(item.identifier as? UUID == nil)
+            }
+            #expect(host.view.window === window)
+            #expect(host.view.isDescendant(of: nativeTabView))
+            #expect(!host.view.isHiddenOrHasHiddenAncestor)
+            #expect(host.view.frame.width > 400)
+            #expect(host.view.frame.height > 300)
+        }
+
+        window.contentView?.layoutSubtreeIfNeeded()
+        try expectSelected(nil, projection: "Placeholder")
+        update([first], selected: first.id, projection: "First opening")
+        try expectSelected(first, projection: "First opening")
+        let firstHost = controller.testingPageHost(for: first.id)
+        update([first, second], selected: second.id, projection: "Second opening")
+        try expectSelected(second, projection: "Second opening")
+        update([first, second], selected: first.id, projection: "First restored")
+        try expectSelected(first, projection: "First restored")
+        #expect(controller.testingPageHost(for: first.id) === firstHost)
+
+        let secondItem = try #require(controller.testingPageItem(for: second.id) as? NSTabViewItem)
+        controller.testingNativeTabView.selectTabViewItem(secondItem)
+        #expect(requestedSelections == [second.id])
+        try expectSelected(first, projection: "First restored")
+
+        update([first, second], selected: second.id, projection: "Second restored")
+        try expectSelected(second, projection: "Second restored")
+        update([first], selected: first.id, projection: "First after close")
+        try expectSelected(first, projection: "First after close")
+        update([], selected: nil, projection: "Closed placeholder")
+        try expectSelected(nil, projection: "Closed placeholder")
+        update([second], selected: second.id, projection: "Second reopened")
+        try expectSelected(second, projection: "Second reopened")
+        let secondHost = controller.testingPageHost(for: second.id)
+        update([first, second], selected: second.id, projection: "Second shifted")
+        try expectSelected(second, projection: "Second shifted")
+        update([second, first], selected: second.id, projection: "Second reordered")
+        try expectSelected(second, projection: "Second reordered")
+        #expect(controller.testingPageHost(for: second.id) === secondHost)
+    }
+
+    private struct DocumentPageProjection: View {
+        let value: String
+
+        var body: some View {
+            Text(value).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private func makeWorkspaceSplit(
         libraryChanges: @escaping (Bool) -> Void,
         inspectorChanges: @escaping (Bool) -> Void

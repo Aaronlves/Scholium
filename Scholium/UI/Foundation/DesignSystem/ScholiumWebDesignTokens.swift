@@ -49,10 +49,10 @@ enum ScholiumWebDesignTokens {
             --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
             --scholium-document-source-font-family: "\(defaults.source.fontFamily)", ui-monospace, monospace;
             --scholium-source-half-work-width: \(ScholiumDocumentRhythm.sourceWorkWidthCharacterUnits / 2)ch;
-            --scholium-document-title-size: 210%;
-            --scholium-document-title-line-height: 1.25;
-            --scholium-document-title-after: 0.7em;
-            --scholium-document-reading-top-gap: 0.75em;
+            --scholium-document-title-size: \(number(ScholiumDocumentRhythm.titleScale * 100))%;
+            --scholium-document-title-line-height: \(number(ScholiumDocumentRhythm.titleLineHeight));
+            --scholium-document-title-after: \(number(ScholiumDocumentRhythm.titleAfterEms))em;
+            --scholium-document-reading-top-gap: \(number(ScholiumDocumentRhythm.readingTopGapEms))em;
             --scholium-document-frontmatter-font-size: min(var(--scholium-document-prose-font-size), max(11pt, calc(var(--scholium-document-prose-font-size) * 0.84)));
             --scholium-document-frontmatter-line-height: 1.6;
             --scholium-document-frontmatter-ink: color-mix(in srgb, var(--scholium-color-primary-text) 78%, var(--scholium-color-secondary-text));
@@ -185,39 +185,6 @@ enum ScholiumWebDesignTokens {
           \(ScholiumContentInteractionSurface.webCSSDeclarations)
           \(documentMarkupCSSDeclarations)
           \(rhythmCSSDeclarations)
-        }
-        .scholium-document-preparation {
-          position: fixed;
-          inset: 0;
-          z-index: 2147483647;
-          pointer-events: none;
-          overflow: hidden;
-          background: var(--scholium-color-document-background);
-        }
-        .scholium-document-preparation-paint {
-          position: absolute;
-          inset: 0;
-          animation: scholium-document-preparation-pulse 1.4s ease-in-out infinite alternate;
-        }
-        .scholium-document-preparation-shape {
-          position: absolute;
-          background: color-mix(in srgb, var(--scholium-color-secondary-text) 25%, var(--scholium-color-document-background));
-        }
-        @keyframes scholium-document-preparation-pulse {
-          from { opacity: 0.9; }
-          to { opacity: 0.65; }
-        }
-        .scholium-document-preparation-static .scholium-document-preparation-paint {
-          animation: none;
-          opacity: 0.9;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .scholium-document-preparation-paint { animation: none; opacity: 0.9; }
-        }
-        @media (prefers-contrast: more) {
-          .scholium-document-preparation-shape {
-            background: color-mix(in srgb, var(--scholium-color-primary-text) 40%, var(--scholium-color-document-background));
-          }
         }
         .scholium-document,
         .cm-editor.scholium-live-mode .cm-content {

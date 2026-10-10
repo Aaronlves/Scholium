@@ -164,12 +164,12 @@ struct AgentChatNoteMaterialTests {
             let snapshot = try #require(
                 try await window.documentController.noteSnapshot(
                     .init(vaultID: note.reference.vaultID, relativePath: note.reference.relativePath)))
+            window.rememberPresentationMode(.read)
             window.documentController.installOpenedDocument(snapshot, vaultName: note.reference.vaultName, vaultRole: note.reference.vaultRole)
             let selected = try #require(window.documentController.selectedDocument)
             let session = window.documentController.session(for: selected.editingTarget)
             session.suppressAutosave = true
-            session.preparePresentationMode(.read)
-            window.rememberPresentationMode(.read)
+            #expect(!session.isEditing)
             try await wait { window.presentedDocumentMode == .read }
             session.renderedReadFingerprint = DocumentFingerprint(content: source).sha256
             let passageRange = (source as NSString).range(of: "Literal")

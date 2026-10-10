@@ -1302,6 +1302,9 @@ final class DocumentController: ObservableObject {
         }
         if let session = retainedSession(for: key) {
             reconcile(session: session, with: snapshot)
+            if selectedDocument?.editingTarget == target, !session.isEditing {
+                applyCurrentPresentationMode(to: session, target: target)
+            }
         }
     }
 
@@ -1710,6 +1713,20 @@ final class DocumentController: ObservableObject {
             guard let editorMode = currentPresentationMode.editorMode else { return }
             if session.isEditing {
                 session.switchEditorMode(to: editorMode)
+            } else if case .workspace(let key) = target, let snapshot = snapshots[key] {
+                guard !session.hasUnsavedChanges, !session.editorSession.isComposing,
+                    session.conflict == nil, session.editError == nil,
+                    !session.isSavingEdit, session.activeSaveTask == nil,
+                    session.pendingEditorCommit == nil
+                else { return }
+                // Hydration has already established exact bytes and editing authority.
+                // Install the editor intent in this same transaction, before SwiftUI
+                // mounts the document; view appearance must not initialize its state.
+                beginEditing(
+                    session: session, target: target,
+                    source: snapshot.document.rawContent, revision: snapshot.fingerprint,
+                    mode: editorMode
+                )
             } else {
                 session.preparePresentationMode(currentPresentationMode)
             }
@@ -2491,7 +2508,12 @@ final class DocumentController: ObservableObject {
                 summary: note, document: document,
                 cachedSemanticDocument: current.cachedSemanticDocument
             )
-            if isSelected, retainedSession.editError == nil { setSaveError(nil) }
+            if isSelected {
+                if !retainedSession.isEditing {
+                    applyCurrentPresentationMode(to: retainedSession, target: .workspace(key))
+                }
+                if retainedSession.editError == nil { setSaveError(nil) }
+            }
         } else {
             scheduleHydration(note, for: document.editingTarget)
         }
@@ -2568,10 +2590,9 @@ final class DocumentController: ObservableObject {
                     else { return }
                     self.snapshots[key] = current
                     self.reconcile(session: session, with: current)
-                    if self.selectedDocument?.editingTarget == target,
-                        session.editError == nil
-                    {
-                        self.setSaveError(nil)
+                    if self.selectedDocument?.editingTarget == target {
+                        if !session.isEditing { self.applyCurrentPresentationMode(to: session, target: target) }
+                        if session.editError == nil { self.setSaveError(nil) }
                     }
                 case .unavailable(let vaultID, let path):
                     guard self.selectedDocument?.editingTarget == target,

@@ -186,8 +186,8 @@ struct ExternalMarkdownWindowLifecycleTests {
                 let editor = model.editorSession
                 let webView = try #require(editor.webView)
                 let expectedCaret = try #require(
-                    EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: prefix.utf16.count))
-                try await host.waitUntil("initial exact body caret") {
+                    EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: 0))
+                try await host.waitUntil("initial Markdown beginning caret") {
                     editor.context?.selections == [.init(anchor: expectedCaret, head: expectedCaret)]
                 }
                 #expect(Data(try await editor.currentText().utf8) == Data(source.utf8))
@@ -263,7 +263,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         try await verifyStalledTermination(phase: phase, pausesSaveCapture: false)
     }
 
-    @Test("A save capture completing after a rejected quit cannot start a late source write")
+    @Test("An atomic frozen capture completing after a rejected quit cannot start a late source write")
     func lateSaveCaptureCannotWriteAfterRejectedQuit() async throws {
         try await verifyStalledTermination(phase: .contentFlush, pausesSaveCapture: true)
     }
@@ -279,8 +279,11 @@ struct ExternalMarkdownWindowLifecycleTests {
                 let retained = Data(stalled.editor.checkedSource.utf8)
                 let savedPeer = Data(healthy.editor.checkedSource.utf8)
                 let pause = PausedBridgeRequest()
-                stalled.bridge.textQueriesBeforePause = pausesSaveCapture ? 1 : 0
-                stalled.bridge.nextTextQueryPause = pause
+                if pausesSaveCapture {
+                    stalled.bridge.nextFrozenCapturePause = pause
+                } else {
+                    stalled.bridge.nextTextQueryPause = pause
+                }
                 defer { pause.release() }
                 var policy = ScholiumLifecyclePolicy()
                 policy.contentFlush = phase == .contentFlush ? .milliseconds(200) : .seconds(3)
@@ -303,6 +306,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
                         await pause.waitForArrival()
                     }
+                    if pausesSaveCapture { #expect(stalled.bridge.suspensionID != nil) }
                 } catch {
                     pause.release()
                     _ = await flushing.value
@@ -1105,7 +1109,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         var suspensionID: String?
         var resumeFailuresRemaining = 0
         var nextTextQueryPause: PausedBridgeRequest?
-        var textQueriesBeforePause = 0
+        var nextFrozenCapturePause: PausedBridgeRequest?
         var focusCount = 0
 
         func insertBrowserOnly(_ exact: String) {
@@ -1127,12 +1131,8 @@ struct ExternalMarkdownWindowLifecycleTests {
                 generation = 0
             case .queryText:
                 if let pause = nextTextQueryPause {
-                    if textQueriesBeforePause > 0 {
-                        textQueriesBeforePause -= 1
-                    } else {
-                        nextTextQueryPause = nil
-                        await pause.suspend()
-                    }
+                    nextTextQueryPause = nil
+                    await pause.suspend()
                 }
                 text = source
             case .captureRecovery:
@@ -1140,6 +1140,12 @@ struct ExternalMarkdownWindowLifecycleTests {
             case .suspendForDetachment(let id):
                 suspensionID = id
                 recovery = recoverySnapshot(request)
+                if let pause = nextFrozenCapturePause {
+                    nextFrozenCapturePause = nil
+                    // WebKit froze and captured the exact source, but its
+                    // delayed reply intentionally does not observe cancellation.
+                    await pause.suspend()
+                }
             case .resumeAfterDetachment(let id):
                 guard suspensionID == id else { throw MarkdownEditorSession.SessionError.staleRequest }
                 if resumeFailuresRemaining > 0 {

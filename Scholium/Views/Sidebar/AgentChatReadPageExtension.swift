@@ -165,7 +165,8 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                         """,
                         arguments: [
                             "update": [
-                                "version": 7, "documentID": documentID, "loadGeneration": loadGeneration,
+                                "version": SafeMarkdownReadWebView.configurationVersion,
+                                "documentID": documentID, "loadGeneration": loadGeneration,
                                 "previousFingerprint": previousFingerprint, "fingerprint": fingerprint,
                                 "html": body, "presentationCSS": presentationCSS, "userCSS": userCSS,
                             ]

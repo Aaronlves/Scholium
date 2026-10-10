@@ -6,6 +6,7 @@ import WebKit
 typealias DocumentSelectionActionPresenter = @MainActor (AgentChatSelectionInquiry) async throws -> Bool
 
 struct SafeMarkdownReadWebView: NSViewRepresentable {
+    static let configurationVersion = 8
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
     @Environment(\.documentToolbarUnderlap) private var toolbarUnderlap
@@ -658,7 +659,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         loadGeneration: loadGeneration,
                         selectionEnabled: onSelectionChange != nil,
                         imagePreviewsEnabled: onImagePreview != nil,
-                        documentPreparation: surfaceVisibility == .preparing && pageExtension == nil,
                         replyProjection: pageExtension?.replyProjectionEnabled == true,
                         linkPreviews: linkPreviews,
                         presentationCSS: presentationCSS,
@@ -817,7 +817,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
             guard message.name == Self.messageHandlerName,
                 let payload = message.body as? [String: Any],
-                payload["version"] as? Int == 7,
+                payload["version"] as? Int == SafeMarkdownReadWebView.configurationVersion,
                 payload["documentID"] as? String == documentID,
                 (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
                 let type = payload["type"] as? String,
@@ -1193,24 +1193,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                             throw TestingReadFinalizationError.forced
                         }
                     #endif
-                    let preparationFinished = try await webView.callAsyncJavaScript(
-                        "return window.scholiumReadPreparation?.finish(documentID, fingerprint, loadGeneration) === true;",
-                        arguments: [
-                            "documentID": expectedDocumentID,
-                            "fingerprint": expectedFingerprint,
-                            "loadGeneration": expectedLoadGeneration,
-                        ],
-                        in: nil,
-                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                    )
-                    guard
-                        self.isCurrentLoad(
-                            navigation: navigation, generation: expectedLoadGeneration,
-                            signature: expectedSignature, in: webView)
-                    else { return }
-                    guard preparationFinished as? Bool == true else {
-                        throw CocoaError(.coderReadCorrupt)
-                    }
                     if let restoreClaim {
                         self.scrollRestoration.finish(restoreClaim, consumed: restoreSucceeded)
                         claimWasFinished = true
@@ -1879,7 +1861,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let loadGeneration: UInt64
             let selectionEnabled: Bool
             let imagePreviewsEnabled: Bool
-            let documentPreparation: Bool
             let replyProjection: Bool
             let testingEnabled: Bool
             let presentationCSS: String
@@ -1898,7 +1879,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadGeneration: UInt64,
             selectionEnabled: Bool,
             imagePreviewsEnabled: Bool = false,
-            documentPreparation: Bool = false,
             replyProjection: Bool = false,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
@@ -1925,13 +1905,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 7,
+                version: SafeMarkdownReadWebView.configurationVersion,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
                 imagePreviewsEnabled: imagePreviewsEnabled,
-                documentPreparation: documentPreparation,
                 replyProjection: replyProjection,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,

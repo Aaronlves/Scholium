@@ -135,6 +135,7 @@ extension WindowModel {
     /// capture remains necessary if preparation or destination opening fails.
     func enqueueDocumentTransition(
         preparation: DocumentTransitionPreparation = .saveSelectedDocument,
+        openingMeasurement: UUID? = nil,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
         validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
         admitBeforePreparation: @escaping @MainActor () async throws -> Void = {},
@@ -143,7 +144,10 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
-        guard !transferInProgress, !windowCloseCoordinator.isPreparingOrFinalized else { return }
+        guard !transferInProgress, !windowCloseCoordinator.isPreparingOrFinalized else {
+            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
+            return
+        }
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
@@ -151,6 +155,7 @@ extension WindowModel {
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
+                PerformanceProbe.shared.markNoteOpeningPhase(.transitionStarted, attemptID: openingMeasurement)
                 try validateBeforePreparation()
                 try await admitBeforePreparation()
                 try validateBeforePreparation()
@@ -212,6 +217,7 @@ extension WindowModel {
                         position: self.documentController.navigationPosition(for: displayed)
                     )
                 }
+                PerformanceProbe.shared.markNoteOpeningPhase(.prepared, attemptID: openingMeasurement)
             },
             operation: { [weak self] isCurrent in
                 guard let self, isCurrent() else { throw CancellationError() }

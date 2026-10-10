@@ -2,13 +2,12 @@ import {describe, expect, it} from "vitest";
 import {validatedReaderConfiguration} from "../reader-configuration";
 
 const currentConfiguration = {
-  version: 7,
+  version: 8,
   documentID: "work-001",
   fingerprint: "a".repeat(64),
   loadGeneration: 3,
   selectionEnabled: true,
   imagePreviewsEnabled: false,
-  documentPreparation: false,
   testingEnabled: true,
   presentationCSS: "",
   userCSS: "",
@@ -22,12 +21,10 @@ describe("reader configuration", () => {
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: true})?.imagePreviewsEnabled).toBe(true);
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: undefined})).toBeNull();
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: "true"})).toBeNull();
-    expect(validatedReaderConfiguration({...currentConfiguration, documentPreparation: true})?.documentPreparation).toBe(true);
-    expect(validatedReaderConfiguration({...currentConfiguration, documentPreparation: undefined})).toBeNull();
   });
 
   it("rejects unknown versions and unbounded identities", () => {
-    expect(validatedReaderConfiguration({...currentConfiguration, version: 5})).toBeNull();
+    expect(validatedReaderConfiguration({...currentConfiguration, version: 7})).toBeNull();
     expect(validatedReaderConfiguration({...currentConfiguration, version: 2})).toBeNull();
     expect(validatedReaderConfiguration({
       ...currentConfiguration,

@@ -58,7 +58,10 @@ struct ExternalMarkdownWindowView: View {
                     documentID: documentID,
                     presentsEditor: model.mode != .read,
                     retainsEditor: model.retainsEditor,
-                    editorIsReady: model.editorReady
+                    editorIsLoaded: model.editorSession.isLoaded,
+                    editorIsReady: model.editorReady,
+                    preparationTitle: model.title,
+                    preparationPresentation: .init(textScale: model.documentTextScale)
                 ) {
                     SafeMarkdownReadWebView(
                         documentID: documentID,

@@ -10,13 +10,12 @@ export interface ReadLinkPreview {
 }
 
 export interface ReaderConfiguration {
-  version: 7;
+  version: 8;
   documentID: string;
   fingerprint: string;
   loadGeneration: number;
   selectionEnabled: boolean;
   imagePreviewsEnabled: boolean;
-  documentPreparation: boolean;
   replyProjection?: boolean;
   testingEnabled: boolean;
   presentationCSS: string;
@@ -28,7 +27,7 @@ export interface ReaderConfiguration {
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Partial<ReaderConfiguration>;
-  if (config.version !== 7
+  if (config.version !== 8
       || typeof config.documentID !== "string" || !config.documentID
       || config.documentID.length > 4_096
       || typeof config.fingerprint !== "string" || !config.fingerprint
@@ -36,7 +35,6 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0
       || typeof config.selectionEnabled !== "boolean"
       || typeof config.imagePreviewsEnabled !== "boolean"
-      || typeof config.documentPreparation !== "boolean"
       || (config.replyProjection !== undefined && typeof config.replyProjection !== "boolean")
       || typeof config.testingEnabled !== "boolean"
       || typeof config.presentationCSS !== "string"

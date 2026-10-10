@@ -80,12 +80,15 @@ struct AgentChatMessageStyleTests {
         _ = try await web.callAsyncJavaScript(
             """
             window.webkit.messageHandlers.scholiumRead.postMessage({
-              version: 7, documentID: 'chat-reply', loadGeneration: 1,
+              version, documentID: 'chat-reply', loadGeneration: 1,
               fingerprint: staleFingerprint, type: 'replyQuote', text: 'stale quote'
             });
             return true;
             """,
-            arguments: ["staleFingerprint": DocumentFingerprint(content: original).sha256],
+            arguments: [
+                "version": SafeMarkdownReadWebView.configurationVersion,
+                "staleFingerprint": DocumentFingerprint(content: original).sha256,
+            ],
             in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
         try await Task.sleep(for: .milliseconds(100))
         #expect(quotedSelections.isEmpty)
@@ -123,8 +126,9 @@ struct AgentChatMessageStyleTests {
         #expect(interactions > 0)
         let rejected =
             try await web.callAsyncJavaScript(
-                "return await window.scholiumUpdateReply({version:7, documentID:'chat-reply', loadGeneration:0, previousFingerprint:'stale', fingerprint:'bad', html:'<p>wrong</p>', presentationCSS:'', userCSS:''}) === false",
-                arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? Bool
+                "return await window.scholiumUpdateReply({version, documentID:'chat-reply', loadGeneration:0, previousFingerprint:'stale', fingerprint:'bad', html:'<p>wrong</p>', presentationCSS:'', userCSS:''}) === false",
+                arguments: ["version": SafeMarkdownReadWebView.configurationVersion],
+                in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? Bool
         #expect(rejected == true)
     }
 

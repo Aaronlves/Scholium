@@ -1,7 +1,53 @@
+import AppKit
+import CoreText
 import Foundation
 import ScholiumContracts
 
 enum DocumentAppearanceStyles {
+    @MainActor
+    private static let regularAlegreyaFont: CGFont? = {
+        guard let url = Bundle.module.url(forResource: "Alegreya-Regular", withExtension: "ttf"),
+            let provider = CGDataProvider(url: url as CFURL)
+        else { return nil }
+        return CGFont(provider)
+    }()
+
+    /// CSS `ch` is the advance of zero in the prose face, not a character count
+    /// derived from the document. Packaged Alegreya is the same face WebKit uses.
+    @MainActor
+    static func zeroCharacterWidth(for body: DocumentBodyAppearance, textScale: Double) -> CGFloat {
+        let size = body.fontSizePoints * (96.0 / 72.0) * textScale
+        let font: CTFont
+        if body.fontFamily == .alegreya, let regularAlegreyaFont {
+            font = CTFontCreateWithGraphicsFont(regularAlegreyaFont, size, nil, nil)
+        } else if body.fontFamily == .systemSerif {
+            let system = NSFont.systemFont(ofSize: size)
+            let descriptor = system.fontDescriptor.withDesign(.serif) ?? system.fontDescriptor
+            let serif = NSFont(descriptor: descriptor, size: size) ?? system
+            font = CTFontCreateWithName(serif.fontName as CFString, size, nil)
+        } else {
+            let families: [String] =
+                switch body.fontFamily {
+                case .alegreya, .iowan: ["Iowan Old Style", "Palatino", "Georgia"]
+                case .palatino: ["Palatino", "Palatino Linotype", "Georgia"]
+                case .georgia: ["Georgia", "Times New Roman"]
+                case .times: ["Times New Roman", "Times"]
+                default: [body.fontFamily.rawValue]
+                }
+            let fallbacks = families + [DocumentAppearanceSettings.defaultCJKBodyFontFamily, "FangSong", "STFangSong"]
+            let installed =
+                fallbacks.lazy.compactMap { NSFont(name: $0, size: size) }.first
+                ?? NSFont(name: "Times", size: size) ?? NSFont.systemFont(ofSize: size)
+            font = CTFontCreateWithName(installed.fontName as CFString, size, nil)
+        }
+        var character: UniChar = 48
+        var glyph: CGGlyph = 0
+        guard CTFontGetGlyphsForCharacters(font, &character, &glyph, 1), glyph != 0 else { return size / 2 }
+        var advance = CGSize.zero
+        CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
+        return advance.width.isFinite && advance.width > 0 ? advance.width : size / 2
+    }
+
     static func css(for profile: DocumentAppearanceProfile?) -> String {
         guard let profile else { return "" }
         return css(for: profile.settings)

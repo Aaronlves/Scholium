@@ -158,6 +158,10 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
 /// Provisional values shared by Read and editor renderers. They remain
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
+    static let titleScale = 2.1
+    static let titleLineHeight = 1.25
+    static let titleAfterEms = 0.7
+    static let readingTopGapEms = 0.75
     static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
     static let sourceWorkWidthCharacterUnits = 82
     static let sourceLineHeight = 1.5

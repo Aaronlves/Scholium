@@ -1098,8 +1098,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Read preparation masks real document geometry without input or accessibility")
-    func readPreparationUsesMeasuredDocumentGeometry() async throws {
+    @Test("Read preparation keeps a real viewport while native input and accessibility are blocked")
+    func readPreparationKeepsViewportWithoutInput() async throws {
         let source = "---\nunknown: 字😀\n---\n# Authored heading\n\nA real paragraph with 中文 and exact content.\n"
         let harness = ReadHarness(
             source: source,
@@ -1113,21 +1113,16 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReadPreparationAvailable()
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        var before = try await harness.preparationSnapshot()
-        while before.shapeCount == 0 {
-            if clock.now >= deadline { throw ScholiumWindowLifecycleError.timedOut(.routeReadiness) }
-            try await Task.sleep(for: .milliseconds(10))
-            before = try await harness.preparationSnapshot()
-        }
+        let before = try await harness.preparationSnapshot()
         #expect(!harness.isReady)
-        #expect(!before.isHidden && !before.allowsInput && before.accessibleChildCount == 0)
+        #expect(!before.isHidden && before.width >= 500 && before.height >= 300)
+        #expect(!before.allowsInput && !before.acceptsPointer && before.accessibleChildCount == 0)
         #expect(before.geometry.count >= 4)
+        #expect(before.geometry.allSatisfy { $0.count == 4 && $0[2] > 0 && $0[3] > 0 })
         try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
         let after = try await harness.preparationSnapshot()
-        #expect(after.shapeCount == 0)
-        #expect(after.allowsInput && after.accessibleChildCount == 1)
+        #expect(after.allowsInput && after.acceptsPointer && after.accessibleChildCount == 1)
         #expect(after.geometry.count == before.geometry.count)
         for (actual, expected) in zip(after.geometry, before.geometry) {
             #expect(actual.count == expected.count)
@@ -1182,7 +1177,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(harness.pendingSourceLine == nil)
         #expect(abs(try await harness.sourceLineTop(3)) <= 16)
         #expect(try await harness.callBridgeJavaScript("return document.querySelector('img').naturalHeight;") as? Int == InlineImageFixture.portraitJPEG.height)
-        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
         await harness.closeAndDrain()
     }
 
@@ -2932,31 +2926,43 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func preparationSnapshot() async throws -> (
-            shapeCount: Int, geometry: [[Double]], isHidden: Bool,
-            allowsInput: Bool, accessibleChildCount: Int
+            geometry: [[Double]], isHidden: Bool, width: CGFloat, height: CGFloat,
+            allowsInput: Bool, acceptsPointer: Bool, accessibleChildCount: Int
         ) {
             let payload =
                 try await callBridgeJavaScript(
                     """
                     if (document.fonts?.ready) await document.fonts.ready;
                     return {
-                      shapeCount: document.querySelectorAll('.scholium-document-preparation-shape').length,
                       geometry: [...document.querySelectorAll('.scholium-note-title, .scholium-frontmatter-line, #scholium-document > h1, #scholium-document > p')]
                         .map(element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.top, rect.width, rect.height]; })
                     };
                     """
                 ) as? [String: Any]
-            guard let payload, let shapeCount = payload["shapeCount"] as? Int,
+            guard let payload,
                 let geometry = payload["geometry"] as? [[Double]],
                 let root = window.contentViewController?.view,
                 let web = findWebView(in: root) as? DocumentNativeWebView,
                 let container = web.superview as? DocumentWebViewContainer
             else { throw ReadHarnessError.webViewUnavailable }
+            root.layoutSubtreeIfNeeded()
             return (
-                shapeCount, geometry, container.isHidden || web.isHidden,
+                geometry, container.isHiddenOrHasHiddenAncestor || web.isHiddenOrHasHiddenAncestor,
+                web.bounds.width, web.bounds.height,
                 web.documentSurfaceAllowsInput || web.acceptsFirstResponder || web.canBecomeKeyView,
+                container.hitTest(NSPoint(x: container.bounds.midX, y: container.bounds.midY)) != nil,
                 container.accessibilityChildren()?.count ?? 0
             )
+        }
+
+        func waitUntilNativeInputIsEnabled() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                let snapshot = try await preparationSnapshot()
+                if !snapshot.isHidden, snapshot.allowsInput, snapshot.acceptsPointer, snapshot.accessibleChildCount > 0 { return }
+                try #require(ContinuousClock.now < deadline, "Acknowledged Read document never became available to native input and accessibility.")
+                try await Task.sleep(for: .milliseconds(10))
+            }
         }
 
         func waitUntilWebViewAvailable() async throws {
@@ -2988,7 +2994,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                       && configuration.fingerprint === expectedFingerprint
                       && Number.isSafeInteger(configuration.loadGeneration)
                       && typeof window.scholiumReadPreparation?.settle === 'function'
-                      && typeof window.scholiumReadPreparation?.finish === 'function'
                       && document.getElementById('scholium-document') !== null;
                     """, arguments: ["expectedFingerprint": fingerprint])
                 if installed as? Bool == true { return }
@@ -3711,12 +3716,17 @@ extension MarkdownEditorWebViewIntegrationTests {
                 surface.testingForcesFinalizationFailure = sourceBox.testingForcesFinalizationFailure
                 surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
             #endif
-            return surface.id(sourceBox.surfaceIdentity)
-                .environment(
-                    \.scholiumDocumentSurfaceVisibility,
-                    sourceBox.presentsDocumentPreparation && !sourceBox.isReady ? .preparing : .active
-                )
-                .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
+            return ZStack {
+                surface.id(sourceBox.surfaceIdentity)
+                    .environment(
+                        \.scholiumDocumentSurfaceVisibility,
+                        sourceBox.presentsDocumentPreparation && !sourceBox.isReady ? .preparing : .active
+                    )
+                if sourceBox.presentsDocumentPreparation && !sourceBox.isReady {
+                    DocumentPreparationStatus(title: documentTitle)
+                }
+            }
+            .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
         }
     }
 }

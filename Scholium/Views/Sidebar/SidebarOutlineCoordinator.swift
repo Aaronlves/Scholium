@@ -488,6 +488,10 @@ extension SidebarOutlineSourceList {
                 let item = outlineView.item(atRow: row) as? SidebarOutlineItem,
                 itemsByID[item.id] === item, let note = item.node.note
             else { return false }
+            _ = PerformanceProbe.shared.beginNoteOpening(
+                documentID: note.relativePath,
+                startNanoseconds: (outlineView as? SidebarOutlineView)?.primaryMouseDownNanoseconds
+            )
             configuration.onSelect(note)
             return true
         }

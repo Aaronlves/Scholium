@@ -84,7 +84,7 @@ struct DocumentReadProjectionDemandTests {
         #expect(gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: true))
         #expect(
             gate.allowsReadHitTesting(
-                documentID: "fixture", presentsEditor: true, editorIsReady: false, allowsPendingRecovery: true))
+                documentID: "fixture", presentsEditor: true, editorIsLoaded: true, editorIsReady: false, allowsPendingRecovery: true))
         let document = NoteDocument(relativePath: "Fallback.md", rawContent: "A readable committed paragraph.\n")
         let cache = DocumentReadProjectionCache()
         let key = DocumentReadProjectionKey(

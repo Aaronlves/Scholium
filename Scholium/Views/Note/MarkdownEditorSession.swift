@@ -1478,17 +1478,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard !isComposing, isReady, isLoaded, let webView else {
                 throw SessionError.unavailable
             }
-            let existingCapture = detachmentCapture.flatMap { capture -> DetachmentCapture? in
-                guard capture.transportSessionID == sessionID,
-                    capture.snapshot.documentID == documentID,
-                    capture.snapshot.fingerprint == startingFingerprint,
-                    capture.snapshot.generation == generation,
-                    capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8),
-                    capture.snapshot.citationSnapshot == committedCitationSnapshot,
-                    capture.snapshot.citationData == checkedCitationData
-                else { return nil }
-                return capture
-            }
+            let existingCapture = validFrozenPersistenceCapture
             // The acknowledged suspension freezes CodeMirror input. Repeated
             // departure preparation can retain that exact recovery/history
             // proof; commit rebase, resume, or reattachment invalidates it.
@@ -1566,8 +1556,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingDetachmentSuspensionID = nil
     }
 
-    private var validDetachmentCapture: DetachmentCapture? {
-        guard !hasAttachedWebView, !isComposing,
+    /// An acknowledged freeze is an exact source proof even before the view
+    /// detaches. Input resume, commit rebase and transport replacement revoke it.
+    private var validFrozenPersistenceCapture: DetachmentCapture? {
+        guard !isComposing,
             let capture = detachmentCapture,
             capture.snapshot.documentID == documentID,
             capture.snapshot.fingerprint == startingFingerprint,
@@ -1576,14 +1568,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             capture.snapshot.citationSnapshot == committedCitationSnapshot,
             capture.snapshot.citationData == checkedCitationData
         else { return nil }
+        if hasAttachedWebView {
+            guard isReady, isLoaded, capture.transportSessionID == sessionID else { return nil }
+        }
         return capture
     }
 
-    var hasDetachedPersistenceSnapshot: Bool { validDetachmentCapture != nil }
+    var hasDetachedPersistenceSnapshot: Bool { !hasAttachedWebView && validFrozenPersistenceCapture != nil }
 
     func persistenceSnapshot(expectedRevision: DocumentFingerprint) async throws -> MarkdownEditorPersistenceSnapshot {
-        if !hasAttachedWebView {
-            guard let capture = validDetachmentCapture else { throw SessionError.unavailable }
+        if let capture = validFrozenPersistenceCapture,
+            !hasAttachedWebView || startingFingerprint == expectedRevision.sha256
+        {
             guard startingFingerprint == expectedRevision.sha256 else { throw SessionError.staleRequest }
             return MarkdownEditorPersistenceSnapshot(
                 text: capture.snapshot.source, generation: generation,
@@ -1593,6 +1589,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 companionRevision: committedCitationSnapshot?.revision
             )
         }
+        guard hasAttachedWebView else { throw SessionError.unavailable }
         let snapshot = try await currentTextSnapshot(for: documentID)
         // A durable write may already have advanced Document's repository base
         // while its live acknowledgement failed. A fresh full WebKit read is
@@ -1624,7 +1621,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 expectedCitationData: snapshot.citationData, citationSnapshot: citationSnapshot
             )
         }
-        guard let capture = validDetachmentCapture,
+        guard !hasAttachedWebView, let capture = validFrozenPersistenceCapture,
             capture.snapshot.generation >= snapshot.generation,
             capture.snapshot.generation != snapshot.generation
                 || capture.snapshot.source.utf8.elementsEqual(snapshot.text.utf8),
@@ -2027,9 +2024,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private func applyFocusIntent(_ target: WindowDocumentFocusTarget, revision: UInt64) async throws {
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         let epoch = requestEpoch
+        let intendedSessionID = sessionID
+        let mode = presentedMode ?? pendingMode
+        let openingAttemptID = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: intendedSessionID)
         do {
             _ = try await send(
-                focusOperation(for: target, mode: presentedMode ?? pendingMode),
+                focusOperation(for: target, mode: mode),
                 in: webView,
                 admittingFocus: { [self] in
                     revision == focusRequestRevision && target == automaticFocusTarget && automaticFocusIsAuthorized
@@ -2040,6 +2040,21 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             throw error
         }
         acknowledgeFocusIntent(revision, target: target)
+        if let openingAttemptID,
+            !Task.isCancelled,
+            epoch == requestEpoch, sessionID == intendedSessionID, self.webView === webView,
+            revision == focusRequestRevision, target == automaticFocusTarget,
+            automaticFocusIsAuthorized, pendingFocusIntentRevision == nil,
+            !presentationIsClosed, isReady, isLoaded, errorMessage == nil, !isComposing,
+            presentedMode == mode, pendingMode == mode,
+            let nativeWebView = webView as? DocumentNativeWebView,
+            nativeWebView.documentSurfaceAllowsInput, !nativeWebView.isHiddenOrHasHiddenAncestor,
+            let window = nativeWebView.window, window.isKeyWindow, window.attachedSheet == nil,
+            let responder = window.firstResponder as? NSView,
+            responder === nativeWebView || responder.isDescendant(of: nativeWebView)
+        {
+            PerformanceProbe.shared.markNoteOpeningEditorPhase(.focused, editorSessionID: intendedSessionID, attemptID: openingAttemptID)
+        }
     }
 
     private func focusOperation(
@@ -2927,6 +2942,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         )
         let trackingID = UUID()
         let task = Task.immediate { @MainActor in
+            let openingBridgeOperation: PerformanceProbe.NoteOpeningBridgeOperation? =
+                switch operation {
+                case .initialize: .initialize
+                case .completePreparation: .completePreparation
+                case .releasePreparation: .releasePreparation
+                default: nil
+                }
+            var openingBridgeSample: (attemptID: UUID, dispatchNanoseconds: UInt64, returnedNanoseconds: UInt64?)?
             await previous?.value
             try Task.checkCancellation()
             guard isCurrentIdentity(context) else {
@@ -2978,10 +3001,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     let dispatchID = UUID()
                     unfinishedBridgeDispatches.insert(dispatchID)
                     defer { unfinishedBridgeDispatches.remove(dispatchID) }
+                    if openingBridgeOperation != nil,
+                        let attemptID = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: context.sessionID)
+                    {
+                        openingBridgeSample = (attemptID, DispatchTime.now().uptimeNanoseconds, nil)
+                    }
                     dispatchedResult = try await bridgeDispatcher.dispatch(
                         requestJSON: requestJSON,
                         in: webView
                     )
+                    if let sample = openingBridgeSample {
+                        openingBridgeSample = (sample.attemptID, sample.dispatchNanoseconds, DispatchTime.now().uptimeNanoseconds)
+                    }
                 }
                 rawResult = dispatchedResult
             } catch {
@@ -3077,6 +3108,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     interactionRevision: result.interactionRevision,
                     context: result.context
                 )
+            }
+            if let openingBridgeOperation, let sample = openingBridgeSample, let returnedNanoseconds = sample.returnedNanoseconds {
+                PerformanceProbe.shared.recordNoteOpeningBridge(
+                    operation: openingBridgeOperation, attemptID: sample.attemptID, editorSessionID: context.sessionID,
+                    dispatchNanoseconds: sample.dispatchNanoseconds, returnedNanoseconds: returnedNanoseconds,
+                    validatedNanoseconds: DispatchTime.now().uptimeNanoseconds)
             }
             return result
         }

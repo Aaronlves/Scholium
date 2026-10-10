@@ -634,8 +634,8 @@ This is not a universal runtime enum or second state store.
 | **Recovery** | Consequential repair after failure or interruption with verification. | Generic toast or overwrite |
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
-Loading masks the requested mode's actual layout with an inactive pulse;
-Reduce Motion is static. Empty and Unavailable remain centered.
+Document loading shows a generic pulsing skeleton until stable, usable content;
+preparing chrome stays covered. Reduce Motion is static. Empty/Unavailable remain centered.
 Editor failure retains source; offers Retry Edit and Source. Notices float
 over content without resizing its viewport, bounded and centered with
 reflowing actions.

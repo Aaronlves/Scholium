@@ -696,6 +696,273 @@ struct PerformanceProbeTests {
         #expect(objects.enumerated().allSatisfy { index, object in object["sample"] as? Int == index })
     }
 
+    private func noteOpeningFixture(
+        metric: String = "note_open_to_input", sampleCount: Int = 1, now: @escaping () -> UInt64
+    ) throws -> (probe: PerformanceProbe, root: URL, result: URL) {
+        let runID = "note_opening_\(UUID().uuidString)"
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/performance-\(runID)", isDirectory: true)
+        let directory = root.appendingPathComponent("app-state/raw", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let result = directory.appendingPathComponent("opening.jsonl")
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path, "SCHOLIUM_PERFORMANCE_METRIC": metric,
+                "SCHOLIUM_PERFORMANCE_RUN_ID": runID, "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": String(sampleCount), "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+            ], arguments: [], bundleID: "com.scholium.qa", now: now)
+        return (probe, root, result)
+    }
+
+    @Test("Full opening ends only after matching visibility and input receipts", arguments: [true, false])
+    func noteOpeningRequiresVisibleAndFocused(focusFirst: Bool) throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        try #require(probe.isEnabled)
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md", startNanoseconds: timestamp))
+        let sessionID = UUID()
+        #expect(probe.bindNoteOpening(attemptID: attempt, documentID: "Fixture.md", editorSessionID: sessionID))
+        #expect(!probe.bindNoteOpening(attemptID: attempt, editorSessionID: UUID()))
+        timestamp = 15_000_000
+        probe.markNoteOpeningPhase(.transitionStarted, attemptID: UUID())
+        probe.markNoteOpeningPhase(.transitionStarted, attemptID: attempt, documentID: "Other.md")
+        let serialPhases: [PerformanceProbe.NoteOpeningPhase] = [
+            .transitionStarted, .prepared, .hydrationStarted, .hydrated, .documentInstalled, .attached, .rendererReady, .loaded,
+        ]
+        for (index, phase) in serialPhases.enumerated() {
+            if phase == .rendererReady {
+                timestamp = 65_000_000
+                probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+            }
+            timestamp = UInt64(index + 2) * 10_000_000
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, documentID: "Fixture.md", editorSessionID: sessionID)
+            timestamp += 5_000_000
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        timestamp = 100_000_000
+        probe.recordNoteOpeningBridge(
+            operation: .initialize, attemptID: attempt, editorSessionID: sessionID,
+            dispatchNanoseconds: 70_000_000, returnedNanoseconds: 75_000_000, validatedNanoseconds: 78_000_000)
+        let offsets: [UInt64] = [79_000_000, 84_000_000]
+        for offset in offsets {
+            probe.recordNoteOpeningBridge(
+                operation: .completePreparation, attemptID: attempt, editorSessionID: sessionID,
+                dispatchNanoseconds: offset, returnedNanoseconds: offset + 3_000_000, validatedNanoseconds: offset + 4_000_000)
+        }
+        probe.recordNoteOpeningBridge(
+            operation: .releasePreparation, attemptID: attempt, editorSessionID: sessionID,
+            dispatchNanoseconds: 88_000_000, returnedNanoseconds: 89_000_000, validatedNanoseconds: 90_000_000)
+        for (invalidAttempt, invalidSession, returned, validated) in [
+            (UUID(), sessionID, UInt64(99_000_000), UInt64(100_000_000)),
+            (attempt, UUID(), 99_000_000, 100_000_000), (attempt, sessionID, 89_000_000, 100_000_000),
+            (attempt, sessionID, 100_000_000, 101_000_000),
+        ] {
+            probe.recordNoteOpeningBridge(
+                operation: .initialize, attemptID: invalidAttempt, editorSessionID: invalidSession,
+                dispatchNanoseconds: 90_000_000, returnedNanoseconds: returned, validatedNanoseconds: validated)
+        }
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: UUID())
+        timestamp = 110_000_000
+        probe.markNoteOpeningEditorPhase(focusFirst ? .focused : .stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+        timestamp = 115_000_000
+        probe.markNoteOpeningEditorPhase(focusFirst ? .focused : .stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        timestamp = 120_000_000
+        probe.markNoteOpeningEditorPhase(focusFirst ? .stableVisible : .focused, editorSessionID: sessionID, attemptID: attempt)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.result)) as? [String: Any])
+        let phaseKeys = [
+            "click_to_transition_started_duration_ms", "transition_started_to_prepared_duration_ms",
+            "prepared_to_hydration_started_duration_ms", "hydration_started_to_hydrated_duration_ms",
+            "hydrated_to_document_installed_duration_ms", "document_installed_to_attached_duration_ms",
+            "attached_to_renderer_ready_duration_ms", "renderer_ready_to_loaded_duration_ms",
+        ]
+        #expect(phaseKeys.compactMap { object[$0] as? Double } == Array(repeating: 10, count: 8))
+        #expect(object["loaded_to_input_ready_duration_ms"] as? Double == 30)
+        #expect(object["loaded_to_focused_duration_ms"] as? Double == (focusFirst ? 20 : 30))
+        #expect(object["loaded_to_stable_visible_duration_ms"] as? Double == (focusFirst ? 30 : 20))
+        #expect(phaseKeys.compactMap { object[$0] as? Double }.reduce(30, +) == object["duration_ms"] as? Double)
+        #expect(object["initialize_bridge_duration_ms"] as? Double == 8)
+        #expect(object["initialize_bridge_dispatch_to_return_duration_ms"] as? Double == 5)
+        #expect(object["initialize_bridge_return_to_validated_duration_ms"] as? Double == 3)
+        #expect(object["initialize_bridge_count"] as? Double == 1)
+        #expect(object["complete_preparation_bridge_duration_ms"] as? Double == 8)
+        #expect(object["complete_preparation_bridge_count"] as? Double == 2)
+        #expect(object["release_preparation_bridge_duration_ms"] as? Double == 2)
+        let bridgeKeys = ["initialize", "complete_preparation", "release_preparation"].flatMap { operation in
+            [
+                "\(operation)_bridge_duration_ms", "\(operation)_bridge_count",
+                "\(operation)_bridge_dispatch_to_return_duration_ms", "\(operation)_bridge_return_to_validated_duration_ms",
+            ]
+        }
+        #expect(
+            Set(object.keys)
+                == Set(
+                    phaseKeys + bridgeKeys + [
+                        "schema", "run_id", "sample", "metric", "duration_ms", "completed_uptime_ns",
+                        "loaded_to_input_ready_duration_ms", "loaded_to_focused_duration_ms", "loaded_to_stable_visible_duration_ms",
+                    ]))
+        #expect(probe.beginNoteOpening(documentID: "Fixture.md") == nil)
+        // An exhausted measurement request invalidates the old diagnostic receipt.
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == nil)
+    }
+
+    @Test("Opening tokens reject same-path stale work, cancellation and absent disk hydration")
+    func noteOpeningRejectsStaleAttemptsAndResets() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture(sampleCount: 2) { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let sessionID = UUID()
+        let old = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: old, editorSessionID: sessionID))
+        timestamp = 50_000_000
+        let current = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        probe.markNoteOpeningPhase(.focused, attemptID: current, editorSessionID: sessionID)
+        #expect(probe.bindNoteOpening(attemptID: current, editorSessionID: sessionID))
+        #expect(!probe.bindNoteOpening(attemptID: old, editorSessionID: sessionID))
+        probe.cancelNoteOpening(attemptID: old)
+        probe.cancelNoteOpening(attemptID: nil)
+        probe.markNoteOpeningPhase(.hydrationStarted, attemptID: old)
+        probe.markNoteOpeningEditorPhase(.focused, editorSessionID: sessionID, attemptID: old)
+        probe.recordNoteOpeningBridge(
+            operation: .initialize, attemptID: old, editorSessionID: sessionID,
+            dispatchNanoseconds: timestamp, returnedNanoseconds: timestamp, validatedNanoseconds: timestamp)
+        #expect(probe.currentNoteOpeningAttempt(documentID: "Other.md") == nil)
+        #expect(probe.currentNoteOpeningAttempt(editorSessionID: sessionID) == current)
+        let currentPhases: [(PerformanceProbe.NoteOpeningPhase, UInt64)] = [
+            (.hydrationStarted, 60_000_000), (.hydrated, 70_000_000), (.stableVisible, 80_000_000), (.focused, 100_000_000),
+        ]
+        for (phase, time) in currentPhases {
+            timestamp = time
+            probe.markNoteOpeningPhase(phase, attemptID: current, editorSessionID: sessionID)
+        }
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == 0)
+        timestamp = 110_000_000
+        let unhydrated = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: unhydrated, editorSessionID: sessionID))
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: sessionID, attemptID: unhydrated)
+        probe.markNoteOpeningEditorPhase(.focused, editorSessionID: sessionID, attemptID: unhydrated)
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == nil)
+        probe.cancelNoteOpening(attemptID: unhydrated)
+        #expect(probe.beginNoteOpening(documentID: "Fixture.md", startNanoseconds: timestamp + 1) == nil)
+        let abandoned = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.beginNoteOpening(documentID: "Other.md") == nil)
+        probe.markNoteOpeningPhase(.hydrated, attemptID: abandoned)
+        #expect(probe.currentNoteOpeningAttempt(documentID: "Fixture.md") == nil)
+        timestamp = 150_000_000
+        let final = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: final, editorSessionID: sessionID))
+        let finalPhases: [(PerformanceProbe.NoteOpeningPhase, UInt64)] = [
+            (.hydrationStarted, 160_000_000), (.hydrated, 170_000_000), (.stableVisible, 180_000_000), (.focused, 190_000_000),
+        ]
+        for (phase, time) in finalPhases {
+            timestamp = time
+            probe.markNoteOpeningPhase(phase, attemptID: final, editorSessionID: sessionID)
+        }
+        let objects = try String(contentsOf: fixture.result, encoding: .utf8).split(separator: "\n").map {
+            try #require(JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any])
+        }
+        try #require(objects.count == 2)
+        #expect(objects.compactMap { $0["duration_ms"] as? Double } == [50, 40])
+        #expect(objects.compactMap { $0["sample"] as? Int } == [0, 1])
+        #expect(
+            objects.allSatisfy {
+                Set($0.keys) == [
+                    "schema", "run_id", "sample", "metric", "duration_ms", "completed_uptime_ns", "hydration_started_to_hydrated_duration_ms",
+                ]
+            })
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == 1)
+    }
+
+    @Test("Opening diagnostics do nothing for other metrics or unarmed sessions", arguments: ["indexed_search", "warm_edit_activation"])
+    func noteOpeningRejectsOtherMetrics(metric: String) throws {
+        var clockReads = 0
+        let fixture = try noteOpeningFixture(metric: metric) {
+            clockReads += 1
+            return 10
+        }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        #expect(probe.isEnabled)
+        #expect(probe.beginNoteOpening(documentID: "Fixture.md") == nil)
+        #expect(probe.currentNoteOpeningAttempt(documentID: "Fixture.md") == nil)
+        let sessionID = UUID()
+        #expect(!probe.bindNoteOpening(attemptID: UUID(), editorSessionID: sessionID))
+        probe.markNoteOpeningEditorPhase(.focused, editorSessionID: sessionID)
+        probe.markNoteOpeningPhase(.hydrated, attemptID: UUID())
+        probe.recordNoteOpeningBridge(
+            operation: .initialize, attemptID: UUID(), editorSessionID: sessionID,
+            dispatchNanoseconds: 0, returnedNanoseconds: 1, validatedNanoseconds: 2)
+        #expect(clockReads == 0)
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+    }
+
+    @Test("Opening Web diagnostics are bounded, private and bound to the completed sample")
+    func noteOpeningWebSamplesAreBoundedAndPrivate() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture(sampleCount: 2) { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let sessionID = UUID()
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+        for phase: PerformanceProbe.NoteOpeningPhase in [.hydrationStarted, .hydrated, .loaded, .focused] {
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        timestamp = 20_000_000
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        let sample = try #require(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID))
+        let web = fixture.result.deletingPathExtension().appendingPathExtension("web.jsonl")
+        let safe = MarkdownEditorPerformanceSample(name: "opening-preparation", durationMilliseconds: 3, observed: ["loopCount": 2])
+        for invalid in [
+            MarkdownEditorPerformanceSample(name: "Private Research.md", durationMilliseconds: 1, observed: [:]),
+            MarkdownEditorPerformanceSample(name: "document-load", durationMilliseconds: .nan, observed: [:]),
+            MarkdownEditorPerformanceSample(name: "document-load", durationMilliseconds: -1, observed: [:]),
+            MarkdownEditorPerformanceSample(name: "document-load", durationMilliseconds: 1, observed: ["source": 1]),
+            MarkdownEditorPerformanceSample(name: "document-load", durationMilliseconds: 1, observed: ["documentLength": .infinity]),
+        ] {
+            probe.recordNoteOpeningWebSamples([invalid], documentID: "Fixture.md", sample: sample)
+        }
+        probe.recordNoteOpeningWebSamples(Array(repeating: safe, count: 257), documentID: "Fixture.md", sample: sample)
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Other.md", sample: sample)
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample + 1)
+        #expect(!FileManager.default.fileExists(atPath: web.path))
+        let ring =
+            Array(repeating: safe, count: 253) + [
+                MarkdownEditorPerformanceSample(name: "startup", durationMilliseconds: 2, observed: ["documentLength": 0]),
+                MarkdownEditorPerformanceSample(name: "memory-sample", durationMilliseconds: 0, observed: ["documentLength": 10, "usedJSHeapBytes": 100]),
+                MarkdownEditorPerformanceSample(name: "projection", durationMilliseconds: 1, observed: ["selectionScoped": 1, "widgetReuseCount": 0]),
+            ]
+        probe.recordNoteOpeningWebSamples(ring, documentID: "Fixture.md", sample: sample)
+        let first = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: web)) as? [String: Any])
+        #expect(Set(first.keys) == ["schema", "run_id", "sample", "samples"])
+        #expect(first["schema"] as? String == "scholium-note-opening-web-v1")
+        #expect(first["sample"] as? Int == 0)
+        let values = try #require(first["samples"] as? [[String: Any]])
+        #expect(values.count == 256)
+        #expect(values.allSatisfy { Set($0.keys) == ["name", "duration_ms", "observed"] })
+        #expect(try String(contentsOf: fixture.result, encoding: .utf8).split(separator: "\n").count == 1)
+
+        timestamp = 30_000_000
+        let replacement = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample)
+        #expect(probe.bindNoteOpening(attemptID: replacement, editorSessionID: sessionID))
+        for phase: PerformanceProbe.NoteOpeningPhase in [.hydrationStarted, .hydrated, .loaded, .focused, .stableVisible] {
+            probe.markNoteOpeningPhase(phase, attemptID: replacement, editorSessionID: sessionID)
+        }
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample)
+        #expect(try String(contentsOf: web, encoding: .utf8).split(separator: "\n").count == 1)
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample + 1)
+        #expect(try String(contentsOf: web, encoding: .utf8).split(separator: "\n").count == 2)
+        let outside = fixture.root.appendingPathComponent("outside.jsonl")
+        try FileManager.default.removeItem(at: web)
+        try FileManager.default.createSymbolicLink(at: web, withDestinationURL: outside)
+        probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample + 1)
+        #expect(!FileManager.default.fileExists(atPath: outside.path))
+    }
+
     @Test("First Read records activation-to-interactive phase decomposition")
     func firstReadRecordsActivationPhases() throws {
         let fileManager = FileManager.default

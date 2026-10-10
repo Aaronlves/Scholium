@@ -787,16 +787,29 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("A detachment snapshot freezes input until its matching transition resumes")
+    @Test("Attached frozen persistence reuses exact source until its matching transition resumes")
     func detachmentCaptureOwnsInputUntilResume() async throws {
         let source = "\u{FEFF}原文 e\u{301} 🙂\r\n"
-        let harness = EditorHarness(source: source)
+        let dispatcher = CountingTextSnapshotBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
         defer { harness.close() }
         try await harness.waitUntilReady()
         try await harness.session.perform(.pastePlain, argument: "retained ")
         let before = try await harness.session.currentText(for: harness.documentID)
         try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
         let suspensionID = try #require(harness.session.detachmentSuspensionID)
+        let originalRevision = DocumentFingerprint(content: source)
+        let readsBeforePersistence = dispatcher.textSnapshotCount
+        let frozen = try await harness.session.persistenceSnapshot(expectedRevision: originalRevision)
+        #expect(frozen.suspensionID == suspensionID)
+        #expect(frozen.text.utf8.elementsEqual(before.utf8))
+        #expect(dispatcher.textSnapshotCount == readsBeforePersistence)
+        // A successful disk commit with a lost live acknowledgement advances
+        // the repository base. Its attached retry still needs a fresh full read.
+        let advancedBase = try await harness.session.persistenceSnapshot(expectedRevision: DocumentFingerprint(content: before))
+        #expect(advancedBase.suspensionID == nil)
+        #expect(advancedBase.text.utf8.elementsEqual(before.utf8))
+        #expect(dispatcher.textSnapshotCount == readsBeforePersistence + 1)
         do {
             try await harness.session.perform(.pastePlain, argument: "FORBIDDEN")
             Issue.record("A frozen document accepted a source command")
@@ -805,11 +818,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         try await harness.session.resumeAfterDetachment(suspensionID: suspensionID)
         try await harness.session.perform(.pastePlain, argument: "resumed ")
-        let after = try await harness.session.currentText(for: harness.documentID)
+        let readsBeforeResumedPersistence = dispatcher.textSnapshotCount
+        let resumed = try await harness.session.persistenceSnapshot(expectedRevision: originalRevision)
+        #expect(resumed.suspensionID == nil)
+        #expect(dispatcher.textSnapshotCount == readsBeforeResumedPersistence + 1)
+        let after = resumed.text
         #expect(after.contains("resumed "))
         #expect(!after.contains("FORBIDDEN"))
         #expect(after.hasSuffix(source))
         await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class CountingTextSnapshotBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private(set) var textSnapshotCount = 0
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            if case .queryText = request.operation { textSnapshotCount += 1 }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
     }
 
     @Test(
@@ -2935,7 +2964,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         try await harness.waitUntilSelection(head: 0, stage: "same-document Markdown beginning")
         #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(source.utf8))
-        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
         await harness.closeAndDrain()
     }
 
@@ -2959,7 +2987,64 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Late Source, title, styles and previews converge while the initial skeleton stays present")
+    @Test("Native preparation shares prose geometry and blocks initial and same-ID loading", arguments: [720.0, 480.0])
+    func nativePreparationIsPaintedBeforeInitialization(viewportWidth: Double) async throws {
+        let source = "\u{FEFF}---\r\nunknown: 字😀\r\n---\r\nAuthored passage.\r\n"
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher(holdsBeforeInitialization: true)
+        let size = NSSize(width: viewportWidth, height: 520)
+        let harness = EditorHarness(
+            source: source, bridgeDispatcher: dispatcher,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            initialWindowSize: size, fixedLayoutSize: size, laysOutForPointerTesting: true
+        )
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        #expect(try await harness.callPageJavaScript("return document.querySelector('.cm-content')?.textContent || '';") as? String == "")
+        let preparing = try await harness.nativePreparationSnapshot()
+        #expect(!preparing.isHidden && preparing.width >= viewportWidth - 1 && preparing.height >= 300)
+        #expect(!preparing.allowsInput && !preparing.acceptsPointer && preparing.accessibleChildCount == 0)
+        #expect(try harness.preparationPaintedBandCount() >= 3)
+        #expect(try harness.preparationPaintedBandCount(below: 0.5) >= 2, "The generic document skeleton must extend down the viewport.")
+        let column = try harness.preparationDocumentColumn()
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
+        let contentLayout = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const style = getComputedStyle(content);
+                const rect = content.getBoundingClientRect();
+                const title = document.querySelector('.scholium-note-title').getBoundingClientRect();
+                return {left: rect.left + parseFloat(style.paddingLeft), width: rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), top: title.top};
+                """
+            ) as? [String: Any]
+        )
+        #expect(abs(column.minX - (contentLayout["left"] as? Double ?? -1)) < 1)
+        #expect(abs(column.width - (contentLayout["width"] as? Double ?? -1)) < 1)
+        #expect(abs(column.minY - (contentLayout["top"] as? Double ?? -1)) < 1)
+        #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(source.utf8))
+        let presentationID = harness.session.openingPresentationID
+        dispatcher.holdNextInitialization()
+        let replacement = source + "External clean revision.\r\n"
+        harness.session.loadDocument(replacement, documentID: harness.documentID, mode: .livePreview)
+        try await dispatcher.waitUntilSuspended()
+        #expect(harness.session.openingPresentationID == presentationID)
+        let reloading = try await harness.nativePreparationSnapshot()
+        #expect(!reloading.isHidden && !reloading.allowsInput && !reloading.acceptsPointer && reloading.accessibleChildCount == 0)
+        #expect(try harness.preparationPaintedBandCount() >= 3)
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
+        #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(replacement.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Late Source, title, styles and previews converge before native input is released")
     func latePresentationConvergesBeforeOpeningHandoff() async throws {
         let source = "---\ntags: [draft]\n---\n[[Target]]\n"
         let dispatcher = PreparationCompletionBarrier()
@@ -2970,7 +3055,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         try await dispatcher.waitUntilSuspended()
         #expect(!harness.session.isLoaded)
-        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 1)
+        let preparing = try await harness.nativePreparationSnapshot()
+        #expect(!preparing.isHidden && preparing.width >= 500 && preparing.height >= 300)
+        #expect(!preparing.allowsInput && !preparing.acceptsPointer && preparing.accessibleChildCount == 0)
         harness.session.setMode(.source)
         harness.setDocumentTitle("Latest title")
         harness.setPresentationCSS(":root { --opening-race: 1; }")
@@ -2979,16 +3066,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         // Setters above mutate the pending owner synchronously; SwiftUI title
         // and CSS updates also exercise the live representable during await.
         await Task.yield()
+        let pending = try await harness.nativePreparationSnapshot()
+        #expect(!harness.session.isLoaded)
+        #expect(!pending.isHidden && !pending.allowsInput && !pending.acceptsPointer && pending.accessibleChildCount == 0)
         dispatcher.resume()
         try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
         #expect(dispatcher.completionCount >= 2)
-        #expect(dispatcher.maskWasPresentAtEveryCompletion)
         #expect(dispatcher.releasedConfiguration?.documentTitle == "Latest title")
         #expect(dispatcher.releasedConfiguration?.presentationCSS.contains("--opening-race") == true)
         #expect(dispatcher.releasedConfiguration?.linkPreviews.count == 1)
         #expect(dispatcher.releasedMode == .source)
         #expect(harness.session.presentedMode == .source)
-        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -8733,6 +8822,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(harness.session.isLoaded)
             #expect(harness.session.documentID == harness.documentID)
             #expect(harness.session.hasAttachedWebView)
+            #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: 0, head: 0)])
             let initial: String
             do {
                 initial = try await harness.session.currentText(for: harness.documentID)
@@ -8781,8 +8871,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(accessibility.tableOverflowX == "auto")
             #expect(accessibility.footnoteReferenceCount == 2)
             #expect(accessibility.footnoteDefinitionSourceCount == 1)
-            #expect(accessibility.exactWikilinkSourceCount == 1)
-            #expect(accessibility.incompleteWikilinkSourceCount == 0)
             let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
             let normalizedLines = normalizedOriginal.split(
                 separator: "\n",
@@ -8841,7 +8929,19 @@ struct MarkdownEditorWebViewIntegrationTests {
                 $0.footnoteDefinitionSourceCount == 1
             }
             #expect(directFootnote.footnoteReferenceCount == 2)
+            diagnosticStage = "active Wikilink exact source"
             harness.session.goToLine(4)
+            try await harness.waitUntilSelection(
+                head: frontmatter.replacingOccurrences(of: "\r\n", with: "\n").utf16.count,
+                stage: "active Wikilink source"
+            )
+            let activeWikilink = try await harness.waitUntilPresentation(stage: "complete active Wikilink source") {
+                $0.exactWikilinkSourceCount == 1 && $0.incompleteWikilinkSourceCount == 0
+            }
+            #expect(activeWikilink.exactWikilinkSourceCount == 1)
+            #expect(activeWikilink.incompleteWikilinkSourceCount == 0)
+            let wikilinkSource = try await harness.session.currentText(for: harness.documentID)
+            #expect(Data(wikilinkSource.utf8) == Data(original.utf8))
             try await harness.waitUntilPreviewIsAvailable()
             #expect(harness.session.context?.availableCommands.contains(.previewAtSelection) == true)
             try await harness.session.perform(.previewAtSelection)
@@ -8850,7 +8950,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             // the request and source/session state, not floating-window geometry.
             try await Task.sleep(for: .milliseconds(200))
             let presentationPerformance = try await harness.session.queryPerformanceSamples()
-            #expect(presentationPerformance.contains { $0.name == "mode-toggle-work" })
             #expect(presentationPerformance.contains { $0.name == "cached-preview-work" })
 
             let initialSelection = try #require(harness.session.context?.selections)
@@ -8879,6 +8978,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
             diagnosticStage = "Source and Live Preview transitions"
             harness.session.setMode(.source)
+            try await harness.waitUntilPresentedMode(.source)
             let sourceMode = try await harness.waitUntilPresentation(stage: "Source mode") {
                 $0.label == "Markdown source editor"
                     && $0.gutterCount > 0
@@ -8887,6 +8987,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                     && $0.selectionActionsCount == 0
                     && $0.previewPopoverCount == 0
             }
+            let sourceModePerformance = try await harness.session.queryPerformanceSamples()
+            #expect(sourceModePerformance.contains { $0.name == "mode-toggle-work" })
             #expect(sourceMode.activeLineCount > 0)
             #expect(sourceMode.renderedMathCount == 0)
             #expect(sourceMode.semanticTableCount == 0)
@@ -9416,8 +9518,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                         return JSON.stringify({visibility: document.visibilityState,
                           width: innerWidth, height: innerHeight,
                           scroller: scroller?.getBoundingClientRect().toJSON(),
-                          fonts: document.fonts.status,
-                          maskCount: document.querySelectorAll('.scholium-document-preparation').length});
+                          fonts: document.fonts.status});
                         """)
                     Issue.record(
                         Comment(
@@ -9432,6 +9533,88 @@ struct MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(25))
             }
+        }
+
+        func nativePreparationSnapshot() async throws -> (
+            isHidden: Bool, width: CGFloat, height: CGFloat,
+            allowsInput: Bool, acceptsPointer: Bool, accessibleChildCount: Int
+        ) {
+            await Task.yield()
+            let root = try #require(window.contentViewController?.view)
+            root.layoutSubtreeIfNeeded()
+            let web = try #require(session.webView as? DocumentNativeWebView)
+            let container = try #require(web.superview as? DocumentWebViewContainer)
+            return (
+                container.isHiddenOrHasHiddenAncestor || web.isHiddenOrHasHiddenAncestor,
+                web.bounds.width, web.bounds.height,
+                web.documentSurfaceAllowsInput || web.acceptsFirstResponder || web.canBecomeKeyView,
+                container.hitTest(NSPoint(x: container.bounds.midX, y: container.bounds.midY)) != nil,
+                container.accessibilityChildren()?.count ?? 0
+            )
+        }
+
+        func waitUntilNativeInputIsEnabled() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                let snapshot = try await nativePreparationSnapshot()
+                if !snapshot.isHidden, snapshot.allowsInput, snapshot.acceptsPointer, snapshot.accessibleChildCount > 0 { return }
+                try #require(ContinuousClock.now < deadline, "Acknowledged document never became available to native input and accessibility.")
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func preparationDocumentColumn() throws -> NSRect {
+            try preparationDrawing().documentColumn
+        }
+
+        private func preparationDrawing() throws -> DocumentPreparationDrawingView {
+            func find(in view: NSView) -> DocumentPreparationDrawingView? {
+                if let drawing = view as? DocumentPreparationDrawingView { return drawing }
+                return view.subviews.lazy.compactMap { find(in: $0) }.first
+            }
+            return try #require(window.contentView.flatMap { find(in: $0) })
+        }
+
+        /// Captures the real native drawing at its viewport size. The hosting
+        /// view's cacheDisplay does not preserve SwiftUI compositing transforms.
+        func preparationPaintedBandCount(below fraction: Double = 0) throws -> Int {
+            let root = try preparationDrawing()
+            root.layoutSubtreeIfNeeded()
+            root.displayIfNeeded()
+            let bitmap = try #require(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+            root.cacheDisplay(in: root.bounds, to: bitmap)
+            if let output = ProcessInfo.processInfo.environment["SCHOLIUM_TEST_OPENING_SNAPSHOT_PATH"] {
+                let destination = URL(fileURLWithPath: output).standardizedFileURL
+                let buildRoot = URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                    .appendingPathComponent(".build", isDirectory: true).standardizedFileURL
+                try #require(destination.path.hasPrefix(buildRoot.path + "/"))
+                try #require(bitmap.representation(using: .png, properties: [:])).write(to: destination, options: .atomic)
+            }
+            let stepX = max(1, bitmap.pixelsWide / 180)
+            let stepY = max(1, bitmap.pixelsHigh / 260)
+            var bandCount = 0
+            var previousRowWasPainted = false
+            let startY = max(bitmap.pixelsHigh / 20, Int(Double(bitmap.pixelsHigh) * fraction))
+            for y in stride(from: startY, to: bitmap.pixelsHigh * 19 / 20, by: stepY) {
+                let background = try #require(bitmap.colorAt(x: bitmap.pixelsWide - stepX - 1, y: y)?.usingColorSpace(.deviceRGB))
+                var run = 0
+                var longestRun = 0
+                for x in stride(from: bitmap.pixelsWide / 20, to: bitmap.pixelsWide * 19 / 20, by: stepX) {
+                    let color = try #require(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                    let differs =
+                        max(
+                            max(abs(color.redComponent - background.redComponent), abs(color.greenComponent - background.greenComponent)),
+                            abs(color.blueComponent - background.blueComponent)
+                        ) > 0.03
+                    run = differs ? run + stepX : 0
+                    longestRun = max(longestRun, run)
+                }
+                let rowWasPainted = longestRun >= bitmap.pixelsWide / 4
+                if rowWasPainted && !previousRowWasPainted { bandCount += 1 }
+                previousRowWasPainted = rowWasPainted
+            }
+            return bandCount
         }
 
         func waitUntilLoaded(documentID: String) async throws {
@@ -9759,6 +9942,16 @@ struct MarkdownEditorWebViewIntegrationTests {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
         private var continuation: CheckedContinuation<Void, Never>?
         private var didSuspend = false
+        private let holdsBeforeInitialization: Bool
+
+        init(holdsBeforeInitialization: Bool = false) {
+            self.holdsBeforeInitialization = holdsBeforeInitialization
+        }
+
+        func holdNextInitialization() {
+            precondition(continuation == nil)
+            didSuspend = false
+        }
 
         func dispatch(
             requestJSON: String,
@@ -9768,6 +9961,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                 MarkdownEditorRequest.self,
                 from: Data(requestJSON.utf8)
             )
+            if holdsBeforeInitialization, !didSuspend, case .initialize = request.operation {
+                didSuspend = true
+                await withCheckedContinuation { continuation = $0 }
+            }
             let result = try await production.dispatch(
                 requestJSON: requestJSON,
                 in: webView
@@ -9842,7 +10039,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var configuration: MarkdownEditorPresentationConfiguration?
         private var mode: MarkdownEditorMode?
         private(set) var completionCount = 0
-        private(set) var maskWasPresentAtEveryCompletion = true
         private(set) var releasedConfiguration: MarkdownEditorPresentationConfiguration?
         private(set) var releasedMode: MarkdownEditorMode?
         private(set) var titleFocusReceipts: [String] = []
@@ -9864,10 +10060,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             case .setMode(let value): mode = value
             case .completePreparation:
                 completionCount += 1
-                let count =
-                    try await webView.callAsyncJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;", contentWorld: .page)
-                    as? Int
-                maskWasPresentAtEveryCompletion = maskWasPresentAtEveryCompletion && count == 1
                 if !suspended, !holdsRelease {
                     suspended = true
                     await withCheckedContinuation { continuation = $0 }
@@ -10282,6 +10474,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentID: session.openingPresentationID.uuidString,
                 presentsEditor: true,
                 retainsEditor: true,
+                editorIsLoaded: session.isLoaded,
                 editorIsReady: session.isLoaded
             ) {
                 Color.clear

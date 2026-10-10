@@ -21,7 +21,6 @@ import {decorateAttachmentLinks} from "./attachment-presentation";
 import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 import {installReviewImageActivation} from "./review-image-activation";
-import {beginDocumentPreparation, type DocumentPreparationHandle} from "./document-preparation";
 import {awaitVisibleDocumentImages} from "./document-widget-readiness";
 
 interface ReaderMessageHandler {
@@ -51,7 +50,6 @@ type ReaderWindow = Window & {
     settle(documentID: string, fingerprint: string, loadGeneration: number, expiresAt: number): Promise<{
       settled: true; geometryChanged: boolean;
     }>;
-    finish(documentID: string, fingerprint: string, loadGeneration: number): boolean;
   };
   scholiumReadNavigation?: ReturnType<typeof createReaderArrival>;
   scholiumRead?: {initialize(value: unknown): Promise<void>};
@@ -94,8 +92,6 @@ async function initializeReader(value: unknown): Promise<void> {
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
-  const preparation: DocumentPreparationHandle | undefined = config.documentPreparation
-    ? beginDocumentPreparation(documentRoot) : undefined;
   const decodedImages = new Set<HTMLImageElement>();
   const readPreparation: NonNullable<ReaderWindow['scholiumReadPreparation']> = {
     async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
@@ -123,18 +119,9 @@ async function initializeReader(value: unknown): Promise<void> {
       await document.fonts.ready;
       requireCurrent();
       const after = documentRoot.getBoundingClientRect();
-      preparation?.refresh();
       return {settled: true, geometryChanged: decodedVisibleImages || awaitedFonts
         || before.height !== after.height || before.width !== after.width
         || previousHeight !== document.documentElement.scrollHeight};
-    },
-    finish(expectedDocumentID, expectedFingerprint, expectedGeneration) {
-      if (readerWindow.scholiumReadPreparation !== readPreparation
-          || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint
-          || expectedGeneration !== loadGeneration) return false;
-      preparation?.refresh();
-      preparation?.finish();
-      return true;
     },
   };
   readerWindow.scholiumReadPreparation = readPreparation;

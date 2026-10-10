@@ -16,10 +16,30 @@ final class PerformanceProbe {
         case editorCachedPreview = "editor_cached_preview"
         case warmEditActivation = "warm_edit_activation"
         case firstEditActivation = "first_edit_activation"
+        case noteOpenToInput = "note_open_to_input"
         case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
         case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
         case chatEntry = "chat_entry"
+    }
+
+    enum NoteOpeningPhase: String, CaseIterable {
+        case transitionStarted = "transition_started"
+        case prepared
+        case hydrationStarted = "hydration_started"
+        case hydrated
+        case documentInstalled = "document_installed"
+        case attached
+        case rendererReady = "renderer_ready"
+        case loaded
+        case stableVisible = "stable_visible"
+        case focused
+    }
+
+    enum NoteOpeningBridgeOperation: String {
+        case initialize
+        case completePreparation = "complete_preparation"
+        case releasePreparation = "release_preparation"
     }
 
     static let shared = PerformanceProbe()
@@ -93,6 +113,16 @@ final class PerformanceProbe {
     }
     private var chatEntry: ChatEntry?
     private var chatEntryTask: Task<Void, Never>?
+    private struct NoteOpening {
+        let id: UUID
+        let documentID: String
+        let started: UInt64
+        var editorSessionID: UUID?
+        var phases: [NoteOpeningPhase: UInt64] = [:]
+        var bridges: [NoteOpeningBridgeOperation: (returned: UInt64, validated: UInt64, count: Int)] = [:]
+    }
+    private var noteOpening: NoteOpening?
+    private var completedNoteOpening: (sample: Int, documentID: String, editorSessionID: UUID)?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -156,6 +186,159 @@ final class PerformanceProbe {
 
     var isEnabled: Bool { configuration != nil }
     var measuresChatEntry: Bool { configuration?.metric == .chatEntry }
+    var measuresNoteOpenToInput: Bool { configuration?.metric == .noteOpenToInput }
+
+    @discardableResult
+    func beginNoteOpening(documentID: String, startNanoseconds: UInt64? = nil) -> UUID? {
+        noteOpening = nil
+        completedNoteOpening = nil
+        guard let configuration, measuresNoteOpenToInput,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount < configuration.sampleCount
+        else { return nil }
+        let observed = now()
+        let started = startNanoseconds ?? observed
+        guard started <= observed else { return nil }
+        let opening = NoteOpening(id: UUID(), documentID: documentID, started: started)
+        noteOpening = opening
+        return opening.id
+    }
+
+    func currentNoteOpeningAttempt(documentID: String) -> UUID? {
+        guard measuresNoteOpenToInput, noteOpening?.documentID == documentID else { return nil }
+        return noteOpening?.id
+    }
+
+    func currentNoteOpeningAttempt(editorSessionID: UUID) -> UUID? {
+        guard measuresNoteOpenToInput, noteOpening?.editorSessionID == editorSessionID else { return nil }
+        return noteOpening?.id
+    }
+
+    @discardableResult
+    func bindNoteOpening(attemptID: UUID?, documentID: String? = nil, editorSessionID: UUID) -> Bool {
+        guard let attemptID, let opening = noteOpening, opening.id == attemptID,
+            documentID == nil || documentID == opening.documentID,
+            opening.editorSessionID == nil || opening.editorSessionID == editorSessionID
+        else { return false }
+        noteOpening?.editorSessionID = editorSessionID
+        return true
+    }
+
+    func cancelNoteOpening(attemptID: UUID?) {
+        guard let attemptID, noteOpening?.id == attemptID else { return }
+        noteOpening = nil
+    }
+
+    func markNoteOpeningPhase(
+        _ phase: NoteOpeningPhase, attemptID: UUID?, documentID: String? = nil,
+        editorSessionID: UUID? = nil
+    ) {
+        guard let attemptID, var opening = noteOpening, opening.id == attemptID,
+            documentID == nil || documentID == opening.documentID,
+            opening.phases[phase] == nil
+        else { return }
+        switch phase {
+        case .attached, .rendererReady, .loaded, .stableVisible, .focused:
+            guard let editorSessionID, opening.editorSessionID == editorSessionID else { return }
+        default:
+            if let editorSessionID, opening.editorSessionID != editorSessionID { return }
+        }
+        let timestamp = now()
+        guard timestamp >= opening.started, timestamp >= (opening.phases.values.max() ?? opening.started) else { return }
+        opening.phases[phase] = timestamp
+        noteOpening = opening
+        guard let visible = opening.phases[.stableVisible], let focused = opening.phases[.focused],
+            let hydrationStarted = opening.phases[.hydrationStarted], let hydrated = opening.phases[.hydrated],
+            hydrated >= hydrationStarted, hydrated <= min(visible, focused)
+        else { return }
+        let completed = max(visible, focused)
+        noteOpening = nil
+        let previousCount = recordedSampleCount
+        record(
+            startNanoseconds: opening.started, observedCount: nil, completedNanoseconds: completed,
+            phaseDurations: noteOpeningDurations(opening, completed: completed)
+        )
+        if recordedSampleCount > previousCount, let configuration, let sessionID = opening.editorSessionID {
+            completedNoteOpening = (configuration.firstSample + previousCount, opening.documentID, sessionID)
+        }
+    }
+
+    func markNoteOpeningEditorPhase(_ phase: NoteOpeningPhase, editorSessionID: UUID, attemptID: UUID? = nil) {
+        guard let currentAttempt = currentNoteOpeningAttempt(editorSessionID: editorSessionID),
+            attemptID == nil || attemptID == currentAttempt
+        else { return }
+        switch phase {
+        case .attached, .rendererReady, .loaded, .stableVisible, .focused:
+            markNoteOpeningPhase(phase, attemptID: currentAttempt, editorSessionID: editorSessionID)
+        default:
+            return
+        }
+    }
+
+    func recordNoteOpeningBridge(
+        operation: NoteOpeningBridgeOperation, attemptID: UUID, editorSessionID: UUID,
+        dispatchNanoseconds: UInt64, returnedNanoseconds: UInt64, validatedNanoseconds: UInt64
+    ) {
+        guard var opening = noteOpening, opening.id == attemptID, opening.editorSessionID == editorSessionID,
+            dispatchNanoseconds >= opening.started, returnedNanoseconds >= dispatchNanoseconds,
+            validatedNanoseconds >= returnedNanoseconds, validatedNanoseconds <= now()
+        else { return }
+        let existing = opening.bridges[operation] ?? (returned: 0, validated: 0, count: 0)
+        let (returned, returnOverflow) = existing.returned.addingReportingOverflow(returnedNanoseconds - dispatchNanoseconds)
+        let (validated, validationOverflow) = existing.validated.addingReportingOverflow(validatedNanoseconds - returnedNanoseconds)
+        guard !returnOverflow, !validationOverflow, returned < 600_000_000_000,
+            validated < 600_000_000_000, existing.count < Int.max
+        else { return }
+        opening.bridges[operation] = (returned, validated, existing.count + 1)
+        noteOpening = opening
+    }
+
+    func completedNoteOpeningSample(documentID: String, editorSessionID: UUID) -> Int? {
+        guard measuresNoteOpenToInput, noteOpening == nil,
+            let completed = completedNoteOpening, completed.documentID == documentID,
+            completed.editorSessionID == editorSessionID
+        else { return nil }
+        return completed.sample
+    }
+
+    func recordNoteOpeningWebSamples(_ samples: [MarkdownEditorPerformanceSample], documentID: String, sample: Int? = nil) {
+        guard let configuration, measuresNoteOpenToInput, recordedSampleCount > 0, noteOpening == nil,
+            documentID == configuration.expectedDocument, let completed = completedNoteOpening,
+            completed.documentID == documentID, sample == nil || sample == completed.sample,
+            samples.count <= 256
+        else { return }
+        let allowedNames: Set<String> = [
+            "startup", "projection", "projection-index", "exact-source-update", "document-load", "bridge-request",
+            "opening-atomic-state", "opening-preparation", "opening-release",
+            "memory-sample", "scroll-session", "mode-toggle", "mode-toggle-work", "cached-preview", "cached-preview-work",
+            "input-to-state", "input-to-paint", "key-to-state", "key-to-paint",
+        ]
+        let allowedObserved: Set<String> = [
+            "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count", "changeCount",
+            "requestBytes", "resultBytes", "styleWorkMilliseconds", "fontsWaitMilliseconds", "projectionWorkMilliseconds",
+            "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount", "widgetWaitMilliseconds",
+            "widgetWaitCount", "imageWaitMilliseconds", "imageWaitCount", "completed", "expired",
+            "selectionScoped", "viewportIncremental", "widgetReuseCount", "usedJSHeapBytes", "frameCount",
+            "longestFrameMilliseconds", "droppedFrameCount", "transitionSequence", "composing",
+            "literalCount", "tableCount", "calloutCount", "footnoteCount",
+        ]
+        guard
+            samples.allSatisfy({ value in
+                allowedNames.contains(value.name) && value.durationMilliseconds.isFinite && value.durationMilliseconds >= 0
+                    && value.observed.allSatisfy { allowedObserved.contains($0.key) && $0.value.isFinite && $0.value >= 0 }
+            })
+        else { return }
+        let destination = configuration.resultURL.deletingPathExtension().appendingPathExtension("web.jsonl")
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: destination.path)) == nil else { return }
+        let values: [[String: Any]] = samples.map {
+            ["name": $0.name, "duration_ms": $0.durationMilliseconds, "observed": $0.observed]
+        }
+        _ = append(
+            [
+                "schema": "scholium-note-opening-web-v1", "run_id": configuration.runID,
+                "sample": completed.sample, "samples": values,
+            ], to: destination)
+    }
 
     /// Diagnostic-only QA timing. Each activation owns a token, so an outgoing
     /// page cannot complete a later visit to the same conversation.
@@ -778,6 +961,35 @@ final class PerformanceProbe {
 
     private func milliseconds(_ nanoseconds: UInt64) -> Double {
         Double(nanoseconds) / 1_000_000
+    }
+
+    private func noteOpeningDurations(_ opening: NoteOpening, completed: UInt64) -> [String: Double] {
+        var durations: [String: Double] = [:]
+        var previousName = "click"
+        var previous: UInt64? = opening.started
+        for phase in NoteOpeningPhase.allCases.dropLast(2) {
+            let timestamp = opening.phases[phase]
+            if let previous, let timestamp, timestamp >= previous, timestamp <= completed {
+                durations["\(previousName)_to_\(phase.rawValue)_duration_ms"] = milliseconds(timestamp - previous)
+            }
+            previous = timestamp
+            previousName = phase.rawValue
+        }
+        if let loaded = opening.phases[.loaded], loaded <= completed {
+            durations["loaded_to_input_ready_duration_ms"] = milliseconds(completed - loaded)
+            for phase in [NoteOpeningPhase.stableVisible, .focused] {
+                if let timestamp = opening.phases[phase], timestamp >= loaded {
+                    durations["loaded_to_\(phase.rawValue)_duration_ms"] = milliseconds(timestamp - loaded)
+                }
+            }
+        }
+        for (operation, bridge) in opening.bridges {
+            durations["\(operation.rawValue)_bridge_dispatch_to_return_duration_ms"] = milliseconds(bridge.returned)
+            durations["\(operation.rawValue)_bridge_return_to_validated_duration_ms"] = milliseconds(bridge.validated)
+            durations["\(operation.rawValue)_bridge_duration_ms"] = milliseconds(bridge.returned) + milliseconds(bridge.validated)
+            durations["\(operation.rawValue)_bridge_count"] = Double(bridge.count)
+        }
+        return durations
     }
 
     private func measuresExpectedFirstRead(_ documentID: String) -> Bool {

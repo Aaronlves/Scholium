@@ -352,7 +352,6 @@ struct ContentView: View {
         let note = appState.currentNote
         let path = note?.relativePath
         return DocumentFeatureState(
-            notes: appState.currentDocumentNotes,
             activeNote: appState.currentNote?.hydratedSnapshot,
             selectedDocumentPath: appState.selectedDocumentPath,
             ordinarySearchScope: appState.searchController.ordinaryScope,
@@ -362,6 +361,7 @@ struct ContentView: View {
             workspaceCatalog: appState.workspaceCatalog,
             canEdit: appState.canEditCurrentNote,
             documentTextScale: appState.documentTextScale,
+            documentAppearance: appState.cssSnippetStore.selectedAppearanceProfile?.settings ?? .defaultSettings,
             appearanceCSS: appState.cssSnippetStore.appearanceCSS,
             readCSS: appState.cssSnippetStore.readCSS,
             livePreviewCSS: appState.cssSnippetStore.livePreviewCSS,

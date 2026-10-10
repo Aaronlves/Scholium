@@ -786,6 +786,7 @@ final class WindowModel: ObservableObject {
                 "com.scholium.qa.performance-editor-cached-preview",
                 "com.scholium.qa.performance-editor-visible-projection",
                 "com.scholium.qa.performance-editor-cjk-correctness",
+                "com.scholium.qa.performance-note-opening-web-samples",
             ]
             for name in requests {
                 var token: Int32 = 0
@@ -931,15 +932,6 @@ final class WindowModel: ObservableObject {
     var currentDocumentVaultSnapshot: WorkspaceVaultSnapshot? {
         guard let vaultID = currentDocumentVaultID else { return nil }
         return workspaceProjectionController.vaultSnapshot(id: vaultID)
-    }
-
-    var currentDocumentNotes: [WindowDocumentLocation] {
-        guard let snapshot = currentDocumentVaultSnapshot else {
-            return currentNote.map { [$0] } ?? []
-        }
-        return snapshot.documents
-            .map(WindowDocumentLocation.workspace)
-            .sorted(by: notesAreOrdered)
     }
 
     var currentLibraryFolders: [String] {

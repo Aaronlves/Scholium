@@ -104,6 +104,25 @@ extension WindowModel {
 
     func handlePerformanceEditorRequest(_ name: String) {
         switch name {
+        case "com.scholium.qa.performance-note-opening-web-samples":
+            guard PerformanceProbe.shared.measuresNoteOpenToInput,
+                let descriptor = currentDocumentDescriptor
+            else { return }
+            let session = documentController.session(for: descriptor)
+            guard
+                let sample = PerformanceProbe.shared.completedNoteOpeningSample(
+                    documentID: descriptor.reference.relativePath, editorSessionID: session.editorSession.sessionID
+                )
+            else { return }
+            Task { @MainActor [weak self] in
+                guard let self, let samples = try? await session.editorSession.queryPerformanceSamples(),
+                    currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                    documentController.retainsSession(session, for: .workspace(descriptor.sessionKey))
+                else { return }
+                PerformanceProbe.shared.recordNoteOpeningWebSamples(
+                    samples, documentID: descriptor.reference.relativePath, sample: sample
+                )
+            }
         case "com.scholium.qa.performance-editor-mode.live-preview":
             requestPerformanceEditorMode(.livePreview)
         case "com.scholium.qa.performance-editor-mode.source":

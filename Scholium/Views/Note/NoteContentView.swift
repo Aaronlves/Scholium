@@ -91,7 +91,6 @@ enum DocumentIntegrityPresentation: Hashable {
 }
 
 struct DocumentFeatureState {
-    let notes: [WindowDocumentLocation]
     let activeNote: WorkspaceNoteSnapshot?
     let selectedDocumentPath: String?
     let ordinarySearchScope: SearchPresentationScope
@@ -101,6 +100,7 @@ struct DocumentFeatureState {
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let canEdit: Bool
     let documentTextScale: Double
+    let documentAppearance: DocumentAppearanceSettings
     let appearanceCSS: String
     let readCSS: String
     let livePreviewCSS: String
@@ -543,16 +543,7 @@ struct NoteContentView<ShellNotices: View>: View {
         .task(id: sourceLocationExecutionID) { await consumePendingSourceLocation() }
         .onAppear {
             controller.observe(documentSession)
-            applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
-        }
-        .onChange(of: editingIsAvailable) { _, available in
-            // Window restoration publishes the selected note before stable
-            // identity recovery necessarily finishes. Keep the edit gate
-            // intact, then apply the committed mode as soon as editing becomes
-            // available instead of leaving the document in the default Read
-            // mode for the rest of the session.
-            if available { applyPreparedPresentationModeIfAvailable() }
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
@@ -582,6 +573,7 @@ struct NoteContentView<ShellNotices: View>: View {
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
             PerformanceProbe.shared.markEditActivationLoaded(documentID: note.id.relativePath)
+            PerformanceProbe.shared.markNoteOpeningEditorPhase(.loaded, editorSessionID: editorSession.sessionID)
             documentFind.refresh()
             focusEditorIfPresented()
         }
@@ -931,10 +923,13 @@ struct NoteContentView<ShellNotices: View>: View {
             documentID: editorSession.openingPresentationID.uuidString,
             presentsEditor: isEditing || documentSession.pendingEditorMode != nil,
             retainsEditor: documentSession.retainsEditorSurface,
+            editorIsLoaded: editorSession.isLoaded,
             editorIsReady: editorSession.isLoaded
                 && editorSession.presentedMode == documentSession.activeEditorMode,
             allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil,
-            preparationTitle: note.summary.title
+            preparationTitle: note.summary.title,
+            preparationPresentation: documentPresentation,
+            preparationAppearance: state.documentAppearance
         ) {
             readSurface
         } editor: {
@@ -949,6 +944,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 let presentedMode = editorSession.presentedMode,
                 presentedMode == documentSession.activeEditorMode
             {
+                let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: editorSession.sessionID)
                 PerformanceReadyBoundary(
                     generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
                 ) {
@@ -958,6 +954,9 @@ struct NoteContentView<ShellNotices: View>: View {
                     )
                     PerformanceProbe.shared.markEditorVisible(
                         documentID: note.id.relativePath
+                    )
+                    PerformanceProbe.shared.markNoteOpeningEditorPhase(
+                        .stableVisible, editorSessionID: editorSession.sessionID, attemptID: openingMeasurement
                     )
                     actions.openingDocumentPresentationDidComplete()
                 }
@@ -1094,6 +1093,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     readProjectionPlaceholder
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .layoutPriority(1)
+                        .zIndex(1)
                 }
 
                 if hasWebProjection {
@@ -1159,7 +1159,9 @@ struct NoteContentView<ShellNotices: View>: View {
         } else {
             DocumentPreparationStatus(
                 title: note.summary.title,
-                identifier: "scholium.documentReadPreparing"
+                identifier: "scholium.documentReadPreparing",
+                presentation: documentPresentation,
+                appearance: state.documentAppearance
             )
         }
     }
@@ -1837,14 +1839,6 @@ struct NoteContentView<ShellNotices: View>: View {
         actions.rememberPresentationMode(mode)
     }
 
-    private func applyPreparedPresentationModeIfAvailable() {
-        guard !isEditing,
-            let preparedMode = documentSession.pendingEditorMode,
-            editingIsAvailable
-        else { return }
-        beginEditing(mode: preparedMode)
-    }
-
     private func consumePendingPresentationRequest() {
         guard let requested = state.requestedPresentationMode else { return }
         selectPresentationMode(requested)
@@ -2124,7 +2118,6 @@ private struct ConflictComparisonSheet: View {
     )
     let active = note.hydratedSnapshot!
     let state = DocumentFeatureState(
-        notes: [note],
         activeNote: active,
         selectedDocumentPath: active.id.relativePath,
         ordinarySearchScope: .triptych,
@@ -2136,6 +2129,7 @@ private struct ConflictComparisonSheet: View {
         workspaceCatalog: nil,
         canEdit: false,
         documentTextScale: 1,
+        documentAppearance: .defaultSettings,
         appearanceCSS: "",
         readCSS: "",
         livePreviewCSS: "",

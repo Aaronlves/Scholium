@@ -87,109 +87,6 @@
     return true;
   }
 
-  // document-preparation.ts
-  var activePreparations = /* @__PURE__ */ new WeakMap();
-  var visualObjects = "img, svg, canvas, video, input, textarea, .scholium-mermaid";
-  var transientEditorPaint = ".cm-cursorLayer, .cm-selectionLayer, .cm-tooltip";
-  var maximumPaintRects = 384;
-  var maximumTextNodes = 768;
-  var maximumVisitedNodes = 4096;
-  function beginDocumentPreparation(root) {
-    const document2 = root.ownerDocument;
-    activePreparations.get(document2)?.finish();
-    const owner = document2.defaultView;
-    const previousAccessibility = root.getAttribute("aria-hidden");
-    root.setAttribute("aria-hidden", "true");
-    const mask = document2.createElement("div");
-    mask.className = "scholium-document-preparation";
-    mask.setAttribute("aria-hidden", "true");
-    const paint = document2.createElement("div");
-    paint.className = "scholium-document-preparation-paint";
-    mask.appendChild(paint);
-    document2.body.appendChild(mask);
-    const reducedMotion = owner?.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotion = () => mask.classList.toggle("scholium-document-preparation-static", reducedMotion?.matches ?? true);
-    let finished = false;
-    function refresh() {
-      if (finished || !owner) return;
-      if (!root.isConnected) {
-        finish();
-        return;
-      }
-      const width = owner.innerWidth, height = owner.innerHeight;
-      const fragment = document2.createDocumentFragment();
-      const painted = /* @__PURE__ */ new Set();
-      let examinedTextNodes = 0;
-      const appendRect = (rect) => {
-        if (painted.size >= maximumPaintRects) return;
-        const left = Math.max(0, rect.left), top2 = Math.max(0, rect.top);
-        const right = Math.min(width, rect.right), bottom = Math.min(height, rect.bottom);
-        if (![left, top2, right, bottom].every(Number.isFinite) || right <= left || bottom <= top2) return;
-        const key = [left, top2, right, bottom].join(":");
-        if (painted.has(key)) return;
-        painted.add(key);
-        const shape = document2.createElement("div");
-        shape.className = "scholium-document-preparation-shape";
-        Object.assign(shape.style, {
-          left: `${left}px`,
-          top: `${top2}px`,
-          width: `${right - left}px`,
-          height: `${bottom - top2}px`
-        });
-        fragment.appendChild(shape);
-      };
-      let node = root.firstChild;
-      let visited = 0;
-      while (node && visited++ < maximumVisitedNodes && painted.size < maximumPaintRects) {
-        let skipChildren = false;
-        if (node.nodeType === 1) {
-          const element = node;
-          const bounds = element.getBoundingClientRect();
-          skipChildren = element.matches(transientEditorPaint) || bounds.width > 0 && bounds.height > 0 && (bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= width || bounds.top >= height);
-          if (!skipChildren && element.matches(visualObjects)) {
-            appendRect(bounds);
-            skipChildren = true;
-          }
-        } else if (node.nodeType === 3 && node.textContent?.trim() && examinedTextNodes++ < maximumTextNodes) {
-          const range = document2.createRange();
-          range.selectNodeContents(node);
-          for (const rect of range.getClientRects()) {
-            appendRect(rect);
-            if (painted.size >= maximumPaintRects) break;
-          }
-        }
-        if (!skipChildren && node.firstChild) {
-          node = node.firstChild;
-          continue;
-        }
-        while (node && node !== root && !node.nextSibling) node = node.parentNode;
-        node = node === root ? null : node?.nextSibling ?? null;
-      }
-      paint.replaceChildren(fragment);
-    }
-    function finish() {
-      if (finished) return;
-      finished = true;
-      mask.remove();
-      if (previousAccessibility === null) root.removeAttribute("aria-hidden");
-      else root.setAttribute("aria-hidden", previousAccessibility);
-      owner?.removeEventListener("resize", refresh);
-      owner?.removeEventListener("scroll", refresh, true);
-      owner?.removeEventListener("pagehide", finish);
-      reducedMotion?.removeEventListener("change", updateMotion);
-      if (activePreparations.get(document2) === handle) activePreparations.delete(document2);
-    }
-    const handle = { refresh, finish };
-    activePreparations.set(document2, handle);
-    owner?.addEventListener("resize", refresh);
-    owner?.addEventListener("scroll", refresh, { capture: true, passive: true });
-    owner?.addEventListener("pagehide", finish, { once: true });
-    reducedMotion?.addEventListener("change", updateMotion);
-    updateMotion();
-    refresh();
-    return handle;
-  }
-
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -41386,7 +41283,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var mermaidThemeRevision = 0;
   var lastDocumentFocusTarget;
   var appliedPresentation = null;
-  var documentPreparation = null;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
     if (changed) citationInsertionRevision++;
@@ -43038,6 +42934,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return rejected2(request.requestID, documentVersion, "invalid initialization");
       }
       editingDialect = operation.dialect;
+      const stateStartedAt = performance.now();
       editorOperations.setDocument(
         operation.text,
         request.sessionID,
@@ -43048,7 +42945,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         operation.initialSelection,
         operation.citationSnapshot
       );
-      documentPreparation = beginDocumentPreparation(editor.dom);
+      recordEditorMetric("opening-atomic-state", stateStartedAt, { documentLength: editor.state.doc.length });
       recordEditorMetric("document-load", loadStartedAt, { documentLength: editor.state.doc.length });
       sampleEditorMemory(editor.state.doc.length);
       return successfulResult(request.requestID);
@@ -43079,64 +42976,104 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         applyPresentationConfiguration(operation.value);
         break;
       case "completePreparation": {
+        const preparationStartedAt = performance.now();
+        const phases = {
+          styleWorkMilliseconds: 0,
+          fontsWaitMilliseconds: 0,
+          projectionWorkMilliseconds: 0,
+          measureWorkMilliseconds: 0,
+          scrollWorkMilliseconds: 0,
+          measureCount: 0,
+          loopCount: 0,
+          widgetWaitMilliseconds: 0,
+          widgetWaitCount: 0,
+          imageWaitMilliseconds: 0,
+          imageWaitCount: 0
+        };
+        let completed = false;
         const attachment = documentAttachment;
-        const preparation = documentPreparation;
         let expired = false;
         const isCurrent = () => !expired && request.expiresAt > Date.now() && attachment === documentAttachment && request.knownGeneration === documentVersion;
         const requireCurrent = () => {
           if (!isCurrent()) throw new Error("stale editor preparation");
         };
-        const measure = () => measureMarkdownEditor(editor, () => {
-          requireCurrent();
-          editor.coordsAtPos(editor.state.selection.main.head);
-          scrollCoordinator.currentAnchor();
-        });
+        const measure = () => {
+          const startedAt = performance.now();
+          const measured = measureMarkdownEditor(editor, () => {
+            requireCurrent();
+            editor.coordsAtPos(editor.state.selection.main.head);
+            scrollCoordinator.currentAnchor();
+          });
+          phases.measureWorkMilliseconds += performance.now() - startedAt;
+          phases.measureCount += 1;
+          return measured;
+        };
+        const styleStartedAt = performance.now();
         flushPresentationStyleAndGeometry();
+        phases.styleWorkMilliseconds += performance.now() - styleStartedAt;
         let deadline;
         try {
+          const fontsStartedAt = performance.now();
           await Promise.race([
             document.fonts.ready.then(async () => {
+              phases.fontsWaitMilliseconds += performance.now() - fontsStartedAt;
               requireCurrent();
+              const projectionStartedAt = performance.now();
               convergeLivePreviewProjection();
+              phases.projectionWorkMilliseconds += performance.now() - projectionStartedAt;
               await measure();
               requireCurrent();
               const decoded = /* @__PURE__ */ new Set();
               while (true) {
+                phases.loopCount += 1;
+                const scrollStartedAt = performance.now();
                 if (operation.anchor) scrollCoordinator.setAnchor(operation.anchor);
                 else if (operation.fraction !== void 0) scrollCoordinator.setFraction(operation.fraction);
+                phases.scrollWorkMilliseconds += performance.now() - scrollStartedAt;
                 await measure();
                 requireCurrent();
                 if (configuredEditorMode(editor.state) !== "livePreview") break;
                 if (document.fonts.status !== "loaded") {
+                  const startedAt = performance.now();
                   await document.fonts.ready;
+                  phases.fontsWaitMilliseconds += performance.now() - startedAt;
                   requireCurrent();
                   await measure();
                   requireCurrent();
                   continue;
                 }
-                if (await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent)) {
+                const widgetsStartedAt = performance.now();
+                const waitedForWidgets = await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent);
+                phases.widgetWaitMilliseconds += performance.now() - widgetsStartedAt;
+                if (waitedForWidgets) {
+                  phases.widgetWaitCount += 1;
                   requireCurrent();
                   await measure();
+                  const startedAt = performance.now();
                   await document.fonts.ready;
+                  phases.fontsWaitMilliseconds += performance.now() - startedAt;
                   requireCurrent();
                   await measure();
                   requireCurrent();
                   continue;
                 }
-                if (await awaitVisibleDocumentImages(
+                const imagesStartedAt = performance.now();
+                const waitedForImages = await awaitVisibleDocumentImages(
                   editor.contentDOM,
                   editor.scrollDOM.getBoundingClientRect(),
                   decoded,
                   requireCurrent,
                   applyDecodedImagePresentation
-                )) {
+                );
+                phases.imageWaitMilliseconds += performance.now() - imagesStartedAt;
+                if (waitedForImages) {
+                  phases.imageWaitCount += 1;
                   await measure();
                   requireCurrent();
                   continue;
                 }
                 break;
               }
-              preparation?.refresh();
             }),
             new Promise((_resolve, reject) => {
               deadline = window.setTimeout(() => {
@@ -43146,17 +43083,19 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             })
           ]);
           requireCurrent();
+          completed = true;
         } finally {
           window.clearTimeout(deadline);
+          recordEditorMetric("opening-preparation", preparationStartedAt, { ...phases, completed: completed ? 1 : 0, expired: expired ? 1 : 0 });
         }
         break;
       }
       case "releasePreparation": {
-        documentPreparation?.finish();
-        documentPreparation = null;
+        const releaseStartedAt = performance.now();
         if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({ preventScroll: true });
         else if (operation.focusTarget) editor.focus();
         editor.coordsAtPos(editor.state.selection.main.head);
+        recordEditorMetric("opening-release", releaseStartedAt);
         break;
       }
       case "showPreview":
@@ -43736,8 +43675,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint, mode, presentation, initialSelection, citationSnapshot) {
-      documentPreparation?.finish();
-      documentPreparation = null;
       appliedPresentation = null;
       citationTransaction?.cancel();
       citationTransaction = null;

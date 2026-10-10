@@ -278,14 +278,17 @@ final class SidebarOutlineView: NSOutlineView {
     var dragSelectionIsValid: ((IndexSet) -> Bool)?
     var primaryClickHandler: ((Int, NSEvent.ModifierFlags) -> Bool)?
     private(set) var isHandlingPrimaryMouseDown = false
+    private(set) var primaryMouseDownNanoseconds: UInt64?
     private var primaryMouseDownModifiers: NSEvent.ModifierFlags?
 
     override func mouseDown(with event: NSEvent) {
+        primaryMouseDownNanoseconds = DispatchTime.now().uptimeNanoseconds
         isHandlingPrimaryMouseDown = true
         primaryMouseDownModifiers = event.modifierFlags
         defer {
             isHandlingPrimaryMouseDown = false
             primaryMouseDownModifiers = nil
+            primaryMouseDownNanoseconds = nil
         }
         super.mouseDown(with: event)
     }
