@@ -23,6 +23,7 @@ struct ScholiumWorkspaceWindowActionsFocusedKey: FocusedValueKey {
 struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
+    let selectPresentationMode: (NotePresentationMode) -> Void
     let isAvailable: (MarkdownEditorCommand) -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void

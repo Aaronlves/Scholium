@@ -8,6 +8,7 @@ import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {toggledTaskMarker} from "./transformations";
 import {appendMarkdownBlocks} from "./markdown-fragment";
 import {projectedPointerSelection} from "./projected-pointer-selection";
+import {beginDocumentWidgetPreparation, mathRuntimeSettledEvent} from "./document-widget-readiness";
 
 interface ListMarkerOptions {
   marker: string;
@@ -25,6 +26,29 @@ export function createLiveInlineWidgets(options: {
   requestMathRuntime(): void;
   didToggleTask(): void;
 }) {
+  const mathPreparations = new WeakMap<HTMLElement, () => void>();
+
+  function prepareMathRuntime(element: HTMLElement) {
+    if (window.scholiumMath?.version === 1) return;
+    const preparation = beginDocumentWidgetPreparation(element);
+    const owner = element.ownerDocument.defaultView!;
+    const finish = () => {
+      owner.removeEventListener(mathRuntimeSettledEvent, finish);
+      preparation.finish();
+    };
+    mathPreparations.set(element, finish);
+    owner.addEventListener(mathRuntimeSettledEvent, finish, {once: true});
+    options.requestMathRuntime();
+  }
+
+  function finishMathPreparations(dom: HTMLElement) {
+    const elements = Array.from(dom.querySelectorAll<HTMLElement>(".scholium-math"));
+    if (dom.matches(".scholium-math")) elements.push(dom);
+    for (const element of elements) {
+      mathPreparations.get(element)?.();
+      mathPreparations.delete(element);
+    }
+  }
   class AttachmentIconWidget extends WidgetType {
     constructor(readonly symbol: WebSystemSymbolKey) { super(); }
     eq(other: AttachmentIconWidget) { return other.symbol === this.symbol; }
@@ -237,10 +261,13 @@ export function createLiveInlineWidgets(options: {
       const body = document.createElement("div");
       body.className = "scholium-embedded-note-body scholium-document";
       populatePreviewDocument(body, this.preview);
+      body.querySelectorAll<HTMLElement>(".scholium-math").forEach(prepareMathRuntime);
       viewport.append(body);
       shell.append(header, viewport);
       return shell;
     }
+
+    destroy(dom: HTMLElement) { finishMathPreparations(dom); }
 
     ignoreEvent(event: Event) {
       const target = event.target instanceof Element ? event.target : null;
@@ -272,7 +299,7 @@ export function createLiveInlineWidgets(options: {
       element.dataset.scholiumSourceTo = String(this.expression.to);
 
       const runtime = window.scholiumMath;
-      if (runtime?.version !== 1) options.requestMathRuntime();
+      if (runtime?.version !== 1) prepareMathRuntime(element);
       const rendered = runtime?.version === 1
         ? runtime.render({source: this.expression.content, kind: this.expression.kind})
         : {ok: false as const, reason: "invalid-source" as const};
@@ -325,6 +352,8 @@ export function createLiveInlineWidgets(options: {
       }
       return element;
     }
+
+    destroy(dom: HTMLElement) { finishMathPreparations(dom); }
 
     ignoreEvent(event: Event) { return event.type === "mousedown"; }
   }

@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
-  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, encodedByteLength, isEditorRequest,
-  generationCanExecuteEditorRequest, recoveryGenerationCanReplaceCurrent, rejected,
+  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, MAX_SOURCE_ENVELOPE_BYTES, MAX_PRESENTATION_ENVELOPE_BYTES, encodedByteLength, isEditorRequest,
+  admitPresentationSources, generationCanExecuteEditorRequest, recoveryGenerationCanReplaceCurrent, rejected,
 } from "../protocol";
 
 const request = {
@@ -13,6 +13,12 @@ const request = {
   startingFingerprint: "fingerprint",
   knownGeneration: 4,
   operation: {type: "queryText" as const},
+};
+
+const presentation = {
+  documentTitle: "", presentationCSS: "", userCSS: "", linkPreviews: [], linkPreviewGeneration: 0,
+  imageResources: {}, imageResourceGeneration: 0, writingContinuationEnabled: false,
+  writingContinuationContextKey: "", writingIndexContextKey: "",
 };
 
 const dialect = {
@@ -31,12 +37,50 @@ const dialect = {
 };
 
 describe("editor protocol", () => {
+  it("admits the complete existing image budget alongside independently bounded initial presentation", () => {
+    const data = "A".repeat(4 * Math.ceil(10 * 1_024 * 1_024 / 3) - 2) + "==";
+    const imageResources = Object.fromEntries(Array.from({length: 8}, (_, index) => [`${index}.png`, `data:image/png;base64,${data}`]));
+    const value = {...presentation, imageResources, presentationCSS: "a".repeat(1_000_000), userCSS: "b".repeat(1_000_000)};
+    const operation = {type: "initialize", text: "Body", mode: "livePreview", dialect, presentation: value};
+    const envelope = {...request, operation};
+    expect(encodedByteLength(envelope)).toBeGreaterThan(MAX_SOURCE_ENVELOPE_BYTES);
+    expect(encodedByteLength(envelope)).toBeLessThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES);
+    expect(isEditorRequest(envelope)).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "setPresentation", value}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "setPresentation", value: {...value, userCSS: "b".repeat(1_000_001)}}})).toBe(false);
+  });
+
+  it("admits latest appearance while retaining only already applied source-bound catalogs", () => {
+    const previous = {...presentation, documentTitle: "Previous title", linkPreviews: [{from: 12, to: 22}],
+      linkPreviewGeneration: 5, imageResources: {"current.png": "current"}, imageResourceGeneration: 5};
+    const oldRequest = {...presentation, documentTitle: "Latest title", presentationCSS: "latest CSS",
+      linkPreviews: [{from: 0, to: 10}], linkPreviewGeneration: 4,
+      imageResources: {"old.png": "old"}, imageResourceGeneration: 4};
+    const admitted = admitPresentationSources(oldRequest, 5, previous);
+    expect(admitted.documentTitle).toBe("Latest title");
+    expect(admitted.presentationCSS).toBe("latest CSS");
+    expect(admitted.linkPreviews).toBe(previous.linkPreviews);
+    expect(admitted.imageResources).toBe(previous.imageResources);
+    expect(admitPresentationSources(oldRequest, 4, previous).linkPreviews).toBe(oldRequest.linkPreviews);
+    expect(admitPresentationSources(oldRequest, 5, null).linkPreviews).toEqual([]);
+  });
+
+  it("keeps measurement generation-bound and releases presentation with a bounded focus target", () => {
+    expect(isEditorRequest({...request, operation: {type: "completePreparation"}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "completePreparation", fraction: 0}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "completePreparation", fraction: 1.1}})).toBe(false);
+    expect(generationCanExecuteEditorRequest("completePreparation", 3, 4)).toBe(false);
+    expect(isEditorRequest({...request, operation: {type: "releasePreparation", focusTarget: "editor"}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "releasePreparation", focusTarget: "elsewhere"}})).toBe(false);
+    expect(generationCanExecuteEditorRequest("releasePreparation", 3, 4)).toBe(false);
+  });
+
   it("uses the interaction-revision byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(49);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(50);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};
-    const operation = {type: "initialize", text: "Argument", mode: "source", dialect, citationSnapshot};
+    const operation = {type: "initialize", text: "Argument", mode: "source", dialect, citationSnapshot, presentation};
     expect(isEditorRequest({...request, operation})).toBe(true);
     expect(isEditorRequest({...request, operation: {...operation, citationSnapshot: {...citationSnapshot, status: "available"}}})).toBe(false);
     expect(isEditorRequest({...request, operation: {...operation, citationSnapshot: {...citationSnapshot, data: {schemaVersion: 2, fields: []}}}})).toBe(false);
@@ -98,8 +142,8 @@ describe("editor protocol", () => {
     expect(isEditorRequest({...request, operation: {type: "focusTitle"}})).toBe(true);
   });
   it("bounds the independent writing index context", () => {
-    expect(isEditorRequest({...request, operation: {type: "setWritingIndexContext", contextKey: "catalog-2"}})).toBe(true);
-    expect(isEditorRequest({...request, operation: {type: "setWritingIndexContext", contextKey: "x".repeat(257)}})).toBe(false);
+    expect(isEditorRequest({...request, operation: {type: "setPresentation", value: {...presentation, writingIndexContextKey: "catalog-2"}}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "setPresentation", value: {...presentation, writingIndexContextKey: "x".repeat(257)}}})).toBe(false);
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
@@ -107,13 +151,13 @@ describe("editor protocol", () => {
   it("accepts only a bounded document title projection", () => {
     expect(isEditorRequest({
       ...request,
-      operation: {type: "setDocumentTitle", value: "Reasons and Emotion"},
+      operation: {type: "setPresentation", value: {...presentation, documentTitle: "Reasons and Emotion"}},
     })).toBe(true);
     expect(isEditorRequest({
       ...request,
-      operation: {type: "setDocumentTitle", value: "x".repeat(1_025)},
+      operation: {type: "setPresentation", value: {...presentation, documentTitle: "x".repeat(1_025)}},
     })).toBe(false);
-    expect(generationCanExecuteEditorRequest("setDocumentTitle", 3, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("setPresentation", 3, 4)).toBe(true);
   });
   it("accepts only bounded literal document-find requests", () => {
     const value = {
@@ -145,7 +189,7 @@ describe("editor protocol", () => {
   it("keeps presentation CSS separate from user CSS", () => {
     expect(isEditorRequest({
       ...request,
-      operation: {type: "setPresentationCSS", value: ":root { --scale: 1.2; }"},
+      operation: {type: "setPresentation", value: {...presentation, presentationCSS: ":root { --scale: 1.2; }"}},
     })).toBe(true);
   });
   it("selection presentation carries no writable source or external range and binds the current generation", () => {
@@ -176,6 +220,7 @@ describe("editor protocol", () => {
       text: "Body",
       mode: "livePreview",
       dialect,
+      presentation,
       initialSelection: {anchor: 4, head: 4},
     };
     expect(isEditorRequest({...request, operation: initialize})).toBe(true);
@@ -210,7 +255,7 @@ describe("editor protocol", () => {
   });
   it("measures UTF-8 bytes and rejects oversized envelopes", () => {
     expect(encodedByteLength("哲学")).toBeGreaterThan("哲学".length);
-    expect(isEditorRequest({...request, operation: {type: "setUserCSS", value: "x".repeat(MAX_INBOUND_BYTES)}})).toBe(false);
+    expect(isEditorRequest({...request, operation: {type: "setPresentation", value: {...presentation, userCSS: "x".repeat(MAX_INBOUND_BYTES)}}})).toBe(false);
   });
   it("returns a non-mutating typed rejection", () => {
     expect(rejected("r", 9, "stale generation", 17)).toEqual({

@@ -1,4 +1,4 @@
-import {EditorState, Transaction} from "@codemirror/state";
+import {EditorSelection, EditorState, StateField, Transaction} from "@codemirror/state";
 import {history, redoDepth, undo, undoDepth} from "@codemirror/commands";
 import {codeFolding, foldEffect, foldedRanges} from "@codemirror/language";
 import {getSearchQuery, SearchQuery, setSearchQuery} from "@codemirror/search";
@@ -6,12 +6,30 @@ import {describe, expect, it} from "vitest";
 import {createMarkdownDocumentState} from "../bootstrap";
 import {documentFindExtension} from "../document-find";
 import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory} from "../exact-source-history";
+import {citationState} from "../zotero-citation-state";
 import {normalizedDocumentText} from "../state";
 
 const extensions = [history(), exactSourceHistory, documentFindExtension, codeFolding(),
   EditorState.lineSeparator.of("\n")];
 
 describe("document initialization in a retained editor runtime", () => {
+  it("creates exact source, target selection and citations before derived fields initialize", () => {
+    const source = "\uFEFF---\r\ntags: [draft]\r\n---\r\nBody 中文😀\r\n";
+    const head = normalizedDocumentText(source).indexOf("Body");
+    const snapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent" as const};
+    const observations: unknown[] = [];
+    const observer = StateField.define({create: state => {
+      observations.push([state.selection.main.head, state.field(exactSourceState).text, state.field(citationState)?.baseline]);
+      return null;
+    }, update: value => value});
+    const state = createMarkdownDocumentState(source, [observer, ...extensions], {
+      selection: EditorSelection.single(head), citationSnapshot: snapshot,
+    });
+    expect(observations).toEqual([[head, source, snapshot]]);
+    expect(state.selection.main.head).toBe(head);
+    expect(undoDepth(state)).toBe(0);
+  });
+
   it("starts the next document with clean history, find, folding and selection", () => {
     let first = createMarkdownDocumentState("first\r\nsecret\r\n", extensions);
     first = first.update({changes: {from: 5, insert: " edited"},

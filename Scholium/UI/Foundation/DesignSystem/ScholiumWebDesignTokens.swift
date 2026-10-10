@@ -186,6 +186,39 @@ enum ScholiumWebDesignTokens {
           \(documentMarkupCSSDeclarations)
           \(rhythmCSSDeclarations)
         }
+        .scholium-document-preparation {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647;
+          pointer-events: none;
+          overflow: hidden;
+          background: var(--scholium-color-document-background);
+        }
+        .scholium-document-preparation-paint {
+          position: absolute;
+          inset: 0;
+          animation: scholium-document-preparation-pulse 1.4s ease-in-out infinite alternate;
+        }
+        .scholium-document-preparation-shape {
+          position: absolute;
+          background: color-mix(in srgb, var(--scholium-color-secondary-text) 25%, var(--scholium-color-document-background));
+        }
+        @keyframes scholium-document-preparation-pulse {
+          from { opacity: 0.9; }
+          to { opacity: 0.65; }
+        }
+        .scholium-document-preparation-static .scholium-document-preparation-paint {
+          animation: none;
+          opacity: 0.9;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .scholium-document-preparation-paint { animation: none; opacity: 0.9; }
+        }
+        @media (prefers-contrast: more) {
+          .scholium-document-preparation-shape {
+            background: color-mix(in srgb, var(--scholium-color-primary-text) 40%, var(--scholium-color-document-background));
+          }
+        }
         .scholium-document,
         .cm-editor.scholium-live-mode .cm-content {
           box-sizing: border-box;

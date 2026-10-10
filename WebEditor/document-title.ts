@@ -281,12 +281,12 @@ export function createDocumentTitle(options: DocumentTitleOptions) {
       options.dispatch(refreshDocumentTitleEffect.of(null));
     },
 
-    focus() {
+    focus(options?: FocusOptions) {
       const input = document.querySelector<HTMLTextAreaElement>(
         ".scholium-note-title-input",
       );
       if (!input || input.disabled) return false;
-      input.focus();
+      input.focus(options);
       input.setSelectionRange(input.value.length, input.value.length);
       return true;
     },

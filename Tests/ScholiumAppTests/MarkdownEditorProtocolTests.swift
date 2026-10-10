@@ -10,15 +10,15 @@ import WebKit
 struct MarkdownEditorProtocolTests {
     @Test("Writing continuation configuration is source-neutral and round-trips")
     func continuationConfiguration() throws {
-        let operation = MarkdownEditorOperation.setWritingContinuation(enabled: true, contextKey: "model-a")
+        let operation = MarkdownEditorOperation.setPresentation(.init(writingContinuationEnabled: true, writingContinuationContextKey: "model-a"))
         let data = try JSONEncoder().encode(operation)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
         #expect(!operation.serializesSourceMutation)
     }
 
-    @Test("Writing index context is a separate source-neutral editor operation")
+    @Test("Writing index context is source-neutral within retained presentation")
     func writingIndexContext() throws {
-        let operation = MarkdownEditorOperation.setWritingIndexContext("catalog-2")
+        let operation = MarkdownEditorOperation.setPresentation(.init(writingIndexContextKey: "catalog-2"))
         let data = try JSONEncoder().encode(operation)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
         #expect(!operation.serializesSourceMutation)
@@ -84,22 +84,22 @@ struct MarkdownEditorProtocolTests {
         }
     }
 
-    @Test("Presentation CSS round trips independently from user CSS")
+    @Test("Presentation CSS round trips as a distinct field from user CSS")
     func presentationCSSOperationRoundTrip() throws {
-        let operation = MarkdownEditorOperation.setPresentationCSS(":root { --scale: 1.2; }")
+        let operation = MarkdownEditorOperation.setPresentation(.init(presentationCSS: ":root { --scale: 1.2; }"))
         let data = try JSONEncoder().encode(operation)
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(object["type"] as? String == "setPresentationCSS")
+        #expect(object["type"] as? String == "setPresentation")
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
     @Test("Document title round trips as a source-neutral projection")
     func documentTitleOperationRoundTrip() throws {
-        let operation = MarkdownEditorOperation.setDocumentTitle("Reasons and Emotion")
+        let operation = MarkdownEditorOperation.setPresentation(.init(documentTitle: "Reasons and Emotion"))
         let data = try JSONEncoder().encode(operation)
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(object["type"] as? String == "setDocumentTitle")
-        #expect(object["value"] as? String == "Reasons and Emotion")
+        #expect(object["type"] as? String == "setPresentation")
+        #expect((object["value"] as? [String: Any])?["documentTitle"] as? String == "Reasons and Emotion")
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
@@ -629,7 +629,8 @@ struct MarkdownEditorProtocolTests {
                 initialSelection: MarkdownEditorSelectionRange(
                     anchor: 27,
                     head: 27
-                )
+                ),
+                presentation: .init()
             )
         )
 

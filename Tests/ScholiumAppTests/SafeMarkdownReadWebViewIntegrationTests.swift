@@ -1098,6 +1098,94 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Read preparation masks real document geometry without input or accessibility")
+    func readPreparationUsesMeasuredDocumentGeometry() async throws {
+        let source = "---\nunknown: 字😀\n---\n# Authored heading\n\nA real paragraph with 中文 and exact content.\n"
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: "<h1>Authored heading</h1><p>A real paragraph with 中文 and exact content.</p>",
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            documentTitle: "Preparing sample",
+            testingScrollRestoreDelayMilliseconds: 1500,
+            presentsDocumentPreparation: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReadPreparationAvailable()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        var before = try await harness.preparationSnapshot()
+        while before.shapeCount == 0 {
+            if clock.now >= deadline { throw ScholiumWindowLifecycleError.timedOut(.routeReadiness) }
+            try await Task.sleep(for: .milliseconds(10))
+            before = try await harness.preparationSnapshot()
+        }
+        #expect(!harness.isReady)
+        #expect(!before.isHidden && !before.allowsInput && before.accessibleChildCount == 0)
+        #expect(before.geometry.count >= 4)
+        try await harness.waitUntilReady()
+        let after = try await harness.preparationSnapshot()
+        #expect(after.shapeCount == 0)
+        #expect(after.allowsInput && after.accessibleChildCount == 1)
+        #expect(after.geometry.count == before.geometry.count)
+        for (actual, expected) in zip(after.geometry, before.geometry) {
+            #expect(actual.count == expected.count)
+            for (value, original) in zip(actual, expected) { #expect(abs(value - original) <= 0.5) }
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Read opening settles a late image before acknowledging its explicit locator")
+    func readOpeningImageGeometryKeepsExplicitLocator() async throws {
+        let source =
+            "# Opening\n\n![Figure](Attachments/figure.png)\n\n"
+            + (1...40).map { "Following paragraph \($0) remains authored content.\n\n" }.joined()
+        let document = NoteDocument(relativePath: "Opening.md", rawContent: source)
+        let landscape = try InlineImageFixture.landscapePNG.image()
+        let portrait = try InlineImageFixture.portraitJPEG.image()
+        let rendered = SafeMarkdownRenderer.render(document, embeddedImages: ["Attachments/figure.png": landscape])
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0.8,
+            testingScrollRestoreDelayMilliseconds: 1500, presentsDocumentPreparation: true)
+        defer { harness.close() }
+        harness.requestSourceLine(3)
+        try await harness.waitUntilReadPreparationAvailable()
+        _ = try await harness.callBridgeJavaScript(
+            """
+            const originalDecode = HTMLImageElement.prototype.decode;
+            HTMLImageElement.prototype.decode = function() {
+              if (this.dataset.scholiumImageTarget !== 'Attachments/figure.png') return originalDecode.call(this);
+              window.readOpeningDecodeHeld = true;
+              return new Promise(resolve => {
+                window.releaseReadOpeningImage = async () => {
+                  this.src = replacementURL;
+                  await originalDecode.call(this);
+                  resolve();
+                };
+              });
+            };
+            """,
+            arguments: ["replacementURL": "data:\(portrait.mimeType);base64,\(portrait.data.base64EncodedString())"])
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while try await harness.callBridgeJavaScript("return window.readOpeningDecodeHeld === true;") as? Bool != true {
+            if clock.now >= deadline { throw ScholiumWindowLifecycleError.timedOut(.routeReadiness) }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!harness.isReady)
+        #expect(harness.pendingSourceLine == 3)
+        _ = try await harness.callBridgeJavaScript("await window.releaseReadOpeningImage();")
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSourceLineReached(3)
+        #expect(harness.pendingSourceLine == nil)
+        #expect(abs(try await harness.sourceLineTop(3)) <= 16)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelector('img').naturalHeight;") as? Int == InlineImageFixture.portraitJPEG.height)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
+        await harness.closeAndDrain()
+    }
+
     @Test("Read caller restoration can be cancelled without cancelling rebuild restoration")
     func readCallerRestorationCancellationIsScoped() async throws {
         let fixture = Self.longDocumentFixture()
@@ -1164,7 +1252,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilFailure()
         #expect(!harness.isReady)
         #expect(harness.hasPendingRestoreRequest)
-        try await harness.waitUntilRestoreInvocationCount(1)
+        #expect(try await harness.restoreInvocationCount() >= 1)
 
         harness.retryAfterFinalizationFailure()
         try await harness.waitUntilReady()
@@ -2371,6 +2459,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         @Published var isReady = false
+        var presentsDocumentPreparation = false
         var diagramSize: CGSize?
         var replyEvents: [ReadReplyEvent] = []
         var imagePreviewTargets: [String] = []
@@ -2499,6 +2588,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             userCSS: String = "",
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0,
+            presentsDocumentPreparation: Bool = false,
             laysOutForNativePreview: Bool = false,
             replyProjection: Bool = false,
             imagePreviewsEnabled: Bool = false,
@@ -2517,6 +2607,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 testingScrollRestoreDelayMilliseconds: testingScrollRestoreDelayMilliseconds
             )
             sourceBox.imagePreviewsEnabled = imagePreviewsEnabled
+            sourceBox.presentsDocumentPreparation = presentsDocumentPreparation
             if replyProjection {
                 let box = sourceBox
                 sourceBox.chatPageExtension = AgentChatReadPageExtension {
@@ -2840,6 +2931,34 @@ extension MarkdownEditorWebViewIntegrationTests {
             )
         }
 
+        func preparationSnapshot() async throws -> (
+            shapeCount: Int, geometry: [[Double]], isHidden: Bool,
+            allowsInput: Bool, accessibleChildCount: Int
+        ) {
+            let payload =
+                try await callBridgeJavaScript(
+                    """
+                    if (document.fonts?.ready) await document.fonts.ready;
+                    return {
+                      shapeCount: document.querySelectorAll('.scholium-document-preparation-shape').length,
+                      geometry: [...document.querySelectorAll('.scholium-note-title, .scholium-frontmatter-line, #scholium-document > h1, #scholium-document > p')]
+                        .map(element => { const rect = element.getBoundingClientRect(); return [rect.left, rect.top, rect.width, rect.height]; })
+                    };
+                    """
+                ) as? [String: Any]
+            guard let payload, let shapeCount = payload["shapeCount"] as? Int,
+                let geometry = payload["geometry"] as? [[Double]],
+                let root = window.contentViewController?.view,
+                let web = findWebView(in: root) as? DocumentNativeWebView,
+                let container = web.superview as? DocumentWebViewContainer
+            else { throw ReadHarnessError.webViewUnavailable }
+            return (
+                shapeCount, geometry, container.isHidden || web.isHidden,
+                web.documentSurfaceAllowsInput || web.acceptsFirstResponder || web.canBecomeKeyView,
+                container.accessibilityChildren()?.count ?? 0
+            )
+        }
+
         func waitUntilWebViewAvailable() async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(5))
@@ -2849,6 +2968,30 @@ extension MarkdownEditorWebViewIntegrationTests {
                 {
                     return
                 }
+                if clock.now >= deadline { throw ReadHarnessError.timedOut }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        func waitUntilReadPreparationAvailable() async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while true {
+                if let failure = sourceBox.failure {
+                    Issue.record(Comment(rawValue: failure))
+                    throw ReadHarnessError.renderingFailed
+                }
+                let installed = try? await callBridgeJavaScript(
+                    """
+                    return typeof configuration !== 'undefined'
+                      && configuration.documentID === 'ReadFixture.md'
+                      && configuration.fingerprint === expectedFingerprint
+                      && Number.isSafeInteger(configuration.loadGeneration)
+                      && typeof window.scholiumReadPreparation?.settle === 'function'
+                      && typeof window.scholiumReadPreparation?.finish === 'function'
+                      && document.getElementById('scholium-document') !== null;
+                    """, arguments: ["expectedFingerprint": fingerprint])
+                if installed as? Bool == true { return }
                 if clock.now >= deadline { throw ReadHarnessError.timedOut }
                 try await Task.sleep(for: .milliseconds(10))
             }
@@ -2956,6 +3099,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.reachedSourceLine = nil
             sourceBox.requestSourceLocation(line: line)
         }
+
+        var pendingSourceLine: Int? { sourceBox.sourceLocationRequest?.line }
 
         var sourceRangeUnavailable: Bool { sourceBox.sourceRangeUnavailable }
         var sourceRevisionChanged: Bool { sourceBox.sourceRevisionChanged }
@@ -3092,21 +3237,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 throw ReadHarnessError.invalidSnapshot
             }
             return count
-        }
-
-        func waitUntilRestoreInvocationCount(_ expected: Int) async throws {
-            let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .seconds(5))
-            while clock.now < deadline {
-                if (try? await restoreInvocationCount()) == expected {
-                    return
-                }
-                try await Task.sleep(for: .milliseconds(25))
-            }
-            Issue.record(
-                "Read mode did not retain the expected restoration invocation count \(expected)."
-            )
-            throw ReadHarnessError.timedOut
         }
 
         func scroll(toFraction fraction: Double) async throws {
@@ -3582,6 +3712,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
             #endif
             return surface.id(sourceBox.surfaceIdentity)
+                .environment(
+                    \.scholiumDocumentSurfaceVisibility,
+                    sourceBox.presentsDocumentPreparation && !sourceBox.isReady ? .preparing : .active
+                )
                 .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
         }
     }

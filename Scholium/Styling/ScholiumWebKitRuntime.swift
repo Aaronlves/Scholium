@@ -37,7 +37,7 @@ final class ScholiumWebKitProcessPrewarmer {
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         ScholiumWebFontResources.install(in: configuration)
-        let webView = WKWebView(
+        let webView = DocumentNativeWebView(
             frame: NSRect(x: 0, y: 0, width: 1, height: 1),
             configuration: configuration
         )

@@ -43,7 +43,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         let imageStart = try #require(source.range(of: "![Figure]")?.lowerBound.utf16Offset(in: source))
         let editorOffset = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: imageStart + 3))
-        harness.session.revealSourceRange(fromUTF16: editorOffset, toUTF16: editorOffset)
+        harness.revealEditorRange(fromUTF16: editorOffset, toUTF16: editorOffset)
         try await harness.waitUntilSelection(head: editorOffset)
         let context = try #require(harness.session.context)
         #expect(context.imageTarget == destination)
@@ -58,7 +58,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         // A menu retained across another selection cannot act on its old image.
         let afterOffset = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: after))
-        harness.session.revealSourceRange(fromUTF16: afterOffset, toUTF16: afterOffset)
+        harness.revealEditorRange(fromUTF16: afterOffset, toUTF16: afterOffset)
         try await harness.waitUntilSelection(head: afterOffset)
         #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
         #expect(harness.previewedImages.count == 2)

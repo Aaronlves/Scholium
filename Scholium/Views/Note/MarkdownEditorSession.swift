@@ -214,11 +214,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingSource: String?
     private var pendingDocumentID = ""
     private var pendingDocumentTitle = ""
+    private var deliveredPresentationConfiguration: MarkdownEditorPresentationConfiguration?
+    private var presentationConvergenceTask: Task<Void, Never>?
+    private var presentationConvergenceID: UUID?
+    private var pendingLinkPreviewGeneration = 0
     private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
     private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
+    private var pendingSourceRangeIsDefault = false
+    private var navigationRequestRevision: UInt64 = 0
+    private var pendingSourceRangeRevision: UInt64 = 0
+    private struct ScrollIntent {
+        let revision: UInt64
+        let anchor: EditorScrollAnchor?
+        let fraction: Double
+    }
+    private var pendingScrollIntent: ScrollIntent?
+    private var navigationIntentTask: Task<Void, Never>?
+    private var navigationIntentTaskID: UUID?
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     private var pendingImageResources: [String: String] = [:]
     private var pendingImageResourceGeneration = 0
@@ -229,6 +244,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var imageResourceContextKey = ""
     private var imageResourceQueryTask: Task<Void, Never>?
     private var imageResourceQueryID: UUID?
+    private var openingImageWaitTask: Task<Void, any Error>?
+    private var openingImageWaitID: UUID?
     private var pendingWritingContinuationEnabled = false
     private var pendingWritingContinuationContextKey = ""
     private var pendingWritingIndexContextKey = ""
@@ -242,6 +259,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var automaticFocusIsAuthorized = false
     private var presentationIsClosed = false
     private(set) var focusRequestRevision: UInt64 = 0
+    private var pendingFocusIntentRevision: UInt64?
     private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
@@ -287,6 +305,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             "com.scholium.qa.simulate-editor-process-termination"
         )
         private var qaTerminationObserverInstalled = false
+        var testingOpeningImageWaitID: UUID? { openingImageWaitID }
     #endif
     var hasAttachedWebView: Bool { webView != nil }
     var isReady: Bool { presentation.webContentReady }
@@ -481,18 +500,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusHandoffTask?.cancel()
         focusHandoffTask = nil
         automaticFocusIsAuthorized = false
+        pendingFocusIntentRevision = nil
         automaticFocusTarget = .editor
         committedTextSynchronizer = nil
         sourceChangeHandler = nil
         pendingSource = nil
+        pendingSourceRange = nil
+        pendingSourceRangeIsDefault = false
         pendingDocumentID = ""
         pendingDocumentTitle = ""
         pendingLinkPreviews = []
+        pendingLinkPreviewGeneration = 0
         pendingImageResources = [:]
         deliveredImageResources = nil
         removeImageResourceQuery()
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
+        pendingScrollIntent = nil
         reconstructionScrollAnchor = nil
         checkedSourceBuffer.replace(with: "")
         committedCitationSnapshot = nil
@@ -550,8 +574,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             ranges: selections
         )
         if let focusTarget {
-            preferredDocumentFocusTarget = focusTarget
-            automaticFocusTarget = focusTarget
+            observeFocusTarget(focusTarget)
         }
         self.line = max(1, line)
         self.column = max(1, column)
@@ -564,6 +587,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             context = interactionAvailability.context(selections: selections)
         }
         if wasComposing, context?.composing == false {
+            flushPendingScrollPosition()
             reconvergePendingPresentationState()
         }
         if previousSelection != selections || wasComposing != isComposing || previousRendererRevision != interactionRevision {
@@ -589,6 +613,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Advances the native host identity for a new presentation without
     /// imposing a title- or frontmatter-specific viewport.
     func prepareOpeningPresentation() {
+        presentationIsClosed = false
         openingPresentationID = UUID()
     }
 
@@ -604,12 +629,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if !retainsComposition {
             lastKnownSelectionSnapshot = nil
             pendingSourceRange = nil
+            pendingSourceRangeIsDefault = false
             pendingLine = nil
         }
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
+        pendingScrollIntent = nil
         reconstructionScrollAnchor = nil
         automaticFocusIsAuthorized = false
+        pendingFocusIntentRevision = nil
         focusRequestRevision &+= 1
         focusHandoffTask?.cancel()
         focusHandoffTask = nil
@@ -638,11 +666,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         initialSourceRange: Range<Int>? = nil,
         citationSnapshot: ZoteroCitationSnapshot? = nil
     ) {
+        let preservesLinkPreviews =
+            self.documentID == documentID
+            && checkedSource.utf8.elementsEqual(source.utf8) && pendingLinkPreviewGeneration == generation
+        // An opening default belongs only to the source that created it. A
+        // replacement or failed initialization recomputes its own boundary;
+        // explicit navigation retains its independently authorized intent.
+        if pendingSourceRangeIsDefault {
+            pendingSourceRange = nil
+            pendingSourceRangeIsDefault = false
+        }
         detachmentCapture = nil
         updatePublished(\.citationStatus, to: nil)
         pendingDetachmentSuspensionID = nil
         floatingSurfaces.reset()
-        let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
         invalidateRequestQueue()
         let nextFingerprint = DocumentFingerprint(content: source).sha256
@@ -665,6 +702,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     && $0.fingerprint == startingFingerprint
                     && $0.source.utf8.elementsEqual(source.utf8)
                     && committedCitationSnapshot == citationSnapshot
+                    && $0.generation >= 0
+                    && markdownEditorSelectionRangesAreValid(
+                        $0.ranges,
+                        forEditorUTF16Length: EditorSourceOffsetMap(source: source).editorUTF16Length)
             } ?? false
         let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
         if !preservesRecovery {
@@ -711,24 +752,29 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
+        if !preservesLinkPreviews { pendingLinkPreviews = [] }
+        pendingLinkPreviewGeneration = 0
         pendingImageResources = [:]
         pendingImageResourceGeneration = generation
         deliveredImageResources = nil
         refreshImageResources()
         pendingMode = mode
         if let initialSourceRange {
+            pendingSourceRangeIsDefault = false
+            navigationRequestRevision &+= 1
+            pendingSourceRangeRevision = navigationRequestRevision
             let lowerBound = max(0, initialSourceRange.lowerBound)
             pendingSourceRange =
                 lowerBound..<max(
                     lowerBound,
                     initialSourceRange.upperBound
                 )
-        } else if isFirstDocumentLoad, !canRestoreWindowPresentation,
-            !preservesRecovery, pendingSourceRange == nil,
-            mode == .livePreview
+        } else if !canRestoreWindowPresentation,
+            !preservesRecovery, pendingSourceRange == nil
         {
-            let bodyStart = NoteDocument(relativePath: "", rawContent: source).bodyUTF16Offset
-            pendingSourceRange = bodyStart..<bodyStart
+            pendingSourceRange = 0..<0
+            pendingSourceRangeIsDefault = true
+            pendingSourceRangeRevision = 0
         }
         committedTextSynchronizer?(source, startingFingerprint)
         cancelModeTransition()
@@ -745,6 +791,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if pendingMode != mode { citationInteractionRevision &+= 1 }
         let requiresConvergence = pendingMode != mode || presentedMode != mode
         pendingMode = mode
+        if mode == .source { openingImageWaitTask?.cancel() }
         guard requiresConvergence else { return }
         guard isReady, isLoaded, let webView else { return }
         startModeConvergence(in: webView)
@@ -752,12 +799,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setDocumentTitle(_ title: String) {
         pendingDocumentTitle = String(title.prefix(1_024))
-        guard isReady, isLoaded, let webView else { return }
-        let documentTitle = pendingDocumentTitle
-        Task { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            _ = try? await self.send(.setDocumentTitle(documentTitle), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     /// Serially converges the retained CodeMirror configuration on the latest
@@ -834,60 +876,43 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setUserCSS(_ css: String) {
         pendingUserCSS = css
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.setUserCSS(css), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     func setWritingContinuation(enabled: Bool, contextKey: String) {
         pendingWritingContinuationEnabled = enabled
         pendingWritingContinuationContextKey = String(contextKey.prefix(256))
-        guard isReady, isLoaded, let webView else { return }
-        Task { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            // Read the latest preference at dispatch, not an obsolete SwiftUI update.
-            _ = try? await send(
-                .setWritingContinuation(
-                    enabled: pendingWritingContinuationEnabled,
-                    contextKey: pendingWritingContinuationContextKey), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     func setWritingIndexContext(_ contextKey: String) {
         pendingWritingIndexContextKey = String(contextKey.prefix(256))
-        guard isReady, isLoaded, let webView else { return }
-        Task { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            _ = try? await send(
-                .setWritingIndexContext(pendingWritingIndexContextKey), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     func setPresentationCSS(_ css: String) {
         pendingPresentationCSS = css
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.setPresentationCSS(css), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     func goToLine(_ line: Int, focusesEditor: Bool = true) {
         if focusesEditor {
-            focusRequestRevision &+= 1
-            automaticFocusIsAuthorized = true
-            preferredDocumentFocusTarget = .editor
-            automaticFocusTarget = .editor
+            _ = beginFocusIntent(.editor)
         }
         pendingLine = (max(1, line), focusesEditor)
         flushPendingLine()
     }
 
     func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
+        focusRequestRevision &+= 1
+        pendingFocusIntentRevision = nil
         preferredDocumentFocusTarget = .editor
         automaticFocusTarget = .editor
         let lowerBound = max(0, fromUTF16)
         pendingSourceRange = lowerBound..<max(lowerBound, toUTF16)
+        pendingSourceRangeIsDefault = false
+        navigationRequestRevision &+= 1
+        pendingSourceRangeRevision = navigationRequestRevision
         flushPendingSourceRange()
     }
 
@@ -955,29 +980,71 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setScrollFraction(_ fraction: Double) {
-        let normalized = min(1, max(0, fraction))
-        pendingScrollFraction = normalized
-        pendingScrollAnchor = nil
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.setScrollFraction(normalized), in: webView)
-        }
+        setScrollPosition(anchor: nil, fallbackFraction: fraction)
     }
 
     func setScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
         let normalized = min(1, max(0, fallbackFraction))
         pendingScrollFraction = normalized
         pendingScrollAnchor = anchor
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            if let anchor,
-                let wireAnchor = wireAnchor(from: anchor, in: checkedSource)
+        navigationRequestRevision &+= 1
+        pendingScrollIntent = ScrollIntent(revision: navigationRequestRevision, anchor: anchor, fraction: normalized)
+        flushPendingScrollPosition()
+    }
+
+    /// Explicit navigation is independent of the retained scroll observations
+    /// reported by CodeMirror. Only the latest unconsumed intent is replayed.
+    private func flushPendingScrollPosition() {
+        _ = flushPendingNavigationIntents()
+    }
+
+    @discardableResult
+    private func flushPendingNavigationIntents() -> Task<Void, Never>? {
+        if let navigationIntentTask { return navigationIntentTask }
+        guard isReady, isLoaded, !isComposing, let webView,
+            pendingSourceRange != nil || pendingScrollIntent != nil
+        else { return nil }
+        let epoch = requestEpoch
+        let intendedDocumentID = documentID
+        let taskID = UUID()
+        navigationIntentTaskID = taskID
+        let task = Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            defer {
+                if self.requestEpoch == epoch, self.navigationIntentTaskID == taskID {
+                    self.navigationIntentTask = nil
+                    self.navigationIntentTaskID = nil
+                }
+            }
+            while self.requestEpoch == epoch, self.documentID == intendedDocumentID,
+                self.webView === webView, self.isLoaded, !self.isComposing,
+                self.pendingSourceRange != nil || self.pendingScrollIntent != nil
             {
-                _ = try? await send(.setScrollAnchor(wireAnchor), in: webView)
-            } else {
-                _ = try? await send(.setScrollFraction(normalized), in: webView)
+                do {
+                    try await self.applyPendingSourceRange(in: webView, requiringRequestEpoch: epoch)
+                    try await self.applyPendingScrollPosition(in: webView, requiringRequestEpoch: epoch)
+                } catch { return }
             }
         }
+        navigationIntentTask = task
+        return task
+    }
+
+    private func applyPendingScrollPosition(in webView: WKWebView, requiringRequestEpoch epoch: UInt64) async throws {
+        guard epoch == requestEpoch, self.webView === webView, isLoaded, !isComposing,
+            let intent = pendingScrollIntent
+        else { return }
+        if intent.revision < pendingSourceRangeRevision {
+            pendingScrollIntent = nil
+            return
+        }
+        defer {
+            if requestEpoch == epoch, pendingScrollIntent?.revision == intent.revision { pendingScrollIntent = nil }
+        }
+        let operation: MarkdownEditorOperation =
+            intent.anchor.flatMap { wireAnchor(from: $0, in: checkedSource) }
+            .map(MarkdownEditorOperation.setScrollAnchor) ?? .setScrollFraction(intent.fraction)
+        _ = try await send(operation, in: webView, requiringRequestEpoch: epoch)
     }
 
     func recordScrollFraction(_ fraction: Double) {
@@ -1029,6 +1096,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
+        pendingLinkPreviewGeneration = generation
         let offsetMap =
             source.utf8.elementsEqual(checkedSource.utf8)
             ? sourceOffsetMap
@@ -1053,10 +1121,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     : String(preview.htmlBody.prefix(24_000))
             )
         }
-        guard isReady, isLoaded, let webView else { return }
-        Task {
-            _ = try? await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
-        }
+        reconvergePendingPresentationState()
     }
 
     func installImageResourceQuery(
@@ -1088,9 +1153,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let intendedRequestEpoch = requestEpoch
         let intendedDocumentID = documentID
         let intendedContextKey = imageResourceContextKey
+        let debouncesChanges = isLoaded
         imageResourceQueryID = queryID
         imageResourceQueryTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            if debouncesChanges {
+                do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            }
             guard let self, !Task.isCancelled, !self.presentationIsClosed,
                 intendedRequestEpoch == self.requestEpoch,
                 intendedDocumentID == self.documentID,
@@ -1175,7 +1243,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             // The regular preview update is asynchronous. Acknowledge its
             // delivery before the measured action uses it.
             setLinkPreviews(previews, in: source)
-            _ = try await send(.setLinkPreviews(pendingLinkPreviews), in: webView)
+            try await convergePendingPresentationState(
+                in: webView, requiringRequestEpoch: requestEpoch, documentID: documentID)
             _ = try await send(
                 .revealSourceRange(fromUTF16: insertion, toUTF16: insertion),
                 in: webView
@@ -1453,8 +1522,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         generation: snapshot.generation, ranges: snapshot.ranges
                     )
                     if let focusTarget = snapshot.focusTarget {
-                        preferredDocumentFocusTarget = focusTarget
-                        automaticFocusTarget = focusTarget
+                        observeFocusTarget(focusTarget)
                     }
                 } catch {
                     try? await resumeAfterDetachment(suspensionID: suspensionID)
@@ -1625,8 +1693,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         recoverySnapshot = snapshot
         if let focusTarget = snapshot.focusTarget {
-            preferredDocumentFocusTarget = focusTarget
-            automaticFocusTarget = focusTarget
+            observeFocusTarget(focusTarget)
         }
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: snapshot.documentID,
@@ -1837,6 +1904,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             window.makeFirstResponder(requestingWebView)
         else { return false }
         focusRequestRevision &+= 1
+        pendingFocusIntentRevision = nil
         automaticFocusTarget = .editor
         preferredDocumentFocusTarget = .editor
         return true
@@ -1866,10 +1934,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         try Task.checkCancellation()
         guard let webView else { throw SessionError.unavailable }
         let target = preferredDocumentFocusTarget ?? .editor
+        var admittedFocusRevision: UInt64?
+        let intendedRequestEpoch = requestEpoch
+        defer {
+            if requestEpoch == intendedRequestEpoch, let admittedFocusRevision {
+                acknowledgeFocusIntent(admittedFocusRevision, target: target)
+            }
+        }
         _ = try await send(
             focusOperation(for: target, mode: mode), in: webView,
             admittingFocus: { [self] in
-                guard !Task.isCancelled, focusRequestRevision == revision,
+                guard !Task.isCancelled, requestEpoch == intendedRequestEpoch, focusRequestRevision == revision,
                     isReady, isLoaded, errorMessage == nil, !isComposing,
                     presentedMode == mode, pendingMode == mode,
                     !webView.isHiddenOrHasHiddenAncestor,
@@ -1879,40 +1954,59 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     isStillRequested(), window.makeFirstResponder(webView)
                 else { return false }
                 // Responder callbacks may synchronously supersede the intent.
-                guard focusRequestRevision == revision, !isComposing,
+                guard requestEpoch == intendedRequestEpoch, focusRequestRevision == revision, !isComposing,
                     window.isKeyWindow, isStillRequested()
                 else { return false }
-                focusRequestRevision &+= 1
-                automaticFocusTarget = target
-                preferredDocumentFocusTarget = target
-                automaticFocusIsAuthorized = true
+                admittedFocusRevision = beginFocusIntent(target)
                 return true
             }
         )
     }
 
     private func requestFocus(_ target: WindowDocumentFocusTarget) {
+        let revision = beginFocusIntent(target)
+        // Opening owns the pending intent. Do not let a task created before
+        // readiness wake afterward and race its serial navigation handoff.
+        guard isReady, isLoaded else { return }
+        let intendedRequestEpoch = requestEpoch
+        let precedingHandoff = focusHandoffTask
+        let precedingNavigation = navigationIntentTask
+        Task {
+            await precedingHandoff?.value
+            await precedingNavigation?.value
+            guard intendedRequestEpoch == requestEpoch, revision == focusRequestRevision, automaticFocusIsAuthorized else { return }
+            try? await applyFocusIntent(target, revision: revision)
+        }
+    }
+
+    private func beginFocusIntent(_ target: WindowDocumentFocusTarget) -> UInt64 {
         focusRequestRevision &+= 1
-        let revision = focusRequestRevision
+        pendingFocusIntentRevision = focusRequestRevision
         automaticFocusTarget = target
         preferredDocumentFocusTarget = target
         automaticFocusIsAuthorized = true
-        let precedingHandoff = focusHandoffTask
-        Task {
-            await precedingHandoff?.value
-            guard revision == focusRequestRevision, automaticFocusIsAuthorized else { return }
-            try? await focusAndWait(target)
-        }
+        return focusRequestRevision
+    }
+
+    private func acknowledgeFocusIntent(_ revision: UInt64, target: WindowDocumentFocusTarget) {
+        guard revision == focusRequestRevision, target == automaticFocusTarget,
+            pendingFocusIntentRevision == revision
+        else { return }
+        pendingFocusIntentRevision = nil
+    }
+
+    private func observeFocusTarget(_ target: WindowDocumentFocusTarget) {
+        // Renderer focus is an observation. It cannot replace a newer native
+        // intent before that intent's own focus acknowledgment has returned.
+        guard pendingFocusIntentRevision == nil else { return }
+        preferredDocumentFocusTarget = target
+        automaticFocusTarget = target
     }
 
     func authorizeAutomaticFocus(
         target: WindowDocumentFocusTarget? = nil
     ) {
-        if let target {
-            automaticFocusTarget = target
-            preferredDocumentFocusTarget = target
-        }
-        automaticFocusIsAuthorized = true
+        _ = beginFocusIntent(target ?? preferredDocumentFocusTarget ?? automaticFocusTarget)
     }
 
     func focusAndWait() async throws {
@@ -1926,15 +2020,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private func focusAndWait(
         _ target: WindowDocumentFocusTarget
     ) async throws {
-        focusRequestRevision &+= 1
-        automaticFocusTarget = target
-        preferredDocumentFocusTarget = target
-        automaticFocusIsAuthorized = true
+        let revision = beginFocusIntent(target)
+        try await applyFocusIntent(target, revision: revision)
+    }
+
+    private func applyFocusIntent(_ target: WindowDocumentFocusTarget, revision: UInt64) async throws {
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        _ = try await send(
-            focusOperation(for: target, mode: presentedMode ?? pendingMode),
-            in: webView
-        )
+        let epoch = requestEpoch
+        do {
+            _ = try await send(
+                focusOperation(for: target, mode: presentedMode ?? pendingMode),
+                in: webView,
+                admittingFocus: { [self] in
+                    revision == focusRequestRevision && target == automaticFocusTarget && automaticFocusIsAuthorized
+                }
+            )
+        } catch {
+            if epoch == requestEpoch { acknowledgeFocusIntent(revision, target: target) }
+            throw error
+        }
+        acknowledgeFocusIntent(revision, target: target)
     }
 
     private func focusOperation(
@@ -1952,6 +2057,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusRequestRevision &+= 1
         citationInteractionRevision &+= 1
         automaticFocusIsAuthorized = false
+        pendingFocusIntentRevision = nil
         await resignFocusAndWait(revision: focusRequestRevision)
     }
 
@@ -2415,45 +2521,39 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         ? snapshot
                         : nil
                 }
-                checkedSourceBuffer.replace(with: source)
-                sourceOffsetMap = EditorSourceOffsetMap(source: source)
-                checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
-                generation = 0
                 let requestedInitialRange = pendingSourceRange
-                let initialSelection = try requestedInitialRange.map { range in
-                    guard
-                        let anchor = sourceOffsetMap.editorUTF16Offset(
-                            forSourceUTF16Offset: range.lowerBound
-                        ),
-                        let head = sourceOffsetMap.editorUTF16Offset(
-                            forSourceUTF16Offset: range.upperBound
-                        )
-                    else {
-                        throw SessionError.invalidResult
-                    }
-                    return MarkdownEditorSelectionRange(
-                        anchor: anchor,
-                        head: head
-                    )
-                }
+                let initialRangeIsDefault = pendingSourceRangeIsDefault
+                let initialRangeRevision = pendingSourceRangeRevision
+                let initialSelection =
+                    try requestedInitialRange.map { try editorSelection(for: $0) }
+                    ?? matchingRecovery?.ranges.first
                 deliveredImageResources = nil
+                let initialPresentation = pendingPresentationConfiguration
                 let initialized = try await send(
                     .initialize(
                         text: source,
                         mode: mode,
                         dialect: .current,
                         initialSelection: initialSelection,
-                        citationSnapshot: committedCitationSnapshot
+                        citationSnapshot: committedCitationSnapshot,
+                        presentation: initialPresentation
                     ),
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
+                deliveredPresentationConfiguration = initialPresentation
+                if initialized.resultingGeneration == initialPresentation.imageResourceGeneration {
+                    deliveredImageResources = initialPresentation.imageResources
+                }
                 if let initialSelection {
                     guard initialized.selections == [initialSelection] else {
                         throw SessionError.invalidResult
                     }
-                    if pendingSourceRange == requestedInitialRange {
+                    if pendingSourceRange == requestedInitialRange, pendingSourceRangeRevision == initialRangeRevision,
+                        pendingSourceRangeIsDefault == initialRangeIsDefault
+                    {
                         pendingSourceRange = nil
+                        pendingSourceRangeIsDefault = false
                     }
                 }
                 if let snapshot = matchingRecovery,
@@ -2503,11 +2603,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     reconstructionScrollAnchor
                     ?? pendingScrollAnchor
                 pendingScrollAnchor = restorationScrollAnchor
+                let restorationScrollFraction = pendingScrollFraction ?? 0
                 // Appearance and snippet stores can finish loading after the
                 // page is ready but while document initialization is still in
-                // flight. Keep the editor hidden until a serial convergence
+                // flight. Keep the opening masked until a serial convergence
                 // pass observes the same latest values before and after all
-                // three bridge requests. A SwiftUI update that arrives during
+                // the preparation awaits. A SwiftUI update that arrives during
                 // an await therefore causes another pass instead of becoming
                 // a permanently dropped initial style or preview update.
                 try await convergePendingPresentationState(
@@ -2515,65 +2616,88 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     requiringRequestEpoch: intendedRequestEpoch,
                     documentID: documentID
                 )
-                // Recovery and the final converged styles can both change
-                // visual block heights. Restore the retained position only
-                // after both have settled into the retained EditorState.
-                if let anchor = restorationScrollAnchor,
-                    let wireAnchor = wireAnchor(from: anchor, in: checkedSource)
-                {
-                    _ = try await send(
-                        .setScrollAnchor(wireAnchor),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                } else {
-                    _ = try await send(
-                        .setScrollFraction(pendingScrollFraction ?? 0),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                }
                 var appliedMode = mode
-                while pendingMode != appliedMode {
-                    let requestedMode = pendingMode
+                var sourceLocatorRevision = requestedInitialRange != nil && !initialRangeIsDefault ? initialRangeRevision : 0
+                var appliedScrollIntent: ScrollIntent?
+                while true {
+                    try await awaitOpeningImageResources(in: webView, requiringRequestEpoch: intendedRequestEpoch, documentID: documentID)
+                    try await convergePendingPresentationState(
+                        in: webView, requiringRequestEpoch: intendedRequestEpoch, documentID: documentID)
+                    while pendingMode != appliedMode {
+                        let requestedMode = pendingMode
+                        _ = try await send(
+                            .setMode(requestedMode), in: webView,
+                            requiringRequestEpoch: intendedRequestEpoch)
+                        appliedMode = requestedMode
+                    }
+                    if let range = pendingSourceRange {
+                        let selection = try editorSelection(for: range)
+                        let rangeRevision = pendingSourceRangeRevision
+                        let rangeIsDefault = pendingSourceRangeIsDefault
+                        if !rangeIsDefault { sourceLocatorRevision = rangeRevision }
+                        _ = try await send(
+                            .revealSourceRange(fromUTF16: selection.anchor, toUTF16: selection.head),
+                            in: webView, requiringRequestEpoch: intendedRequestEpoch)
+                        if pendingSourceRange == range, pendingSourceRangeRevision == rangeRevision,
+                            pendingSourceRangeIsDefault == rangeIsDefault
+                        {
+                            pendingSourceRange = nil
+                            pendingSourceRangeIsDefault = false
+                        }
+                    }
+                    let navigationRevision = navigationRequestRevision
+                    let scrollIntent = pendingScrollIntent ?? appliedScrollIntent
+                    let restoresScroll = sourceLocatorRevision == 0 || (scrollIntent?.revision ?? 0) > sourceLocatorRevision
+                    let scrollAnchor = scrollIntent?.anchor ?? restorationScrollAnchor
+                    let scrollFraction = scrollIntent?.fraction ?? restorationScrollFraction
+                    let configuration = pendingPresentationConfiguration
+                    let focused = automaticFocusIsAuthorized
+                    let focusRevision = focusRequestRevision
+                    let focusTarget = automaticFocusTarget
                     _ = try await send(
-                        .setMode(requestedMode),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                    appliedMode = requestedMode
-                }
-                if automaticFocusIsAuthorized {
-                    _ = try await send(
-                        focusOperation(
-                            for: automaticFocusTarget,
-                            mode: appliedMode
-                        ),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                    if !automaticFocusIsAuthorized {
-                        _ = try? await send(
-                            .blur,
-                            in: webView,
-                            requiringRequestEpoch: intendedRequestEpoch
-                        )
+                        .completePreparation(
+                            anchor: restoresScroll ? scrollAnchor.flatMap { wireAnchor(from: $0, in: checkedSource) } : nil,
+                            fraction: restoresScroll ? scrollFraction : nil),
+                        in: webView, requiringRequestEpoch: intendedRequestEpoch)
+                    guard intendedRequestEpoch == requestEpoch,
+                        self.documentID == documentID, self.webView === webView
+                    else { return }
+                    if let scrollIntent, pendingScrollIntent?.revision == scrollIntent.revision {
+                        pendingScrollIntent = nil
+                        if restoresScroll { appliedScrollIntent = scrollIntent }
+                    }
+                    if !(pendingMode == .livePreview && checkedSource.contains("![") && imageResourceQueryTask != nil),
+                        navigationRevision == navigationRequestRevision,
+                        pendingMode == appliedMode,
+                        configuration == pendingPresentationConfiguration,
+                        configuration == deliveredPresentationConfiguration,
+                        pendingSourceRange == nil,
+                        !automaticFocusIsAuthorized || (focused && focusRevision == focusRequestRevision && focusTarget == automaticFocusTarget)
+                    {
+                        break
                     }
                 }
+                let focused = automaticFocusIsAuthorized
+                let releaseFocusRevision = focusRequestRevision
+                let releaseFocusTarget = automaticFocusTarget
+                _ = try await send(
+                    .releasePreparation(focusTarget: focused ? releaseFocusTarget : nil),
+                    in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 guard intendedRequestEpoch == requestEpoch,
-                    self.documentID == documentID,
-                    self.webView === webView
+                    self.documentID == documentID, self.webView === webView
                 else { return }
-                updatePresentation { $0.complete(appliedMode) }
-                // Initial image reads can finish during scroll or focus
-                // restoration after convergence. Publish only a still-pending
-                // catalog; an already delivered catalog adds no bridge work
-                // that could prevent an idle page from being reused.
-                if pendingImageResourceGeneration == generation,
-                    deliveredImageResources != pendingImageResources
-                {
-                    reconvergePendingPresentationState()
+                if focused, !automaticFocusIsAuthorized {
+                    _ = try await send(.blur, in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 }
+                if focused { acknowledgeFocusIntent(releaseFocusRevision, target: releaseFocusTarget) }
+                updatePresentation { $0.complete(appliedMode) }
+                // Updates arriving after the stable handoff use the loaded
+                // configuration and mode owners, including the release await.
+                if pendingMode != appliedMode { startModeConvergence(in: webView) }
+                reconvergePendingPresentationState()
+                flushPendingOpeningIntents(
+                    in: webView, requiringRequestEpoch: intendedRequestEpoch,
+                    focusWasAuthorized: focused, focusRevision: releaseFocusRevision, focusTarget: releaseFocusTarget)
                 // CodeMirror has replaced its exact source, but WebKit can
                 // retain the previous accessibility value until a separate
                 // DOM interaction occurs. Invalidate that value projection
@@ -2599,19 +2723,77 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    private func awaitOpeningImageResources(
+        in webView: WKWebView,
+        requiringRequestEpoch epoch: UInt64, documentID: String
+    ) async throws {
+        // Source displays the authored image syntax. Ordinary text does not
+        // acquire an image-read barrier; potential Markdown images use the
+        // existing admitted catalog query, in parallel with initialization.
+        guard pendingMode == .livePreview, checkedSource.contains("![") else { return }
+        while let query = imageResourceQueryTask {
+            let waitID = UUID()
+            let wait = Task { [lifecyclePolicy] in
+                try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: lifecyclePolicy.bridgeRequest) {
+                    await query.value
+                }
+            }
+            openingImageWaitID = waitID
+            openingImageWaitTask = wait
+            defer {
+                if openingImageWaitID == waitID {
+                    openingImageWaitTask = nil
+                    openingImageWaitID = nil
+                }
+            }
+            do { try await wait.value } catch is CancellationError {
+                guard epoch == requestEpoch, self.documentID == documentID, self.webView === webView
+                else { throw SessionError.staleRequest }
+                if pendingMode == .source { return }
+                // The same opening may return to Edit before the cancelled
+                // Source wait unwinds. Its still-current query remains owned
+                // by this attachment, so join it with the latest mode.
+                continue
+            }
+            guard epoch == requestEpoch, self.documentID == documentID, self.webView === webView
+            else { throw SessionError.staleRequest }
+        }
+    }
+
+    private var pendingPresentationConfiguration: MarkdownEditorPresentationConfiguration {
+        .init(
+            documentTitle: pendingDocumentTitle,
+            presentationCSS: pendingPresentationCSS,
+            userCSS: pendingUserCSS,
+            linkPreviews: pendingLinkPreviews,
+            linkPreviewGeneration: pendingLinkPreviewGeneration,
+            imageResources: pendingImageResources,
+            imageResourceGeneration: pendingImageResourceGeneration,
+            writingContinuationEnabled: pendingWritingContinuationEnabled,
+            writingContinuationContextKey: pendingWritingContinuationContextKey,
+            writingIndexContextKey: pendingWritingIndexContextKey)
+    }
+
     private func reconvergePendingPresentationState() {
         guard isReady, isLoaded, context?.composing != true,
-            let webView
+            presentationConvergenceTask == nil, let webView
         else { return }
         let intendedRequestEpoch = requestEpoch
         let documentID = documentID
-        Task { [weak self, weak webView] in
+        let convergenceID = UUID()
+        presentationConvergenceID = convergenceID
+        presentationConvergenceTask = Task { [weak self, weak webView] in
             guard let self, let webView else { return }
+            defer {
+                if intendedRequestEpoch == self.requestEpoch, self.presentationConvergenceID == convergenceID {
+                    self.presentationConvergenceTask = nil
+                    self.presentationConvergenceID = nil
+                }
+            }
             try? await self.convergePendingPresentationState(
                 in: webView,
                 requiringRequestEpoch: intendedRequestEpoch,
-                documentID: documentID
-            )
+                documentID: documentID)
         }
     }
 
@@ -2621,82 +2803,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         documentID: String
     ) async throws {
         while true {
-            let documentTitle = pendingDocumentTitle
-            let presentationCSS = pendingPresentationCSS
-            let userCSS = pendingUserCSS
-            let linkPreviews = pendingLinkPreviews
-            let imageResources = pendingImageResources
-            let imageResourceGeneration = pendingImageResourceGeneration
-            let writingContinuationEnabled = pendingWritingContinuationEnabled
-            let writingContinuationContextKey = pendingWritingContinuationContextKey
-            let writingIndexContextKey = pendingWritingIndexContextKey
-            _ = try await send(
-                .setDocumentTitle(documentTitle),
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch
-            )
-            _ = try await send(
-                .setPresentationCSS(presentationCSS),
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch
-            )
-            _ = try await send(
-                .setUserCSS(userCSS),
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch
-            )
-            _ = try await send(
-                .setLinkPreviews(linkPreviews),
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch
-            )
-            if imageResourceGeneration == generation,
-                deliveredImageResources != imageResources
-            {
-                do {
-                    let delivered = try await send(
-                        .setImageResources(imageResources),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                    if delivered.resultingGeneration == imageResourceGeneration {
-                        deliveredImageResources = imageResources
-                    }
-                } catch SessionError.bridgeRejected(let message)
-                    where message == "stale editor generation"
-                {
-                    // New input supersedes this source-bound resource read.
-                    // The current query reconverges even when its bytes match
-                    // the pending catalog that never reached the page.
-                }
-            }
-            _ = try await send(
-                .setWritingContinuation(
-                    enabled: writingContinuationEnabled,
-                    contextKey: writingContinuationContextKey), in: webView, requiringRequestEpoch: intendedRequestEpoch)
-            _ = try await send(
-                .setWritingIndexContext(writingIndexContextKey),
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch
-            )
             guard intendedRequestEpoch == requestEpoch,
-                self.documentID == documentID,
-                self.webView === webView
-            else {
-                throw SessionError.staleRequest
+                self.documentID == documentID, self.webView === webView
+            else { throw SessionError.staleRequest }
+            let configuration = pendingPresentationConfiguration
+            if configuration == deliveredPresentationConfiguration { return }
+            let delivered = try await send(
+                .setPresentation(configuration), in: webView,
+                requiringRequestEpoch: intendedRequestEpoch)
+            guard intendedRequestEpoch == requestEpoch,
+                self.documentID == documentID, self.webView === webView
+            else { throw SessionError.staleRequest }
+            deliveredPresentationConfiguration = configuration
+            if delivered.resultingGeneration == configuration.imageResourceGeneration {
+                deliveredImageResources = configuration.imageResources
             }
-            if documentTitle == pendingDocumentTitle,
-                presentationCSS == pendingPresentationCSS,
-                userCSS == pendingUserCSS,
-                linkPreviews == pendingLinkPreviews,
-                imageResources == pendingImageResources,
-                imageResourceGeneration == pendingImageResourceGeneration,
-                writingContinuationEnabled == pendingWritingContinuationEnabled,
-                writingContinuationContextKey == pendingWritingContinuationContextKey,
-                writingIndexContextKey == pendingWritingIndexContextKey
-            {
-                return
-            }
+            if pendingPresentationConfiguration == configuration { return }
         }
     }
 
@@ -2723,29 +2845,57 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    private func editorSelection(for sourceRange: Range<Int>) throws -> MarkdownEditorSelectionRange {
+        guard let anchor = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: sourceRange.lowerBound),
+            let head = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: sourceRange.upperBound)
+        else { throw SessionError.invalidResult }
+        return .init(anchor: anchor, head: head)
+    }
+
+    private func flushPendingOpeningIntents(
+        in webView: WKWebView, requiringRequestEpoch epoch: UInt64,
+        focusWasAuthorized: Bool, focusRevision: UInt64, focusTarget: WindowDocumentFocusTarget
+    ) {
+        let intendedDocumentID = documentID
+        let navigationWork = flushPendingNavigationIntents()
+        Task { [weak self, weak webView] in
+            await navigationWork?.value
+            guard let self, let webView, self.requestEpoch == epoch,
+                self.documentID == intendedDocumentID, self.webView === webView
+            else { return }
+            guard self.requestEpoch == epoch, self.documentID == intendedDocumentID,
+                self.webView === webView, self.automaticFocusIsAuthorized,
+                !focusWasAuthorized || focusRevision != self.focusRequestRevision || focusTarget != self.automaticFocusTarget
+            else { return }
+            try? await self.applyFocusIntent(self.automaticFocusTarget, revision: self.focusRequestRevision)
+        }
+    }
+
     private func flushPendingSourceRange() {
-        guard isReady,
-            isLoaded,
-            context?.composing != true,
-            let range = pendingSourceRange,
-            let webView
+        _ = flushPendingNavigationIntents()
+    }
+
+    private func applyPendingSourceRange(in webView: WKWebView, requiringRequestEpoch epoch: UInt64) async throws {
+        guard isReady, isLoaded, !isComposing, epoch == requestEpoch, self.webView === webView,
+            let range = pendingSourceRange
         else { return }
+        let selection = try editorSelection(for: range)
+        let isDefault = pendingSourceRangeIsDefault
+        let revision = pendingSourceRangeRevision
         pendingSourceRange = nil
-        Task { [weak self] in
-            do {
-                _ = try await self?.send(
-                    .revealSourceRange(
-                        fromUTF16: range.lowerBound,
-                        toUTF16: range.upperBound
-                    ),
-                    in: webView
-                )
-            } catch {
-                guard let self else { return }
-                if self.context?.composing == true {
-                    self.pendingSourceRange = range
-                }
+        pendingSourceRangeIsDefault = false
+        do {
+            _ = try await send(
+                .revealSourceRange(fromUTF16: selection.anchor, toUTF16: selection.head),
+                in: webView, requiringRequestEpoch: epoch)
+        } catch {
+            if requestEpoch == epoch, context?.composing == true, pendingSourceRange == nil,
+                pendingSourceRangeRevision == revision
+            {
+                pendingSourceRange = range
+                pendingSourceRangeIsDefault = isDefault
             }
+            throw error
         }
     }
 
@@ -2995,6 +3145,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         preservingRendererInteraction: Bool = false
     ) {
         requestEpoch &+= 1
+        openingImageWaitTask?.cancel()
+        openingImageWaitTask = nil
+        openingImageWaitID = nil
+        navigationIntentTask?.cancel()
+        navigationIntentTask = nil
+        navigationIntentTaskID = nil
+        presentationConvergenceTask?.cancel()
+        presentationConvergenceTask = nil
+        presentationConvergenceID = nil
+        deliveredPresentationConfiguration = nil
         if !preservingRendererInteraction { rendererInteractionRevision = nil }
         imageResourceQueryTask?.cancel()
         imageResourceQueryTask = nil

@@ -4,7 +4,7 @@ import {EditorView} from "@codemirror/view";
 import {history, undoDepth} from "@codemirror/commands";
 import {describe, expect, it, vi} from "vitest";
 import {parseHTML} from "linkedom";
-import {createImageProjection, imageDestination, imagePresentation} from "../image-presentation";
+import {applyDecodedImagePresentation, createImageProjection, imageDestination, imagePresentation} from "../image-presentation";
 import {validImageResources, MAX_IMAGE_BYTES} from "../image-resources";
 import {scholiumNoteLanguage} from "../language";
 import {semanticProjectionRanges} from "../semantic-projection";
@@ -15,6 +15,18 @@ import {createLiveSelectionController} from "../live-selection";
 
 const png = "data:image/png;base64,iVBORw0KGgo=";
 describe("source-backed local image presentation", () => {
+  it("applies actual decoded dimensions once even before a cached image load event", () => {
+    const {document} = parseHTML("<html><body><img></body></html>");
+    const image = document.querySelector("img")! as unknown as HTMLImageElement;
+    Object.defineProperties(image, {naturalWidth: {value: 1600}, naturalHeight: {value: 900}});
+    expect(applyDecodedImagePresentation(image)).toBe(true);
+    expect(image.style.getPropertyValue("--scholium-image-aspect-ratio")).toBe(String(1600 / 900));
+    expect(applyDecodedImagePresentation(image)).toBe(false);
+    const undecoded = document.createElement("img") as unknown as HTMLImageElement;
+    expect(applyDecodedImagePresentation(undecoded)).toBe(false);
+    expect(undecoded.style.getPropertyValue("--scholium-image-aspect-ratio")).toBe("");
+  });
+
   function projectedEditor(source: string, resources: Readonly<Record<string, string>>,
     activateLink = (_target: string, _isImage: boolean) => {}) {
     const selection = createLiveSelectionController({
@@ -409,12 +421,12 @@ describe("source-backed local image presentation", () => {
   it("binds image admission to current generation and defers it during composition", () => {
     const request = {protocolVersion: EDITOR_PROTOCOL_VERSION, requestID: "image", expiresAt: Date.now() + 8_000,
       sessionID: "session", documentID: "document", startingFingerprint: "fingerprint", knownGeneration: 4,
-      operation: {type: "setImageResources", value: {"a.png": png}}};
+      operation: {type: "setPresentation", value: {documentTitle: "", presentationCSS: "", userCSS: "", linkPreviews: [], linkPreviewGeneration: 4, imageResources: {"a.png": png}, imageResourceGeneration: 4, writingContinuationEnabled: false, writingContinuationContextKey: "", writingIndexContextKey: ""}}};
     expect(isEditorRequest(request)).toBe(true);
-    expect(isEditorRequest({...request, operation: {...request.operation, value: {"a.png": "file:/private.png"}}})).toBe(false);
-    expect(generationCanExecuteEditorRequest("setImageResources", 4, 4)).toBe(true);
-    expect(generationCanExecuteEditorRequest("setImageResources", 3, 4)).toBe(false);
-    expect(compositionRequestPolicy("setImageResources")).toBe("defer");
+    expect(isEditorRequest({...request, operation: {...request.operation, value: {...request.operation.value, imageResources: {"a.png": "file:/private.png"}}}})).toBe(false);
+    expect(generationCanExecuteEditorRequest("setPresentation", 4, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("setPresentation", 3, 4)).toBe(true);
+    expect(compositionRequestPolicy("setPresentation")).toBe("defer");
   });
 
   it("gives formatted image labels readable accessibility text without changing literal code or source", () => {

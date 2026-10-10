@@ -18,8 +18,8 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
     for (const operation of [
       "queryText", "querySelection", "captureRecovery", "markClean",
       "setMode", "goToLine", "restoreRecovery", "acknowledgeCommittedSnapshot", "command",
-      "setPresentationCSS", "setUserCSS", "setLinkPreviews",
-      "setDocumentTitle", "revealSourceRange", "suspendForDetachment",
+      "setPresentation",
+      "revealSourceRange", "suspendForDetachment",
     ] as const) {
       expect(compositionRequestPolicy(operation)).toBe("defer");
     }

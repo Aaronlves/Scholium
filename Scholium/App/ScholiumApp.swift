@@ -283,6 +283,9 @@ final class WindowModel: ObservableObject {
         return ScholiumFocusedEditorActions(
             documentID: actions.documentID,
             isComposing: actions.isComposing,
+            selectPresentationMode: { [weak self] mode in
+                self?.resolvedEditorActions(for: token)?.selectPresentationMode(mode)
+            },
             isAvailable: { [weak self] command in
                 self?.resolvedEditorActions(for: token)?.isAvailable(command) == true
             },

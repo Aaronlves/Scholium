@@ -409,6 +409,7 @@ struct NoteContentView<ShellNotices: View>: View {
             ScholiumFocusedEditorActions(
                 documentID: isEditing ? editorSession.documentID : note.id.relativePath,
                 isComposing: isEditing && editorSession.context?.composing == true,
+                selectPresentationMode: selectPresentationMode,
                 isAvailable: { command in
                     isEditing && editorSession.context?.availableCommands.contains(command) == true
                 },
@@ -580,6 +581,7 @@ struct NoteContentView<ShellNotices: View>: View {
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
+            PerformanceProbe.shared.markEditActivationLoaded(documentID: note.id.relativePath)
             documentFind.refresh()
             focusEditorIfPresented()
         }
@@ -931,7 +933,8 @@ struct NoteContentView<ShellNotices: View>: View {
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
                 && editorSession.presentedMode == documentSession.activeEditorMode,
-            allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil
+            allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil,
+            preparationTitle: note.summary.title
         ) {
             readSurface
         } editor: {
@@ -1095,7 +1098,10 @@ struct NoteContentView<ShellNotices: View>: View {
 
                 if hasWebProjection {
                     readDocumentSurface
-                        .opacity(webProjectionIsReady ? 1 : 0)
+                        .environment(
+                            \.scholiumDocumentSurfaceVisibility,
+                            webProjectionIsReady ? .active : .preparing
+                        )
                         .allowsHitTesting(webProjectionIsReady && !isEditing)
                         .accessibilityHidden(!webProjectionIsReady)
                 }
@@ -1151,9 +1157,9 @@ struct NoteContentView<ShellNotices: View>: View {
                     .disabled(!editingIsAvailable)
             }
         } else {
-            ScholiumContentStateView(
-                "Loading Document…",
-                indicator: .progress
+            DocumentPreparationStatus(
+                title: note.summary.title,
+                identifier: "scholium.documentReadPreparing"
             )
         }
     }

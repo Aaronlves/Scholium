@@ -1005,6 +1005,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         }
         return ScholiumFocusedEditorActions(
             documentID: documentID, isComposing: editorSession.isComposing,
+            selectPresentationMode: { [weak self] mode in self?.selectMode(mode) },
             isAvailable: { [weak self] command in
                 guard let self, self.permitsSourceActions, !self.isBusy, self.inputResumeError == nil, !self.editorSession.isComposing,
                     ![MarkdownEditorCommand.insertImage].contains(command)

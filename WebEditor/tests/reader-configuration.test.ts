@@ -8,6 +8,7 @@ const currentConfiguration = {
   loadGeneration: 3,
   selectionEnabled: true,
   imagePreviewsEnabled: false,
+  documentPreparation: false,
   testingEnabled: true,
   presentationCSS: "",
   userCSS: "",
@@ -21,6 +22,8 @@ describe("reader configuration", () => {
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: true})?.imagePreviewsEnabled).toBe(true);
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: undefined})).toBeNull();
     expect(validatedReaderConfiguration({...currentConfiguration, imagePreviewsEnabled: "true"})).toBeNull();
+    expect(validatedReaderConfiguration({...currentConfiguration, documentPreparation: true})?.documentPreparation).toBe(true);
+    expect(validatedReaderConfiguration({...currentConfiguration, documentPreparation: undefined})).toBeNull();
   });
 
   it("rejects unknown versions and unbounded identities", () => {

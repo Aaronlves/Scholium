@@ -16,10 +16,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 8, toUTF16: 9)
+        harness.revealEditorRange(fromUTF16: 8, toUTF16: 9)
         try await harness.waitUntilSelection(head: 9)
         #expect(harness.session.context?.availableCommands.contains(.inlineCode) == false)
-        harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 14)
+        harness.revealEditorRange(fromUTF16: 5, toUTF16: 14)
         try await harness.waitUntilSelection(head: 14)
         #expect(harness.session.context?.availableCommands.contains(.inlineCode) == true)
         try await harness.session.perform(.inlineCode)
@@ -43,7 +43,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let replaced = "ﬀ X é e\u{301}.\r\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == replaced)
         let end = replaced.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
-        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end)
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '!');")
@@ -67,7 +67,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let caret = try #require(normalized.range(of: "=====")?.lowerBound).utf16Offset(in: normalized) + 2
-        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        harness.revealEditorRange(fromUTF16: caret, toUTF16: caret)
         try await harness.waitUntilSelection(head: caret)
         try await harness.session.perform(command)
         let replacement =
@@ -118,7 +118,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let caret = try #require(normalized.range(of: "First")?.lowerBound).utf16Offset(in: normalized)
-        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        harness.revealEditorRange(fromUTF16: caret, toUTF16: caret)
         try await harness.waitUntilSelection(head: caret)
         #expect(harness.session.context?.availableCommands.contains(.tableInsertRowBefore) == false)
         #expect(harness.session.context?.availableCommands.contains(.tableDeleteRow) == false)
@@ -150,7 +150,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let caret = try #require(source.range(of: header ? "A" : "Two")?.upperBound).utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        harness.revealEditorRange(fromUTF16: caret, toUTF16: caret)
         try await harness.waitUntilSelection(head: caret)
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript(
@@ -190,7 +190,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: bold + offset, stage: "formatted table cell")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
 
-        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: 2)
+        harness.revealEditorRange(fromUTF16: 2, toUTF16: 2)
         try await harness.waitUntilSelection(head: 2)
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript(
@@ -249,7 +249,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let body = try #require(source.range(of: "English")?.lowerBound).utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: body, toUTF16: body)
+        harness.revealEditorRange(fromUTF16: body, toUTF16: body)
         try await harness.waitUntilSelection(head: body)
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript(
@@ -323,7 +323,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         harness.session.focus()
         try await harness.waitUntilFocused()
-        harness.session.revealSourceRange(fromUTF16: 10, toUTF16: 10)
+        harness.revealEditorRange(fromUTF16: 10, toUTF16: 10)
         try await harness.waitUntilSelection(head: 10)
         _ = try await harness.callPageJavaScript(
             """
@@ -381,7 +381,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 20, toUTF16: 20)
+        harness.revealEditorRange(fromUTF16: 20, toUTF16: 20)
         try await harness.waitUntilSelection(head: 20)
         try await harness.session.testingPressArrow("ArrowDown")
         try await harness.waitUntilSelection(head: lead.utf16.count + 1, stage: "blank row with retained column")
@@ -537,17 +537,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         func ghostCount() async throws -> Int {
             (try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-writing-ghost').length;") as? Int) ?? -1
         }
-        func waitForConfiguration(_ expected: MarkdownEditorOperation) async throws {
+        func waitForConfiguration(_ expected: (MarkdownEditorPresentationConfiguration) -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-            while !configurationProbe.applied.contains(expected) {
+            while !configurationProbe.applied.contains(where: expected) {
                 guard ContinuousClock.now < deadline else {
-                    Issue.record("The writing configuration did not reach the page: \(expected).")
+                    Issue.record("The writing configuration did not reach the page.")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
         }
-        try await waitForConfiguration(.setWritingContinuation(enabled: true, contextKey: "model-a"))
+        try await waitForConfiguration { $0.writingContinuationEnabled && $0.writingContinuationContextKey == "model-a" }
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 's');")
         let typed = source + "s"
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
@@ -560,12 +560,12 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let selection = harness.session.context?.selections
         harness.configureWritingIndexContext("catalog-2")
-        try await waitForConfiguration(.setWritingIndexContext("catalog-2"))
+        try await waitForConfiguration { $0.writingIndexContextKey == "catalog-2" }
         harness.configureWritingContinuation(enabled: true, model: "model-b")
-        try await waitForConfiguration(.setWritingContinuation(enabled: true, contextKey: "model-b"))
+        try await waitForConfiguration { $0.writingContinuationEnabled && $0.writingContinuationContextKey == "model-b" }
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
         harness.configureWritingContinuation(enabled: false, model: "model-b")
-        try await waitForConfiguration(.setWritingContinuation(enabled: false, contextKey: "model-b"))
+        try await waitForConfiguration { !$0.writingContinuationEnabled && $0.writingContinuationContextKey == "model-b" }
         #expect(try await harness.session.currentText(for: harness.documentID) == typed)
         #expect(harness.session.context?.selections == selection)
         #expect(requestedCarets.isEmpty)
@@ -583,13 +583,13 @@ struct MarkdownEditorWebViewIntegrationTests {
     @MainActor
     private final class WritingConfigurationProbe: MarkdownEditorBridgeDispatching {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
-        var applied: [MarkdownEditorOperation] = []
+        var applied: [MarkdownEditorPresentationConfiguration] = []
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
             switch request.operation {
-            case .setWritingContinuation, .setWritingIndexContext:
-                applied.append(request.operation)
+            case .setPresentation(let configuration), .initialize(_, _, _, _, _, let configuration):
+                applied.append(configuration)
             default: break
             }
             return result
@@ -1961,7 +1961,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let upper = range.upperBound.utf16Offset(in: unsaved)
         let map = EditorSourceOffsetMap(source: unsaved)
         let expectedHead = try #require(map.editorUTF16Offset(forSourceUTF16Offset: upper))
-        harness.session.revealSourceRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
+        harness.revealEditorRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
         try await harness.waitUntilSelection(head: expectedHead, stage: "chat selection")
         let beforeGeneration = harness.session.generation
         let snapshot = try await harness.session.selectedSourceSnapshot()
@@ -1985,7 +1985,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let lineText = "控制😀 e\u{301} 当前行"
         let expected = (source as NSString).range(of: lineText)
         let caret = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(expected)))
-        harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+        harness.revealEditorRange(fromUTF16: caret, toUTF16: caret)
         try await harness.waitUntilSelection(head: caret, stage: "writing-context caret")
         let generation = harness.session.generation
         let before = harness.session.context?.selections
@@ -2007,7 +2007,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let selectedRange = (source as NSString).range(of: selectionText)
         let from = try #require(map.editorUTF16Offset(forSourceUTF16Offset: selectedRange.location))
         let to = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(selectedRange)))
-        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        harness.revealEditorRange(fromUTF16: from, toUTF16: to)
         try await harness.waitUntilSelection(head: to, stage: "writing-context cross-line selection")
         let selected = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
         #expect(selected.point == nil)
@@ -2017,7 +2017,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(!harness.session.acceptsInsertionPoint(point))
 
         let end = map.editorUTF16Length
-        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end, stage: "writing-context blank trailing line")
         do {
             _ = try await harness.session.writingContextSnapshot(mode: .selectionOrCurrentLine)
@@ -2041,7 +2041,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
         for text in ["Bold", "emphasis", "strike", "mark", "code", "Heading", "reason", "quotation", "A task", "| 1", "x^2", "After"] {
             let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized)
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
             #expect(try await harness.session.currentText(for: harness.documentID) == source)
         }
@@ -2114,7 +2114,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Document title precedes quiet frontmatter, which stays before the body")
     func frontmatterFollowsDocumentTitle() async throws {
         let source = "\u{FEFF}---\r\n# 注释 😀\r\nunknown: 'keep'\r\nsummary: |\r\n  原文\r\n---\r\n# Body\r\n\r\nUntouched body.\r\n"
-        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        let bodyStart = (source as NSString).range(of: "# Body").location
+        let harness = EditorHarness(source: source, initialSourceRange: bodyStart..<bodyStart, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let webView = try #require(harness.session.webView)
@@ -2180,6 +2181,11 @@ struct MarkdownEditorWebViewIntegrationTests {
             laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
+        let openingPresentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(openingPresentation.mathRuntimeVersion == 1)
+        #expect(openingPresentation.renderedMathCount == 2)
+        #expect(openingPresentation.mathErrorCount == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         for _ in 0..<5 {
             let geometry =
                 try await harness.callPageJavaScript(
@@ -2361,9 +2367,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: root.appendingPathComponent("TestVaults/01-analyses/示例材料.md"), encoding: .utf8)
+        let bodyStart = NoteDocument(relativePath: "示例材料.md", rawContent: source).bodyUTF16Offset
         let harness = EditorHarness(
             documentID: "示例材料.md", documentTitle: "示例材料", source: source,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            initialSourceRange: bodyStart..<bodyStart,
             laysOutForPointerTesting: true)
         defer { harness.close() }
         for opening in 0..<4 {
@@ -2650,7 +2658,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let offsets = EditorSourceOffsetMap(source: source)
         let editorLower = try #require(offsets.editorUTF16Offset(forSourceUTF16Offset: lower))
         let editorUpper = try #require(offsets.editorUTF16Offset(forSourceUTF16Offset: upper))
-        session.revealSourceRange(fromUTF16: editorLower, toUTF16: editorUpper)
+        harness.revealEditorRange(fromUTF16: editorLower, toUTF16: editorUpper)
         try await harness.waitUntilSelection(anchor: editorLower, head: editorUpper)
         _ = try await harness.waitUntilPresentation(stage: "native selection toolbar") { _ in
             harness.nativeSelectionActionBar() != nil
@@ -2711,7 +2719,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         NSApp.activate()
         session.focus()
         try await harness.waitUntilFocused()
-        session.revealSourceRange(fromUTF16: lower, toUTF16: upper)
+        harness.revealEditorRange(fromUTF16: lower, toUTF16: upper)
         try await harness.waitUntilSelection(anchor: lower, head: upper)
         #expect(session.context?.selectionActionUTF16Count == body.utf16.count)
         // This passage may span the viewport. Menu invocation does not require
@@ -2835,7 +2843,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 11, toUTF16: 15)
+        harness.revealEditorRange(fromUTF16: 11, toUTF16: 15)
         try await harness.waitUntilSelection(head: 15)
 
         harness.session.prepareSelectionForCleanExternalRevision(
@@ -2884,28 +2892,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Initial body selection is acknowledged before editor readiness")
-    func initialBodySelectionGatesReadiness() async throws {
-        let source = "---\r\ncustom: |+\r\n  before\r\n  ---\r\n  after\r\n---\r\nBody\r\n"
-        let bodyStart = NoteDocument(
-            relativePath: "Untitled.md",
-            rawContent: source
-        ).bodyUTF16Offset
-        let sourceBodyUTF16Index = source.utf16.index(
-            source.utf16.startIndex,
-            offsetBy: bodyStart
-        )
-        let sourceBodyIndex = try #require(
-            String.Index(sourceBodyUTF16Index, within: source)
-        )
-        let editorBodyStart = String(source[..<sourceBodyIndex])
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .utf16.count
+    @Test("Initial Markdown selection is acknowledged before editor readiness")
+    func initialSelectionGatesReadiness() async throws {
+        let source = "\u{FEFF}---\r\ncustom: |+\r\n  before\r\n  ---\r\n  after\r\n---\r\nBody\r\n"
         let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
         let harness = EditorHarness(
             source: source,
-            bridgeDispatcher: dispatcher,
-            initialSourceRange: bodyStart..<bodyStart
+            bridgeDispatcher: dispatcher
         )
         defer { harness.close() }
 
@@ -2917,11 +2910,174 @@ struct MarkdownEditorWebViewIntegrationTests {
         dispatcher.resume()
         try await harness.waitUntilReady()
         try await harness.waitUntilSelection(
-            head: editorBodyStart,
-            stage: "acknowledged managed body boundary"
+            head: 0,
+            stage: "acknowledged Markdown beginning"
         )
         #expect(harness.session.presentedMode == .livePreview)
         #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+    }
+
+    @Test("The same closed Note opens at Markdown start without a restored selection")
+    func sameDocumentReopeningUsesInitialSelection() async throws {
+        let source = "\u{FEFF}---\r\ntags: [draft]\r\n---\r\nBody 中文😀\r\n"
+        let bodyRange = (source as NSString).range(of: "Body 中文😀")
+        let previousCaret = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: bodyRange.location + 4))
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 0)
+        harness.revealEditorRange(fromUTF16: previousCaret, toUTF16: previousCaret)
+        try await harness.waitUntilSelection(head: previousCaret)
+        harness.session.endClosedPresentation()
+        harness.session.prepareOpeningPresentation()
+        harness.session.loadDocument(source, documentID: harness.documentID, mode: .livePreview)
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 0, stage: "same-document Markdown beginning")
+        #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(source.utf8))
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A replacement source keeps its initial selection at Markdown start while initialization is pending")
+    func replacementInitializationUsesInitialSelection() async throws {
+        let first = "---\ntags: [draft]\n---\nOld body\n"
+        let replacement = "\u{FEFF}---\r\ntags: [draft]\r\ncustom: |+\r\n  longer source boundary\r\n---\r\nNew body 中文😀\r\n"
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher()
+        let harness = EditorHarness(source: first, bridgeDispatcher: dispatcher)
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        harness.session.loadDocument(replacement, documentID: harness.documentID, mode: .livePreview)
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 0, stage: "replacement source Markdown beginning")
+        #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(replacement.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Late Source, title, styles and previews converge while the initial skeleton stays present")
+    func latePresentationConvergesBeforeOpeningHandoff() async throws {
+        let source = "---\ntags: [draft]\n---\n[[Target]]\n"
+        let dispatcher = PreparationCompletionBarrier()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher, laysOutForPointerTesting: true)
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 1)
+        harness.session.setMode(.source)
+        harness.setDocumentTitle("Latest title")
+        harness.setPresentationCSS(":root { --opening-race: 1; }")
+        let offset = source.utf16.count - "[[Target]]\n".utf16.count
+        harness.session.setLinkPreviews([Self.linkPreview(atUTF16: offset)], in: source)
+        // Setters above mutate the pending owner synchronously; SwiftUI title
+        // and CSS updates also exercise the live representable during await.
+        await Task.yield()
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        #expect(dispatcher.completionCount >= 2)
+        #expect(dispatcher.maskWasPresentAtEveryCompletion)
+        #expect(dispatcher.releasedConfiguration?.documentTitle == "Latest title")
+        #expect(dispatcher.releasedConfiguration?.presentationCSS.contains("--opening-race") == true)
+        #expect(dispatcher.releasedConfiguration?.linkPreviews.count == 1)
+        #expect(dispatcher.releasedMode == .source)
+        #expect(harness.session.presentedMode == .source)
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;") as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A rejected external focus admission releases its pending intent for real renderer focus")
+    func failedExternalFocusAdmissionReleasesIntent() async throws {
+        let dispatcher = FailingAdmittedFocusBridgeDispatcher()
+        let nativeWindow = FocusAdmissionTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let harness = EditorHarness(
+            source: "Argument.\n", bridgeDispatcher: dispatcher,
+            nativeWindow: nativeWindow, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.focusAndWait()
+        harness.session.authorizeAutomaticFocus(target: .title)
+        let revision = harness.session.focusRequestRevision
+        dispatcher.rejectNextTitleFocus = true
+        await #expect(throws: (any Error).self) {
+            try await harness.session.focusIfPresented(in: .livePreview, requiringFocusRevision: revision, isStillRequested: { true })
+        }
+        let admissionDiagnostics = await harness.focusDiagnostics()
+        try #require(dispatcher.didRejectTitleFocus, Comment(rawValue: admissionDiagnostics))
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('[data-scholium-title-input]').focus(); document.querySelector('.cm-content').focus();"
+        )
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.preferredDocumentFocusTarget != .editor {
+            try #require(ContinuousClock.now < deadline, "A rejected focus intent suppressed later real renderer focus.")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == "Argument.\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Release hands late CRLF locators, explicit scroll and focus to their latest owners", arguments: [true, false])
+    func lateReleaseIntentsRespectNavigationOrder(locatorIsLatest: Bool) async throws {
+        let source = "\u{FEFF}---\r\ntags: [draft]\r\n---\r\n" + (1...60).map { "Paragraph \($0) 中文😀.\r\n\r\n" }.joined()
+        // Keep the title in CodeMirror's materialized viewport while still
+        // exercising a nonzero exact CRLF locator and explicit scroll ordering.
+        let target = (source as NSString).range(of: "Paragraph 12 中文😀.")
+        let map = EditorSourceOffsetMap(source: source)
+        let anchor = try #require(map.editorUTF16Offset(forSourceUTF16Offset: target.location))
+        let head = try #require(map.editorUTF16Offset(forSourceUTF16Offset: target.location + target.length))
+        let dispatcher = PreparationCompletionBarrier(holdsRelease: true)
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher, laysOutForPointerTesting: true)
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await dispatcher.waitUntilSuspended()
+        #expect(!harness.session.isLoaded)
+        // The original release already applied its editor focus. A late lease
+        // revocation and explicit title request must survive native readiness.
+        let revocation = Task { @MainActor in await harness.session.resignFocusAndWait() }
+        await Task.yield()
+        if locatorIsLatest { harness.session.setScrollFraction(0) }
+        harness.session.revealSourceRange(fromUTF16: target.location, toUTF16: target.location + target.length)
+        if !locatorIsLatest { harness.session.setScrollFraction(0) }
+        harness.session.focusTitle()
+        dispatcher.resume()
+        await revocation.value
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(anchor: anchor, head: head, stage: "late exact CRLF locator")
+        let focusDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript("return document.activeElement?.matches('[data-scholium-title-input]') === true;") as? Bool != true {
+            if ContinuousClock.now >= focusDeadline {
+                let diagnostics = await harness.focusDiagnostics()
+                Issue.record(
+                    Comment(rawValue: "Late title focus did not transfer after release. \(diagnostics); title receipts: \(dispatcher.titleFocusReceipts)"))
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                "return {top: document.querySelector('.cm-scroller').scrollTop, focused: document.activeElement?.matches('[data-scholium-title-input]') === true};"
+            ) as? [String: Any])
+        #expect(geometry["focused"] as? Bool == true)
+        if locatorIsLatest {
+            #expect((geometry["top"] as? Double ?? 0) > 100)
+            #expect(dispatcher.appliedFractions.isEmpty)
+        } else {
+            #expect(abs(geometry["top"] as? Double ?? -1) < 1)
+            #expect(dispatcher.appliedFractions == [0])
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
     }
 
     @Test("Review handoff revokes focus from a pending editor initialization")
@@ -3076,8 +3232,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.presentedMode == nil)
     }
 
-    @Test("Post-initialize failure leaves the hidden editor unfocused")
+    @Test("Post-initialize failure leaves the unavailable editor unfocused")
     func postInitializeFailureLeavesEditorUnfocused() async throws {
+        let dispatcher = FailingPostInitializeBridgeDispatcher()
         let source = "---\ntags: [draft]\n---\nBody\n"
         let bodyStart = NoteDocument(
             relativePath: "Untitled.md",
@@ -3085,7 +3242,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         ).bodyUTF16Offset
         let harness = EditorHarness(
             source: source,
-            bridgeDispatcher: FailingPostInitializeBridgeDispatcher(),
+            bridgeDispatcher: dispatcher,
             initialSourceRange: bodyStart..<bodyStart
         )
         defer { harness.close() }
@@ -3095,6 +3252,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         while harness.session.errorMessage == nil, clock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
+        #expect(dispatcher.didInjectFailure)
         #expect(harness.session.errorMessage != nil)
         #expect(!harness.session.isLoaded)
         #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
@@ -3159,7 +3317,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let closingFence = try #require(source.range(of: "```\n\nAfter diagram.")?.lowerBound)
             .utf16Offset(in: source)
         let blockTo = closingFence + 3
-        harness.session.revealSourceRange(fromUTF16: blockTo, toUTF16: blockTo)
+        harness.revealEditorRange(fromUTF16: blockTo, toUTF16: blockTo)
         try await harness.waitUntilSelection(head: blockTo, stage: "Mermaid closing boundary")
         try await harness.session.testingPressArrow("ArrowLeft")
         try await harness.waitUntilSelection(head: blockTo - 1, stage: "left-arrow Mermaid source entry")
@@ -3214,7 +3372,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let selectedBody = try #require(source.range(of: "A --> B"))
         let selectedBodyFrom = selectedBody.lowerBound.utf16Offset(in: source)
         let selectedBodyTo = selectedBody.upperBound.utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: selectedBodyFrom, toUTF16: selectedBodyTo)
+        harness.revealEditorRange(fromUTF16: selectedBodyFrom, toUTF16: selectedBodyTo)
         try await harness.waitUntilSelection(head: selectedBodyTo, stage: "exact Mermaid source selection")
         let exactSelection = try #require(
             try await harness.session.currentSelection(
@@ -3254,7 +3412,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        harness.revealEditorRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "active fenced code")
         let snapshot = try #require(
             try await harness.callPageJavaScript(
@@ -3311,7 +3469,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Reading metadata and technical source retain their own typography during activation")
     func technicalSourceTypographyUsesSourceText() async throws {
         let source = "---\nsummary: Fixture\nquoted: 'Fixture'\n---\n# Technical\n\n```swift\nlet value = true\n```\n\n$$\nx + y\n$$\n"
-        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        let bodyStart = (source as NSString).range(of: "# Technical").location
+        let harness = EditorHarness(source: source, initialSourceRange: bodyStart..<bodyStart, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
@@ -3366,7 +3525,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try #require(inactive["metadataGap"] as? Double) > 0)
 
         let yamlCaret = try #require(source.range(of: "Fixture")?.lowerBound).utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: yamlCaret, toUTF16: yamlCaret)
+        harness.revealEditorRange(fromUTF16: yamlCaret, toUTF16: yamlCaret)
         try await harness.waitUntilSelection(head: yamlCaret, stage: "active YAML typography")
         let activeYAML = try await typography()
         #expect(activeYAML["yamlFont"] as? String == inactive["yamlFont"] as? String)
@@ -3375,7 +3534,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let codeCaret =
             try #require(source.range(of: "let value")?.lowerBound)
             .utf16Offset(in: source) + 3
-        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        harness.revealEditorRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "active code typography")
         let activeCode = try await typography()
         #expect(activeCode["codeFont"] as? String == inactive["codeFont"] as? String)
@@ -3385,7 +3544,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let mathCaret =
             try #require(source.range(of: "x + y")?.lowerBound)
             .utf16Offset(in: source) + 2
-        harness.session.revealSourceRange(fromUTF16: mathCaret, toUTF16: mathCaret)
+        harness.revealEditorRange(fromUTF16: mathCaret, toUTF16: mathCaret)
         try await harness.waitUntilSelection(head: mathCaret, stage: "active math typography")
         let activeMath = try await typography()
         #expect(activeMath["mathFont"] as? String == inactive["codeFont"] as? String)
@@ -3398,7 +3557,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Metadata boundary spacing preserves the first technical block's own inset")
     func frontmatterBoundaryKeepsTechnicalInset() async throws {
         let source = "---\nsummary: Fixture\n---\n```swift\nlet value = true\n```\n"
-        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        let bodyStart = (source as NSString).range(of: "```swift").location
+        let harness = EditorHarness(source: source, initialSourceRange: bodyStart..<bodyStart, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let geometry = try #require(
@@ -3642,16 +3802,16 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Ordinary Edit begins at the exact body boundary without a supplied locator")
-    func ordinaryEditStartsAtBody() async throws {
-        let source = "---\r\ncustom: preserved\r\n---\r\nBody text.\r\n"
-        let harness = EditorHarness(source: source)
+    @Test(
+        "Ordinary editing begins before the first Markdown character without a supplied locator",
+        arguments: [MarkdownEditorMode.livePreview, .source])
+    func ordinaryEditStartsAtFirstCharacter(mode: MarkdownEditorMode) async throws {
+        let source = "\u{FEFF}---\r\ncustom: preserved\r\n---\r\nBody text.\r\n"
+        let harness = EditorHarness(source: source, initialMode: mode)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
-        let bodyStart = NoteDocument(relativePath: "Fixture.md", rawContent: normalized).bodyUTF16Offset
-        try await harness.waitUntilSelection(head: bodyStart)
-        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        try await harness.waitUntilSelection(head: 0)
+        #expect(Data(try await harness.session.currentText(for: harness.documentID).utf8) == Data(source.utf8))
         await harness.closeAndDrain()
     }
 
@@ -3677,7 +3837,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         func moveCaret(into text: String) async throws {
             let range = try #require(source.range(of: text))
             let offset = range.lowerBound.utf16Offset(in: source) + 1
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
         }
 
@@ -3849,7 +4009,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let from = selected.lowerBound.utf16Offset(in: source)
         let to = selected.upperBound.utf16Offset(in: source)
 
-        harness.session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        harness.revealEditorRange(fromUTF16: from, toUTF16: to)
         _ = try await harness.waitUntilSelection(in: from..<(to + 1))
         let snapshot = try await harness.session.testingAccessibilitySnapshot()
         #expect(snapshot.selectionMatchCount == 0)
@@ -4086,7 +4246,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect((try await harness.session.testingAccessibilitySnapshot()).mathRuntimeVersion == 0)
         try await harness.session.perform(.pastePlain, argument: "$x$.\n")
         harness.synchronizeLifecycleSourceFromSession()
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: 0)
         try await harness.waitUntilSelection(head: 0)
         let firstPresentation = try await harness.waitUntilPresentation(
             stage: "first newly typed expression"
@@ -4150,7 +4310,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let generation = harness.session.generation
         let undoLabel = harness.session.context?.undoLabel
-        harness.session.revealSourceRange(
+        harness.revealEditorRange(
             fromUTF16: range.location,
             toUTF16: NSMaxRange(range)
         )
@@ -4179,7 +4339,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let generation = harness.session.generation
         for (text, markers) in [("outer", ["**", "**"]), ("inner", ["**", "*", "*", "**"])] {
             let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
             let actual =
                 try await harness.callPageJavaScript(
@@ -4188,7 +4348,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         for text in ["Heading", "After"] {
             let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized) + 1
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
             let underline =
                 try await harness.callPageJavaScript(
@@ -4241,7 +4401,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             return range.lowerBound.utf16Offset(in: source) + leadingMarkerLength + 1
         }
         let moveCaret = { (offset: Int) async throws in
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset)
         }
 
@@ -4357,7 +4517,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        harness.session.revealSourceRange(fromUTF16: firstFrom, toUTF16: secondTo)
+        harness.revealEditorRange(fromUTF16: firstFrom, toUTF16: secondTo)
         try await harness.waitUntilSelection(head: secondTo, stage: "cross-paragraph selection")
         let snapshot = try await harness.session.testingEditorSelectionPresentationSnapshot()
         #expect(snapshot.selectedTexts == ["paragraph text.", "Second paragraph"])
@@ -4382,7 +4542,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.focus()
         try await harness.waitUntilFocused()
-        harness.session.revealSourceRange(fromUTF16: dateEnd, toUTF16: dateEnd)
+        harness.revealEditorRange(fromUTF16: dateEnd, toUTF16: dateEnd)
         try await harness.waitUntilSelection(head: dateEnd, stage: "date insertion point")
         for _ in date {
             try await harness.session.testingPressBackspace()
@@ -4473,7 +4633,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let secondLineStart = try #require(source.range(of: "source claims"))
             .lowerBound.utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: secondLineStart, toUTF16: secondLineStart)
+        harness.revealEditorRange(fromUTF16: secondLineStart, toUTF16: secondLineStart)
         let collapseDeadline = clock.now.advanced(by: .seconds(3))
         while harness.session.context?.selections.first.map({ selection in
             selection.anchor == secondLineStart && selection.head == secondLineStart
@@ -4554,7 +4714,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         #expect(activeLink.lineText.contains("[[work-031|linked note]]"))
 
-        harness.session.revealSourceRange(fromUTF16: linkFrom, toUTF16: linkFrom)
+        harness.revealEditorRange(fromUTF16: linkFrom, toUTF16: linkFrom)
         try await harness.waitUntilSelection(head: linkFrom, stage: "Wikilink keyboard start boundary")
         try await harness.session.testingPressArrow("ArrowRight")
         try await harness.waitUntilSelection(head: linkFrom + 1, stage: "Wikilink keyboard opening syntax entry")
@@ -4593,7 +4753,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.session.testingClickVisibleText("body ends")
         let clickedBody = try #require(source.range(of: "body ends"))
         _ = try await harness.waitUntilSelection(in: clickedBody.lowerBound.utf16Offset(in: source)..<clickedBody.upperBound.utf16Offset(in: source))
-        harness.session.revealSourceRange(fromUTF16: calloutTo, toUTF16: calloutTo)
+        harness.revealEditorRange(fromUTF16: calloutTo, toUTF16: calloutTo)
         try await harness.waitUntilSelection(head: calloutTo)
         let projectedHeader = try await harness.session.testingInlineProjectionSnapshot(
             containing: "Synthetic source boundary"
@@ -4647,7 +4807,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(titleOnly.renderedTitleText.hasPrefix("Reading"))
         #expect(titleOnly.renderedText.contains("Reading route"))
 
-        harness.session.revealSourceRange(fromUTF16: headerEnd, toUTF16: headerEnd)
+        harness.revealEditorRange(fromUTF16: headerEnd, toUTF16: headerEnd)
         try await harness.waitUntilSelection(head: headerEnd, stage: "active Orient header")
         try await harness.session.testingPressEnter()
         let continuedSource = source + "\n> "
@@ -4724,7 +4884,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.focus()
         try await harness.waitUntilFocused()
 
-        harness.session.revealSourceRange(
+        harness.revealEditorRange(
             fromUTF16: source.utf16.count,
             toUTF16: source.utf16.count
         )
@@ -4788,7 +4948,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let bodyCaret =
             try #require(source.range(of: "First claim")?.lowerBound)
             .utf16Offset(in: source) + 2
-        harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+        harness.revealEditorRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
         try await harness.waitUntilSelection(head: bodyCaret)
         let bodyActive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
@@ -4815,7 +4975,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let titleCaret =
             try #require(source.range(of: "Curated connections")?.lowerBound)
             .utf16Offset(in: source) + 2
-        harness.session.revealSourceRange(fromUTF16: titleCaret, toUTF16: titleCaret)
+        harness.revealEditorRange(fromUTF16: titleCaret, toUTF16: titleCaret)
         try await harness.waitUntilSelection(head: titleCaret)
         let titleActive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
@@ -4863,7 +5023,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let referenceFrom =
             try #require(source.range(of: "[^note]")?.lowerBound)
             .utf16Offset(in: source) + 1
-        harness.session.revealSourceRange(fromUTF16: referenceFrom, toUTF16: referenceFrom)
+        harness.revealEditorRange(fromUTF16: referenceFrom, toUTF16: referenceFrom)
         try await harness.waitUntilSelection(head: referenceFrom)
         let activeSourceMarkerCount =
             try await harness.callPageJavaScript(
@@ -4943,7 +5103,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         for (index, target) in [(0, "Named basis."), (1, "Inline qualification")] {
-            harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+            harness.revealEditorRange(fromUTF16: 0, toUTF16: 0)
             try await harness.waitUntilSelection(head: 0)
             _ = try await harness.waitUntilPresentation(stage: "inactive footnote controls") {
                 $0.footnoteReferenceCount == 2
@@ -5012,7 +5172,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.footnoteDefinitionSourceCount == 1
         }
 
-        harness.session.revealSourceRange(fromUTF16: contentFrom, toUTF16: contentFrom)
+        harness.revealEditorRange(fromUTF16: contentFrom, toUTF16: contentFrom)
         try await harness.waitUntilSelection(head: contentFrom)
         let direct = try await harness.session.testingAccessibilitySnapshot()
         #expect(direct.footnoteDefinitionSourceCount == 1)
@@ -5059,7 +5219,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        harness.session.revealSourceRange(fromUTF16: closingMarker, toUTF16: closingMarker)
+        harness.revealEditorRange(fromUTF16: closingMarker, toUTF16: closingMarker)
         try await harness.waitUntilSelection(head: closingMarker)
         let selection = try #require(harness.session.context?.selections.first)
         #expect(selection.anchor == selection.head)
@@ -5294,7 +5454,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 scrollFraction: 0
             ).focusTarget == .title)
 
-        harness.session.revealSourceRange(fromUTF16: 18, toUTF16: 18)
+        harness.revealEditorRange(fromUTF16: 18, toUTF16: 18)
         try await harness.waitUntilSelection(head: 18)
         try await harness.session.captureStateForViewReconstruction()
         let restored = harness.session.windowPresentationSnapshot(scrollFraction: 0)
@@ -6112,7 +6272,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let listSelectionEnd = try #require(source.range(of: "- second")?.upperBound)
             .utf16Offset(in: source)
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: listSelectionEnd)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: listSelectionEnd)
         try await harness.waitUntilSelection(head: listSelectionEnd, stage: "list selection")
         try await pressTab()
         let indented = "  - first\n  - second\n\n```swift\n- code\n```\n"
@@ -6125,7 +6285,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let indentedSelectionEnd = try #require(indented.range(of: "- second")?.upperBound)
             .utf16Offset(in: indented)
-        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: indentedSelectionEnd)
+        harness.revealEditorRange(fromUTF16: 2, toUTF16: indentedSelectionEnd)
         try await harness.waitUntilSelection(head: indentedSelectionEnd, stage: "indented list selection")
         try await pressTab(shift: true)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -6138,7 +6298,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let codeCaret =
             try #require(source.range(of: "- code")?.lowerBound)
             .utf16Offset(in: source) + 2
-        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        harness.revealEditorRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "fenced code caret")
         try await pressTab()
         #expect(
@@ -6285,7 +6445,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let commandCaret =
             try #require(expectedAfterUncheck.range(of: "ALTERNATE_CONTINUATION"))
             .lowerBound.utf16Offset(in: expectedAfterUncheck) + 2
-        harness.session.revealSourceRange(fromUTF16: commandCaret, toUTF16: commandCaret)
+        harness.revealEditorRange(fromUTF16: commandCaret, toUTF16: commandCaret)
         try await harness.waitUntilSelection(head: commandCaret)
         let availabilityDeadline = clock.now.advanced(by: .seconds(4))
         while harness.session.context?.availableCommands.contains(.toggleTask) != true {
@@ -6335,7 +6495,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         for testCase in cases {
             let bodyFrom = try #require(source.range(of: testCase.body))
                 .lowerBound.utf16Offset(in: source)
-            harness.session.revealSourceRange(fromUTF16: bodyFrom, toUTF16: bodyFrom)
+            harness.revealEditorRange(fromUTF16: bodyFrom, toUTF16: bodyFrom)
             try await harness.waitUntilSelection(head: bodyFrom)
 
             for step in 1...testCase.prefix.utf16.count {
@@ -6426,7 +6586,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             return value.doubleValue
         }
 
-        harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+        harness.revealEditorRange(fromUTF16: afterFrom, toUTF16: afterFrom)
         try await harness.waitUntilSelection(head: afterFrom)
         let inactive = try await harness.session.testingAccessibilitySnapshot()
         #expect(inactive.liveListMarkerCount == cases.count)
@@ -6439,21 +6599,21 @@ struct MarkdownEditorWebViewIntegrationTests {
             let inactiveX = try await bodyLeadingX(testCase.body)
 
             let bodyCaret = bodyFrom + testCase.body.utf16.count / 2
-            harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+            harness.revealEditorRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
             try await harness.waitUntilSelection(head: bodyCaret)
             let bodyActive = try await harness.session.testingAccessibilitySnapshot()
             #expect(bodyActive.liveListMarkerCount == cases.count)
             #expect(bodyActive.liveTaskSourceTokenCount == 0)
             let bodyActiveX = try await bodyLeadingX(testCase.body)
 
-            harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+            harness.revealEditorRange(fromUTF16: markerFrom, toUTF16: markerFrom)
             try await harness.waitUntilSelection(head: markerFrom)
             let markerActive = try await harness.session.testingAccessibilitySnapshot()
             #expect(markerActive.liveListMarkerCount == cases.count - 1)
             #expect(markerActive.liveTaskSourceTokenCount == (testCase.task ? 1 : 0))
             let markerActiveX = try await bodyLeadingX(testCase.body)
 
-            harness.session.revealSourceRange(fromUTF16: afterFrom, toUTF16: afterFrom)
+            harness.revealEditorRange(fromUTF16: afterFrom, toUTF16: afterFrom)
             try await harness.waitUntilSelection(head: afterFrom)
             let restored = try await harness.session.testingAccessibilitySnapshot()
             #expect(restored.liveListMarkerCount == cases.count)
@@ -6498,7 +6658,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         let bodyCaret = bodyFrom + 4
-        harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
+        harness.revealEditorRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
         try await harness.waitUntilSelection(head: bodyCaret)
         _ = try await harness.waitUntilPresentation(stage: "Callout list body projection") {
             $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 1
@@ -6508,7 +6668,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(projected["projected"] as? Int == 1)
         #expect(projected["exactPrefix"] as? Int == 0)
 
-        harness.session.revealSourceRange(fromUTF16: markerFrom, toUTF16: markerFrom)
+        harness.revealEditorRange(fromUTF16: markerFrom, toUTF16: markerFrom)
         try await harness.waitUntilSelection(head: markerFrom)
         _ = try await harness.waitUntilPresentation(stage: "exact nested list prefix") {
             $0.activeLiveBlockKind == "callout" && $0.liveListMarkerCount == 0
@@ -6571,11 +6731,11 @@ struct MarkdownEditorWebViewIntegrationTests {
             ]
         }
 
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: 0)
         try await harness.waitUntilSelection(head: 0)
         let beforeEntry = try await transitionGeometry(lineIndex: 1)
 
-        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        harness.revealEditorRange(fromUTF16: secondFrom, toUTF16: secondFrom)
         try await harness.waitUntilSelection(head: secondFrom)
         try await harness.session.testingPressArrow("ArrowLeft")
         try await harness.waitUntilSelection(head: blankOffset)
@@ -6642,7 +6802,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(abs(before - after) < 0.5)
         }
 
-        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        harness.revealEditorRange(fromUTF16: secondFrom, toUTF16: secondFrom)
         try await harness.waitUntilSelection(head: secondFrom, stage: "exit from blank line")
         let afterExit = try await transitionGeometry(lineIndex: 1)
         for key in ["lineTop", "lineBottom", "height", "followingTop", "lineHeight", "scrollHeight"] {
@@ -6683,7 +6843,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             """)
         for text in ["Bold", "Title", "let value", "After"] {
             let offset = try #require(source.range(of: text)?.lowerBound).utf16Offset(in: source)
-            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            harness.revealEditorRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
             _ = try await harness.callPageJavaScript(
                 """
@@ -6742,11 +6902,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                     """) as? Bool == true)
         }
         try await checkActiveMarkers()
-        harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 5)
+        harness.revealEditorRange(fromUTF16: 5, toUTF16: 5)
         try await harness.waitUntilSelection(head: 5, stage: "inside emphasized prose")
         try await checkActiveMarkers()
         let end = "*Source-role classification*".utf16.count
-        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end, stage: "after closing delimiter")
         try await checkActiveMarkers()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, ' ')")
@@ -6766,7 +6926,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilFocused()
         let prefix = try #require(source.range(of: "inspection."))
         let position = source[..<prefix.upperBound].utf16.count
-        harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
+        harness.revealEditorRange(fromUTF16: position, toUTF16: position)
         try await harness.waitUntilSelection(head: position, stage: "ordinary line-end deletion")
         for action in ["insert", "delete"] {
             let measurements = try await harness.callPageJavaScript(
@@ -6806,7 +6966,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         try await harness.waitUntilFocused()
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: 0)
         try await harness.waitUntilSelection(head: 0, stage: "new heading")
         func presentation() async throws -> [String: Any] {
             try #require(
@@ -6839,7 +6999,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(current["markerVisible"] as? Bool == true)
         }
         for remaining in stride(from: level - 1, through: 0, by: -1) {
-            harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 1)
+            harness.revealEditorRange(fromUTF16: 0, toUTF16: 1)
             let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
             while true {
                 if let selected = try await harness.session.currentSelection(for: harness.documentID),
@@ -6871,7 +7031,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         try await harness.waitUntilFocused()
         let end = source.utf16.count
-        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end, stage: "heading keyboard initial selection")
         try await harness.session.testingPressArrow("ArrowUp")
         // The trailing empty line has column zero. Revealing the heading
@@ -6975,11 +7135,11 @@ struct MarkdownEditorWebViewIntegrationTests {
             ]
         }
 
-        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        harness.revealEditorRange(fromUTF16: followingFrom, toUTF16: followingFrom)
         try await harness.waitUntilSelection(head: followingFrom)
         let inactive = try await geometry()
 
-        harness.session.revealSourceRange(fromUTF16: headingFrom, toUTF16: headingFrom)
+        harness.revealEditorRange(fromUTF16: headingFrom, toUTF16: headingFrom)
         try await harness.waitUntilSelection(head: headingFrom)
         let active = try await geometry()
 
@@ -7048,11 +7208,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                 })
         }
 
-        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        harness.revealEditorRange(fromUTF16: followingFrom, toUTF16: followingFrom)
         try await harness.waitUntilSelection(head: followingFrom)
         let inactive = try await geometry()
 
-        harness.session.revealSourceRange(fromUTF16: quotationFrom, toUTF16: quotationFrom)
+        harness.revealEditorRange(fromUTF16: quotationFrom, toUTF16: quotationFrom)
         try await harness.waitUntilSelection(head: quotationFrom)
         let active = try await geometry()
 
@@ -7132,7 +7292,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             let marker = String(repeating: "#", count: level) + " "
             let labelFrom = try #require(source.range(of: label))
                 .lowerBound.utf16Offset(in: source)
-            harness.session.revealSourceRange(fromUTF16: labelFrom, toUTF16: labelFrom)
+            harness.revealEditorRange(fromUTF16: labelFrom, toUTF16: labelFrom)
             try await harness.waitUntilSelection(
                 head: labelFrom,
                 stage: "active H\(level) source"
@@ -7286,7 +7446,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.session.currentText(for: harness.documentID)
                 == source.replacingOccurrences(of: " neutral", with: "  neutral"))
 
-        harness.session.revealSourceRange(
+        harness.revealEditorRange(
             fromUTF16: insertion,
             toUTF16: insertion + 1
         )
@@ -7378,7 +7538,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
 
-        harness.session.revealSourceRange(
+        harness.revealEditorRange(
             fromUTF16: punctuationOffset,
             toUTF16: punctuationOffset
         )
@@ -7472,7 +7632,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         // A topology-safe edit maps the separator decoration. Pointer entry
         // must resolve its current source line, never an embedded old offset.
-        harness.session.revealSourceRange(fromUTF16: 4, toUTF16: 4)
+        harness.revealEditorRange(fromUTF16: 4, toUTF16: 4)
         try await harness.waitUntilSelection(head: 4, stage: "edit before separator")
         try await harness.session.focusAndWait()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '中文');")
@@ -7700,7 +7860,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 "return document.querySelector('.cm-live-wiki-link')?.textContent;") as? String == "Support")
         for (token, active) in [("Last reason", true), ("After", false)] {
             let position = try #require(source.range(of: token)?.lowerBound).utf16Offset(in: source)
-            harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
+            harness.revealEditorRange(fromUTF16: position, toUTF16: position)
             try await harness.waitUntilSelection(head: position, stage: token)
             _ = try await harness.session.currentScrollAnchor()
             let annotationState = try #require(
@@ -7911,7 +8071,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: end)
         try await harness.waitUntilSelection(head: end)
         try await harness.session.focusAndWait()
 
@@ -7974,7 +8134,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, initialMode: mode)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: selectedText.utf16.count)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: selectedText.utf16.count)
         try await harness.waitUntilSelection(head: selectedText.utf16.count)
         try await harness.session.focusAndWait()
 
@@ -8014,7 +8174,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: end)
+        harness.revealEditorRange(fromUTF16: 0, toUTF16: end)
         try await harness.waitUntilSelection(head: end)
         harness.session.focus()
         try await harness.waitUntilFocused()
@@ -8061,7 +8221,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 offsets.editorUTF16Offset(forSourceUTF16Offset: range.lowerBound.utf16Offset(in: source)))
             let expectedHead = try #require(
                 offsets.editorUTF16Offset(forSourceUTF16Offset: range.upperBound.utf16Offset(in: source)))
-            harness.session.revealSourceRange(fromUTF16: anchor, toUTF16: expectedHead)
+            harness.revealEditorRange(fromUTF16: anchor, toUTF16: expectedHead)
             try await harness.waitUntilSelection(head: expectedHead)
             let consumed = try await harness.callPageJavaScript(
                 """
@@ -8098,7 +8258,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.session.send(.pasteClipboard(plainText: payload, selections: selections), in: webView)
         #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual((payload + source).utf8))
         let captured = try #require(harness.session.context?.selections)
-        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        harness.revealEditorRange(fromUTF16: 1, toUTF16: 1)
         try await harness.waitUntilSelection(head: 1)
         let generation = harness.session.generation
         do {
@@ -8159,7 +8319,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let generation = harness.session.generation
         let undoLabel = try #require(harness.session.context?.undoLabel)
         let range = try #require(before.range(of: "Preserved"))
-        harness.session.revealSourceRange(
+        harness.revealEditorRange(
             fromUTF16: range.lowerBound.utf16Offset(in: before), toUTF16: range.upperBound.utf16Offset(in: before))
         try await harness.waitUntilSelection(head: range.upperBound.utf16Offset(in: before))
         let selections = harness.session.context?.selections
@@ -8188,14 +8348,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 4)
+        harness.revealEditorRange(fromUTF16: 1, toUTF16: 4)
         try await harness.waitUntilSelection(head: 4)
         try await harness.session.perform(.bold)
         let before = try await harness.session.currentText(for: harness.documentID)
         let generation = harness.session.generation
         let undoLabel = harness.session.context?.undoLabel
         let end = EditorSourceOffsetMap(source: before).editorUTF16Length
-        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        harness.revealEditorRange(fromUTF16: 1, toUTF16: 1)
         try await harness.waitUntilSelection(head: 1)
         let webView = try #require(harness.session.webView as? WindowAttachedWebView)
         let menu = webView.makeEditorContextMenu(
@@ -8234,7 +8394,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let window = try #require(webView.window)
         #expect(window.makeFirstResponder(webView))
         try await harness.session.focusAndWait()
-        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        harness.revealEditorRange(fromUTF16: 1, toUTF16: 1)
         try await harness.waitUntilSelection(head: 1)
         let menu = NSMenu()
         let deleteItem = NSMenuItem(title: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
@@ -8256,7 +8416,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let input = NSTextField(string: "Independent search input")
         window.contentView?.addSubview(input)
         defer { input.removeFromSuperview() }
-        harness.session.revealSourceRange(fromUTF16: 1, toUTF16: 1)
+        harness.revealEditorRange(fromUTF16: 1, toUTF16: 1)
         try await harness.waitUntilSelection(head: 1)
         selections = harness.session.context?.selections
         owner.performSelectAll(selectAllItem)
@@ -8314,7 +8474,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: 5)
+        harness.revealEditorRange(fromUTF16: 2, toUTF16: 5)
         try await harness.waitUntilSelection(head: 5)
         let selections = harness.session.context?.selections
         try await harness.session.testingDispatchCompositionEvent("compositionstart")
@@ -9164,6 +9324,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
             suppliedSession: MarkdownEditorSession? = nil,
+            nativeWindow: NSWindow? = nil,
             citationSnapshot: ZoteroCitationSnapshot? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
             initialMode: MarkdownEditorMode = .livePreview,
@@ -9205,15 +9366,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             sourceBox.writingContinuationEnabled = writingContinuationEnabled
             sourceBox.writingContinuationQuery = writingContinuationQuery
             sourceBox.imageResourcesQuery = imageResourcesQuery
-            window = NSWindow(
-                contentRect: NSRect(
-                    origin: .zero,
-                    size: initialWindowSize
-                ),
-                styleMask: [.titled, .closable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
+            window =
+                nativeWindow
+                ?? NSWindow(
+                    contentRect: NSRect(
+                        origin: .zero,
+                        size: initialWindowSize
+                    ),
+                    styleMask: [.titled, .closable, .resizable],
+                    backing: .buffered,
+                    defer: false
+                )
             // The harness is the sole window owner. AppKit's historical
             // close-release behavior must not invalidate this strong Swift
             // property before EditorHarness.deinit releases it.
@@ -9247,10 +9410,24 @@ struct MarkdownEditorWebViewIntegrationTests {
                 || !session.hasAttachedWebView
             {
                 if clock.now >= deadline {
+                    let geometry = try? await callPageJavaScript(
+                        """
+                        const scroller = document.querySelector('.cm-scroller');
+                        return JSON.stringify({visibility: document.visibilityState,
+                          width: innerWidth, height: innerHeight,
+                          scroller: scroller?.getBoundingClientRect().toJSON(),
+                          fonts: document.fonts.status,
+                          maskCount: document.querySelectorAll('.scholium-document-preparation').length});
+                        """)
                     Issue.record(
                         Comment(
                             rawValue: session.errorMessage
                                 ?? "The WKWebView editor did not become ready with an attached view."))
+                    Issue.record(
+                        Comment(
+                            rawValue:
+                                "Opening geometry: \(String(describing: geometry)); native window visible: \(window.isVisible), webView hidden: \(String(describing: session.webView?.isHidden))."
+                        ))
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(25))
@@ -9334,6 +9511,15 @@ struct MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
+        }
+
+        func focusDiagnostics() async -> String {
+            let dom = try? await callPageJavaScript(
+                "return JSON.stringify({active: document.activeElement?.className, title: !!document.querySelector('[data-scholium-title-input]'), titleDisabled: document.querySelector('[data-scholium-title-input]')?.disabled, top: document.querySelector('.cm-scroller')?.scrollTop});"
+            )
+            let webView = session.webView
+            return
+                "DOM: \(String(describing: dom)); loaded: \(session.isLoaded), mode: \(String(describing: session.presentedMode)), preferred: \(String(describing: session.preferredDocumentFocusTarget)), revision: \(session.focusRequestRevision), hidden: \(String(describing: webView?.isHiddenOrHasHiddenAncestor)), input: \(String(describing: (webView as? DocumentNativeWebView)?.documentSurfaceAllowsInput)), key: \(window.isKeyWindow), responder: \(String(describing: window.firstResponder)), error: \(String(describing: session.errorMessage))"
         }
 
         func waitUntilPreviewIsAvailable() async throws {
@@ -9517,6 +9703,19 @@ struct MarkdownEditorWebViewIntegrationTests {
             return snapshots
         }
 
+        /// Fixture interactions use CodeMirror's normalized coordinates. The
+        /// production locator API always receives exact Markdown coordinates.
+        func revealEditorRange(fromUTF16: Int, toUTF16: Int) {
+            let map = EditorSourceOffsetMap(source: session.checkedSource)
+            guard let from = map.sourceUTF16Offset(forEditorUTF16Offset: fromUTF16),
+                let to = map.sourceUTF16Offset(forEditorUTF16Offset: toUTF16)
+            else {
+                Issue.record("Fixture selection is outside the current CodeMirror document.")
+                return
+            }
+            session.revealSourceRange(fromUTF16: from, toUTF16: to)
+        }
+
         func setPresentationCSS(_ css: String) {
             sourceBox.presentationCSS = css
         }
@@ -9574,7 +9773,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 in: webView
             )
             if !didSuspend,
-                case .initialize(_, _, _, .some, _) = request.operation
+                case .initialize(_, _, _, .some, _, _) = request.operation
             {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }
@@ -9618,7 +9817,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requestJSON: requestJSON,
                 in: webView
             )
-            guard case .initialize(_, _, _, .some, _) = request.operation,
+            guard case .initialize(_, _, _, .some, _, _) = request.operation,
                 var object = result as? [String: Any]
             else {
                 return result
@@ -9633,12 +9832,79 @@ struct MarkdownEditorWebViewIntegrationTests {
     }
 
     @MainActor
+    private final class PreparationCompletionBarrier: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var suspended = false
+        private let holdsRelease: Bool
+        private(set) var appliedFractions: [Double] = []
+        init(holdsRelease: Bool = false) { self.holdsRelease = holdsRelease }
+        private var configuration: MarkdownEditorPresentationConfiguration?
+        private var mode: MarkdownEditorMode?
+        private(set) var completionCount = 0
+        private(set) var maskWasPresentAtEveryCompletion = true
+        private(set) var releasedConfiguration: MarkdownEditorPresentationConfiguration?
+        private(set) var releasedMode: MarkdownEditorMode?
+        private(set) var titleFocusReceipts: [String] = []
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if case .focusTitle = request.operation {
+                let dom = try? await webView.callAsyncJavaScript(
+                    "return JSON.stringify({active: document.activeElement?.className, title: !!document.querySelector('[data-scholium-title-input]')});",
+                    contentWorld: .page)
+                titleFocusReceipts.append("result: \(String(describing: result)); DOM: \(String(describing: dom))")
+            }
+            switch request.operation {
+            case .initialize(_, let initialMode, _, _, _, let initial):
+                mode = initialMode
+                configuration = initial
+            case .setPresentation(let value): configuration = value
+            case .setMode(let value): mode = value
+            case .completePreparation:
+                completionCount += 1
+                let count =
+                    try await webView.callAsyncJavaScript("return document.querySelectorAll('.scholium-document-preparation').length;", contentWorld: .page)
+                    as? Int
+                maskWasPresentAtEveryCompletion = maskWasPresentAtEveryCompletion && count == 1
+                if !suspended, !holdsRelease {
+                    suspended = true
+                    await withCheckedContinuation { continuation = $0 }
+                }
+            case .releasePreparation:
+                releasedConfiguration = configuration
+                releasedMode = mode
+                if !suspended, holdsRelease {
+                    suspended = true
+                    await withCheckedContinuation { continuation = $0 }
+                }
+            case .setScrollFraction(let fraction): appliedFractions.append(fraction)
+            default: break
+            }
+            return result
+        }
+        func waitUntilSuspended() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while continuation == nil {
+                try #require(ContinuousClock.now < deadline, "Initial preparation did not reach the controlled completion barrier.")
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
     private final class FailingPostInitializeBridgeDispatcher:
         MarkdownEditorBridgeDispatching
     {
         private enum ProbeError: Error { case postInitializeFailure }
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
         private var initialized = false
+        private(set) var didInjectFailure = false
 
         func dispatch(
             requestJSON: String,
@@ -9648,7 +9914,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 MarkdownEditorRequest.self,
                 from: Data(requestJSON.utf8)
             )
-            if initialized, case .setScrollFraction = request.operation {
+            if initialized, case .completePreparation = request.operation {
+                didInjectFailure = true
                 throw ProbeError.postInitializeFailure
             }
             let result = try await production.dispatch(
@@ -9657,6 +9924,31 @@ struct MarkdownEditorWebViewIntegrationTests {
             )
             if case .initialize = request.operation { initialized = true }
             return result
+        }
+    }
+
+    @MainActor
+    private final class FocusAdmissionTestWindow: NSWindow {
+        // SwiftPM has no foreground activation. This tests admission cleanup;
+        // actual key-window and keyboard delivery belong to the QA journey.
+        override var isKeyWindow: Bool { true }
+    }
+
+    @MainActor
+    private final class FailingAdmittedFocusBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private enum ProbeError: Error { case focusFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var rejectNextTitleFocus = false
+        private(set) var didRejectTitleFocus = false
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            if rejectNextTitleFocus, case .focusTitle = request.operation {
+                rejectNextTitleFocus = false
+                didRejectTitleFocus = true
+                throw ProbeError.focusFailure
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
         }
     }
 

@@ -267,14 +267,21 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             return
         }
         if reusedWebView != nil {
-            webView.onFirstWindowAttachment = { [weak webView, weak coordinator] in
+            webView.onFirstWindowAttachment = { [weak webView, weak coordinator, performanceDocumentID] in
                 guard let webView else { return }
+                PerformanceProbe.shared.markEditActivationAttached(
+                    documentID: performanceDocumentID, reusedPage: true
+                )
                 coordinator?.resumePreparedPage(in: webView, editorHTML: editorHTML)
             }
         } else {
             coordinator.awaitingEditorLoad = true
-            webView.onFirstWindowAttachment = { [weak webView] in
-                webView?.loadHTMLString(editorHTML, baseURL: nil)
+            webView.onFirstWindowAttachment = { [weak webView, performanceDocumentID] in
+                guard let webView else { return }
+                PerformanceProbe.shared.markEditActivationAttached(
+                    documentID: performanceDocumentID, reusedPage: false
+                )
+                webView.loadHTMLString(editorHTML, baseURL: nil)
             }
         }
         let container = DocumentWebViewContainer(
@@ -1110,6 +1117,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private func signalReady() {
             guard !hasSignaledReady else { return }
             hasSignaledReady = true
+            PerformanceProbe.shared.markEditActivationRendererReady(documentID: performanceDocumentID)
             session.editorBecameReady()
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)

@@ -219,7 +219,14 @@ extension WindowModel {
             reportOperationIssue(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
-        requestPresentationMode = mode
+        guard let documentActions = currentEditorActions else {
+            // A destination may still be mounting its Note view. That view
+            // consumes this intent when its document-owned port becomes live.
+            requestPresentationMode = mode
+            return
+        }
+        if requestPresentationMode != nil { requestPresentationMode = nil }
+        documentActions.selectPresentationMode(mode)
     }
 
     func currentSearchResultEvidence(

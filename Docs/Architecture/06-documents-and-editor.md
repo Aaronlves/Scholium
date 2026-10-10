@@ -16,8 +16,9 @@ from open document sessions. Equal paths across vaults remain distinct.
 `DocumentController` owns one persisted window-wide mode. Sessions retain
 editor/flush identity, checked exact mirror, committed revision, presentation/
 pending intent, allocation/configuration, source-bound scroll, save and conflict/
-retry/comparison state across mode/layout/theme changes. Hidden hosts cannot
-receive input/accessibility focus. Mount committed Review only for Review/read
+retry/comparison state across mode/layout/theme changes. Only active hosts receive
+input/accessibility; preparation measures actual layout behind its mask.
+Mount committed Review only for Review/read
 recovery; reconstruct after Edit/Source. Mode presentation awaits acknowledgment;
 unsafe Review retains editor/recovery.
 
@@ -34,12 +35,12 @@ conflict comparison. External events reconcile all tabs by stable identity befor
 changing paths/projections; clean deleted sessions release, unsafe sessions retain
 their buffers.
 
-Managed creation installs exact committed source and initial intent together.
-Initialization/focus acknowledgments and mapped selection must match before
-readiness; failure preserves source behind retry/Source. Clean external publication
+Opening installs exact source, target mode and initial intent together.
+Mapped selection and measured geometry precede handoff; failure preserves source
+behind retry/Source. Clean external publication
 replaces pending source/boundary together. Revision changes invalidate stale
 readiness; Review/recovery HTML caches source and authorized local-image revisions.
-Document owns lightweight position/focus,
+Document owns position/focus,
 not another writable path-mapped presentation record.
 
 ### Editor boundary contract

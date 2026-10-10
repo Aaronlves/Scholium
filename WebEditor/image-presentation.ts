@@ -136,6 +136,15 @@ function imageAlternativeText(state: EditorState, image: SemanticInlineProjectio
   }).join("");
 }
 
+/** Apply only decoded intrinsic dimensions; no placeholder geometry. */
+export function applyDecodedImagePresentation(image: HTMLImageElement): boolean {
+  if (!(image.naturalWidth > 0 && image.naturalHeight > 0)) return false;
+  const ratio = String(image.naturalWidth / image.naturalHeight);
+  if (image.style.getPropertyValue("--scholium-image-aspect-ratio") === ratio) return false;
+  image.style.setProperty("--scholium-image-aspect-ratio", ratio);
+  return true;
+}
+
 class ImageWidget extends WidgetType {
   constructor(readonly presentation: ImagePresentation,
     readonly activateLink: (target: string, isImage: boolean) => void) { super(); }
@@ -160,15 +169,14 @@ class ImageWidget extends WidgetType {
     // WebKit decodes even local data URLs asynchronously. CodeMirror owns the
     // height map; loading changes only its measurement, never source/history.
     const measure = () => {
-      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-        image.style.setProperty("--scholium-image-aspect-ratio", String(image.naturalWidth / image.naturalHeight));
-      }
+      applyDecodedImagePresentation(image);
       if (shell.isConnected) view.requestMeasure();
     };
     image.addEventListener("load", measure);
     image.addEventListener("error", measure);
     image.src = this.presentation.resource;
     shell.append(image);
+    if (image.complete) measure();
     let pending: {doc: EditorState["doc"]; x: number; y: number} | null = null;
     const opensImage = (event: MouseEvent) => event.button === 0
       && event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;

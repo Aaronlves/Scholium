@@ -16,6 +16,7 @@ import {
 import type {LiveProjectionIndexController} from "./live-projection-index";
 import type {LiveSelectionController} from "./live-selection";
 import type {ProjectedWidgetRegistry} from "./projected-widget-registry";
+import {beginDocumentWidgetPreparation, type DocumentWidgetPreparation} from "./document-widget-readiness";
 
 interface LiveMermaidProjectionState {
   readonly decorations: DecorationSet;
@@ -40,6 +41,7 @@ export function createLiveMermaidProjection(options: {
 }): {extension: Extension; presentations(state: EditorState): readonly MermaidPresentation[]} {
   const abortControllers = new WeakMap<HTMLElement, AbortController>();
   const renderedThemes = new WeakMap<HTMLElement, number>();
+  const preparations = new WeakMap<HTMLElement, DocumentWidgetPreparation>();
 
   class MermaidWidget extends WidgetType {
     constructor(
@@ -73,6 +75,8 @@ export function createLiveMermaidProjection(options: {
       slot.append(wrapper);
       const abortController = new AbortController();
       abortControllers.set(slot, abortController);
+      const preparation = beginDocumentWidgetPreparation(slot);
+      preparations.set(slot, preparation);
 
       void options.ensureRuntime().then(async (runtime) => {
         if (abortController.signal.aborted || !slot.isConnected) return;
@@ -137,7 +141,7 @@ export function createLiveMermaidProjection(options: {
           localized("This Mermaid diagram could not be rendered. Source is shown."),
         );
         view.requestMeasure();
-      });
+      }).finally(() => preparation.finish());
       return slot;
     }
 
@@ -154,6 +158,8 @@ export function createLiveMermaidProjection(options: {
     destroy(dom: HTMLElement) {
       abortControllers.get(dom)?.abort();
       abortControllers.delete(dom);
+      preparations.get(dom)?.finish();
+      preparations.delete(dom);
       renderedThemes.delete(dom);
     }
 

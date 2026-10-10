@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 49
+let markdownEditorProtocolVersion = 50
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -19,6 +19,10 @@ let markdownEditorMaximumImageResourceMetadataBytes = 512 * 1_024
 let markdownEditorMaximumImageResourceEnvelopeBytes =
     4 * ((markdownEditorMaximumImageResourceBytes + 2) / 3)
     + markdownEditorMaximumImageResourceMetadataBytes
+
+let markdownEditorMaximumPresentationEnvelopeBytes =
+    markdownEditorMaximumImageResourceEnvelopeBytes
+    + 12_000_000 + markdownEditorMaximumInboundBytes + 512_000
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
@@ -239,22 +243,32 @@ struct DocumentFindResult: Codable, Hashable, Sendable {
     }
 }
 
+struct MarkdownEditorPresentationConfiguration: Codable, Hashable, Sendable {
+    var documentTitle = ""
+    var presentationCSS = ""
+    var userCSS = ""
+    var linkPreviews: [MarkdownEditorLinkPreview] = []
+    var linkPreviewGeneration = 0
+    var imageResources: [String: String] = [:]
+    var imageResourceGeneration = 0
+    var writingContinuationEnabled = false
+    var writingContinuationContextKey = ""
+    var writingIndexContextKey = ""
+}
+
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case initialize(
         text: String,
         mode: MarkdownEditorMode,
         dialect: MarkdownEditingDialect,
         initialSelection: MarkdownEditorSelectionRange?,
-        citationSnapshot: ZoteroCitationSnapshot? = nil
+        citationSnapshot: ZoteroCitationSnapshot? = nil,
+        presentation: MarkdownEditorPresentationConfiguration
     )
+    case setPresentation(MarkdownEditorPresentationConfiguration)
+    case completePreparation(anchor: MarkdownEditorWireScrollAnchor?, fraction: Double?)
+    case releasePreparation(focusTarget: WindowDocumentFocusTarget?)
     case setMode(MarkdownEditorMode)
-    case setDocumentTitle(String)
-    case setPresentationCSS(String)
-    case setUserCSS(String)
-    case setLinkPreviews([MarkdownEditorLinkPreview])
-    case setImageResources([String: String])
-    case setWritingContinuation(enabled: Bool, contextKey: String)
-    case setWritingIndexContext(String)
     case showPreview
     case showSelectionActions
     case measureVisibleProjection
@@ -299,21 +313,21 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     }
 
     var maximumRequestEnvelopeBytes: Int {
-        if case .setImageResources = self {
-            return markdownEditorMaximumImageResourceEnvelopeBytes
+        switch self {
+        case .initialize: markdownEditorMaximumSourceEnvelopeBytes + markdownEditorMaximumPresentationEnvelopeBytes
+        case .setPresentation: markdownEditorMaximumPresentationEnvelopeBytes
+        default: markdownEditorMaximumSourceEnvelopeBytes
         }
-        return markdownEditorMaximumSourceEnvelopeBytes
     }
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
-            enabled, contextKey, plainText, selections, transactionID, reference
-        case citationSnapshot, expectedCitationData, committedCitationSnapshot
+            plainText, selections, transactionID, reference
+        case citationSnapshot, expectedCitationData, committedCitationSnapshot, presentation, focusTarget
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
-            setWritingContinuation, setWritingIndexContext, showPreview, showSelectionActions,
+        case initialize, setPresentation, completePreparation, releasePreparation, setMode, showPreview, showSelectionActions,
             measureVisibleProjection,
             announceStatus
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
@@ -336,21 +350,18 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                     MarkdownEditorSelectionRange.self,
                     forKey: .initialSelection
                 ),
-                citationSnapshot: container.decodeIfPresent(ZoteroCitationSnapshot.self, forKey: .citationSnapshot)
+                citationSnapshot: container.decodeIfPresent(ZoteroCitationSnapshot.self, forKey: .citationSnapshot),
+                presentation: container.decode(MarkdownEditorPresentationConfiguration.self, forKey: .presentation)
             )
+        case .setPresentation:
+            self = try .setPresentation(container.decode(MarkdownEditorPresentationConfiguration.self, forKey: .value))
+        case .completePreparation:
+            self = try .completePreparation(
+                anchor: container.decodeIfPresent(MarkdownEditorWireScrollAnchor.self, forKey: .anchor),
+                fraction: container.decodeIfPresent(Double.self, forKey: .fraction))
+        case .releasePreparation:
+            self = try .releasePreparation(focusTarget: container.decodeIfPresent(WindowDocumentFocusTarget.self, forKey: .focusTarget))
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
-        case .setDocumentTitle:
-            self = try .setDocumentTitle(container.decode(String.self, forKey: .value))
-        case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
-        case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
-        case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
-        case .setImageResources: self = try .setImageResources(container.decode([String: String].self, forKey: .value))
-        case .setWritingContinuation:
-            self = try .setWritingContinuation(
-                enabled: container.decode(Bool.self, forKey: .enabled),
-                contextKey: container.decode(String.self, forKey: .contextKey))
-        case .setWritingIndexContext:
-            self = try .setWritingIndexContext(container.decode(String.self, forKey: .contextKey))
         case .showPreview: self = .showPreview
         case .showSelectionActions: self = .showSelectionActions
         case .measureVisibleProjection: self = .measureVisibleProjection
@@ -436,7 +447,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .initialize(let text, let mode, let dialect, let initialSelection, let citationSnapshot):
+        case .initialize(let text, let mode, let dialect, let initialSelection, let citationSnapshot, let presentation):
             try container.encode(Kind.initialize, forKey: .type)
             try container.encode(text, forKey: .text)
             try container.encode(mode, forKey: .mode)
@@ -446,20 +457,16 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 forKey: .initialSelection
             )
             try container.encodeIfPresent(citationSnapshot, forKey: .citationSnapshot)
+            try container.encode(presentation, forKey: .presentation)
+        case .setPresentation(let value): try pair(.setPresentation, value, .value, into: &container)
+        case .completePreparation(let anchor, let fraction):
+            try container.encode(Kind.completePreparation, forKey: .type)
+            try container.encodeIfPresent(anchor, forKey: .anchor)
+            try container.encodeIfPresent(fraction, forKey: .fraction)
+        case .releasePreparation(let focusTarget):
+            try container.encode(Kind.releasePreparation, forKey: .type)
+            try container.encodeIfPresent(focusTarget, forKey: .focusTarget)
         case .setMode(let mode): try pair(.setMode, mode, .mode, into: &container)
-        case .setDocumentTitle(let value):
-            try pair(.setDocumentTitle, value, .value, into: &container)
-        case .setPresentationCSS(let value): try pair(.setPresentationCSS, value, .value, into: &container)
-        case .setUserCSS(let value): try pair(.setUserCSS, value, .value, into: &container)
-        case .setLinkPreviews(let value): try pair(.setLinkPreviews, value, .value, into: &container)
-        case .setImageResources(let value): try pair(.setImageResources, value, .value, into: &container)
-        case .setWritingContinuation(let enabled, let contextKey):
-            try container.encode(Kind.setWritingContinuation, forKey: .type)
-            try container.encode(enabled, forKey: .enabled)
-            try container.encode(contextKey, forKey: .contextKey)
-        case .setWritingIndexContext(let contextKey):
-            try container.encode(Kind.setWritingIndexContext, forKey: .type)
-            try container.encode(contextKey, forKey: .contextKey)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
         case .showSelectionActions: try container.encode(Kind.showSelectionActions, forKey: .type)
         case .measureVisibleProjection:

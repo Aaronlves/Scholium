@@ -12,7 +12,7 @@ enum ReadReplyEvent {
 }
 
 /// Identifies inline rich content to the transcript-owned wheel boundary.
-final class AgentChatReadWebView: WKWebView {
+final class AgentChatReadWebView: DocumentNativeWebView {
     private(set) var isChatInteractive = true
 
     func setChatInteractive(_ interactive: Bool) {

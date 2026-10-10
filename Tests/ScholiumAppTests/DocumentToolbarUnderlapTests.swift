@@ -80,7 +80,7 @@ struct DocumentToolbarUnderlapTests {
         window.toolbarStyle = .unified
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 500))
         window.contentView = root
-        let web = WKWebView(frame: root.bounds)
+        let web = DocumentNativeWebView(frame: root.bounds)
         let viewport = DocumentWebViewContainer(webView: web)
         viewport.frame = root.bounds
         viewport.toolbarUnderlapEnabled = true
@@ -107,7 +107,20 @@ struct DocumentToolbarUnderlapTests {
         viewport.setSurfaceVisibility(.retained)
         viewport.layoutSubtreeIfNeeded()
         #expect(viewport.toolbarOverlap.height == overlap.height)
+        #expect(viewport.isHidden && web.isHidden)
+        #expect(viewport.accessibilityChildren()?.isEmpty == true)
+        viewport.setSurfaceVisibility(.preparing)
+        viewport.layoutSubtreeIfNeeded()
+        #expect(!viewport.isHidden && !web.isHidden)
+        #expect(viewport.toolbarOverlap.height == overlap.height)
+        #expect(viewport.hitTest(bodyPoint) == nil)
+        #expect(viewport.accessibilityChildren()?.isEmpty == true)
+        #expect(!web.acceptsFirstResponder && !web.canBecomeKeyView)
+        #expect(!web.documentSurfaceAllowsInput)
         viewport.setSurfaceVisibility(.active)
+        #expect(web.documentSurfaceAllowsInput)
+        #expect(viewport.hitTest(bodyPoint) != nil)
+        #expect(viewport.accessibilityChildren()?.count == 1)
 
         viewport.frame.origin.x = 80
         #expect(viewport.hitTest(NSPoint(x: toolbarPoint.x + 80, y: toolbarPoint.y)) == nil)

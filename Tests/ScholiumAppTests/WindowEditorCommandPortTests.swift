@@ -7,6 +7,32 @@ import Testing
 @MainActor
 @Suite("Window editor command port", .serialized)
 struct WindowEditorCommandPortTests {
+    @Test("Mounted mode requests run synchronously; an unmounted destination keeps its intent")
+    func modeRequestUsesCurrentMountedPort() throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let note = document("Active.md")
+        window.documentController.selectDocument(note)
+        let session = window.documentController.session(for: note.editingTarget)
+        let port = ScholiumEditorCommandPort()
+        var requestedModes: [NotePresentationMode] = []
+        window.registerEditorActions(
+            port: port, target: note.editingTarget, session: session,
+            actions: actions("active", selectMode: { requestedModes.append($0) }) {}, change: .activation
+        )
+        #expect(!session.isEditing)
+        window.requestPresentationMode = .source
+
+        window.requestDocumentMode(.read)
+
+        #expect(requestedModes == [.read])
+        #expect(window.requestPresentationMode == nil)
+
+        window.documentController.selectDocument(document("Next.md"))
+        window.requestDocumentMode(.read)
+        #expect(requestedModes == [.read])
+        #expect(window.requestPresentationMode == .read)
+    }
+
     @Test("Selection inquiry commands use the current window token and revoke stale callbacks")
     func selectionInquiryPort() throws {
         let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
@@ -16,7 +42,7 @@ struct WindowEditorCommandPortTests {
         let port = ScholiumEditorCommandPort()
         var invoked: [AgentChatSelectionInquiry] = []
         var availability = false
-        var registered = actions("selection") {}
+        var registered = actions("selection", selectMode: { _ in }) {}
         registered.canInvokeSelectionInquiry = { _ in availability }
         registered.invokeSelectionInquiry = { invoked.append($0) }
         window.registerEditorActions(
@@ -46,26 +72,32 @@ struct WindowEditorCommandPortTests {
         var newExecutions = 0
         window.registerEditorActions(
             port: oldPort, target: note.editingTarget, session: session,
-            actions: actions("old") { oldExecutions += 1 }, change: .activation
+            actions: actions("old", selectMode: { _ in oldExecutions += 1 }) { oldExecutions += 1 }, change: .activation
         )
         let capturedOldAction = try #require(window.currentEditorActions)
         window.registerEditorActions(
             port: newPort, target: note.editingTarget, session: session,
-            actions: actions("new") { newExecutions += 1 }, change: .activation
+            actions: actions("new", selectMode: { _ in newExecutions += 1 }) { newExecutions += 1 }, change: .activation
         )
         window.registerEditorActions(
             port: oldPort, target: note.editingTarget, session: session,
-            actions: actions("old refresh") { oldExecutions += 1 }, change: .refresh
+            actions: actions("old refresh", selectMode: { _ in oldExecutions += 1 }) { oldExecutions += 1 }, change: .refresh
         )
         window.unregisterEditorActions(token: oldPort.token)
         #expect(window.currentEditorActions?.documentID == "new")
         capturedOldAction.perform(.bold)
+        capturedOldAction.selectPresentationMode(.source)
         #expect(oldExecutions == 0)
         window.currentEditorActions?.perform(.bold)
         #expect(newExecutions == 1)
+        let capturedNewAction = try #require(window.currentEditorActions)
+        capturedNewAction.selectPresentationMode(.read)
+        #expect(newExecutions == 2)
 
         let other = document("B.md")
         window.documentController.selectDocument(other)
+        capturedNewAction.selectPresentationMode(.source)
+        #expect(newExecutions == 2)
         #expect(window.currentEditorActions == nil)
         window.unregisterEditorActions(token: newPort.token)
         #expect(newPort.actions == nil)
@@ -84,7 +116,7 @@ struct WindowEditorCommandPortTests {
         var destinationExecutions = 0
         source.registerEditorActions(
             port: sourcePort, target: note.editingTarget, session: session,
-            actions: actions("source") { sourceExecutions += 1 }, change: .activation
+            actions: actions("source", selectMode: { _ in sourceExecutions += 1 }) { sourceExecutions += 1 }, change: .activation
         )
         let capturedSourceAction = try #require(source.currentEditorActions)
         let transfer = try #require(source.documentController.takeSessionForTransfer(note))
@@ -92,13 +124,16 @@ struct WindowEditorCommandPortTests {
         let destinationPort = ScholiumEditorCommandPort()
         destination.registerEditorActions(
             port: destinationPort, target: note.editingTarget, session: session,
-            actions: actions("destination") { destinationExecutions += 1 }, change: .activation
+            actions: actions("destination", selectMode: { _ in destinationExecutions += 1 }) { destinationExecutions += 1 }, change: .activation
         )
         capturedSourceAction.perform(.bold)
+        capturedSourceAction.selectPresentationMode(.source)
         #expect(sourceExecutions == 0)
         #expect(source.currentEditorActions == nil)
         destination.currentEditorActions?.perform(.bold)
         #expect(destinationExecutions == 1)
+        destination.currentEditorActions?.selectPresentationMode(.read)
+        #expect(destinationExecutions == 2)
         source.unregisterEditorActions(token: sourcePort.token)
         #expect(destination.currentEditorActions?.documentID == "destination")
     }
@@ -115,7 +150,7 @@ struct WindowEditorCommandPortTests {
             weakPort = port
             window.registerEditorActions(
                 port: port, target: note.editingTarget, session: session,
-                actions: actions("closing") {}, change: .activation
+                actions: actions("closing", selectMode: { _ in }) {}, change: .activation
             )
             window.clearEditorActions()
             #expect(port.actions == nil)
@@ -137,10 +172,13 @@ struct WindowEditorCommandPortTests {
         )
     }
 
-    private func actions(_ documentID: String, perform: @escaping () -> Void) -> ScholiumFocusedEditorActions {
+    private func actions(
+        _ documentID: String, selectMode: @escaping (NotePresentationMode) -> Void, perform: @escaping () -> Void
+    ) -> ScholiumFocusedEditorActions {
         ScholiumFocusedEditorActions(
             documentID: documentID,
             isComposing: false,
+            selectPresentationMode: selectMode,
             isAvailable: { _ in true },
             perform: { _ in perform() },
             performWithArgument: { _, _ in },

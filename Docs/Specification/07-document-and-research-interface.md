@@ -212,7 +212,7 @@ YAML is never replaced by a field editor or
 reordered in the source, and no disclosure or timed collapse exists. Outside
 an active YAML selection, its fence lines are visually suppressed; entering or
 selecting YAML restores the exact delimiters at their source locations.
-Fresh opening shows the top; Edit's initial body caret does not override that
+Fresh opening shows the top; Edit's initial caret does not override that
 viewport. Switching open tabs or modes preserves context; explicit passage or
 Search locators take precedence. Saving preserves the viewport. Document switching
 presents only the requested mode after readiness, without showing a temporary
@@ -283,10 +283,10 @@ keyboard menus preview image originals in Quick Look without saving, restoring
 focus. Enclosing links navigate. No attachment sidebar, manager or persistent reader.
 
 Edit entry restores fingerprint-valid title/body focus and selection; otherwise
-it maps an exact Review selection or places the caret at the first body position
-after YAML. Explicit title activation, source locators and Managed New Note
+it maps an exact Review selection or places the caret before Markdown's first
+character, including YAML. Explicit title activation, source locators and Managed New Note
 retain their specified targets. After clean external revision, preserve only
-selections provably mapped to unchanged source; otherwise use body start.
+selections provably mapped to unchanged source; otherwise use Markdown start.
 Old Undo never replaces the external revision.
 
 Position, selection, focus and Find drafts belong to the open session. Successful
@@ -634,14 +634,13 @@ This is not a universal runtime enum or second state store.
 | **Recovery** | Consequential repair after failure or interruption with verification. | Generic toast or overwrite |
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
-Document Loading, Empty and Unavailable share centered presentation.
+Loading masks the requested mode's actual layout with an inactive pulse;
+Reduce Motion is static. Empty and Unavailable remain centered.
 Editor failure retains source; offers Retry Edit and Source. Notices float
 over content without resizing its viewport, bounded and centered with
 reflowing actions.
 
-Owners retain state and context; §20 owns accessibility and persistent
-repair. Fields, rows and notices keep
-purpose-specific presentations using this vocabulary.
+§20 owns accessibility and persistent repair; fields and notices remain purpose-specific.
 
 Document states retain these meanings:
 

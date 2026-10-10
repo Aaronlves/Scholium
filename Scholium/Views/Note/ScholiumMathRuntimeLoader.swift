@@ -6,13 +6,27 @@ import WebKit
 enum ScholiumMathRuntimeLoader {
     @MainActor
     static func installAndRefresh(in webView: WKWebView) async -> Bool {
+        let installed = await install(in: webView)
+        if installed { await refresh(in: webView) }
+        // Successful refresh replaces pending source projections before the
+        // geometry barrier proceeds. Failure settles their exact-source fallback.
+        _ = try? await webView.callAsyncJavaScript(
+            "window.dispatchEvent(new Event('scholium-math-runtime-settled'))",
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        return installed
+    }
+
+    @MainActor
+    private static func install(in webView: WKWebView) async -> Bool {
         if let installed = try? await webView.callAsyncJavaScript(
             "return window.scholiumMath?.version === 1",
             arguments: [:],
             in: nil,
             contentWorld: .page
         ), installed as? Bool == true {
-            await refresh(in: webView)
             return true
         }
         guard !ScholiumMathAssets.runtimeJavaScript.isEmpty else { return false }
@@ -22,7 +36,6 @@ enum ScholiumMathRuntimeLoader {
                 in: nil,
                 contentWorld: .page
             )
-            await refresh(in: webView)
             return true
         } catch {
             // Exact mathematics source remains visible through the existing

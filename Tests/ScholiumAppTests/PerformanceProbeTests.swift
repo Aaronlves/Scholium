@@ -587,6 +587,115 @@ struct PerformanceProbeTests {
         #expect(object["duration_ms"] as? Double == 75)
     }
 
+    @Test(
+        "Edit phases accept only ordered first observations and reset between samples",
+        arguments: ["warm_edit_activation", "first_edit_activation", "indexed_search"]
+    )
+    func editActivationPhasesAreOrderedAndSampleLocal(metric: String) throws {
+        let fileManager = FileManager.default
+        let runID = "edit_phases_\(UUID().uuidString)"
+        let root = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+            .appendingPathComponent(".build/performance-\(runID)", isDirectory: true)
+        let directory = root.appendingPathComponent("app-state/raw", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+        let result = directory.appendingPathComponent("edit_phases.jsonl")
+        var timestamp: UInt64 = 5_000_000
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": metric,
+                "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "3",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+            ],
+            arguments: [], bundleID: "com.scholium.qa", now: { timestamp }
+        )
+        try #require(probe.isEnabled)
+        func markPhases(documentID: String) {
+            probe.markEditActivationAttached(documentID: documentID, reusedPage: false)
+            probe.markEditActivationRendererReady(documentID: documentID)
+            probe.markEditActivationLoaded(documentID: documentID)
+        }
+        markPhases(documentID: "Fixture.md")
+        probe.markEditorVisible(documentID: "Fixture.md")
+        #expect(!fileManager.fileExists(atPath: result.path))
+        timestamp = 10_000_000
+        probe.beginEditActivation(documentID: "Fixture.md")
+        markPhases(documentID: "Other.md")
+        timestamp = 9_000_000
+        probe.markEditActivationAttached(documentID: "Fixture.md", reusedPage: false)
+        timestamp = 20_000_000
+        probe.markEditActivationAttached(documentID: "Fixture.md", reusedPage: true)
+        timestamp = 25_000_000
+        probe.markEditActivationAttached(documentID: "Fixture.md", reusedPage: false)
+        timestamp = 19_000_000
+        probe.markEditActivationRendererReady(documentID: "Fixture.md")
+        timestamp = 40_000_000
+        probe.markEditActivationRendererReady(documentID: "Fixture.md")
+        timestamp = 45_000_000
+        probe.markEditActivationRendererReady(documentID: "Fixture.md")
+        timestamp = 39_000_000
+        probe.markEditActivationLoaded(documentID: "Fixture.md")
+        timestamp = 60_000_000
+        probe.markEditActivationLoaded(documentID: "Fixture.md")
+        timestamp = 70_000_000
+        probe.markEditActivationLoaded(documentID: "Fixture.md")
+        probe.markEditorVisible(documentID: "Other.md")
+        timestamp = 90_000_000
+        probe.markEditorVisible(documentID: "Fixture.md")
+
+        timestamp = 100_000_000
+        probe.beginEditActivation(documentID: "Fixture.md")
+        timestamp = 110_000_000
+        probe.markEditActivationAttached(documentID: "Fixture.md", reusedPage: false)
+        timestamp = 130_000_000
+        probe.markEditActivationRendererReady(documentID: "Fixture.md")
+        timestamp = 150_000_000
+        probe.markEditorVisible(documentID: "Fixture.md")
+        probe.markEditActivationLoaded(documentID: "Fixture.md")
+
+        timestamp = 160_000_000
+        probe.beginEditActivation(documentID: "Fixture.md")
+        probe.markEditActivationRendererReady(documentID: "Fixture.md")
+        probe.markEditActivationLoaded(documentID: "Fixture.md")
+        timestamp = 180_000_000
+        probe.markEditorVisible(documentID: "Fixture.md")
+        probe.beginEditActivation(documentID: "Fixture.md")
+        markPhases(documentID: "Fixture.md")
+        probe.markEditorVisible(documentID: "Fixture.md")
+
+        if metric == "indexed_search" {
+            #expect(!fileManager.fileExists(atPath: result.path))
+            return
+        }
+        let lines = try String(contentsOf: result, encoding: .utf8).split(separator: "\n")
+        try #require(lines.count == 3)
+        let objects = try lines.map { line in
+            try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        }
+        let commonKeys: Set<String> = [
+            "schema", "run_id", "sample", "metric", "duration_ms", "completed_uptime_ns",
+        ]
+        let phaseKeys = [
+            "request_to_attached_duration_ms", "attached_to_renderer_ready_duration_ms",
+            "renderer_ready_to_loaded_observed_duration_ms", "loaded_observed_to_visible_duration_ms",
+        ]
+        #expect(Set(objects[0].keys) == commonKeys.union(phaseKeys).union(["pool_reused_page"]))
+        #expect(phaseKeys.compactMap { objects[0][$0] as? Double } == [10, 20, 20, 30])
+        #expect(phaseKeys.compactMap { objects[0][$0] as? Double }.reduce(0, +) == objects[0]["duration_ms"] as? Double)
+        #expect(objects[0]["pool_reused_page"] as? Bool == true)
+        #expect(Set(objects[1].keys) == commonKeys.union(phaseKeys.prefix(2)).union(["pool_reused_page"]))
+        #expect(objects[1][phaseKeys[0]] as? Double == 10)
+        #expect(objects[1][phaseKeys[1]] as? Double == 20)
+        #expect(objects[1]["duration_ms"] as? Double == 50)
+        #expect(objects[1]["pool_reused_page"] as? Bool == false)
+        #expect(Set(objects[2].keys) == commonKeys)
+        #expect(objects[2]["duration_ms"] as? Double == 20)
+        #expect(objects.enumerated().allSatisfy { index, object in object["sample"] as? Int == index })
+    }
+
     @Test("First Read records activation-to-interactive phase decomposition")
     func firstReadRecordsActivationPhases() throws {
         let fileManager = FileManager.default

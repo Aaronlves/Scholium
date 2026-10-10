@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 49;
+export const EDITOR_PROTOCOL_VERSION = 50;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -8,6 +8,8 @@ import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
 // Two exact source fields, each with worst-case JSON escaping, plus metadata.
 export const MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512_000;
+
+export const MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12_000_000 + MAX_INBOUND_BYTES + 512_000;
 
 export type EditorMode = "livePreview" | "source";
 export type MarkdownEditorCommand =
@@ -109,6 +111,30 @@ export interface DocumentFindResult {
   canReplaceCurrent: boolean;
   replacement?: {replaced: number; skipped: number};
 }
+export interface EditorPresentationConfiguration {
+  documentTitle: string;
+  presentationCSS: string;
+  userCSS: string;
+  linkPreviews: unknown[];
+  linkPreviewGeneration: number;
+  imageResources: Record<string, string>;
+  imageResourceGeneration: number;
+  writingContinuationEnabled: boolean;
+  writingContinuationContextKey: string;
+  writingIndexContextKey: string;
+}
+
+/** Appearance can advance across input; source ranges and image reads cannot. */
+export function admitPresentationSources(value: EditorPresentationConfiguration, generation: number,
+  previous: EditorPresentationConfiguration | null): EditorPresentationConfiguration {
+  return {...value,
+    linkPreviews: value.linkPreviewGeneration === generation ? value.linkPreviews : previous?.linkPreviews ?? [],
+    linkPreviewGeneration: value.linkPreviewGeneration === generation ? value.linkPreviewGeneration : previous?.linkPreviewGeneration ?? -1,
+    imageResources: value.imageResourceGeneration === generation ? value.imageResources : previous?.imageResources ?? {},
+    imageResourceGeneration: value.imageResourceGeneration === generation ? value.imageResourceGeneration : previous?.imageResourceGeneration ?? -1,
+  };
+}
+
 export type EditorOperation =
   | {
     type: "initialize";
@@ -117,15 +143,12 @@ export type EditorOperation =
     dialect: MarkdownEditingDialect;
     initialSelection?: SelectionRange;
     citationSnapshot?: ZoteroCitationSnapshot;
+    presentation: EditorPresentationConfiguration;
   }
+  | {type: "setPresentation"; value: EditorPresentationConfiguration}
+  | {type: "completePreparation"; anchor?: EditorScrollAnchor; fraction?: number}
+  | {type: "releasePreparation"; focusTarget?: EditorFocusTarget}
   | {type: "setMode"; mode: EditorMode}
-  | {type: "setDocumentTitle"; value: string}
-  | {type: "setPresentationCSS"; value: string}
-  | {type: "setUserCSS"; value: string}
-  | {type: "setLinkPreviews"; value: unknown[]}
-  | {type: "setImageResources"; value: Record<string, string>}
-  | {type: "setWritingContinuation"; enabled: boolean; contextKey: string}
-  | {type: "setWritingIndexContext"; contextKey: string}
   | {type: "showPreview"}
   | {type: "showSelectionActions"}
   | {type: "measureVisibleProjection"}
@@ -187,7 +210,8 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "showSelectionActions", "measureVisibleProjection", "announceStatus",
+  "setPresentation", "completePreparation", "releasePreparation",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "showPreview", "showSelectionActions", "measureVisibleProjection", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -250,9 +274,7 @@ export function recoveryGenerationCanReplaceCurrent(
 }
 
 const forwardReadableOperationTypes = new Set([
-  "setWritingContinuation",
-  "setWritingIndexContext",
-  "setDocumentTitle",
+  "setPresentation",
   "queryText",
   "querySelection",
   "queryContext",
@@ -334,28 +356,41 @@ function validCitationReference(value: unknown): value is EditorCitationSuggesti
     && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every(n => Number.isSafeInteger(n) && Number(n) >= 0)
     && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
 }
-function validOperation(operation: Record<string, unknown>) {
+function validPresentation(value: unknown): value is EditorPresentationConfiguration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const configuration = value as Partial<EditorPresentationConfiguration>;
+  return typeof configuration.documentTitle === "string" && configuration.documentTitle.length <= 1_024
+    && typeof configuration.presentationCSS === "string" && configuration.presentationCSS.length <= 1_000_000
+    && typeof configuration.userCSS === "string" && configuration.userCSS.length <= 1_000_000
+    && Object.keys(configuration).length === 10
+    && Array.isArray(configuration.linkPreviews) && encodedByteLength(configuration.linkPreviews) <= MAX_INBOUND_BYTES
+    && Number.isSafeInteger(configuration.linkPreviewGeneration) && Number(configuration.linkPreviewGeneration) >= 0
+    && validImageResources(configuration.imageResources)
+    && Number.isSafeInteger(configuration.imageResourceGeneration) && Number(configuration.imageResourceGeneration) >= 0
+    && typeof configuration.writingContinuationEnabled === "boolean"
+    && typeof configuration.writingContinuationContextKey === "string" && configuration.writingContinuationContextKey.length <= 256
+    && typeof configuration.writingIndexContextKey === "string" && configuration.writingIndexContextKey.length <= 256;
+}
+
+function validOperation(operation: Record<string, unknown>): boolean {
   switch (operation.type) {
   case "initialize":
     return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode)
       && (operation.citationSnapshot === undefined || validCitationSnapshot(operation.citationSnapshot))
       && validDialect(operation.dialect)
+      && validPresentation(operation.presentation)
       && validInitialSelection(
         operation.initialSelection,
         operation.text.replaceAll("\r\n", "\n").length,
       );
+  case "setPresentation": return validPresentation(operation.value);
+  case "completePreparation":
+    return (operation.fraction === undefined || typeof operation.fraction === "number" && Number.isFinite(operation.fraction)
+      && operation.fraction >= 0 && operation.fraction <= 1)
+      && (operation.anchor === undefined || validOperation({type: "setScrollAnchor", anchor: operation.anchor}));
+  case "releasePreparation": return operation.focusTarget === undefined || operation.focusTarget === "editor" || operation.focusTarget === "title";
   case "setMode": return validMode(operation.mode);
-  case "setDocumentTitle":
-    return typeof operation.value === "string" && operation.value.length <= 1_024;
-  case "setPresentationCSS":
-  case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
-  case "setLinkPreviews": return Array.isArray(operation.value);
-  case "setImageResources": return validImageResources(operation.value);
-  case "setWritingContinuation": return typeof operation.enabled === "boolean"
-    && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
-  case "setWritingIndexContext": return typeof operation.contextKey === "string"
-    && operation.contextKey.length <= 256;
   case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
   case "revealSourceRange":
     return Number.isSafeInteger(operation.fromUTF16)
@@ -452,7 +487,8 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
     const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-    const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES
+    const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES
+      : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES
       : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
     return encodedByteLength(value) <= maximum;
   } catch { return false; }

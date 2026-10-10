@@ -62,7 +62,11 @@ final class PerformanceProbe {
     private var editActivation:
         (
             documentID: String,
-            startNanoseconds: UInt64
+            startNanoseconds: UInt64,
+            attachedNanoseconds: UInt64?,
+            rendererReadyNanoseconds: UInt64?,
+            loadedObservedNanoseconds: UInt64?,
+            reusedPage: Bool?
         )?
     private var cachedPreviewStart: (documentID: String, nanoseconds: UInt64)?
     private var warmLibraryWindowModelInitializationNanoseconds: UInt64?
@@ -598,7 +602,37 @@ final class PerformanceProbe {
             editActivation = nil
             return
         }
-        editActivation = (documentID: documentID, startNanoseconds: now())
+        editActivation = (documentID, now(), nil, nil, nil, nil)
+    }
+
+    func markEditActivationAttached(documentID: String, reusedPage: Bool) {
+        guard measuresExpectedEditActivation(documentID),
+            let activation = editActivation, activation.attachedNanoseconds == nil
+        else { return }
+        let timestamp = now()
+        guard timestamp >= activation.startNanoseconds else { return }
+        editActivation?.attachedNanoseconds = timestamp
+        editActivation?.reusedPage = reusedPage
+    }
+
+    func markEditActivationRendererReady(documentID: String) {
+        guard measuresExpectedEditActivation(documentID),
+            let activation = editActivation, let attached = activation.attachedNanoseconds,
+            activation.rendererReadyNanoseconds == nil, activation.loadedObservedNanoseconds == nil
+        else { return }
+        let timestamp = now()
+        guard timestamp >= attached else { return }
+        editActivation?.rendererReadyNanoseconds = timestamp
+    }
+
+    func markEditActivationLoaded(documentID: String) {
+        guard measuresExpectedEditActivation(documentID),
+            let activation = editActivation, let attached = activation.attachedNanoseconds,
+            activation.loadedObservedNanoseconds == nil
+        else { return }
+        let timestamp = now()
+        guard timestamp >= (activation.rendererReadyNanoseconds ?? attached) else { return }
+        editActivation?.loadedObservedNanoseconds = timestamp
     }
 
     func markEditorVisible(documentID: String) {
@@ -611,7 +645,29 @@ final class PerformanceProbe {
                 activation.documentID == documentID
             else { return }
             editActivation = nil
-            record(startNanoseconds: activation.startNanoseconds, observedCount: nil)
+            let completed = now()
+            var phases: [String: Double] = [:]
+            if let attached = activation.attachedNanoseconds, attached <= completed {
+                phases["request_to_attached_duration_ms"] = milliseconds(attached - activation.startNanoseconds)
+            }
+            if let attached = activation.attachedNanoseconds,
+                let ready = activation.rendererReadyNanoseconds, ready <= completed
+            {
+                phases["attached_to_renderer_ready_duration_ms"] = milliseconds(ready - attached)
+            }
+            if let ready = activation.rendererReadyNanoseconds,
+                let loaded = activation.loadedObservedNanoseconds, loaded <= completed
+            {
+                phases["renderer_ready_to_loaded_observed_duration_ms"] = milliseconds(loaded - ready)
+            }
+            if let loaded = activation.loadedObservedNanoseconds, loaded <= completed {
+                phases["loaded_observed_to_visible_duration_ms"] = milliseconds(completed - loaded)
+            }
+            record(
+                startNanoseconds: activation.startNanoseconds, observedCount: nil,
+                completedNanoseconds: completed, phaseDurations: phases,
+                poolReusedPage: activation.reusedPage
+            )
         default:
             return
         }
@@ -691,7 +747,8 @@ final class PerformanceProbe {
         observedCount: Int?,
         observedMode: String? = nil,
         completedNanoseconds: UInt64? = nil,
-        phaseDurations: [String: Double] = [:]
+        phaseDurations: [String: Double] = [:],
+        poolReusedPage: Bool? = nil
     ) {
         guard let configuration,
             recordedSampleCount < configuration.sampleCount
@@ -710,6 +767,7 @@ final class PerformanceProbe {
         ]
         if let observedCount { object["observed_count"] = observedCount }
         if let observedMode { object["observed_mode"] = observedMode }
+        if let poolReusedPage { object["pool_reused_page"] = poolReusedPage }
         object.merge(phaseDurations) { _, phaseDuration in phaseDuration }
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
@@ -725,6 +783,15 @@ final class PerformanceProbe {
     private func measuresExpectedFirstRead(_ documentID: String) -> Bool {
         configuration?.metric == .firstReadActivation
             && configuration?.expectedDocument == documentID
+    }
+
+    private func measuresExpectedEditActivation(_ documentID: String) -> Bool {
+        guard let configuration,
+            configuration.metric == .warmEditActivation || configuration.metric == .firstEditActivation,
+            configuration.expectedDocument == documentID,
+            recordedSampleCount < configuration.sampleCount
+        else { return false }
+        return editActivation?.documentID == documentID
     }
 
     private func launchPhaseDurations(

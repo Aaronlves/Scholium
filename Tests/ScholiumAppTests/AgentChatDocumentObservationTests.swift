@@ -819,7 +819,7 @@ struct AgentChatDocumentObservationTests {
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             operations.append(request.operation)
-            if case .initialize(let source, _, _, let selection, _) = request.operation {
+            if case .initialize(let source, _, _, let selection, _, _) = request.operation {
                 self.source = source
                 generation = 0
                 selections = selection.map { [$0] } ?? [.init(anchor: 0, head: 0)]

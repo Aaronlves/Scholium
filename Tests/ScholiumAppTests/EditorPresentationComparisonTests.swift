@@ -198,7 +198,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await editHarness.waitUntilReady()
         let anchorRange = try #require(source.range(of: "INACTIVE_EDIT_ANCHOR"))
         let anchor = anchorRange.lowerBound.utf16Offset(in: source)
-        editHarness.session.revealSourceRange(fromUTF16: anchor, toUTF16: anchor)
+        editHarness.revealEditorRange(fromUTF16: anchor, toUTF16: anchor)
         try await editHarness.waitUntilSelection(head: anchor)
         _ = try await editHarness.presentationSnapshots(for: [scenario])
         let editSnapshot = try await waitForGeometrySnapshot(

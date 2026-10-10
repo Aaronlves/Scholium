@@ -21,6 +21,8 @@ import {decorateAttachmentLinks} from "./attachment-presentation";
 import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 import {installReviewImageActivation} from "./review-image-activation";
+import {beginDocumentPreparation, type DocumentPreparationHandle} from "./document-preparation";
+import {awaitVisibleDocumentImages} from "./document-widget-readiness";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -45,6 +47,12 @@ type ReaderWindow = Window & {
   scholiumUpdateReply?: (value: unknown) => Promise<boolean>;
   webkit?: {messageHandlers?: {scholiumRead?: ReaderMessageHandler}};
   scholiumReadReady?: Promise<void>;
+  scholiumReadPreparation?: {
+    settle(documentID: string, fingerprint: string, loadGeneration: number, expiresAt: number): Promise<{
+      settled: true; geometryChanged: boolean;
+    }>;
+    finish(documentID: string, fingerprint: string, loadGeneration: number): boolean;
+  };
   scholiumReadNavigation?: ReturnType<typeof createReaderArrival>;
   scholiumRead?: {initialize(value: unknown): Promise<void>};
   scholiumReviewFind?: {perform(request: ReviewFindRequest): ReviewFindResult};
@@ -86,6 +94,50 @@ async function initializeReader(value: unknown): Promise<void> {
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
+  const preparation: DocumentPreparationHandle | undefined = config.documentPreparation
+    ? beginDocumentPreparation(documentRoot) : undefined;
+  const decodedImages = new Set<HTMLImageElement>();
+  const readPreparation: NonNullable<ReaderWindow['scholiumReadPreparation']> = {
+    async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
+      const requireCurrent = () => {
+        if (readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected
+            || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint
+            || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+          throw new Error('stale reader preparation');
+        }
+      };
+      requireCurrent();
+      const before = documentRoot.getBoundingClientRect();
+      const previousHeight = document.documentElement.scrollHeight;
+      if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
+      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+      requireCurrent();
+      documentRoot.getBoundingClientRect();
+      const awaitedFonts = document.fonts.status === 'loading';
+      await document.fonts.ready;
+      requireCurrent();
+      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+        left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
+      }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+      documentRoot.getBoundingClientRect();
+      await document.fonts.ready;
+      requireCurrent();
+      const after = documentRoot.getBoundingClientRect();
+      preparation?.refresh();
+      return {settled: true, geometryChanged: decodedVisibleImages || awaitedFonts
+        || before.height !== after.height || before.width !== after.width
+        || previousHeight !== document.documentElement.scrollHeight};
+    },
+    finish(expectedDocumentID, expectedFingerprint, expectedGeneration) {
+      if (readerWindow.scholiumReadPreparation !== readPreparation
+          || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint
+          || expectedGeneration !== loadGeneration) return false;
+      preparation?.refresh();
+      preparation?.finish();
+      return true;
+    },
+  };
+  readerWindow.scholiumReadPreparation = readPreparation;
   let presentationUpdateSequence = 0;
   const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
   decorateAttachmentLinks(documentRoot);
@@ -609,6 +661,10 @@ async function initializeReader(value: unknown): Promise<void> {
       if (!preview || !preview.isEmbedded) continue;
       anchor.replaceWith(embeddedNoteFor(anchor, preview, key));
     }
+    renderMathNodes();
+    const current = readerWindow.scholiumMermaidReady || Promise.resolve();
+    readerWindow.scholiumMermaidReady = current.catch(() => {}).then(renderMermaidNodes);
+    readerWindow.scholiumReviewImages?.refresh();
   }
 
   readerWindow.scholiumSetLinkPreviews = (previews) => {

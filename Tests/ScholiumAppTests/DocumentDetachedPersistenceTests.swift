@@ -601,7 +601,7 @@ struct DocumentDetachedPersistenceTests {
             var recovery: MarkdownEditorRecoverySnapshot?
             var commitSuperseded: Bool?
             switch request.operation {
-            case .initialize(let source, _, _, let initialSelection, let citationSnapshot):
+            case .initialize(let source, _, _, let initialSelection, let citationSnapshot, _):
                 initializeCount += 1
                 if failNextInitialization {
                     failNextInitialization = false

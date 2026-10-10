@@ -2,6 +2,7 @@ import SwiftUI
 
 enum DocumentSurfaceVisibility: Equatable {
     case active
+    case preparing
     case retained
 
     var isActive: Bool {
@@ -80,6 +81,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let retainsEditor: Bool
     let editorIsReady: Bool
     let allowsPendingReadRecovery: Bool
+    let preparationTitle: String
     private let readSurface: ReadSurface
     private let editorSurface: EditorSurface
     @State private var presentationGate = DocumentEditorPresentationGate()
@@ -90,6 +92,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         retainsEditor: Bool,
         editorIsReady: Bool,
         allowsPendingReadRecovery: Bool = false,
+        preparationTitle: String = "",
         @ViewBuilder read: () -> ReadSurface,
         @ViewBuilder editor: () -> EditorSurface
     ) {
@@ -98,6 +101,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         self.retainsEditor = retainsEditor
         self.editorIsReady = editorIsReady
         self.allowsPendingReadRecovery = allowsPendingReadRecovery
+        self.preparationTitle = preparationTitle
         readSurface = read()
         editorSurface = editor()
     }
@@ -135,20 +139,20 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
                 editorSurface
                     .environment(
                         \.scholiumDocumentSurfaceVisibility,
-                        showsEditor ? .active : .retained
+                        showsEditor
+                            ? .active
+                            : presentsEditor && !allowsPendingReadRecovery ? .preparing : .retained
                     )
                     .allowsHitTesting(showsEditor)
                     .accessibilityHidden(!showsEditor)
                     .zIndex(showsEditor ? 1 : 0)
             }
             if presentsEditor && !showsEditor && !allowsPendingReadRecovery {
-                // Keep WebKit participating in real layout while the document
-                // plane covers preparation. Hiding the WebView itself defers
-                // the very rendering work that determines readiness.
-                ScholiumContentStateView("Loading Document…", indicator: .progress)
-                    .scholiumSurface(.document)
-                    .accessibilityIdentifier("scholium.documentPreparing")
-                    .zIndex(2)
+                DocumentPreparationStatus(
+                    title: preparationTitle,
+                    identifier: "scholium.documentPreparing"
+                )
+                .zIndex(2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -184,5 +188,21 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
                 editorIsReady: editorIsReady
             )
         }
+    }
+}
+
+/// WebKit paints the real-layout skeleton; native presentation owns its one
+/// accessible status. This view adds no content geometry or focus target.
+struct DocumentPreparationStatus: View {
+    let title: String
+    var identifier = "scholium.documentPreparing"
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title.isEmpty ? Text("Loading Document…") : Text("Opening \(title)…"))
+            .accessibilityIdentifier(identifier)
     }
 }

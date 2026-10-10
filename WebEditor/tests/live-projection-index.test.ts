@@ -31,6 +31,19 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it("reuses one semantic index for repeated reads in a Source state", () => {
+    let builds = 0;
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+      recordMetric: name => { if (name === "projection-index") builds++; }});
+    const state = EditorState.create({doc: "---\ntags: [draft]\n---\n# Body\n\n[[Target]] and $x$.",
+      extensions: [scholiumNoteLanguage, controller.extension]});
+    const index = controller.index(state);
+    for (let read = 0; read < 8; read++) expect(controller.index(state)).toBe(index);
+    expect(builds).toBe(1);
+    expect(index.frontmatterRange).not.toBeNull();
+    expect(index.syntax.blocks.some(block => block.kind === "heading")).toBe(true);
+  });
+
   it("rebinds images after plain definition label edits while mapping unrelated prose", () => {
     const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
     const source = "![Image][figure]\n\n[figure]: Attachments/a.png\n\nUnrelated prose.";

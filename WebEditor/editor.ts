@@ -1,3 +1,5 @@
+import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets} from "./document-widget-readiness";
+import {beginDocumentPreparation, type DocumentPreparationHandle} from "./document-preparation";
 import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
 import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
@@ -69,6 +71,7 @@ import {
 } from "@codemirror/autocomplete";
 import {
   EDITOR_PROTOCOL_VERSION,
+  type EditorPresentationConfiguration, admitPresentationSources,
   MAX_INBOUND_BYTES,
   type EditorCommandResult,
   type EditorContext,
@@ -131,7 +134,7 @@ import {
   updateEditorAccessibility,
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
-import {createMarkdownDocumentState, createMarkdownEditor} from "./bootstrap";
+import {createMarkdownDocumentState, createMarkdownEditor, measureMarkdownEditor} from "./bootstrap";
 import {createMermaidRuntimeLoader} from "./mermaid-runtime-loader";
 import {
   clearEditorPerformanceSamples,
@@ -192,7 +195,7 @@ import {
   performDocumentFind,
 } from "./document-find";
 
-import {createImageProjection} from "./image-presentation";
+import {applyDecodedImagePresentation, createImageProjection} from "./image-presentation";
 
 const editorStartupStartedAt = performance.now();
 
@@ -295,6 +298,8 @@ const refreshLivePreviewEffect = StateEffect.define<null>();
 const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
 let lastDocumentFocusTarget: EditorFocusTarget | undefined;
+let appliedPresentation: EditorPresentationConfiguration | null = null;
+let documentPreparation: DocumentPreparationHandle | null = null;
 
 function setDocumentFocusTarget(target: EditorFocusTarget) {
   const changed = lastDocumentFocusTarget !== target;
@@ -1875,7 +1880,7 @@ const inputSuggestions = createEditorInputSuggestions({
 });
 
 // One CodeMirror compartment is the complete presentation-mode boundary.
-// Source contains no Live Preview state field, view plugin, widget provider,
+// Source shares the derived semantic index, but no Live presentation state field, view plugin, widget provider,
 // navigation keymap, preview overlay, or semantic class.
 const livePreviewMode = [
   editorModeFacet.of("livePreview"),
@@ -1884,7 +1889,6 @@ const livePreviewMode = [
   Prec.high(liveSelection.extension),
   documentTextLanguage,
   syntaxPresentation,
-  liveProjectionIndex.extension,
   documentTitle.extension,
   inputSuggestions.extension,
   liveSemanticLayout.extension,
@@ -1926,7 +1930,9 @@ const editorContextMenu = createEditorContextMenuExtension({
   },
 });
 
+const initialModeExtension = modeCompartment.of(sourceMode);
 const editorExtensions = [
+  liveProjectionIndex.extension,
   citationHistory,
   editorArrivalHighlight,
   highlightSpecialChars(),
@@ -1974,7 +1980,7 @@ const editorExtensions = [
   linkActivation,
   EditorState.lineSeparator.of("\n"),
   exactSourceHistory,
-  modeCompartment.of(sourceMode),
+  initialModeExtension,
   editorSuspension,
   EditorView.theme({
     "&": { height: "100%" },
@@ -2264,16 +2270,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     editingDialect = operation.dialect;
     editorOperations.setDocument(
-      operation.text, request.sessionID, request.documentID, request.startingFingerprint, operation.citationSnapshot,
+      operation.text, request.sessionID, request.documentID, request.startingFingerprint,
+      operation.mode, operation.presentation, operation.initialSelection, operation.citationSnapshot,
     );
-    editorOperations.setMode(operation.mode);
-    if (operation.initialSelection) {
-      editorOperations.revealSourceRange(
-        operation.initialSelection.anchor,
-        operation.initialSelection.head,
-        false,
-      );
-    }
+    documentPreparation = beginDocumentPreparation(editor.dom);
     recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
     sampleEditorMemory(editor.state.doc.length);
     return successfulResult(request.requestID);
@@ -2299,13 +2299,86 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   }
   switch (operation.type) {
   case "setMode": editorOperations.setMode(operation.mode); break;
-  case "setDocumentTitle": documentTitle.setTitle(operation.value); break;
-  case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
-  case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
-  case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
-  case "setImageResources": liveImageProjection.setResources(operation.value, editor); break;
-  case "setWritingContinuation": inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey); break;
-  case "setWritingIndexContext": inputSuggestions.configureWritingIndexContext(operation.contextKey); break;
+  case "setPresentation": applyPresentationConfiguration(operation.value); break;
+  case "completePreparation": {
+    const attachment = documentAttachment;
+    const preparation = documentPreparation;
+    let expired = false;
+    const isCurrent = () => !expired && request.expiresAt > Date.now()
+      && attachment === documentAttachment && request.knownGeneration === documentVersion;
+    const requireCurrent = () => { if (!isCurrent()) throw new Error("stale editor preparation"); };
+    const measure = () => measureMarkdownEditor(editor, () => {
+      requireCurrent();
+      editor.coordsAtPos(editor.state.selection.main.head);
+      scrollCoordinator.currentAnchor();
+    });
+    flushPresentationStyleAndGeometry();
+    let deadline: number | undefined;
+    try {
+      await Promise.race([
+        document.fonts.ready.then(async () => {
+          requireCurrent();
+          convergeLivePreviewProjection();
+          await measure();
+          requireCurrent();
+          const decoded = new Set<HTMLImageElement>();
+          while (true) {
+            if (operation.anchor) scrollCoordinator.setAnchor(operation.anchor);
+            else if (operation.fraction !== undefined) scrollCoordinator.setFraction(operation.fraction);
+            await measure();
+            requireCurrent();
+            if (configuredEditorMode(editor.state) !== "livePreview") break;
+            if (document.fonts.status !== "loaded") {
+              await document.fonts.ready;
+              requireCurrent();
+              await measure();
+              requireCurrent();
+              continue;
+            }
+            if (await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent)) {
+              requireCurrent();
+              await measure();
+              await document.fonts.ready;
+              requireCurrent();
+              await measure();
+              requireCurrent();
+              continue;
+            }
+            // The shared readiness owner includes actual Embedded Note images,
+            // excludes popovers and preserves existing image/alt on failure.
+            if (await awaitVisibleDocumentImages(editor.contentDOM,
+              editor.scrollDOM.getBoundingClientRect(), decoded, requireCurrent, applyDecodedImagePresentation)) {
+              // Decoding changes the real height map. Restore the authorized
+              // target after measuring and inspect the materialized viewport.
+              await measure();
+              requireCurrent();
+              continue;
+            }
+            break;
+          }
+          preparation?.refresh();
+        }),
+        new Promise<never>((_resolve, reject) => {
+          deadline = window.setTimeout(() => {
+            expired = true;
+            reject(new Error("editor preparation expired"));
+          }, Math.max(0, request.expiresAt - Date.now()));
+        }),
+      ]);
+      requireCurrent();
+    } finally { window.clearTimeout(deadline); }
+    break;
+  }
+  case "releasePreparation": {
+    // Native owns the stable mode/configuration decision. All completion
+    // retries keep the same mask until this explicit presentation handoff.
+    documentPreparation?.finish();
+    documentPreparation = null;
+    if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({preventScroll: true});
+    else if (operation.focusTarget) editor.focus();
+    editor.coordsAtPos(editor.state.selection.main.head);
+    break;
+  }
   case "showPreview": previewPopover.showAtSelection(); break;
   case "showSelectionActions": {
     const shown = showCurrentSelectionActions(request.expiresAt);
@@ -2587,7 +2660,15 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "markClean": editorOperations.markClean(); break;
   case "focus": editorOperations.focus(); break;
   case "focusTitle": {
-    if (!documentTitle.focus()) {
+    const attachment = documentAttachment;
+    await measureMarkdownEditor(editor, () => {
+      if (attachment !== documentAttachment || request.expiresAt <= Date.now()) throw new Error("stale editor focus");
+      editor.coordsAtPos(editor.state.selection.main.head);
+    });
+    if (attachment !== documentAttachment || request.expiresAt <= Date.now()) {
+      return rejected(request.requestID, documentVersion, "stale editor focus");
+    }
+    if (!documentTitle.focus({preventScroll: true})) {
       return rejected(request.requestID, documentVersion, "document title is unavailable");
     }
     break;
@@ -2730,6 +2811,33 @@ function refreshMermaidTheme() {
   }
 }
 
+function applyPresentationConfiguration(requested: EditorPresentationConfiguration) {
+  const previous = appliedPresentation;
+  const value = admitPresentationSources(requested, documentVersion, previous);
+  if (previous?.documentTitle !== value.documentTitle) documentTitle.setTitle(value.documentTitle);
+  if (previous?.presentationCSS !== value.presentationCSS) editorOperations.setPresentationCSS(value.presentationCSS);
+  if (previous?.userCSS !== value.userCSS) editorOperations.setUserCSS(value.userCSS);
+  if (previous?.linkPreviewGeneration !== value.linkPreviewGeneration
+      || JSON.stringify(previous?.linkPreviews) !== JSON.stringify(value.linkPreviews)) {
+    editorOperations.setLinkPreviews(value.linkPreviews);
+  }
+  const previousImages = previous?.imageResources ?? {};
+  const keys = Object.keys(value.imageResources);
+  if (previous?.imageResourceGeneration !== value.imageResourceGeneration
+      || keys.length !== Object.keys(previousImages).length
+      || keys.some(key => previousImages[key] !== value.imageResources[key])) {
+    liveImageProjection.setResources(value.imageResources, editor);
+  }
+  if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled
+      || previous.writingContinuationContextKey !== value.writingContinuationContextKey) {
+    inputSuggestions.configureWritingContinuation(value.writingContinuationEnabled, value.writingContinuationContextKey);
+  }
+  if (previous?.writingIndexContextKey !== value.writingIndexContextKey) {
+    inputSuggestions.configureWritingIndexContext(value.writingIndexContextKey);
+  }
+  appliedPresentation = value;
+}
+
 function setDynamicStyle(id: string, css: string) {
   const style = document.getElementById(id);
   if (!style || style.textContent === css) return false;
@@ -2748,8 +2856,8 @@ function setDynamicStyle(id: string, css: string) {
 
 function flushPresentationStyleAndGeometry() {
   // Initiate style and font resolution before the opening measurement.
-  // Native covers the live WebView with the document plane until that
-  // measurement and its scroll write have both completed.
+  // The DOM paint mask keeps the opening covered while preserving real
+  // layout until native accepts the measured presentation handoff.
   for (const selector of [
     ".cm-content",
     ".cm-live-h1",
@@ -2864,7 +2972,12 @@ window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change",
 
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
-  setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string, citationSnapshot?: ZoteroCitationSnapshot) {
+  setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string,
+    mode: EditorMode, presentation: EditorPresentationConfiguration,
+    initialSelection?: {anchor: number; head: number}, citationSnapshot?: ZoteroCitationSnapshot) {
+    documentPreparation?.finish();
+    documentPreparation = null;
+    appliedPresentation = null;
     citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;
     committedSnapshotReceipt.clear();
@@ -2888,7 +3001,7 @@ const editorOperations = {
     documentTitle.resetDocument();
     lastDocumentFocusTarget = undefined;
     linkPreviews = [];
-    liveImageProjection.setResources(Object.create(null));
+    liveImageProjection.setResources(presentation.imageResourceGeneration === 0 ? presentation.imageResources : {});
     linkPreviewIndexByRange = new Map();
     lastUndoLabel = undefined;
     lastRedoLabel = undefined;
@@ -2904,9 +3017,22 @@ const editorOperations = {
     documentVersion = 0;
     // setState destroys old view plugins as well as replacing all fields.
     // Recovery is a separate, identity-checked operation after initialization.
-    const state = createMarkdownDocumentState(text, editorExtensions);
-    editor.setState(state.update({effects: setCitationSnapshot.of(citationSnapshot),
-      annotations: Transaction.addToHistory.of(false)}).state);
+    document.getElementById("scholium-presentation-css")!.textContent = presentation.presentationCSS;
+    document.getElementById("scholium-user-css")!.textContent = presentation.userCSS;
+    documentTitle.setTitle(presentation.documentTitle);
+    linkPreviews = presentation.linkPreviewGeneration === 0
+      ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
+    linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
+    const state = createMarkdownDocumentState(text, editorExtensions.map(extension =>
+      extension === initialModeExtension ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension), {
+      selection: initialSelection ? EditorSelection.single(initialSelection.anchor, initialSelection.head) : undefined,
+      citationSnapshot,
+    });
+    editor.setState(state);
+    inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
+    inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
+    appliedPresentation = presentation;
+    updateEditorAccessibility(editor.contentDOM, mode, currentEditorContext());
     dirty = false;
     lastInteractionAvailabilitySignature = null;
     scheduleEditorInteractionReport(true);
@@ -3079,7 +3205,11 @@ webkitWindow.scholiumEditor = {
     if (editor.composing || compositionGate.active) return false;
     editorOperations.blur();
     editingDialect = null;
-    editorOperations.setDocument("", "", "", "");
+    editorOperations.setDocument("", "", "", "", "source", {
+      documentTitle: "", presentationCSS: "", userCSS: "", linkPreviews: [], linkPreviewGeneration: 0,
+      imageResources: Object.create(null), imageResourceGeneration: 0,
+      writingContinuationEnabled: false, writingContinuationContextKey: "", writingIndexContextKey: "",
+    });
     interactionReporter.cancel();
     // Session-specific CSS and detached title focus must not survive parking.
     document.getElementById("scholium-user-css")?.replaceChildren();

@@ -505,6 +505,7 @@
     "Open Note: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Note: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开笔记：%@"}}}},
     "Open Markdown: %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open Markdown: %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开 Markdown：%@"}}}},
     "Opening Original Markdown…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Opening Original Markdown…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在打开原始 Markdown…"}}}},
+    "Opening %@…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Opening %@…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在打开“%@”…"}}}},
     "Outside Triptych": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Outside Triptych"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "库外文件"}}}},
     "Preview material: %@" : {
       "localizations" : {

@@ -179,7 +179,7 @@ final class DocumentSessionModel: ObservableObject {
         managedCreationBodyStartUTF16 = nil
     }
 
-    /// A first activation begins in the body. A retained or restored
+    /// A first activation targets the editor. A retained or restored
     /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {

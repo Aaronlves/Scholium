@@ -645,7 +645,7 @@ export function createLiveProjectionIndexController(
         : build(transaction.state);
     },
   });
-  const index = (state: EditorState) => state.field(field, false) ?? build(state);
+  const index = (state: EditorState) => state.field(field);
   return {
     extension: field,
     index,

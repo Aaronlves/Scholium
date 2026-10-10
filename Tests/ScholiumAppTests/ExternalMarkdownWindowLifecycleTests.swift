@@ -1122,7 +1122,7 @@ struct ExternalMarkdownWindowLifecycleTests {
             switch request.operation {
             case .focus, .focusTitle:
                 focusCount += 1
-            case .initialize(let source, _, _, _, _):
+            case .initialize(let source, _, _, _, _, _):
                 self.source = source
                 generation = 0
             case .queryText:

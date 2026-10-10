@@ -4867,7 +4867,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.imagePreviewsEnabled !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.imagePreviewsEnabled !== "boolean" || typeof config.documentPreparation !== "boolean" || config.replyProjection !== void 0 && typeof config.replyProjection !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     const localization = validatedInterfaceLocalization(config.localization);
     if (!localization) return null;
     return { ...config, localization };
@@ -5151,6 +5151,127 @@
     };
   }
 
+  // document-preparation.ts
+  var activePreparations = /* @__PURE__ */ new WeakMap();
+  var visualObjects = "img, svg, canvas, video, input, textarea, .scholium-mermaid";
+  var transientEditorPaint = ".cm-cursorLayer, .cm-selectionLayer, .cm-tooltip";
+  var maximumPaintRects = 384;
+  var maximumTextNodes = 768;
+  var maximumVisitedNodes = 4096;
+  function beginDocumentPreparation(root) {
+    const document2 = root.ownerDocument;
+    activePreparations.get(document2)?.finish();
+    const owner = document2.defaultView;
+    const previousAccessibility = root.getAttribute("aria-hidden");
+    root.setAttribute("aria-hidden", "true");
+    const mask = document2.createElement("div");
+    mask.className = "scholium-document-preparation";
+    mask.setAttribute("aria-hidden", "true");
+    const paint = document2.createElement("div");
+    paint.className = "scholium-document-preparation-paint";
+    mask.appendChild(paint);
+    document2.body.appendChild(mask);
+    const reducedMotion = owner?.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotion = () => mask.classList.toggle("scholium-document-preparation-static", reducedMotion?.matches ?? true);
+    let finished = false;
+    function refresh() {
+      if (finished || !owner) return;
+      if (!root.isConnected) {
+        finish();
+        return;
+      }
+      const width = owner.innerWidth, height = owner.innerHeight;
+      const fragment = document2.createDocumentFragment();
+      const painted = /* @__PURE__ */ new Set();
+      let examinedTextNodes = 0;
+      const appendRect = (rect) => {
+        if (painted.size >= maximumPaintRects) return;
+        const left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+        const right = Math.min(width, rect.right), bottom = Math.min(height, rect.bottom);
+        if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top) return;
+        const key = [left, top, right, bottom].join(":");
+        if (painted.has(key)) return;
+        painted.add(key);
+        const shape = document2.createElement("div");
+        shape.className = "scholium-document-preparation-shape";
+        Object.assign(shape.style, {
+          left: `${left}px`,
+          top: `${top}px`,
+          width: `${right - left}px`,
+          height: `${bottom - top}px`
+        });
+        fragment.appendChild(shape);
+      };
+      let node = root.firstChild;
+      let visited = 0;
+      while (node && visited++ < maximumVisitedNodes && painted.size < maximumPaintRects) {
+        let skipChildren = false;
+        if (node.nodeType === 1) {
+          const element = node;
+          const bounds = element.getBoundingClientRect();
+          skipChildren = element.matches(transientEditorPaint) || bounds.width > 0 && bounds.height > 0 && (bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= width || bounds.top >= height);
+          if (!skipChildren && element.matches(visualObjects)) {
+            appendRect(bounds);
+            skipChildren = true;
+          }
+        } else if (node.nodeType === 3 && node.textContent?.trim() && examinedTextNodes++ < maximumTextNodes) {
+          const range = document2.createRange();
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) {
+            appendRect(rect);
+            if (painted.size >= maximumPaintRects) break;
+          }
+        }
+        if (!skipChildren && node.firstChild) {
+          node = node.firstChild;
+          continue;
+        }
+        while (node && node !== root && !node.nextSibling) node = node.parentNode;
+        node = node === root ? null : node?.nextSibling ?? null;
+      }
+      paint.replaceChildren(fragment);
+    }
+    function finish() {
+      if (finished) return;
+      finished = true;
+      mask.remove();
+      if (previousAccessibility === null) root.removeAttribute("aria-hidden");
+      else root.setAttribute("aria-hidden", previousAccessibility);
+      owner?.removeEventListener("resize", refresh);
+      owner?.removeEventListener("scroll", refresh, true);
+      owner?.removeEventListener("pagehide", finish);
+      reducedMotion?.removeEventListener("change", updateMotion);
+      if (activePreparations.get(document2) === handle) activePreparations.delete(document2);
+    }
+    const handle = { refresh, finish };
+    activePreparations.set(document2, handle);
+    owner?.addEventListener("resize", refresh);
+    owner?.addEventListener("scroll", refresh, { capture: true, passive: true });
+    owner?.addEventListener("pagehide", finish, { once: true });
+    reducedMotion?.addEventListener("change", updateMotion);
+    updateMotion();
+    refresh();
+    return handle;
+  }
+
+  // document-widget-readiness.ts
+  async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
+    requireCurrent();
+    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
+      if (!image.isConnected || decoded.has(image)) return false;
+      const imageRect = image.getBoundingClientRect();
+      const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
+      return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
+    });
+    if (pending.length === 0) return false;
+    pending.forEach((image) => decoded.add(image));
+    await Promise.all(pending.map((image) => image.decode().catch(() => {
+    })));
+    requireCurrent();
+    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+    return true;
+  }
+
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -5178,6 +5299,46 @@
     presentationStyle.textContent = presentationCSS;
     userStyle.textContent = userCSS;
     const documentRoot = requiredElement("scholium-document");
+    const preparation = config.documentPreparation ? beginDocumentPreparation(documentRoot) : void 0;
+    const decodedImages = /* @__PURE__ */ new Set();
+    const readPreparation = {
+      async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
+        const requireCurrent = () => {
+          if (readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+            throw new Error("stale reader preparation");
+          }
+        };
+        requireCurrent();
+        const before = documentRoot.getBoundingClientRect();
+        const previousHeight = document.documentElement.scrollHeight;
+        if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
+        if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+        requireCurrent();
+        documentRoot.getBoundingClientRect();
+        const awaitedFonts = document.fonts.status === "loading";
+        await document.fonts.ready;
+        requireCurrent();
+        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+          left: 0,
+          right: window.innerWidth,
+          top: 0,
+          bottom: window.innerHeight
+        }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+        documentRoot.getBoundingClientRect();
+        await document.fonts.ready;
+        requireCurrent();
+        const after = documentRoot.getBoundingClientRect();
+        preparation?.refresh();
+        return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== document.documentElement.scrollHeight };
+      },
+      finish(expectedDocumentID, expectedFingerprint, expectedGeneration) {
+        if (readerWindow.scholiumReadPreparation !== readPreparation || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration) return false;
+        preparation?.refresh();
+        preparation?.finish();
+        return true;
+      }
+    };
+    readerWindow.scholiumReadPreparation = readPreparation;
     let presentationUpdateSequence = 0;
     const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
     decorateAttachmentLinks(documentRoot);
@@ -5675,6 +5836,11 @@
         if (!preview || !preview.isEmbedded) continue;
         anchor.replaceWith(embeddedNoteFor(anchor, preview, key));
       }
+      renderMathNodes();
+      const current = readerWindow.scholiumMermaidReady || Promise.resolve();
+      readerWindow.scholiumMermaidReady = current.catch(() => {
+      }).then(renderMermaidNodes);
+      readerWindow.scholiumReviewImages?.refresh();
     }
     readerWindow.scholiumSetLinkPreviews = (previews) => {
       previewByRange = new Map(previews.map((preview) => [

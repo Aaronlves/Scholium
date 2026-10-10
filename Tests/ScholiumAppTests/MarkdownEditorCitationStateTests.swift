@@ -49,13 +49,13 @@ struct MarkdownEditorCitationStateTests {
         let base = snapshot()
         let updated = snapshot(data: data(locator: "13"), revision: "updated companion bytes")
         let operations: [MarkdownEditorOperation] = [
-            .initialize(text: source, mode: .source, dialect: .current, initialSelection: nil, citationSnapshot: base),
+            .initialize(text: source, mode: .source, dialect: .current, initialSelection: nil, citationSnapshot: base, presentation: .init()),
             .acknowledgeCommittedSnapshot(
                 expected: source, committed: source, fingerprint: DocumentFingerprint(content: source).sha256,
                 expectedCitationData: updated.data, committedCitationSnapshot: updated
             ),
         ]
-        #expect(markdownEditorProtocolVersion == 49)
+        #expect(markdownEditorProtocolVersion == 50)
         for operation in operations {
             let encoded = try JSONEncoder().encode(operation)
             #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)

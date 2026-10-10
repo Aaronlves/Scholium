@@ -46,7 +46,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         expectProportionalImage(narrow, fixture: fixture)
         if fixture == .nestedAltPNG {
             let imageStart = try #require(source.range(of: "![fixture")?.lowerBound.utf16Offset(in: source))
-            editor.session.revealSourceRange(fromUTF16: imageStart, toUTF16: imageStart)
+            editor.revealEditorRange(fromUTF16: imageStart, toUTF16: imageStart)
             try await editor.waitUntilSelection(head: imageStart)
             #expect(try await editor.callPageJavaScript("return document.querySelectorAll('.cm-live-image').length;") as? Int == 0)
             #expect(
@@ -74,7 +74,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         await review.closeAndDrain()
     }
 
-    @Test("Initial images arriving after presentation convergence remain visible when loading completes")
+    @Test("Initial admitted images and visible decoded geometry gate Edit readiness")
     func initialImageCatalogAfterConvergence() async throws {
         let image = try InlineImageFixture.landscapePNG.image()
         let source = "Before fixture.\n\n![fixture](Attachments/figure)\n\nAfter fixture.\n"
@@ -90,19 +90,20 @@ extension MarkdownEditorWebViewIntegrationTests {
             harness.close()
         }
         do {
+            try await gate.waitForRequests(1)
+            #expect(!harness.session.isLoaded)
+            gate.resolve(0, with: ["Attachments/figure": image])
             try await barrier.waitUntilSuspended()
             #expect(!harness.session.isLoaded)
             let selection = harness.session.context?.selections
             let generation = harness.session.generation
             let undoLabel = harness.session.context?.undoLabel
-            // Resolve the admitted catalog through its existing synchronous
-            // owner after convergence, while initial scroll restoration waits.
-            harness.session.setImageResources(
-                ["Attachments/figure": image], documentID: harness.documentID, generation: generation)
-            #expect(barrier.nonemptyCatalogGenerations.isEmpty)
+            #expect(barrier.nonemptyCatalogGenerations == [generation])
             barrier.resume()
             try await harness.waitUntilReady()
-            _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
+            #expect(
+                try await harness.callPageJavaScript("return document.querySelector('.cm-live-image img')?.naturalWidth;") as? Int
+                    == InlineImageFixture.landscapePNG.width)
             #expect(barrier.nonemptyCatalogGenerations == [generation])
             #expect(try await harness.session.currentText() == source)
             #expect(harness.session.generation == generation)
@@ -115,6 +116,67 @@ extension MarkdownEditorWebViewIntegrationTests {
             gate.releaseAll()
             await harness.closeAndDrain()
             throw error
+        }
+    }
+
+    @Test("Source readiness does not wait for the background initial image catalog")
+    func sourceOpeningDoesNotWaitForImageCatalog() async throws {
+        let source = "Before.\r\n\r\n![fixture](Attachments/figure)\r\n\r\nAfter.\r\n"
+        let gate = InlineImageQueryGate()
+        let harness = EditorHarness(source: source, initialMode: .source, imageResourcesQuery: gate.query)
+        defer {
+            gate.releaseAll()
+            harness.close()
+        }
+        try await gate.waitForRequests(1)
+        try await harness.waitUntilReady()
+        #expect(harness.session.presentedMode == .source)
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-image').length;") as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        gate.resolve(0, with: [:])
+        await harness.closeAndDrain()
+    }
+
+    @Test("Opening Edit rejoins its image catalog after a rapid Source and Edit switch")
+    func openingImageWaitSurvivesSourceEditSwitch() async throws {
+        let image = try InlineImageFixture.landscapePNG.image()
+        let source = "\u{FEFF}Before 中文.\r\n\r\n![fixture](Attachments/figure)\r\n\r\nAfter.\r\n"
+        let gate = InlineImageQueryGate()
+        let harness = EditorHarness(source: source, imageResourcesQuery: gate.query)
+        defer {
+            gate.releaseAll()
+            harness.close()
+        }
+        try await gate.waitForRequests(1)
+        let firstWait = try await waitForOpeningImageWait(harness)
+        harness.session.setMode(.source)
+        harness.session.setMode(.livePreview)
+        let rejoinedWait = try await waitForOpeningImageWait(harness, excluding: firstWait)
+        #expect(rejoinedWait != firstWait)
+        #expect(!harness.session.isLoaded)
+        #expect(harness.session.errorMessage == nil)
+        #expect(gate.sources == [source])
+        gate.resolve(0, with: ["Attachments/figure": image])
+        try await harness.waitUntilReady()
+        #expect(harness.session.presentedMode == .livePreview)
+        #expect(harness.session.errorMessage == nil)
+        #expect(
+            try await harness.callPageJavaScript("return document.querySelector('.cm-live-image img')?.naturalWidth;") as? Int
+                == InlineImageFixture.landscapePNG.width)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    private func waitForOpeningImageWait(_ harness: EditorHarness, excluding previous: UUID? = nil) async throws -> UUID {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while true {
+            if let waitID = harness.session.testingOpeningImageWaitID, waitID != previous { return waitID }
+            if ContinuousClock.now >= deadline || harness.session.errorMessage != nil {
+                Issue.record("Opening did not join its held initial image query: \(harness.session.errorMessage ?? "no error").")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(10))
         }
     }
 
@@ -230,7 +292,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(admitted.first?["local"] as? Bool == true)
 
         let imageFrom = try #require(source.range(of: "![fixture]")?.lowerBound.utf16Offset(in: source))
-        harness.session.revealSourceRange(fromUTF16: imageFrom, toUTF16: imageFrom)
+        harness.revealEditorRange(fromUTF16: imageFrom, toUTF16: imageFrom)
         try await harness.waitUntilSelection(head: imageFrom)
         try await waitForNoInlineImages(harness)
         #expect(
@@ -282,10 +344,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             gate.releaseAll()
             harness.close()
         }
-        try await harness.waitUntilReady()
         try await gate.waitForRequests(1)
         #expect(gate.sources[0] == first)
         gate.resolve(0, with: ["Attachments/figure": landscape])
+        try await harness.waitUntilReady()
         _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
 
         harness.configureImageResources(gate.query, contextKey: "second-query")
@@ -293,11 +355,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         let originalID = harness.session.documentID
         harness.session.loadDocument(second, documentID: "SecondImages.md", mode: .livePreview)
         harness.synchronizeLifecycleSourceFromSession()
-        try await harness.waitUntilLoaded(documentID: "SecondImages.md")
         try await gate.waitForRequests(3)
         #expect(gate.sources[2] == second)
-        try await waitForNoInlineImages(harness)
+        #expect(!harness.session.isLoaded)
         gate.resolve(2, with: ["Attachments/figure": portrait])
+        try await harness.waitUntilLoaded(documentID: "SecondImages.md")
         _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.portraitJPEG.width)
         gate.resolve(1, with: ["Attachments/figure": landscape])
         try await gate.waitForCompletion(1)
@@ -324,6 +386,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             dispatcher.resume()
             harness.close()
         }
+        try await gate.waitForRequests(1)
+        gate.resolve(0, with: [:])
         try await harness.waitUntilReady()
         try await harness.session.focusAndWait()
         try await harness.waitUntilSelection(head: 6)
@@ -331,10 +395,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         let originalGeneration = harness.session.generation
 
         dispatcher.arm()
-        gate.resolve(0, with: ["Attachments/figure": image])
+        harness.configureImageResources(gate.query, contextKey: "controlled-refresh")
+        try await gate.waitForRequests(2)
+        gate.resolve(1, with: ["Attachments/figure": image])
         try await dispatcher.waitUntilSuspended()
         // Page input continues while the serial native request queue awaits a
-        // title acknowledgement. Query the checked native mirror rather than
+        // presentation acknowledgement. Query the checked native mirror rather than
         // sending another queued bridge operation through this barrier.
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'revised ');")
         let changed = (source as NSString).replacingCharacters(in: NSRange(location: 6, length: 0), with: "revised ")
@@ -347,8 +413,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         let editedGeneration = harness.session.generation
-        try await gate.waitForRequests(2)
-        #expect(gate.sources[1] == changed)
+        try await gate.waitForRequests(3)
+        #expect(gate.sources[2] == changed)
 
         dispatcher.resume()
         try await dispatcher.waitForPresentationToReturn()
@@ -361,7 +427,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         // The byte-identical catalog now belongs to the current generation.
         // Its first convergence skipped delivery, so equality alone cannot
         // establish that WebKit ever received it.
-        gate.resolve(1, with: ["Attachments/figure": image])
+        gate.resolve(2, with: ["Attachments/figure": image])
         _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
         #expect(dispatcher.nonemptyCatalogGenerations == [editedGeneration])
         #expect(try await harness.session.currentText() == changed)
@@ -396,7 +462,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         // A caret there must expose source rather than remain hidden by its
         // block image, while preserving the authored whitespace byte for byte.
         for caret in [imageFrom - 1, imageTo + 1] {
-            harness.session.revealSourceRange(fromUTF16: caret, toUTF16: caret)
+            harness.revealEditorRange(fromUTF16: caret, toUTF16: caret)
             try await harness.waitUntilSelection(head: caret)
             try await waitForNoInlineImages(harness)
             #expect(
@@ -406,13 +472,13 @@ extension MarkdownEditorWebViewIntegrationTests {
                 ) as? Bool == true
             )
             #expect(try await harness.session.currentText() == source)
-            harness.session.revealSourceRange(fromUTF16: 6, toUTF16: 6)
+            harness.revealEditorRange(fromUTF16: 6, toUTF16: 6)
             try await harness.waitUntilSelection(head: 6)
             _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.inlinePNG.width)
         }
 
         for (anchor, clickRight, head) in [(6, true, imageTo), (after + 5, false, imageFrom)] {
-            harness.session.revealSourceRange(fromUTF16: anchor, toUTF16: anchor)
+            harness.revealEditorRange(fromUTF16: anchor, toUTF16: anchor)
             try await harness.waitUntilSelection(head: anchor)
             _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.inlinePNG.width)
             let handled =
@@ -467,7 +533,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             (20, "ArrowDown", lead.utf16.count + 1),
             (afterFrom + 20, "ArrowUp", imageTo + 1),
         ] {
-            harness.session.revealSourceRange(fromUTF16: start, toUTF16: start)
+            harness.revealEditorRange(fromUTF16: start, toUTF16: start)
             try await harness.waitUntilSelection(head: start)
             _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.inlinePNG.width)
             try await harness.session.testingPressArrow(arrow)
@@ -517,7 +583,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             (imageFrom - 1, "ArrowRight", imageFrom, imageFrom + 1),
             (imageTo + 1, "ArrowLeft", imageTo, imageTo - 1),
         ] {
-            harness.session.revealSourceRange(fromUTF16: start, toUTF16: start)
+            harness.revealEditorRange(fromUTF16: start, toUTF16: start)
             try await harness.waitUntilSelection(head: start)
             _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.inlinePNG.width)
             try await harness.session.testingPressArrow(arrow)
@@ -749,15 +815,18 @@ private final class InlineImagePresentationBarrier: MarkdownEditorBridgeDispatch
 
     func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
         let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
-        if isArmed, !didSuspend, case .setDocumentTitle = request.operation {
+        if isArmed, !didSuspend, case .setPresentation = request.operation {
             didSuspend = true
             await withCheckedContinuation { continuation = $0 }
         }
         let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
-        if case .setImageResources(let resources) = request.operation, !resources.isEmpty {
-            nonemptyCatalogGenerations.append(request.knownGeneration)
+        if case .setPresentation(let configuration) = request.operation, !configuration.imageResources.isEmpty,
+            let reply = result as? [String: Any], reply["accepted"] as? Bool == true,
+            reply["resultingGeneration"] as? Int == configuration.imageResourceGeneration
+        {
+            nonemptyCatalogGenerations.append(configuration.imageResourceGeneration)
         }
-        if didSuspend, didResume, case .setWritingIndexContext = request.operation {
+        if didSuspend, didResume, case .setPresentation = request.operation {
             presentationReturned = true
         }
         return result
@@ -773,7 +842,7 @@ private final class InlineImagePresentationBarrier: MarkdownEditorBridgeDispatch
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while continuation == nil {
             if ContinuousClock.now >= deadline {
-                Issue.record("Image presentation did not reach its title acknowledgement barrier.")
+                Issue.record("Image presentation did not reach its presentation acknowledgement barrier.")
                 throw MarkdownEditorSession.SessionError.unavailable
             }
             try await Task.sleep(for: .milliseconds(10))
@@ -802,15 +871,21 @@ private final class InlineImageStartupScrollBarrier: MarkdownEditorBridgeDispatc
 
     func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
         let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
-        if !didSuspend, !released, case .setScrollFraction = request.operation {
+        if !didSuspend, !released, case .completePreparation = request.operation {
             didSuspend = true
             await withCheckedContinuation { continuation = $0 }
         }
         let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
-        if case .setImageResources(let resources) = request.operation, !resources.isEmpty {
-            let reply = try #require(result as? [String: Any])
-            #expect(reply["accepted"] as? Bool == true)
-            nonemptyCatalogGenerations.append(request.knownGeneration)
+        let configuration: MarkdownEditorPresentationConfiguration?
+        switch request.operation {
+        case .setPresentation(let value), .initialize(_, _, _, _, _, let value): configuration = value
+        default: configuration = nil
+        }
+        if let configuration, !configuration.imageResources.isEmpty,
+            let reply = result as? [String: Any], reply["accepted"] as? Bool == true,
+            reply["resultingGeneration"] as? Int == configuration.imageResourceGeneration
+        {
+            nonemptyCatalogGenerations.append(configuration.imageResourceGeneration)
         }
         return result
     }

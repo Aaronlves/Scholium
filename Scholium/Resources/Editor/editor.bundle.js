@@ -1,5 +1,195 @@
 "use strict";
 (() => {
+  // document-widget-readiness.ts
+  var pendingWidgets = /* @__PURE__ */ new WeakMap();
+  function beginDocumentWidgetPreparation(node) {
+    const document2 = node.ownerDocument;
+    let pending = pendingWidgets.get(document2);
+    if (!pending) pendingWidgets.set(document2, pending = /* @__PURE__ */ new Map());
+    const widgets = pending;
+    widgets.get(node)?.finish();
+    let resolve;
+    const ready = new Promise((complete) => {
+      resolve = complete;
+    });
+    const entry = {
+      node,
+      ready,
+      finish() {
+        if (widgets.get(node) === entry) widgets.delete(node);
+        resolve();
+      }
+    };
+    widgets.set(node, entry);
+    return entry;
+  }
+  async function awaitVisibleDocumentWidgets(root, viewport, requireCurrent) {
+    requireCurrent();
+    const visible = (entry) => {
+      if (!root.isConnected || !entry.node.isConnected || !root.contains(entry.node)) return false;
+      const bounds = viewport.getBoundingClientRect();
+      const rect = entry.node.getBoundingClientRect();
+      return rect.right >= bounds.left && rect.left <= bounds.right && rect.bottom >= bounds.top && rect.top <= bounds.bottom;
+    };
+    const pending = new Set(Array.from(pendingWidgets.get(root.ownerDocument)?.values() ?? []).filter(visible));
+    if (pending.size === 0) return false;
+    const owner = root.ownerDocument.defaultView;
+    await new Promise((resolve, reject) => {
+      let finished = false;
+      const finish = (error) => {
+        if (finished) return;
+        finished = true;
+        observer.disconnect();
+        viewport.removeEventListener("scroll", check);
+        owner.removeEventListener("resize", check);
+        if (error === void 0) resolve();
+        else reject(error);
+      };
+      const check = () => {
+        try {
+          requireCurrent();
+          for (const entry of pending) if (!visible(entry)) pending.delete(entry);
+          if (pending.size === 0) finish();
+        } catch (error) {
+          finish(error);
+        }
+      };
+      const observer = new owner.MutationObserver(check);
+      observer.observe(root.ownerDocument.documentElement, { childList: true, subtree: true });
+      viewport.addEventListener("scroll", check, { passive: true });
+      owner.addEventListener("resize", check);
+      for (const entry of pending) {
+        void entry.ready.then(() => {
+          pending.delete(entry);
+          check();
+        });
+      }
+      check();
+    });
+    requireCurrent();
+    return true;
+  }
+  var mathRuntimeSettledEvent = "scholium-math-runtime-settled";
+  async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
+    requireCurrent();
+    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
+      if (!image.isConnected || decoded.has(image)) return false;
+      const imageRect = image.getBoundingClientRect();
+      const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
+      return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
+    });
+    if (pending.length === 0) return false;
+    pending.forEach((image) => decoded.add(image));
+    await Promise.all(pending.map((image) => image.decode().catch(() => {
+    })));
+    requireCurrent();
+    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+    return true;
+  }
+
+  // document-preparation.ts
+  var activePreparations = /* @__PURE__ */ new WeakMap();
+  var visualObjects = "img, svg, canvas, video, input, textarea, .scholium-mermaid";
+  var transientEditorPaint = ".cm-cursorLayer, .cm-selectionLayer, .cm-tooltip";
+  var maximumPaintRects = 384;
+  var maximumTextNodes = 768;
+  var maximumVisitedNodes = 4096;
+  function beginDocumentPreparation(root) {
+    const document2 = root.ownerDocument;
+    activePreparations.get(document2)?.finish();
+    const owner = document2.defaultView;
+    const previousAccessibility = root.getAttribute("aria-hidden");
+    root.setAttribute("aria-hidden", "true");
+    const mask = document2.createElement("div");
+    mask.className = "scholium-document-preparation";
+    mask.setAttribute("aria-hidden", "true");
+    const paint = document2.createElement("div");
+    paint.className = "scholium-document-preparation-paint";
+    mask.appendChild(paint);
+    document2.body.appendChild(mask);
+    const reducedMotion = owner?.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotion = () => mask.classList.toggle("scholium-document-preparation-static", reducedMotion?.matches ?? true);
+    let finished = false;
+    function refresh() {
+      if (finished || !owner) return;
+      if (!root.isConnected) {
+        finish();
+        return;
+      }
+      const width = owner.innerWidth, height = owner.innerHeight;
+      const fragment = document2.createDocumentFragment();
+      const painted = /* @__PURE__ */ new Set();
+      let examinedTextNodes = 0;
+      const appendRect = (rect) => {
+        if (painted.size >= maximumPaintRects) return;
+        const left = Math.max(0, rect.left), top2 = Math.max(0, rect.top);
+        const right = Math.min(width, rect.right), bottom = Math.min(height, rect.bottom);
+        if (![left, top2, right, bottom].every(Number.isFinite) || right <= left || bottom <= top2) return;
+        const key = [left, top2, right, bottom].join(":");
+        if (painted.has(key)) return;
+        painted.add(key);
+        const shape = document2.createElement("div");
+        shape.className = "scholium-document-preparation-shape";
+        Object.assign(shape.style, {
+          left: `${left}px`,
+          top: `${top2}px`,
+          width: `${right - left}px`,
+          height: `${bottom - top2}px`
+        });
+        fragment.appendChild(shape);
+      };
+      let node = root.firstChild;
+      let visited = 0;
+      while (node && visited++ < maximumVisitedNodes && painted.size < maximumPaintRects) {
+        let skipChildren = false;
+        if (node.nodeType === 1) {
+          const element = node;
+          const bounds = element.getBoundingClientRect();
+          skipChildren = element.matches(transientEditorPaint) || bounds.width > 0 && bounds.height > 0 && (bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= width || bounds.top >= height);
+          if (!skipChildren && element.matches(visualObjects)) {
+            appendRect(bounds);
+            skipChildren = true;
+          }
+        } else if (node.nodeType === 3 && node.textContent?.trim() && examinedTextNodes++ < maximumTextNodes) {
+          const range = document2.createRange();
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) {
+            appendRect(rect);
+            if (painted.size >= maximumPaintRects) break;
+          }
+        }
+        if (!skipChildren && node.firstChild) {
+          node = node.firstChild;
+          continue;
+        }
+        while (node && node !== root && !node.nextSibling) node = node.parentNode;
+        node = node === root ? null : node?.nextSibling ?? null;
+      }
+      paint.replaceChildren(fragment);
+    }
+    function finish() {
+      if (finished) return;
+      finished = true;
+      mask.remove();
+      if (previousAccessibility === null) root.removeAttribute("aria-hidden");
+      else root.setAttribute("aria-hidden", previousAccessibility);
+      owner?.removeEventListener("resize", refresh);
+      owner?.removeEventListener("scroll", refresh, true);
+      owner?.removeEventListener("pagehide", finish);
+      reducedMotion?.removeEventListener("change", updateMotion);
+      if (activePreparations.get(document2) === handle) activePreparations.delete(document2);
+    }
+    const handle = { refresh, finish };
+    activePreparations.set(document2, handle);
+    owner?.addEventListener("resize", refresh);
+    owner?.addEventListener("scroll", refresh, { capture: true, passive: true });
+    owner?.addEventListener("pagehide", finish, { once: true });
+    reducedMotion?.addEventListener("change", updateMotion);
+    updateMotion();
+    refresh();
+    return handle;
+  }
+
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -19648,21 +19838,27 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 49;
+  var EDITOR_PROTOCOL_VERSION = 50;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
+  var MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12e6 + MAX_INBOUND_BYTES + 512e3;
+  function admitPresentationSources(value, generation, previous) {
+    return {
+      ...value,
+      linkPreviews: value.linkPreviewGeneration === generation ? value.linkPreviews : previous?.linkPreviews ?? [],
+      linkPreviewGeneration: value.linkPreviewGeneration === generation ? value.linkPreviewGeneration : previous?.linkPreviewGeneration ?? -1,
+      imageResources: value.imageResourceGeneration === generation ? value.imageResources : previous?.imageResources ?? {},
+      imageResourceGeneration: value.imageResourceGeneration === generation ? value.imageResourceGeneration : previous?.imageResourceGeneration ?? -1
+    };
+  }
   var operationTypes = /* @__PURE__ */ new Set([
+    "setPresentation",
+    "completePreparation",
+    "releasePreparation",
     "suspendForDetachment",
     "resumeAfterDetachment",
     "initialize",
     "setMode",
-    "setDocumentTitle",
-    "setPresentationCSS",
-    "setUserCSS",
-    "setLinkPreviews",
-    "setImageResources",
-    "setWritingContinuation",
-    "setWritingIndexContext",
     "showPreview",
     "showSelectionActions",
     "measureVisibleProjection",
@@ -19770,9 +19966,7 @@
     return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
   }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
-    "setWritingContinuation",
-    "setWritingIndexContext",
-    "setDocumentTitle",
+    "setPresentation",
     "queryText",
     "querySelection",
     "queryContext",
@@ -19809,30 +20003,28 @@
     const keys2 = ["actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision"];
     return Object.keys(intent).length === keys2.length && Object.keys(intent).every((key) => keys2.includes(key)) && intent.actionID === "insertCitation" && typeof intent.requestID === "string" && intent.requestID.length <= 128 && typeof intent.query === "string" && intent.query.length <= 512 && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every((n) => Number.isSafeInteger(n) && Number(n) >= 0) && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
   }
+  function validPresentation(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const configuration = value;
+    return typeof configuration.documentTitle === "string" && configuration.documentTitle.length <= 1024 && typeof configuration.presentationCSS === "string" && configuration.presentationCSS.length <= 1e6 && typeof configuration.userCSS === "string" && configuration.userCSS.length <= 1e6 && Object.keys(configuration).length === 10 && Array.isArray(configuration.linkPreviews) && encodedByteLength(configuration.linkPreviews) <= MAX_INBOUND_BYTES && Number.isSafeInteger(configuration.linkPreviewGeneration) && Number(configuration.linkPreviewGeneration) >= 0 && validImageResources(configuration.imageResources) && Number.isSafeInteger(configuration.imageResourceGeneration) && Number(configuration.imageResourceGeneration) >= 0 && typeof configuration.writingContinuationEnabled === "boolean" && typeof configuration.writingContinuationContextKey === "string" && configuration.writingContinuationContextKey.length <= 256 && typeof configuration.writingIndexContextKey === "string" && configuration.writingIndexContextKey.length <= 256;
+  }
   function validOperation(operation) {
     switch (operation.type) {
       case "initialize":
-        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validInitialSelection(
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validPresentation(operation.presentation) && validInitialSelection(
           operation.initialSelection,
           operation.text.replaceAll("\r\n", "\n").length
         );
+      case "setPresentation":
+        return validPresentation(operation.value);
+      case "completePreparation":
+        return (operation.fraction === void 0 || typeof operation.fraction === "number" && Number.isFinite(operation.fraction) && operation.fraction >= 0 && operation.fraction <= 1) && (operation.anchor === void 0 || validOperation({ type: "setScrollAnchor", anchor: operation.anchor }));
+      case "releasePreparation":
+        return operation.focusTarget === void 0 || operation.focusTarget === "editor" || operation.focusTarget === "title";
       case "setMode":
         return validMode(operation.mode);
-      case "setDocumentTitle":
-        return typeof operation.value === "string" && operation.value.length <= 1024;
-      case "setPresentationCSS":
-      case "setUserCSS":
-        return typeof operation.value === "string" && operation.value.length <= 1e6;
       case "announceStatus":
         return typeof operation.value === "string" && operation.value.length <= 500;
-      case "setLinkPreviews":
-        return Array.isArray(operation.value);
-      case "setImageResources":
-        return validImageResources(operation.value);
-      case "setWritingContinuation":
-        return typeof operation.enabled === "boolean" && typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
-      case "setWritingIndexContext":
-        return typeof operation.contextKey === "string" && operation.contextKey.length <= 256;
       case "goToLine":
         return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
       case "revealSourceRange":
@@ -19904,7 +20096,7 @@
     if (!validOperation(request.operation)) return false;
     try {
       const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      const maximum = type === "setImageResources" ? MAX_IMAGE_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
       return encodedByteLength(value) <= maximum;
     } catch {
       return false;
@@ -32559,12 +32751,12 @@ ${blankRow(table.position.columnCount)}`;
         documentTitlePresentationRevision += 1;
         options.dispatch(refreshDocumentTitleEffect.of(null));
       },
-      focus() {
+      focus(options2) {
         const input = document.querySelector(
           ".scholium-note-title-input"
         );
         if (!input || input.disabled) return false;
-        input.focus();
+        input.focus(options2);
         input.setSelectionRange(input.value.length, input.value.length);
         return true;
       }
@@ -34986,13 +35178,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     captureRecovery: "defer",
     markClean: "defer",
     setMode: "defer",
-    setDocumentTitle: "defer",
-    setWritingContinuation: "allow",
-    setWritingIndexContext: "allow",
-    setPresentationCSS: "defer",
-    setUserCSS: "defer",
-    setLinkPreviews: "defer",
-    setImageResources: "defer",
+    setPresentation: "defer",
+    completePreparation: "reject",
+    releasePreparation: "reject",
     goToLine: "defer",
     revealSourceRange: "defer",
     restoreRecovery: "defer",
@@ -35074,15 +35262,44 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   };
 
   // bootstrap.ts
-  function createMarkdownDocumentState(source, extensions) {
+  function createMarkdownDocumentState(source, extensions, initial) {
     if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    return EditorState.create({ doc: normalizedDocumentText(source), extensions }).update({
-      effects: setExactSource.of(source),
-      annotations: Transaction.addToHistory.of(false)
-    }).state;
+    const snapshot = initial?.citationSnapshot;
+    return EditorState.create({
+      doc: normalizedDocumentText(source),
+      selection: initial?.selection,
+      extensions: [
+        extensions,
+        exactSourceState.init(() => new ExactSourceMirror(source)),
+        citationState.init(() => snapshot ? { baseline: snapshot, data: snapshot.data } : void 0)
+      ]
+    });
   }
   function createMarkdownEditor(parent, extensions) {
     return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
+  }
+  function measureMarkdownEditor(view, read) {
+    return new Promise((resolve, reject) => {
+      try {
+        view.requestMeasure({
+          read: () => {
+            try {
+              read();
+              return true;
+            } catch (error) {
+              reject(error);
+              return false;
+            }
+          },
+          write: (measured) => {
+            if (measured) resolve();
+          }
+        });
+        view.coordsAtPos(view.state.selection.main.head);
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   // mermaid-runtime-loader.ts
@@ -37836,7 +38053,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
       }
     });
-    const index = (state) => state.field(field, false) ?? build(state);
+    const index = (state) => state.field(field);
     return {
       extension: field,
       index,
@@ -38415,6 +38632,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function createLiveMermaidProjection(options) {
     const abortControllers = /* @__PURE__ */ new WeakMap();
     const renderedThemes = /* @__PURE__ */ new WeakMap();
+    const preparations = /* @__PURE__ */ new WeakMap();
     class MermaidWidget extends WidgetType {
       constructor(presentation, themeRevision) {
         super();
@@ -38443,6 +38661,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         slot.append(wrapper);
         const abortController = new AbortController();
         abortControllers.set(slot, abortController);
+        const preparation = beginDocumentWidgetPreparation(slot);
+        preparations.set(slot, preparation);
         void options.ensureRuntime().then(async (runtime) => {
           if (abortController.signal.aborted || !slot.isConnected) return;
           if (!runtime) {
@@ -38504,7 +38724,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             localized("This Mermaid diagram could not be rendered. Source is shown.")
           );
           view.requestMeasure();
-        });
+        }).finally(() => preparation.finish());
         return slot;
       }
       updateDOM(dom) {
@@ -38516,6 +38736,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       destroy(dom) {
         abortControllers.get(dom)?.abort();
         abortControllers.delete(dom);
+        preparations.get(dom)?.finish();
+        preparations.delete(dom);
         renderedThemes.delete(dom);
       }
       ignoreEvent(event) {
@@ -39452,6 +39674,27 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
 
   // live-inline-widgets.ts
   function createLiveInlineWidgets(options) {
+    const mathPreparations = /* @__PURE__ */ new WeakMap();
+    function prepareMathRuntime(element) {
+      if (window.scholiumMath?.version === 1) return;
+      const preparation = beginDocumentWidgetPreparation(element);
+      const owner = element.ownerDocument.defaultView;
+      const finish = () => {
+        owner.removeEventListener(mathRuntimeSettledEvent, finish);
+        preparation.finish();
+      };
+      mathPreparations.set(element, finish);
+      owner.addEventListener(mathRuntimeSettledEvent, finish, { once: true });
+      options.requestMathRuntime();
+    }
+    function finishMathPreparations(dom) {
+      const elements = Array.from(dom.querySelectorAll(".scholium-math"));
+      if (dom.matches(".scholium-math")) elements.push(dom);
+      for (const element of elements) {
+        mathPreparations.get(element)?.();
+        mathPreparations.delete(element);
+      }
+    }
     class AttachmentIconWidget extends WidgetType {
       constructor(symbol) {
         super();
@@ -39648,9 +39891,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const body = document.createElement("div");
         body.className = "scholium-embedded-note-body scholium-document";
         populatePreviewDocument(body, this.preview);
+        body.querySelectorAll(".scholium-math").forEach(prepareMathRuntime);
         viewport.append(body);
         shell.append(header, viewport);
         return shell;
+      }
+      destroy(dom) {
+        finishMathPreparations(dom);
       }
       ignoreEvent(event) {
         const target = event.target instanceof Element ? event.target : null;
@@ -39677,7 +39924,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         element.dataset.scholiumSourceFrom = String(this.expression.from);
         element.dataset.scholiumSourceTo = String(this.expression.to);
         const runtime = window.scholiumMath;
-        if (runtime?.version !== 1) options.requestMathRuntime();
+        if (runtime?.version !== 1) prepareMathRuntime(element);
         const rendered = runtime?.version === 1 ? runtime.render({ source: this.expression.content, kind: this.expression.kind }) : { ok: false, reason: "invalid-source" };
         if (rendered.ok) {
           element.classList.add("scholium-math-rendered");
@@ -39718,6 +39965,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           return slot;
         }
         return element;
+      }
+      destroy(dom) {
+        finishMathPreparations(dom);
       }
       ignoreEvent(event) {
         return event.type === "mousedown";
@@ -40906,6 +41156,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return result + state.doc.sliceString(from, range.to);
     }).join("");
   }
+  function applyDecodedImagePresentation(image) {
+    if (!(image.naturalWidth > 0 && image.naturalHeight > 0)) return false;
+    const ratio = String(image.naturalWidth / image.naturalHeight);
+    if (image.style.getPropertyValue("--scholium-image-aspect-ratio") === ratio) return false;
+    image.style.setProperty("--scholium-image-aspect-ratio", ratio);
+    return true;
+  }
   var ImageWidget = class extends WidgetType {
     constructor(presentation, activateLink) {
       super();
@@ -40929,15 +41186,14 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       image.alt = this.presentation.alt;
       image.draggable = false;
       const measure = () => {
-        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-          image.style.setProperty("--scholium-image-aspect-ratio", String(image.naturalWidth / image.naturalHeight));
-        }
+        applyDecodedImagePresentation(image);
         if (shell.isConnected) view.requestMeasure();
       };
       image.addEventListener("load", measure);
       image.addEventListener("error", measure);
       image.src = this.presentation.resource;
       shell.append(image);
+      if (image.complete) measure();
       let pending = null;
       const opensImage = (event) => event.button === 0 && event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
       shell.addEventListener("mousedown", (event) => {
@@ -41129,6 +41385,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
   var lastDocumentFocusTarget;
+  var appliedPresentation = null;
+  var documentPreparation = null;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
     if (changed) citationInsertionRevision++;
@@ -42378,7 +42636,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     Prec.high(liveSelection.extension),
     documentTextLanguage,
     syntaxPresentation,
-    liveProjectionIndex.extension,
     documentTitle.extension,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
@@ -42417,7 +42674,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       post({ type: "contextMenuRequested", ...request });
     }
   });
+  var initialModeExtension = modeCompartment.of(sourceMode);
   var editorExtensions = [
+    liveProjectionIndex.extension,
     citationHistory,
     editorArrivalHighlight,
     highlightSpecialChars(),
@@ -42462,7 +42721,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     linkActivation,
     EditorState.lineSeparator.of("\n"),
     exactSourceHistory,
-    modeCompartment.of(sourceMode),
+    initialModeExtension,
     editorSuspension,
     EditorView.theme({
       "&": { height: "100%" },
@@ -42784,16 +43043,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         request.sessionID,
         request.documentID,
         request.startingFingerprint,
+        operation.mode,
+        operation.presentation,
+        operation.initialSelection,
         operation.citationSnapshot
       );
-      editorOperations.setMode(operation.mode);
-      if (operation.initialSelection) {
-        editorOperations.revealSourceRange(
-          operation.initialSelection.anchor,
-          operation.initialSelection.head,
-          false
-        );
-      }
+      documentPreparation = beginDocumentPreparation(editor.dom);
       recordEditorMetric("document-load", loadStartedAt, { documentLength: editor.state.doc.length });
       sampleEditorMemory(editor.state.doc.length);
       return successfulResult(request.requestID);
@@ -42820,27 +43075,90 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       case "setMode":
         editorOperations.setMode(operation.mode);
         break;
-      case "setDocumentTitle":
-        documentTitle.setTitle(operation.value);
+      case "setPresentation":
+        applyPresentationConfiguration(operation.value);
         break;
-      case "setPresentationCSS":
-        editorOperations.setPresentationCSS(operation.value);
+      case "completePreparation": {
+        const attachment = documentAttachment;
+        const preparation = documentPreparation;
+        let expired = false;
+        const isCurrent = () => !expired && request.expiresAt > Date.now() && attachment === documentAttachment && request.knownGeneration === documentVersion;
+        const requireCurrent = () => {
+          if (!isCurrent()) throw new Error("stale editor preparation");
+        };
+        const measure = () => measureMarkdownEditor(editor, () => {
+          requireCurrent();
+          editor.coordsAtPos(editor.state.selection.main.head);
+          scrollCoordinator.currentAnchor();
+        });
+        flushPresentationStyleAndGeometry();
+        let deadline;
+        try {
+          await Promise.race([
+            document.fonts.ready.then(async () => {
+              requireCurrent();
+              convergeLivePreviewProjection();
+              await measure();
+              requireCurrent();
+              const decoded = /* @__PURE__ */ new Set();
+              while (true) {
+                if (operation.anchor) scrollCoordinator.setAnchor(operation.anchor);
+                else if (operation.fraction !== void 0) scrollCoordinator.setFraction(operation.fraction);
+                await measure();
+                requireCurrent();
+                if (configuredEditorMode(editor.state) !== "livePreview") break;
+                if (document.fonts.status !== "loaded") {
+                  await document.fonts.ready;
+                  requireCurrent();
+                  await measure();
+                  requireCurrent();
+                  continue;
+                }
+                if (await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent)) {
+                  requireCurrent();
+                  await measure();
+                  await document.fonts.ready;
+                  requireCurrent();
+                  await measure();
+                  requireCurrent();
+                  continue;
+                }
+                if (await awaitVisibleDocumentImages(
+                  editor.contentDOM,
+                  editor.scrollDOM.getBoundingClientRect(),
+                  decoded,
+                  requireCurrent,
+                  applyDecodedImagePresentation
+                )) {
+                  await measure();
+                  requireCurrent();
+                  continue;
+                }
+                break;
+              }
+              preparation?.refresh();
+            }),
+            new Promise((_resolve, reject) => {
+              deadline = window.setTimeout(() => {
+                expired = true;
+                reject(new Error("editor preparation expired"));
+              }, Math.max(0, request.expiresAt - Date.now()));
+            })
+          ]);
+          requireCurrent();
+        } finally {
+          window.clearTimeout(deadline);
+        }
         break;
-      case "setUserCSS":
-        editorOperations.setUserCSS(operation.value);
+      }
+      case "releasePreparation": {
+        documentPreparation?.finish();
+        documentPreparation = null;
+        if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({ preventScroll: true });
+        else if (operation.focusTarget) editor.focus();
+        editor.coordsAtPos(editor.state.selection.main.head);
         break;
-      case "setLinkPreviews":
-        editorOperations.setLinkPreviews(operation.value);
-        break;
-      case "setImageResources":
-        liveImageProjection.setResources(operation.value, editor);
-        break;
-      case "setWritingContinuation":
-        inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey);
-        break;
-      case "setWritingIndexContext":
-        inputSuggestions.configureWritingIndexContext(operation.contextKey);
-        break;
+      }
       case "showPreview":
         previewPopover.showAtSelection();
         break;
@@ -43155,7 +43473,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         editorOperations.focus();
         break;
       case "focusTitle": {
-        if (!documentTitle.focus()) {
+        const attachment = documentAttachment;
+        await measureMarkdownEditor(editor, () => {
+          if (attachment !== documentAttachment || request.expiresAt <= Date.now()) throw new Error("stale editor focus");
+          editor.coordsAtPos(editor.state.selection.main.head);
+        });
+        if (attachment !== documentAttachment || request.expiresAt <= Date.now()) {
+          return rejected2(request.requestID, documentVersion, "stale editor focus");
+        }
+        if (!documentTitle.focus({ preventScroll: true })) {
           return rejected2(request.requestID, documentVersion, "document title is unavailable");
         }
         break;
@@ -43280,6 +43606,28 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       editor.dispatch({ effects: refreshMermaidThemeEffect.of(mermaidThemeRevision) });
     }
   }
+  function applyPresentationConfiguration(requested) {
+    const previous = appliedPresentation;
+    const value = admitPresentationSources(requested, documentVersion, previous);
+    if (previous?.documentTitle !== value.documentTitle) documentTitle.setTitle(value.documentTitle);
+    if (previous?.presentationCSS !== value.presentationCSS) editorOperations.setPresentationCSS(value.presentationCSS);
+    if (previous?.userCSS !== value.userCSS) editorOperations.setUserCSS(value.userCSS);
+    if (previous?.linkPreviewGeneration !== value.linkPreviewGeneration || JSON.stringify(previous?.linkPreviews) !== JSON.stringify(value.linkPreviews)) {
+      editorOperations.setLinkPreviews(value.linkPreviews);
+    }
+    const previousImages = previous?.imageResources ?? {};
+    const keys2 = Object.keys(value.imageResources);
+    if (previous?.imageResourceGeneration !== value.imageResourceGeneration || keys2.length !== Object.keys(previousImages).length || keys2.some((key) => previousImages[key] !== value.imageResources[key])) {
+      liveImageProjection.setResources(value.imageResources, editor);
+    }
+    if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled || previous.writingContinuationContextKey !== value.writingContinuationContextKey) {
+      inputSuggestions.configureWritingContinuation(value.writingContinuationEnabled, value.writingContinuationContextKey);
+    }
+    if (previous?.writingIndexContextKey !== value.writingIndexContextKey) {
+      inputSuggestions.configureWritingIndexContext(value.writingIndexContextKey);
+    }
+    appliedPresentation = value;
+  }
   function setDynamicStyle(id2, css2) {
     const style = document.getElementById(id2);
     if (!style || style.textContent === css2) return false;
@@ -43387,7 +43735,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
-    setDocument(text, sessionID, documentID, startingFingerprint, citationSnapshot) {
+    setDocument(text, sessionID, documentID, startingFingerprint, mode, presentation, initialSelection, citationSnapshot) {
+      documentPreparation?.finish();
+      documentPreparation = null;
+      appliedPresentation = null;
       citationTransaction?.cancel();
       citationTransaction = null;
       citationTransactionID = null;
@@ -43414,7 +43765,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       documentTitle.resetDocument();
       lastDocumentFocusTarget = void 0;
       linkPreviews = [];
-      liveImageProjection.setResources(/* @__PURE__ */ Object.create(null));
+      liveImageProjection.setResources(presentation.imageResourceGeneration === 0 ? presentation.imageResources : {});
       linkPreviewIndexByRange = /* @__PURE__ */ new Map();
       lastUndoLabel = void 0;
       lastRedoLabel = void 0;
@@ -43426,11 +43777,20 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       liveWidgetReuseCounts.footnote = 0;
       if (documentAttachment > 1) clearEditorPerformanceSamples();
       documentVersion = 0;
-      const state = createMarkdownDocumentState(text, editorExtensions);
-      editor.setState(state.update({
-        effects: setCitationSnapshot.of(citationSnapshot),
-        annotations: Transaction.addToHistory.of(false)
-      }).state);
+      document.getElementById("scholium-presentation-css").textContent = presentation.presentationCSS;
+      document.getElementById("scholium-user-css").textContent = presentation.userCSS;
+      documentTitle.setTitle(presentation.documentTitle);
+      linkPreviews = presentation.linkPreviewGeneration === 0 ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
+      linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
+      const state = createMarkdownDocumentState(text, editorExtensions.map((extension) => extension === initialModeExtension ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension), {
+        selection: initialSelection ? EditorSelection.single(initialSelection.anchor, initialSelection.head) : void 0,
+        citationSnapshot
+      });
+      editor.setState(state);
+      inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
+      inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
+      appliedPresentation = presentation;
+      updateEditorAccessibility(editor.contentDOM, mode, currentEditorContext());
       dirty = false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
@@ -43577,7 +43937,18 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (editor.composing || compositionGate.active) return false;
       editorOperations.blur();
       editingDialect = null;
-      editorOperations.setDocument("", "", "", "");
+      editorOperations.setDocument("", "", "", "", "source", {
+        documentTitle: "",
+        presentationCSS: "",
+        userCSS: "",
+        linkPreviews: [],
+        linkPreviewGeneration: 0,
+        imageResources: /* @__PURE__ */ Object.create(null),
+        imageResourceGeneration: 0,
+        writingContinuationEnabled: false,
+        writingContinuationContextKey: "",
+        writingIndexContextKey: ""
+      });
       interactionReporter.cancel();
       document.getElementById("scholium-user-css")?.replaceChildren();
       document.getElementById("scholium-presentation-css")?.replaceChildren();

@@ -118,7 +118,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             ScholiumWebFontResources.install(in: configuration)
             webView =
                 pageExtension?.makeWebView(configuration: configuration)
-                ?? WKWebView(frame: .zero, configuration: configuration)
+                ?? DocumentNativeWebView(frame: .zero, configuration: configuration)
         }
         contentController.add(
             context.coordinator,
@@ -130,6 +130,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         webView.setAccessibilityElement(true)
         webView.setAccessibilityLabel(ScholiumL10n.string("Rendered Markdown"))
         webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
+        context.coordinator.surfaceVisibility = surfaceVisibility
         context.coordinator.loadIfNeeded(
             htmlBody,
             documentTitle: documentTitle,
@@ -657,6 +658,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         loadGeneration: loadGeneration,
                         selectionEnabled: onSelectionChange != nil,
                         imagePreviewsEnabled: onImagePreview != nil,
+                        documentPreparation: surfaceVisibility == .preparing && pageExtension == nil,
                         replyProjection: pageExtension?.replyProjectionEnabled == true,
                         linkPreviews: linkPreviews,
                         presentationCSS: presentationCSS,
@@ -1064,6 +1066,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     }
                 }
                 do {
+                    var reachedSourceLocationID: UUID?
                     guard
                         self.isCurrentLoad(
                             navigation: navigation,
@@ -1073,20 +1076,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         )
                     else { return }
                     var restoreSucceeded = false
-                    if let restoreClaim {
+                    if restoreClaim != nil {
                         await self.waitForTestingScrollRestoreDelayIfNeeded()
-                        restoreSucceeded = await self.restoreScrollPosition(
-                            restoreClaim,
-                            generation: expectedLoadGeneration,
-                            signature: expectedSignature,
-                            in: webView
-                        )
                     }
-                    #if DEBUG
-                        if self.testingForcesFinalizationFailure {
-                            throw TestingReadFinalizationError.forced
-                        }
-                    #endif
                     let result = try await webView.callAsyncJavaScript(
                         """
                         if (window.scholiumReadReady) await window.scholiumReadReady;
@@ -1118,11 +1110,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         guard !Task.isCancelled else { return }
                         throw CocoaError(.coderReadCorrupt)
                     }
-                    await self.scrollToSourceLineIfNeeded(
-                        generation: expectedLoadGeneration,
-                        signature: expectedSignature,
-                        in: webView
-                    )
                     guard
                         self.isCurrentLoad(
                             navigation: navigation,
@@ -1131,12 +1118,66 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                             in: webView
                         )
                     else { return }
-                    if let restoreClaim {
-                        self.scrollRestoration.finish(
-                            restoreClaim,
-                            consumed: restoreSucceeded
-                        )
-                        claimWasFinished = true
+                    let policy = ScholiumLifecyclePolicy()
+                    let duration = policy.bridgeRequest.components
+                    let milliseconds =
+                        Double(duration.seconds) * 1_000
+                        + Double(duration.attoseconds) / 1_000_000_000_000_000
+                    let expiresAt = Int64((Date().timeIntervalSince1970 * 1_000 + milliseconds).rounded(.down))
+                    try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: policy.bridgeRequest) {
+                        while true {
+                            try Task.checkCancellation()
+                            let previewRevision = self.desiredLinkPreviewRevision
+                            await self.linkPreviewUpdateTask?.value
+                            guard
+                                self.isCurrentLoad(
+                                    navigation: navigation, generation: expectedLoadGeneration,
+                                    signature: expectedSignature, in: webView)
+                            else { throw CancellationError() }
+                            if previewRevision != self.desiredLinkPreviewRevision { continue }
+                            guard self.appliedLinkPreviewRevision == previewRevision,
+                                await self.applyPresentationStylesIfNeeded(
+                                    in: webView, generation: expectedLoadGeneration,
+                                    signature: expectedSignature)
+                            else { throw CocoaError(.coderReadCorrupt) }
+                            let sourceLocationID = self.sourceLocationRequest?.id
+                            if let restoreClaim {
+                                restoreSucceeded = await self.restoreScrollPosition(
+                                    restoreClaim, generation: expectedLoadGeneration,
+                                    signature: expectedSignature, in: webView)
+                            }
+                            let reachedLocation = await self.scrollToSourceLineIfNeeded(
+                                generation: expectedLoadGeneration,
+                                signature: expectedSignature, in: webView,
+                                repositioningForPreparation: true)
+                            reachedSourceLocationID = reachedLocation ? sourceLocationID : nil
+                            let settled = try await webView.callAsyncJavaScript(
+                                "return await window.scholiumReadPreparation.settle(documentID, fingerprint, loadGeneration, expiresAt);",
+                                arguments: [
+                                    "documentID": expectedDocumentID,
+                                    "fingerprint": expectedFingerprint,
+                                    "loadGeneration": expectedLoadGeneration,
+                                    "expiresAt": expiresAt,
+                                ],
+                                in: nil,
+                                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                            )
+                            guard let geometry = settled as? [String: Any],
+                                geometry["settled"] as? Bool == true,
+                                self.isCurrentLoad(
+                                    navigation: navigation, generation: expectedLoadGeneration,
+                                    signature: expectedSignature, in: webView)
+                            else { throw CancellationError() }
+                            if previewRevision != self.desiredLinkPreviewRevision
+                                || self.appliedPresentationCSS != self.desiredPresentationCSS
+                                || self.appliedUserCSS != self.desiredUserCSS
+                                || self.sourceLocationRequest?.id != sourceLocationID
+                                || geometry["geometryChanged"] as? Bool == true
+                            {
+                                continue
+                            }
+                            break
+                        }
                     }
                     webView.setAccessibilityIdentifier(
                         "scholium.renderedDocument.\(expectedDocumentID)"
@@ -1147,7 +1188,39 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                             navigation: navigation, generation: expectedLoadGeneration,
                             signature: expectedSignature, in: webView)
                     else { return }
+                    #if DEBUG
+                        if self.testingForcesFinalizationFailure {
+                            throw TestingReadFinalizationError.forced
+                        }
+                    #endif
+                    let preparationFinished = try await webView.callAsyncJavaScript(
+                        "return window.scholiumReadPreparation?.finish(documentID, fingerprint, loadGeneration) === true;",
+                        arguments: [
+                            "documentID": expectedDocumentID,
+                            "fingerprint": expectedFingerprint,
+                            "loadGeneration": expectedLoadGeneration,
+                        ],
+                        in: nil,
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    )
+                    guard
+                        self.isCurrentLoad(
+                            navigation: navigation, generation: expectedLoadGeneration,
+                            signature: expectedSignature, in: webView)
+                    else { return }
+                    guard preparationFinished as? Bool == true else {
+                        throw CocoaError(.coderReadCorrupt)
+                    }
+                    if let restoreClaim {
+                        self.scrollRestoration.finish(restoreClaim, consumed: restoreSucceeded)
+                        claimWasFinished = true
+                    }
                     self.finalizedSignature = expectedSignature
+                    if let reachedSourceLocationID,
+                        self.sourceLocationRequest?.id == reachedSourceLocationID
+                    {
+                        self.onSourceLocationReached?(reachedSourceLocationID)
+                    }
                     self.pageExtension?.didFinalizePage(fingerprint: expectedFingerprint)
                     self.renderingReadinessIsAcknowledged = true
                     self.schedulePresentationStyleUpdate(in: webView)
@@ -1298,11 +1371,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 if (window.scholiumReadReady) await window.scholiumReadReady;
                 if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
                 if (document.fonts?.ready) await document.fonts.ready;
-                let extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                for (let attempt = 0; fallbackFraction > 0 && attempt < 50 && extent <= 0; attempt += 1) {
-                  await new Promise(resolve => setTimeout(resolve, 10));
-                  extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                }
+                const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 window.scholiumReadScroll?.recordRestoreAttempt?.();
                 const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
                 if (!restored) {
@@ -1521,24 +1590,28 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onScrollAnchorChange?(anchor)
         }
 
+        @discardableResult
         private func scrollToSourceLineIfNeeded(
             generation: UInt64,
             signature: String,
-            in webView: WKWebView
-        ) async {
-            guard let request = sourceLocationRequest, request.id != lastReachedSourceLocationID else {
-                return
+            in webView: WKWebView,
+            repositioningForPreparation: Bool = false
+        ) async -> Bool {
+            guard let request = sourceLocationRequest,
+                repositioningForPreparation || request.id != lastReachedSourceLocationID
+            else {
+                return false
             }
-            guard isCurrentLoad(generation: generation, signature: signature, in: webView) else { return }
+            guard isCurrentLoad(generation: generation, signature: signature, in: webView) else { return false }
             if let expected = request.sourceFingerprint, expected != fingerprint {
+                let firstReceipt = lastReachedSourceLocationID != request.id
                 lastReachedSourceLocationID = request.id
-                onSourceRevisionChanged?(request.id)
-                return
+                if firstReceipt { onSourceRevisionChanged?(request.id) }
+                return false
             }
             if request.requiresExactSelection, let range = request.range {
-                await selectSourceRange(
+                return await selectSourceRange(
                     range, requestID: request.id, generation: generation, signature: signature, in: webView)
-                return
             }
             guard let line = request.line,
                 line > 0,
@@ -1547,7 +1620,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     signature: signature,
                     in: webView
                 )
-            else { return }
+            else { return false }
             let result = try? await webView.callAsyncJavaScript(
                 """
                 if (!await window.scholiumReadNavigation?.reveal(requested)) return false;
@@ -1571,31 +1644,34 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     signature: signature,
                     in: webView
                 )
-            else { return }
+            else { return false }
             receiveScrollPosition(
                 fractionValue: payload["fraction"],
                 anchorValue: payload["anchor"]
             )
+            let firstReceipt = lastReachedSourceLocationID != request.id
             lastReachedSourceLocationID = request.id
-            onSourceLocationReached?(request.id)
+            if firstReceipt, finalizedSignature == signature { onSourceLocationReached?(request.id) }
+            return true
         }
 
+        @discardableResult
         private func selectSourceRange(
             _ range: SearchSourceRange, requestID: UUID, generation: UInt64,
             signature: String, in webView: WKWebView
-        ) async {
+        ) async -> Bool {
             func isCurrent() -> Bool {
                 !Task.isCancelled && sourceLocationRequest?.id == requestID
                     && isCurrentLoad(generation: generation, signature: signature, in: webView)
             }
-            guard isCurrent() else { return }
+            guard isCurrent() else { return false }
             let lower = range.utf16LowerBound
             let upper = range.utf16UpperBound
             let candidate = try? await webView.callAsyncJavaScript(
                 "return window.scholiumReadNavigation?.rangeCandidate(lower, upper) ?? null;",
                 arguments: ["lower": lower, "upper": upper], in: nil,
                 contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
-            guard isCurrent() else { return }
+            guard isCurrent() else { return false }
             var reached = false
             if lower >= 0, upper > lower, upper <= selectionSource.utf16.count,
                 let selected = Range(NSRange(location: lower, length: upper - lower), in: selectionSource),
@@ -1614,14 +1690,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
                 reached = result as? Bool == true
             }
-            guard isCurrent() else { return }
+            guard isCurrent() else { return false }
+            let firstReceipt = lastReachedSourceLocationID != requestID
             lastReachedSourceLocationID = requestID
             if reached {
-                webView.window?.makeFirstResponder(webView)
-                onSourceLocationReached?(requestID)
+                if finalizedSignature == signature {
+                    webView.window?.makeFirstResponder(webView)
+                    if firstReceipt { onSourceLocationReached?(requestID) }
+                }
             } else {
-                onSourceRangeUnavailable?(requestID)
+                if firstReceipt { onSourceRangeUnavailable?(requestID) }
             }
+            return reached
         }
 
         func webView(
@@ -1799,6 +1879,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let loadGeneration: UInt64
             let selectionEnabled: Bool
             let imagePreviewsEnabled: Bool
+            let documentPreparation: Bool
             let replyProjection: Bool
             let testingEnabled: Bool
             let presentationCSS: String
@@ -1817,6 +1898,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadGeneration: UInt64,
             selectionEnabled: Bool,
             imagePreviewsEnabled: Bool = false,
+            documentPreparation: Bool = false,
             replyProjection: Bool = false,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
@@ -1849,6 +1931,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
                 imagePreviewsEnabled: imagePreviewsEnabled,
+                documentPreparation: documentPreparation,
                 replyProjection: replyProjection,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,

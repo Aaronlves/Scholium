@@ -242,6 +242,50 @@ struct DocumentSessionLifecycleTests {
         #expect(session.windowPresentationSnapshot.selections.isEmpty)
     }
 
+    @Test("Only an explicit opening admits interaction after a closed presentation")
+    func explicitOpeningReactivatesClosedInteraction() {
+        let session = MarkdownEditorSession()
+        let source = "Argument."
+        session.loadDocument(source, documentID: session.bridgeDocumentID, mode: .livePreview)
+        let selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
+        let context = MarkdownEditorContext(
+            selections: selections, activeInlineConstructs: [],
+            activeBlockConstructs: [], composing: false, availableCommands: [], undoLabel: nil, redoLabel: nil)
+        session.endClosedPresentation()
+        // A filesystem refresh updates exact source without reopening UI.
+        session.loadDocument(source, documentID: session.bridgeDocumentID, mode: .livePreview)
+        session.updateInteraction(
+            selections: selections, line: 1, column: 1, lineCount: 1,
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: context)
+        #expect(session.context == nil)
+        session.prepareOpeningPresentation()
+        session.updateInteraction(
+            selections: selections, line: 1, column: 1, lineCount: 1,
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: context)
+        #expect(session.context?.selections == selections)
+    }
+
+    @Test("Renderer focus observation cannot replace an unapplied native focus intent")
+    func nativeFocusIntentPrecedesRendererObservation() async {
+        let session = MarkdownEditorSession()
+        session.loadDocument("Argument.", documentID: session.bridgeDocumentID, mode: .livePreview)
+        session.authorizeAutomaticFocus(target: .title)
+        let selections = [MarkdownEditorSelectionRange(anchor: 2, head: 2)]
+        let context = MarkdownEditorContext(
+            selections: selections, activeInlineConstructs: [],
+            activeBlockConstructs: [], composing: false, availableCommands: [], undoLabel: nil, redoLabel: nil)
+        session.updateInteraction(
+            selections: selections, line: 1, column: 3, lineCount: 1,
+            documentVersion: 0, interactionRevision: 0, focusTarget: .editor, context: context)
+        #expect(session.preferredDocumentFocusTarget == .title)
+        #expect(session.context?.selections == selections)
+        await session.resignFocusAndWait()
+        session.updateInteraction(
+            selections: selections, line: 1, column: 3, lineCount: 1,
+            documentVersion: 0, interactionRevision: 1, focusTarget: .editor, context: context)
+        #expect(session.preferredDocumentFocusTarget == .editor)
+    }
+
     @Test("Presentation teardown cannot discard a composing recovery pin")
     func closedPresentationRetainsCompositionPin() {
         let session = DocumentSessionModel(key: nil)

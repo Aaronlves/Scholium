@@ -1,7 +1,9 @@
 import {parseHTML} from "linkedom";
 import {EditorState} from "@codemirror/state";
-import {afterEach, describe, expect, it, vi} from "vitest";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {createLiveInlineWidgets} from "../live-inline-widgets";
+import {awaitVisibleDocumentWidgets, mathRuntimeSettledEvent} from "../document-widget-readiness";
+import {renderPreviewMathNodes} from "../preview-popover";
 
 const widgets = createLiveInlineWidgets({
   requestMathRuntime() {},
@@ -9,6 +11,9 @@ const widgets = createLiveInlineWidgets({
 });
 
 describe("live inline widget presentation", () => {
+  // Linkedom's window is a proxy over the test global. Runtime availability
+  // belongs to each fixture; a previous fixture's installation must not leak.
+  beforeEach(() => vi.stubGlobal("scholiumMath", undefined));
   afterEach(() => vi.unstubAllGlobals());
 
   it("projects multiline Markdown behind one accessible annotation disclosure", () => {
@@ -57,6 +62,79 @@ describe("live inline widget presentation", () => {
     expect(awaitingRuntime.eq(ready)).toBe(false);
     expect(ready.toDOM({} as import("@codemirror/view").EditorView)
       .classList.contains("scholium-math-rendered")).toBe(true);
+  });
+
+  it.each(["rendered", "unavailable"])("settles opening mathematics only after its %s presentation is final", async result => {
+    const {document, window} = parseHTML("<html><body><div id='root'></div></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", window);
+    const root = document.getElementById("root")!;
+    const rect = () => ({left: 0, right: 300, top: 0, bottom: 200} as DOMRect);
+    root.getBoundingClientRect = rect;
+    const expression = {kind: "display" as const, content: "x", delimiterLength: 2,
+      from: 0, to: 5, contentFrom: 2, contentTo: 3};
+    const pendingWidget = widgets.math(expression, "$$x$$");
+    const dom = pendingWidget.toDOM({} as import("@codemirror/view").EditorView);
+    dom.querySelector<HTMLElement>(".scholium-math")!.getBoundingClientRect = rect;
+    root.append(dom);
+    let ready = false;
+    const pending = awaitVisibleDocumentWidgets(root, root, () => {}).then(() => { ready = true; });
+    await Promise.resolve();
+    expect(ready).toBe(false);
+    if (result === "rendered") {
+      window.scholiumMath = {version: 1, render: () => ({ok: true, html: "<span>x</span>"})};
+      const next = widgets.math(expression, "$$x$$").toDOM({} as import("@codemirror/view").EditorView);
+      dom.replaceWith(next);
+      pendingWidget.destroy(dom);
+    }
+    window.dispatchEvent(new window.Event(mathRuntimeSettledEvent));
+    await pending;
+    expect(root.querySelector(result === "rendered" ? ".scholium-math-rendered" : ".scholium-math-source"))
+      .not.toBeNull();
+    if (result === "unavailable") expect(root.textContent).toBe("$$x$$");
+  });
+
+  it("includes source-backed Embedded Note mathematics in the same viewport barrier", async () => {
+    const {document, window} = parseHTML("<html><body><div id='root'></div></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", window);
+    const root = document.getElementById("root")!;
+    const rect = () => ({left: 0, right: 300, top: 0, bottom: 200} as DOMRect);
+    root.getBoundingClientRect = rect;
+    const widget = widgets.embeddedNote({from: 0, to: 9, title: "Embedded", isEmbedded: true,
+      htmlBody: "<span class='scholium-math' data-math-source='eA==' data-math-kind='inline'><code class='scholium-math-source'>$x$</code></span>"}, "Embedded", 0);
+    const dom = widget.toDOM();
+    dom.querySelector<HTMLElement>(".scholium-math")!.getBoundingClientRect = rect;
+    root.append(dom);
+    let ready = false;
+    const pending = awaitVisibleDocumentWidgets(root, root, () => {}).then(() => { ready = true; });
+    await Promise.resolve();
+    expect(ready).toBe(false);
+    window.scholiumMath = {version: 1, render: () => ({ok: true, html: "<span>x</span>"})};
+    renderPreviewMathNodes(root);
+    window.dispatchEvent(new window.Event(mathRuntimeSettledEvent));
+    await pending;
+    expect(dom.querySelector(".scholium-math-rendered")).not.toBeNull();
+    expect(dom.querySelector(".scholium-math-source")?.textContent).toBe("$x$");
+    widget.destroy(dom);
+  });
+
+  it("cancels a removed formula's pending runtime without waiting for its installation", async () => {
+    const {document, window} = parseHTML("<html><body><div id='root'></div></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", window);
+    const root = document.getElementById("root")!;
+    const rect = () => ({left: 0, right: 300, top: 0, bottom: 200} as DOMRect);
+    root.getBoundingClientRect = rect;
+    const widget = widgets.math({kind: "inline", content: "x", delimiterLength: 1,
+      from: 0, to: 3, contentFrom: 1, contentTo: 2}, "$x$");
+    const dom = widget.toDOM({} as import("@codemirror/view").EditorView);
+    dom.getBoundingClientRect = rect;
+    root.append(dom);
+    const pending = awaitVisibleDocumentWidgets(root, root, () => {});
+    widget.destroy(dom);
+    expect(await pending).toBe(true);
+    expect(root.textContent).toBe("$x$");
   });
 
   it("returns a rendered formula to its exact source boundary on pointer input", () => {

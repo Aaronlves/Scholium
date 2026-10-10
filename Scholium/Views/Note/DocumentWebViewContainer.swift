@@ -38,12 +38,19 @@ final class DocumentWebViewContainer: NSView {
         webEnvironment.refreshAppearance()
     }
 
-    /// Native WebKit views remain allocated for editor identity and recovery,
-    /// but only the active document surface may participate in compositing or
-    /// accessibility. SwiftUI hit-testing and z-order are not sufficient for
-    /// NSView-backed WebKit content.
+    /// Native WebKit views remain allocated for editor identity and recovery.
+    /// Preparing surfaces remain in the real viewport for rendering and
+    /// measurement, but only active surfaces accept input or accessibility.
+    /// Background retained surfaces remain allocated without compositing.
     func setSurfaceVisibility(_ visibility: DocumentSurfaceVisibility) {
-        let isRetained = !visibility.isActive
+        let isRetained = visibility == .retained
+        setAccessibilityHidden(!visibility.isActive)
+        webView.setAccessibilityHidden(!visibility.isActive)
+        if !visibility.isActive, let responder = window?.firstResponder as? NSView,
+            responder === webView || responder.isDescendant(of: webView)
+        {
+            window?.makeFirstResponder(nil)
+        }
         guard
             surfaceVisibility != visibility
                 || isHidden != isRetained
@@ -58,6 +65,7 @@ final class DocumentWebViewContainer: NSView {
     required init?(coder: NSCoder) { nil }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard surfaceVisibility.isActive else { return nil }
         // The document paints behind native chrome, but must not own its
         // pointer, selection or clicks. Exclude the whole WebKit subtree so
         // AppKit can route this area to the window's toolbar/titlebar.
@@ -122,6 +130,7 @@ final class DocumentWebViewContainer: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard surfaceVisibility.isActive else { return false }
         // A focused WebKit document gets key equivalents before the menu bar.
         // Give registered app commands to their native menu owner first. The
         // composition root injects any app-level routing. This shared
@@ -141,6 +150,57 @@ final class DocumentWebViewContainer: NSView {
     override func accessibilityChildren() -> [Any]? {
         // WKWebView's own AX tree does not include arbitrary native subviews.
         // The native parent exposes both owners without mirroring their content.
-        isHidden ? [] : subviews
+        surfaceVisibility.isActive && !isHidden ? subviews : []
+    }
+}
+
+/// Every interactive document WebKit surface resolves input eligibility from
+/// its native container, including a prepared page reused from the pool.
+class DocumentNativeWebView: WKWebView {
+    var documentSurfaceAllowsInput: Bool {
+        var ancestor = superview
+        while let view = ancestor {
+            if let container = view as? DocumentWebViewContainer {
+                return container.surfaceVisibility.isActive
+            }
+            ancestor = view.superview
+        }
+        return true
+    }
+
+    override var acceptsFirstResponder: Bool {
+        documentSurfaceAllowsInput && super.acceptsFirstResponder
+    }
+
+    override var canBecomeKeyView: Bool {
+        documentSurfaceAllowsInput && super.canBecomeKeyView
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        documentSurfaceAllowsInput ? super.hitTest(point) : nil
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        documentSurfaceAllowsInput && super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard documentSurfaceAllowsInput else { return }
+        super.keyDown(with: event)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard documentSurfaceAllowsInput else { return }
+        super.mouseDown(with: event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard documentSurfaceAllowsInput else { return }
+        super.rightMouseDown(with: event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard documentSurfaceAllowsInput else { return }
+        super.scrollWheel(with: event)
     }
 }

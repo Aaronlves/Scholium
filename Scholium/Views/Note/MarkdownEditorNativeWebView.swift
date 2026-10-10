@@ -14,7 +14,7 @@ enum EditorPastedImageSource: Sendable {
 /// class therefore never monitors or consumes `rightMouseDown`, asks WebKit's
 /// private descendant views for a premature menu, or opens a second nested
 /// menu loop.
-final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProviding {
+final class WindowAttachedWebView: DocumentNativeWebView, ScholiumDocumentInputStateProviding {
     /// The page owns its reuse age; only its window pool advances this value.
     var editorReuseCount = 0
     var onFirstWindowAttachment: (() -> Void)?
@@ -39,7 +39,7 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
         context: MarkdownEditorContext,
         mode: MarkdownEditorMode
     ) {
-        guard clientX.isFinite,
+        guard documentSurfaceAllowsInput, clientX.isFinite,
             clientY.isFinite,
             window != nil
         else { return }
@@ -60,7 +60,7 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
         // context-menu event. Present on the next AppKit turn after that event
         // has been prevented and CodeMirror has synchronized its selection.
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.window != nil else { return }
+            guard let self, self.window != nil, self.documentSurfaceAllowsInput else { return }
             menu.popUp(positioning: nil, at: point, in: self)
         }
     }
@@ -106,29 +106,32 @@ final class WindowAttachedWebView: WKWebView, ScholiumDocumentInputStateProvidin
     }
 
     func consumePastedImage() -> Bool {
-        guard let source = Self.pastedImageSource(in: .general) else { return false }
+        guard documentSurfaceAllowsInput,
+            let source = Self.pastedImageSource(in: .general)
+        else { return false }
         return onPasteImage?(source) == true
     }
 
     @objc private func performPaste(_ sender: Any?) {
+        guard documentSurfaceAllowsInput else { return }
         if consumePastedImage() { return }
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender)
     }
 
     @objc func performSelectAll(_ sender: Any?) {
-        guard let editorSession else { return }
+        guard documentSurfaceAllowsInput, let editorSession else { return }
         let sessionID = editorSession.sessionID
         let documentID = editorSession.documentID
         let responder = window?.firstResponder
         Task { @MainActor [weak self] in
-            guard self?.editorSession === editorSession,
+            guard self?.documentSurfaceAllowsInput == true, self?.editorSession === editorSession,
                 editorSession.sessionID == sessionID, editorSession.documentID == documentID,
                 self?.window?.firstResponder === responder
             else { return }
             do {
                 try await editorSession.selectAll()
             } catch {
-                guard self?.editorSession === editorSession,
+                guard self?.documentSurfaceAllowsInput == true, self?.editorSession === editorSession,
                     editorSession.sessionID == sessionID, editorSession.documentID == documentID,
                     self?.window?.firstResponder === responder
                 else { return }
