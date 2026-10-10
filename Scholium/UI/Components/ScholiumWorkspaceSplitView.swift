@@ -1,12 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// The Document can paint behind an invisible toolbar background, but the
+/// A scroll plane can paint behind an invisible toolbar background, but the
 /// native titlebar still owns input and the cursor across that entire region.
 /// Keep SwiftUI overlays and the semantic background out of hit testing there,
 /// then replace WebKit's text cursor only in the native chrome overlap.
 @MainActor
-private final class ScholiumSurfaceContainerView: NSView {
+class ScholiumSurfaceContainerView: NSView {
     let relinquishesToolbarInput: Bool
     private var chromeObservation: NSKeyValueObservation?
     private var toolbarCursorArea: NSTrackingArea?

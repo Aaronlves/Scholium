@@ -49,6 +49,7 @@ struct SidebarIsolationTests {
         split.splitView.isVertical = true
         let sidebar = NSSplitViewItem(sidebarWithViewController: controller)
         sidebar.minimumThickness = 260
+        sidebar.allowsFullHeightLayout = true
         split.addSplitViewItem(sidebar)
         split.addSplitViewItem(NSSplitViewItem(viewController: NSViewController()))
         let window = NSWindow(
@@ -56,6 +57,9 @@ struct SidebarIsolationTests {
             styleMask: [.titled, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        window.toolbar = NSToolbar(identifier: "SidebarIsolationTests")
+        window.toolbarStyle = .unified
+        window.titlebarAppearsTransparent = true
         window.contentViewController = split
         defer { window.close() }
         window.contentView?.layoutSubtreeIfNeeded()
@@ -73,7 +77,9 @@ struct SidebarIsolationTests {
             #expect(libraryView.isHidden && !chatView.isHidden)
             #expect(controller.libraryHost.view === libraryView)
             #expect(controller.chatHost.view === chatView)
-            #expect(controller.view.safeAreaRect.contains(chatView.frame))
+            #expect(controller.view.bounds.contains(chatView.frame))
+            #expect(abs(chatView.frame.maxY - controller.view.bounds.maxY) < 1)
+            #expect(controller.view.safeAreaRect.contains(libraryView.frame))
         }
         window.makeFirstResponder(chatView)
         controller.update(
@@ -113,7 +119,11 @@ struct SidebarIsolationTests {
         #expect(window.frame == original)
         window.setContentSize(.init(width: 1400, height: 900))
         window.contentView?.layoutSubtreeIfNeeded()
-        #expect(controller.view.safeAreaRect.contains(chatView.frame))
+        #expect(controller.view.bounds.contains(chatView.frame))
+        #expect(abs(chatView.frame.maxY - controller.view.bounds.maxY) < 1)
+        #expect(chatView.safeAreaInsets.top > 0)
+        #expect(controller.view.safeAreaRect.contains(libraryView.frame))
+        #expect(controller.view.clipsToBounds)
         #expect(controller.libraryHost.sizingOptions.isEmpty && controller.chatHost.sizingOptions.isEmpty)
     }
 }

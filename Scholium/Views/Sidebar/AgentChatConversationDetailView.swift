@@ -101,6 +101,7 @@ struct AgentChatConversationDetailView: View {
                 fileSelectionTask?.cancel()
                 presentation.completion.dismiss()
                 presentation.messageIsFocused = false
+                presentation.showsTurns = false
                 presentation.showsFiles = false
                 presentation.showsAgents = false
                 presentation.contextAnchor = nil

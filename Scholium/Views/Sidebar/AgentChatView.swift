@@ -89,7 +89,8 @@ struct AgentChatView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
+        // The native Sidebar contains horizontal page transitions across its
+        // full bounds; a safe-area-sized clip here would cut off toolbar underlap.
         .transaction { transaction in
             if !navigationAnimates {
                 transaction.animation = nil

@@ -4,7 +4,7 @@ import SwiftUI
 /// The selected page changes immediately; Core Animation presents its old and
 /// new contents without giving the hidden page another interaction route.
 @MainActor
-private final class SidebarPageTransitionView: NSView {
+private final class SidebarPageTransitionView: ScholiumSurfaceContainerView {
     static let animationKey = kCATransition
 
     override func viewDidMoveToWindow() {
@@ -48,8 +48,11 @@ final class ScholiumSidebarViewController<Library: View, Chat: View>: NSViewCont
     required init?(coder: NSCoder) { fatalError("Code-only sidebar") }
 
     override func loadView() {
-        let container = SidebarPageTransitionView()
+        let container = SidebarPageTransitionView(relinquishesToolbarInput: true)
         container.wantsLayer = true
+        // Contain page transitions at the full native pane, including the
+        // toolbar underlay, rather than clipping SwiftUI's readable safe area.
+        container.clipsToBounds = true
         view = container
         for controller in [libraryHost as NSViewController, chatHost] {
             addChild(controller)
@@ -59,7 +62,10 @@ final class ScholiumSidebarViewController<Library: View, Chat: View>: NSViewCont
             NSLayoutConstraint.activate([
                 content.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
                 content.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-                content.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                // Chat keeps the host's native safe area for fixed controls,
+                // while its scroll plane can extend behind the toolbar.
+                content.topAnchor.constraint(
+                    equalTo: controller === chatHost ? view.topAnchor : view.safeAreaLayoutGuide.topAnchor),
                 content.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             ])
         }

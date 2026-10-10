@@ -414,13 +414,14 @@ struct AgentChatSidebarLifecycleTests {
         #expect(controller.connectionState == .disconnected)
     }
 
-    @Test("Retained readers keep their native identity and reading anchor through hidden resizing")
+    @Test("Hiding Chat dismisses Outline while retaining native readers, draft, focus context and reading position")
     func retainedTranscriptSurvivesHiddenResize() async throws {
         _ = NSApplication.shared
         let root = repository.appendingPathComponent(".build/agent-chat-tests/retained-resize-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let triptychID = UUID()
         var conversation = AgentChatConversation(triptychID: triptychID)
+        conversation.draft = "Unsent Outline regression draft"
         conversation.messages = (0..<2).flatMap { index in
             [
                 AgentChatMessage(id: "question-\(index)", role: .user, text: "Synthetic question \(index). 中文。"),
@@ -455,6 +456,7 @@ struct AgentChatSidebarLifecycleTests {
         let host = NSHostingView(rootView: AnyView(detail(visible: true)))
         let window = mount(host)
         defer {
+            presentation.showsTurns = false
             window.contentView = nil
             window.close()
         }
@@ -468,6 +470,17 @@ struct AgentChatSidebarLifecycleTests {
             }
         }
         try await verify("initial") { session.initialTranscriptPhase == .visible && session.viewportRequest == nil && readers(host).count == 4 }
+        let editor = native.host.editor
+        editor.setSelectedRange(NSRange(location: 3, length: 6))
+        let draftSelection = editor.selectedRange()
+        let draftUndo = try #require(editor.undoManager)
+        presentation.showsFind = true
+        presentation.findFocusRequest = UUID()
+        try await verify("find-focus") {
+            guard let field = findField(in: host), let fieldEditor = field.currentEditor() else { return false }
+            return window.firstResponder === fieldEditor
+        }
+        let findEditor = try #require(findField(in: host)?.currentEditor())
         let identities = Set(readers(host).map(ObjectIdentifier.init))
         let anchor = AgentChatReadingSession.Anchor(id: "reply-1", offset: -80)
         let marker = try #require(session.markers[anchor.id]?.view)
@@ -491,13 +504,29 @@ struct AgentChatSidebarLifecycleTests {
             return abs(offset - anchor.offset) < 2
         }
         try await verify("anchor", anchorIsPositioned)
+        // Outline is transient; the native host's hiding must not retain an
+        // instruction to reopen it when the same Chat detail becomes visible.
+        presentation.showsTurns = true
         host.rootView = AnyView(detail(visible: false))
         try await verify("hidden") { readers(host).allSatisfy(\.isHiddenOrHasHiddenAncestor) && native.host.isHidden }
+        #expect(!presentation.showsTurns, "A hidden Chat must dismiss its Outline presentation.")
+        #expect(window.firstResponder !== findEditor)
         window.setContentSize(NSSize(width: 280, height: 640))
         host.layoutSubtreeIfNeeded()
         #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
         host.rootView = AnyView(detail(visible: true))
-        try await verify("resumed") { readers(host).allSatisfy { !$0.isHiddenOrHasHiddenAncestor } && anchorIsPositioned() }
+        try await verify("resumed") {
+            guard let fieldEditor = findField(in: host)?.currentEditor() else { return false }
+            return readers(host).allSatisfy { !$0.isHiddenOrHasHiddenAncestor } && anchorIsPositioned()
+                && window.firstResponder === fieldEditor
+        }
+        let resumedFindEditor = try #require(findField(in: host)?.currentEditor())
+        #expect(!presentation.showsTurns, "Returning to Chat must not reopen Outline without another request.")
+        #expect(presentation.showsFind)
+        #expect(window.firstResponder === resumedFindEditor)
+        #expect(native.host.editor === editor)
+        #expect(editor.string == conversation.draft && controller.selected?.draft == conversation.draft)
+        #expect(editor.selectedRange() == draftSelection && editor.undoManager === draftUndo)
         #expect(Set(readers(host).map(ObjectIdentifier.init)) == identities)
         #expect(session.anchor == anchor && session.viewportRequest == nil)
         #expect(controller.selected?.messages == conversation.messages)
