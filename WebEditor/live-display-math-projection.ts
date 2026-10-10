@@ -11,7 +11,6 @@ import type {LiveSelectionController} from "./live-selection";
 
 interface LiveDisplayMathProjectionState {
   readonly decorations: DecorationSet;
-  readonly hasConstructs: boolean;
   readonly presentations: readonly MathProjection[];
 }
 
@@ -39,12 +38,11 @@ export function createLiveDisplayMathProjection(options: {
   function build(state: EditorState): LiveDisplayMathProjectionState {
     const index = options.projections.index(state);
     if (index.hasUnclosedFrontmatter) {
-      return {decorations: Decoration.none, hasConstructs: true, presentations: []};
+      return {decorations: Decoration.none, presentations: []};
     }
     const presentations = index.mathExpressions.filter((expression) => expression.kind === "display");
     return {
       decorations: decorations(state, presentations),
-      hasConstructs: presentations.length > 0,
       presentations,
     };
   }

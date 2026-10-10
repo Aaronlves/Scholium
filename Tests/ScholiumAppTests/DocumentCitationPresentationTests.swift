@@ -300,7 +300,7 @@ struct DocumentCitationPresentationTests {
             selections: selections, line: 1, column: 1, lineCount: 1, documentVersion: editor.generation,
             interactionRevision: 0,
             context: .init(
-                selections: selections, activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
+                selections: selections, activeInlineConstructs: [], activeBlockConstructs: [],
                 composing: composing, availableCommands: [.refreshCitations], undoLabel: nil, redoLabel: nil))
     }
 

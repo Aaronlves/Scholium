@@ -22,7 +22,7 @@ struct WorkspaceSettingsArchitectureTests {
         let revision = SettingsRevision(fingerprint: DocumentFingerprint(content: "settings"))
         model.replaceSnapshot(
             WorkspaceSettingsSnapshot(
-                settingsRevision: revision
+                portableSettingsState: .current(revision)
             ))
         #expect(model.portableSettingsState == .current(revision))
     }
@@ -43,10 +43,8 @@ struct WorkspaceSettingsArchitectureTests {
         let revision = SettingsRevision(
             fingerprint: DocumentFingerprint(content: "confirmed")
         )
-        let confirmed = TriptychSettings()
         let snapshot = WorkspaceSettingsSnapshot(
-            triptychSettings: confirmed,
-            settingsRevision: revision
+            portableSettingsState: .current(revision)
         )
         let model = WorkspaceSettingsModel(
             snapshot: snapshot,

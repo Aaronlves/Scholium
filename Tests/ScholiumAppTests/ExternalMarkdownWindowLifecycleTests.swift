@@ -68,7 +68,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
                     documentVersion: editor.generation, interactionRevision: 1,
                     context: .init(
-                        selections: [.init(anchor: 0, head: 0)], activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
+                        selections: [.init(anchor: 0, head: 0)], activeInlineConstructs: [], activeBlockConstructs: [],
                         composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
             case .blur:
                 await editor.resignFocusAndWait()
@@ -557,7 +557,6 @@ struct ExternalMarkdownWindowLifecycleTests {
                 interactionRevision: 0,
                 context: MarkdownEditorContext(
                     selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
-                    tablePosition: nil,
                     composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
             #expect(fixture.editor.isComposing)
             #expect(!model.canRequestClose)
@@ -570,7 +569,6 @@ struct ExternalMarkdownWindowLifecycleTests {
                 interactionRevision: 0,
                 context: MarkdownEditorContext(
                     selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
-                    tablePosition: nil,
                     composing: false, availableCommands: [], undoLabel: nil, redoLabel: nil))
             model.importCommitInProgress = true
             for mode in NotePresentationMode.allCases { #expect(!model.canSelectMode(mode)) }

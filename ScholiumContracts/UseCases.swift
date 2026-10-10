@@ -221,10 +221,6 @@ public protocol ResearchUseCases: Sendable {
     func resetSettingsToDefaults(
         expectedRevision: SettingsRevision?
     ) async throws -> TriptychSettingsRecoveryResult
-    func saveSettings(
-        _ settings: TriptychSettings,
-        expectedRevision: SettingsRevision
-    ) async throws -> TriptychSettingsSnapshot
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }

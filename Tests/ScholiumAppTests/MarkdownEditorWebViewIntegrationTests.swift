@@ -128,7 +128,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(
             try await harness.session.currentText(for: harness.documentID)
                 == source.replacingOccurrences(of: "| --- | --- |\r\n", with: "| --- | --- |\r\n|  |  |\r\n"))
-        #expect(harness.session.context?.tablePosition?.row == 1)
+        let insertedSource = normalized.replacingOccurrences(of: "| --- | --- |\n", with: "| --- | --- |\n|  |  |\n")
+        let insertedRow = try #require(insertedSource.range(of: "|  |  |")?.lowerBound)
+        #expect(harness.session.context?.selections.first?.head == insertedRow.utf16Offset(in: insertedSource) + 2)
         #expect(harness.session.context?.availableCommands.contains(.tableDeleteRow) == true)
         _ = try await harness.callPageJavaScript(
             "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
@@ -8346,7 +8348,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                 selections: [selection],
                 activeInlineConstructs: [],
                 activeBlockConstructs: [],
-                tablePosition: nil,
                 composing: false,
                 availableCommands: available,
                 undoLabel: nil,

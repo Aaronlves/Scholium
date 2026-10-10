@@ -34,7 +34,7 @@ struct SettingsRecoveryTests {
         let request = try await model.prepareSettingsRecovery(triptychID: id)
         #expect(request.triptychID == id)
         #expect(request.revision == observed)
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: UUID(), settingsRevision: observed))
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: UUID(), portableSettingsState: .current(observed)))
         await #expect(throws: WorkspaceSettingsMutationError.triptychChanged) {
             try await model.restoreSettingsDefaults(request)
         }
@@ -64,7 +64,7 @@ struct SettingsRecoveryTests {
                     derivedRefreshWarning: nil)
             })
         let request = try await model.prepareSettingsRecovery(triptychID: id)
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: id, settingsRevision: refreshed))
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: id, portableSettingsState: .current(refreshed)))
         _ = try await model.restoreSettingsDefaults(request)
         #expect(requestedRevision == observed)
         #expect(model.portableSettingsState == .current(committed))
@@ -113,7 +113,7 @@ struct SettingsRecoveryTests {
         let saved = revision("defaults")
         let model = WorkspaceSettingsModel(
             snapshot: WorkspaceSettingsSnapshot(activeTriptychID: id, portableSettingsState: .corrupted),
-            loadSnapshot: { _ in WorkspaceSettingsSnapshot(activeTriptychID: id, settingsRevision: saved) },
+            loadSnapshot: { _ in WorkspaceSettingsSnapshot(activeTriptychID: id, portableSettingsState: .current(saved)) },
             resetSettings: { _, _ in
                 throw ScholiumApplicationError.operationCommitUncertain(operation: "settings recovery", reason: "backup not proven")
             })
@@ -137,7 +137,7 @@ struct SettingsRecoveryTests {
         let id = UUID()
         var resets = 0
         let model = WorkspaceSettingsModel(
-            snapshot: WorkspaceSettingsSnapshot(activeTriptychID: id, settingsRevision: revision("saved")),
+            snapshot: WorkspaceSettingsSnapshot(activeTriptychID: id, portableSettingsState: .current(revision("saved"))),
             loadSnapshot: { _ in WorkspaceSettingsSnapshot(activeTriptychID: id, portableSettingsState: .readFailed("unreadable")) },
             resetSettings: { _, _ in
                 resets += 1
@@ -179,7 +179,7 @@ struct SettingsRecoveryTests {
             try await model.restoreSettingsDefaults(WorkspaceSettingsRecoveryRequest(triptychID: firstID, revision: original))
         }
         await entered.wait()
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: secondID, settingsRevision: current))
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(activeTriptychID: secondID, portableSettingsState: .current(current)))
         await release.signal()
         let result = try await recovery.value
         #expect(result.triptychID == firstID)
@@ -194,9 +194,9 @@ struct SettingsRecoveryTests {
         let firstID = UUID()
         let secondID = UUID()
         let original = WorkspaceSettingsSnapshot(
-            activeTriptychID: firstID, settingsRevision: revision("first"))
+            activeTriptychID: firstID, portableSettingsState: .current(revision("first")))
         let selected = WorkspaceSettingsSnapshot(
-            activeTriptychID: secondID, settingsRevision: revision("second"))
+            activeTriptychID: secondID, portableSettingsState: .current(revision("second")))
         let recoveryEntered = RecoveryTestSignal()
         let releaseRecovery = RecoveryTestSignal()
         let selectionEntered = RecoveryTestSignal()
@@ -246,11 +246,11 @@ struct SettingsRecoveryTests {
         let releaseSelection = RecoveryTestSignal()
         var resets = 0
         let model = WorkspaceSettingsModel(
-            snapshot: WorkspaceSettingsSnapshot(activeTriptychID: firstID, settingsRevision: revision("first")),
+            snapshot: WorkspaceSettingsSnapshot(activeTriptychID: firstID, portableSettingsState: .current(revision("first"))),
             loadSnapshot: { target in
                 await selectionEntered.signal()
                 await releaseSelection.wait()
-                return WorkspaceSettingsSnapshot(activeTriptychID: target, settingsRevision: self.revision("second"))
+                return WorkspaceSettingsSnapshot(activeTriptychID: target, portableSettingsState: .current(self.revision("second")))
             },
             resetSettings: { _, _ in
                 resets += 1

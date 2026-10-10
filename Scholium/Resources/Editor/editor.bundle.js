@@ -19648,7 +19648,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 48;
+  var EDITOR_PROTOCOL_VERSION = 49;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -35662,7 +35662,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return JSON.stringify({
       activeInlineConstructs: context.activeInlineConstructs,
       activeBlockConstructs: context.activeBlockConstructs,
-      tablePosition: context.tablePosition ?? null,
       imageTarget: context.imageTarget ?? null,
       selectionActionUTF16Count: context.selectionActionUTF16Count ?? null,
       composing: context.composing,
@@ -38536,7 +38535,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function build(state, themeRevision = options.currentThemeRevision()) {
       const index = options.projections.index(state);
       if (index.hasUnclosedFrontmatter) {
-        return { decorations: Decoration.none, hasConstructs: true, presentations: [], themeRevision };
+        return { decorations: Decoration.none, presentations: [], themeRevision };
       }
       const presentations = index.literals.codeBlocks.flatMap((block) => {
         const presentation = mermaidPresentation(state.doc, block);
@@ -38544,7 +38543,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       });
       return {
         decorations: decorations2(state, presentations, themeRevision),
-        hasConstructs: presentations.length > 0,
         presentations,
         themeRevision
       };
@@ -38781,11 +38779,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function buildTable(state) {
       const index = options.projections.index(state);
       if (index.hasUnclosedFrontmatter) {
-        return { decorations: Decoration.none, hasConstructs: true, presentations: [] };
+        return { decorations: Decoration.none, presentations: [] };
       }
       return {
         decorations: tableDecorations(state, index.tables),
-        hasConstructs: index.tables.length > 0,
         presentations: index.tables
       };
     }
@@ -38845,7 +38842,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       toDOM(view) {
         const root = document.createElement("span");
         root.className = "cm-live-callout-heading-control";
-        root.dataset.calloutFrom = String(this.from);
         CalloutHeadingWidget.rendered.set(root, this);
         if (this.foldable) {
           const button = document.createElement("button");
@@ -38884,7 +38880,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
         if (!!button !== this.foldable || !!label !== !!this.label) return false;
         CalloutHeadingWidget.rendered.set(root, this);
-        root.dataset.calloutFrom = String(this.from);
         if (button) {
           button.textContent = "";
           button.setAttribute("aria-expanded", String(!this.collapsed));
@@ -38936,7 +38931,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (index.hasUnclosedFrontmatter) {
         return {
           decorations: Decoration.none,
-          hasConstructs: true,
           presentations: [],
           active: false,
           folds
@@ -38946,7 +38940,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return {
         decorations: calloutDecorations(state, index.callouts, folds),
         folds,
-        hasConstructs: index.callouts.length > 0,
         presentations: index.callouts,
         active
       };
@@ -39093,12 +39086,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function build(state) {
       const index = options.projections.index(state);
       if (index.hasUnclosedFrontmatter) {
-        return { decorations: Decoration.none, hasConstructs: true, presentations: [] };
+        return { decorations: Decoration.none, presentations: [] };
       }
       const presentations = index.mathExpressions.filter((expression) => expression.kind === "display");
       return {
         decorations: decorations2(state, presentations),
-        hasConstructs: presentations.length > 0,
         presentations
       };
     }
@@ -39242,14 +39234,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return {
           decorations: Decoration.none,
           atomicRanges: Decoration.none,
-          hasConstructs: true,
           presentation: { definitions: [], references: [] },
           ranges: []
         };
       }
       return {
         ...decorations2(state, index.footnotes),
-        hasConstructs: index.footnotes.definitions.length > 0 || index.footnotes.references.length > 0,
         presentation: index.footnotes
       };
     }
@@ -42686,7 +42676,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       selections: editorSelections(state),
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
-      tablePosition: currentTablePosition,
       imageTarget: state.selection.ranges.length === 1 ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? void 0 : void 0,
       selectionActionUTF16Count: selectionActionSourceRange(state, view)?.utf16Count,
       composing: view.composing || compositionGate.active,

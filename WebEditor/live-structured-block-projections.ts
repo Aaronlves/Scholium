@@ -22,7 +22,6 @@ import type {ProjectedWidgetRegistry} from "./projected-widget-registry";
 
 interface LiveBlockProjectionState {
   readonly decorations: DecorationSet;
-  readonly hasConstructs: boolean;
 }
 
 interface LiveTableProjectionState extends LiveBlockProjectionState {
@@ -119,11 +118,10 @@ export function createLiveStructuredBlockProjections(options: {
   function buildTable(state: EditorState): LiveTableProjectionState {
     const index = options.projections.index(state);
     if (index.hasUnclosedFrontmatter) {
-      return {decorations: Decoration.none, hasConstructs: true, presentations: []};
+      return {decorations: Decoration.none, presentations: []};
     }
     return {
       decorations: tableDecorations(state, index.tables),
-      hasConstructs: index.tables.length > 0,
       presentations: index.tables,
     };
   }
@@ -185,7 +183,6 @@ export function createLiveStructuredBlockProjections(options: {
     toDOM(view: EditorView) {
       const root = document.createElement("span");
       root.className = "cm-live-callout-heading-control";
-      root.dataset.calloutFrom = String(this.from);
       CalloutHeadingWidget.rendered.set(root, this);
       if (this.foldable) {
         const button = document.createElement("button");
@@ -226,7 +223,6 @@ export function createLiveStructuredBlockProjections(options: {
       const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
       if (!!button !== this.foldable || !!label !== !!this.label) return false;
       CalloutHeadingWidget.rendered.set(root, this);
-      root.dataset.calloutFrom = String(this.from);
       if (button) {
         button.textContent = "";
         button.setAttribute("aria-expanded", String(!this.collapsed));
@@ -283,7 +279,6 @@ export function createLiveStructuredBlockProjections(options: {
     if (index.hasUnclosedFrontmatter) {
       return {
         decorations: Decoration.none,
-        hasConstructs: true,
         presentations: [],
         active: false,
         folds,
@@ -295,7 +290,6 @@ export function createLiveStructuredBlockProjections(options: {
     return {
       decorations: calloutDecorations(state, index.callouts, folds),
       folds,
-      hasConstructs: index.callouts.length > 0,
       presentations: index.callouts,
       active,
     };

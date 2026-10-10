@@ -18,7 +18,6 @@ import type {ProjectedWidgetRegistry} from "./projected-widget-registry";
 interface LiveFootnoteReferenceState {
   readonly decorations: DecorationSet;
   readonly atomicRanges: DecorationSet;
-  readonly hasConstructs: boolean;
   readonly presentation: FootnotePresentation;
   readonly ranges: readonly Readonly<ProjectionSourceRange>[];
 }
@@ -156,15 +155,12 @@ export function createLiveFootnoteProjection(options: {
       return {
         decorations: Decoration.none,
         atomicRanges: Decoration.none,
-        hasConstructs: true,
         presentation: {definitions: [], references: []},
         ranges: [],
       };
     }
     return {
       ...decorations(state, index.footnotes),
-      hasConstructs: index.footnotes.definitions.length > 0
-        || index.footnotes.references.length > 0,
       presentation: index.footnotes,
     };
   }

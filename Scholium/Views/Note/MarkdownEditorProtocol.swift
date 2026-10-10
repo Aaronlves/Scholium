@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 48
+let markdownEditorProtocolVersion = 49
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -130,13 +130,6 @@ struct MarkdownEditorWireScrollAnchor: Codable, Hashable, Sendable {
     let fallbackFraction: Double
 }
 
-struct MarkdownEditorTablePosition: Codable, Hashable, Sendable {
-    let row: Int
-    let column: Int
-    let rowCount: Int
-    let columnCount: Int
-}
-
 struct MarkdownEditorLinkPreview: Codable, Hashable, Sendable {
     let from: Int
     let to: Int
@@ -150,7 +143,6 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let selections: [MarkdownEditorSelectionRange]
     let activeInlineConstructs: [String]
     let activeBlockConstructs: [String]
-    let tablePosition: MarkdownEditorTablePosition?
     let composing: Bool
     let availableCommands: [MarkdownEditorCommand]
     let undoLabel: String?
@@ -166,7 +158,6 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
 struct EditorInteractionAvailability: Hashable, Sendable {
     let activeInlineConstructs: [String]
     let activeBlockConstructs: [String]
-    let tablePosition: MarkdownEditorTablePosition?
     let composing: Bool
     let hasNonemptySelection: Bool
     let availableCommands: [MarkdownEditorCommand]
@@ -179,7 +170,6 @@ struct EditorInteractionAvailability: Hashable, Sendable {
     init(context: MarkdownEditorContext) {
         activeInlineConstructs = context.activeInlineConstructs
         activeBlockConstructs = context.activeBlockConstructs
-        tablePosition = context.tablePosition
         composing = context.composing
         hasNonemptySelection = context.selections.contains(where: \.isNonempty)
         availableCommands = context.availableCommands
@@ -197,7 +187,6 @@ struct EditorInteractionAvailability: Hashable, Sendable {
             selections: selections,
             activeInlineConstructs: activeInlineConstructs,
             activeBlockConstructs: activeBlockConstructs,
-            tablePosition: tablePosition,
             composing: composing,
             availableCommands: availableCommands,
             undoLabel: undoLabel,

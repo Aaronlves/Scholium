@@ -116,7 +116,7 @@ struct MarkdownEditorCitationProtocolTests {
     func citationFreshnessAvailability() {
         var context = MarkdownEditorContext(
             selections: [.init(anchor: 0, head: 0)], activeInlineConstructs: [],
-            activeBlockConstructs: [], tablePosition: nil, composing: false,
+            activeBlockConstructs: [], composing: false,
             availableCommands: [.refreshCitations], undoLabel: nil, redoLabel: nil, citationState: .current)
         let current = EditorInteractionAvailability(context: context)
         context.citationState = .stale

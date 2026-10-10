@@ -981,7 +981,6 @@ struct DocumentControllerConvergenceTests {
                 selections: [selection],
                 activeInlineConstructs: [],
                 activeBlockConstructs: [],
-                tablePosition: nil,
                 composing: true,
                 availableCommands: [],
                 undoLabel: nil,

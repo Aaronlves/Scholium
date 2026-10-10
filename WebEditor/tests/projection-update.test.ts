@@ -9,7 +9,6 @@ import {
   selectionActivatesSyntax,
   selectionProjectionSignature,
   selectionIntersectsPhysicalLine,
-  transactionCanMapProjection,
   transactionCanMapProjectionTopology,
   transactionChangedSyntaxTree,
   transactionMayCreateProjection,
@@ -209,61 +208,6 @@ describe("empty projection update fast path", () => {
       /\|/,
     )).toBe(true);
     expect(transactionMayCreateProjection(insertion("x".repeat(8_193)), /\|/)).toBe(true);
-  });
-});
-
-describe("construct-bearing projection update fast path", () => {
-  const source = "ordinary prose\n\n| A | B |\n| - | - |\n| 1 | 2 |\n";
-  const tableFrom = source.indexOf("| A");
-  const range = {from: tableFrom, to: source.length};
-
-  it("maps a bounded plain-text insertion outside the indexed construct", () => {
-    const state = EditorState.create({doc: source});
-    const transaction = state.update({changes: {from: 8, insert: " argument"}});
-
-    expect(transactionCanMapProjection(transaction, /\|/, [range])).toBe(true);
-    expect(transaction.changes.mapPos(range.from)).toBe(range.from + 9);
-  });
-
-  it("rebuilds for structural, boundary, interior, deletion, and multiline edits", () => {
-    const state = EditorState.create({doc: source});
-    expect(transactionCanMapProjection(
-      state.update({changes: {from: 8, insert: "|"}}),
-      /\|/,
-      [range],
-    )).toBe(false);
-    expect(transactionCanMapProjection(
-      state.update({changes: {from: range.from, insert: "x"}}),
-      /\|/,
-      [range],
-    )).toBe(false);
-    expect(transactionCanMapProjection(
-      state.update({changes: {from: range.from + 2, insert: "x"}}),
-      /\|/,
-      [range],
-    )).toBe(false);
-    expect(transactionCanMapProjection(
-      state.update({changes: {from: 2, to: 3}}),
-      /\|/,
-      [range],
-    )).toBe(false);
-    expect(transactionCanMapProjection(
-      state.update({changes: {from: 8, insert: "new\nline"}}),
-      /\|/,
-      [range],
-    )).toBe(false);
-  });
-
-  it("does not map an unrelated index past locally completed latent syntax", () => {
-    const latent = "> [!] Claim\n\n| A | B |\n| - | - |";
-    const tableFrom = latent.indexOf("| A");
-    const state = EditorState.create({doc: latent});
-    const transaction = state.update({changes: {from: 4, insert: "state"}});
-    expect(transactionCanMapProjection(
-      transaction,
-      /[>\[\]!]/,
-      [{from: tableFrom, to: latent.length}],
-    )).toBe(false);
   });
 });
 

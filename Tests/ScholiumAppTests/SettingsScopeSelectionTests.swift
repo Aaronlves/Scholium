@@ -177,7 +177,7 @@ struct SettingsScopeSelectionTests {
     private func snapshot(_ id: UUID, revision: String) -> WorkspaceSettingsSnapshot {
         WorkspaceSettingsSnapshot(
             activeTriptychID: id,
-            settingsRevision: SettingsRevision(fingerprint: DocumentFingerprint(content: revision)))
+            portableSettingsState: .current(SettingsRevision(fingerprint: DocumentFingerprint(content: revision))))
     }
 }
 

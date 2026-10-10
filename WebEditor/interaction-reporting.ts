@@ -4,7 +4,6 @@ export function interactionAvailabilitySignature(context: EditorContext) {
   return JSON.stringify({
     activeInlineConstructs: context.activeInlineConstructs,
     activeBlockConstructs: context.activeBlockConstructs,
-    tablePosition: context.tablePosition ?? null,
     imageTarget: context.imageTarget ?? null,
     selectionActionUTF16Count: context.selectionActionUTF16Count ?? null,
     composing: context.composing,

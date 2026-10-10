@@ -806,7 +806,7 @@ struct AgentChatDocumentObservationTests {
         var hasPendingQuery: Bool { pendingQuery != nil }
         var context: MarkdownEditorContext {
             .init(
-                selections: selections, activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
+                selections: selections, activeInlineConstructs: [], activeBlockConstructs: [],
                 composing: composing, availableCommands: [], undoLabel: "Original Undo", redoLabel: "Original Redo")
         }
 

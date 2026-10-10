@@ -327,15 +327,3 @@ func sidebarVisibleTreeNodes(
             }
     }
 }
-
-func buildTree(
-    from notes: [WindowDocumentLocation],
-    folderRelativePaths folders: [String] = [],
-    notesAreOrdered: (WindowDocumentLocation, WindowDocumentLocation) -> Bool
-) -> [TreeNode] {
-    let preorderedNotes = notes.sorted(by: notesAreOrdered)
-    return LibraryTreeProjection(
-        preorderedNotes: preorderedNotes,
-        folderRelativePaths: folders
-    ).roots
-}

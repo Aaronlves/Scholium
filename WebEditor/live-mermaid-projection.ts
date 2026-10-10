@@ -19,7 +19,6 @@ import type {ProjectedWidgetRegistry} from "./projected-widget-registry";
 
 interface LiveMermaidProjectionState {
   readonly decorations: DecorationSet;
-  readonly hasConstructs: boolean;
   readonly presentations: readonly MermaidPresentation[];
   readonly themeRevision: number;
 }
@@ -183,7 +182,7 @@ export function createLiveMermaidProjection(options: {
   ): LiveMermaidProjectionState {
     const index = options.projections.index(state);
     if (index.hasUnclosedFrontmatter) {
-      return {decorations: Decoration.none, hasConstructs: true, presentations: [], themeRevision};
+      return {decorations: Decoration.none, presentations: [], themeRevision};
     }
     const presentations = index.literals.codeBlocks.flatMap((block) => {
       const presentation = mermaidPresentation(state.doc, block);
@@ -191,7 +190,6 @@ export function createLiveMermaidProjection(options: {
     });
     return {
       decorations: decorations(state, presentations, themeRevision),
-      hasConstructs: presentations.length > 0,
       presentations,
       themeRevision,
     };

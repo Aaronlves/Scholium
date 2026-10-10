@@ -32,7 +32,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the interaction-revision byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(48);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(49);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};

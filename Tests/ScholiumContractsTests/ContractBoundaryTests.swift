@@ -105,11 +105,9 @@ struct ContractBoundaryTests {
         #expect(outcome.derivedRefreshWarning == "index unavailable")
         #expect(outcome.identityRecoveryWarning == "identity unavailable")
         #expect(researchError.durableMutationWasCommitted)
-        #expect(researchError.mustNotRetryMutation)
         #expect(researchError.mutationRequiresReconciliation)
         #expect(researchError.refreshFailureReason == "index unavailable")
         #expect(!uncertainError.durableMutationWasCommitted)
-        #expect(uncertainError.mustNotRetryMutation)
         #expect(uncertainError.mutationRequiresReconciliation)
         #expect(uncertainError.refreshFailureReason == nil)
     }

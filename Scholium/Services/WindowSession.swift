@@ -656,41 +656,25 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 portableSettingsState: .readFailed(error.localizedDescription)
             )
         }
-        let triptychSettings: TriptychSettings
-        let settingsRevision: SettingsRevision?
         let portableSettingsState: WorkspacePortableSettingsState
         switch settingsLoadState {
         case .current(let snapshot):
-            triptychSettings = snapshot.settings
-            settingsRevision = snapshot.revision
             portableSettingsState = .current(snapshot.revision)
-        case .needsReview(let settings, let revision, let reason):
-            triptychSettings = settings
-            settingsRevision = revision
+        case .needsReview(_, let revision, let reason):
             portableSettingsState = .needsReview(revision, reason: reason)
         case .missing:
-            triptychSettings = TriptychSettings()
-            settingsRevision = nil
             portableSettingsState = .missing
         case .oldSchema(let version):
-            triptychSettings = TriptychSettings()
-            settingsRevision = nil
             portableSettingsState = .oldSchema(version)
         case .futureSchema(let version):
-            triptychSettings = TriptychSettings()
-            settingsRevision = nil
             portableSettingsState = .futureSchema(version)
         case .corrupted:
-            triptychSettings = TriptychSettings()
-            settingsRevision = nil
             portableSettingsState = .corrupted
         }
         return WorkspaceSettingsSnapshot(
             registeredVaults: vaults,
             registeredTriptychs: triptychs,
             activeTriptychID: assignment.id,
-            triptychSettings: triptychSettings,
-            settingsRevision: settingsRevision,
             portableSettingsState: portableSettingsState,
         )
     }

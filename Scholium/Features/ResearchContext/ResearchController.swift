@@ -250,22 +250,8 @@ final class ResearchController: ObservableObject {
         }
     }
 
-    func settings() async throws -> TriptychSettingsSnapshot {
-        try await requireResearch().settings()
-    }
-
     func settingsLoadState() async throws -> TriptychSettingsLoadState {
         try await requireResearch().settingsLoadState()
-    }
-
-    func saveSettings(
-        _ settings: TriptychSettings,
-        expectedRevision: SettingsRevision
-    ) async throws -> TriptychSettingsSnapshot {
-        try await requireResearch().saveSettings(
-            settings,
-            expectedRevision: expectedRevision
-        )
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

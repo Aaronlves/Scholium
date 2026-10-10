@@ -2166,7 +2166,6 @@ function currentEditorContext(view = editor): EditorContext {
     selections: editorSelections(state),
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
-    tablePosition: currentTablePosition,
     imageTarget: state.selection.ranges.length === 1
       ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? undefined : undefined,
     selectionActionUTF16Count: selectionActionSourceRange(state, view)?.utf16Count,

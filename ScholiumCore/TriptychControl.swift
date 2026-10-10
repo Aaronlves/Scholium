@@ -558,49 +558,6 @@ public actor TriptychControlStore {
         }
     }
 
-    @discardableResult
-    public func saveSettings(
-        _ settings: TriptychSettings,
-        expectedRevision: SettingsRevision
-    ) throws -> TriptychSettingsSnapshot {
-        try ensureControlDirectory()
-        guard fileManager.fileExists(atPath: settingsURL.path) else {
-            throw TriptychControlError.settingsMissing
-        }
-        guard let current = try readSettingsIfPresent() else {
-            throw TriptychControlError.settingsMissing
-        }
-        guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
-            throw TriptychControlError.settingsRevisionConflict
-        }
-        switch decodeSettingsLoadState(current) {
-        case .current, .needsReview: break
-        case .oldSchema(let version): throw TriptychControlError.settingsOldSchema(version)
-        case .futureSchema(let version): throw TriptychControlError.settingsFutureSchema(version)
-        case .corrupted, .missing: throw TriptychControlError.settingsCorrupted
-        }
-        // Saving settings does not discard unrelated future keys.
-        guard let envelope = try JSONSerialization.jsonObject(with: current) as? [String: Any]
-        else { throw TriptychControlError.settingsCorrupted }
-        let candidate = try JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted, .sortedKeys])
-        let readback = try replaceExactFile(
-            at: settingsURL,
-            expected: current,
-            candidate: candidate,
-            conflict: TriptychControlError.settingsRevisionConflict
-        )
-        guard readback == candidate,
-            let decoded = try? decodeValidatedSettings(readback),
-            decoded == settings
-        else {
-            throw TriptychControlError.settingsCorrupted
-        }
-        return TriptychSettingsSnapshot(
-            settings: decoded,
-            revision: SettingsRevision(fingerprint: DocumentFingerprint(data: readback))
-        )
-    }
-
     public func attachmentRecords() throws -> [PortableAttachmentRecord] {
         guard fileManager.fileExists(atPath: attachmentCatalogURL.path) else {
             return []

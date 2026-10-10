@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 48;
+export const EDITOR_PROTOCOL_VERSION = 49;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -80,7 +80,6 @@ export interface EditorContext {
   selections: SelectionRange[];
   activeInlineConstructs: string[];
   activeBlockConstructs: string[];
-  tablePosition?: {row: number; column: number; rowCount: number; columnCount: number};
   imageTarget?: string;
   selectionActionUTF16Count?: number;
   composing: boolean;

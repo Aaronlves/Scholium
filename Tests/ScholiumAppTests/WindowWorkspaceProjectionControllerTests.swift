@@ -319,7 +319,7 @@ struct WindowWorkspaceProjectionControllerTests {
             source: "# Original\n",
             stableID: fixture.activeNoteID
         )
-        controller.replaceVaultSnapshots([
+        controller.replaceVaultSnapshot(
             WorkspaceVaultSnapshot(
                 slot: .paperAnalysis,
                 vault: fixture.vault,
@@ -332,7 +332,7 @@ struct WindowWorkspaceProjectionControllerTests {
                     failures: []
                 )
             )
-        ])
+        )
 
         let resolved = controller.cachedNote(
             vaultID: fixture.vault.id,

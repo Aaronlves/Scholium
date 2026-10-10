@@ -71,7 +71,7 @@ struct DocumentPassageActionsTests {
         web.onPassageAction = { _ in }
         let context = MarkdownEditorContext(
             selections: [.init(anchor: 1, head: 3)],
-            activeInlineConstructs: [], activeBlockConstructs: [], tablePosition: nil,
+            activeInlineConstructs: [], activeBlockConstructs: [],
             composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil)
         let menu = web.makeEditorContextMenu(context: context, mode: .livePreview, canPaste: true)
         let passage = menu.items.filter { $0.identifier?.rawValue.hasPrefix("scholium.passage.") == true }

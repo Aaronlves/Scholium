@@ -229,33 +229,6 @@ export function transactionMayCreateProjection(transaction: Transaction, marker:
   return mayCreate;
 }
 
-/**
- * Allows an existing construct index to move through a bounded plain-text
- * insertion without reparsing the whole document. Deletions, line breaks,
- * syntax markers, and edits at or inside an indexed construct rebuild. Those
- * operations can change Markdown block structure or global footnote meaning.
- */
-export function transactionCanMapProjection(
-  transaction: Transaction,
-  marker: RegExp,
-  ranges: readonly ProjectionSourceRange[],
-) {
-  if (!transaction.docChanged || ranges.length === 0) return false;
-  let canMap = true;
-  transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-    if (!canMap) return;
-    const text = inserted.toString();
-    marker.lastIndex = 0;
-    if (toA > fromA || inserted.length > 8_192 || /[\r\n]/.test(text) || marker.test(text)
-        || changedContextContainsMarker(transaction, fromB, toB, marker)) {
-      canMap = false;
-      return;
-    }
-    canMap = !projectionBoundaryTouches(ranges, fromA);
-  });
-  return canMap;
-}
-
 function rangesOverlap(left: ProjectionSourceRange, right: ProjectionSourceRange) {
   return left.from < right.to && left.to > right.from;
 }

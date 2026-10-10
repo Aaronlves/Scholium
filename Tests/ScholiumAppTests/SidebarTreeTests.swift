@@ -1046,9 +1046,9 @@ struct SidebarTreeTests {
 
     @Test("Former role names remain ordinary researcher Folder roots")
     func formerRoleNamesRemainOrdinaryFolders() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [
+                WindowDocumentLocation.syntheticPreview(
                     relativePath: "papers/Ethics/Agency/Argument.md",
                     rawContent: "# Argument\n"
                 ),
@@ -1064,9 +1064,8 @@ struct SidebarTreeTests {
                     relativePath: "output/Chapter/Draft.md",
                     rawContent: "# Draft\n"
                 ),
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+            ].sorted { $0.relativePath < $1.relativePath }
+        ).roots
 
         #expect(Set(tree.filter(\.isFolder).map(\.id)) == ["papers", "topics", "output"])
         let papers = try #require(tree.first { $0.id == "papers" })
@@ -1080,9 +1079,9 @@ struct SidebarTreeTests {
 
     @Test("Same-named subfolders under distinct roots retain distinct action paths")
     func sameNamedSubfoldersRemainDistinct() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [
+                WindowDocumentLocation.syntheticPreview(
                     relativePath: "papers/Shared/Analysis.md",
                     rawContent: "# Analysis\n"
                 ),
@@ -1090,9 +1089,8 @@ struct SidebarTreeTests {
                     relativePath: "topics/Shared/Topic.md",
                     rawContent: "# Topic\n"
                 ),
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+            ].sorted { $0.relativePath < $1.relativePath }
+        ).roots
 
         let papers = try #require(tree.first { $0.id == "papers" })
         let topics = try #require(tree.first { $0.id == "topics" })
@@ -1104,20 +1102,19 @@ struct SidebarTreeTests {
 
     @Test("Empty folders participate in the same hierarchy as folders containing notes")
     func emptyFoldersAreVisible() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [
+                WindowDocumentLocation.syntheticPreview(
                     relativePath: "papers/Ethics/Overview.md",
                     rawContent: "# Overview\n"
                 )
-            ],
+            ].sorted { $0.relativePath < $1.relativePath },
             folderRelativePaths: [
                 "papers",
                 "papers/Ethics",
                 "papers/Ethics/Empty Archive",
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+            ]
+        ).roots
 
         let papers = try #require(tree.first { $0.id == "papers" })
         let ethics = try #require(papers.children.first { $0.id == "papers/Ethics" })
@@ -1142,9 +1139,9 @@ struct SidebarTreeTests {
 
     @Test("Native outline visibility stays deterministic")
     func expandedHierarchyUsesNativeOutlineProjection() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [
+                WindowDocumentLocation.syntheticPreview(
                     relativePath: "Arguments/Agency/Reply.md",
                     rawContent: "# Reply\n"
                 ),
@@ -1156,9 +1153,8 @@ struct SidebarTreeTests {
                     relativePath: "Loose.md",
                     rawContent: "# Loose\n"
                 ),
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+            ].sorted { $0.relativePath < $1.relativePath }
+        ).roots
 
         let collapsed = sidebarVisibleTreeNodes(from: tree, expandedFolders: [])
         #expect(collapsed.map(\.id) == ["Arguments", "Loose.md"])
@@ -1259,11 +1255,10 @@ struct SidebarTreeTests {
 
     @Test("An empty root Folder remains visible when disclosure state contains it")
     func emptyRootRemainsVisible() throws {
-        let tree = buildTree(
-            from: [],
-            folderRelativePaths: ["Empty Archive"],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [],
+            folderRelativePaths: ["Empty Archive"]
+        ).roots
 
         let projected = sidebarVisibleTreeNodes(
             from: tree,
@@ -1277,15 +1272,14 @@ struct SidebarTreeTests {
 
     @Test("Only visibly expanded Folders request the Collapse All presentation")
     func visibleExpandedFolderState() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
+        let tree = LibraryTreeProjection(
+            preorderedNotes: [
+                WindowDocumentLocation.syntheticPreview(
                     relativePath: "Arguments/Agency/Reply.md",
                     rawContent: "# Reply\n"
                 )
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
+            ].sorted { $0.relativePath < $1.relativePath }
+        ).roots
         let arguments = try #require(tree.first { $0.id == "Arguments" })
 
         #expect(

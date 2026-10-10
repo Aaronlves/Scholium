@@ -257,7 +257,7 @@ struct DocumentSessionLifecycleTests {
             documentVersion: 0, interactionRevision: 0, focusTarget: .editor,
             context: MarkdownEditorContext(
                 selections: [selection], activeInlineConstructs: [],
-                activeBlockConstructs: [], tablePosition: nil,
+                activeBlockConstructs: [],
                 composing: true, availableCommands: [],
                 undoLabel: nil, redoLabel: nil
             )
@@ -406,7 +406,6 @@ struct DocumentSessionLifecycleTests {
                     selections: [selection],
                     activeInlineConstructs: [],
                     activeBlockConstructs: [],
-                    tablePosition: nil,
                     composing: true,
                     availableCommands: [],
                     undoLabel: nil,

@@ -301,14 +301,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         return documents.first { $0.id.relativePath == relativePath }
     }
 
-    func replaceVaultSnapshots(_ snapshots: [WorkspaceVaultSnapshot]) {
-        var next = state
-        next.vaultSnapshotsByID = Dictionary(
-            uniqueKeysWithValues: snapshots.map { ($0.vault.id, $0) }
-        )
-        state = next
-    }
-
     func replaceVaultSnapshot(_ snapshot: WorkspaceVaultSnapshot) {
         var next = state
         next.vaultSnapshotsByID[snapshot.vault.id] = snapshot

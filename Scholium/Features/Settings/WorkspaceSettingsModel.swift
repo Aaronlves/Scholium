@@ -24,25 +24,18 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     var registeredVaults: [RegisteredVault]
     var registeredTriptychs: [TriptychAssignment]
     var activeTriptychID: UUID?
-    var triptychSettings: TriptychSettings
     var portableSettingsState: WorkspacePortableSettingsState
 
     init(
         registeredVaults: [RegisteredVault] = [],
         registeredTriptychs: [TriptychAssignment] = [],
         activeTriptychID: UUID? = nil,
-        triptychSettings: TriptychSettings = TriptychSettings(),
-        settingsRevision: SettingsRevision? = nil,
-        portableSettingsState: WorkspacePortableSettingsState? = nil
+        portableSettingsState: WorkspacePortableSettingsState = .unavailable
     ) {
         self.registeredVaults = registeredVaults
         self.registeredTriptychs = registeredTriptychs
         self.activeTriptychID = activeTriptychID
-        self.triptychSettings = triptychSettings
-        self.portableSettingsState =
-            portableSettingsState
-            ?? settingsRevision.map(WorkspacePortableSettingsState.current)
-            ?? .unavailable
+        self.portableSettingsState = portableSettingsState
     }
 }
 
@@ -282,7 +275,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         // A refresh started before this durable commit cannot reinstall stale values.
         refreshGeneration &+= 1
         isRefreshing = false
-        snapshot.triptychSettings = commit.recovery.snapshot.settings
         snapshot.portableSettingsState = .current(commit.recovery.snapshot.revision)
         errorMessage = nil
     }
