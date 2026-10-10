@@ -92,6 +92,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> MarkdownEditorMountView {
+        PerformanceProbe.shared.markNoteOpeningMilestone(
+            .mountRequested, attemptID: PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: performanceDocumentID)
+        )
         let mount = MarkdownEditorMountView()
         mount.pendingRepresentation = self
         let pool = session.webViewPool
@@ -124,6 +127,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         reusedWebView: WindowAttachedWebView?
     ) {
         guard !mount.isDismantled, mount.container == nil else { return }
+        let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: performanceDocumentID)
+        PerformanceProbe.shared.markNoteOpeningMilestone(.pageAcquired, attemptID: openingMeasurement)
         let attachmentSource = session.sourceForViewAttachment(
             proposedSource: source,
             documentID: documentID
@@ -207,6 +212,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         }
         coordinator.activeWebView = webView
+        PerformanceProbe.shared.markNoteOpeningMilestone(.webViewPrepared, attemptID: openingMeasurement)
         webView.editorSession = session
         webView.onPasteImage = onPasteImage
         webView.onImagePreview = onImagePreview
@@ -248,7 +254,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
-        let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: performanceDocumentID)
         let openingSessionID = session.sessionID
         PerformanceProbe.shared.bindNoteOpening(
             attemptID: openingMeasurement, documentID: performanceDocumentID, editorSessionID: openingSessionID
@@ -257,7 +262,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.noteOpeningSessionID = openingSessionID
         session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         session.webViewPool?.registerAttached(webView)
-        session.loadDocument(attachmentSource, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
+        session.prepareForViewAttachment(attachmentSource, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
+        PerformanceProbe.shared.markNoteOpeningMilestone(
+            .sessionPrepared, attemptID: openingMeasurement, editorSessionID: openingSessionID
+        )
 
         guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
             Self.editorScript != nil
@@ -306,6 +314,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         container.setSurfaceVisibility(surfaceVisibility)
         container.toolbarUnderlapEnabled = toolbarUnderlap
         coordinator.surfaceVisibility = surfaceVisibility
+        PerformanceProbe.shared.markNoteOpeningMilestone(
+            .containerPrepared, attemptID: openingMeasurement, editorSessionID: openingSessionID
+        )
         mount.install(container)
     }
 

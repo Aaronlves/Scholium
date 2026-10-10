@@ -1,6 +1,13 @@
 import Foundation
 import notify
 
+#if DEBUG
+    @MainActor
+    private final class PerformanceNoteOpeningCloseReceipt {
+        var transitionCurrency: DocumentTransitionCoordinator.Currency?
+    }
+#endif
+
 /// The measurement harness's editor commands. QA builds drive presentation
 /// changes through notifications so a run can be timed from outside the app.
 extension WindowModel {
@@ -104,6 +111,10 @@ extension WindowModel {
 
     func handlePerformanceEditorRequest(_ name: String) {
         switch name {
+        #if DEBUG
+            case "com.scholium.qa.performance-note-opening-close-target":
+                requestPerformanceNoteOpeningCloseTarget()
+        #endif
         case "com.scholium.qa.performance-note-opening-web-samples":
             guard PerformanceProbe.shared.measuresNoteOpenToInput,
                 let descriptor = currentDocumentDescriptor
@@ -157,6 +168,61 @@ extension WindowModel {
             return
         }
     }
+
+    #if DEBUG
+        /// Removes the measured destination through the ordinary close owner.
+        /// The next Library click must hydrate a new exact-source session.
+        private func requestPerformanceNoteOpeningCloseTarget() {
+            guard Bundle.main.bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier,
+                ProcessInfo.processInfo.arguments.contains(
+                    "--scholium-performance-editor-mode-notifications"
+                ),
+                performanceNoteOpeningCloseSetupTask == nil,
+                let descriptor = currentDocumentDescriptor,
+                PerformanceProbe.shared.measuresNoteOpening(documentID: descriptor.reference.relativePath),
+                let tab = documentTabController.selectedTab,
+                tab.document.editingTarget == .workspace(descriptor.sessionKey),
+                tab.document.relativePath == descriptor.reference.relativePath
+            else { return }
+
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(20))
+            let receipt = PerformanceNoteOpeningCloseReceipt()
+            closeDocumentTab(withID: tab.id)
+            documentTransitionCoordinator.enqueueCleanup { currency in
+                receipt.transitionCurrency = currency
+            }
+            performanceNoteOpeningCloseSetupTask = Task { @MainActor [weak self] in
+                defer { self?.performanceNoteOpeningCloseSetupTask = nil }
+                while clock.now < deadline {
+                    guard !Task.isCancelled else { return }
+                    if let self {
+                        if let currency = receipt.transitionCurrency {
+                            guard currency() else { return }
+                            guard self.currentDocumentDescriptor?.reference.relativePath != descriptor.reference.relativePath,
+                                !self.documentTabController.tabs.contains(where: { $0.id == tab.id })
+                            else { return }
+                            self.documentController.reapDetachedSessions()
+                            if clock.now < deadline, !Task.isCancelled,
+                                self.documentController.peekRetainedSession(for: .workspace(descriptor.sessionKey)) == nil,
+                                self.documentController.snapshots[descriptor.sessionKey] == nil
+                            {
+                                _ = notify_post("com.scholium.qa.performance-note-opening-close-target.complete")
+                                return
+                            }
+                        }
+                    } else {
+                        return
+                    }
+                    do {
+                        try await Task.sleep(for: .milliseconds(50))
+                    } catch {
+                        return
+                    }
+                }
+            }
+        }
+    #endif
 
     private func requestPerformanceEditActivation() {
         guard canEditCurrentNote,

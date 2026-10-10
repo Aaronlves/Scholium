@@ -1771,6 +1771,17 @@ final class DocumentController: ObservableObject {
         {
             session.editorSession.prepareReadSelection(range)
         }
+        // Hydration admits the exact source before a native page is acquired.
+        // The mounting view must not decide when a new session owns its bytes.
+        if session.editorSession.documentID.isEmpty,
+            case .workspace(let key) = target, let snapshot = snapshots[key],
+            snapshot.document.rawContent.utf8.elementsEqual(source.utf8)
+        {
+            session.editorSession.loadDocument(
+                source, documentID: session.editorSession.bridgeDocumentID,
+                mode: mode, citationSnapshot: snapshot.document.citationSnapshot
+            )
+        }
         session.editorSession.authorizeAutomaticFocus()
         session.beginEditing(in: mode)
         editingDocumentPath = relativePath(for: target)

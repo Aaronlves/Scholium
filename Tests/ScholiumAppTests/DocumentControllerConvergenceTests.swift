@@ -272,7 +272,7 @@ struct DocumentControllerConvergenceTests {
             controller.beginEditing(
                 session: session, target: target, source: base,
                 revision: DocumentFingerprint(content: base), mode: .source)
-            session.editingSource = draft
+            try acceptCheckedDraft(draft, in: session)
             session.conflict = .init(
                 relativePath: "Source.md", editorSource: draft,
                 diskSource: accepted, baseRevision: DocumentFingerprint(content: base),
@@ -291,7 +291,11 @@ struct DocumentControllerConvergenceTests {
                         do { try Data(later.utf8).write(to: file) } catch { Issue.record(error) }
                         session.conflict = newerConflict
                     } else if interleaving == .sourceNormalization {
-                        session.editingSource = normalizedDraft
+                        do {
+                            try acceptCheckedDraft(normalizedDraft, in: session)
+                        } catch {
+                            Issue.record(error)
+                        }
                     }
                 })
             if interleaving == .newerConflict {
@@ -450,7 +454,7 @@ struct DocumentControllerConvergenceTests {
         controller.beginEditing(
             session: session, target: firstDocument.editingTarget, source: original.document.rawContent,
             revision: original.fingerprint, mode: .source)
-        if dirty { session.editingSource = "Researcher's draft\n" }
+        if dirty { try acceptCheckedDraft("Researcher's draft\n", in: session) }
         controller.installOpenedDocument(other, vaultName: "Works", vaultRole: .draftProject)
         let selected = try #require(controller.selectedDocument)
         let selectedSession = controller.session(for: selected.editingTarget)
@@ -780,7 +784,11 @@ struct DocumentControllerConvergenceTests {
         let vaultID = UUID()
         let noteID = UUID()
         let source = "\u{FEFF}---\r\ntitle: \"Fresh\"\r\nunknown: [kept]\r\n---\r\n\r\nFirst e\u{301} paragraph 🦉.\r\n"
-        let opened = note(vaultID: vaultID, noteID: noteID, path: "Fresh.md", source: source)
+        let sourceOnly = note(vaultID: vaultID, noteID: noteID, path: "Fresh.md", source: source)
+        let companion = ZoteroCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(content: "Exact companion preimage"),
+            sourceFingerprint: sourceOnly.fingerprint, data: ZoteroCitationData(documentData: "<data>e\u{301}</data>"), status: .available)
+        let opened = WorkspaceNoteSnapshot(summary: sourceOnly.summary, document: sourceOnly.document.withCitationSnapshot(companion))
         let controller = DocumentController()
         defer { controller.removeAll() }
         controller.rememberPresentationMode(mode.presentationMode)
@@ -798,8 +806,42 @@ struct DocumentControllerConvergenceTests {
         #expect(session.editingSource.utf8.elementsEqual(source.utf8))
         #expect(session.originalEditingSource.utf8.elementsEqual(source.utf8))
         #expect(session.editingRevision == opened.fingerprint)
+        #expect(session.editorSession.documentID == session.editorSession.bridgeDocumentID)
+        #expect(Data(session.editorSession.checkedSource.utf8) == Data(source.utf8))
+        #expect(session.editorSession.startingFingerprint == opened.fingerprint.sha256)
+        #expect(session.editorSession.committedCitationSnapshot == companion)
+        #expect(session.editorSession.checkedCitationData == companion.data)
+        #expect(session.editorSession.generation == 0)
+        #expect(!session.editorSession.isDirty)
         #expect(!session.editorSession.hasAttachedWebView)
+        #expect(!session.editorSession.isReady)
         #expect(!session.editorSession.isLoaded)
+    }
+
+    @Test("Cold Read retains the hydrated source pair without admitting an editor buffer")
+    func coldReadKeepsEditorSourceUninitialized() throws {
+        let opened = citationNote(
+            vaultID: UUID(), noteID: UUID(),
+            source: "\u{FEFF}---\r\nunknown: 'kept'\r\n---\r\nRead e\u{301} source 🦉.\r\n",
+            preferences: "<data>é</data>")
+        let controller = DocumentController()
+        defer { controller.removeAll() }
+        controller.rememberPresentationMode(.read)
+
+        controller.installOpenedDocument(opened, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor)
+        #expect(controller.activeSnapshot?.document.sourceBytes == opened.document.sourceBytes)
+        #expect(controller.activeSnapshot?.document.citationSnapshot == opened.document.citationSnapshot)
+        #expect(session.presentationMode == .read)
+        #expect(!session.isEditing && !session.retainsEditorSurface)
+        #expect(session.editorSession.documentID.isEmpty)
+        #expect(session.editorSession.checkedSource.isEmpty)
+        #expect(session.editorSession.committedCitationSnapshot == nil)
+        #expect(session.editorSession.checkedCitationData == nil)
+        #expect(!session.editorSession.hasAttachedWebView)
+        #expect(!session.editorSession.isReady && !session.editorSession.isLoaded)
     }
 
     @Test(
@@ -867,7 +909,7 @@ struct DocumentControllerConvergenceTests {
         let descriptor = try #require(controller.activeDocument)
         let session = controller.session(for: descriptor)
         try controller.finishEditing(session: session, target: .workspace(descriptor.sessionKey))
-        session.editingSource = draft
+        try acceptCheckedDraft(draft, in: session)
         #expect(!session.isEditing && session.hasUnsavedChanges)
         #expect(controller.currentPresentationMode == .livePreview)
 
@@ -1012,7 +1054,7 @@ struct DocumentControllerConvergenceTests {
 
         let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         let exactDirtyBuffer = "\u{FEFF}# Argument\r\n\r\nUncommitted local thought.\r\n"
-        dirty.session(for: try #require(dirty.activeDocument)).editingSource = exactDirtyBuffer
+        try acceptCheckedDraft(exactDirtyBuffer, in: dirty.session(for: try #require(dirty.activeDocument)))
 
         dirty.installOpenedDocument(
             external,
@@ -1534,6 +1576,31 @@ struct DocumentControllerConvergenceTests {
                 Comment(rawValue: "\(boundary.name) still stores or forwards a research controller")
             )
         }
+    }
+
+    private func acceptCheckedDraft(_ source: String, in session: DocumentSessionModel) throws {
+        let editor = session.editorSession
+        let startingFingerprint = editor.startingFingerprint
+        let revision = session.editingRevision
+        try #require(editor.documentID == editor.bridgeDocumentID)
+        try #require(!startingFingerprint.isEmpty)
+        try #require(startingFingerprint == revision?.sha256)
+        let generation = editor.generation
+        try #require(
+            editor.acceptEditorChanges(
+                [
+                    .init(
+                        from: 0, to: EditorSourceOffsetMap(source: editor.checkedSource).editorUTF16Length,
+                        insert: source.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: source)
+                ],
+                baseGeneration: generation, resultingGeneration: generation + 1,
+                citationManaged: editor.committedCitationSnapshot != nil, citationData: editor.checkedCitationData))
+        try #require(editor.checkedSource.utf8.elementsEqual(source.utf8))
+        try #require(editor.startingFingerprint == startingFingerprint)
+        try #require(session.editingRevision == revision)
+        // These lifecycle fixtures also retain the commit-paced native copy;
+        // the editor delta above alone supplies the checked input authority.
+        session.editingSource = source
     }
 
     private func note(

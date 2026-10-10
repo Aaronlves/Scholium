@@ -68,6 +68,7 @@ struct DocumentCitationPresentationTests {
         session.editingSource = committedSource
         editor.loadDocument(committedSource, documentID: editor.bridgeDocumentID, mode: .livePreview)
         session.beginEditing(in: .livePreview)
+        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == nil)
         let replacement = try source(for: .reordered)
         #expect(
             editor.acceptEditorChanges(
@@ -92,8 +93,28 @@ struct DocumentCitationPresentationTests {
         #expect(!editor.hasAttachedWebView)
     }
 
+    @Test("An uninitialized or foreign editor leaves citation notices with the retained editing source")
+    func pendingAndForeignEditorUseRetainedSource() throws {
+        let document = NoteDocument(relativePath: "Synthetic.md", rawContent: try source(for: .fresh))
+        let session = DocumentSessionModel(key: nil)
+        session.editingSource = try source(for: .stale)
+        session.beginEditing(in: .livePreview)
+        let editor = session.editorSession
+        #expect(editor.documentID.isEmpty)
+        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == .stale)
+
+        let foreignID = UUID().uuidString
+        editor.loadDocument(try source(for: .duplicate), documentID: foreignID, mode: .source)
+        let foreign = try #require(editor.citationFields(forDocumentID: foreignID))
+        #expect(!foreign.diagnostics.isEmpty)
+        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == .stale)
+        session.finishEditing()
+        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == nil)
+        #expect(session.editingSource.utf8.elementsEqual(try source(for: .stale).utf8))
+    }
+
     @Test("Composition, Review handoff, and unavailable editing revoke notice actions even with retained command availability")
-    func workspaceRepairActionsFollowSessionGuards() throws {
+    func workspaceRepairActionsFollowSessionGuards() async throws {
         let exact = try source(for: .stale)
         let document = NoteDocument(relativePath: "Synthetic.md", rawContent: exact)
         let session = DocumentSessionModel(key: nil)
@@ -103,6 +124,11 @@ struct DocumentCitationPresentationTests {
         setInteraction(editor, composing: false)
         var notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
         #expect(notice.canRefresh && notice.canOpenSource)
+        await editor.announceCitationStatus("Synthetic latest status")
+        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        #expect(notice.status == "Synthetic latest status")
+        editor.dismissCitationStatus()
+        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).status == nil)
 
         setInteraction(editor, composing: true)
         #expect(editor.interactionAvailability?.availableCommands.contains(.refreshCitations) == true)
@@ -192,6 +218,14 @@ struct DocumentCitationPresentationTests {
             model.selectMode(.livePreview)
             let editor = model.editorSession
             let liveSource = try source(for: .stale)
+            editor.loadDocument(liveSource, documentID: model.documentID, mode: .livePreview)
+            #expect(editor.citationFields(forDocumentID: model.documentID)?.citationStateStale == true)
+            // A cached foreign projection cannot enter the external source;
+            // the original file snapshot still owns the unmatched fallback.
+            let foreignID = UUID().uuidString
+            editor.loadDocument(try source(for: .duplicate), documentID: foreignID, mode: .source)
+            #expect(editor.citationFields(forDocumentID: foreignID)?.diagnostics.isEmpty == false)
+            #expect(model.citationPresentation?.integrity == nil)
             editor.loadDocument(liveSource, documentID: model.documentID, mode: .livePreview)
             setInteraction(editor, composing: false)
             var notice = try #require(model.citationPresentation)

@@ -42,6 +42,28 @@ final class PerformanceProbe {
         case releasePreparation = "release_preparation"
     }
 
+    /// Diagnostic milestones keep framework scheduling separate from the
+    /// existing, user-visible opening endpoint. Only numeric offsets escape.
+    enum NoteOpeningMilestone: String {
+        case mountRequested = "mount_requested"
+        case pageAcquired = "page_acquired"
+        case webViewPrepared = "web_view_prepared"
+        case sessionPrepared = "session_prepared"
+        case containerPrepared = "container_prepared"
+        case loadScheduled = "load_scheduled"
+        case loadStarted = "load_started"
+        case initializationRequested = "initialization_requested"
+        case initialized
+        case presentationConverged = "presentation_converged"
+        case preparationCompleted = "preparation_completed"
+        case sessionLoaded = "session_loaded"
+    }
+
+    enum NoteOpeningWork: String {
+        case citationPresentation = "citation_presentation"
+        case outlineProjection = "outline_projection"
+    }
+
     static let shared = PerformanceProbe()
 
     #if DEBUG
@@ -119,6 +141,8 @@ final class PerformanceProbe {
         let started: UInt64
         var editorSessionID: UUID?
         var phases: [NoteOpeningPhase: UInt64] = [:]
+        var milestones: [NoteOpeningMilestone: UInt64] = [:]
+        var work: [NoteOpeningWork: (total: UInt64, maximum: UInt64, count: Int)] = [:]
         var bridges: [NoteOpeningBridgeOperation: (returned: UInt64, validated: UInt64, count: Int)] = [:]
     }
     private var noteOpening: NoteOpening?
@@ -188,6 +212,10 @@ final class PerformanceProbe {
     var measuresChatEntry: Bool { configuration?.metric == .chatEntry }
     var measuresNoteOpenToInput: Bool { configuration?.metric == .noteOpenToInput }
 
+    func measuresNoteOpening(documentID: String) -> Bool {
+        measuresNoteOpenToInput && configuration?.expectedDocument == documentID
+    }
+
     @discardableResult
     func beginNoteOpening(documentID: String, startNanoseconds: UInt64? = nil) -> UUID? {
         noteOpening = nil
@@ -227,6 +255,41 @@ final class PerformanceProbe {
     func cancelNoteOpening(attemptID: UUID?) {
         guard let attemptID, noteOpening?.id == attemptID else { return }
         noteOpening = nil
+    }
+
+    func markNoteOpeningMilestone(
+        _ milestone: NoteOpeningMilestone, attemptID: UUID?, editorSessionID: UUID? = nil
+    ) {
+        guard let attemptID, var opening = noteOpening, opening.id == attemptID,
+            editorSessionID == nil || opening.editorSessionID == editorSessionID,
+            opening.milestones[milestone] == nil
+        else { return }
+        let timestamp = now()
+        guard timestamp >= opening.started else { return }
+        opening.milestones[milestone] = timestamp
+        noteOpening = opening
+    }
+
+    func measureNoteOpeningWork<Value>(
+        _ work: NoteOpeningWork, documentID: String, editorSessionID: UUID,
+        operation: () -> Value
+    ) -> Value {
+        guard let attemptID = currentNoteOpeningAttempt(documentID: documentID),
+            noteOpening?.editorSessionID == nil || noteOpening?.editorSessionID == editorSessionID
+        else { return operation() }
+        let started = now()
+        let value = operation()
+        let ended = now()
+        if var opening = noteOpening, opening.id == attemptID, started >= opening.started, ended >= started {
+            let elapsed = ended - started
+            let previous = opening.work[work] ?? (total: 0, maximum: 0, count: 0)
+            let (total, overflow) = previous.total.addingReportingOverflow(elapsed)
+            if !overflow, total < 600_000_000_000, previous.count < Int.max {
+                opening.work[work] = (total, max(previous.maximum, elapsed), previous.count + 1)
+                noteOpening = opening
+            }
+        }
+        return value
     }
 
     func markNoteOpeningPhase(
@@ -988,6 +1051,14 @@ final class PerformanceProbe {
             durations["\(operation.rawValue)_bridge_return_to_validated_duration_ms"] = milliseconds(bridge.validated)
             durations["\(operation.rawValue)_bridge_duration_ms"] = milliseconds(bridge.returned) + milliseconds(bridge.validated)
             durations["\(operation.rawValue)_bridge_count"] = Double(bridge.count)
+        }
+        for (milestone, timestamp) in opening.milestones where timestamp <= completed {
+            durations["\(milestone.rawValue)_since_click_ms"] = milliseconds(timestamp - opening.started)
+        }
+        for (work, value) in opening.work {
+            durations["\(work.rawValue)_work_total_ms"] = milliseconds(value.total)
+            durations["\(work.rawValue)_work_max_ms"] = milliseconds(value.maximum)
+            durations["\(work.rawValue)_work_count"] = Double(value.count)
         }
         return durations
     }

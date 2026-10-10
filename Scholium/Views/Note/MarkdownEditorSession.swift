@@ -167,8 +167,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     // survive that rotation for reconstruction to admit its selection/history.
     let bridgeDocumentID = UUID().uuidString
     private(set) var startingFingerprint = ""
-    private(set) var committedCitationSnapshot: ZoteroCitationSnapshot?
-    private(set) var checkedCitationData: ZoteroCitationData?
+    private(set) var committedCitationSnapshot: ZoteroCitationSnapshot? {
+        didSet { cachedCitationFields = nil }
+    }
+    private(set) var checkedCitationData: ZoteroCitationData? {
+        didSet { cachedCitationFields = nil }
+    }
 
     /// Checked in-memory state uses current source coordinates; the committed
     /// snapshot remains the independent portable-file CAS preimage.
@@ -180,8 +184,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         return ZoteroCitationSnapshot(
             noteID: base.noteID, vaultID: base.vaultID,
-            revision: base.revision, sourceFingerprint: DocumentFingerprint(content: checkedSource),
+            revision: base.revision, sourceFingerprint: checkedSourceBuffer.fingerprint,
             data: data, status: .available)
+    }
+
+    /// A disposable catalog of the checked source pair. Read and an editor
+    /// whose document has not loaded keep their independent source owners.
+    func citationFields(forDocumentID expectedDocumentID: String) -> ZoteroMarkdownFields? {
+        guard !documentID.isEmpty, documentID == expectedDocumentID else { return nil }
+        let key = CitationFieldsKey(
+            documentID: documentID, sourceFingerprint: checkedSourceBuffer.fingerprint,
+            citationSnapshot: currentCitationSnapshot)
+        if let cachedCitationFields, cachedCitationFields.key == key { return cachedCitationFields.fields }
+        let fields = ZoteroMarkdownFields(
+            parsing: NoteDocument(relativePath: documentID, rawContent: checkedSource, citationSnapshot: key.citationSnapshot))
+        cachedCitationFields = (key, fields)
+        return fields
     }
 
     private(set) var generation = 0 {
@@ -278,6 +296,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var committedTextSynchronizer: ((String, String) -> Void)?
     private var sourceChangeHandler: (() -> Void)?
     private let checkedSourceBuffer = EditorExactSourceBuffer()
+    private struct CitationFieldsKey: Equatable {
+        let documentID: String
+        let sourceFingerprint: DocumentFingerprint
+        let citationSnapshot: ZoteroCitationSnapshot?
+    }
+    // Companion assignments clear this even when Swift's canonical Unicode
+    // equality considers two opaque vendor strings equal.
+    private var cachedCitationFields: (key: CitationFieldsKey, fields: ZoteroMarkdownFields)?
     var checkedSource: String { checkedSourceBuffer.snapshot() }
     var isComposing: Bool { context?.composing == true }
     private var checkedEditorUTF16Length = 0
@@ -657,6 +683,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             recoverySnapshot = nil
             viewReconstructionID = UUID()
         }
+    }
+
+    /// First attachment consumes the source already admitted by the document
+    /// owner. Reconstruction and recovery still require their complete load.
+    func prepareForViewAttachment(
+        _ source: String, documentID: String, mode: MarkdownEditorMode,
+        citationSnapshot: ZoteroCitationSnapshot?
+    ) {
+        guard !isReady, generation == 0, !isDirty,
+            self.documentID == documentID, pendingDocumentID == documentID,
+            let pendingSource, pendingSource.utf8.elementsEqual(source.utf8),
+            recoverySnapshot == nil, pendingWindowPresentation == nil
+        else {
+            loadDocument(source, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
+            return
+        }
+        committedCitationSnapshot = citationSnapshot
+        checkedCitationData = citationSnapshot?.data
+        setMode(mode)
     }
 
     func loadDocument(
@@ -2518,12 +2563,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let mode = pendingMode
         let documentID = pendingDocumentID
         let intendedRequestEpoch = requestEpoch
+        let openingAttempt = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: sessionID)
+        let openingSession = sessionID
+        PerformanceProbe.shared.markNoteOpeningMilestone(.loadScheduled, attemptID: openingAttempt, editorSessionID: openingSession)
         documentLoadTask = Task {
             do {
                 guard intendedRequestEpoch == requestEpoch,
                     self.documentID == documentID,
                     self.webView === webView
                 else { return }
+                PerformanceProbe.shared.markNoteOpeningMilestone(.loadStarted, attemptID: openingAttempt, editorSessionID: openingSession)
                 let matchingRecovery = recoverySnapshot.flatMap { snapshot in
                     snapshot.documentID == documentID
                         && snapshot.fingerprint == startingFingerprint
@@ -2544,6 +2593,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     ?? matchingRecovery?.ranges.first
                 deliveredImageResources = nil
                 let initialPresentation = pendingPresentationConfiguration
+                PerformanceProbe.shared.markNoteOpeningMilestone(.initializationRequested, attemptID: openingAttempt, editorSessionID: openingSession)
                 let initialized = try await send(
                     .initialize(
                         text: source,
@@ -2556,6 +2606,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
+                if intendedRequestEpoch == requestEpoch, self.documentID == documentID, self.webView === webView {
+                    PerformanceProbe.shared.markNoteOpeningMilestone(.initialized, attemptID: openingAttempt, editorSessionID: openingSession)
+                }
                 deliveredPresentationConfiguration = initialPresentation
                 if initialized.resultingGeneration == initialPresentation.imageResourceGeneration {
                     deliveredImageResources = initialPresentation.imageResources
@@ -2632,6 +2685,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     documentID: documentID
                 )
                 var appliedMode = mode
+                PerformanceProbe.shared.markNoteOpeningMilestone(.presentationConverged, attemptID: openingAttempt, editorSessionID: openingSession)
                 var sourceLocatorRevision = requestedInitialRange != nil && !initialRangeIsDefault ? initialRangeRevision : 0
                 var appliedScrollIntent: ScrollIntent?
                 while true {
@@ -2677,6 +2731,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard intendedRequestEpoch == requestEpoch,
                         self.documentID == documentID, self.webView === webView
                     else { return }
+                    PerformanceProbe.shared.markNoteOpeningMilestone(.preparationCompleted, attemptID: openingAttempt, editorSessionID: openingSession)
                     if let scrollIntent, pendingScrollIntent?.revision == scrollIntent.revision {
                         pendingScrollIntent = nil
                         if restoresScroll { appliedScrollIntent = scrollIntent }
@@ -2706,6 +2761,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
                 if focused { acknowledgeFocusIntent(releaseFocusRevision, target: releaseFocusTarget) }
                 updatePresentation { $0.complete(appliedMode) }
+                PerformanceProbe.shared.markNoteOpeningMilestone(.sessionLoaded, attemptID: openingAttempt, editorSessionID: openingSession)
                 // Updates arriving after the stable handoff use the loaded
                 // configuration and mode owners, including the release await.
                 if pendingMode != appliedMode { startModeConvergence(in: webView) }

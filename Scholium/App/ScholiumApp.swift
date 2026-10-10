@@ -713,6 +713,9 @@ final class WindowModel: ObservableObject {
     var identityRefreshGeneration: UInt64 = 0
     let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     private var performanceNotificationTokens: [Int32] = []
+    #if DEBUG
+        var performanceNoteOpeningCloseSetupTask: Task<Void, Never>?
+    #endif
 
     init(
         workspaceStore: WorkspaceStore,
@@ -822,6 +825,21 @@ final class WindowModel: ObservableObject {
             }
         }
         #if DEBUG
+            if Bundle.main.bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier,
+                PerformanceProbe.shared.measuresNoteOpenToInput,
+                ProcessInfo.processInfo.arguments.contains("--scholium-performance-editor-mode-notifications")
+            {
+                let name = "com.scholium.qa.performance-note-opening-close-target"
+                var token: Int32 = 0
+                let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.handlePerformanceEditorRequest(name)
+                    }
+                }
+                if status == NOTIFY_STATUS_OK {
+                    performanceNotificationTokens.append(token)
+                }
+            }
             if PerformanceProbe.shared.measuresQAMemoryOwners {
                 var token: Int32 = 0
                 let status = notify_register_dispatch(
@@ -852,6 +870,9 @@ final class WindowModel: ObservableObject {
 
     deinit {
         libraryRevealTask?.cancel()
+        #if DEBUG
+            performanceNoteOpeningCloseSetupTask?.cancel()
+        #endif
         for token in performanceNotificationTokens {
             notify_cancel(token)
         }

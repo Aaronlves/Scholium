@@ -1,4 +1,6 @@
 import CoreGraphics
+import Foundation
+import ScholiumContracts
 import SwiftUI
 import Testing
 
@@ -6,6 +8,31 @@ import Testing
 
 @Suite("Document outline rail")
 struct DocumentOutlineRailTests {
+    @Test("Hydrated heading reuse preserves exact spans and dirty source is parsed independently")
+    func hydratedHeadingsRequireExactSource() {
+        let source = "\u{FEFF}---\r\ntitle: Metadata\r\n---\r\n# é 😀\r\n### Hidden detail\r\n## Following\r\n"
+        let document = NoteDocument(relativePath: "Outline.md", rawContent: source)
+        let snapshot = WorkspaceNoteSnapshot(
+            id: .init(vaultID: UUID(), relativePath: document.relativePath),
+            stableIdentity: .resolved(UUID()), document: document,
+            fileMetadata: .init(byteCount: source.utf8.count, creationDate: nil, modificationDate: nil),
+            graphCounts: .init(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
+        )
+        let committed = DocumentOutlineProjection.make(snapshot: snapshot, source: source)
+        #expect(committed == DocumentOutlineProjection.make(relativePath: document.relativePath, source: source))
+        #expect(committed.map(\.title) == ["é 😀", "Following"])
+        #expect(committed.last?.id.hasSuffix("-2") == true)
+
+        let edited = source.replacingOccurrences(of: "é", with: "e\u{301}")
+        #expect(source == edited)
+        #expect(!source.utf8.elementsEqual(edited.utf8))
+        let dirty = DocumentOutlineProjection.make(snapshot: snapshot, source: edited)
+        #expect(dirty == DocumentOutlineProjection.make(relativePath: document.relativePath, source: edited))
+        #expect(dirty.last?.sourceUTF16Offset == committed.last!.sourceUTF16Offset + 1)
+        #expect(DocumentOutlineProjection.make(snapshot: snapshot, source: "# New heading\n").map(\.title) == ["New heading"])
+        #expect(DocumentOutlineProjection.make(snapshot: snapshot, source: "").isEmpty)
+    }
+
     @Test("Projection follows authored H1/H2 order and ignores frontmatter")
     func projectionUsesCurrentSourceHeadings() {
         let source = """

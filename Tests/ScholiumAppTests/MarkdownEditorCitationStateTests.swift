@@ -164,6 +164,7 @@ struct MarkdownEditorCitationStateTests {
         let base = snapshot()
         let updated = data(locator: "13")
         session.loadDocument(source, documentID: "synthetic-citation-note", mode: .source, citationSnapshot: base)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.first?.code == base.data?.fields.first?.code)
         var changes = 0
         session.installSourceChangeHandler { changes += 1 }
         defer { session.removeSourceChangeHandler() }
@@ -179,6 +180,7 @@ struct MarkdownEditorCitationStateTests {
         #expect(session.currentCitationSnapshot?.data == updated)
         #expect(session.committedCitationSnapshot == base)
         #expect(session.currentCitationSnapshot?.revision == base.revision)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.first?.code == updated.fields.first?.code)
         #expect(changes == 1)
 
         #expect(
@@ -190,6 +192,7 @@ struct MarkdownEditorCitationStateTests {
                 [], baseGeneration: 1, resultingGeneration: 3, citationManaged: true, citationData: base.data
             ))
         #expect(session.checkedCitationData == updated)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.first?.code == updated.fields.first?.code)
         #expect(session.generation == 1)
         #expect(changes == 1)
     }
@@ -200,6 +203,7 @@ struct MarkdownEditorCitationStateTests {
         let session = MarkdownEditorSession()
         let base = snapshot()
         session.loadDocument(source, documentID: "synthetic-citation-note", mode: .source, citationSnapshot: base)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.count == 1)
         let beforeCitation = "# Before citation\r\n"
         #expect(
             session.acceptEditorChanges(
@@ -216,6 +220,7 @@ struct MarkdownEditorCitationStateTests {
         #expect(session.currentCitationSnapshot?.noteID == noteID)
         #expect(session.currentCitationSnapshot?.revision == nil)
         #expect(session.currentCitationSnapshot?.status == .absent)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.isEmpty == true)
         #expect(session.committedCitationSnapshot?.revision == base.revision)
         #expect(session.committedCitationSnapshot == base)
         #expect(session.isDirty)
@@ -231,14 +236,17 @@ struct MarkdownEditorCitationStateTests {
         #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
         #expect(session.checkedCitationData == base.data)
         #expect(session.committedCitationSnapshot == base)
+        #expect(session.citationFields(forDocumentID: session.documentID)?.fields.first?.code == base.data?.fields.first?.code)
     }
 
     @Test("Rejected source deltas cannot publish companion changes and current source retains its own binding")
     @MainActor
-    func sourceAndMetadataAdmission() {
+    func sourceAndMetadataAdmission() throws {
         let session = MarkdownEditorSession()
         let base = snapshot()
         session.loadDocument(source, documentID: "synthetic-citation-note", mode: .source, citationSnapshot: base)
+        let originalFields = try #require(session.citationFields(forDocumentID: session.documentID))
+        let originalStart = try #require(originalFields.fields.first?.span.utf16LowerBound)
         #expect(
             !session.acceptEditorChanges(
                 [.init(from: 0, to: 0, insert: "é", exactInsert: "e\u{301}")],
@@ -247,6 +255,7 @@ struct MarkdownEditorCitationStateTests {
         #expect(!session.isDirty)
         #expect(session.checkedCitationData == base.data)
         #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+        #expect(session.citationFields(forDocumentID: session.documentID) == originalFields)
 
         #expect(
             session.acceptEditorChanges(
@@ -257,6 +266,159 @@ struct MarkdownEditorCitationStateTests {
         #expect(session.currentCitationSnapshot?.sourceFingerprint == DocumentFingerprint(content: session.checkedSource))
         #expect(session.committedCitationSnapshot?.sourceFingerprint == DocumentFingerprint(content: source))
         #expect(session.currentCitationSnapshot?.revision == base.revision)
+        let shiftedFields = try #require(session.citationFields(forDocumentID: session.documentID))
+        #expect(shiftedFields.fingerprint == DocumentFingerprint(content: "Prefix\r\n" + source))
+        #expect(shiftedFields.fields.first?.span.utf16LowerBound == originalStart + "Prefix\r\n".utf16.count)
+        #expect(
+            shiftedFields
+                == ZoteroMarkdownFields(
+                    parsing: NoteDocument(
+                        relativePath: session.documentID, rawContent: session.checkedSource, citationSnapshot: session.currentCitationSnapshot)))
+    }
+
+    @Test("First attachment consumes admitted source once while updating mode and exact companion bytes")
+    @MainActor
+    func firstAttachmentReusesPendingSource() throws {
+        let original = data()
+        let composed = ZoteroCitationData(
+            fields: original.fields, documentData: "<data>é</data>", acceptedFields: original.acceptedFields)
+        let decomposed = ZoteroCitationData(
+            fields: original.fields, documentData: "<data>e\u{301}</data>", acceptedFields: original.acceptedFields)
+        let baseline = snapshot(data: composed)
+        let replacement = snapshot(data: decomposed)
+        #expect(baseline == replacement)
+        #expect(Data(composed.documentData!.utf8) != Data(decomposed.documentData!.utf8))
+        let session = MarkdownEditorSession()
+        let identity = session.bridgeDocumentID
+        var synchronizedSources: [Data] = []
+        var synchronizedFingerprints: [String] = []
+        session.installCommittedTextSynchronizer { source, fingerprint in
+            synchronizedSources.append(Data(source.utf8))
+            synchronizedFingerprints.append(fingerprint)
+        }
+        defer { session.removeCommittedTextSynchronizer() }
+        session.loadDocument(source, documentID: identity, mode: .livePreview, citationSnapshot: baseline)
+        let first = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
+        #expect(Data(first.utf8) == Data(composed.documentData!.utf8))
+        session.setScrollPosition(anchor: nil, fallbackFraction: 0.37)
+        session.authorizeAutomaticFocus(target: .title)
+        let focusRevision = session.focusRequestRevision
+        #expect(session.canAttemptPreview)
+
+        session.prepareForViewAttachment(source, documentID: identity, mode: .source, citationSnapshot: replacement)
+
+        #expect(synchronizedSources == [Data(source.utf8)])
+        #expect(synchronizedFingerprints == [DocumentFingerprint(content: source).sha256])
+        #expect(session.documentID == identity)
+        #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+        #expect(!session.canAttemptPreview)
+        #expect(session.retainedScrollFraction(fallback: 0) == 0.37)
+        #expect(session.preferredDocumentFocusTarget == .title)
+        #expect(session.focusRequestRevision == focusRevision)
+        #expect(session.generation == 0 && !session.isDirty)
+        #expect(!session.isReady && !session.isLoaded && !session.hasAttachedWebView)
+        let changed = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
+        #expect(Data(changed.utf8) == Data(decomposed.documentData!.utf8))
+        #expect(Data(try #require(session.committedCitationSnapshot?.data?.documentData).utf8) == Data(decomposed.documentData!.utf8))
+        #expect(Data(try #require(session.checkedCitationData?.documentData).utf8) == Data(decomposed.documentData!.utf8))
+    }
+
+    @Test("A foreign identity or canonically equal different source requires a complete attachment load")
+    @MainActor
+    func attachmentAdmissionRejectsDifferentIdentityAndBytes() throws {
+        let session = MarkdownEditorSession()
+        var synchronizedSources: [Data] = []
+        session.installCommittedTextSynchronizer { source, _ in synchronizedSources.append(Data(source.utf8)) }
+        defer { session.removeCommittedTextSynchronizer() }
+        session.loadDocument(source, documentID: session.bridgeDocumentID, mode: .livePreview, citationSnapshot: snapshot())
+        let foreignIdentity = UUID().uuidString
+
+        session.prepareForViewAttachment(source, documentID: foreignIdentity, mode: .source, citationSnapshot: snapshot())
+
+        #expect(synchronizedSources == [Data(source.utf8), Data(source.utf8)])
+        #expect(session.documentID == foreignIdentity)
+        #expect(session.citationFields(forDocumentID: session.bridgeDocumentID) == nil)
+        let replacementSource = source.replacingOccurrences(of: "e\u{301}", with: "é")
+        #expect(replacementSource == source)
+        #expect(Data(replacementSource.utf8) != Data(source.utf8))
+        let replacementSnapshot = ZoteroCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(content: "Replacement companion preimage"),
+            sourceFingerprint: DocumentFingerprint(content: replacementSource), data: data(locator: "99"), status: .available)
+
+        session.prepareForViewAttachment(replacementSource, documentID: foreignIdentity, mode: .livePreview, citationSnapshot: replacementSnapshot)
+
+        #expect(synchronizedSources == [Data(source.utf8), Data(source.utf8), Data(replacementSource.utf8)])
+        #expect(Data(session.checkedSource.utf8) == Data(replacementSource.utf8))
+        #expect(session.startingFingerprint == DocumentFingerprint(content: replacementSource).sha256)
+        #expect(session.currentCitationSnapshot?.sourceFingerprint == DocumentFingerprint(content: replacementSource))
+        #expect(session.checkedCitationData == replacementSnapshot.data)
+        #expect(session.canAttemptPreview)
+        #expect(session.generation == 0 && !session.isDirty)
+        #expect(!session.isReady && !session.isLoaded && !session.hasAttachedWebView)
+    }
+
+    @Test("Citation catalogs preserve opaque companion bytes even when Unicode values compare equal")
+    @MainActor
+    func citationCatalogPreservesOpaqueCompanionBytes() throws {
+        let original = data()
+        let composed = ZoteroCitationData(
+            fields: original.fields, documentData: "<data>é</data>", acceptedFields: original.acceptedFields)
+        let decomposed = ZoteroCitationData(
+            fields: original.fields, documentData: "<data>e\u{301}</data>", acceptedFields: original.acceptedFields)
+        #expect(composed == decomposed)
+        #expect(Data(composed.documentData!.utf8) != Data(decomposed.documentData!.utf8))
+        let session = MarkdownEditorSession()
+        let identity = session.bridgeDocumentID
+        let baseline = snapshot(data: composed)
+        session.loadDocument(source, documentID: identity, mode: .source, citationSnapshot: baseline)
+        let first = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
+        #expect(Data(first.utf8) == Data(composed.documentData!.utf8))
+
+        #expect(session.acceptEditorChanges([], baseGeneration: 0, resultingGeneration: 1, citationManaged: true, citationData: decomposed))
+        let changed = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
+        #expect(Data(changed.utf8) == Data(decomposed.documentData!.utf8))
+        #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+        #expect(session.committedCitationSnapshot == baseline)
+
+        // Reload resets generation while keeping identical source and a
+        // canonically equal pair; the newly supplied opaque bytes still win.
+        session.loadDocument(source, documentID: identity, mode: .source, citationSnapshot: baseline)
+        let reloaded = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
+        #expect(Data(reloaded.utf8) == Data(composed.documentData!.utf8))
+        #expect(session.generation == 0)
+    }
+
+    @Test(
+        "Citation catalog identity, companion status and detached reset follow the exact source owner",
+        arguments: [ZoteroCitationSnapshot.Status.absent, .available, .unresolved, .unsupported])
+    @MainActor
+    func citationCatalogFollowsLoadAndReset(_ status: ZoteroCitationSnapshot.Status) throws {
+        let session = MarkdownEditorSession()
+        let identity = session.bridgeDocumentID
+        #expect(session.citationFields(forDocumentID: identity) == nil)
+        session.loadDocument(source, documentID: identity, mode: .source, citationSnapshot: snapshot())
+        #expect(session.citationFields(forDocumentID: identity)?.diagnostics.isEmpty == true)
+        let next = status == .available ? snapshot(data: data(locator: "99")) : ZoteroCitationSnapshot(noteID: noteID, vaultID: vaultID, status: status)
+        session.loadDocument(source, documentID: identity, mode: .source, citationSnapshot: next)
+        let fields = try #require(session.citationFields(forDocumentID: identity))
+        #expect(
+            fields == ZoteroMarkdownFields(parsing: NoteDocument(relativePath: identity, rawContent: source, citationSnapshot: session.currentCitationSnapshot))
+        )
+        #expect(session.generation == 0)
+        #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+
+        let replacementIdentity = UUID().uuidString
+        let ordinary = "\u{FEFF}No citation 😀 e\u{301}\r\n"
+        session.loadDocument(ordinary, documentID: replacementIdentity, mode: .source)
+        #expect(session.citationFields(forDocumentID: identity) == nil)
+        let empty = try #require(session.citationFields(forDocumentID: replacementIdentity))
+        #expect(empty.fields.isEmpty && empty.diagnostics.isEmpty)
+        #expect(empty.fingerprint == DocumentFingerprint(content: ordinary))
+        session.shutdownDetachedSession()
+        let reset = try #require(session.citationFields(forDocumentID: replacementIdentity))
+        #expect(reset.fields.isEmpty && reset.diagnostics.isEmpty && reset.fingerprint == DocumentFingerprint(content: ""))
+        session.loadDocument(source, documentID: identity, mode: .source, citationSnapshot: snapshot())
+        #expect(session.citationFields(forDocumentID: identity)?.fields.first?.code == data().fields.first?.code)
     }
 
     @Test("Standalone source refuses managed metadata and ordinary edits stay standalone")

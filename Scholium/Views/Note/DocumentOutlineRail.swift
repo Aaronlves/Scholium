@@ -13,6 +13,13 @@ struct DocumentOutlineEntry: Hashable, Identifiable, Sendable {
 }
 
 enum DocumentOutlineProjection {
+    static func make(snapshot: WorkspaceNoteSnapshot, source: String) -> [DocumentOutlineEntry] {
+        guard snapshot.document.rawContent.utf8.elementsEqual(source.utf8) else {
+            return make(relativePath: snapshot.id.relativePath, source: source)
+        }
+        return entries(headings: snapshot.headings, source: source)
+    }
+
     static func make(relativePath: String, source: String) -> [DocumentOutlineEntry] {
         guard !source.isEmpty else { return [] }
 
@@ -21,10 +28,14 @@ enum DocumentOutlineProjection {
             rawContent: source
         )
         let semantic = MarkdownSemanticDocument(parsing: document)
+        return entries(headings: semantic.headings, source: source)
+    }
+
+    private static func entries(headings: [HeadingNode], source: String) -> [DocumentOutlineEntry] {
         let lineCount = max(1, source.components(separatedBy: .newlines).count)
         let lineDenominator = max(1, lineCount - 1)
 
-        return semantic.headings.enumerated().compactMap { index, heading in
+        return headings.enumerated().compactMap { index, heading in
             guard heading.level <= 2 else { return nil }
             let line = max(1, heading.span.start.line)
             let progress = min(

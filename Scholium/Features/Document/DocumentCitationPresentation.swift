@@ -12,7 +12,10 @@ struct DocumentCitationPresentation: Equatable {
     var isVisible: Bool { integrity != nil || status != nil }
 
     init(document: NoteDocument, status: String?, canRefresh: Bool, canOpenSource: Bool) {
-        let fields = ZoteroMarkdownFields(parsing: document)
+        self.init(fields: ZoteroMarkdownFields(parsing: document), status: status, canRefresh: canRefresh, canOpenSource: canOpenSource)
+    }
+
+    init(fields: ZoteroMarkdownFields, status: String?, canRefresh: Bool, canOpenSource: Bool) {
         integrity = !fields.diagnostics.isEmpty ? .unresolved : fields.citationStateStale ? .stale : nil
         self.status = status
         self.canRefresh = integrity == .stale && canRefresh
@@ -22,17 +25,27 @@ struct DocumentCitationPresentation: Equatable {
 
 extension DocumentSessionModel {
     func citationPresentation(committedDocument: NoteDocument, editingIsAvailable: Bool) -> DocumentCitationPresentation {
-        let document =
-            isEditing
-            ? NoteDocument(
-                relativePath: committedDocument.relativePath, rawContent: retainedExactSource,
-                citationSnapshot: editorSession.currentCitationSnapshot)
-            : committedDocument
-        return DocumentCitationPresentation(
-            document: document, status: editorSession.citationStatus,
-            canRefresh: isEditing && editingIsAvailable && !returnToReadAfterSave && !editorSession.isComposing
-                && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true,
-            canOpenSource: editingIsAvailable && presentationMode != .source && !editorSession.isComposing && !returnToReadAfterSave)
+        PerformanceProbe.shared.measureNoteOpeningWork(
+            .citationPresentation, documentID: committedDocument.relativePath, editorSessionID: editorSession.sessionID
+        ) {
+            let fields: ZoteroMarkdownFields
+            if isEditing, let checkedFields = editorSession.citationFields(forDocumentID: editorSession.bridgeDocumentID) {
+                fields = checkedFields
+            } else {
+                let document =
+                    isEditing
+                    ? NoteDocument(
+                        relativePath: committedDocument.relativePath, rawContent: retainedExactSource,
+                        citationSnapshot: editorSession.currentCitationSnapshot)
+                    : committedDocument
+                fields = ZoteroMarkdownFields(parsing: document)
+            }
+            return DocumentCitationPresentation(
+                fields: fields, status: editorSession.citationStatus,
+                canRefresh: isEditing && editingIsAvailable && !returnToReadAfterSave && !editorSession.isComposing
+                    && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true,
+                canOpenSource: editingIsAvailable && presentationMode != .source && !editorSession.isComposing && !returnToReadAfterSave)
+        }
     }
 }
 

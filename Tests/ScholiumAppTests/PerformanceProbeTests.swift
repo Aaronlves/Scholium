@@ -899,6 +899,227 @@ struct PerformanceProbeTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
     }
 
+    @Test("Opening milestones retain one matching receipt and reject stale or out-of-lifetime observations")
+    func noteOpeningMilestonesRespectLifetime() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let stale = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        timestamp = 20_000_000
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        let sessionID = UUID()
+        try #require(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+
+        timestamp = 19_000_000
+        probe.markNoteOpeningMilestone(.containerPrepared, attemptID: attempt, editorSessionID: sessionID)
+        timestamp = 21_000_000
+        probe.markNoteOpeningMilestone(.pageAcquired, attemptID: stale, editorSessionID: sessionID)
+        probe.markNoteOpeningMilestone(.webViewPrepared, attemptID: attempt, editorSessionID: UUID())
+        probe.markNoteOpeningMilestone(.sessionPrepared, attemptID: nil, editorSessionID: sessionID)
+        timestamp = 25_000_000
+        probe.markNoteOpeningMilestone(.mountRequested, attemptID: attempt, editorSessionID: sessionID)
+        timestamp = 27_000_000
+        probe.markNoteOpeningMilestone(.mountRequested, attemptID: attempt, editorSessionID: sessionID)
+        timestamp = 30_000_000
+        probe.markNoteOpeningMilestone(.sessionLoaded, attemptID: attempt, editorSessionID: sessionID)
+        timestamp = 33_000_000
+        probe.markNoteOpeningMilestone(.sessionLoaded, attemptID: attempt, editorSessionID: sessionID)
+
+        for (phase, time): (PerformanceProbe.NoteOpeningPhase, UInt64) in [
+            (.hydrationStarted, 40_000_000), (.hydrated, 45_000_000), (.loaded, 50_000_000), (.focused, 55_000_000),
+        ] {
+            timestamp = time
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+        timestamp = 60_000_000
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        let completed = try Data(contentsOf: fixture.result)
+        let object = try #require(JSONSerialization.jsonObject(with: completed) as? [String: Any])
+        #expect(object["mount_requested_since_click_ms"] as? Double == 5)
+        #expect(object["session_loaded_since_click_ms"] as? Double == 10)
+        #expect(
+            Set(object.keys.filter { $0.hasSuffix("_since_click_ms") })
+                == ["mount_requested_since_click_ms", "session_loaded_since_click_ms"])
+        #expect(object["duration_ms"] as? Double == 40)
+        #expect(object["loaded_to_input_ready_duration_ms"] as? Double == 10)
+
+        timestamp = 70_000_000
+        probe.markNoteOpeningMilestone(.initialized, attemptID: attempt, editorSessionID: sessionID)
+        probe.markNoteOpeningEditorPhase(.focused, editorSessionID: sessionID, attemptID: attempt)
+        #expect(try Data(contentsOf: fixture.result) == completed)
+    }
+
+    @Test("Opening work preserves operation values, aggregates numeric diagnostics and keeps the input endpoint")
+    func noteOpeningWorkAggregatesWithoutContent() throws {
+        var timestamp: UInt64 = 10_000_000
+        var clockReads = 0
+        let fixture = try noteOpeningFixture {
+            clockReads += 1
+            return timestamp
+        }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        let sessionID = UUID()
+        try #require(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+        let privateValue = "Private research quotation and author metadata"
+        var operationCount = 0
+        let readsBeforeRejection = clockReads
+        for (document, session) in [("Other Private Note.md", sessionID), ("Fixture.md", UUID())] {
+            let result = probe.measureNoteOpeningWork(.citationPresentation, documentID: document, editorSessionID: session) {
+                operationCount += 1
+                return privateValue
+            }
+            #expect(result == privateValue)
+        }
+        #expect(operationCount == 2)
+        #expect(clockReads == readsBeforeRejection)
+
+        for (start, elapsed): (UInt64, UInt64) in [(20_000_000, 4_000_000), (30_000_000, 7_000_000), (40_000_000, 0)] {
+            timestamp = start
+            let result = probe.measureNoteOpeningWork(.citationPresentation, documentID: "Fixture.md", editorSessionID: sessionID) {
+                operationCount += 1
+                timestamp += elapsed
+                return privateValue
+            }
+            #expect(result == privateValue)
+        }
+        timestamp = 45_000_000
+        let outline = probe.measureNoteOpeningWork(.outlineProjection, documentID: "Fixture.md", editorSessionID: sessionID) {
+            operationCount += 1
+            timestamp = 48_000_000
+            return [3, 5, 8]
+        }
+        #expect(outline == [3, 5, 8])
+        #expect(operationCount == 6)
+        for (phase, time): (PerformanceProbe.NoteOpeningPhase, UInt64) in [
+            (.hydrationStarted, 55_000_000), (.hydrated, 60_000_000), (.loaded, 65_000_000), (.focused, 70_000_000),
+        ] {
+            timestamp = time
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+        timestamp = 75_000_000
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        let completed = try Data(contentsOf: fixture.result)
+        let object = try #require(JSONSerialization.jsonObject(with: completed) as? [String: Any])
+        let expectedWork: [String: Double] = [
+            "citation_presentation_work_total_ms": 11, "citation_presentation_work_max_ms": 7, "citation_presentation_work_count": 3,
+            "outline_projection_work_total_ms": 3, "outline_projection_work_max_ms": 3, "outline_projection_work_count": 1,
+        ]
+        #expect(Set(object.keys.filter { $0.contains("_work_") }) == Set(expectedWork.keys))
+        for (key, expected) in expectedWork {
+            #expect(object[key] as? Double == expected)
+        }
+        #expect(object["duration_ms"] as? Double == 65)
+        #expect(object["completed_uptime_ns"] as? UInt64 == 75_000_000)
+        #expect(object["loaded_to_input_ready_duration_ms"] as? Double == 10)
+        #expect(
+            Set(object.keys)
+                == Set(expectedWork.keys).union([
+                    "schema", "run_id", "sample", "metric", "duration_ms", "completed_uptime_ns",
+                    "hydration_started_to_hydrated_duration_ms", "loaded_to_input_ready_duration_ms",
+                    "loaded_to_focused_duration_ms", "loaded_to_stable_visible_duration_ms",
+                ]))
+        let text = try #require(String(data: completed, encoding: .utf8))
+        #expect(!text.contains(privateValue))
+        #expect(!text.contains("Fixture.md"))
+        #expect(!text.contains("Other Private Note.md"))
+        #expect(!text.contains(sessionID.uuidString))
+        #expect(!text.contains(attempt.uuidString))
+        let readsAfterCompletion = clockReads
+        let returned = probe.measureNoteOpeningWork(.citationPresentation, documentID: "Fixture.md", editorSessionID: sessionID) {
+            operationCount += 1
+            return privateValue
+        }
+        #expect(returned == privateValue)
+        #expect(operationCount == 7)
+        #expect(clockReads == readsAfterCompletion)
+        #expect(try Data(contentsOf: fixture.result) == completed)
+    }
+
+    @Test("Disabled, other-metric and unarmed work execute without reading the clock or recording", arguments: ["disabled", "indexed_search", "unarmed"])
+    func noteOpeningWorkRequiresArmedMetric(scenario: String) throws {
+        var clockReads = 0
+        let fixture = try noteOpeningFixture(metric: scenario == "indexed_search" ? scenario : "note_open_to_input") {
+            clockReads += 1
+            return 10_000_000
+        }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe =
+            scenario == "disabled"
+            ? PerformanceProbe(
+                environment: [:], arguments: [], bundleID: "com.scholium.qa",
+                now: {
+                    clockReads += 1
+                    return 10_000_000
+                }) : fixture.probe
+        #expect(probe.isEnabled == (scenario != "disabled"))
+        var operationCount = 0
+        let value = probe.measureNoteOpeningWork(.outlineProjection, documentID: "Fixture.md", editorSessionID: UUID()) {
+            operationCount += 1
+            return ["Exact", "operation", "value"]
+        }
+        #expect(value == ["Exact", "operation", "value"])
+        #expect(operationCount == 1)
+        #expect(clockReads == 0)
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+    }
+
+    @Test("Work crossing attempt replacement or an invalid clock cannot contaminate the current opening")
+    func noteOpeningWorkRejectsReplacedAttemptAndInvalidClock() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let stale = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        let oldSessionID = UUID()
+        try #require(probe.bindNoteOpening(attemptID: stale, editorSessionID: oldSessionID))
+        let sessionID = UUID()
+        var replacement: UUID?
+        timestamp = 20_000_000
+        let value = probe.measureNoteOpeningWork(.citationPresentation, documentID: "Fixture.md", editorSessionID: oldSessionID) {
+            timestamp = 25_000_000
+            replacement = probe.beginNoteOpening(documentID: "Fixture.md")
+            _ = probe.bindNoteOpening(attemptID: replacement, editorSessionID: sessionID)
+            timestamp = 30_000_000
+            return 77
+        }
+        #expect(value == 77)
+        let attempt = try #require(replacement)
+        #expect(attempt != stale)
+        #expect(probe.currentNoteOpeningAttempt(editorSessionID: sessionID) == attempt)
+        timestamp = 24_000_000
+        let preStart = probe.measureNoteOpeningWork(.citationPresentation, documentID: "Fixture.md", editorSessionID: sessionID) {
+            timestamp = 24_500_000
+            return 88
+        }
+        #expect(preStart == 88)
+        timestamp = 35_000_000
+        probe.measureNoteOpeningWork(.citationPresentation, documentID: "Fixture.md", editorSessionID: sessionID) {
+            timestamp = 34_000_000
+        }
+        timestamp = 40_000_000
+        probe.measureNoteOpeningWork(.outlineProjection, documentID: "Fixture.md", editorSessionID: sessionID) {
+            timestamp = 42_000_000
+        }
+        for (phase, time): (PerformanceProbe.NoteOpeningPhase, UInt64) in [
+            (.hydrationStarted, 45_000_000), (.hydrated, 50_000_000), (.loaded, 55_000_000), (.stableVisible, 60_000_000), (.focused, 65_000_000),
+        ] {
+            timestamp = time
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.result)) as? [String: Any])
+        #expect(!object.keys.contains(where: { $0.hasPrefix("citation_presentation_work_") }))
+        #expect(object["outline_projection_work_total_ms"] as? Double == 2)
+        #expect(object["outline_projection_work_max_ms"] as? Double == 2)
+        #expect(object["outline_projection_work_count"] as? Double == 1)
+        #expect(object["duration_ms"] as? Double == 40)
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == 0)
+    }
+
     @Test("Opening Web diagnostics are bounded, private and bound to the completed sample")
     func noteOpeningWebSamplesAreBoundedAndPrivate() throws {
         var timestamp: UInt64 = 10_000_000

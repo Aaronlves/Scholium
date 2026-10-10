@@ -596,10 +596,11 @@ struct NoteContentView<ShellNotices: View>: View {
             indexedImageAvailabilityGeneration &+= 1
         }
         .task(id: outlineTaskIdentity) {
-            let entries = DocumentOutlineProjection.make(
-                relativePath: note.id.relativePath,
-                source: outlineSource
-            )
+            let entries = PerformanceProbe.shared.measureNoteOpeningWork(
+                .outlineProjection, documentID: note.id.relativePath, editorSessionID: editorSession.sessionID
+            ) {
+                DocumentOutlineProjection.make(snapshot: note, source: outlineSource)
+            }
             guard !Task.isCancelled else { return }
             outlineSelectionEntryID = nil
             outlineSelectionAwaitsScrollAnchor = false
