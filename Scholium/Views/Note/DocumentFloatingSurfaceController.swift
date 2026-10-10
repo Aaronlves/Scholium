@@ -2,6 +2,15 @@ import AppKit
 import SwiftUI
 import WebKit
 
+extension DocumentPreviewFailure {
+    var message: String {
+        switch self {
+        case .loading: ScholiumL10n.string("Preview could not be loaded. Try again.")
+        case .measurement: ScholiumL10n.string("Preview could not be displayed. Try again.")
+        }
+    }
+}
+
 /// A bounded read-only preview projection, never an editor/source operation.
 struct DocumentPreviewSurface: Codable, Equatable, Sendable {
     let id: Int
@@ -17,6 +26,7 @@ struct DocumentSuggestionSurface: Codable, Equatable, Sendable {
     struct Item: Codable, Equatable, Sendable {
         let label: String
         let detail: String
+        var disabled = false
     }
     let id: Int
     let left: Double
@@ -32,6 +42,7 @@ struct DocumentSelectionSurface: Codable, Equatable, Sendable {
     let left: Double
     let top: Double
     let bottom: Double
+    let utf16Count: Int
 }
 
 enum DocumentFloatingKind: String, Codable, Equatable, Sendable {
@@ -116,13 +127,14 @@ enum DocumentFloatingEvent: Equatable, Sendable {
         case "selectionSurface":
             guard Set(value.keys) == ["type", "surface"],
                 let object = value["surface"] as? [String: Any],
-                Set(object.keys) == ["id", "left", "top", "bottom"],
+                Set(object.keys) == ["id", "left", "top", "bottom", "utf16Count"],
                 let data = try? JSONSerialization.data(withJSONObject: object),
                 data.count <= 100_000,
                 let result = try? JSONDecoder().decode(DocumentSelectionSurface.self, from: data),
                 result.id > 0,
                 [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
-                result.bottom >= result.top
+                result.bottom >= result.top,
+                (1...32_000).contains(result.utf16Count)
             else { return nil }
             return .selection(result)
         case "dismissSurface":
@@ -145,6 +157,13 @@ private struct ActiveDocumentFloatingSurface: Equatable {
     let left: Double
     let top: Double
     let bottom: Double
+    var selectionUTF16Count: Int? = nil
+    var selectionCommandID: UUID? = nil
+}
+
+private struct ActiveSelectionCommand {
+    let id: UUID
+    var surfaceID: Int?
 }
 
 /// Owns only native floating presentation in the originating WebKit viewport.
@@ -161,12 +180,26 @@ final class DocumentFloatingSurfaceController: NSObject {
     var previewWebView: WKWebView? { preview?.webView }
     var isPreviewShown: Bool { preview?.isShown == true }
     var onPreviewShown: (() -> Void)?
+    var onPreviewFailure: ((DocumentPreviewFailure) -> Void)?
     private var event: ((Int, DocumentFloatingAction, Int) async -> Bool)?
     var selectionResultPopover: NSPopover? { resultPopover }
     private var resultPopover: NSPopover?
     private var inquiryTask: Task<Void, Never>?
     private var inquiryID: UUID?
+    private var selectionInquiry: ((AgentChatSelectionInquiry) -> Void)?
+    private var selectionCommand: ActiveSelectionCommand?
+    private var isPresentingSelectionCommand: Bool { selectionCommand != nil }
+    private var selectionReceipt: (commandID: UUID, id: Int, continuation: CheckedContinuation<Void, any Error>)?
     private var observers: [NSObjectProtocol] = []
+    private var selectionKeyMonitor: Any?
+    private var menuTrackingDepth = 0
+
+    #if DEBUG
+        var testingSelectionReceiptCommandID: UUID? { selectionReceipt?.commandID }
+        var testingSelectionReceiptCancellationHandler: (@Sendable () -> Task<Void, Never>)? {
+            selectionReceipt.map { selectionReceiptCancellationHandler(commandID: $0.commandID) }
+        }
+    #endif
 
     func present(
         _ value: DocumentFloatingEvent,
@@ -175,7 +208,15 @@ final class DocumentFloatingSurfaceController: NSObject {
         event: @escaping (Int, DocumentFloatingAction, Int) async -> Bool
     ) {
         if case .dismiss(let value) = value {
-            if surface?.id == value.id, surface?.kind == value.kind { dismiss() }
+            if surface?.id == value.id, surface?.kind == value.kind {
+                // presentCurrent first hides the previous automatic toolbar.
+                // That old wire ID does not own the new native command.
+                if let commandID = surface?.selectionCommandID, commandID == selectionCommand?.id {
+                    dismiss()
+                } else {
+                    dismissPresentation()
+                }
+            }
             return
         }
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
@@ -190,12 +231,14 @@ final class DocumentFloatingSurfaceController: NSObject {
             next = ActiveDocumentFloatingSurface(
                 id: suggestions.id, kind: .suggestions, left: suggestions.left, top: suggestions.top, bottom: suggestions.bottom)
         case .selection(let selection):
-            guard selection.bottom + 52 <= webView.bounds.height - 12 || selection.top >= 64 else {
+            guard isPresentingSelectionCommand || selectionHasToolbarRoom(top: selection.top, bottom: selection.bottom, in: webView) else {
                 dismiss()
                 return
             }
             next = ActiveDocumentFloatingSurface(
-                id: selection.id, kind: .selection, left: selection.left, top: selection.top, bottom: selection.bottom)
+                id: selection.id, kind: .selection, left: selection.left, top: selection.top, bottom: selection.bottom,
+                selectionUTF16Count: selection.utf16Count,
+                selectionCommandID: owner === webView && selectionCommand?.surfaceID == selection.id ? selectionCommand?.id : nil)
         case .dismiss:
             return
         }
@@ -203,7 +246,7 @@ final class DocumentFloatingSurfaceController: NSObject {
         if owner !== webView {
             reset()
         } else if surface?.kind != next.kind || (surface?.kind == .selection && surface?.id != next.id) {
-            dismiss()
+            dismissPresentation()
         }
         self.event = event
         self.owner = webView
@@ -212,6 +255,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             let content = preview ?? DocumentPreviewPopover()
             preview = content
             content.onShown = { [weak self] in self?.onPreviewShown?() }
+            content.onFailure = { [weak self] failure in self?.onPreviewFailure?(failure) }
             content.onEvent = { [weak self] action in
                 self?.send(action)
                 if action == .dismiss { self?.dismiss() }
@@ -232,12 +276,8 @@ final class DocumentFloatingSurfaceController: NSObject {
                     forName: NSWindow.didUpdateNotification, object: webView.window, queue: .main
                 ) { [weak self] _ in
                     MainActor.assumeIsolated {
-                        guard let self, self.resultPopover == nil, let owner = self.owner,
-                            let firstResponder = owner.window?.firstResponder as? NSView
-                        else { return }
-                        let responder = (firstResponder as? NSTextView)?.delegate as? NSView ?? firstResponder
-                        guard responder !== owner, !responder.isDescendant(of: owner),
-                            self.glass.map({ !responder.isDescendant(of: $0) }) == true
+                        guard let self, self.resultPopover == nil,
+                            self.focusedPresentationView != nil, !self.presentationOwnsFocus
                         else { return }
                         self.send(.dismiss)
                         self.dismiss()
@@ -257,6 +297,19 @@ final class DocumentFloatingSurfaceController: NSObject {
                         }
                     })
             }
+            for name in [NSMenu.didBeginTrackingNotification, NSMenu.didEndTrackingNotification] {
+                observers.append(
+                    NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            guard let self else { return }
+                            self.menuTrackingDepth = max(0, self.menuTrackingDepth + (name == NSMenu.didBeginTrackingNotification ? 1 : -1))
+                        }
+                    })
+            }
+            selectionKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self else { return event }
+                return self.handleSelectionKeyDown(event)
+            }
         }
         guard let glass else { return }
         switch value {
@@ -269,7 +322,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             }
             content.choose = { [weak self] index in self?.send(.choose, index: index) }
             content.select = { [weak self] index in self?.send(.select, index: index) }
-            content.update(items: value.items.map { .init(label: $0.label, detail: $0.detail) }, selected: value.selected)
+            content.update(items: value.items.map { .init(label: $0.label, detail: $0.detail, disabled: $0.disabled) }, selected: value.selected)
             preferredWidth = isNewList ? content.preferredSize.width : max(preferredWidth, content.preferredSize.width)
             // CodeMirror retains the single AX listbox, active descendant and keyboard path.
             glass.setAccessibilityElement(true)
@@ -280,11 +333,27 @@ final class DocumentFloatingSurfaceController: NSObject {
             layout(height: content.preferredSize.height)
         case .preview: break  // Owned by DocumentPreviewPopover above.
         case .selection:
+            guard inquire != nil else {
+                dismiss()
+                return
+            }
             suggestions = nil
-            let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
+            let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions, selectionUTF16Count: next.selectionUTF16Count ?? 0)
             bar.onDismiss = { [weak self] in
-                self?.send(.dismiss)
-                self?.dismiss()
+                self?.cancelSelectionPresentation()
+            }
+            bar.onMenuClosed = { [weak self] in
+                // Defer focus restoration while the pop-up button unwinds,
+                // then check this exact surface and its current responder.
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    guard let self, self.surface?.id == next.id, self.surface?.kind == .selection,
+                        let owner = self.owner, let window = owner.window, window.isKeyWindow,
+                        let responder = self.focusedPresentationView, let glass = self.glass,
+                        responder === glass || responder.isDescendant(of: glass)
+                    else { return }
+                    window.makeFirstResponder(owner)
+                }
             }
             bar.onInquiry = { [weak self] inquiry in
                 guard let self, self.inquiryTask == nil, self.resultPopover == nil,
@@ -337,6 +406,10 @@ final class DocumentFloatingSurfaceController: NSObject {
                     }
                 }
             }
+            selectionInquiry = bar.onInquiry
+            // A menu invokes directly, including selections spanning the viewport.
+            // Its temporary admission must not paint a toolbar over selected prose.
+            glass.isHidden = isPresentingSelectionCommand
             glass.contentView = bar
             glass.cornerRadius = 20
             if #available(macOS 27.0, *) { glass.effectIsInteractive = true }
@@ -344,8 +417,153 @@ final class DocumentFloatingSurfaceController: NSObject {
             glass.setAccessibilityChildren([bar])
             preferredWidth = bar.preferredSize.width
             layout(height: bar.preferredSize.height)
+            if selectionReceipt?.id == next.id, selectionReceipt?.commandID == next.selectionCommandID {
+                selectionReceipt?.continuation.resume()
+                selectionReceipt = nil
+            }
         case .dismiss: break
         }
+    }
+
+    func presentSelectionInquiry(
+        _ inquiry: AgentChatSelectionInquiry,
+        in webView: WKWebView,
+        presenting: @MainActor () async throws -> Int?
+    ) async throws -> Bool {
+        guard !isPresentingSelectionCommand, webView.window != nil else { return false }
+        if owner !== webView {
+            reset()
+            owner = webView
+        }
+        let commandID = UUID()
+        selectionCommand = ActiveSelectionCommand(id: commandID)
+        defer {
+            if selectionCommand?.id == commandID {
+                selectionCommand = nil
+                // An automatic projection received during the reply wait must
+                // not remain hidden after an unrelated command failed.
+                if let surface, surface.selectionCommandID == nil {
+                    if surface.kind == .selection, let owner,
+                        !selectionHasToolbarRoom(top: surface.top, bottom: surface.bottom, in: owner)
+                    {
+                        dismissPresentation()
+                    } else {
+                        glass?.isHidden = false
+                    }
+                }
+            }
+        }
+        do {
+            guard let id = try await presenting(), id > 0 else {
+                return false
+            }
+            guard selectionCommand?.id == commandID, owner === webView else {
+                throw CancellationError()
+            }
+            selectionCommand?.surfaceID = id
+            if surface?.kind == .selection, surface?.id == id {
+                surface?.selectionCommandID = commandID
+            }
+            try Task.checkCancellation()
+            if surface?.kind != .selection || surface?.id != id {
+                try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                    let cancelReceipt = self.selectionReceiptCancellationHandler(commandID: commandID)
+                    try await withTaskCancellationHandler {
+                        try Task.checkCancellation()
+                        guard self.selectionCommand?.id == commandID, self.owner === webView else {
+                            throw CancellationError()
+                        }
+                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                            if self.surface?.kind == .selection, self.surface?.id == id,
+                                self.surface?.selectionCommandID == commandID
+                            {
+                                continuation.resume()
+                            } else {
+                                self.selectionReceipt = (commandID, id, continuation)
+                            }
+                        }
+                    } onCancel: {
+                        _ = cancelReceipt()
+                    }
+                }
+            }
+            guard selectionCommand?.id == commandID, owner === webView else {
+                throw CancellationError()
+            }
+            guard surface?.kind == .selection, surface?.id == id, surface?.selectionCommandID == commandID else {
+                return false
+            }
+            try Task.checkCancellation()
+            let invoked = invokeSelectionInquiry(inquiry)
+            if !invoked { dismissPresentation() }
+            return invoked
+        } catch {
+            cancelSelectionReceipt(commandID: commandID)
+            if owner === webView, surface?.selectionCommandID == commandID { dismissPresentation() }
+            throw error
+        }
+    }
+
+    private func cancelSelectionReceipt(commandID: UUID? = nil) {
+        guard let receipt = selectionReceipt, commandID == nil || receipt.commandID == commandID else { return }
+        selectionReceipt = nil
+        receipt.continuation.resume(throwing: CancellationError())
+    }
+
+    private func selectionReceiptCancellationHandler(commandID: UUID) -> @Sendable () -> Task<Void, Never> {
+        { [weak self] in
+            Task { @MainActor [weak self] in self?.cancelSelectionReceipt(commandID: commandID) }
+        }
+    }
+
+    private func cancelSelectionPresentation() {
+        if let owner, owner.window?.isKeyWindow == true { owner.window?.makeFirstResponder(owner) }
+        send(.dismiss)
+        dismiss()
+    }
+
+    private var focusedPresentationView: NSView? {
+        guard let responder = owner?.window?.firstResponder as? NSView else { return nil }
+        return (responder as? NSTextView)?.delegate as? NSView ?? responder
+    }
+
+    private var presentationOwnsFocus: Bool {
+        guard let responder = focusedPresentationView, let owner else { return false }
+        return responder === owner || responder.isDescendant(of: owner)
+            || glass.map { responder === $0 || responder.isDescendant(of: $0) } == true
+    }
+
+    private func selectionHasToolbarRoom(top: Double, bottom: Double, in webView: WKWebView) -> Bool {
+        bottom + 52 <= webView.bounds.height - 12 || top >= 64
+    }
+
+    /// The local monitor routes only input owned by this document or its bar.
+    func handleSelectionKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard event.keyCode == 53,
+            event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+            surface?.kind == .selection, resultPopover == nil, menuTrackingDepth == 0,
+            let owner, event.window === owner.window, owner.window?.isKeyWindow == true,
+            presentationOwnsFocus,
+            (owner as? any ScholiumDocumentInputStateProviding)?.scholiumIsComposing != true,
+            (owner.window?.firstResponder as? any NSTextInputClient)?.hasMarkedText() != true
+        else { return event }
+        cancelSelectionPresentation()
+        return nil
+    }
+
+    func canInvokeSelectionInquiry(_ inquiry: AgentChatSelectionInquiry) -> Bool {
+        guard surface?.kind == .selection, let count = surface?.selectionUTF16Count,
+            selectionInquiry != nil, inquiryTask == nil, resultPopover == nil,
+            owner?.window != nil
+        else { return false }
+        return inquiry.operation == nil || count <= MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length
+    }
+
+    @discardableResult
+    func invokeSelectionInquiry(_ inquiry: AgentChatSelectionInquiry) -> Bool {
+        guard canInvokeSelectionInquiry(inquiry) else { return false }
+        selectionInquiry?(inquiry)
+        return true
     }
 
     private func showSelectionPopover<Content: View>(_ content: Content) {
@@ -376,10 +594,20 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     func dismiss() {
+        selectionCommand = nil
+        cancelSelectionReceipt()
+        dismissPresentation()
+    }
+
+    private func dismissPresentation() {
+        if let selectionKeyMonitor { NSEvent.removeMonitor(selectionKeyMonitor) }
+        selectionKeyMonitor = nil
+        menuTrackingDepth = 0
         suggestionsBelow = nil
         inquiryTask?.cancel()
         inquiryTask = nil
         inquiryID = nil
+        selectionInquiry = nil
         resultPopover?.close()
         resultPopover = nil
         preview?.dismiss()

@@ -28,6 +28,7 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
     dispatch: () => {},
   } as unknown as EditorView;
   const coordinator = createEditorScrollCoordinator(editor, {
+      onViewportInput() {},
     onScroll: () => {}, post: () => {}, flushPresentationGeometry: () => {},
   });
   return {
@@ -42,6 +43,48 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
 }
 
 describe("scroll coordination across runtime reuse", () => {
+  it("a completed explicit reveal survives its own scroll receipt but yields to user input and changed geometry", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {
+      setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16),
+      cancelAnimationFrame: clearTimeout,
+    });
+    const scrollDOM = Object.assign(new EventTarget(), {
+      scrollTop: 0, scrollLeft: 0, scrollHeight: 2_000, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 0}),
+    });
+    const state = EditorState.create({doc: "x".repeat(2_000), selection: {anchor: 20, head: 1_800}});
+    const editor = {state, scrollDOM, documentTop: 0,
+      dispatch: vi.fn(),
+      coordsAtPos: vi.fn(() => { scrollDOM.scrollTop = 1_700; scrollDOM.scrollLeft = 25; return null; }),
+      lineBlockAtHeight: () => ({from: 1_700, to: 1_800, top: 1_700, height: 100}),
+    } as unknown as EditorView;
+    const dismiss = vi.fn();
+    const input = vi.fn();
+    const coordinator = createEditorScrollCoordinator(editor, {
+      onScroll: dismiss, onViewportInput: input, post() {}, flushPresentationGeometry() {},
+    });
+    coordinator.revealPosition(state.selection.main.head);
+    expect(editor.coordsAtPos).toHaveBeenCalledExactlyOnceWith(1_800);
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(editor.state).toBe(state);
+    scrollDOM.scrollLeft += 1;
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    coordinator.revealPosition(state.selection.main.head);
+    scrollDOM.dispatchEvent(new Event("wheel"));
+    expect(input).toHaveBeenCalledOnce();
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(dismiss).toHaveBeenCalledTimes(2);
+    coordinator.revealPosition(state.selection.main.head);
+    coordinator.setTop(scrollDOM.scrollTop);
+    scrollDOM.dispatchEvent(new Event("scroll"));
+    expect(dismiss).toHaveBeenCalledTimes(3);
+  });
+
   it.each(["wheel", "keydown", "pointerdown", "touchstart"])("keeps the researcher viewport after %s input during restoration", async (input) => {
     vi.useFakeTimers();
     let finishFonts!: () => void;
@@ -123,6 +166,7 @@ describe("scroll coordination across runtime reuse", () => {
     } as unknown as EditorView;
     const post = vi.fn();
     createEditorScrollCoordinator(editor, {
+      onViewportInput() {},
       onScroll: () => {}, post, flushPresentationGeometry: () => {},
     });
 
@@ -154,6 +198,7 @@ describe("scroll coordination across runtime reuse", () => {
     } as unknown as EditorView;
     const post = vi.fn();
     createEditorScrollCoordinator(editor, {
+      onViewportInput() {},
       onScroll: () => {}, post, flushPresentationGeometry: () => {},
     });
     // Keep the gap below the old 120 ms debounce for the entire gesture.
@@ -201,6 +246,7 @@ describe("scroll coordination across runtime reuse", () => {
     } as unknown as EditorView;
     const post = vi.fn();
     const coordinator = createEditorScrollCoordinator(editor, {
+      onViewportInput() {},
       onScroll: () => {}, post, flushPresentationGeometry: () => {},
     });
     scroll();

@@ -32,7 +32,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the interaction-revision byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(46);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(47);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};
@@ -157,6 +157,12 @@ describe("editor protocol", () => {
       ...request,
       operation: {type: "showPreviewAt", x: Number.NaN, y: 80.25},
     })).toBe(false);
+  });
+  it("selection presentation carries no writable source or external range and binds the current generation", () => {
+    expect(isEditorRequest({...request, operation: {type: "showSelectionActions"}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "showSelectionActions", source: "replace this"}})).toBe(false);
+    expect(generationCanExecuteEditorRequest("showSelectionActions", 4, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("showSelectionActions", 3, 4)).toBe(false);
   });
   it("accepts the Markdown comment formatting command", () => {
     expect(isEditorRequest({

@@ -9,6 +9,7 @@ import {
   completionStatus,
   selectedCompletionIndex,
   setSelectedCompletion,
+  startCompletion,
   autocompletion,
   pickedCompletion,
   snippet,
@@ -40,7 +41,8 @@ export interface EditorLinkCompletionCandidate {
   detail: string;
   path: string;
   displayText?: string;
-  isAmbiguous: boolean;
+  availability: "available" | "ambiguous" | "unsupportedSyntax" | "unavailable";
+  unavailableReason?: string;
   writingAction?: "term";
   replacementUTF16Count?: number;
 }
@@ -175,6 +177,18 @@ function suggestionSpanIsProtected(options: InputSuggestionOptions, state: Edito
   return options.protectedRanges(state).some(range => from < range.to && to > range.from);
 }
 
+function caretHasInputTrigger(before: string) {
+  return /\[\[[^\]\n]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
+}
+
+interface UnavailableCompletion extends Completion {
+  unavailable?: boolean;
+}
+
+function completionIsUnavailable(completion: Completion | undefined) {
+  return (completion as UnavailableCompletion | undefined)?.unavailable === true;
+}
+
 function analysisReferenceContext(options: InputSuggestionOptions, state: EditorState, position: number) {
   if (!isLiveSuggestionContext(options, state)) return null;
   const line = state.doc.lineAt(position);
@@ -185,6 +199,18 @@ function analysisReferenceContext(options: InputSuggestionOptions, state: Editor
   const from = scanFrom + match.index + match[1].length;
   if (suggestionSpanIsProtected(options, state, from, position)) return null;
   return {from, query: match[2]};
+}
+
+function wikilinkContext(options: InputSuggestionOptions, state: EditorState, position: number) {
+  if (!isLiveSuggestionContext(options, state)) return null;
+  const line = state.doc.lineAt(position);
+  const scanFrom = Math.max(line.from, position - 512);
+  const beforeCursor = state.doc.sliceString(scanFrom, position);
+  const match = /\[\[([^\]\n|#]{0,510})$/.exec(beforeCursor);
+  if (!match) return null;
+  const from = scanFrom + match.index + 2;
+  if (suggestionSpanIsProtected(options, state, from - 2, position)) return null;
+  return {from, query: match[1]};
 }
 
 function termSuffix(state: EditorState, position: number, candidate: EditorLinkCompletionCandidate): string | null {
@@ -250,7 +276,7 @@ function continuationContextAllowed(options: InputSuggestionOptions, state: Edit
   const before = state.sliceDoc(Math.max(0, position - 512), position);
   return /[\p{L}\p{N}]/u.test(before)
     && sentenceIsUnfinished(before)
-    && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before)
+    && !caretHasInputTrigger(before)
     && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
 }
 
@@ -400,8 +426,10 @@ function slashCommandOptions(
 function applyWikilinkCandidate(
   candidate: EditorLinkCompletionCandidate,
   didApply: (undoLabel: string) => void,
+  isCurrent: (view: EditorView) => boolean,
 ): NonNullable<Completion["apply"]> {
   return (view, completion, from, to) => {
+    if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
     let closingLength = 0;
     while (closingLength < 2
       && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
@@ -424,8 +452,10 @@ function applyWikilinkCandidate(
 function applyAnalysisReferenceCandidate(
   candidate: EditorLinkCompletionCandidate,
   didApply: (undoLabel: string) => void,
+  isCurrent: (view: EditorView) => boolean,
 ): NonNullable<Completion["apply"]> {
   return (view, completion, from, to) => {
+    if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
     const display = candidate.displayText ? `|${candidate.displayText}` : "";
     const insert = `[[${candidate.insertion}${display}]]`;
     view.dispatch({
@@ -448,7 +478,9 @@ function validLinkCandidate(value: unknown): value is EditorLinkCompletionCandid
     && typeof candidate.detail === "string"
     && typeof candidate.path === "string"
     && (candidate.displayText === undefined || typeof candidate.displayText === "string")
-    && typeof candidate.isAmbiguous === "boolean"
+    && ["available", "ambiguous", "unsupportedSyntax", "unavailable"].includes(candidate.availability ?? "")
+    && (candidate.unavailableReason === undefined || typeof candidate.unavailableReason === "string")
+    && (candidate.availability === "available" || Boolean(candidate.unavailableReason?.trim()))
     && (candidate.writingAction === undefined || candidate.writingAction === "term")
     && (candidate.replacementUTF16Count === undefined || (Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128));
 }
@@ -464,6 +496,8 @@ export function createEditorInputSuggestions(
   let continuationEnabled = false;
   let continuationContextKey = "";
   let indexContextKey = "";
+  let linkCatalogEpoch = 0;
+  let refreshLinkChoices: (() => void) | undefined;
   let clearInlineWriting: (() => void) | undefined;
   let clearAIWriting: (() => void) | undefined;
   let clearIndexWriting: (() => void) | undefined;
@@ -516,6 +550,12 @@ export function createEditorInputSuggestions(
     writingTerm?: boolean;
   }>();
 
+  function candidateContextIsCurrent(context: CompletionContext, epoch: number) {
+    return (view: EditorView) => epoch === linkCatalogEpoch && !context.aborted
+      && !view.composing && isLiveSuggestionContext(options, view.state)
+      && view.state.doc === context.state.doc && view.state.selection.eq(context.state.selection);
+  }
+
   function cancelWritingTermQueries() {
     for (const [requestID, pending] of pendingLinkQueries) {
       if (!pending.writingTerm) continue;
@@ -523,6 +563,14 @@ export function createEditorInputSuggestions(
       globalThis.clearTimeout(pending.timeout);
       pending.resolve([]);
     }
+  }
+
+  function cancelLinkQueries() {
+    for (const pending of pendingLinkQueries.values()) {
+      globalThis.clearTimeout(pending.timeout);
+      pending.resolve([]);
+    }
+    pendingLinkQueries.clear();
   }
 
   class Ghost extends WidgetType {
@@ -616,12 +664,12 @@ export function createEditorInputSuggestions(
     const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
     const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
     if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1))
-      || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || /\[\[|@|\//u.test(before)) return null;
+      || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || caretHasInputTrigger(before)) return null;
     return requestTerms(prefix, context).then(candidates => {
       if (context.aborted) return null;
       return {
         from: context.pos, filter: false,
-        options: candidates.filter(c => !c.isAmbiguous && termSuffix(context.state, context.pos, c) !== null).map(candidate => ({
+        options: candidates.filter(c => c.availability === "available" && termSuffix(context.state, context.pos, c) !== null).map(candidate => ({
           label: candidate.label, ghostText: termSuffix(context.state, context.pos, candidate),
           apply: (view: EditorView) => {
             if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc
@@ -769,16 +817,11 @@ export function createEditorInputSuggestions(
   });
 
   const wikilinkCompletionSource: CompletionSource = (context: CompletionContext) => {
-    if (!isLiveSuggestionContext(options, context.state)) return null;
-    const line = context.state.doc.lineAt(context.pos);
-    const scanFrom = Math.max(line.from, context.pos - 512);
-    const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-    const match = /\[\[([^\]\n|#]{0,510})$/.exec(beforeCursor);
-    if (!match) return null;
-    const typed = match[1];
-    const from = scanFrom + match.index + 2;
-    if (suggestionSpanIsProtected(options, context.state, from - 2, context.pos)) return null;
-
+    const reference = wikilinkContext(options, context.state, context.pos);
+    if (!reference) return null;
+    const {from, query: typed} = reference;
+    const epoch = linkCatalogEpoch;
+    const isCurrent = candidateContextIsCurrent(context, epoch);
     const requestID = boundedUUID();
     const candidates = new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
       const cancel = () => {
@@ -793,17 +836,17 @@ export function createEditorInputSuggestions(
       pendingLinkQueries.set(requestID, {resolve, timeout});
       options.requestLinkCompletions(requestID, "wikilink", typed);
     });
-    return candidates.then((resolved) => ({
+    return candidates.then((resolved) => epoch !== linkCatalogEpoch || context.aborted ? null : ({
       from,
       options: resolved
-        .filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0)
         .slice(0, 100)
         .map((candidate): Completion => ({
           label: candidate.label,
-          detail: candidate.detail,
+          detail: [candidate.unavailableReason, candidate.detail].filter(Boolean).join(" — "),
           type: "scholium-note" satisfies SuggestionType,
-          apply: applyWikilinkCandidate(candidate, options.didApply),
-        })),
+          unavailable: candidate.availability !== "available" || !candidate.insertion,
+          apply: applyWikilinkCandidate(candidate, options.didApply, isCurrent),
+        } as UnavailableCompletion)),
       filter: false,
     }));
   };
@@ -857,6 +900,9 @@ export function createEditorInputSuggestions(
     if (!reference) return null;
     const {from, query: typed} = reference;
 
+    const epoch = linkCatalogEpoch;
+    const isCurrent = candidateContextIsCurrent(context, epoch);
+
     const requestID = boundedUUID();
     const candidates = new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
       const cancel = () => {
@@ -871,19 +917,18 @@ export function createEditorInputSuggestions(
       pendingLinkQueries.set(requestID, {resolve, timeout});
       options.requestLinkCompletions(requestID, "analysisReference", typed);
     });
-    return candidates.then((resolved) => ({
+    return candidates.then((resolved) => epoch !== linkCatalogEpoch || context.aborted ? null : ({
       from,
       options: resolved
-        .filter((candidate) => !candidate.isAmbiguous
-          && candidate.insertion.length > 0
-          && Boolean(candidate.displayText))
+        .filter((candidate) => Boolean(candidate.displayText) || candidate.availability !== "available")
         .slice(0, 100)
         .map((candidate): Completion => ({
           label: candidate.label,
-          detail: candidate.detail,
+          detail: [candidate.unavailableReason, candidate.detail].filter(Boolean).join(" — "),
           type: "scholium-analysis-reference" satisfies SuggestionType,
-          apply: applyAnalysisReferenceCandidate(candidate, options.didApply),
-        })),
+          unavailable: candidate.availability !== "available" || !candidate.insertion,
+          apply: applyAnalysisReferenceCandidate(candidate, options.didApply, isCurrent),
+        } as UnavailableCompletion)),
       filter: false,
     }));
   };
@@ -914,7 +959,7 @@ export function createEditorInputSuggestions(
     const line = context.state.doc.lineAt(context.pos);
     if (context.pos - line.from > 512) return null;
     const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-    const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
+    const match = /^(\s*(?:>\s*)+)\[!([\p{L}\p{N}-]*)$/u.exec(beforeCursor);
     if (!match || positionIsProtected(options, context.state, context.pos - match[2].length)) {
       return null;
     }
@@ -923,7 +968,8 @@ export function createEditorInputSuggestions(
     return {
       from: context.pos - match[2].length,
       options: dialectCallouts
-        .filter((callout) => !typed || callout.identifier.startsWith(typed))
+        .filter((callout) => !typed || [callout.identifier, callout.label, localizedCallout(callout.identifier, callout).label]
+          .some(label => label.toLocaleLowerCase().includes(typed)))
         .map((callout): Completion => ({
           label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role" satisfies SuggestionType,
@@ -961,7 +1007,20 @@ export function createEditorInputSuggestions(
     private signature = "";
     private revision = 0;
     private measureFallback: number | undefined;
-    constructor(readonly view: EditorView) { this.refresh(); }
+    constructor(readonly view: EditorView) {
+      refreshLinkChoices = () => {
+        if (!view.hasFocus || !isLiveSuggestionContext(options, view.state)
+          || completionStatus(view.state) === null
+          || !(wikilinkContext(options, view.state, view.state.selection.main.head)
+            || analysisReferenceContext(options, view.state, view.state.selection.main.head))) return;
+        closeCompletion(view);
+        // Closing only hides CodeMirror's list; an explicit unchanged selection
+        // ends its running queries without editing source or adding history.
+        view.dispatch({selection: view.state.selection, annotations: Transaction.addToHistory.of(false)});
+        startCompletion(view);
+      };
+      this.refresh();
+    }
     update(update: ViewUpdate) {
       if (update.docChanged || update.selectionSet) this.revision += 1;
       this.refresh();
@@ -970,13 +1029,16 @@ export function createEditorInputSuggestions(
       return {
         state: this.view.state, status: completionStatus(this.view.state),
         items: currentCompletions(this.view.state).slice(0, 100)
-          .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024)})),
+          .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item)})),
         anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
         selected: selectedCompletionIndex(this.view.state) ?? -1,
       };
     }
-    private write({items, anchor, selected, state, status}: {state: EditorState; status: ReturnType<typeof completionStatus>; items: Array<{label: string; detail: string}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
+    private write({items, anchor, selected, state, status}: {state: EditorState; status: ReturnType<typeof completionStatus>; items: Array<{label: string; detail: string; disabled: boolean}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
       if (this.destroyed) return;
+      for (const option of this.view.dom?.querySelectorAll<HTMLElement>(".cm-tooltip-autocomplete [role=option]") ?? []) {
+        option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
+      }
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
       if (!anchor || this.view.root.activeElement !== this.view.contentDOM
@@ -1011,7 +1073,7 @@ export function createEditorInputSuggestions(
           }
         },
         choose: index => {
-          if (!valid()) return false;
+          if (!valid() || items[index]?.disabled) return false;
           this.view.dispatch({effects: setSelectedCompletion(index)});
           return acceptCompletion(this.view);
         },
@@ -1031,7 +1093,7 @@ export function createEditorInputSuggestions(
       options.nativeFloating.hide(nativeID);
       this.signature = "";
     }
-    destroy() { this.destroyed = true; this.suspend(); }
+    destroy() { this.destroyed = true; refreshLinkChoices = undefined; this.suspend(); }
   }, {
     eventHandlers: {
       compositionstart() { this.suspend(); },
@@ -1042,13 +1104,10 @@ export function createEditorInputSuggestions(
   return {
     resetDocument() {
       citationDocumentEpoch++;
+      linkCatalogEpoch++;
       clearInlineWriting?.();
       cancelContinuations();
-      for (const pending of pendingLinkQueries.values()) {
-        globalThis.clearTimeout(pending.timeout);
-        pending.resolve([]);
-      }
-      pendingLinkQueries.clear();
+      cancelLinkQueries();
     },
     configureWritingContinuation(enabled, contextKey) {
       if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
@@ -1060,8 +1119,10 @@ export function createEditorInputSuggestions(
     configureWritingIndexContext(contextKey) {
       if (indexContextKey === contextKey) return;
       indexContextKey = contextKey;
+      linkCatalogEpoch++;
       clearIndexWriting?.();
-      cancelWritingTermQueries();
+      cancelLinkQueries();
+      refreshLinkChoices?.();
     },
     setWritingContinuationStatus: setContinuationStatus,
     resolveWritingContinuation: resolveContinuation,
@@ -1079,7 +1140,13 @@ export function createEditorInputSuggestions(
       icons: false,
       tooltipClass: () => "scholium-editor-suggestions",
       addToOptions: [{render: suggestionSymbol, position: 20}],
+      optionClass: completion => completionIsUnavailable(completion) ? "scholium-completion-unavailable" : "",
     }), inlineWriting, Prec.highest(keymap.of([
+      {key: "Enter", run: view => {
+        if (view.composing || options.isComposing()) return false;
+        const selected = selectedCompletionIndex(view.state);
+        return selected !== null && completionIsUnavailable(currentCompletions(view.state)[selected]);
+      }},
       {key: "Tab", run: view => view.plugin(inlineWriting)?.accept() ?? false},
       {key: "Escape", run: view => {
         const plugin = view.plugin(inlineWriting);

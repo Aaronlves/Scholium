@@ -7,6 +7,33 @@ import Testing
 @MainActor
 @Suite("Window editor command port", .serialized)
 struct WindowEditorCommandPortTests {
+    @Test("Selection inquiry commands use the current window token and revoke stale callbacks")
+    func selectionInquiryPort() throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let note = document("A.md")
+        window.documentController.selectDocument(note)
+        let session = window.documentController.session(for: note.editingTarget)
+        let port = ScholiumEditorCommandPort()
+        var invoked: [AgentChatSelectionInquiry] = []
+        var availability = false
+        var registered = actions("selection") {}
+        registered.canInvokeSelectionInquiry = { _ in availability }
+        registered.invokeSelectionInquiry = { invoked.append($0) }
+        window.registerEditorActions(
+            port: port, target: note.editingTarget, session: session,
+            actions: registered, change: .activation)
+        let captured = try #require(window.currentEditorActions)
+        #expect(!captured.canInvokeSelectionInquiry(.explain))
+        availability = true
+        #expect(captured.canInvokeSelectionInquiry(.explain))
+        captured.invokeSelectionInquiry(.explain)
+        #expect(invoked == [.explain])
+        window.documentController.selectDocument(document("B.md"))
+        #expect(!captured.canInvokeSelectionInquiry(.polish))
+        captured.invokeSelectionInquiry(.polish)
+        #expect(invoked == [.explain])
+    }
+
     @Test("A newer Note view owns the selected command port")
     func staleRegistrationAndRemovalCannotReplaceCurrentPort() throws {
         let window = WindowModel(workspaceStore: makeTestWorkspaceStore())

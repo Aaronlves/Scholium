@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 46
+let markdownEditorProtocolVersion = 47
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -33,6 +33,7 @@ enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case tableAlignLeft, tableAlignCenter, tableAlignRight
     case pastePlain, pasteMarkdown, linkSelectedText
     case insertCitation, insertBibliography, refreshCitations, citationStyle, cancelCitation
+    case previewAtSelection
 }
 
 struct MarkdownEditorSelectionRange: Codable, Hashable, Sendable {
@@ -156,6 +157,7 @@ struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let redoLabel: String?
     var citationState: MarkdownEditorCitationState? = nil
     var imageTarget: String? = nil
+    var selectionActionUTF16Count: Int? = nil
 }
 
 /// The comparatively small, Equatable part of editor interaction state that
@@ -172,6 +174,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
     let redoLabel: String?
     let citationState: MarkdownEditorCitationState?
     let imageTarget: String?
+    let selectionActionUTF16Count: Int?
 
     init(context: MarkdownEditorContext) {
         activeInlineConstructs = context.activeInlineConstructs
@@ -184,6 +187,7 @@ struct EditorInteractionAvailability: Hashable, Sendable {
         redoLabel = context.redoLabel
         citationState = context.citationState
         imageTarget = context.imageTarget
+        selectionActionUTF16Count = context.selectionActionUTF16Count
     }
 
     func context(
@@ -199,7 +203,8 @@ struct EditorInteractionAvailability: Hashable, Sendable {
             undoLabel: undoLabel,
             redoLabel: redoLabel,
             citationState: citationState,
-            imageTarget: imageTarget
+            imageTarget: imageTarget,
+            selectionActionUTF16Count: selectionActionUTF16Count
         )
     }
 }
@@ -227,8 +232,22 @@ struct DocumentFindQuery: Codable, Hashable, Sendable {
 }
 
 struct DocumentFindResult: Codable, Hashable, Sendable {
+    struct Replacement: Codable, Hashable, Sendable {
+        let replaced: Int
+        let skipped: Int
+    }
     let current: Int
     let total: Int
+    var replaceable = 0
+    var canReplaceCurrent = false
+    var replacement: Replacement?
+
+    var isValid: Bool {
+        current >= 0 && total >= 0 && current <= total
+            && replaceable >= 0 && replaceable <= total
+            && (!canReplaceCurrent || replaceable > 0)
+            && (replacement.map { $0.replaced >= 0 && $0.skipped >= 0 } ?? true)
+    }
 }
 
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
@@ -248,6 +267,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setWritingContinuation(enabled: Bool, contextKey: String)
     case setWritingIndexContext(String)
     case showPreview
+    case showSelectionActions
     case measureVisibleProjection
     case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
@@ -305,7 +325,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, setImageResources,
-            setWritingContinuation, setWritingIndexContext, showPreview,
+            setWritingContinuation, setWritingIndexContext, showPreview, showSelectionActions,
             measureVisibleProjection, showPreviewAt,
             announceStatus
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
@@ -344,6 +364,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setWritingIndexContext:
             self = try .setWritingIndexContext(container.decode(String.self, forKey: .contextKey))
         case .showPreview: self = .showPreview
+        case .showSelectionActions: self = .showSelectionActions
         case .measureVisibleProjection: self = .measureVisibleProjection
         case .showPreviewAt:
             self = try .showPreviewAt(
@@ -457,6 +478,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(Kind.setWritingIndexContext, forKey: .type)
             try container.encode(contextKey, forKey: .contextKey)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
+        case .showSelectionActions: try container.encode(Kind.showSelectionActions, forKey: .type)
         case .measureVisibleProjection:
             try container.encode(Kind.measureVisibleProjection, forKey: .type)
         case .showPreviewAt(let x, let y):
@@ -598,6 +620,7 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     var citationReply: MarkdownEditorCitationReply? = nil
     var citationManaged: Bool? = nil
     var citationData: ZoteroCitationData? = nil
+    var selectionSurfaceID: Int? = nil
     let accepted: Bool
     let error: String?
 }

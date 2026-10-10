@@ -73,8 +73,32 @@ describe("document find", () => {
       expect(undoDepth(view.state)).toBe(0);
     }
     const mixed = viewFor("ﬀ f");
-    expect(performDocumentFind(mixed, request("f", {action: "replaceAll", replacement: "X"})).sourceChanged).toBe(true);
+    expect(performDocumentFind(mixed, request("f"))).toMatchObject({total: 2, replaceable: 1, canReplaceCurrent: false});
+    expect(performDocumentFind(mixed, request("f", {action: "replaceAll", replacement: "X"})))
+      .toMatchObject({sourceChanged: true, total: 1, replaceable: 0, replacement: {replaced: 1, skipped: 1}});
     expect(mixed.state.doc.toString()).toBe("ﬀ X");
+  });
+
+  it("reports exact current replacement and does not carry its outcome into a new query", () => {
+    const view = viewFor("f ﬀ");
+    expect(performDocumentFind(view, request("f"))).toMatchObject({total: 2, replaceable: 1, canReplaceCurrent: true});
+    expect(performDocumentFind(view, request("f", {action: "replaceCurrent", replacement: "X"})))
+      .toMatchObject({replacement: {replaced: 1, skipped: 0}, total: 1, canReplaceCurrent: false});
+    const changed = performDocumentFind(view, request("X"));
+    expect(changed.replacement).toBeUndefined();
+    expect(changed).toMatchObject({total: 1, replaceable: 1, canReplaceCurrent: true});
+  });
+
+  it("refreshes replaceability at a moved caret without navigating or creating Undo", () => {
+    const view = viewFor("ﬁ f");
+    expect(performDocumentFind(view, request("f"))).toMatchObject({canReplaceCurrent: false});
+    view.dispatch({selection: {anchor: 2}});
+    const selection = view.state.selection;
+    const result = performDocumentFind(view, request("f", {action: "present"}));
+    expect(result).toMatchObject({current: 0, total: 2, replaceable: 1, canReplaceCurrent: true});
+    expect(view.state.selection.eq(selection)).toBe(true);
+    expect(view.state.field(exactSourceState).text).toBe("ﬁ f");
+    expect(undoDepth(view.state)).toBe(0);
   });
 
   it("matches canonical equivalents while whole-word matches retain combining marks", () => {

@@ -28,7 +28,91 @@ struct EditorLinkCompletionIndexTests {
 
         #expect(results.first { $0.label == "Foo local" }?.insertion == "Foo")
         #expect(results.first { $0.label == "Foo other" }?.insertion == "Other/Foo")
-        #expect(results.first { $0.label == "Foo cross" }?.isAmbiguous == true)
+        #expect(results.first { $0.label == "Foo cross" }?.insertion == "Foo cross")
+        #expect(results.first { $0.label == "Foo cross" }?.availability == .available)
+    }
+
+    @Test("Wikilink and Analysis candidates only offer source targets that resolve to their displayed Note")
+    func selectedIdentityRoundTrip() async throws {
+        let topics = UUID()
+        let analyses = UUID()
+        let source = VaultQualifiedNoteID(vaultID: topics, relativePath: "Folder/Draft.md")
+        let notes = [
+            note(vaultID: topics, path: "Foo.md", title: "Foo"),
+            note(vaultID: topics, path: "Folder/Foo.md", title: "Foo"),
+            note(vaultID: topics, path: "Other/Foo.md", title: "Foo"),
+            note(
+                vaultID: analyses, vaultName: "Analyses", role: .sourceCorpus,
+                path: "Research/Foo.md", title: "Foo", aliases: ["Unique Analysis"], authors: ["Author"], publicationDate: "2000"),
+            note(
+                vaultID: analyses, vaultName: "Analyses", role: .sourceCorpus,
+                path: "A#draft.md", title: "A#draft", aliases: ["Safe Analysis"], authors: ["Other"], publicationDate: "2001"),
+            note(
+                vaultID: analyses, vaultName: "Analyses", role: .sourceCorpus,
+                path: "Safe.md", title: "Safe", authors: ["[Invalid author"]),
+        ]
+        let catalog =
+            [LinkCatalogNote(id: source)]
+            + notes.map {
+                LinkCatalogNote(id: .init(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath), title: $0.title, aliases: $0.aliases)
+            }
+        let index = EditorLinkCompletionIndex()
+        await index.replace(notes: notes, generation: 1)
+        for kind in [EditorLinkCompletionKind.wikilink, .analysisReference] {
+            let candidates = try await index.query(
+                kind: kind, "", sourcePath: source.relativePath,
+                currentVaultID: topics, generation: 1)
+            #expect(candidates.count == (kind == .wikilink ? notes.count : 3))
+            for candidate in candidates {
+                #expect(candidate.availability == .available)
+                let selected = try #require(notes.first { "\($0.reference.vaultName)/\($0.reference.relativePath)" == candidate.path })
+                let alias = candidate.displayText.map { "|\($0)" } ?? ""
+                let written = NoteDocument(relativePath: source.relativePath, rawContent: "[[\(candidate.insertion)\(alias)]]")
+                let snapshot = LinkGraphBuilder.build(
+                    generation: 1, catalog: catalog,
+                    documents: [source: MarkdownSemanticDocument(parsing: written)], resolutionScope: .workspace)
+                #expect(snapshot.outgoing[source]?.count == 1)
+                #expect(
+                    snapshot.outgoing[source]?.first?.destination?.note
+                        == .init(
+                            vaultID: selected.reference.vaultID, relativePath: selected.reference.relativePath))
+                #expect(snapshot.diagnostics.isEmpty)
+            }
+        }
+    }
+
+    @Test("Unavailable candidates remain discoverable with their exact path and distinct reason")
+    func unavailableCandidates() async throws {
+        let topics = UUID()
+        let analyses = UUID()
+        let index = EditorLinkCompletionIndex()
+        await index.replace(
+            notes: [
+                note(vaultID: topics, path: "Foo.md", title: "Foo"),
+                note(
+                    vaultID: analyses, vaultName: "Analyses", role: .sourceCorpus,
+                    path: "Research/Foo.md", title: "Foo"),
+                note(
+                    vaultID: analyses, vaultName: "Analyses", role: .sourceCorpus,
+                    path: "A|B.md", title: "A|B"),
+            ], generation: 1)
+        let candidates = try await index.query(
+            kind: .wikilink, "", sourcePath: "Draft.md",
+            currentVaultID: topics, generation: 1)
+        let ambiguous = try #require(candidates.first { $0.path == "Analyses/Research/Foo.md" })
+        #expect(ambiguous.availability == .ambiguous)
+        #expect(ambiguous.insertion.isEmpty)
+        #expect(ambiguous.unavailableReason?.isEmpty == false)
+        let unsupported = try #require(candidates.first { $0.path == "Analyses/A|B.md" })
+        #expect(unsupported.availability == .unsupportedSyntax)
+        #expect(unsupported.insertion.isEmpty)
+        #expect(unsupported.unavailableReason?.isEmpty == false)
+        let references = try await index.query(
+            kind: .analysisReference, "A|B", sourcePath: "Draft.md",
+            currentVaultID: topics, generation: 1)
+        #expect(references.count == 1)
+        #expect(references.first?.availability == .unsupportedSyntax)
+        #expect(references.first?.unavailableReason?.isEmpty == false)
     }
 
     @Test("POSIX normalization handles canonical forms, Turkish I, and CJK")

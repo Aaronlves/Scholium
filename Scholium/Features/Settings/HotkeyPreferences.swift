@@ -28,6 +28,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case insertFootnote
     case insertInlineFootnote
     case findWritingReferences
+    case previewAtSelection, explainSelection, polishSelection
 
     case newWindow
     case closeTab
@@ -57,7 +58,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
             .toggleReviewEdit, .showSource, .showAttention,
-            .insertFootnote, .insertInlineFootnote, .findWritingReferences:
+            .insertFootnote, .insertInlineFootnote, .findWritingReferences,
+            .previewAtSelection, .explainSelection, .polishSelection:
             true
         default: false
         }
@@ -94,7 +96,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .nextTab: "Next Tab"
         case .previousTab: "Previous Tab"
         case .goToFrontmatter: "Go to Frontmatter"
-        case .addSelectionToChat: "Add Selection to Chat"
+        case .addSelectionToChat: "Ask Agent"
+        case .previewAtSelection: "Preview Link or Footnote"
+        case .explainSelection: "Explain Selection"
+        case .polishSelection: "Polish Selection"
         case .increaseTextSize: "Increase Text Size"
         case .decreaseTextSize: "Decrease Text Size"
         case .actualTextSize: "Actual Size (100%)"
@@ -130,7 +135,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .nextTab: "Window → Next Tab"
         case .previousTab: "Window → Previous Tab"
         case .goToFrontmatter: "View → Go to Frontmatter"
-        case .addSelectionToChat: "Research → Add Selection to Chat"
+        case .addSelectionToChat: "Research → Ask Agent"
+        case .previewAtSelection: "Research → Preview Link or Footnote"
+        case .explainSelection: "Research → Explain Selection"
+        case .polishSelection: "Research → Polish Selection"
         case .increaseTextSize: "View → Document Text Size → Increase Text Size"
         case .decreaseTextSize: "View → Document Text Size → Decrease Text Size"
         case .actualTextSize: "View → Document Text Size → Actual Size (100%)"
@@ -207,7 +215,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "j", modifiers: [.shift, .command])
         case .toggleFocusLayout:
             ScholiumHotkeyBinding(key: "l", modifiers: [.control, .command])
-        case .showSource, .showAttention:
+        case .showSource, .showAttention, .previewAtSelection, .explainSelection, .polishSelection:
             nil
         }
     }

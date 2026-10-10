@@ -139,6 +139,13 @@ public enum LinkNavigationResolution: Hashable, Sendable {
     case ambiguousBlock
 }
 
+public enum WikilinkTargetPlan: Equatable, Sendable {
+    case available(String)
+    case ambiguous
+    case unsupportedSyntax
+    case missingNote
+}
+
 /// Reusable immutable lookup state for consumers that need the same
 /// fail-closed Note, heading, and block resolution as the Link Graph without
 /// publishing an outgoing or incoming link occurrence.
@@ -149,6 +156,36 @@ public struct LinkResolutionCatalog: Sendable {
     public init(catalog: [LinkCatalogNote]) {
         notesByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
         index = LinkGraphBuilder.ResolutionIndex(catalog: catalog)
+    }
+
+    /// Finds an authored Wikilink spelling that the same navigation resolver
+    /// proves points to this exact Note. Some filesystem names and cross-vault
+    /// collisions cannot be represented by the supported Wikilink syntax.
+    public func wikilinkTarget(
+        for destination: VaultQualifiedNoteID,
+        from source: VaultQualifiedNoteID,
+        scope: LinkResolutionScope = .workspace
+    ) -> WikilinkTargetPlan {
+        guard let note = notesByID[destination] else { return .missingNote }
+        let path = destination.relativePath as NSString
+        let stem = (path.lastPathComponent as NSString).deletingPathExtension
+        let spellings =
+            [stem, path.deletingPathExtension, destination.relativePath]
+            + note.aliases + [note.title].compactMap { $0 }
+        var seen: Set<String> = []
+        var hasSupportedSpelling = false
+        for spelling in spellings {
+            guard !spelling.isEmpty,
+                !spelling.contains(where: { "#|[]\\\n\r".contains($0) }),
+                seen.insert(spelling).inserted
+            else { continue }
+            hasSupportedSpelling = true
+            guard case .resolved(let resolved) = index.resolve(spelling, from: source, scope: scope),
+                resolved == destination
+            else { continue }
+            return .available(spelling)
+        }
+        return hasSupportedSpelling ? .ambiguous : .unsupportedSyntax
     }
 
     public func resolveNavigation(

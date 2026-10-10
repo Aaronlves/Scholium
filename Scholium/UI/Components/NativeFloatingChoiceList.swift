@@ -9,6 +9,7 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         var detail = ""
         var indentation: CGFloat = 0
         var accessibilityValue = ""
+        var disabled = false
     }
 
     let table = FloatingChoiceTable()
@@ -128,6 +129,8 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         view.accept = { [weak self] in self?.accept(row) }
         view.setAccessibilityLabel(items[row].label)
         view.setAccessibilityValue(items[row].accessibilityValue)
+        view.setAccessibilityEnabled(!items[row].disabled)
+        view.acceptsChoice = !items[row].disabled
         return view
     }
 
@@ -148,7 +151,7 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     }
 
     private func accept(_ row: Int) {
-        guard items.indices.contains(row) else { return }
+        guard items.indices.contains(row), !items[row].disabled else { return }
         choose?(row)
     }
 }
@@ -193,6 +196,7 @@ final class FloatingChoiceTable: NSTableView {
 private final class FloatingChoiceRow: NSTableRowView {
     var retainsEditorFocus = false
     var accept: (() -> Void)?
+    var acceptsChoice = true
     // The editor retains keyboard focus. Use AppKit's secondary selection
     // treatment for its auxiliary choice; AppKit owns colors and contrast.
     override var isEmphasized: Bool {
@@ -200,7 +204,7 @@ private final class FloatingChoiceRow: NSTableRowView {
         set { super.isEmphasized = retainsEditorFocus ? false : newValue }
     }
     override func accessibilityPerformPress() -> Bool {
-        guard let accept else { return false }
+        guard acceptsChoice, let accept else { return false }
         accept()
         return true
     }
@@ -241,6 +245,7 @@ private final class FloatingChoiceCell: NSTableCellView {
     }
     func configure(_ item: NativeFloatingChoiceList.Item) {
         label.stringValue = item.label
+        label.textColor = item.disabled ? .disabledControlTextColor : .labelColor
         detail.stringValue = item.detail
         detail.isHidden = item.detail.isEmpty
         leading.constant = item.indentation

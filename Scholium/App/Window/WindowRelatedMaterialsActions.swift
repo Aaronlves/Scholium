@@ -93,7 +93,7 @@ extension WindowModel {
             kind: .wikilink, matching: candidate.title, sourcePath: descriptor.reference.relativePath,
             currentVaultID: descriptor.reference.vaultID, catalogNotes: catalog.notes,
             graphGeneration: catalog.graph?.generation ?? 0)
-        return items.first { !$0.isAmbiguous && $0.path == "\(reference.vaultName)/\(reference.relativePath)" }?.insertion
+        return items.first { $0.availability == .available && $0.path == "\(reference.vaultName)/\(reference.relativePath)" }?.insertion
     }
 
     @MainActor

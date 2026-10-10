@@ -304,7 +304,7 @@ public final class CodexWritingAssistance {
     static func prompt(_ context: CodexWritingAssistanceRequest) throws -> String {
         if context.operation != .continuation {
             guard !context.passage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                context.passage.utf16.count <= 12_000, !context.model.isEmpty
+                context.passage.utf16.count <= WritingAssistanceLimits.maximumPassageUTF16Length, !context.model.isEmpty
             else { throw CodexWritingAssistanceError.invalidContext }
             let data = try JSONEncoder().encode(MCPJSONValue.object(["selectedPassage": .string(context.passage)]))
             let instruction = context.operation == .explain ? "Explain the selected passage" : "Polish the selected passage"

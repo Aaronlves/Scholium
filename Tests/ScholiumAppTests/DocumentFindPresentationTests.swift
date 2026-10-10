@@ -8,6 +8,47 @@ import Testing
 @Suite("Document Find presentation")
 @MainActor
 struct DocumentFindPresentationTests {
+    @Test("Summary refresh retains replacement feedback and never requests selection navigation")
+    func refreshRetainsReceipt() throws {
+        let model = DocumentFindPresentationModel()
+        model.presentReplacement()
+        model.setQuery("f")
+        model.accept(
+            .init(
+                current: 0, total: 1, replaceable: 0, canReplaceCurrent: false,
+                replacement: .init(replaced: 1, skipped: 1)), for: try #require(model.request?.id))
+        model.refresh()
+        #expect(model.request?.operation == .execute(.present))
+        model.accept(
+            .init(current: 0, total: 1, replaceable: 1, canReplaceCurrent: true),
+            for: try #require(model.request?.id))
+        #expect(model.result.canReplaceCurrent)
+        #expect(model.result.replacement == .init(replaced: 1, skipped: 1))
+        model.setQuery("new")
+        model.accept(.init(current: 0, total: 0), for: try #require(model.request?.id))
+        #expect(model.result.replacement == nil)
+    }
+
+    @Test("An observation refresh cannot cancel or discard a pending replacement")
+    func refreshWaitsForReplacement() throws {
+        let model = DocumentFindPresentationModel()
+        model.presentReplacement()
+        model.setQuery("f")
+        model.accept(
+            .init(current: 1, total: 2, replaceable: 1, canReplaceCurrent: true),
+            for: try #require(model.request?.id))
+        model.replaceAll()
+        let replacementRequest = try #require(model.request)
+        model.refresh()
+        model.refresh()
+        #expect(model.request == replacementRequest)
+        model.accept(.init(current: 0, total: 1, replacement: .init(replaced: 1, skipped: 1)), for: replacementRequest.id)
+        #expect(model.request?.operation == .execute(.present))
+        #expect(model.request?.id != replacementRequest.id)
+        model.accept(.init(current: 0, total: 1), for: try #require(model.request?.id))
+        #expect(model.result.replacement == .init(replaced: 1, skipped: 1))
+    }
+
     @Test("Narrow layout retains native query identity and presents a readable failure")
     func nativeFieldSurvivesReflow() async throws {
         _ = NSApplication.shared

@@ -6,6 +6,7 @@ export function interactionAvailabilitySignature(context: EditorContext) {
     activeBlockConstructs: context.activeBlockConstructs,
     tablePosition: context.tablePosition ?? null,
     imageTarget: context.imageTarget ?? null,
+    selectionActionUTF16Count: context.selectionActionUTF16Count ?? null,
     composing: context.composing,
     hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
     availableCommands: context.availableCommands,

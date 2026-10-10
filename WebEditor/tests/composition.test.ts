@@ -10,6 +10,7 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
     expect(compositionRequestPolicy("initialize")).toBe("reject");
     expect(compositionRequestPolicy("pasteClipboard")).toBe("reject");
     expect(compositionRequestPolicy("selectAll")).toBe("reject");
+    expect(compositionRequestPolicy("showSelectionActions")).toBe("reject");
     for (const operation of ["beginCitation", "citationCallback", "finishCitation"] as const) {
       expect(compositionRequestPolicy(operation)).toBe("reject");
     }

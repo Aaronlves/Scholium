@@ -162,4 +162,49 @@ struct MarkdownWritingContextTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
         #expect(operation.serializesSourceMutation)
     }
+
+    @Test("Selection actions preserve body ranges and refuse YAML, crossing and unclosed envelopes", arguments: ["\n", "\r\n"])
+    func selectionActionBodyAdmission(newline: String) throws {
+        let source = "\u{FEFF}---" + newline + "tags: [research]" + newline + "---" + newline + "Body 😀 e\u{301}."
+        func snapshot(_ text: String, in source: String) throws -> MarkdownSourceSelectionSnapshot {
+            let range = (source as NSString).range(of: text)
+            let map = EditorSourceOffsetMap(source: source)
+            let lower = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location))
+            let upper = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(range)))
+            return try MarkdownWritingContextProjection.capture(
+                source: source, selections: [.init(anchor: lower, head: upper)], mode: .selectionOnly)
+        }
+        let body = try snapshot("Body 😀 e\u{301}.", in: source)
+        try MarkdownSelectionActionAdmission.validate(body, writingAssistance: true)
+        #expect(body.excerpt == "Body 😀 e\u{301}.")
+        for text in ["tags: [research]", "---" + newline + "Body"] {
+            let captured = try snapshot(text, in: source)
+            #expect(throws: MarkdownSelectionActionAdmission.Failure.bodySelectionRequired) {
+                try MarkdownSelectionActionAdmission.validate(captured)
+            }
+        }
+        let unclosed = "---" + newline + "tags: [research]" + newline + "Body text"
+        let unclosedBody = try snapshot("Body text", in: unclosed)
+        #expect(throws: MarkdownSelectionActionAdmission.Failure.bodySelectionRequired) {
+            try MarkdownSelectionActionAdmission.validate(unclosedBody)
+        }
+        // Invalid YAML values do not erase an exact, closed body boundary.
+        let invalidYAML = "---" + newline + "tags: [" + newline + "---" + newline + "Body text"
+        try MarkdownSelectionActionAdmission.validate(snapshot("Body text", in: invalidYAML))
+    }
+
+    @Test("Explain and Polish enforce their request limit before generation while Chat keeps longer passages")
+    func selectionActionWritingLimit() throws {
+        let limit = MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length
+        let source = String(repeating: "x", count: limit + 1)
+        let accepted = try MarkdownWritingContextProjection.capture(
+            source: source, selections: [.init(anchor: 0, head: limit)], mode: .selectionOnly)
+        try MarkdownSelectionActionAdmission.validate(accepted, writingAssistance: true)
+        let longer = try MarkdownWritingContextProjection.capture(
+            source: source, selections: [.init(anchor: 0, head: limit + 1)], mode: .selectionOnly)
+        #expect(throws: MarkdownSelectionActionAdmission.Failure.passageTooLong) {
+            try MarkdownSelectionActionAdmission.validate(longer, writingAssistance: true)
+        }
+        try MarkdownSelectionActionAdmission.validate(longer)
+    }
 }

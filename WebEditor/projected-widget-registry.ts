@@ -117,9 +117,9 @@ export function createProjectedWidgetRegistry(): ProjectedWidgetRegistry {
       const mermaidPresentation = mermaid ? mermaids.get(mermaid) : undefined;
       if (mermaidPresentation) return mermaidPresentation.contentFrom;
 
-      const footnote = target.closest<HTMLElement>(".cm-live-footnote-reference-widget");
-      const reference = footnote ? footnotes.get(footnote) : undefined;
-      return reference?.definitionContentFrom ?? null;
+      // Footnotes are explicit controls: the preview owner handles their click
+      // for pointer, keyboard and accessibility activation through one route.
+      return null;
     },
   };
 }

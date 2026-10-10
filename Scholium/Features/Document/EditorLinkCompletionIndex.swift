@@ -8,11 +8,6 @@ actor EditorLinkCompletionIndex {
 
     private struct IndexedNote: Sendable {
         let note: WorkspaceCatalogNote
-        let stem: String
-        let folder: String
-        let pathWithoutExtension: String
-        let normalizedStem: String
-        let normalizedPath: String
         let normalizedTitle: String
         let normalizedDisplayPath: String
         let normalizedSearchText: String
@@ -24,14 +19,12 @@ actor EditorLinkCompletionIndex {
 
     private var generation = -1
     private var notes: [IndexedNote] = []
-    private var stemGroups: [String: [Int]] = [:]
-    private var pathGroups: [String: [Int]] = [:]
+    private var resolution = LinkResolutionCatalog(catalog: [])
 
     func removeAll() {
         generation = -1
         notes.removeAll(keepingCapacity: false)
-        stemGroups.removeAll(keepingCapacity: false)
-        pathGroups.removeAll(keepingCapacity: false)
+        resolution = LinkResolutionCatalog(catalog: [])
     }
 
     func replace(notes catalogNotes: [WorkspaceCatalogNote], generation: Int) {
@@ -39,10 +32,6 @@ actor EditorLinkCompletionIndex {
         self.generation = generation
         notes = catalogNotes.map { note in
             let path = note.reference.relativePath
-            let stem = ((path as NSString).lastPathComponent as NSString)
-                .deletingPathExtension
-            let folder = (path as NSString).deletingLastPathComponent
-            let withoutExtension = (path as NSString).deletingPathExtension
             let displayPath = "\(note.reference.vaultName)/\(path)"
             let normalizedAliases = note.aliases.map {
                 (value: $0, normalized: Self.normalize($0))
@@ -50,11 +39,6 @@ actor EditorLinkCompletionIndex {
             let canonicalSearchText = "\(note.title) \(path)"
             return IndexedNote(
                 note: note,
-                stem: stem,
-                folder: folder,
-                pathWithoutExtension: withoutExtension,
-                normalizedStem: Self.normalize(stem),
-                normalizedPath: Self.normalize(withoutExtension),
                 normalizedTitle: Self.normalize(note.title),
                 normalizedDisplayPath: Self.normalize(displayPath),
                 normalizedSearchText: Self.normalize(
@@ -73,8 +57,13 @@ actor EditorLinkCompletionIndex {
             )
         }
         notes.sort(by: Self.candidatesAreOrdered)
-        stemGroups = Dictionary(grouping: notes.indices) { notes[$0].normalizedStem }
-        pathGroups = Dictionary(grouping: notes.indices) { notes[$0].normalizedPath }
+        resolution = LinkResolutionCatalog(
+            catalog: catalogNotes.map {
+                LinkCatalogNote(
+                    id: VaultQualifiedNoteID(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath),
+                    title: $0.title,
+                    aliases: $0.aliases)
+            })
     }
 
     func query(
@@ -88,7 +77,7 @@ actor EditorLinkCompletionIndex {
         try Task.checkCancellation()
         guard expectedGeneration == generation else { return [] }
         let normalizedQuery = Self.normalize(text)
-        let sourceFolder = (sourcePath as NSString).deletingLastPathComponent
+        let source = VaultQualifiedNoteID(vaultID: currentVaultID, relativePath: sourcePath)
         let boundedLimit = min(100, max(0, limit))
         guard boundedLimit > 0 else { return [] }
 
@@ -107,46 +96,32 @@ actor EditorLinkCompletionIndex {
             else {
                 continue
             }
-            let sameFolderMatches = stemGroups[candidate.normalizedStem, default: []].filter {
-                notes[$0].note.reference.vaultID == currentVaultID
-                    && notes[$0].folder == sourceFolder
-            }
-            let currentVaultMatches = stemGroups[candidate.normalizedStem, default: []].filter {
-                notes[$0].note.reference.vaultID == currentVaultID
-            }
-            let allStemMatches = stemGroups[candidate.normalizedStem, default: []]
-            let allPathMatches = pathGroups[candidate.normalizedPath, default: []]
-
-            let insertion: String
-            let isAmbiguous: Bool
-            if candidate.note.reference.vaultID == currentVaultID,
-                candidate.folder == sourceFolder,
-                sameFolderMatches.count == 1
-            {
-                insertion = candidate.stem
-                isAmbiguous = false
-            } else if candidate.note.reference.vaultID == currentVaultID,
-                currentVaultMatches.count == 1
-            {
-                insertion = candidate.stem
-                isAmbiguous = false
-            } else if allStemMatches.count == 1 {
-                insertion = candidate.stem
-                isAmbiguous = false
-            } else if candidate.note.reference.vaultID == currentVaultID
-                || allPathMatches.count == 1
-            {
-                insertion = candidate.pathWithoutExtension
-                isAmbiguous = false
-            } else {
+            let plan = resolution.wikilinkTarget(
+                for: VaultQualifiedNoteID(
+                    vaultID: candidate.note.reference.vaultID,
+                    relativePath: candidate.note.reference.relativePath),
+                from: source)
+            var insertion: String
+            var availability: EditorLinkCompletionAvailability
+            var unavailableReason: String?
+            switch plan {
+            case .available(let target):
+                insertion = target
+                availability = .available
+                unavailableReason = nil
+            case .ambiguous:
                 insertion = ""
-                isAmbiguous = true
+                availability = .ambiguous
+                unavailableReason = ScholiumL10n.string("This Note has no unique Wikilink target from the current Note. Add a unique alias.")
+            case .unsupportedSyntax:
+                insertion = ""
+                availability = .unsupportedSyntax
+                unavailableReason = ScholiumL10n.string("This Note's filename cannot be represented by the supported Wikilink syntax. Add a unique alias.")
+            case .missingNote:
+                insertion = ""
+                availability = .unavailable
+                unavailableReason = ScholiumL10n.string("This Note is no longer available. Refresh the Library and try again.")
             }
-
-            let ambiguity =
-                isAmbiguous
-                ? " — Ambiguous: no unique Obsidian-compatible target"
-                : ""
             let alias =
                 kind == .wikilink
                 ? candidate.normalizedAliases.first(where: {
@@ -156,7 +131,12 @@ actor EditorLinkCompletionIndex {
                         && Self.isSafeWikilinkDisplayText($0.value)
                 })?.value
                 : candidate.analysisReferenceText
-            if kind == .analysisReference, alias == nil { continue }
+            if kind == .analysisReference, alias == nil {
+                insertion = ""
+                availability = .unsupportedSyntax
+                unavailableReason = ScholiumL10n.string(
+                    "This Note has no label that can be inserted as Wikilink display text. Use a safe Note title or author.")
+            }
             let referenceDetail = [
                 candidate.note.title,
                 candidate.note.authors.joined(separator: ", "),
@@ -168,11 +148,12 @@ actor EditorLinkCompletionIndex {
                     label: alias ?? candidate.note.title,
                     insertion: insertion,
                     detail: kind == .analysisReference
-                        ? "\(referenceDetail)\(ambiguity)"
-                        : "\(candidate.note.title) — \(candidate.note.reference.vaultName) — \(candidate.note.reference.vaultRole.displayName) — \(candidate.note.reference.relativePath)\(ambiguity)",
+                        ? referenceDetail
+                        : "\(candidate.note.title) — \(candidate.note.reference.vaultName) — \(candidate.note.reference.vaultRole.displayName) — \(candidate.note.reference.relativePath)",
                     path: "\(candidate.note.reference.vaultName)/\(candidate.note.reference.relativePath)",
                     displayText: alias,
-                    isAmbiguous: isAmbiguous
+                    availability: availability,
+                    unavailableReason: unavailableReason
                 ))
             if results.count == boundedLimit { break }
         }
@@ -207,11 +188,12 @@ actor EditorLinkCompletionIndex {
         let text = [author, year].compactMap { $0 }
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return isSafeWikilinkDisplayText(text) ? text : nil
+        if isSafeWikilinkDisplayText(text) { return text }
+        return isSafeWikilinkDisplayText(note.title) ? note.title : nil
     }
 
     private static func isSafeWikilinkDisplayText(_ value: String) -> Bool {
-        !value.isEmpty && !value.contains(where: { "|]\n\r".contains($0) })
+        !value.isEmpty && !value.contains(where: { "|[]\n\r".contains($0) })
     }
 
     private static func compareSortText(_ lhs: String, _ rhs: String) -> ComparisonResult {

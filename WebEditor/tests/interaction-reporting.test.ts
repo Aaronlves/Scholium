@@ -94,5 +94,10 @@ describe("animation-frame interaction reporting", () => {
     expect(selected).not.toBe(collapsed);
     expect(interactionAvailabilitySignature({...context, citationState: "stale"})).not.toBe(collapsed);
     expect(interactionAvailabilitySignature({...context, citationState: "unresolved"})).not.toBe(collapsed);
+    const passage = {...context, selections: [{anchor: 4, head: 8}], selectionActionUTF16Count: 12_000};
+    expect(interactionAvailabilitySignature({...passage, selectionActionUTF16Count: 12_001}))
+      .not.toBe(interactionAvailabilitySignature(passage));
+    expect(interactionAvailabilitySignature({...passage, selectionActionUTF16Count: undefined}))
+      .not.toBe(interactionAvailabilitySignature(passage));
   });
 });

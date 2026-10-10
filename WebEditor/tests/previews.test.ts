@@ -24,7 +24,7 @@ describe("preview projections", () => {
     expect(ordinary.htmlBody.length).toBe(24_000);
   });
 
-  it("returns one referenced footnote definition with bounded continuations", () => {
+  it("returns one referenced footnote definition with complete continuations", () => {
     const source = "Text[^one] and [^two].\n\n[^one]: First line\n  continuation\n\n  - item\n    - nested\n[^two]: Other footnote";
     expect(footnotePreviewContent(source, "one"))
       .toBe("First line\ncontinuation\n\n- item\n  - nested");
@@ -36,5 +36,11 @@ describe("preview projections", () => {
     const literal = "`[^hidden]`\n\n[^hidden]: Not a preview";
     const codeRange = {from: 0, to: "`[^hidden]`".length};
     expect(footnoteReferenceAt(literal, 3, [codeRange])).toBeNull();
+  });
+
+  it("keeps the complete tail of long named and inline footnotes", () => {
+    const content = "完整注释 😀 é ".repeat(250) + "TAIL **qualification**";
+    expect(footnotePreviewContent(`Claim[^long].\n\n[^long]: ${content}\n`, "long")).toBe(content);
+    expect(footnotePreviewContent(`Claim^[${content}].`, "inline-1")).toBe(content);
   });
 });

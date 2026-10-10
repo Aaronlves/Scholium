@@ -167,6 +167,7 @@ import {validatedLinkPreviews, type LinkPreview} from "./previews";
 import {
   createLiveSelectionController,
   textSelectionPresentation,
+  projectedSelectionActionRange,
 } from "./live-selection";
 import {createLiveSemanticLayout, semanticBlankLineSourceOffset} from "./live-semantic-layout";
 import {createProjectedWidgetRegistry} from "./projected-widget-registry";
@@ -1763,17 +1764,40 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
 
 const nativeFloating = createNativeFloatingPorts(event => post({type: "floatingSurface", event}));
 let selectingForAgent = false;
-function selectionActionTarget() {
-  if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
-  const ranges = editor.state.selection.ranges;
-  if (ranges.length !== 1 || ranges[0].empty || ranges[0].to - ranges[0].from > 32000) return null;
-  const first = editor.coordsAtPos(ranges[0].from);
-  const last = editor.coordsAtPos(ranges[0].to);
-  if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
-  return {key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
-    anchor: {left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom}};
+function selectionActionSourceRange(state = editor.state, view = editor) {
+  if (selectingForAgent || view.composing || compositionGate.active || lastDocumentFocusTarget === "title") return null;
+  return projectedSelectionActionRange(state, liveProjectionIndex.index(state));
 }
-const selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget);
+function selectionActionKey(range = selectionActionSourceRange()) {
+  return range ? `${bridgeSessionID}:${documentVersion}:${range.from}:${range.to}` : null;
+}
+function selectionActionTarget() {
+  const range = selectionActionSourceRange();
+  if (!range) return null;
+  const first = editor.coordsAtPos(range.from);
+  const last = editor.coordsAtPos(range.to);
+  const anchorStart = first ?? last;
+  const anchorEnd = last ?? first;
+  if (!anchorStart || !anchorEnd || anchorEnd.bottom < 0 || anchorStart.top > window.innerHeight) return null;
+  return {key: selectionActionKey(range)!,
+    utf16Count: range.utf16Count,
+    anchor: {left: (anchorStart.left + anchorEnd.left) / 2, top: anchorStart.top, bottom: anchorEnd.bottom}};
+}
+const selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget, selectionActionKey);
+function showCurrentSelectionActions(expiresAt: number) {
+  const range = selectionActionSourceRange();
+  if (!range || expiresAt <= Date.now()) { selectionActions.presentCurrent(null); return false; }
+  const expectedKey = selectionActionKey(range);
+  const mode = configuredEditorMode(editor.state);
+  const revision = selectionActions.presentationRevision;
+  scrollCoordinator.revealPosition(editor.state.selection.main.head);
+  const target = selectionActionTarget();
+  const current = expiresAt > Date.now() && selectionActions.presentationRevision === revision
+    && configuredEditorMode(editor.state) === mode && selectionActionKey() === expectedKey;
+  const shown = current && target?.key === expectedKey && selectionActions.presentCurrent(target);
+  return shown;
+}
+
 function measureSelectionAction(view: EditorView) {
   const attachment = documentAttachment;
   view.requestMeasure({key: selectionActions, read: selectionActionTarget,
@@ -1962,7 +1986,7 @@ editor.contentDOM.addEventListener("pointerdown", () => { selectingForAgent = tr
 window.addEventListener("pointerup", () => { selectingForAgent = false; measureSelectionAction(editor); });
 editor.contentDOM.addEventListener("keyup", () => measureSelectionAction(editor));
 editor.contentDOM.addEventListener("keydown", event => {
-  const dismissed = selectionActions.dismiss();
+  const dismissed = selectionActions.dismissForKey(event);
   if (event.key === "Escape" && !event.isComposing && dismissed) {
     event.preventDefault(); event.stopPropagation();
   }
@@ -1997,7 +2021,10 @@ editor.contentDOM.addEventListener("beforeinput", (event) => {
   };
 }, {capture: true});
 const scrollCoordinator = createEditorScrollCoordinator(editor, {
-  onScroll: () => selectionActions.dismiss(),
+  onScroll: () => selectionActions.dismissForScroll(),
+  // The content key route must see the visible control before dismissing it,
+  // so Escape can consume dismissal instead of collapsing the source range.
+  onViewportInput: event => { if (event.type !== "keydown") selectionActions.dismiss(); },
   post: (scrollAnchor) => post({
     type: "scrollChanged",
     scrollFraction: scrollAnchor.fallbackFraction,
@@ -2124,6 +2151,9 @@ function currentEditorContext(view = editor): EditorContext {
     return true;
   });
   const fieldProjection = liveProjectionIndex.index(state).zoteroFields;
+  if (configuredEditorMode(state) === "livePreview" && previewPopover.canShowAtSelection()) {
+    availableCommands.push("previewAtSelection");
+  }
   if (citationTransaction !== null) availableCommands.push("cancelCitation");
   else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
     const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
@@ -2139,6 +2169,7 @@ function currentEditorContext(view = editor): EditorContext {
     tablePosition: currentTablePosition,
     imageTarget: state.selection.ranges.length === 1
       ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? undefined : undefined,
+    selectionActionUTF16Count: selectionActionSourceRange(state, view)?.utf16Count,
     composing: view.composing || compositionGate.active,
     availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state)
       ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter(command =>
@@ -2277,6 +2308,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setWritingContinuation": inputSuggestions.configureWritingContinuation(operation.enabled, operation.contextKey); break;
   case "setWritingIndexContext": inputSuggestions.configureWritingIndexContext(operation.contextKey); break;
   case "showPreview": previewPopover.showAtSelection(); break;
+  case "showSelectionActions": {
+    const shown = showCurrentSelectionActions(request.expiresAt);
+    return {...successfulResult(request.requestID), selectionSurfaceID: shown ? selectionActions.surfaceID! : undefined};
+  }
   case "measureVisibleProjection": {
     const startedAt = performance.now();
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
@@ -2546,7 +2581,8 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     return {
       ...successfulResult(request.requestID, result.sourceChanged, result.undoLabel),
-      find: {current: result.current, total: result.total},
+      find: {current: result.current, total: result.total, replaceable: result.replaceable,
+        canReplaceCurrent: result.canReplaceCurrent, replacement: result.replacement},
     };
   }
   case "clearDocumentFind": clearDocumentFind(editor); break;
@@ -2969,9 +3005,10 @@ const editorOperations = {
     // a later Source request would move managed New Note back into its YAML.
     editor.dispatch({
       selection: EditorSelection.single(from, to),
-      effects: EditorView.scrollIntoView(EditorSelection.range(from, to), {y: "center"}),
       annotations: Transaction.addToHistory.of(false),
     });
+    scrollCoordinator.revealPosition(to);
+    measureSelectionAction(editor);
     if (focusesEditor) {
       editor.focus();
     }

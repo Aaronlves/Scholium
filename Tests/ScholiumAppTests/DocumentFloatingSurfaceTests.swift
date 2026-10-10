@@ -18,7 +18,7 @@ struct DocumentFloatingSurfaceTests {
             return [
                 "type": "selectionSurface",
                 "surface": [
-                    "id": id, "left": 290, "top": 240, "bottom": 260,
+                    "id": id, "left": 290, "top": 240, "bottom": 260, "utf16Count": 12,
                 ],
             ]
         }
@@ -27,7 +27,7 @@ struct DocumentFloatingSurfaceTests {
                 "type": "suggestionSurface",
                 "surface": [
                     "id": id, "left": 290, "top": 240, "bottom": 260,
-                    "items": [["label": "Date", "detail": ""]], "selected": 0,
+                    "items": [["label": "Date", "detail": "", "disabled": false]], "selected": 0,
                 ],
             ]
         }
@@ -92,6 +92,333 @@ struct DocumentFloatingSurfaceTests {
         #expect(chosen == .ask)
     }
 
+    @Test("Unavailable candidates and overlong writing selections expose disabled native actions")
+    func unavailableActions() throws {
+        let bar = SelectionActionBar(actions: SelectionActionPreferences.defaultActions, selectionUTF16Count: 12_001)
+        let buttons = bar.arrangedSubviews.compactMap { $0 as? NSButton }.filter { !($0 is NSPopUpButton) }
+        #expect(buttons.count == 2)
+        #expect(buttons.allSatisfy { !$0.isEnabled && $0.accessibilityHelp()?.isEmpty == false })
+        let more = try #require(bar.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first)
+        #expect(more.isEnabled)
+        let list = NativeFloatingChoiceList(acceptsKeyboard: false)
+        list.update(items: [.init(label: "Unavailable Note", detail: "Add a unique alias.", disabled: true)], selected: 0)
+        var accepted = false
+        list.choose = { _ in accepted = true }
+        let row = try #require(list.tableView(list.table, rowViewForRow: 0))
+        #expect(row.isAccessibilityEnabled() == false)
+        #expect(!row.accessibilityPerformPress())
+        #expect(!accepted)
+        var candidate = payload(kind: "suggestions")
+        var surface = try #require(candidate["surface"] as? [String: Any])
+        surface["items"] = [["label": "Unavailable Note", "detail": "Add a unique alias.", "disabled": true]]
+        candidate["surface"] = surface
+        guard case .suggestions(let decoded) = DocumentFloatingEvent.decode(candidate) else {
+            Issue.record("Disabled candidate payload was not admitted")
+            return
+        }
+        #expect(decoded.items.first?.disabled == true)
+    }
+
+    @Test("An explicit action admits a viewport-spanning selection before or after its source reply", arguments: [false, true])
+    func explicitViewportSelection(delayed: Bool) async throws {
+        _ = NSApplication.shared
+        let webView = WKWebView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        NSApp.activate()
+        let controller = DocumentFloatingSurfaceController()
+        var captured = false
+        defer {
+            controller.reset()
+            window.close()
+        }
+        let invoked = try await controller.presentSelectionInquiry(.ask, in: webView) {
+            let present = {
+                controller.present(
+                    .selection(.init(id: 44, left: 300, top: 0, bottom: 600, utf16Count: 500)),
+                    in: webView,
+                    inquire: { _, validate in
+                        captured = await validate()
+                        return nil
+                    }
+                ) { _, _, _ in true }
+                #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.allSatisfy { $0.isHidden })
+            }
+            if delayed {
+                Task { @MainActor in
+                    await Task.yield()
+                    present()
+                }
+            } else {
+                present()
+            }
+            return 44
+        }
+        #expect(invoked)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !captured && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(captured)
+    }
+
+    @Test("An explicit command survives its source owner hiding an existing automatic toolbar")
+    func explicitSelectionReplacesAutomaticToolbar() async throws {
+        let fixture = SelectionFixture()
+        defer { fixture.close() }
+        fixture.showSelection(id: 1)
+        var captured = false
+        let invoked = try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) {
+            fixture.controller.present(.dismiss(.init(kind: .selection, id: 1)), in: fixture.webView) { _, _, _ in true }
+            #expect(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+            fixture.showSelection(id: 2) { _, validate in
+                captured = await validate()
+                return nil
+            }
+            return 2
+        }
+        #expect(invoked)
+        try await waitForSelectionCondition { captured }
+    }
+
+    @Test("Unclaimed automatic selections recover only where the native toolbar fits", arguments: [false, true])
+    func automaticSelectionAfterFailedCommand(hasRoom: Bool) async throws {
+        let fixture = SelectionFixture()
+        defer { fixture.close() }
+        let invoked = try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) {
+            fixture.controller.present(
+                .selection(.init(id: 7, left: 300, top: hasRoom ? 180 : 0, bottom: hasRoom ? 200 : 600, utf16Count: 12)),
+                in: fixture.webView, inquire: { _, _ in nil }
+            ) { _, _, _ in true }
+            let glass = try #require(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+            #expect(glass.isHidden)
+            return nil
+        }
+        #expect(!invoked)
+        let glass = fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first
+        #expect((glass != nil) == hasRoom)
+        #expect(glass?.isHidden != true)
+    }
+
+    @Test("A reply arriving after reset cannot dismiss a new toolbar or release its native command")
+    func resetDuringSelectionSourceReply() async throws {
+        let fixture = SelectionFixture()
+        var firstReply: CheckedContinuation<Int?, Never>?
+        var secondReply: CheckedContinuation<Int?, Never>?
+        let first = Task {
+            try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) {
+                await withCheckedContinuation { firstReply = $0 }
+            }
+        }
+        var second: Task<Bool, any Error>?
+        defer {
+            first.cancel()
+            second?.cancel()
+            firstReply?.resume(returning: nil)
+            secondReply?.resume(returning: nil)
+            fixture.close()
+        }
+        try await waitForSelectionCondition { firstReply != nil }
+        fixture.controller.reset()
+        var captured = false
+        second = Task {
+            try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) {
+                fixture.showSelection(id: 7) { _, validate in
+                    captured = await validate()
+                    return nil
+                }
+                return await withCheckedContinuation { secondReply = $0 }
+            }
+        }
+        try await waitForSelectionCondition { secondReply != nil }
+        let replacement = try #require(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        firstReply?.resume(returning: 7)
+        firstReply = nil
+        await #expect(throws: CancellationError.self) { try await first.value }
+        #expect(replacement.superview === fixture.viewport)
+        #expect(fixture.controller.canInvokeSelectionInquiry(.ask))
+        let overlapping = try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) {
+            Issue.record("The new command must still own admission after the old defer runs")
+            return nil
+        }
+        #expect(!overlapping)
+        secondReply?.resume(returning: 7)
+        secondReply = nil
+        #expect(try await #require(second).value)
+        try await waitForSelectionCondition { captured }
+    }
+
+    @Test("A late receipt cancellation cannot cancel a new command reusing the same wire ID")
+    func staleSelectionReceiptCancellation() async throws {
+        let fixture = SelectionFixture()
+        let first = Task {
+            try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) { 7 }
+        }
+        var second: Task<Bool, any Error>?
+        defer {
+            first.cancel()
+            second?.cancel()
+            fixture.close()
+        }
+        try await waitForSelectionCondition { fixture.controller.testingSelectionReceiptCommandID != nil }
+        let firstID = try #require(fixture.controller.testingSelectionReceiptCommandID)
+        let staleCancellation = try #require(fixture.controller.testingSelectionReceiptCancellationHandler)
+        fixture.controller.reset()
+        var captured = false
+        second = Task {
+            try await fixture.controller.presentSelectionInquiry(.ask, in: fixture.webView) { 7 }
+        }
+        try await waitForSelectionCondition {
+            fixture.controller.testingSelectionReceiptCommandID != nil
+                && fixture.controller.testingSelectionReceiptCommandID != firstID
+        }
+        let secondID = try #require(fixture.controller.testingSelectionReceiptCommandID)
+        await #expect(throws: CancellationError.self) { try await first.value }
+        // Deliver and finish the exact production onCancel task while the new
+        // receipt owns the same wire integer. No timing assumption is needed.
+        await staleCancellation().value
+        #expect(fixture.controller.testingSelectionReceiptCommandID == secondID)
+        fixture.showSelection(id: 7) { _, validate in
+            captured = await validate()
+            return nil
+        }
+        #expect(try await #require(second).value)
+        try await waitForSelectionCondition { captured }
+    }
+
+    @Test("Selection Escape does not steal another field's cancellation, and menu tracking keeps its own Escape")
+    func selectionEscapeFocusOwnership() throws {
+        let fixture = SelectionFixture()
+        defer { fixture.close() }
+        fixture.showSelection(id: 1)
+        try #require(fixture.window.isKeyWindow, "The synthetic key event needs a key native window.")
+        let field = NSTextField(string: "Other native input")
+        fixture.viewport.addSubview(field)
+        try #require(fixture.window.makeFirstResponder(field))
+        let fieldResponder = fixture.window.firstResponder
+        let escape = try fixture.escape()
+        #expect(fixture.controller.handleSelectionKeyDown(escape) === escape)
+        #expect(fixture.window.firstResponder === fieldResponder)
+        #expect(!fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        NotificationCenter.default.post(name: NSWindow.didUpdateNotification, object: fixture.window)
+        #expect(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        #expect(fixture.window.firstResponder === fieldResponder)
+        try #require(fixture.window.makeFirstResponder(fixture.webView))
+        fixture.showSelection(id: 2)
+        fixture.window.simulatesKeyWindow = false
+        #expect(fixture.controller.handleSelectionKeyDown(escape) === escape)
+        fixture.window.simulatesKeyWindow = true
+        let menu = NSMenu()
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: menu)
+        #expect(fixture.controller.handleSelectionKeyDown(escape) === escape)
+        NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: menu)
+        #expect(fixture.controller.handleSelectionKeyDown(try fixture.escape(modifiers: .shift)) != nil)
+        #expect(fixture.controller.handleSelectionKeyDown(escape) == nil)
+        #expect(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        #expect(fixture.window.firstResponder === fixture.webView)
+    }
+
+    @Test("A native input client outside NSTextView keeps Escape while marked text is active")
+    func selectionEscapeDuringNativeComposition() throws {
+        let fixture = SelectionFixture()
+        defer { fixture.close() }
+        fixture.showSelection(id: 1)
+        try #require(fixture.window.isKeyWindow, "The synthetic key event needs a key native window.")
+        let input = MarkedInputView()
+        fixture.webView.addSubview(input)
+        try #require(fixture.window.makeFirstResponder(input))
+        let escape = try fixture.escape()
+        #expect(fixture.controller.handleSelectionKeyDown(escape) === escape)
+        #expect(fixture.window.firstResponder === input)
+        #expect(!fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        input.marked = false
+        fixture.webView.scholiumIsComposing = true
+        #expect(fixture.controller.handleSelectionKeyDown(escape) === escape)
+        fixture.webView.scholiumIsComposing = false
+        #expect(fixture.controller.handleSelectionKeyDown(escape) == nil)
+        #expect(fixture.viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+    }
+
+    private func waitForSelectionCondition(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !condition() && ContinuousClock.now < deadline { await Task.yield() }
+        try #require(condition())
+    }
+
+    @MainActor
+    private final class SelectionFixture {
+        let webView: ComposingWebView
+        let window: SelectionWindow
+        let viewport: DocumentWebViewContainer
+        let controller = DocumentFloatingSurfaceController()
+
+        init() {
+            _ = NSApplication.shared
+            webView = ComposingWebView()
+            window = SelectionWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            viewport = DocumentWebViewContainer(webView: webView)
+            window.contentView = viewport
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(webView)
+        }
+
+        func showSelection(id: Int, inquire: @escaping AgentSelectionInquiryHandler = { _, _ in nil }) {
+            controller.present(
+                .selection(.init(id: id, left: 300, top: 180, bottom: 200, utf16Count: 12)),
+                in: webView, inquire: inquire
+            ) { _, _, _ in true }
+        }
+
+        func escape(modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try #require(
+                NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: modifiers,
+                    timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                    characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53))
+        }
+
+        func close() {
+            controller.reset()
+            webView.stopLoading()
+            window.close()
+        }
+    }
+
+    private final class SelectionWindow: NSWindow {
+        // SwiftPM has no foreground app activation. These tests exercise the
+        // native admission state; actual hardware focus belongs to QA journeys.
+        var simulatesKeyWindow = true
+        override var isKeyWindow: Bool { simulatesKeyWindow }
+        override var canBecomeKey: Bool { true }
+    }
+
+    private final class ComposingWebView: WKWebView, ScholiumDocumentInputStateProviding {
+        var scholiumIsComposing = false
+    }
+
+    private final class MarkedInputView: NSView, @MainActor NSTextInputClient {
+        var marked = true
+        override var acceptsFirstResponder: Bool { true }
+        func insertText(_ string: Any, replacementRange: NSRange) {}
+        override func doCommand(by selector: Selector) {}
+        func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { marked = true }
+        func unmarkText() { marked = false }
+        func selectedRange() -> NSRange { NSRange(location: 0, length: 0) }
+        func markedRange() -> NSRange { NSRange(location: marked ? 0 : NSNotFound, length: marked ? 1 : 0) }
+        func hasMarkedText() -> Bool { marked }
+        func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+        func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+        func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect { .zero }
+        func characterIndex(for point: NSPoint) -> Int { 0 }
+    }
+
     @Test("Unavailable selection actions replace the toolbar beside the captured passage")
     func selectionFailureAnchor() async throws {
         _ = NSApplication.shared
@@ -111,7 +438,7 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         controller.present(
-            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200, utf16Count: 12)),
             in: webView,
             inquire: { _, _ in throw AgentChatNoteMaterialError.selectionUnavailable }
         ) { _, action, _ in
@@ -168,7 +495,7 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         controller.present(
-            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200, utf16Count: 12)),
             in: webView,
             inquire: { _, validate in
                 guard await validate() else { return nil }
@@ -222,7 +549,7 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         controller.present(
-            .selection(.init(id: 1, left: 300, top: 180, bottom: 200)),
+            .selection(.init(id: 1, left: 300, top: 180, bottom: 200, utf16Count: 12)),
             in: webView,
             inquire: { _, validate in
                 captured = await validate()
@@ -278,7 +605,7 @@ struct DocumentFloatingSurfaceTests {
         }
         func start(_ id: Int) throws {
             controller.present(
-                .selection(.init(id: id, left: 300, top: 180, bottom: 200)),
+                .selection(.init(id: id, left: 300, top: 180, bottom: 200, utf16Count: 12)),
                 in: webView,
                 inquire: { _, _ in
                     Issue.record("Cancelled validation must not admit the inquiry")

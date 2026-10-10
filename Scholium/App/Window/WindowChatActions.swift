@@ -42,11 +42,15 @@ extension WindowModel {
     /// scope. Their invoking surfaces retain ownership of error presentation.
     @MainActor
     private func stageCurrentSelectionInChat(
-        inquiry: AgentChatSelectionInquiry, newConversation: Bool = false, validate: @escaping AgentSelectionValidation = { true }
+        inquiry: AgentChatSelectionInquiry, validate: @escaping AgentSelectionValidation = { true }
     ) async throws -> Bool {
         guard isChatSidebarEnabled else { throw ChatSidebarPresentationError.hidden }
         guard !Task.isCancelled, let chat = chatController else { return false }
         let selected = chat.selectedID
+        let usesVisibleConversation =
+            shellState.libraryVisible && shellState.sidebarContent == .chat
+            && chat.transcriptReaders[nativeWindowID] != nil
+            && chat.transcriptReaders[nativeWindowID] == selected
         @MainActor func capture() async throws {
             let attachment = try await currentSelectionAttachment()
             guard await validate(), !Task.isCancelled, chatController === chat, selected == chat.selectedID else {
@@ -54,12 +58,12 @@ extension WindowModel {
             }
             // A missing or archived destination has no live draft to guard.
             // Create its replacement only after a valid passage is captured.
-            if newConversation || chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
+            if !usesVisibleConversation || chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
             guard let conversationID = chat.selectedID,
                 chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
             else { throw AgentChatNoteMaterialError.unavailable }
         }
-        if !newConversation, let selected, chat.selected?.isAvailable == true {
+        if usesVisibleConversation, let selected, chat.selected?.isAvailable == true {
             var failure: (any Error)?
             let prepared = await chat.performMaterialPreparation(in: selected) {
                 do { try await capture() } catch {
@@ -83,18 +87,14 @@ extension WindowModel {
         guard let chat = chatController, let descriptor = currentDocumentDescriptor else { throw AgentChatNoteMaterialError.unavailable }
         do {
             if inquiry.operation == nil {
-                let visible =
-                    shellState.libraryVisible && shellState.sidebarContent == .chat
-                    && chat.transcriptReaders[nativeWindowID] != nil
-                    && chat.transcriptReaders[nativeWindowID] == chat.selectedID
-                let prepared = try await stageCurrentSelectionInChat(inquiry: inquiry, newConversation: !visible) { [self] in
+                let prepared = try await stageCurrentSelectionInChat(inquiry: inquiry) { [self] in
                     guard await validate() else { return false }
                     return currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
                 }
                 if prepared { continueInChat() }
                 return nil
             }
-            let attachment = try await currentSelectionAttachment()
+            let attachment = try await currentSelectionAttachment(writingAssistance: true)
             guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                 await validate(), !Task.isCancelled
             else { return nil }
@@ -120,10 +120,10 @@ extension WindowModel {
                         self.presentedDocumentMode != .read,
                         self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true,
                         let range = attachment.sourceRange
-                    else { throw AgentChatNoteMaterialError.changedSource }
+                    else { throw AgentChatNoteMaterialError.selectionSourceChanged }
                     let session = self.documentController.session(for: descriptor)
-                    guard session.conflict == nil else { throw AgentChatNoteMaterialError.changedSource }
-                    guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
+                    guard session.conflict == nil else { throw AgentChatNoteMaterialError.selectionSourceChanged }
+                    guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.selectionComposing }
                     let generation = session.editorSession.generation
                     let snapshot = try await session.editorSession.currentTextSnapshot()
                     guard !self.windowCloseCoordinator.isFinalized,
@@ -134,7 +134,7 @@ extension WindowModel {
                         self.presentedDocumentMode != .read, session.conflict == nil,
                         DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
                         let webView = session.editorSession.webView
-                    else { throw AgentChatNoteMaterialError.changedSource }
+                    else { throw AgentChatNoteMaterialError.selectionSourceChanged }
                     _ = try await session.editorSession.send(
                         .replacePassage(
                             expectedText: snapshot.text,
@@ -199,7 +199,7 @@ extension WindowModel {
     }
 
     @MainActor
-    private func currentSelectionAttachment() async throws -> AgentChatAttachment {
+    private func currentSelectionAttachment(writingAssistance: Bool = false) async throws -> AgentChatAttachment {
         guard let note = currentNote?.hydratedSnapshot, let descriptor = currentDocumentDescriptor,
             let noteID = note.stableIdentity.resolvedID
         else { throw AgentChatNoteMaterialError.selectionUnavailable }
@@ -219,6 +219,7 @@ extension WindowModel {
         guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentedDocumentMode == mode else {
             throw AgentChatNoteMaterialError.selectionUnavailable
         }
+        try MarkdownSelectionActionAdmission.validate(snapshot, writingAssistance: writingAssistance)
         return .init(
             noteID: noteID, vaultID: descriptor.reference.vaultID,
             relativePath: note.id.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
@@ -584,7 +585,7 @@ extension WindowModel {
 }
 
 enum AgentChatNoteMaterialError: LocalizedError {
-    case unavailable, changedSource, editorUnavailable, composing, selectionUnavailable
+    case unavailable, changedSource, editorUnavailable, composing, selectionUnavailable, selectionSourceChanged, selectionComposing
     var errorDescription: String? {
         switch self {
         case .unavailable: String(localized: "The Note or conversation is no longer available.")
@@ -592,6 +593,11 @@ enum AgentChatNoteMaterialError: LocalizedError {
         case .editorUnavailable: String(localized: "The current editor snapshot is unavailable. Keep the Note open and try again.")
         case .selectionUnavailable: String(localized: "Select an exact passage in Edit or Source if the reading selection cannot be located.")
         case .composing: String(localized: "Finish editing with the input method, then try adding the Note again.")
+        case .selectionSourceChanged:
+            ScholiumL10n.string(
+                "The document changed since this suggestion was requested. The suggestion is retained for Copy or Continue in Chat. Select the current passage and request Polish again before replacing it."
+            )
+        case .selectionComposing: ScholiumL10n.string("Finish or cancel input-method composition before replacing the selection. The suggestion is retained.")
         }
     }
 }

@@ -2155,8 +2155,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func dismissCitationStatus() { updatePublished(\.citationStatus, to: nil) }
 
+    func presentSelectionInquiry(_ inquiry: AgentChatSelectionInquiry) async throws -> Bool {
+        guard isReady, isLoaded, !isComposing, hasNonemptySelection,
+            let count = context?.selectionActionUTF16Count, (1...32_000).contains(count), let webView,
+            inquiry.operation == nil || count <= MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length
+        else { throw SessionError.unavailable }
+        return try await floatingSurfaces.presentSelectionInquiry(inquiry, in: webView) {
+            let result = try await send(.showSelectionActions, in: webView)
+            return result.selectionSurfaceID
+        }
+    }
+
     func perform(_ command: MarkdownEditorCommand, argument: String? = nil) async throws {
         switch command {
+        case .previewAtSelection:
+            guard isReady, isLoaded, !isComposing, let webView,
+                context?.availableCommands.contains(command) == true
+            else { throw SessionError.unavailable }
+            _ = try await send(.showPreview, in: webView)
+            return
         case .insertCitation:
             try await performCitation(.addEditCitation)
             return
@@ -2185,10 +2202,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func performDocumentFind(_ query: DocumentFindQuery) async throws -> DocumentFindResult {
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
         let result = try await send(.documentFind(query), in: webView)
-        guard let find = result.find,
-            find.current >= 0,
-            find.total >= 0,
-            find.current <= find.total
+        guard let find = result.find, find.isValid
         else {
             throw SessionError.invalidResult
         }

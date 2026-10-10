@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ScholiumContracts
 import SwiftUI
 
@@ -36,6 +37,7 @@ struct ExternalMarkdownWindowView: View {
     @StateObject private var model: ExternalMarkdownWindowModel
     @State private var confirmsReload = false
     @State private var readReadyDocumentID: String?
+    @State private var previewFailureMessage: String?
     private var documentFind: DocumentFindPresentationModel { model.documentFind }
 
     init(url: URL, needsOwnershipResolution: Bool = false) {
@@ -70,6 +72,7 @@ struct ExternalMarkdownWindowView: View {
                         onOpenExternalURL: { url in
                             WorkspaceStore.openExternal(url) { NSWorkspace.shared.open($0) }
                         },
+                        onPreviewFailure: { previewFailureMessage = $0.message },
                         onSelectionChange: { model.acceptReadSelection($0, documentID: documentID, fingerprint: snapshot.fingerprint) },
                         onRenderingFailure: { error in
                             guard model.documentID == documentID, model.snapshot?.fingerprint == snapshot.fingerprint else { return }
@@ -108,7 +111,8 @@ struct ExternalMarkdownWindowView: View {
                         onRequestDocumentTitleRename: { _, _ in throw ExternalMarkdownWindowIssue.renameUnavailable },
                         onPasteImage: { _ in false },
                         onLinkActivation: { _ in }, onImagePreview: { _ in },
-                        onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }
+                        onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in },
+                        onPreviewFailure: { previewFailureMessage = $0.message }
                     )
                     .id(model.editorSession.viewReconstructionID)
                 }
@@ -222,12 +226,22 @@ struct ExternalMarkdownWindowView: View {
         .onAppear { ExternalMarkdownWindowRegistry.shared.register(model) }
         .task { if model.snapshot == nil { await model.open() } }
         .task(id: model.editorFocusExecutionID) { await model.focusEditorIfPresented() }
-        .onChange(of: model.mode) { _, _ in documentFind.refresh() }
+        .onChange(of: model.mode) { _, _ in
+            previewFailureMessage = nil
+            documentFind.refresh()
+        }
+        .onReceive(model.editorSession.writingContextChanges.debounce(for: .milliseconds(50), scheduler: RunLoop.main)) {
+            if model.mode != .read { documentFind.refresh() }
+        }
         .onChange(of: model.editorSession.isLoaded) { _, loaded in
             if loaded { documentFind.refresh() }
         }
         .onChange(of: model.snapshot?.fingerprint) { _, _ in documentFind.refresh() }
-        .task(id: documentFind.request) {
+        .task(
+            id: DocumentFindExecutionIdentity(
+                requestID: documentFind.request?.id,
+                allowsReplacement: model.mode != .read, editorIsLoaded: model.editorSession.isLoaded)
+        ) {
             guard let request = documentFind.request, model.mode != .read else { return }
             let documentID = model.documentID
             let editor = model.editorSession
@@ -236,7 +250,7 @@ struct ExternalMarkdownWindowView: View {
                 await editor.clearDocumentFind()
                 return
             }
-            guard editor.isLoaded, let query = request.editorQuery else { return }
+            guard documentFind.hasPendingRequest, editor.isLoaded, let query = request.editorQuery else { return }
             do {
                 let result = try await editor.performDocumentFind(query)
                 guard !Task.isCancelled, model.documentID == documentID, model.editorSession === editor, model.mode == mode else { return }
@@ -253,7 +267,8 @@ struct ExternalMarkdownWindowView: View {
     }
 
     private var hasDocumentNotices: Bool {
-        !model.permitsSourceActions || model.error != nil || model.inputResumeError != nil || model.mode != .read && model.editorSession.errorMessage != nil
+        !model.permitsSourceActions || model.error != nil || previewFailureMessage != nil || model.inputResumeError != nil
+            || model.mode != .read && model.editorSession.errorMessage != nil
             || model.citationPresentation?.isVisible == true
     }
 
@@ -298,6 +313,11 @@ struct ExternalMarkdownWindowView: View {
                 }
             }
             .accessibilityIdentifier("scholium.externalMarkdown.readingOnly")
+        }
+        if let error = previewFailureMessage {
+            ScholiumDocumentStatusNotice(ScholiumL10n.string("Error"), detail: error, kind: .attention) {
+                Button("Dismiss") { previewFailureMessage = nil }
+            }
         }
         if let error = model.error {
             ScholiumDocumentStatusNotice(

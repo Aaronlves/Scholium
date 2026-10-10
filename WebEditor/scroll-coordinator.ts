@@ -1,5 +1,5 @@
 import {EditorView} from "@codemirror/view";
-import type {Text} from "@codemirror/state";
+import {EditorSelection, type Text} from "@codemirror/state";
 import type {EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
@@ -27,6 +27,7 @@ export interface EditorScrollCoordinator {
   setAnchor(anchor: EditorScrollAnchor): void;
   setFraction(fraction: number): void;
   setTop(top: number): void;
+  revealPosition(position: number): void;
 }
 
 /** Owns scroll observation, metrics, and restoration for one retained view. */
@@ -34,11 +35,13 @@ export function createEditorScrollCoordinator(
   editor: EditorView,
   options: {
     onScroll(): void;
+    onViewportInput(event: Event): void;
     post(anchor: EditorScrollAnchor): void;
     flushPresentationGeometry(): void;
   },
 ): EditorScrollCoordinator {
   let scrollRevision = 0;
+  let revealedScroll: {top: number; left: number} | null = null;
   let lastPostedAnchor: EditorScrollAnchor | null = null;
   function sameAnchor(left: EditorScrollAnchor, right: EditorScrollAnchor) {
     return left.sourceUTF16Offset === right.sourceUTF16Offset
@@ -101,12 +104,21 @@ export function createEditorScrollCoordinator(
   // the researcher begins scrolling or moving the caret. Input takes viewport
   // ownership immediately; scroll events alone also come from our own writes
   // and must not invalidate the remaining measured restoration.
-  const abandonPendingRestoration = () => { scrollRevision += 1; };
+  const abandonPendingRestoration = (event: Event) => {
+    scrollRevision += 1;
+    revealedScroll = null;
+    options.onViewportInput(event);
+  };
   for (const event of ["wheel", "pointerdown", "touchstart", "keydown"]) {
     editor.scrollDOM.addEventListener(event, abandonPendingRestoration, {capture: true, passive: true});
   }
   editor.scrollDOM.addEventListener("scroll", () => {
-    options.onScroll();
+    // A completed explicit reveal can have a delayed DOM notification. It
+    // describes the geometry already used to present the command's control.
+    if (revealedScroll?.top !== editor.scrollDOM.scrollTop || revealedScroll.left !== editor.scrollDOM.scrollLeft) {
+      revealedScroll = null;
+      options.onScroll();
+    }
     // Follow the painted viewport during scrolling, independently of the
     // quiet-period timer that closes the performance measurement session.
     scrollReports.schedule(postCurrent);
@@ -210,8 +222,18 @@ export function createEditorScrollCoordinator(
 
   function setTop(top: number) {
     scrollRevision += 1;
+    revealedScroll = null;
     pendingGeometrySnapshot = undefined;
     editor.scrollDOM.scrollTop = Math.max(0, top);
+  }
+
+  function revealPosition(position: number) {
+    setTop(editor.scrollDOM.scrollTop);
+    editor.dispatch({effects: EditorView.scrollIntoView(EditorSelection.cursor(position), {y: "nearest"})});
+    // The public geometry API completes CodeMirror's pending measurement and
+    // scroll synchronously, including in a WebKit view whose frames are paused.
+    editor.coordsAtPos(position);
+    revealedScroll = {top: editor.scrollDOM.scrollTop, left: editor.scrollDOM.scrollLeft};
   }
 
   function setFraction(requestedFraction: number) {
@@ -226,6 +248,7 @@ export function createEditorScrollCoordinator(
 
   function setAnchor(anchor: EditorScrollAnchor) {
     const revision = ++scrollRevision;
+    revealedScroll = null;
     options.flushPresentationGeometry();
     lastPostedAnchor = null;
     if (!validAnchor(anchor)) {
@@ -290,6 +313,7 @@ export function createEditorScrollCoordinator(
 
   return {
     resetDocument() {
+      revealedScroll = null;
       scrollRevision += 1;
       geometryReportGeneration += 1;
       geometryReportScheduled = false;
@@ -315,5 +339,6 @@ export function createEditorScrollCoordinator(
     setAnchor,
     setFraction,
     setTop,
+    revealPosition,
   };
 }

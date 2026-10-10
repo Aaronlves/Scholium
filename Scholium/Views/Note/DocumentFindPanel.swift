@@ -26,6 +26,12 @@ struct DocumentFindPresentationRequest: Hashable, Sendable {
     }
 }
 
+struct DocumentFindExecutionIdentity: Hashable {
+    let requestID: UInt64?
+    let allowsReplacement: Bool
+    let editorIsLoaded: Bool
+}
+
 @MainActor
 final class DocumentFindPresentationModel: ObservableObject {
     @Published private(set) var isPresented = false
@@ -41,6 +47,9 @@ final class DocumentFindPresentationModel: ObservableObject {
     @Published private(set) var request: DocumentFindPresentationRequest?
 
     private var nextRequestID: UInt64 = 0
+    private var requestIsPending = false
+    private var pendingRefresh = false
+    var hasPendingRequest: Bool { requestIsPending }
 
     func present() {
         replacementIsPresented = false
@@ -120,7 +129,12 @@ final class DocumentFindPresentationModel: ObservableObject {
 
     func refresh() {
         guard isPresented else { return }
-        issue(.execute(.update))
+        guard !requestIsPending else {
+            pendingRefresh = true
+            return
+        }
+        // Observation refreshes the summary without navigating the researcher.
+        issue(.execute(.present))
     }
 
     func replaceCurrent() {
@@ -141,23 +155,34 @@ final class DocumentFindPresentationModel: ObservableObject {
 
     func accept(_ result: DocumentFindResult, for requestID: UInt64) {
         guard request?.id == requestID else { return }
-        self.result = result
+        var value = result
+        if request?.operation == .execute(.present), value.replacement == nil {
+            value.replacement = self.result.replacement
+        }
+        self.result = value
         isSearching = false
         errorMessage = nil
+        requestIsPending = false
+        if pendingRefresh { refresh() }
     }
 
     func fail(_ error: any Error, for requestID: UInt64) {
         guard request?.id == requestID else { return }
         isSearching = false
         errorMessage = error.localizedDescription
+        requestIsPending = false
+        pendingRefresh = false
     }
 
     private func issue(_ operation: DocumentFindPresentationOperation) {
         nextRequestID &+= 1
         errorMessage = nil
+        pendingRefresh = false
         if case .execute = operation {
+            requestIsPending = true
             isSearching = !query.isEmpty
         } else {
+            requestIsPending = false
             isSearching = false
         }
         request = DocumentFindPresentationRequest(
@@ -219,10 +244,11 @@ struct DocumentFindPanel: View {
                             HStack(spacing: 8) {
                                 Button("Replace", action: model.replaceCurrent)
                                     .accessibilityIdentifier("scholium.documentFind.replace")
+                                    .disabled(!canNavigate || !model.result.canReplaceCurrent)
                                 Button("Replace All", action: model.replaceAll)
                                     .accessibilityIdentifier("scholium.documentFind.replaceAll")
+                                    .disabled(!canNavigate || model.result.replaceable == 0)
                             }
-                            .disabled(!canNavigate)
                             .frame(minHeight: 28)
                         }
                     }
@@ -233,6 +259,15 @@ struct DocumentFindPanel: View {
                 Text(activeOptions)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if allowsReplacement && model.replacementIsPresented,
+                let replacementDescription
+            {
+                Text(replacementDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("scholium.documentFind.replacementStatus")
             }
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
@@ -311,6 +346,19 @@ struct DocumentFindPanel: View {
             model.wholeWord ? ScholiumL10n.string("Whole Word") : nil,
         ]
         .compactMap { $0 }.joined(separator: " · ")
+    }
+    private var replacementDescription: String? {
+        guard !model.isSearching, model.errorMessage == nil else { return nil }
+        if let outcome = model.result.replacement {
+            return String(
+                localized: "Replaced \(outcome.replaced) matches. Skipped \(outcome.skipped) matches that cannot be replaced exactly.", table: "Localizable",
+                bundle: .module)
+        }
+        let unavailable = model.result.total - model.result.replaceable
+        guard unavailable > 0 else { return nil }
+        return String(
+            localized: "\(unavailable) matches cannot be replaced exactly. Only \(model.result.replaceable) matches can be replaced.", table: "Localizable",
+            bundle: .module)
     }
     private var matchDescription: String {
         if model.isSearching { return ScholiumL10n.string("Finding…") }

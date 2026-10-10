@@ -58,6 +58,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
     var onAskAgent: AgentSelectionInquiryHandler? = nil
+    var onPreviewFailure: ((DocumentPreviewFailure) -> Void)? = nil
     var onPassageAction: ((DocumentPassageAction) -> Void)? = nil
     var writingContinuationEnabled = false
     var writingContinuationContextKey = ""
@@ -230,6 +231,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             coordinator.requestMathRuntimeIfNeeded(in: webView)
         }
         coordinator.onAskAgent = onAskAgent
+        coordinator.onPreviewFailure = onPreviewFailure
         coordinator.performanceDocumentID = performanceDocumentID
         coordinator.onDocumentActivity = onDocumentActivity
         coordinator.onRequestSave = onRequestSave
@@ -305,6 +307,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView.onPassageAction = onPassageAction
         }
         context.coordinator.onAskAgent = onAskAgent
+        context.coordinator.onPreviewFailure = onPreviewFailure
         context.coordinator.performanceDocumentID = performanceDocumentID
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
@@ -543,6 +546,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         var onAskAgent: AgentSelectionInquiryHandler?
+        var onPreviewFailure: ((DocumentPreviewFailure) -> Void)?
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -559,6 +563,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 else { return }
                 session.floatingSurfaces.onPreviewShown = { [documentID = performanceDocumentID] in
                     PerformanceProbe.shared.markEditorCachedPreviewVisible(documentID: documentID)
+                }
+                session.floatingSurfaces.onPreviewFailure = { [weak self] failure in
+                    guard let self, self.surfaceVisibility.isActive else { return }
+                    self.onPreviewFailure?(failure)
                 }
                 session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
                     // Autosave rebases the disk fingerprint, not the live buffer
@@ -785,12 +793,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                                 "insertion": candidate.insertion,
                                 "detail": candidate.detail,
                                 "path": candidate.path,
-                                "isAmbiguous": candidate.isAmbiguous,
+                                "availability": candidate.availability.rawValue,
                             ] as [String: Any]
                         if let action = candidate.writingAction { value["writingAction"] = action }
                         if let count = candidate.replacementUTF16Count { value["replacementUTF16Count"] = count }
                         if let displayText = candidate.displayText {
                             value["displayText"] = displayText
+                        }
+                        if let reason = candidate.unavailableReason {
+                            value["unavailableReason"] = reason
                         }
                         return value
                     }

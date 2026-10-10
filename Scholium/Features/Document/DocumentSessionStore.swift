@@ -91,7 +91,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var previewCatalog: DocumentPreviewCatalog?
     @Published var isAttachingDocument = false
     let findPresentation = DocumentFindPresentationModel()
-    var readSelection: MarkdownReviewSelection?
+    @Published var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     /// The exact conflict revision shown in the open comparison sheet. A
     /// later filesystem observation may update `conflict`, but it must never

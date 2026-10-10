@@ -29,6 +29,9 @@ export interface DocumentFindRequest {
 export interface DocumentFindResult {
   current: number;
   total: number;
+  replaceable: number;
+  canReplaceCurrent: boolean;
+  replacement?: {replaced: number; skipped: number};
   sourceChanged: boolean;
   undoLabel?: string;
 }
@@ -110,7 +113,11 @@ function summary(view: EditorView, query: SearchQuery) {
   const current = matches.findIndex(
     (match) => match.from === selection.from && match.to === selection.to,
   );
-  return {current: current < 0 ? 0 : current + 1, total: matches.length};
+  const replacementTarget = matches[current] ?? forwardMatch(view, query, selection.from);
+  const writable = !view.state.readOnly && view.state.facet(EditorView.editable);
+  return {current: current < 0 ? 0 : current + 1, total: matches.length,
+    replaceable: writable ? matches.filter(match => match.precise).length : 0,
+    canReplaceCurrent: writable && replacementTarget?.precise === true};
 }
 
 function installQuery(view: EditorView, query: SearchQuery) {
@@ -127,6 +134,7 @@ export function performDocumentFind(
 
   let sourceChanged = false;
   let undoLabel: string | undefined;
+  let replacement: DocumentFindResult["replacement"];
   switch (request.action) {
   case "present":
     break;
@@ -143,6 +151,7 @@ export function performDocumentFind(
     if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
     const match = currentMatch(view, query)
       ?? forwardMatch(view, query, view.state.selection.main.from);
+    replacement = {replaced: 0, skipped: match && !match.precise ? 1 : 0};
     if (match?.precise) {
       const changes = [{from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement)}];
       if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
@@ -151,6 +160,7 @@ export function performDocumentFind(
         annotations: [Transaction.userEvent.of("input.replace"), isolateHistory.of("full")],
       });
       sourceChanged = true;
+      replacement.replaced = 1;
       undoLabel = "Replace";
       selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
     } else if (match) {
@@ -162,10 +172,12 @@ export function performDocumentFind(
   }
   case "replaceAll": {
     if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
-    const changes = matchingRanges(view.state, query).filter(match => match.precise).map((match) => ({
+    const matches = matchingRanges(view.state, query);
+    const changes = matches.filter(match => match.precise).map((match) => ({
       from: match.from, to: match.to,
       insert: normalizedDocumentText(request.replacement),
     }));
+    replacement = {replaced: changes.length, skipped: matches.length - changes.length};
     if (changes.length > 0) {
       if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({
@@ -180,7 +192,7 @@ export function performDocumentFind(
   }
   }
 
-  return {...summary(view, query), sourceChanged, undoLabel};
+  return {...summary(view, query), replacement, sourceChanged, undoLabel};
 }
 
 export function clearDocumentFind(view: EditorView) {

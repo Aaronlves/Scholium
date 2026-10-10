@@ -365,7 +365,15 @@ extension ScholiumUITests {
         hover.name = "Selection actions — system accent hover"
         hover.lifetime = .keepAlways
         add(hover)
-        polish.click()
+        // Dismissing presentation retains the selected passage. The Research
+        // command must restore the same action path without a visible bar.
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !polish.exists })
+        app.menuBars.menuBarItems["Research"].click()
+        let polishCommand = app.menuItems["Polish Selection"].firstMatch
+        XCTAssertTrue(polishCommand.waitForExistence(timeout: 3))
+        XCTAssertTrue(polishCommand.isEnabled)
+        polishCommand.click()
         let result = app.descendants(matching: .any)["scholium.selectionResult"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Connect and sign in to Codex in Agents & Chat to use writing assistance."].firstMatch.exists)
@@ -558,6 +566,11 @@ extension ScholiumUITests {
         app.buttons["scholium.documentFind.replace"].click()
         XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 1" })
         XCTAssertTrue((editor.value as? String ?? "").contains("changedprobe"))
+        let replacementStatus = app.staticTexts["scholium.documentFind.replacementStatus"].firstMatch
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                replacementStatus.exists && ((replacementStatus.value as? String) ?? replacementStatus.label).contains("Replaced 1")
+            })
 
         let expanded = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         expanded.name = "Document Find — explicit replacement"
@@ -592,7 +605,14 @@ extension ScholiumUITests {
         XCTAssertTrue(query.waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["scholium.documentFind.disclosure"].exists)
         XCTAssertFalse(replacement.exists)
-        app.typeKey(.escape, modifierFlags: [])
+        // A retained pending/read-only query must transfer to the ready editor,
+        // without reopening the panel or replaying its earlier replacement.
+        selectDocumentMode("Edit")
+        XCTAssertTrue(query.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "No matches" })
+        XCTAssertEqual(query.value as? String, "findprobe")
+        XCTAssertTrue((editor.value as? String ?? "").contains("changedprobe focusreturned."))
+        app.buttons["scholium.documentFind.close"].click()
         XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
     }
 

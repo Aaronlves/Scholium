@@ -2618,6 +2618,132 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Explicit selection inquiry restores a dismissed native toolbar before invoking its checked source handler")
+    func explicitSelectionInquiryAfterEscapeUsesCurrentSource() async throws {
+        let source = "\u{FEFF}---\r\nkind: topic\r\n---\r\n\r\nClaim 中文 😀 é to explain.\r\n"
+        let selectedText = "Claim 中文 😀 é to explain."
+        let selectedRange = try #require(source.range(of: selectedText))
+        let lower = selectedRange.lowerBound.utf16Offset(in: source)
+        let upper = selectedRange.upperBound.utf16Offset(in: source)
+        let session = MarkdownEditorSession()
+        var captured: [(AgentChatSelectionInquiry, MarkdownSourceSelectionSnapshot)] = []
+        let harness = EditorHarness(
+            source: source, suppliedSession: session, laysOutForPointerTesting: true,
+            onAskAgent: { inquiry, validate in
+                guard await validate() else { throw CancellationError() }
+                captured.append((inquiry, try await session.selectedSourceSnapshot()))
+                return nil
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(session.webView)
+        webView.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        session.focus()
+        try await harness.waitUntilFocused()
+        let offsets = EditorSourceOffsetMap(source: source)
+        let editorLower = try #require(offsets.editorUTF16Offset(forSourceUTF16Offset: lower))
+        let editorUpper = try #require(offsets.editorUTF16Offset(forSourceUTF16Offset: upper))
+        session.revealSourceRange(fromUTF16: editorLower, toUTF16: editorUpper)
+        try await harness.waitUntilSelection(anchor: editorLower, head: editorUpper)
+        _ = try await harness.waitUntilPresentation(stage: "native selection toolbar") { _ in
+            harness.nativeSelectionActionBar() != nil
+        }
+        let selection = session.context?.selections
+        let undo = session.context?.undoLabel
+        let redo = session.context?.redoLabel
+        let generation = session.generation
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));")
+        _ = try await harness.waitUntilPresentation(stage: "Escape dismissed native selection toolbar") { _ in
+            harness.nativeSelectionActionBar() == nil
+        }
+        #expect(session.context?.selections == selection)
+        #expect(session.context?.selectionActionUTF16Count == selectedText.utf16.count)
+        // No polling between showSelectionActions' operation reply and invoke:
+        // this proves that its native postMessage admission has already run.
+        let invoked = try await session.presentSelectionInquiry(.explain)
+        #expect(invoked)
+        guard invoked else { return }
+        _ = try await harness.waitUntilPresentation(stage: "fixture selection handler captured exact source") { _ in
+            captured.count == 1
+        }
+        #expect(captured[0].0 == .explain)
+        #expect(captured[0].1.excerpt == selectedText)
+        #expect(captured[0].1.source.utf8.elementsEqual(source.utf8))
+        #expect(captured[0].1.sourceRange.utf16LowerBound == lower)
+        #expect(captured[0].1.sourceRange.utf16UpperBound == upper)
+        #expect(session.context?.selections == selection)
+        #expect(session.context?.undoLabel == undo && session.context?.redoLabel == redo)
+        #expect(session.generation == generation)
+        #expect(try await session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        #expect(!session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A 12005 UTF16 body selection retains Ask Agent after dismissal while Explain and Polish remain unavailable")
+    func explicitLargeSelectionInquiryOnlyAdmitsAskAgent() async throws {
+        let body = String(repeating: "word ", count: 2401)
+        let prefix = "---\nkind: topic\n---\n\n"
+        let source = prefix + body + "\n"
+        let lower = prefix.utf16.count
+        let upper = lower + body.utf16.count
+        let session = MarkdownEditorSession()
+        var captured: [MarkdownSourceSelectionSnapshot] = []
+        let harness = EditorHarness(
+            source: source, suppliedSession: session, laysOutForPointerTesting: true,
+            onAskAgent: { inquiry, validate in
+                #expect(inquiry == .ask)
+                guard await validate() else { throw CancellationError() }
+                captured.append(try await session.selectedSourceSnapshot())
+                return nil
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(session.webView)
+        webView.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        session.focus()
+        try await harness.waitUntilFocused()
+        session.revealSourceRange(fromUTF16: lower, toUTF16: upper)
+        try await harness.waitUntilSelection(anchor: lower, head: upper)
+        #expect(session.context?.selectionActionUTF16Count == body.utf16.count)
+        // This passage may span the viewport. Menu invocation does not require
+        // room for the automatic toolbar; its disabled controls have unit proof.
+        let selection = session.context?.selections
+        let undo = session.context?.undoLabel
+        let redo = session.context?.redoLabel
+        let generation = session.generation
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-scroller').dispatchEvent(new Event('wheel')); document.querySelector('.cm-scroller').dispatchEvent(new Event('scroll'));"
+        )
+        _ = try await harness.waitUntilPresentation(stage: "large selection toolbar dismissed") { _ in
+            harness.nativeSelectionActionBar() == nil
+        }
+        #expect(session.context?.selectionActionUTF16Count == 12_005)
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            _ = try await session.presentSelectionInquiry(.explain)
+        }
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            _ = try await session.presentSelectionInquiry(.polish)
+        }
+        #expect(captured.isEmpty && harness.nativeSelectionActionBar() == nil)
+        let invoked = try await session.presentSelectionInquiry(.ask)
+        #expect(invoked)
+        guard invoked else { return }
+        _ = try await harness.waitUntilPresentation(stage: "fixture Ask Agent captured complete large source") { _ in
+            captured.count == 1
+        }
+        #expect(captured[0].excerpt.utf16.count == body.utf16.count)
+        #expect(captured[0].excerpt.utf8.elementsEqual(body.utf8))
+        #expect(session.context?.selections == selection)
+        #expect(session.context?.undoLabel == undo && session.context?.redoLabel == redo)
+        #expect(session.generation == generation)
+        #expect(try await session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        #expect(!session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Document find preserves prose layout and exact source", arguments: [MarkdownEditorMode.source, .livePreview])
     func documentFindPreservesLayout(mode: MarkdownEditorMode) async throws {
         let source = "findtarget at the beginning.\n\n" + String(repeating: "Following paragraph.\n\n", count: 30)
@@ -4760,7 +4886,9 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Edit footnote locators preview current named and inline definitions without reflow")
     func editFootnotesPreviewCurrentBufferWithoutReflow() async throws {
-        let source = "Claim[^note] and aside^[Inline *qualification*].\n\n[^note]: **Basis** for the claim.\n"
+        let continuation = String(repeating: "Long footnote 中文 😀 é. ", count: 90)
+        let source =
+            "Claim[^note] and aside^[Inline *qualification*. \(continuation)Inline complete tail.].\n\n[^note]: **Basis** for the claim. \(continuation)Named complete tail.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -4770,7 +4898,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         let owner = try #require(harness.session.webView)
         let frame = owner.frame
-        for (index, text, tag) in [(0, "Basis for the claim", "strong"), (1, "Inline qualification", "em")] {
+        for (index, text, tag, tail) in [
+            (0, "Basis for the claim", "strong", "Named complete tail."),
+            (1, "Inline qualification", "em", "Inline complete tail."),
+        ] {
             _ = try await harness.callPageJavaScript(
                 """
                 const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
@@ -4782,6 +4913,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             let preview = try #require(harness.session.floatingSurfaces.previewWebView)
             #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('\(text)')") as? Bool == true)
             #expect(try await preview.evaluateJavaScript("document.querySelector('\(tag)') !== null") as? Bool == true)
+            #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('\(tail)')") as? Bool == true)
+            #expect(try await preview.evaluateJavaScript("document.documentElement.scrollHeight > innerHeight") as? Bool == true)
             #expect(owner.frame == frame)
             #expect(
                 try await harness.callPageJavaScript(
@@ -4792,6 +4925,35 @@ struct MarkdownEditorWebViewIntegrationTests {
                     """, arguments: ["index": index]) as? Bool == true)
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit footnote button activation shares the exact source route with pointer activation")
+    func editFootnoteKeyboardActivationLocatesCurrentDefinition() async throws {
+        let source = "Claim[^note] and aside^[Inline qualification].\n\n[^note]: Named basis.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for (index, target) in [(0, "Named basis."), (1, "Inline qualification")] {
+            harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+            try await harness.waitUntilSelection(head: 0)
+            _ = try await harness.waitUntilPresentation(stage: "inactive footnote controls") {
+                $0.footnoteReferenceCount == 2
+            }
+            _ = try await harness.callPageJavaScript(
+                """
+                const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                marker.focus({preventScroll: true});
+                marker.click();
+                """, arguments: ["index": index])
+            let targetOffset = try #require(source.range(of: target)?.lowerBound).utf16Offset(in: source)
+            try await harness.waitUntilSelection(head: targetOffset)
+            try await harness.waitUntilFocused()
+            #expect(harness.session.floatingSurfaces.previewWebView == nil)
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
     }
@@ -7600,7 +7762,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript(
             anchors + """
                 document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
-                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, metaKey: true}));
                 """)
         _ = try await harness.waitUntilPresentation(stage: "Command before pointer entry") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
@@ -8981,6 +9143,14 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
 
+        func nativeSelectionActionBar() -> SelectionActionBar? {
+            func find(in view: NSView) -> SelectionActionBar? {
+                if let bar = view as? SelectionActionBar { return bar }
+                return view.subviews.lazy.compactMap { find(in: $0) }.first
+            }
+            return window.contentView.flatMap { find(in: $0) }
+        }
+
         init(
             documentID: String = "Argument.md",
             documentTitle: String = "Argument",
@@ -8997,6 +9167,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false,
+            onAskAgent: AgentSelectionInquiryHandler? = nil,
             writingContinuationEnabled: Bool = false,
             writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) },
             imageResourcesQuery: @escaping EditorImageResourceQuery = { _ in [:] },
@@ -9051,7 +9222,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 citationSnapshot: citationSnapshot,
                 onTitleRename: onTitleRename,
                 laysOutForPointerTesting: laysOutForPointerTesting,
-                fixedLayoutSize: fixedLayoutSize
+                fixedLayoutSize: fixedLayoutSize,
+                onAskAgent: onAskAgent
             )
             let hostingController = NSHostingController(rootView: editor)
             hostingController.sizingOptions = []
@@ -9178,6 +9350,21 @@ struct MarkdownEditorWebViewIntegrationTests {
                 if clock.now >= deadline {
                     Issue.record(
                         "The editor did not publish \(stage); expected \(head), latest \(String(describing: session.context?.selections.first?.head))."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        func waitUntilSelection(anchor: Int, head: Int, stage: String = "exact requested selection") async throws {
+            let expected = [MarkdownEditorSelectionRange(anchor: anchor, head: head)]
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while session.context?.selections != expected {
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not publish \(stage); expected \(expected), latest \(String(describing: session.context?.selections))."
                     )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
@@ -9753,6 +9940,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let onTitleRename: @MainActor (String, String) async throws -> String
         let laysOutForPointerTesting: Bool
         let fixedLayoutSize: NSSize?
+        let onAskAgent: AgentSelectionInquiryHandler?
 
         init(
             session: MarkdownEditorSession,
@@ -9763,7 +9951,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             citationSnapshot: ZoteroCitationSnapshot?,
             onTitleRename: @escaping @MainActor (String, String) async throws -> String,
             laysOutForPointerTesting: Bool,
-            fixedLayoutSize: NSSize?
+            fixedLayoutSize: NSSize?,
+            onAskAgent: AgentSelectionInquiryHandler?
         ) {
             self.session = session
             self.documentID = documentID
@@ -9774,6 +9963,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             self.onTitleRename = onTitleRename
             self.laysOutForPointerTesting = laysOutForPointerTesting
             self.fixedLayoutSize = fixedLayoutSize
+            self.onAskAgent = onAskAgent
         }
 
         var body: some View {
@@ -9829,6 +10019,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 onImagePreview: { sourceBox.previewedImages.append($0) },
                 onScrollFractionChange: { _ in },
                 onScrollAnchorChange: { sourceBox.scrollAnchor = $0 },
+                onAskAgent: onAskAgent,
                 writingContinuationEnabled: sourceBox.writingContinuationEnabled,
                 writingContinuationContextKey: sourceBox.writingContinuationModel,
                 writingIndexContextKey: sourceBox.writingIndexContextKey,

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import QuickLook
 import ScholiumContracts
 import SwiftUI
@@ -261,6 +262,7 @@ struct NoteContentView<ShellNotices: View>: View {
     @State private var outlineScrollFraction: Double
     @State private var outlineScrollAnchor: EditorScrollAnchor?
     @State private var outlineSelectionEntryID: DocumentOutlineEntry.ID?
+    @State private var readSelectionActionPresenter: DocumentSelectionActionPresenter?
     @State private var outlineSelectionAwaitsScrollAnchor = false
 
     init(
@@ -366,6 +368,7 @@ struct NoteContentView<ShellNotices: View>: View {
         let documentID: String
         let notePath: String
         let canEdit: Bool
+        let readSelection: MarkdownReviewSelection?
     }
 
     private var editorCommandFacts: EditorCommandFacts {
@@ -376,8 +379,23 @@ struct NoteContentView<ShellNotices: View>: View {
             isAttaching: documentSession.isAttachingDocument,
             documentID: editorSession.documentID,
             notePath: note.id.relativePath,
-            canEdit: state.canEdit
+            canEdit: state.canEdit,
+            readSelection: documentSession.readSelection
         )
+    }
+
+    private var selectionActionUTF16Count: Int? {
+        if isEditing {
+            guard editorSession.isLoaded, !editorSession.isComposing, editorSession.hasNonemptySelection else { return nil }
+            return editorSession.context?.selectionActionUTF16Count
+        }
+        guard !documentSession.hasUnsavedChanges,
+            documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256,
+            let selection = documentSession.readSelection,
+            let snapshot = MarkdownReviewSourceSelection.review(selection, source: note.document.rawContent),
+            (try? MarkdownSelectionActionAdmission.validate(snapshot)) != nil
+        else { return nil }
+        return snapshot.excerpt.utf16.count
     }
 
     private func publishEditorActionsIfSelected(
@@ -419,7 +437,32 @@ struct NoteContentView<ShellNotices: View>: View {
                 attachDocumentCopy: { requestDocumentAttachment(.copyIntoTriptych) },
                 referenceOriginalDocument: { requestDocumentAttachment(.referenceOriginal) },
                 canEditFrontmatter: editingIsAvailable,
-                goToFrontmatter: goToFrontmatter
+                goToFrontmatter: goToFrontmatter,
+                canInvokeSelectionInquiry: { inquiry in
+                    guard controller.selectedDocument?.editingTarget == target,
+                        controller.retainsSession(documentSession, for: target)
+                    else { return false }
+                    guard let count = selectionActionUTF16Count else { return false }
+                    return inquiry.operation == nil || count <= MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length
+                },
+                invokeSelectionInquiry: { inquiry in
+                    guard controller.selectedDocument?.editingTarget == target,
+                        controller.retainsSession(documentSession, for: target)
+                    else { return }
+                    Task { @MainActor in
+                        do {
+                            let invoked =
+                                if isEditing {
+                                    try await editorSession.presentSelectionInquiry(inquiry)
+                                } else {
+                                    try await readSelectionActionPresenter?(inquiry) ?? false
+                                }
+                            if !invoked { throw AgentChatNoteMaterialError.selectionUnavailable }
+                        } catch {
+                            actions.notify(ScholiumErrorLocalization.message(error), .error)
+                        }
+                    }
+                }
             ),
             change
         )
@@ -543,6 +586,9 @@ struct NoteContentView<ShellNotices: View>: View {
         .onChange(of: noteFingerprint.sha256) { _, _ in
             documentFind.refresh()
         }
+        .onReceive(editorSession.writingContextChanges.debounce(for: .milliseconds(50), scheduler: RunLoop.main)) {
+            if isEditing { documentFind.refresh() }
+        }
         .onChange(of: documentSession.renderedReadReadyFingerprint) { _, ready in
             if !isEditing, ready == noteFingerprint.sha256 {
                 documentFind.refresh()
@@ -636,7 +682,11 @@ struct NoteContentView<ShellNotices: View>: View {
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
-        .task(id: documentFind.request) {
+        .task(
+            id: DocumentFindExecutionIdentity(
+                requestID: documentFind.request?.id,
+                allowsReplacement: isEditing, editorIsLoaded: editorSession.isLoaded)
+        ) {
             guard let request = documentFind.request else { return }
             if case .clear = request.operation {
                 if isEditing {
@@ -644,7 +694,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 }
                 return
             }
-            guard isEditing, let query = request.editorQuery else { return }
+            guard documentFind.hasPendingRequest, isEditing, editorSession.isLoaded, let query = request.editorQuery else { return }
             do {
                 let result = try await editorSession.performDocumentFind(query)
                 documentFind.accept(result, for: request.id)
@@ -854,6 +904,7 @@ struct NoteContentView<ShellNotices: View>: View {
                     documentSession.observeScrollAnchor($0, on: .editor)
                 },
                 onAskAgent: actions.askAgent,
+                onPreviewFailure: { actions.notify($0.message, .error) },
                 onPassageAction: { actions.passageAction($0, nil) },
                 writingContinuationEnabled: writingContinuationPreferences.continuationEnabled,
                 writingContinuationContextKey: writingContinuationPreferences.model,
@@ -1124,6 +1175,8 @@ struct NoteContentView<ShellNotices: View>: View {
             onOpenExternalURL: { openAuthoredLink($0.absoluteString) },
             onAskAgent: actions.askAgent,
             onPassageAction: { actions.passageAction($0, $1) },
+            onSelectionActionPresenterReady: { readSelectionActionPresenter = $0 },
+            onPreviewFailure: { actions.notify($0.message, .error) },
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection

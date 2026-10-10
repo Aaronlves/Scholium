@@ -17,7 +17,7 @@ export interface NativeSuggestionSurface {
   left: number;
   top: number;
   bottom: number;
-  items: Array<{label: string; detail: string}>;
+  items: Array<{label: string; detail: string; disabled: boolean}>;
   selected: number;
 }
 
@@ -26,6 +26,7 @@ export interface NativeSelectionSurface {
   left: number;
   top: number;
   bottom: number;
+  utf16Count: number;
 }
 
 export type NativeFloatingEvent =
@@ -131,6 +132,7 @@ export function createNativeFloatingPorts(
         if (action === "dismiss") callbacks.dismiss();
         else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
         else if (action === "choose" && index >= 0 && index < surface.items.length) {
+          if (surface.items[index].disabled) return false;
           return callbacks.choose?.(index) !== false;
         } else return false;
         return true;

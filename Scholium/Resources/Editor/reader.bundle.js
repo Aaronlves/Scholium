@@ -370,40 +370,63 @@
   }
 
   // selection-actions.ts
-  function createSelectionActions(floating, current) {
+  function createSelectionActions(floating, current, currentKey) {
     let id = null;
     let key = null;
     let dismissed = null;
+    let presentationRevision = 0;
     function hide() {
       if (id !== null) floating.hide(id);
       id = null;
       key = null;
     }
-    function dismiss() {
+    function dismissForScroll() {
       const visible = id !== null;
       if (key !== null) dismissed = key;
       hide();
       return visible;
     }
-    return {
-      dismiss,
-      update(target = current()) {
-        if (!target) {
-          hide();
-          dismissed = null;
-          return;
-        }
-        if (target.key === key || target.key === dismissed) return;
+    function dismiss() {
+      presentationRevision += 1;
+      return dismissForScroll();
+    }
+    function update(target = current()) {
+      if (!target) {
         hide();
-        key = target.key;
-        id = floating.show({ ...target.anchor }, {
-          dismiss,
-          choose: () => {
-            const valid = current()?.key === target.key;
-            return valid;
-          }
-        });
+        if (currentKey() === null) dismissed = null;
+        return;
       }
+      if (target.key === key || target.key === dismissed) return;
+      hide();
+      key = target.key;
+      id = floating.show({ ...target.anchor, utf16Count: target.utf16Count }, {
+        dismiss,
+        choose: () => currentKey() === target.key
+      });
+    }
+    return {
+      get surfaceID() {
+        return id;
+      },
+      get presentationRevision() {
+        return presentationRevision;
+      },
+      dismiss,
+      dismissForScroll,
+      dismissForKey(event) {
+        if (event.key === "Tab" && !event.isComposing) {
+          presentationRevision += 1;
+          return false;
+        }
+        return dismiss();
+      },
+      presentCurrent(target = current()) {
+        dismissed = null;
+        hide();
+        update(target);
+        return id !== null;
+      },
+      update
     };
   }
 
@@ -561,6 +584,7 @@
           if (action === "dismiss") callbacks.dismiss();
           else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
           else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            if (surface.items[index].disabled) return false;
             return callbacks.choose?.(index) !== false;
           } else return false;
           return true;
@@ -5677,10 +5701,16 @@
     }
     function showFootnotePopover(button) {
       const ordinal = button.dataset.footnote;
-      if (!ordinal) return;
+      if (!ordinal) {
+        hidePopover();
+        return;
+      }
       const definition = document.getElementById("fn-" + ordinal);
       const content = definition && definition.querySelector(".footnote-content");
-      if (!content) return;
+      if (!content) {
+        hidePopover();
+        return;
+      }
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton && activeFootnoteButton !== button) {
         setFootnoteExpanded(activeFootnoteButton, false);
@@ -5698,7 +5728,10 @@
     function showLinkPopover(link) {
       const key = link.dataset.sourceUtf16Start + ":" + link.dataset.sourceUtf16End;
       const preview = previewByRange.get(key);
-      if (!preview) return;
+      if (!preview) {
+        hidePopover();
+        return;
+      }
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
@@ -5713,7 +5746,10 @@
       const identifier = button.dataset.linkAnnotation;
       const marker = button.closest(".scholium-link-annotation-marker");
       const template = identifier ? document.getElementById(`${identifier}-template`) : marker?.querySelector(":scope > template") ?? null;
-      if (!template) return;
+      if (!template) {
+        hidePopover();
+        return;
+      }
       if (activeAnnotationButton && activeAnnotationButton !== button) {
         setAnnotationExpanded(activeAnnotationButton, false);
       }
@@ -5849,27 +5885,63 @@
       }
       return true;
     };
+    readerWindow.scholiumShowSelectionActions = async () => null;
     if (selectionEnabled) {
       const reviewDocument = document.getElementById("scholium-document");
       const reviewMermaidElements = reviewDocument ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
-      const selectionActions = createSelectionActions(nativeFloating.selection, () => {
+      const isBodySelection = (range) => {
+        const frontmatter = reviewDocument?.querySelector('[data-scholium-protected="frontmatter"]');
+        return !frontmatter || !range.intersectsNode(frontmatter);
+      };
+      const selectionActionRange = () => {
         const selection = window.getSelection();
         if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !selection || selection.rangeCount !== 1 || selection.isCollapsed || !reviewDocument) return null;
         const range = selection.getRangeAt(0);
-        if (!reviewDocument.contains(range.startContainer) || !reviewDocument.contains(range.endContainer) || rangeIntersectsMermaid(range)) return null;
-        const text = boundedReviewRangeText(range, reviewDocument, 2e3);
+        if (!reviewDocument.contains(range.startContainer) || !reviewDocument.contains(range.endContainer) || rangeIntersectsMermaid(range) || !isBodySelection(range)) return null;
+        if (range.toString().length > 32e3) return null;
+        const text = boundedReviewRangeText(range, reviewDocument, 32e3);
         if (!text) return null;
+        const utf16Count = text.length;
         const before = reviewContextBefore(range, reviewDocument, 80);
+        return { range, text, before, utf16Count };
+      };
+      const selectionNodeIDs = /* @__PURE__ */ new WeakMap();
+      let nextSelectionNodeID = 0;
+      const selectionNodeID = (node) => {
+        let id = selectionNodeIDs.get(node);
+        if (id === void 0) {
+          id = ++nextSelectionNodeID;
+          selectionNodeIDs.set(node, id);
+        }
+        return id;
+      };
+      const selectionActionKey = (selected = selectionActionRange()) => selected ? `${fingerprint}:${selectionNodeID(selected.range.startContainer)}:${selected.range.startOffset}:${selectionNodeID(selected.range.endContainer)}:${selected.range.endOffset}` : null;
+      const selectionActions = createSelectionActions(nativeFloating.selection, () => {
+        const selected = selectionActionRange();
+        if (!selected) return null;
+        const { range, utf16Count } = selected;
         const rect = range.getBoundingClientRect();
         if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
         return {
-          key: `${fingerprint}:${text}:${before}:${rect.top}:${rect.bottom}`,
+          key: selectionActionKey(selected),
+          utf16Count,
           anchor: { left: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom }
         };
-      });
-      window.addEventListener("scroll", () => selectionActions.dismiss(), { passive: true });
+      }, selectionActionKey);
+      let revealedSelectionScroll = null;
+      window.addEventListener("scroll", () => {
+        if (revealedSelectionScroll?.top === window.scrollY && revealedSelectionScroll.left === window.scrollX) return;
+        revealedSelectionScroll = null;
+        selectionActions.dismissForScroll();
+      }, { passive: true });
+      for (const event of ["wheel", "touchstart", "pointerdown"]) {
+        window.addEventListener(event, () => {
+          revealedSelectionScroll = null;
+          selectionActions.dismiss();
+        }, { capture: true, passive: true });
+      }
       document.addEventListener("keydown", (event) => {
-        const dismissed = selectionActions.dismiss();
+        const dismissed = selectionActions.dismissForKey(event);
         if (event.key === "Escape" && !event.isComposing && dismissed) {
           event.preventDefault();
           event.stopPropagation();
@@ -5913,11 +5985,11 @@
           clearReviewSelection();
           return;
         }
-        if (rangeIntersectsMermaid(range)) {
+        if (rangeIntersectsMermaid(range) || !isBodySelection(range) || range.toString().length > 32e3) {
           clearReviewSelection();
           return;
         }
-        const text = boundedReviewRangeText(range, main, 2e3);
+        const text = boundedReviewRangeText(range, main, 32e3);
         if (!text) {
           clearReviewSelection();
           return;
@@ -5954,6 +6026,28 @@
         post("selectionChanged", payload);
         selectionActions.update();
       };
+      const showSelectionActions = async () => {
+        const presentationRevision = selectionActions.presentationRevision;
+        const selected = selectionActionRange();
+        if (!selected) {
+          selectionActions.presentCurrent(null);
+          return null;
+        }
+        const expectedKey = selectionActionKey(selected);
+        const range = selected.range.cloneRange();
+        const rect = range.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          const target = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
+          target?.scrollIntoView({ block: "center", behavior: "auto" });
+          range.getBoundingClientRect();
+          revealedSelectionScroll = { top: window.scrollY, left: window.scrollX };
+        }
+        if (selectionActions.presentationRevision !== presentationRevision || readerWindow.scholiumShowSelectionActions !== showSelectionActions || selectionActionKey() !== expectedKey) return null;
+        updateReviewSelection();
+        if (selectionActions.presentationRevision !== presentationRevision) return null;
+        return selectionActions.presentCurrent() ? selectionActions.surfaceID : null;
+      };
+      readerWindow.scholiumShowSelectionActions = showSelectionActions;
       reviewDocument?.addEventListener("contextmenu", (event) => {
         if (!reviewSelectionSurfaceActive) return;
         const target = event.target instanceof Element ? event.target : null;

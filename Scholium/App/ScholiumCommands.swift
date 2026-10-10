@@ -677,6 +677,9 @@ private struct ScholiumResearchCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
+    @FocusedObject private var external: ExternalMarkdownWindowModel?
+    @ObservedObject private var selectionPreferences = SelectionActionPreferences.shared
+    private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
         Button("Find Related Material") {
@@ -692,10 +695,29 @@ private struct ScholiumResearchCommandContent: View {
         .scholiumKeyboardShortcut(.findWritingReferences)
         .disabled(appState?.canFindWritingReferences != true || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Divider()
+        Button("Preview Link or Footnote") { editorActions?.perform(.previewAtSelection) }
+            .scholiumKeyboardShortcut(.previewAtSelection)
+            .disabled(editorActions?.isAvailable(.previewAtSelection) != true)
+        Button("Explain Selection") { editorActions?.invokeSelectionInquiry(.explain) }
+            .scholiumKeyboardShortcut(.explainSelection)
+            .disabled(editorActions?.canInvokeSelectionInquiry(.explain) != true)
+        Button("Polish Selection") { editorActions?.invokeSelectionInquiry(.polish) }
+            .scholiumKeyboardShortcut(.polishSelection)
+            .disabled(editorActions?.canInvokeSelectionInquiry(.polish) != true)
+        let customActions = selectionPreferences.actions.filter(\.isEnabled)
+        if !customActions.isEmpty {
+            Menu("Selection Actions") {
+                ForEach(customActions) { action in
+                    Button(action.name) { editorActions?.invokeSelectionInquiry(action.inquiry) }
+                        .disabled(editorActions?.canInvokeSelectionInquiry(action.inquiry) != true)
+                }
+            }
+        }
+        Divider()
         Button("Add Note to Chat") { appState?.performNoteAction(.addToChat) }
             .scholiumActivationPointer()
             .disabled(appState?.canPerformNoteAction(.addToChat) != true)
-        Button("Add Selection to Chat") {
+        Button("Ask Agent") {
             Task {
                 if await appState?.addCurrentSelectionToChat() == true,
                     appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true
@@ -705,7 +727,7 @@ private struct ScholiumResearchCommandContent: View {
             }
         }
         .scholiumKeyboardShortcut(.addSelectionToChat)
-        .disabled(appState?.currentNote == nil || appState?.canPresentChat != true || appState?.chatController == nil)
+        .disabled(editorActions?.canInvokeSelectionInquiry(.ask) != true || appState?.canPresentChat != true || appState?.chatController == nil)
         if let controller = appState?.chatController {
             AgentChatStopCommand(controller: controller)
         }

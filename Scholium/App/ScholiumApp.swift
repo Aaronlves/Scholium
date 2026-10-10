@@ -304,6 +304,12 @@ final class WindowModel: ObservableObject {
             canEditFrontmatter: actions.canEditFrontmatter,
             goToFrontmatter: { [weak self] in
                 self?.resolvedEditorActions(for: token)?.goToFrontmatter()
+            },
+            canInvokeSelectionInquiry: { [weak self] inquiry in
+                self?.resolvedEditorActions(for: token)?.canInvokeSelectionInquiry(inquiry) == true
+            },
+            invokeSelectionInquiry: { [weak self] inquiry in
+                self?.resolvedEditorActions(for: token)?.invokeSelectionInquiry(inquiry)
             }
         )
     }

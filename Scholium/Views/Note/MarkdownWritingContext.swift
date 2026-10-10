@@ -16,6 +16,42 @@ enum MarkdownWritingContextCaptureMode: Sendable {
     case selectionOrParagraph
 }
 
+/// Selection actions admit only exact body ranges. Presentation projections
+/// cannot authorize sharing or replacing a frontmatter selection.
+enum MarkdownSelectionActionAdmission {
+    static let maximumWritingAssistanceUTF16Length = WritingAssistanceLimits.maximumPassageUTF16Length
+
+    static func validate(_ snapshot: MarkdownSourceSelectionSnapshot, writingAssistance: Bool = false) throws {
+        let document = NoteDocument(relativePath: "Selection.md", rawContent: snapshot.source)
+        let lower = snapshot.sourceRange.utf16LowerBound
+        let upper = snapshot.sourceRange.utf16UpperBound
+        guard document.hasProvableBodyBoundary, lower >= document.bodyUTF16Offset,
+            upper > lower, upper <= snapshot.source.utf16.count,
+            let range = Range(NSRange(location: lower, length: upper - lower), in: snapshot.source),
+            snapshot.source[range].utf8.elementsEqual(snapshot.excerpt.utf8)
+        else { throw Failure.bodySelectionRequired }
+        if writingAssistance,
+            snapshot.excerpt.utf16.count > maximumWritingAssistanceUTF16Length
+        {
+            throw Failure.passageTooLong
+        }
+    }
+
+    enum Failure: LocalizedError, Equatable {
+        case bodySelectionRequired, passageTooLong
+
+        var errorDescription: String? {
+            switch self {
+            case .bodySelectionRequired:
+                ScholiumL10n.string(
+                    "Select an exact passage in the document body. Selection actions cannot include YAML properties or an unclosed YAML envelope.")
+            case .passageTooLong:
+                ScholiumL10n.string("This selection is too long for Explain or Polish. Select a shorter passage, or use Ask Agent.")
+            }
+        }
+    }
+}
+
 /// Exact-source projection for native retrieval. Never reconstructs writable text.
 enum MarkdownWritingContextProjection {
     static func capture(source: String, selections: [MarkdownEditorSelectionRange], mode: MarkdownWritingContextCaptureMode) throws

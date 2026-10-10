@@ -1206,6 +1206,58 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Explicit Review selection inquiry restores a dismissed or offscreen selection", arguments: [false, true])
+    func reviewExplicitSelectionInquiryAfterEscape(offscreen: Bool) async throws {
+        let text = "A source-owned claim 中文 😀 é for discussion."
+        let source = "---\nkind: topic\n---\n\n" + text + "\n\n" + String(repeating: "Surrounding synthetic paragraph.\n\n", count: 40)
+        let document = NoteDocument(relativePath: "Selection.md", rawContent: source)
+        var captured: [AgentChatSelectionInquiry] = []
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true,
+            onAskAgent: { inquiry, validate in
+                guard await validate() else { throw CancellationError() }
+                captured.append(inquiry)
+                return nil
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.focusDocumentForSelectionActions()
+        let pageIdentity = try #require(
+            try await harness.callPageJavaScript(
+                "return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`;") as? String)
+        let selection = try await harness.selectVisibleText(text)
+        let snapshot = try #require(MarkdownReviewSourceSelection.review(selection, source: source))
+        #expect(snapshot.excerpt == text)
+        try await harness.waitForSelectionActionState(stage: "native Review selection toolbar") {
+            harness.nativeSelectionActionBar() != nil
+        }
+        _ = try await harness.callBridgeJavaScript(
+            "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));")
+        try await harness.waitForSelectionActionState(stage: "Escape dismissed Review toolbar") {
+            harness.nativeSelectionActionBar() == nil
+        }
+        #expect(try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String == text)
+        if offscreen { try await harness.scroll(toFraction: 1) }
+        // The actual coordinator awaits its JS operation then immediately
+        // invokes the native owner, without waiting separately for admission.
+        let invoked = try await harness.presentSelectionInquiry(.explain)
+        #expect(invoked, Comment(rawValue: harness.selectionActionNativeState))
+        guard invoked else { return }
+        try await harness.waitForSelectionActionState(stage: "fixture Review source handler") {
+            captured.count == 1
+        }
+        #expect(captured == [.explain])
+        #expect(
+            try await harness.callPageJavaScript(
+                "const rect = window.getSelection().getRangeAt(0).getBoundingClientRect(); return rect.bottom >= 0 && rect.top <= window.innerHeight;") as? Bool
+                == true)
+        #expect(try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String == text)
+        #expect(try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity;") as? String == pageIdentity)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review footnotes preview, navigate, and return")
     func reviewFootnotesOwnInteraction() async throws {
         let previewSource = "First claim[^one], then another claim[^one].\n\n[^one]: Basis.\n"
@@ -1277,7 +1329,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review link previews update without reloading the document page")
     func reviewLinkPreviewsConvergeInPlace() async throws {
-        let previewSource = "[[Target]]\n"
+        let previewSource = "[[Target]] then [[Unavailable]]\n"
         let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "PreviewSource.md", rawContent: source)
         let harness = ReadHarness(
@@ -1315,6 +1367,18 @@ extension MarkdownEditorWebViewIntegrationTests {
                 "return window.__scholiumTestingPageIdentity"
             ) as? String)
         #expect(retainedIdentity == pageIdentity)
+        _ = try await harness.callPageJavaScript(
+            """
+            const links = document.querySelectorAll('a.wiki-link');
+            links[0].dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: links[1]}));
+            links[1].dispatchEvent(new PointerEvent('pointerover', {bubbles: true, relatedTarget: links[0]}));
+            """)
+        try await harness.waitForNativePreview(visible: false)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelectorAll('a.wiki-link')[1].focus({preventScroll: true});")
+        try await harness.waitForNativePreview(visible: false)
+        #expect(
+            try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity") as? String == pageIdentity)
         await harness.closeAndDrain()
     }
 
@@ -2334,6 +2398,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var linkPreviewRevision = "no-previews"
         @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
+        var selectionActionPresenter: DocumentSelectionActionPresenter?
         #if DEBUG
             @Published var testingForcesFinalizationFailure = false
             let testingScrollRestoreDelayMilliseconds: Int
@@ -2436,7 +2501,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             testingScrollRestoreDelayMilliseconds: Int = 0,
             laysOutForNativePreview: Bool = false,
             replyProjection: Bool = false,
-            imagePreviewsEnabled: Bool = false
+            imagePreviewsEnabled: Bool = false,
+            onAskAgent: AgentSelectionInquiryHandler? = nil
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -2475,7 +2541,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 userCSS: userCSS,
                 sourceBox: sourceBox,
                 laysOutForNativePreview: laysOutForNativePreview,
-                pageExtension: sourceBox.chatPageExtension
+                pageExtension: sourceBox.chatPageExtension,
+                onAskAgent: onAskAgent
             )
             let controller = NSHostingController(rootView: root)
             controller.sizingOptions = []
@@ -2508,6 +2575,49 @@ extension MarkdownEditorWebViewIntegrationTests {
                     throw ReadHarnessError.timedOut
                 }
                 try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
+        func nativeSelectionActionBar() -> SelectionActionBar? {
+            func find(in view: NSView) -> SelectionActionBar? {
+                if let bar = view as? SelectionActionBar { return bar }
+                return view.subviews.lazy.compactMap { find(in: $0) }.first
+            }
+            return window.contentView.flatMap { find(in: $0) }
+        }
+
+        func focusDocumentForSelectionActions() async throws {
+            guard let rootView = window.contentViewController?.view,
+                let webView = findWebView(in: rootView)
+            else { throw ReadHarnessError.webViewUnavailable }
+            // A reader's real text selection originates in this key window's
+            // WebKit responder. Creating a DOM Range alone does not establish it.
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            try #require(window.makeFirstResponder(webView))
+        }
+
+        var selectionActionNativeState: String {
+            let responder = window.firstResponder.map { NSStringFromClass(type(of: $0)) } ?? "nil"
+            return "Review native selection state: keyWindow=\(window.isKeyWindow), firstResponder=\(responder), toolbar=\(nativeSelectionActionBar() != nil)."
+        }
+
+        func presentSelectionInquiry(_ inquiry: AgentChatSelectionInquiry) async throws -> Bool {
+            guard let presenter = sourceBox.selectionActionPresenter else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return try await presenter(inquiry)
+        }
+
+        func waitForSelectionActionState(stage: String, _ predicate: () -> Bool) async throws {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(8))
+            while !predicate() {
+                if clock.now >= deadline {
+                    Issue.record("Review did not reach \(stage).")
+                    throw ReadHarnessError.timedOut
+                }
+                try await Task.sleep(for: .milliseconds(20))
             }
         }
 
@@ -3405,6 +3515,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         @ObservedObject var sourceBox: SourceBox
         let laysOutForNativePreview: Bool
         let pageExtension: (any ScholiumReadPageExtension)?
+        let onAskAgent: AgentSelectionInquiryHandler?
 
         var body: some View {
             var surface = SafeMarkdownReadWebView(
@@ -3421,6 +3532,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onLinkClick: { sourceBox.readLinkTargets.append($0) },
                 onImagePreview: sourceBox.imagePreviewsEnabled ? { sourceBox.imagePreviewTargets.append($0) } : nil,
                 onOpenExternalURL: { _ in },
+                onAskAgent: onAskAgent,
+                onSelectionActionPresenterReady: { sourceBox.selectionActionPresenter = $0 },
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
                 renderingReadinessIsAcknowledged: sourceBox.isReady,

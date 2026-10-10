@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("typed native floating ports", () => {
   const suggestions = {
     left: 20, top: 30, bottom: 44,
-    items: [{label: "Date", detail: ""}], selected: 0,
+    items: [{label: "Date", detail: "", disabled: false}], selected: 0,
   };
 
   it("rejects stale and out-of-range suggestion activation", () => {
@@ -39,7 +39,7 @@ describe("typed native floating ports", () => {
     vi.stubGlobal("window", {});
     const choose = vi.fn((_index: number) => true);
     const ports = createNativeFloatingPorts(() => {});
-    const id = ports.selection.show({left: 20, top: 30, bottom: 44}, {choose, dismiss() {}});
+    const id = ports.selection.show({left: 20, top: 30, bottom: 44, utf16Count: 8}, {choose, dismiss() {}});
     const event = (window as Window & {scholiumNativeFloatingEvent?: Function})
       .scholiumNativeFloatingEvent!;
     for (const index of [-1, 1, 2, 3, 4, 0.5, NaN]) expect(event(id, "choose", index)).toBe(false);
@@ -61,6 +61,19 @@ describe("typed native floating ports", () => {
     expect(sent.at(-1)).toEqual({type: "dismissSurface", kind: "suggestions", id: second});
     expect((window as Window & {scholiumNativeFloatingEvent?: Function})
       .scholiumNativeFloatingEvent?.(second, "choose", 0)).toBe(false);
+  });
+
+  it("keeps an unavailable Note inspectable but refuses pointer acceptance", () => {
+    vi.stubGlobal("window", {});
+    const choose = vi.fn(), select = vi.fn();
+    const ports = createNativeFloatingPorts(() => {});
+    const id = ports.suggestions.show({...suggestions, items: [{label: "A#draft", detail: "Cannot insert this filename", disabled: true}]},
+      {choose, select, dismiss() {}});
+    const event = (window as Window & {scholiumNativeFloatingEvent?: Function}).scholiumNativeFloatingEvent!;
+    expect(event(id, "select", 0)).toBe(true);
+    expect(select).toHaveBeenCalledExactlyOnceWith(0);
+    expect(event(id, "choose", 0)).toBe(false);
+    expect(choose).not.toHaveBeenCalled();
   });
 
   it("dismisses the previous contextual owner when another typed port opens", () => {

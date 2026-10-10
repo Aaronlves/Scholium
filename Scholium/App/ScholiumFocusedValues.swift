@@ -33,6 +33,8 @@ struct ScholiumFocusedEditorActions {
     let referenceOriginalDocument: () -> Void
     var canEditFrontmatter = false
     var goToFrontmatter: () -> Void = {}
+    var canInvokeSelectionInquiry: (AgentChatSelectionInquiry) -> Bool = { _ in false }
+    var invokeSelectionInquiry: (AgentChatSelectionInquiry) -> Void = { _ in }
 }
 
 enum ScholiumEditorCommandRegistrationChange: Equatable {

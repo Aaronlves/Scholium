@@ -205,6 +205,28 @@ struct AgentChatNoteMaterialTests {
             #expect(selectionConversationID != target && selectionConversationID != other)
             #expect(didContinueSelection && chat.selected?.attachments.first?.text == "Literal")
             #expect(chat.preparingMaterials.isEmpty)
+            chat.editDraft("Keep the hidden conversation draft.")
+            #expect(await window.addCurrentSelectionToChat())
+            let menuConversationID = try #require(chat.selectedID)
+            #expect(menuConversationID != selectionConversationID)
+            #expect(chat.conversations.first { $0.id == selectionConversationID }?.draft == "Keep the hidden conversation draft.")
+            #expect(chat.selected?.attachments.first?.text == "Literal" && chat.selected?.messages.isEmpty == true)
+
+            // The menu/shortcut and the floating menu share the same visible
+            // destination, preserving both its question and source snapshot.
+            _ = window.shellState.activateSidebar(.chat)
+            window.shellState.recordLibraryVisibility(true)
+            chat.transcriptReaders[window.nativeWindowID] = menuConversationID
+            chat.editDraft("Keep my visible question.")
+            #expect(await window.addCurrentSelectionToChat())
+            #expect(chat.selectedID == menuConversationID && chat.selected?.draft == "Keep my visible question.")
+            _ = try await window.runSelectionInquiry(.examineArgument, validate: { true }) { didContinueSelection = true }
+            #expect(chat.selectedID == menuConversationID)
+            #expect(chat.selected?.draft == "Keep my visible question.\n\n" + (AgentChatSelectionInquiry.examineArgument.question ?? ""))
+            #expect(chat.selected?.attachments.count == 1 && chat.selected?.messages.isEmpty == true)
+            chat.transcriptReaders[window.nativeWindowID] = nil
+            chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
+            chat.select(selectionConversationID)
             chat.removeAttachment(try #require(chat.selected?.attachments.first?.id))
             session.readSelection = nil
             session.editingSource = "Unsaved source that must never be replaced by the saved Note."
@@ -213,9 +235,10 @@ struct AgentChatNoteMaterialTests {
             #expect(session.editingSource.hasPrefix("Unsaved source"))
             #expect(try Data(contentsOf: file) == Data(source.utf8))
             await chat.disconnect()
-            // Both the global menu and the composer call this Window-owned
-            // entry. Even a failed capture participates in the same preparation
-            // scope; it never consumes a draft or creates an empty replacement.
+            // Failed capture in the visibly open conversation participates in
+            // its preparation scope without consuming the draft or creating a
+            // replacement conversation.
+            chat.transcriptReaders[window.nativeWindowID] = selectionConversationID
             chat.editDraft("Keep @selection while source selection is unavailable")
             var preparationStates: [Set<UUID>] = []
             let preparationObservation = chat.$preparingMaterials.sink { preparationStates.append($0) }

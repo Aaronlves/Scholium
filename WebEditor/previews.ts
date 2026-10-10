@@ -38,7 +38,7 @@ export function footnotePreviewContent(
   if (!requested || requested.length > 240) return null;
   const definition = footnotePresentation(source, excluded, dialect).definitions
     .find((candidate) => candidate.identifier === requested);
-  const content = definition?.content.trim().slice(0, 1_600) ?? "";
+  const content = definition?.content.trim() ?? "";
   return content || null;
 }
 

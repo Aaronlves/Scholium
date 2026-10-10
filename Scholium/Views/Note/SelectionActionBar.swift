@@ -2,14 +2,15 @@ import AppKit
 
 /// Native layout and menu presentation only. Selection and execution stay with their owners.
 @MainActor
-final class SelectionActionBar: NSStackView {
+final class SelectionActionBar: NSStackView, NSMenuDelegate {
     var onInquiry: ((AgentChatSelectionInquiry) -> Void)?
     var onDismiss: (() -> Void)?
+    var onMenuClosed: (() -> Void)?
     private var actionTrackingAreas: [NSTrackingArea] = []
     private let actions: [SelectionActionDefinition]
     var preferredSize: NSSize { fittingSize }
 
-    init(actions: [SelectionActionDefinition]) {
+    init(actions: [SelectionActionDefinition], selectionUTF16Count: Int = 1) {
         self.actions = actions.filter(\.isEnabled)
         super.init(frame: .zero)
         orientation = .horizontal
@@ -22,6 +23,15 @@ final class SelectionActionBar: NSStackView {
             right: ScholiumGrid.Spacing.inlineControlGap)
         let explain = button(.explain, symbol: "questionmark.bubble", action: #selector(explainPassage))
         let polish = button(.polish, symbol: "sparkles", action: #selector(polishPassage))
+        let writingIsAvailable = (1...MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length).contains(selectionUTF16Count)
+        for control in [explain, polish] {
+            control.isEnabled = writingIsAvailable
+            if !writingIsAvailable {
+                let reason = ScholiumL10n.string("This selection is too long for Explain or Polish. Select a shorter passage, or use Ask Agent.")
+                control.toolTip = reason
+                control.setAccessibilityHelp(reason)
+            }
+        }
         let more = NSPopUpButton(frame: .zero, pullsDown: true)
         let moreLabel = ScholiumL10n.string("More Actions")
         more.addItem(withTitle: moreLabel)
@@ -31,6 +41,7 @@ final class SelectionActionBar: NSStackView {
         more.setAccessibilityLabel(moreLabel)
         more.setAccessibilityIdentifier("scholium.selectionActions.more")
         more.toolTip = moreLabel
+        more.menu?.delegate = self
         more.widthAnchor.constraint(greaterThanOrEqualToConstant: ScholiumGrid.Dimension.preferredCustomTarget).isActive = true
         let ask = NSMenuItem(title: ScholiumL10n.string("Ask Agent"), action: #selector(askAgent), keyEquivalent: "")
         ask.target = self
@@ -54,6 +65,8 @@ final class SelectionActionBar: NSStackView {
     }
     required init?(coder: NSCoder) { nil }
     override func cancelOperation(_ sender: Any?) { onDismiss?() }
+
+    func menuDidClose(_ menu: NSMenu) { onMenuClosed?() }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

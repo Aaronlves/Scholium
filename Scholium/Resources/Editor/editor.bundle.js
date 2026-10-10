@@ -19648,7 +19648,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 46;
+  var EDITOR_PROTOCOL_VERSION = 47;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -19664,6 +19664,7 @@
     "setWritingContinuation",
     "setWritingIndexContext",
     "showPreview",
+    "showSelectionActions",
     "measureVisibleProjection",
     "showPreviewAt",
     "announceStatus",
@@ -19747,7 +19748,8 @@
     "insertBibliography",
     "refreshCitations",
     "citationStyle",
-    "cancelCitation"
+    "cancelCitation",
+    "previewAtSelection"
   ]);
   function validMode(value) {
     return value === "livePreview" || value === "source";
@@ -19887,6 +19889,8 @@
       case "focusTitle":
       case "blur":
         return true;
+      case "showSelectionActions":
+        return Object.keys(operation).length === 1;
       default:
         return false;
     }
@@ -32587,40 +32591,63 @@ ${blankRow(table.position.columnCount)}`;
   }
 
   // selection-actions.ts
-  function createSelectionActions(floating, current) {
+  function createSelectionActions(floating, current, currentKey) {
     let id2 = null;
     let key = null;
     let dismissed = null;
+    let presentationRevision = 0;
     function hide() {
       if (id2 !== null) floating.hide(id2);
       id2 = null;
       key = null;
     }
-    function dismiss() {
+    function dismissForScroll() {
       const visible = id2 !== null;
       if (key !== null) dismissed = key;
       hide();
       return visible;
     }
-    return {
-      dismiss,
-      update(target = current()) {
-        if (!target) {
-          hide();
-          dismissed = null;
-          return;
-        }
-        if (target.key === key || target.key === dismissed) return;
+    function dismiss() {
+      presentationRevision += 1;
+      return dismissForScroll();
+    }
+    function update(target = current()) {
+      if (!target) {
         hide();
-        key = target.key;
-        id2 = floating.show({ ...target.anchor }, {
-          dismiss,
-          choose: () => {
-            const valid = current()?.key === target.key;
-            return valid;
-          }
-        });
+        if (currentKey() === null) dismissed = null;
+        return;
       }
+      if (target.key === key || target.key === dismissed) return;
+      hide();
+      key = target.key;
+      id2 = floating.show({ ...target.anchor, utf16Count: target.utf16Count }, {
+        dismiss,
+        choose: () => currentKey() === target.key
+      });
+    }
+    return {
+      get surfaceID() {
+        return id2;
+      },
+      get presentationRevision() {
+        return presentationRevision;
+      },
+      dismiss,
+      dismissForScroll,
+      dismissForKey(event) {
+        if (event.key === "Tab" && !event.isComposing) {
+          presentationRevision += 1;
+          return false;
+        }
+        return dismiss();
+      },
+      presentCurrent(target = current()) {
+        dismissed = null;
+        hide();
+        update(target);
+        return id2 !== null;
+      },
+      update
     };
   }
 
@@ -33052,6 +33079,7 @@ ${blankRow(table.position.columnCount)}`;
           if (action === "dismiss") callbacks.dismiss();
           else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
           else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            if (surface.items[index].disabled) return false;
             return callbacks.choose?.(index) !== false;
           } else return false;
           return true;
@@ -34977,6 +35005,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     clearDocumentFind: "defer",
     showPreview: "defer",
     showPreviewAt: "defer",
+    showSelectionActions: "reject",
     measureVisibleProjection: "defer",
     setScrollFraction: "defer",
     setScrollAnchor: "defer",
@@ -35219,15 +35248,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     let body = null;
     let showTimer;
     let hideTimer;
-    let pendingAnchor = null;
+    let target = null;
     let hoveredLink = null;
     let armedLink = null;
     let activeAnnotationButton = null;
     let pinnedAnnotationButton = null;
     let activeFootnoteButton = null;
-    let pinnedFootnoteButton = null;
-    let activeKind = null;
-    let modifierPressed = false;
     function annotationTarget(button) {
       return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
     }
@@ -35245,7 +35271,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
     function hasPinnedPreview() {
-      return pinnedAnnotationButton !== null || pinnedFootnoteButton !== null;
+      return pinnedAnnotationButton !== null;
     }
     function setArmedLink(next) {
       if (armedLink === next) return;
@@ -35253,25 +35279,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       armedLink = next;
       armedLink?.classList.add("scholium-link-preview-armed");
     }
-    function hide(retainHoveredLink = false) {
+    function clearPresentation() {
       presentationRevision += 1;
       nativeHovered = false;
       options.nativeFloating.hide(nativeID);
-      window.clearTimeout(showTimer);
-      window.clearTimeout(hideTimer);
-      showTimer = void 0;
-      hideTimer = void 0;
-      pendingAnchor = null;
-      if (!retainHoveredLink) hoveredLink = null;
-      modifierPressed = false;
-      setArmedLink(null);
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
       pinnedAnnotationButton = null;
       activeFootnoteButton = null;
-      pinnedFootnoteButton = null;
-      activeKind = null;
       if (root) {
         root.hidden = true;
         root.style.visibility = "";
@@ -35279,6 +35295,25 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (title) title.textContent = "";
       if (metadata) metadata.textContent = "";
       body?.replaceChildren();
+    }
+    function hide(retainHoveredLink = false) {
+      clearPresentation();
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+      showTimer = void 0;
+      hideTimer = void 0;
+      target = null;
+      if (!retainHoveredLink) hoveredLink = null;
+      setArmedLink(null);
+    }
+    function setTarget(next) {
+      cancelHide();
+      if (target?.anchor === next.anchor && target.kind === next.kind) return false;
+      window.clearTimeout(showTimer);
+      showTimer = void 0;
+      clearPresentation();
+      target = next;
+      return true;
     }
     function cancelHide() {
       window.clearTimeout(hideTimer);
@@ -35316,13 +35351,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         });
       }
     }
-    function showLinkPreview(preview, anchor, startedAt) {
+    function showLinkPreview(preview, anchor, startedAt, element = null) {
       if (!editor2 || !root || !title || !metadata || !body) return;
+      setTarget({ anchor: element, kind: "link" });
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
       activeFootnoteButton = null;
-      activeKind = "link";
       title.textContent = preview.title;
       metadata.textContent = preview.fragment ?? "";
       metadata.hidden = !preview.fragment;
@@ -35340,15 +35375,18 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     function showAnnotation(button) {
       if (!root || !title || !metadata || !body) return false;
+      setTarget({ anchor: button, kind: "annotation" });
       const template = annotationTemplate(button);
-      if (!template) return false;
+      if (!template) {
+        hide();
+        return false;
+      }
       if (activeAnnotationButton && activeAnnotationButton !== button) {
         setAnnotationExpanded(activeAnnotationButton, false);
       }
       if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = button;
       activeFootnoteButton = null;
-      activeKind = "annotation";
       setAnnotationExpanded(button, true);
       title.textContent = annotationTarget(button);
       metadata.textContent = localized("Link Annotation");
@@ -35367,16 +35405,19 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     function showFootnoteReference(reference, anchor, button = null) {
       if (!root || !title || !metadata || !body) return false;
+      setTarget({ anchor: button, kind: "footnote" });
       const definition = options.footnotes().definitions.find((candidate) => candidate.identifier === reference.identifier);
-      const content2 = definition?.content.trim().slice(0, 1600) ?? "";
-      if (!content2) return false;
+      const content2 = definition?.content.trim() ?? "";
+      if (!content2) {
+        hide();
+        return false;
+      }
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton && activeFootnoteButton !== button) {
         setFootnoteExpanded(activeFootnoteButton, false);
       }
       activeAnnotationButton = null;
       activeFootnoteButton = button;
-      activeKind = "footnote";
       if (button) setFootnoteExpanded(button, true);
       title.textContent = localizedTemplate("Footnote {ordinal}", { ordinal: reference.ordinal });
       metadata.textContent = "";
@@ -35384,30 +35425,47 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       body.replaceChildren();
       options.renderFootnoteContent(content2, body);
       sanitizePreviewDocument(body);
+      renderPreviewMathNodes(body);
       position(anchor);
       return true;
     }
     function showFootnote(button) {
       const reference = footnoteReferenceFor(button);
-      return reference ? showFootnoteReference(reference, button.getBoundingClientRect(), button) : false;
+      if (!reference) {
+        hide();
+        return false;
+      }
+      return showFootnoteReference(reference, button.getBoundingClientRect(), button);
     }
-    function showAtSelection() {
-      const startedAt = performance.now();
-      if (!editor2 || editor2.composing) return false;
+    function selectionPreview() {
+      if (!editor2 || editor2.composing) return null;
       const head = editor2.state.selection.main.head;
       const coords = editor2.coordsAtPos(head);
-      if (!coords) return false;
+      if (!coords) return null;
       const footnote = options.footnotes().references.find((candidate) => head >= candidate.from && head < candidate.to);
-      if (footnote) {
-        hide();
-        return showFootnoteReference(footnote, coords);
+      if (footnote && options.footnotes().definitions.some((definition) => definition.identifier === footnote.identifier && definition.content.trim())) {
+        return { kind: "footnote", reference: footnote, anchor: coords };
       }
       const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
-      if (preview) {
+      return preview ? { kind: "link", preview, anchor: coords } : null;
+    }
+    function canShowAtSelection() {
+      return selectionPreview() !== null;
+    }
+    function showAtSelection() {
+      if (!editor2 || editor2.composing) return false;
+      const startedAt = performance.now();
+      const selected = selectionPreview();
+      if (selected?.kind === "footnote") {
         hide();
-        showLinkPreview(preview, coords, startedAt);
+        return showFootnoteReference(selected.reference, selected.anchor);
+      }
+      if (selected?.kind === "link") {
+        hide();
+        showLinkPreview(selected.preview, selected.anchor, startedAt);
         return true;
       }
+      hide();
       announceEditorMessage(
         editor2.contentDOM,
         localized("No preview is available at the insertion point.")
@@ -35423,23 +35481,27 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         hide();
         return showFootnote(footnote);
       }
-      if (!anchor) return showAtSelection();
+      if (!anchor) {
+        hide();
+        return false;
+      }
       const preview = previewForAnchor(anchor);
       if (preview) {
         hide();
-        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt);
+        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt, anchor);
         return true;
       }
-      return showAtSelection();
+      hide();
+      return false;
     }
-    function annotationButtonAt(target) {
-      return target instanceof Element ? target.closest(".scholium-link-annotation-button") : null;
+    function annotationButtonAt(target2) {
+      return target2 instanceof Element ? target2.closest(".scholium-link-annotation-button") : null;
     }
-    function footnoteButtonAt(target) {
-      return target instanceof Element ? target.closest(".cm-live-footnote-reference-widget .footnote-reference") : null;
+    function footnoteButtonAt(target2) {
+      return target2 instanceof Element ? target2.closest(".cm-live-footnote-reference-widget .footnote-reference") : null;
     }
-    function linkAnchorAt(target) {
-      return target instanceof Element ? target.closest(
+    function linkAnchorAt(target2) {
+      return target2 instanceof Element ? target2.closest(
         "[data-link-preview-index], [data-scholium-link-target][data-scholium-source-from][data-scholium-source-to]"
       ) : null;
     }
@@ -35454,13 +35516,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return options.previews().find((preview) => preview.from === from && preview.to === to);
     }
     function scheduleShow(anchor, kind) {
-      cancelHide();
-      if (anchor === pendingAnchor && kind === activeKind) return;
-      window.clearTimeout(showTimer);
-      showTimer = void 0;
-      pendingAnchor = anchor;
+      if (!setTarget({ anchor, kind })) return;
+      if (kind === "link" && !previewForAnchor(anchor)) return;
       showTimer = window.setTimeout(() => {
-        if (pendingAnchor !== anchor) return;
+        if (target?.anchor !== anchor || target.kind !== kind) return;
         if (kind === "annotation") {
           showAnnotation(anchor);
           return;
@@ -35471,7 +35530,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         }
         const preview = previewForAnchor(anchor);
         if (preview) {
-          showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
+          showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now(), anchor);
         }
       }, 300);
     }
@@ -35484,15 +35543,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const footnote = footnoteButtonAt(event.target);
       const link = linkAnchorAt(event.target);
       hoveredLink = link;
-      if (hasPinnedPreview() && annotation !== pinnedAnnotationButton && footnote !== pinnedFootnoteButton) {
+      if (hasPinnedPreview() && annotation !== pinnedAnnotationButton) {
         setArmedLink(null);
         return;
       }
-      const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
+      const modifierActive = event.metaKey || event.ctrlKey;
       setArmedLink(modifierActive ? link : null);
       const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
       if (!anchor) {
-        if (pendingAnchor || root && !root.hidden) scheduleHide();
+        if (target) scheduleHide();
         return;
       }
       scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
@@ -35501,9 +35560,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const handlePreviewPointerLeave = () => scheduleHide();
     const handleKeyUp = (event) => {
       if (event.key !== "Meta" && event.key !== "Control") return;
-      modifierPressed = false;
       setArmedLink(null);
-      if (activeKind === "link") hide(true);
+      if (target?.kind === "link" && !nativeHovered) hide(true);
     };
     const handleCompositionStart = () => hide();
     const handleKeyDown = (event) => {
@@ -35513,7 +35571,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return;
       }
       if (event.key !== "Meta" && event.key !== "Control") return;
-      modifierPressed = true;
       if (!hoveredLink || hasPinnedPreview()) return;
       setArmedLink(hoveredLink);
       scheduleShow(hoveredLink, "link");
@@ -35523,7 +35580,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (!button) return;
       cancelHide();
       window.clearTimeout(showTimer);
-      pendingAnchor = button;
       if (button.matches(".footnote-reference")) showFootnote(button);
       else showAnnotation(button);
     };
@@ -35542,31 +35598,31 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           hide();
           return;
         }
-        pinnedAnnotationButton = button;
         window.clearTimeout(showTimer);
-        pendingAnchor = button;
-        showAnnotation(button);
+        if (showAnnotation(button)) pinnedAnnotationButton = button;
         return;
       }
       const footnote = footnoteButtonAt(event.target);
-      if (footnote && event.detail === 0) {
+      if (footnote) {
         event.preventDefault();
         event.stopPropagation();
-        if (pinnedFootnoteButton === footnote) {
-          hide();
-          return;
-        }
-        pinnedFootnoteButton = footnote;
-        window.clearTimeout(showTimer);
-        pendingAnchor = footnote;
-        showFootnote(footnote);
+        const reference = footnoteReferenceFor(footnote);
+        const from = reference?.definitionContentFrom;
+        hide();
+        if (!editor2 || editor2.composing || from === null || from === void 0 || from < 0 || from > editor2.state.doc.length) return;
+        editor2.dispatch({ selection: { anchor: from }, scrollIntoView: true, userEvent: "select" });
+        editor2.focus();
         return;
       }
       if (hasPinnedPreview() && !(event.target instanceof Node && root?.contains(event.target))) hide();
     };
+    const handleMouseDown = (event) => {
+      if (event.button !== 0 || !footnoteButtonAt(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
     const handleViewportExit = () => {
       hoveredLink = null;
-      modifierPressed = false;
       hide();
     };
     function mount(view) {
@@ -35597,6 +35653,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.addEventListener("focusin", handleFocusIn);
       document.addEventListener("focusout", handleFocusOut);
       document.addEventListener("click", handleClick);
+      document.addEventListener("mousedown", handleMouseDown, true);
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
       document.addEventListener("compositionstart", handleCompositionStart);
@@ -35610,6 +35667,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
       document.removeEventListener("click", handleClick);
+      document.removeEventListener("mousedown", handleMouseDown, true);
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("compositionstart", handleCompositionStart);
@@ -35624,7 +35682,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       body = null;
       editor2 = null;
       hoveredLink = null;
-      modifierPressed = false;
     }
     const extension = ViewPlugin.define((view) => {
       mount(view);
@@ -35635,7 +35692,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         destroy: () => unmount(view)
       };
     });
-    return { extension, hide, showAtSelection, showAtPoint };
+    return { extension, hide, canShowAtSelection, showAtSelection, showAtPoint };
   }
 
   // interaction-reporting.ts
@@ -35645,6 +35702,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       activeBlockConstructs: context.activeBlockConstructs,
       tablePosition: context.tablePosition ?? null,
       imageTarget: context.imageTarget ?? null,
+      selectionActionUTF16Count: context.selectionActionUTF16Count ?? null,
       composing: context.composing,
       hasNonemptySelection: context.selections.some((selection) => selection.anchor !== selection.head),
       availableCommands: context.availableCommands,
@@ -35714,6 +35772,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   function createEditorScrollCoordinator(editor2, options) {
     let scrollRevision = 0;
+    let revealedScroll = null;
     let lastPostedAnchor = null;
     function sameAnchor(left, right) {
       return left.sourceUTF16Offset === right.sourceUTF16Offset && left.blockUTF16LowerBound === right.blockUTF16LowerBound && left.blockUTF16UpperBound === right.blockUTF16UpperBound && left.relativeBlockPosition === right.relativeBlockPosition && left.fallbackFraction === right.fallbackFraction;
@@ -35758,14 +35817,19 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     let sessionFrameCount = 0;
     let sessionLongestFrame = 0;
     let sessionDroppedFrameCount = 0;
-    const abandonPendingRestoration = () => {
+    const abandonPendingRestoration = (event) => {
       scrollRevision += 1;
+      revealedScroll = null;
+      options.onViewportInput(event);
     };
     for (const event of ["wheel", "pointerdown", "touchstart", "keydown"]) {
       editor2.scrollDOM.addEventListener(event, abandonPendingRestoration, { capture: true, passive: true });
     }
     editor2.scrollDOM.addEventListener("scroll", () => {
-      options.onScroll();
+      if (revealedScroll?.top !== editor2.scrollDOM.scrollTop || revealedScroll.left !== editor2.scrollDOM.scrollLeft) {
+        revealedScroll = null;
+        options.onScroll();
+      }
       scrollReports.schedule(postCurrent);
       if (sessionStartedAt === null) sessionStartedAt = performance.now();
       if (measurementFrame === null) {
@@ -35848,8 +35912,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     function setTop(top2) {
       scrollRevision += 1;
+      revealedScroll = null;
       pendingGeometrySnapshot = void 0;
       editor2.scrollDOM.scrollTop = Math.max(0, top2);
+    }
+    function revealPosition(position) {
+      setTop(editor2.scrollDOM.scrollTop);
+      editor2.dispatch({ effects: EditorView.scrollIntoView(EditorSelection.cursor(position), { y: "nearest" }) });
+      editor2.coordsAtPos(position);
+      revealedScroll = { top: editor2.scrollDOM.scrollTop, left: editor2.scrollDOM.scrollLeft };
     }
     function setFraction(requestedFraction) {
       options.flushPresentationGeometry();
@@ -35860,6 +35931,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     function setAnchor(anchor) {
       const revision = ++scrollRevision;
+      revealedScroll = null;
       options.flushPresentationGeometry();
       lastPostedAnchor = null;
       if (!validAnchor(anchor)) {
@@ -35918,6 +35990,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     return {
       resetDocument() {
+        revealedScroll = null;
         scrollRevision += 1;
         geometryReportGeneration += 1;
         geometryReportScheduled = false;
@@ -35942,7 +36015,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       scheduleGeometryReport,
       setAnchor,
       setFraction,
-      setTop
+      setTop,
+      revealPosition
     };
   }
 
@@ -36056,6 +36130,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function suggestionSpanIsProtected(options, state, from, to) {
     return options.protectedRanges(state).some((range) => from < range.to && to > range.from);
   }
+  function caretHasInputTrigger(before) {
+    return /\[\[[^\]\n]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
+  }
+  function completionIsUnavailable(completion) {
+    return completion?.unavailable === true;
+  }
   function analysisReferenceContext(options, state, position) {
     if (!isLiveSuggestionContext(options, state)) return null;
     const line = state.doc.lineAt(position);
@@ -36066,6 +36146,17 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const from = scanFrom + match.index + match[1].length;
     if (suggestionSpanIsProtected(options, state, from, position)) return null;
     return { from, query: match[2] };
+  }
+  function wikilinkContext(options, state, position) {
+    if (!isLiveSuggestionContext(options, state)) return null;
+    const line = state.doc.lineAt(position);
+    const scanFrom = Math.max(line.from, position - 512);
+    const beforeCursor = state.doc.sliceString(scanFrom, position);
+    const match = /\[\[([^\]\n|#]{0,510})$/.exec(beforeCursor);
+    if (!match) return null;
+    const from = scanFrom + match.index + 2;
+    if (suggestionSpanIsProtected(options, state, from - 2, position)) return null;
+    return { from, query: match[1] };
   }
   function termSuffix(state, position, candidate) {
     const count2 = candidate.replacementUTF16Count ?? 0;
@@ -36114,7 +36205,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function continuationContextAllowed(options, state, position) {
     if (!isWritingSuggestionContext(options, state) || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
     const before = state.sliceDoc(Math.max(0, position - 512), position);
-    return /[\p{L}\p{N}]/u.test(before) && sentenceIsUnfinished(before) && !/\[\[[^\]\n]*$|(?:^|\s)@[^\s]*$|(?:^|\s)\/[^\s]*$/u.test(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
+    return /[\p{L}\p{N}]/u.test(before) && sentenceIsUnfinished(before) && !caretHasInputTrigger(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
   }
   function localISODate(date = /* @__PURE__ */ new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
@@ -36240,8 +36331,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     ];
     return commands2.filter((command2) => blockContext || !command2.blockOnly).map((command2) => ({ ...command2, filterText: command2.label, label: localized(command2.label) }));
   }
-  function applyWikilinkCandidate(candidate, didApply) {
+  function applyWikilinkCandidate(candidate, didApply, isCurrent) {
     return (view, completion, from, to) => {
+      if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
       let closingLength = 0;
       while (closingLength < 2 && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
         closingLength += 1;
@@ -36259,8 +36351,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       didApply("Insert Wikilink");
     };
   }
-  function applyAnalysisReferenceCandidate(candidate, didApply) {
+  function applyAnalysisReferenceCandidate(candidate, didApply, isCurrent) {
     return (view, completion, from, to) => {
+      if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
       const display = candidate.displayText ? `|${candidate.displayText}` : "";
       const insert2 = `[[${candidate.insertion}${display}]]`;
       view.dispatch({
@@ -36277,7 +36370,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function validLinkCandidate(value) {
     if (!value || typeof value !== "object") return false;
     const candidate = value;
-    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && typeof candidate.isAmbiguous === "boolean" && (candidate.writingAction === void 0 || candidate.writingAction === "term") && (candidate.replacementUTF16Count === void 0 || Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128);
+    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && ["available", "ambiguous", "unsupportedSyntax", "unavailable"].includes(candidate.availability ?? "") && (candidate.unavailableReason === void 0 || typeof candidate.unavailableReason === "string") && (candidate.availability === "available" || Boolean(candidate.unavailableReason?.trim())) && (candidate.writingAction === void 0 || candidate.writingAction === "term") && (candidate.replacementUTF16Count === void 0 || Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128);
   }
   function suggestionSymbol(completion) {
     const key = suggestionSymbolByType[completion.type];
@@ -36287,6 +36380,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     let continuationEnabled = false;
     let continuationContextKey = "";
     let indexContextKey = "";
+    let linkCatalogEpoch = 0;
+    let refreshLinkChoices;
     let clearInlineWriting;
     let clearAIWriting;
     let clearIndexWriting;
@@ -36333,6 +36428,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       });
     }
     const pendingLinkQueries = /* @__PURE__ */ new Map();
+    function candidateContextIsCurrent(context, epoch) {
+      return (view) => epoch === linkCatalogEpoch && !context.aborted && !view.composing && isLiveSuggestionContext(options, view.state) && view.state.doc === context.state.doc && view.state.selection.eq(context.state.selection);
+    }
     function cancelWritingTermQueries() {
       for (const [requestID, pending] of pendingLinkQueries) {
         if (!pending.writingTerm) continue;
@@ -36340,6 +36438,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         globalThis.clearTimeout(pending.timeout);
         pending.resolve([]);
       }
+    }
+    function cancelLinkQueries() {
+      for (const pending of pendingLinkQueries.values()) {
+        globalThis.clearTimeout(pending.timeout);
+        pending.resolve([]);
+      }
+      pendingLinkQueries.clear();
     }
     class Ghost extends WidgetType {
       constructor(text, accept, source, reason = null) {
@@ -36453,13 +36558,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (!isWritingSuggestionContext(options, context.state) || positionIsProtected(options, context.state, context.pos) || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
       const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
       const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
-      if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1)) || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || /\[\[|@|\//u.test(before)) return null;
+      if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1)) || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || caretHasInputTrigger(before)) return null;
       return requestTerms(prefix, context).then((candidates) => {
         if (context.aborted) return null;
         return {
           from: context.pos,
           filter: false,
-          options: candidates.filter((c) => !c.isAmbiguous && termSuffix(context.state, context.pos, c) !== null).map((candidate) => ({
+          options: candidates.filter((c) => c.availability === "available" && termSuffix(context.state, context.pos, c) !== null).map((candidate) => ({
             label: candidate.label,
             ghostText: termSuffix(context.state, context.pos, candidate),
             apply: (view) => {
@@ -36646,15 +36751,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
     });
     const wikilinkCompletionSource = (context) => {
-      if (!isLiveSuggestionContext(options, context.state)) return null;
-      const line = context.state.doc.lineAt(context.pos);
-      const scanFrom = Math.max(line.from, context.pos - 512);
-      const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
-      const match = /\[\[([^\]\n|#]{0,510})$/.exec(beforeCursor);
-      if (!match) return null;
-      const typed = match[1];
-      const from = scanFrom + match.index + 2;
-      if (suggestionSpanIsProtected(options, context.state, from - 2, context.pos)) return null;
+      const reference = wikilinkContext(options, context.state, context.pos);
+      if (!reference) return null;
+      const { from, query: typed } = reference;
+      const epoch = linkCatalogEpoch;
+      const isCurrent = candidateContextIsCurrent(context, epoch);
       const requestID = boundedUUID();
       const candidates = new Promise((resolve) => {
         const cancel = () => {
@@ -36669,16 +36770,17 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         pendingLinkQueries.set(requestID, { resolve, timeout });
         options.requestLinkCompletions(requestID, "wikilink", typed);
       });
-      return candidates.then((resolved) => ({
+      return candidates.then((resolved) => epoch !== linkCatalogEpoch || context.aborted ? null : {
         from,
-        options: resolved.filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0).slice(0, 100).map((candidate) => ({
+        options: resolved.slice(0, 100).map((candidate) => ({
           label: candidate.label,
-          detail: candidate.detail,
+          detail: [candidate.unavailableReason, candidate.detail].filter(Boolean).join(" \u2014 "),
           type: "scholium-note",
-          apply: applyWikilinkCandidate(candidate, options.didApply)
+          unavailable: candidate.availability !== "available" || !candidate.insertion,
+          apply: applyWikilinkCandidate(candidate, options.didApply, isCurrent)
         })),
         filter: false
-      }));
+      });
     };
     let citationDocumentEpoch = 0;
     const citationCompletionSource = (context) => {
@@ -36723,6 +36825,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const reference = analysisReferenceContext(options, context.state, context.pos);
       if (!reference) return null;
       const { from, query: typed } = reference;
+      const epoch = linkCatalogEpoch;
+      const isCurrent = candidateContextIsCurrent(context, epoch);
       const requestID = boundedUUID();
       const candidates = new Promise((resolve) => {
         const cancel = () => {
@@ -36737,16 +36841,17 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         pendingLinkQueries.set(requestID, { resolve, timeout });
         options.requestLinkCompletions(requestID, "analysisReference", typed);
       });
-      return candidates.then((resolved) => ({
+      return candidates.then((resolved) => epoch !== linkCatalogEpoch || context.aborted ? null : {
         from,
-        options: resolved.filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0 && Boolean(candidate.displayText)).slice(0, 100).map((candidate) => ({
+        options: resolved.filter((candidate) => Boolean(candidate.displayText) || candidate.availability !== "available").slice(0, 100).map((candidate) => ({
           label: candidate.label,
-          detail: candidate.detail,
+          detail: [candidate.unavailableReason, candidate.detail].filter(Boolean).join(" \u2014 "),
           type: "scholium-analysis-reference",
-          apply: applyAnalysisReferenceCandidate(candidate, options.didApply)
+          unavailable: candidate.availability !== "available" || !candidate.insertion,
+          apply: applyAnalysisReferenceCandidate(candidate, options.didApply, isCurrent)
         })),
         filter: false
-      }));
+      });
     };
     const slashCompletionSource = (context) => {
       if (!isLiveSuggestionContext(options, context.state)) return null;
@@ -36771,7 +36876,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const line = context.state.doc.lineAt(context.pos);
       if (context.pos - line.from > 512) return null;
       const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-      const match = /^(\s*(?:>\s*)+)\[!([A-Za-z-]*)$/.exec(beforeCursor);
+      const match = /^(\s*(?:>\s*)+)\[!([\p{L}\p{N}-]*)$/u.exec(beforeCursor);
       if (!match || positionIsProtected(options, context.state, context.pos - match[2].length)) {
         return null;
       }
@@ -36779,7 +36884,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const dialectCallouts = options.dialect()?.callouts ?? [];
       return {
         from: context.pos - match[2].length,
-        options: dialectCallouts.filter((callout) => !typed || callout.identifier.startsWith(typed)).map((callout) => ({
+        options: dialectCallouts.filter((callout) => !typed || [callout.identifier, callout.label, localizedCallout(callout.identifier, callout).label].some((label) => label.toLocaleLowerCase().includes(typed))).map((callout) => ({
           label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role",
           apply: (view, completion, from, to) => {
@@ -36816,6 +36921,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const nativePresentation = ViewPlugin.fromClass(class {
       constructor(view) {
         this.view = view;
+        refreshLinkChoices = () => {
+          if (!view.hasFocus || !isLiveSuggestionContext(options, view.state) || completionStatus(view.state) === null || !(wikilinkContext(options, view.state, view.state.selection.main.head) || analysisReferenceContext(options, view.state, view.state.selection.main.head))) return;
+          closeCompletion(view);
+          view.dispatch({ selection: view.state.selection, annotations: Transaction.addToHistory.of(false) });
+          startCompletion(view);
+        };
         this.refresh();
       }
       view;
@@ -36831,13 +36942,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return {
           state: this.view.state,
           status: completionStatus(this.view.state),
-          items: currentCompletions(this.view.state).slice(0, 100).map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024) })),
+          items: currentCompletions(this.view.state).slice(0, 100).map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item) })),
           anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
           selected: selectedCompletionIndex(this.view.state) ?? -1
         };
       }
       write({ items, anchor, selected, state, status }) {
         if (this.destroyed) return;
+        for (const option of this.view.dom?.querySelectorAll(".cm-tooltip-autocomplete [role=option]") ?? []) {
+          option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
+        }
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
         if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing || !isLiveSuggestionContext(options, this.view.state)) {
@@ -36872,7 +36986,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             }
           },
           choose: (index) => {
-            if (!valid()) return false;
+            if (!valid() || items[index]?.disabled) return false;
             this.view.dispatch({ effects: setSelectedCompletion(index) });
             return acceptCompletion(this.view);
           }
@@ -36892,6 +37006,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       destroy() {
         this.destroyed = true;
+        refreshLinkChoices = void 0;
         this.suspend();
       }
     }, {
@@ -36907,13 +37022,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return {
       resetDocument() {
         citationDocumentEpoch++;
+        linkCatalogEpoch++;
         clearInlineWriting?.();
         cancelContinuations();
-        for (const pending of pendingLinkQueries.values()) {
-          globalThis.clearTimeout(pending.timeout);
-          pending.resolve([]);
-        }
-        pendingLinkQueries.clear();
+        cancelLinkQueries();
       },
       configureWritingContinuation(enabled, contextKey) {
         if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
@@ -36925,8 +37037,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       configureWritingIndexContext(contextKey) {
         if (indexContextKey === contextKey) return;
         indexContextKey = contextKey;
+        linkCatalogEpoch++;
         clearIndexWriting?.();
-        cancelWritingTermQueries();
+        cancelLinkQueries();
+        refreshLinkChoices?.();
       },
       setWritingContinuationStatus: setContinuationStatus,
       resolveWritingContinuation: resolveContinuation,
@@ -36944,10 +37058,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           maxRenderedOptions: 7,
           icons: false,
           tooltipClass: () => "scholium-editor-suggestions",
-          addToOptions: [{ render: suggestionSymbol, position: 20 }]
+          addToOptions: [{ render: suggestionSymbol, position: 20 }],
+          optionClass: (completion) => completionIsUnavailable(completion) ? "scholium-completion-unavailable" : ""
         }),
         inlineWriting,
         Prec.highest(keymap.of([
+          { key: "Enter", run: (view) => {
+            if (view.composing || options.isComposing()) return false;
+            const selected = selectedCompletionIndex(view.state);
+            return selected !== null && completionIsUnavailable(currentCompletions(view.state)[selected]);
+          } },
           { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
           { key: "Escape", run: (view) => {
             const plugin = view.plugin(inlineWriting);
@@ -37188,6 +37308,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   }
 
   // live-selection.ts
+  function projectedSelectionActionRange(state, body) {
+    const ranges = state.selection.ranges;
+    if (body.hasUnclosedFrontmatter || ranges.length !== 1 || ranges[0].empty || ranges[0].from < (body.frontmatterRange?.to ?? 0) || ranges[0].to - ranges[0].from > 32e3) return null;
+    const range = ranges[0];
+    const utf16Count = state.field(exactSourceState).slice(range.from, range.to).length;
+    return utf16Count <= 32e3 ? { from: range.from, to: range.to, utf16Count } : null;
+  }
   var selectedTextMark = Decoration.mark({ class: "cm-scholium-selected-text" });
   var textSelectionPresentation = EditorView.decorations.compute(
     ["selection"],
@@ -38290,9 +38417,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const mermaid = target.closest(".cm-live-mermaid-widget");
         const mermaidPresentation2 = mermaid ? mermaids.get(mermaid) : void 0;
         if (mermaidPresentation2) return mermaidPresentation2.contentFrom;
-        const footnote = target.closest(".cm-live-footnote-reference-widget");
-        const reference = footnote ? footnotes.get(footnote) : void 0;
-        return reference?.definitionContentFrom ?? null;
+        return null;
       }
     };
   }
@@ -40651,7 +40776,14 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const current = matches.findIndex(
       (match) => match.from === selection.from && match.to === selection.to
     );
-    return { current: current < 0 ? 0 : current + 1, total: matches.length };
+    const replacementTarget = matches[current] ?? forwardMatch(view, query, selection.from);
+    const writable = !view.state.readOnly && view.state.facet(EditorView.editable);
+    return {
+      current: current < 0 ? 0 : current + 1,
+      total: matches.length,
+      replaceable: writable ? matches.filter((match) => match.precise).length : 0,
+      canReplaceCurrent: writable && replacementTarget?.precise === true
+    };
   }
   function installQuery(view, query) {
     view.dispatch({ effects: setSearchQuery.of(query) });
@@ -40662,6 +40794,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     installQuery(view, query);
     let sourceChanged = false;
     let undoLabel;
+    let replacement;
     switch (request.action) {
       case "present":
         break;
@@ -40677,6 +40810,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       case "replaceCurrent": {
         if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
         const match = currentMatch(view, query) ?? forwardMatch(view, query, view.state.selection.main.from);
+        replacement = { replaced: 0, skipped: match && !match.precise ? 1 : 0 };
         if (match?.precise) {
           const changes = [{ from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement) }];
           if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
@@ -40685,6 +40819,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             annotations: [Transaction.userEvent.of("input.replace"), isolateHistory.of("full")]
           });
           sourceChanged = true;
+          replacement.replaced = 1;
           undoLabel = "Replace";
           selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
         } else if (match) {
@@ -40694,11 +40829,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       case "replaceAll": {
         if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
-        const changes = matchingRanges(view.state, query).filter((match) => match.precise).map((match) => ({
+        const matches = matchingRanges(view.state, query);
+        const changes = matches.filter((match) => match.precise).map((match) => ({
           from: match.from,
           to: match.to,
           insert: normalizedDocumentText(request.replacement)
         }));
+        replacement = { replaced: changes.length, skipped: matches.length - changes.length };
         if (changes.length > 0) {
           if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
@@ -40712,7 +40849,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         break;
       }
     }
-    return { ...summary(view, query), sourceChanged, undoLabel };
+    return { ...summary(view, query), replacement, sourceChanged, undoLabel };
   }
   function clearDocumentFind(view) {
     closeSearchPanel(view);
@@ -42184,19 +42321,43 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   var nativeFloating = createNativeFloatingPorts((event) => post({ type: "floatingSurface", event }));
   var selectingForAgent = false;
+  function selectionActionSourceRange(state = editor.state, view = editor) {
+    if (selectingForAgent || view.composing || compositionGate.active || lastDocumentFocusTarget === "title") return null;
+    return projectedSelectionActionRange(state, liveProjectionIndex.index(state));
+  }
+  function selectionActionKey(range = selectionActionSourceRange()) {
+    return range ? `${bridgeSessionID}:${documentVersion}:${range.from}:${range.to}` : null;
+  }
   function selectionActionTarget() {
-    if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
-    const ranges = editor.state.selection.ranges;
-    if (ranges.length !== 1 || ranges[0].empty || ranges[0].to - ranges[0].from > 32e3) return null;
-    const first = editor.coordsAtPos(ranges[0].from);
-    const last = editor.coordsAtPos(ranges[0].to);
-    if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
+    const range = selectionActionSourceRange();
+    if (!range) return null;
+    const first = editor.coordsAtPos(range.from);
+    const last = editor.coordsAtPos(range.to);
+    const anchorStart = first ?? last;
+    const anchorEnd = last ?? first;
+    if (!anchorStart || !anchorEnd || anchorEnd.bottom < 0 || anchorStart.top > window.innerHeight) return null;
     return {
-      key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
-      anchor: { left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom }
+      key: selectionActionKey(range),
+      utf16Count: range.utf16Count,
+      anchor: { left: (anchorStart.left + anchorEnd.left) / 2, top: anchorStart.top, bottom: anchorEnd.bottom }
     };
   }
-  var selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget);
+  var selectionActions = createSelectionActions(nativeFloating.selection, selectionActionTarget, selectionActionKey);
+  function showCurrentSelectionActions(expiresAt) {
+    const range = selectionActionSourceRange();
+    if (!range || expiresAt <= Date.now()) {
+      selectionActions.presentCurrent(null);
+      return false;
+    }
+    const expectedKey = selectionActionKey(range);
+    const mode = configuredEditorMode(editor.state);
+    const revision = selectionActions.presentationRevision;
+    scrollCoordinator.revealPosition(editor.state.selection.main.head);
+    const target = selectionActionTarget();
+    const current = expiresAt > Date.now() && selectionActions.presentationRevision === revision && configuredEditorMode(editor.state) === mode && selectionActionKey() === expectedKey;
+    const shown = current && target?.key === expectedKey && selectionActions.presentCurrent(target);
+    return shown;
+  }
   function measureSelectionAction(view) {
     const attachment = documentAttachment;
     view.requestMeasure({
@@ -42368,7 +42529,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   editor.contentDOM.addEventListener("keyup", () => measureSelectionAction(editor));
   editor.contentDOM.addEventListener("keydown", (event) => {
-    const dismissed = selectionActions.dismiss();
+    const dismissed = selectionActions.dismissForKey(event);
     if (event.key === "Escape" && !event.isComposing && dismissed) {
       event.preventDefault();
       event.stopPropagation();
@@ -42397,7 +42558,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     };
   }, { capture: true });
   var scrollCoordinator = createEditorScrollCoordinator(editor, {
-    onScroll: () => selectionActions.dismiss(),
+    onScroll: () => selectionActions.dismissForScroll(),
+    // The content key route must see the visible control before dismissing it,
+    // so Escape can consume dismissal instead of collapsing the source range.
+    onViewportInput: (event) => {
+      if (event.type !== "keydown") selectionActions.dismiss();
+    },
     post: (scrollAnchor) => post({
       type: "scrollChanged",
       scrollFraction: scrollAnchor.fallbackFraction,
@@ -42544,6 +42710,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return true;
     });
     const fieldProjection = liveProjectionIndex.index(state).zoteroFields;
+    if (configuredEditorMode(state) === "livePreview" && previewPopover.canShowAtSelection()) {
+      availableCommands.push("previewAtSelection");
+    }
     if (citationTransaction !== null) availableCommands.push("cancelCitation");
     else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
       const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
@@ -42558,6 +42727,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
       imageTarget: state.selection.ranges.length === 1 ? liveImageProjection.imageTargetAt(state, state.selection.main) ?? void 0 : void 0,
+      selectionActionUTF16Count: selectionActionSourceRange(state, view)?.utf16Count,
       composing: view.composing || compositionGate.active,
       availableCommands: view.composing || compositionGate.active ? citationTransaction !== null ? ["cancelCitation"] : [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? availableCommands.filter((command2) => command2 === "inlineCode" && canUnwrapInlineCode || ["cancelCitation", "refreshCitations", "insertCitation", "insertBibliography", "citationStyle"].includes(command2)) : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
@@ -42724,6 +42894,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       case "showPreview":
         previewPopover.showAtSelection();
         break;
+      case "showSelectionActions": {
+        const shown = showCurrentSelectionActions(request.expiresAt);
+        return { ...successfulResult(request.requestID), selectionSurfaceID: shown ? selectionActions.surfaceID : void 0 };
+      }
       case "measureVisibleProjection": {
         const startedAt = performance.now();
         editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
@@ -43015,7 +43189,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         }
         return {
           ...successfulResult(request.requestID, result.sourceChanged, result.undoLabel),
-          find: { current: result.current, total: result.total }
+          find: {
+            current: result.current,
+            total: result.total,
+            replaceable: result.replaceable,
+            canReplaceCurrent: result.canReplaceCurrent,
+            replacement: result.replacement
+          }
         };
       }
       case "clearDocumentFind":
@@ -43385,9 +43565,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
       editor.dispatch({
         selection: EditorSelection.single(from, to),
-        effects: EditorView.scrollIntoView(EditorSelection.range(from, to), { y: "center" }),
         annotations: Transaction.addToHistory.of(false)
       });
+      scrollCoordinator.revealPosition(to);
+      measureSelectionAction(editor);
       if (focusesEditor) {
         editor.focus();
       }

@@ -26,21 +26,21 @@ The system toolbar keeps scrolling Document text out of its controls; initial
 content remains unobscured. System background, selection, focus, Undo,
 composition and restoration remain unchanged.
 
-Edit keeps text selection unobscured, without a floating formatting toolbar.
-A nonempty body selection offers Explain, Polish and an ellipsis button for
-More Actions in Review, Edit and Source. Its native menu contains Ask Agent
-and enabled custom operations; instructions stay in Chat. Explain and Polish
-use primary text labels; More Actions retains its full accessible name and Help.
-Native controls own feedback and layout; hover uses system Accent. Explain and Polish
-use one bounded passage-anchored popover for progress, Stop, results and errors.
+Edit selection remains unobscured without a formatting toolbar. Nonempty body
+selection offers Explain, Polish and More Actions (ellipsis) in Review/Edit/Source.
+Explain/Polish use text labels; More retains its accessible name and Help, with
+Ask Agent and enabled custom operations. Instructions stay in Chat; Settings owns
+custom operations. Research menus/configurable shortcuts use the current selection
+after dismissal. Unverifiable ranges are unavailable; Explain/Polish disclose and
+enforce their passage limit before requesting.
+Native controls own layout/feedback; hover uses system Accent. One bounded
+passage-anchored popover owns Explain/Polish progress, Stop, results and errors.
 Replace Selection stays trailing; Regenerate becomes Stop. Copy, Chat handoff,
-version navigation and scrolling remain.
-Custom operations dismiss the toolbar and open Chat under §8.7. No document
-padding, dimming or stacked toolbar is added. Selection changes, scrolling,
-Escape, composition, mode changes and departure dismiss presentation; native
-focus restoration preserves the passage. Settings owns custom operations.
-Ask Agent's menu and shortcut share §8.7's draft-only handoff. Unverifiable
-source ranges remain unavailable.
+version navigation and scrolling remain. Custom operations dismiss the bar and
+open Chat under §8.7; Ask Agent's menu/shortcut share its draft-only handoff.
+Selection, scroll, Escape, composition, mode and departure dismiss presentation;
+native focus restoration preserves the passage. Add no document padding, dimming
+or stacked toolbar.
 
 Body context menus and Research commands expose §5.4. Review mutations require
 verified source and Edit. Reorganization sheets use native search and a striped
@@ -52,31 +52,33 @@ each key. All choices precede the exact preview; changing destination clears the
 Native Format/Insert menus, shortcuts and exact Markdown share selection-preserving
 source transactions and Undo.
 
-Document Find is one compact nonmodal floating panel at the document's logical
-upper trailing corner, using §19.1's native treatment. It neither dims nor
-blocks the document, reserves space, or changes prose geometry or scroll. Find shows query, count,
-Previous/Next, and Close; empty input has no no-match message. The native search-field
-menu owns case and whole-word options, also shown quietly when active.
-Replace expands downward with aligned fields; Find and Replace opens it directly.
-Review has no replacement controls. Opening uses a short trailing-edge translation
-and fade; disclosure changes panel height. Reduce Motion presents final states immediately.
-Return/Shift-Return navigate matches through normal document scrolling. Escape or Close
-returns native and embedded document focus without changing the current exact selection.
-Clicking the document keeps Find open; reopening focuses its query. Drafts/options
-stay with the document; narrow reflow retains native fields. Marked text remains
-local until committed; results cannot overwrite composition or consume Return/Escape.
+Document Find is a compact nonmodal panel at the document's logical upper trailing
+corner (§19.1), without dimming, blocking, reserved space or prose/scroll changes.
+It shows query, count, Previous/Next and Close; empty input has no no-match message.
+The native search-field menu owns case/whole-word options, quietly shown when active.
+Replace expands downward with aligned fields; Find and Replace opens it directly;
+Review has no replacement. Counts distinguish exact replaceability and actual
+replacements/skips; normalization-only matches cannot authorize replacement.
+Opening translates/fades from the trailing edge; disclosure changes height;
+Reduce Motion presents final states. Return/Shift-Return navigate normally.
+Escape/Close restore native/embedded focus without changing selection. Document
+clicks retain Find; reopening focuses query. Session drafts/options and native
+fields survive narrow reflow. Marked text stays local until committed; results
+cannot overwrite composition or consume Return/Escape.
 
 After `/` in supported Edit contexts, insertion commands filter typed text;
 acceptance replaces slash/query in one Undo. Escape preserves them; deletion
 remains ordinary input.
 
-Slash commands, Wikilink, analysis-reference, citation command and Callout candidates
-share one bounded native caret list retaining editor focus. Width/direction
-survive filtering; overflow scrolls. Autosave retains it until acceptance,
-dismissal or invalid context. Pointer/keyboard share native secondary selection;
-click/Return accepts. Identity/path fits without another text owner. Composition
-immediately yields menus, candidates and previews to the input method until resumed.
-Lists follow §19's system text, colors, controls and elevation.
+Slash, Wikilink, analysis-reference, citation and Callout candidates share one bounded
+native caret list retaining editor focus. Width/direction survive filtering;
+overflow scrolls. Autosave retains it until acceptance, dismissal or invalid
+context. Pointer/keyboard share native secondary selection; click/Return accepts available choices.
+Link choices resolve the selected Note from the current Note; ambiguous or
+unrepresentable choices remain visible, disabled with reasons. Filtering includes
+localized displayed names. Identity/path needs no second text owner. Composition
+yields menus/candidates/previews to the input method. Lists use §19's system text,
+colors, controls and elevation.
 
 Typing `@` retains Analysis-note choices and adds **Insert Citation…** (§15.5).
 Insert exposes Citation, Bibliography and the Citations submenu for Refresh,
@@ -157,10 +159,11 @@ return route; Edit activation reveals the exact source-owned definition or
 inline range in the same Editor state.
 
 Link, footnote and link-annotation previews share one bounded native popover,
-measured at its available reading width before display. Repeated disclosure
-preserves position and reading context; long content scrolls internally. Moving
-the pointer from trigger into preview permits continued reading. Disclosure
-never mutates source, moves selection or takes document focus.
+measured at available reading width before display. Repeated disclosure preserves position and reading context; full
+content scrolls internally. Trigger-to-preview pointer movement permits reading.
+Disclosure preserves source, selection and focus; target changes clear former
+content. Research's Preview Link or Footnote discloses the caret target. Failures
+report an error and keep the document usable.
 
 Review/Edit share Appearance **Reading line width**. Source uses a wider adaptive
 measure with its line/fold gutter beside text. Exact-source type and quiet,

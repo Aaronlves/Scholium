@@ -1,12 +1,18 @@
 import AppKit
 import WebKit
 
+enum DocumentPreviewFailure {
+    case loading
+    case measurement
+}
+
 /// Native presentation only. The originating document owns preview identity,
 /// source, hover intent and invalidation; AppKit owns the visible frame.
 @MainActor
 final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDelegate {
     var onEvent: ((DocumentFloatingAction) -> Void)?
     var onShown: (() -> Void)?
+    var onFailure: ((DocumentPreviewFailure) -> Void)?
     // One renderer per document host. Hidden content is never an active preview.
     private var renderer: PreviewWebView?
     var webView: WKWebView? { surface == nil ? nil : renderer }
@@ -101,10 +107,14 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
             guard !Task.isCancelled, let self, self.generation == generation,
                 webView === self.webView, navigation === self.activeNavigation
             else { return }
-            guard let height = result as? Double, height.isFinite, height > 0,
-                let owner = self.owner, let surface = self.surface,
+            guard let owner = self.owner, let surface = self.surface,
                 owner.window?.isVisible == true
             else {
+                self.onEvent?(.dismiss)
+                return
+            }
+            guard let height = result as? Double, height.isFinite, height > 0 else {
+                self.onFailure?(.measurement)
                 self.onEvent?(.dismiss)
                 return
             }
@@ -203,11 +213,17 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?(.dismiss) }
+        if webView === self.webView, let navigation, navigation === activeNavigation {
+            onFailure?(.loading)
+            onEvent?(.dismiss)
+        }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?(.dismiss) }
+        if webView === self.webView, let navigation, navigation === activeNavigation {
+            onFailure?(.loading)
+            onEvent?(.dismiss)
+        }
     }
 
     func webView(

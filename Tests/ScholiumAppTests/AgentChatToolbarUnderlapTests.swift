@@ -41,18 +41,22 @@ struct AgentChatToolbarUnderlapTests {
         let controller = fixtureChatController(triptychID: triptychID, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
-        try await settle(stage: "storage_load", diagnostic: {
-            "loaded=\(controller.isLoaded) conversations=\(controller.conversations.count) selected=\(controller.selectedID != nil)"
-        }) { controller.isLoaded }
+        try await settle(
+            stage: "storage_load",
+            diagnostic: {
+                "loaded=\(controller.isLoaded) conversations=\(controller.conversations.count) selected=\(controller.selectedID != nil)"
+            }
+        ) { controller.isLoaded }
         let chat = AgentChatView(
             controller: controller, transcriptReaderID: UUID(), isVisible: true,
             addSelection: { _ in false }, noteChoices: [], prepareNotes: { _ in { _ in } },
             openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
             showChanges: { _ in }, showConversationChanges: { _ in })
         let hydration = Hydration()
-        let probedChat = AnyView(chat.onPreferenceChange(AgentChatReplyHydrationPreference.self) {
-            hydration.states = $0
-        })
+        let probedChat = AnyView(
+            chat.onPreferenceChange(AgentChatReplyHydrationPreference.self) {
+                hydration.states = $0
+            })
         let split = ScholiumWorkspaceSplitView<EmptyView, AnyView, Color, EmptyView>.Controller(
             initialLibraryVisible: true, initialApparatusVisible: false,
             documentTabs: [], selectedDocumentTabID: nil, selectDocumentTab: { _ in },
@@ -82,9 +86,12 @@ struct AgentChatToolbarUnderlapTests {
         let sidebar = try #require(
             split.splitViewItems.first?.viewController as? ScholiumSidebarViewController<EmptyView, AnyView>)
         let chatHost = sidebar.chatHost.view
-        try await settle(split.view, stage: "list_safe_area", diagnostic: {
-            "search_fields=\(descendants(chatHost).filter { $0 is NSSearchField }.count) host=\(chatHost.frame) safe=\(chatHost.safeAreaInsets) layout=\(window.contentLayoutRect)"
-        }) {
+        try await settle(
+            split.view, stage: "list_safe_area",
+            diagnostic: {
+                "search_fields=\(descendants(chatHost).filter { $0 is NSSearchField }.count) host=\(chatHost.frame) safe=\(chatHost.safeAreaInsets) layout=\(window.contentLayoutRect)"
+            }
+        ) {
             descendants(chatHost).contains { $0 is NSSearchField }
                 && chatHost.safeAreaInsets.top > 0
         }
@@ -96,11 +103,15 @@ struct AgentChatToolbarUnderlapTests {
         #expect(chatHost.safeAreaInsets.top > 0)
         #expect(sidebar.view.clipsToBounds)
 
-        #expect(await controller.selectNotification(
-            .init(triptychID: triptychID, conversationID: conversation.id, event: .inputRequired)))
-        try await settle(split.view, stage: "detail_mount", diagnostic: {
-            "viewports=\(descendants(chatHost).filter { $0 is AgentChatTranscriptViewport.View }.count) composers=\(descendants(chatHost).filter { $0 is AgentChatComposerHost }.count) context_request=\(controller.contextPresentationID != nil) selected=\(controller.selectedID == conversation.id)"
-        }) {
+        #expect(
+            await controller.selectNotification(
+                .init(triptychID: triptychID, conversationID: conversation.id, event: .inputRequired)))
+        try await settle(
+            split.view, stage: "detail_mount",
+            diagnostic: {
+                "viewports=\(descendants(chatHost).filter { $0 is AgentChatTranscriptViewport.View }.count) composers=\(descendants(chatHost).filter { $0 is AgentChatComposerHost }.count) context_request=\(controller.contextPresentationID != nil) selected=\(controller.selectedID == conversation.id)"
+            }
+        ) {
             descendants(chatHost).contains { $0 is AgentChatTranscriptViewport.View }
                 && descendants(chatHost).contains { $0 is AgentChatComposerHost }
         }
@@ -166,10 +177,14 @@ struct AgentChatToolbarUnderlapTests {
         var previousClipBounds = NSRect.zero
         var previousTopInset: CGFloat = 0
         var previousBottomInset: CGFloat = 0
-        try await settle(split.view, stage: "earlier_navigation", diagnostic: {
-            readingDiagnostic() + " offset=\(offset()) expected_offset=0"
-        }, stablePasses: 3) {
-            let unchanged = previousDocumentFrame == document.frame
+        try await settle(
+            split.view, stage: "earlier_navigation",
+            diagnostic: {
+                readingDiagnostic() + " offset=\(offset()) expected_offset=0"
+            }, stablePasses: 3
+        ) {
+            let unchanged =
+                previousDocumentFrame == document.frame
                 && previousClipBounds == scroll.contentView.bounds
                 && previousTopInset == scroll.contentInsets.top
                 && previousBottomInset == scroll.contentInsets.bottom
@@ -184,9 +199,12 @@ struct AgentChatToolbarUnderlapTests {
         let originalViewportHeight = scroll.contentView.bounds.height
         window.setContentSize(.init(width: 1000, height: 600))
         split.splitView.setPosition(280, ofDividerAt: 0)
-        try await settle(split.view, stage: "retained_resize", diagnostic: {
-            readingDiagnostic() + " offset=\(offset()) expected_offset=\(retainedOffset) original_height=\(originalViewportHeight)"
-        }) {
+        try await settle(
+            split.view, stage: "retained_resize",
+            diagnostic: {
+                readingDiagnostic() + " offset=\(offset()) expected_offset=\(retainedOffset) original_height=\(originalViewportHeight)"
+            }
+        ) {
             scroll.contentView.bounds.height < originalViewportHeight - 100
                 && abs(offset() - retainedOffset) < 2 && session.isRetainingPosition
                 && earlier.enclosingScrollView === scroll
@@ -195,13 +213,18 @@ struct AgentChatToolbarUnderlapTests {
         controller.update {
             $0.messages.append(.init(id: "arrival-retaining", role: .user, text: "Synthetic arrival while reading earlier."))
         }
-        try await settle(split.view, stage: "retained_arrival_hydration", diagnostic: {
-            readingDiagnostic() + " arrival_hydrated=\(String(describing: hydration.states["arrival-retaining"])) offset=\(offset()) expected_offset=\(retainedOffset)"
-        }, stablePasses: 3) {
+        try await settle(
+            split.view, stage: "retained_arrival_hydration",
+            diagnostic: {
+                readingDiagnostic()
+                    + " arrival_hydrated=\(String(describing: hydration.states["arrival-retaining"])) offset=\(offset()) expected_offset=\(retainedOffset)"
+            }, stablePasses: 3
+        ) {
             let updatedIDs = AgentChatTimelineProjection(controller.selected?.messages ?? []).ids
             guard let arrivalIndex = updatedIDs.firstIndex(of: "arrival-retaining") else { return false }
             let arrivalIsMounted = session.history.range(in: updatedIDs).contains(arrivalIndex)
-            let arrivalIsReady = !arrivalIsMounted
+            let arrivalIsReady =
+                !arrivalIsMounted
                 || hydration.states["arrival-retaining"] == true
                     && session.markers["arrival-retaining"]?.view?.enclosingScrollView === scroll
             return arrivalIsReady && hydration.states["reply-0"] == true
@@ -213,14 +236,18 @@ struct AgentChatToolbarUnderlapTests {
             atLatest() && !session.isRetainingPosition
         }
         controller.update {
-            $0.messages.append(.init(
-                id: "arrival-following", role: .assistant,
-                text: String(repeating: "Synthetic new reply keeps latest following.\n\n", count: 4),
-                phase: .finalAnswer))
+            $0.messages.append(
+                .init(
+                    id: "arrival-following", role: .assistant,
+                    text: String(repeating: "Synthetic new reply keeps latest following.\n\n", count: 4),
+                    phase: .finalAnswer))
         }
-        try await settle(split.view, stage: "following_arrival_hydration", diagnostic: {
-            readingDiagnostic() + " arrival_hydrated=\(String(describing: hydration.states["arrival-following"]))"
-        }) {
+        try await settle(
+            split.view, stage: "following_arrival_hydration",
+            diagnostic: {
+                readingDiagnostic() + " arrival_hydrated=\(String(describing: hydration.states["arrival-following"]))"
+            }
+        ) {
             hydration.states["arrival-following"] == true
                 && session.markers["arrival-following"]?.view != nil && atLatest() && !session.isRetainingPosition
         }

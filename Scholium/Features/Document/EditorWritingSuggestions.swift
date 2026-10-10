@@ -59,7 +59,8 @@ import ScholiumContracts
                 else { continue }
                 var candidate = EditorLinkCompletion(
                     label: word, insertion: Self.plainMarkdown(word),
-                    detail: note.title, path: note.reference.relativePath, displayText: nil, isAmbiguous: false)
+                    detail: note.title, path: note.reference.relativePath, displayText: nil,
+                    availability: .available, unavailableReason: nil)
                 candidate.writingAction = "term"
                 candidate.replacementUTF16Count = prefix.utf16.count
                 result.append((candidate, prefix.utf16.count))

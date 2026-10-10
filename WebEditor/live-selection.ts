@@ -8,6 +8,21 @@ import {
 } from "@codemirror/state";
 import {Decoration, EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 
+import {exactSourceState} from "./exact-source-history";
+
+/** A nonauthorizing projection of the parser-owned body boundary and exact selection. */
+export function projectedSelectionActionRange(
+  state: EditorState,
+  body: {frontmatterRange: {to: number} | null; hasUnclosedFrontmatter: boolean},
+) {
+  const ranges = state.selection.ranges;
+  if (body.hasUnclosedFrontmatter || ranges.length !== 1 || ranges[0].empty
+      || ranges[0].from < (body.frontmatterRange?.to ?? 0)
+      || ranges[0].to - ranges[0].from > 32_000) return null;
+  const range = ranges[0];
+  const utf16Count = state.field(exactSourceState).slice(range.from, range.to).length;
+  return utf16Count <= 32_000 ? {from: range.from, to: range.to, utf16Count} : null;
+}
 type PointerProjectionPhase = "idle" | "deferred" | "immediate";
 
 interface LiveProjectionSelectionState {

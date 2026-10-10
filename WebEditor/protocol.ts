@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 46;
+export const EDITOR_PROTOCOL_VERSION = 47;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -23,7 +23,8 @@ export type MarkdownEditorCommand =
   | "tableInsertColumnBefore" | "tableInsertColumnAfter" | "tableDeleteColumn"
   | "tableAlignLeft" | "tableAlignCenter" | "tableAlignRight"
   | "pastePlain" | "pasteMarkdown" | "linkSelectedText"
-  | "insertCitation" | "insertBibliography" | "refreshCitations" | "citationStyle" | "cancelCitation";
+  | "insertCitation" | "insertBibliography" | "refreshCitations" | "citationStyle" | "cancelCitation"
+  | "previewAtSelection";
 
 export interface SelectionRange { anchor: number; head: number }
 export type EditorFocusTarget = "title" | "editor";
@@ -81,6 +82,7 @@ export interface EditorContext {
   activeBlockConstructs: string[];
   tablePosition?: {row: number; column: number; rowCount: number; columnCount: number};
   imageTarget?: string;
+  selectionActionUTF16Count?: number;
   composing: boolean;
   availableCommands: MarkdownEditorCommand[];
   undoLabel?: string;
@@ -104,6 +106,9 @@ export interface DocumentFindQuery {
 export interface DocumentFindResult {
   current: number;
   total: number;
+  replaceable: number;
+  canReplaceCurrent: boolean;
+  replacement?: {replaced: number; skipped: number};
 }
 export type EditorOperation =
   | {
@@ -123,6 +128,7 @@ export type EditorOperation =
   | {type: "setWritingContinuation"; enabled: boolean; contextKey: string}
   | {type: "setWritingIndexContext"; contextKey: string}
   | {type: "showPreview"}
+  | {type: "showSelectionActions"}
   | {type: "measureVisibleProjection"}
   | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
@@ -175,6 +181,7 @@ export interface EditorCommandResult {
   scrollAnchor?: EditorScrollAnchor;
   performanceSamples?: EditorPerformanceSample[];
   find?: DocumentFindResult;
+  selectionSurfaceID?: number;
   commitSuperseded?: boolean;
   citationReply?: ZoteroCallbackReply;
   accepted: boolean;
@@ -182,7 +189,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "setImageResources", "setWritingContinuation", "setWritingIndexContext", "showPreview", "showSelectionActions", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -195,7 +202,7 @@ const commandTypes = new Set<MarkdownEditorCommand>([
   "insertFootnote", "insertInlineFootnote", "insertTable", "insertImage", "insertAttachment", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
   "tableDeleteRow", "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown",
-  "linkSelectedText", "insertCitation", "insertBibliography", "refreshCitations", "citationStyle", "cancelCitation",
+  "linkSelectedText", "insertCitation", "insertBibliography", "refreshCitations", "citationStyle", "cancelCitation", "previewAtSelection",
 ]);
 function validMode(value: unknown): value is EditorMode {
   return value === "livePreview" || value === "source";
@@ -427,6 +434,7 @@ function validOperation(operation: Record<string, unknown>) {
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
   case "selectAll": case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
+  case "showSelectionActions": return Object.keys(operation).length === 1;
   default: return false;
   }
 }

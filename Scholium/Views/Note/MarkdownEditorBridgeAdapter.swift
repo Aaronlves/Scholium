@@ -86,13 +86,18 @@ enum EditorLinkCompletionKind: String, Codable, Hashable, Sendable {
     case term
 }
 
+enum EditorLinkCompletionAvailability: String, Codable, Hashable, Sendable {
+    case available, ambiguous, unsupportedSyntax, unavailable
+}
+
 struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let label: String
     let insertion: String
     let detail: String
     let path: String
     let displayText: String?
-    let isAmbiguous: Bool
+    let availability: EditorLinkCompletionAvailability
+    let unavailableReason: String?
     var writingAction: String? = nil
     var replacementUTF16Count: Int? = nil
 }

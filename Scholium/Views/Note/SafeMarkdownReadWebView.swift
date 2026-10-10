@@ -3,6 +3,8 @@ import ScholiumContracts
 import SwiftUI
 import WebKit
 
+typealias DocumentSelectionActionPresenter = @MainActor (AgentChatSelectionInquiry) async throws -> Bool
+
 struct SafeMarkdownReadWebView: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
@@ -32,6 +34,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onOpenExternalURL: (URL) -> Void
     var onAskAgent: AgentSelectionInquiryHandler? = nil
     var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)? = nil
+    var onSelectionActionPresenterReady: ((@escaping DocumentSelectionActionPresenter) -> Void)? = nil
+    var onPreviewFailure: ((DocumentPreviewFailure) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -91,6 +95,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         coordinator.pageExtension = pageExtension
         coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
+        coordinator.floatingPreviewFailure = onPreviewFailure
         coordinator.onPassageAction = onPassageAction
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         coordinator.onSourceRevisionChanged = onSourceRevisionChanged
@@ -145,6 +150,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         container.setSurfaceVisibility(surfaceVisibility)
         container.toolbarUnderlapEnabled = toolbarUnderlap
         context.coordinator.surfaceVisibility = surfaceVisibility
+        let presenter = context.coordinator.selectionActionPresenter(in: webView)
+        Task { @MainActor in onSelectionActionPresenterReady?(presenter) }
         return container
     }
 
@@ -161,6 +168,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.pageExtension = pageExtension
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
+        context.coordinator.floatingPreviewFailure = onPreviewFailure
         context.coordinator.onPassageAction = onPassageAction
         context.coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         context.coordinator.onSourceRevisionChanged = onSourceRevisionChanged
@@ -224,17 +232,40 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private typealias ScrollRestoreClaim = SafeMarkdownReadScrollRestoration.Claim
 
         static let messageHandlerName = "scholiumRead"
-        private static let maximumSelectionLength = 2_000
+        private static let maximumSelectionLength = 32_000
         private var documentID: String
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onImagePreview: ((String) -> Void)?
         private var onOpenExternalURL: (URL) -> Void
         var onAskAgent: AgentSelectionInquiryHandler?
+        var floatingPreviewFailure: ((DocumentPreviewFailure) -> Void)?
         var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
+
+        func selectionActionPresenter(in webView: WKWebView) -> DocumentSelectionActionPresenter {
+            { [weak self, weak webView] inquiry in
+                guard let self, let webView, self.activeWebView === webView,
+                    self.surfaceVisibility.isActive, self.selectionCoordinator.isActive, self.onAskAgent != nil
+                else { return false }
+                let expectedGeneration = self.loadGeneration
+                return try await self.floatingSurfaces.presentSelectionInquiry(inquiry, in: webView) {
+                    let surfaceID = try await webView.callAsyncJavaScript(
+                        """
+                        if (window.scholiumReadReady) await window.scholiumReadReady;
+                        return await window.scholiumShowSelectionActions?.();
+                        """,
+                        arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    )
+                    guard self.loadGeneration == expectedGeneration,
+                        self.activeWebView === webView, self.surfaceVisibility.isActive
+                    else { return nil }
+                    return surfaceID as? Int
+                }
+            }
+        }
         private let findCoordinator = SafeMarkdownReadFindCoordinator()
         private let runtimeCoordinator = SafeMarkdownReadRuntimeCoordinator()
         private var renderingReadinessIsAcknowledged: Bool
@@ -805,6 +836,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     !event.allowsAgentInquiry || onAskAgent != nil
                 else { return }
                 let expectedGeneration = loadGeneration
+                floatingSurfaces.onPreviewFailure = { [weak self] failure in
+                    guard let self, self.loadGeneration == expectedGeneration, self.surfaceVisibility.isActive else { return }
+                    self.floatingPreviewFailure?(failure)
+                }
                 floatingSurfaces.present(event, in: webView, inquire: onAskAgent) {
                     [weak self, weak webView] id, action, index in
                     guard let self, let webView, self.loadGeneration == expectedGeneration else {
