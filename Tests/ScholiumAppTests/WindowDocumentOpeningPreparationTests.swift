@@ -326,6 +326,156 @@ struct WindowDocumentOpeningPreparationTests {
         #expect(!issue.message.contains("could not be saved"))
     }
 
+    enum RejectedTransitionState: Sendable, Equatable {
+        case transfer, preparingClose, preparedClose, finalizedClose
+    }
+
+    @Test(
+        "Rejected navigation settles once without changing retained documents",
+        arguments: [RejectedTransitionState.transfer, .preparingClose, .preparedClose, .finalizedClose]
+    )
+    func rejectedTransitionsFinishImmediately(state: RejectedTransitionState) async throws {
+        let (model, background, outgoing) = makeModel()
+        let document = model.documentController.selectedDocument
+        let tabs = model.documentTabController.tabs.map(\.id)
+        let sources = [background.editingSource, outgoing.editingSource].map { Data($0.utf8) }
+        let gate = AsyncStream<Void>.makeStream()
+        var flushStarted = false
+        var closeTask: Task<WindowClosePreparationOutcome, Error>?
+        defer {
+            gate.continuation.finish()
+            closeTask?.cancel()
+            model.windowCloseCoordinator.cancelPreparation()
+            model.editorFlushCoordinator.clearCurrentEditor()
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        do {
+            switch state {
+            case .transfer:
+                model.transferInProgress = true
+            case .preparingClose:
+                model.registerEditorFlush(
+                    for: try #require(model.selectedDocumentPath), token: UUID(),
+                    flush: {
+                        flushStarted = true
+                        for await _ in gate.stream { break }
+                    }, captureForReconstruction: {})
+                closeTask = Task { try await model.windowCloseCoordinator.prepare() }
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                while !flushStarted {
+                    try #require(ContinuousClock.now < deadline, "Close preparation did not reach the registered flush")
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+            case .preparedClose, .finalizedClose:
+                _ = try await model.windowCloseCoordinator.prepare()
+                if state == .finalizedClose { model.windowCloseCoordinator.finalize() }
+            }
+
+            var ordinaryFinishes = 0
+            var completions = 0
+            var currencyFinishes = 0
+            var preparationCount = 0
+            var operationCount = 0
+            var successes = 0
+            model.enqueueDocumentTransition(
+                preparation: .operationOnly,
+                validateBeforePreparation: { preparationCount += 1 },
+                { operationCount += 1 },
+                didSucceed: { successes += 1 },
+                didFinish: { ordinaryFinishes += 1 },
+                completion: { result in
+                    completions += 1
+                    if case .success = result { Issue.record("Rejected navigation reported success") }
+                })
+            model.enqueueCurrencyAwareDocumentTransition(
+                validateBeforePreparation: { preparationCount += 1 },
+                { _ in operationCount += 1 },
+                didSucceed: { successes += 1 },
+                didFinish: { currencyFinishes += 1 })
+            #expect(ordinaryFinishes == 1 && completions == 1)
+            #expect(currencyFinishes == 1)
+            await model.waitForDocumentTransitions()
+            #expect(ordinaryFinishes == 1 && completions == 1 && currencyFinishes == 1)
+            #expect(preparationCount == 0 && operationCount == 0 && successes == 0)
+            let issueIDs = model.shellState.operationIssues.map(\.id)
+            model.libraryMutationController.requestUntitledNoteCreation(in: nil)
+            #expect(!model.libraryMutationController.isCreatingNote)
+            await model.waitForDocumentTransitions()
+            #expect(!model.libraryMutationController.isCreatingNote)
+            #expect(model.shellState.operationIssues.map(\.id) == issueIDs)
+            #expect(model.documentController.selectedDocument == document)
+            #expect(model.documentTabController.tabs.map(\.id) == tabs)
+            #expect([background.editingSource, outgoing.editingSource].map { Data($0.utf8) } == sources)
+
+            if state != .finalizedClose {
+                model.transferInProgress = false
+                model.windowCloseCoordinator.cancelPreparation()
+                gate.continuation.finish()
+                if let closeTask { _ = try? await closeTask.value }
+                model.editorFlushCoordinator.clearCurrentEditor()
+                var resumed = 0
+                model.enqueueCurrencyAwareDocumentTransition({ _ in resumed += 1 })
+                await model.waitForDocumentTransitions()
+                #expect(resumed == 1)
+            }
+        } catch {
+            gate.continuation.finish()
+            closeTask?.cancel()
+            model.windowCloseCoordinator.cancelPreparation()
+            if let closeTask { _ = try? await closeTask.value }
+            throw error
+        }
+    }
+
+    @Test("Close drains navigation admitted before its preparation begins")
+    func closeDrainsAlreadyAdmittedNavigation() async throws {
+        let (model, background, outgoing) = makeModel()
+        let gate = AsyncStream<Void>.makeStream()
+        var operationStarted = false
+        var finishes = 0
+        var closeTask: Task<WindowClosePreparationOutcome, Error>?
+        defer {
+            gate.continuation.finish()
+            closeTask?.cancel()
+            model.windowCloseCoordinator.cancelPreparation()
+            model.documentTransitionCoordinator.cancelAll()
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        do {
+            model.enqueueCurrencyAwareDocumentTransition(
+                { isCurrent in
+                    operationStarted = true
+                    for await _ in gate.stream { break }
+                    #expect(isCurrent())
+                }, didFinish: { finishes += 1 })
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            while !operationStarted {
+                try #require(ContinuousClock.now < deadline, "Navigation did not start")
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            closeTask = Task { try await model.windowCloseCoordinator.prepare() }
+            while !model.windowCloseCoordinator.isPreparingOrFinalized {
+                try #require(ContinuousClock.now < deadline, "Close preparation did not start")
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            #expect(finishes == 0 && !model.windowCloseCoordinator.isPrepared)
+            gate.continuation.finish()
+            _ = try await closeTask?.value
+            await model.waitForDocumentTransitions()
+            #expect(finishes == 1 && model.windowCloseCoordinator.isPrepared)
+        } catch {
+            gate.continuation.finish()
+            closeTask?.cancel()
+            model.windowCloseCoordinator.cancelPreparation()
+            model.documentTransitionCoordinator.cancelAll()
+            await model.waitForDocumentTransitions()
+            if let closeTask { _ = try? await closeTask.value }
+            throw error
+        }
+    }
+
     @MainActor
     private struct OpeningFixture {
         static let source = "\u{FEFF}Exact source 中文 😀 e\u{301}。\r\n"

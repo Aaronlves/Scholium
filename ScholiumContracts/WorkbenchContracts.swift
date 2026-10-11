@@ -57,11 +57,14 @@ public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
 
 public enum SavedSearchStoreError: LocalizedError, Sendable {
     case unreadable(String)
+    case changed(current: [SavedSearch])
 
     public var errorDescription: String? {
         switch self {
         case .unreadable(let reason):
             "Scholium could not safely load Saved Searches. The existing file was left unchanged. \(reason)"
+        case .changed:
+            "Saved Searches changed in another window. Their current definitions were reloaded. Try the action again."
         }
     }
 }

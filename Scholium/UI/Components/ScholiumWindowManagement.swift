@@ -487,7 +487,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var detachedToolbar: DetachedDocumentToolbar?
     private weak var transferFirstResponder: NSResponder?
     private weak var window: NSWindow?
-    var canAcceptAgentDisplay: Bool { window?.isKeyWindow == true && window?.attachedSheet == nil && !flushInFlight && !closeIsAuthorized }
+    var canAcceptAgentDisplay: Bool {
+        canAcceptAgentObservation && window?.isKeyWindow == true && window?.attachedSheet == nil
+    }
     var canAcceptAgentObservation: Bool {
         window != nil && !isNativeCloseInProgress && !registry.isTerminationAttemptInProgress
             && !appState.transferInProgress && !appState.windowCloseCoordinator.isPreparingOrFinalized

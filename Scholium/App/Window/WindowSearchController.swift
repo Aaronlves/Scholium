@@ -33,7 +33,7 @@ enum SearchResultNavigationError: LocalizedError {
 final class WindowSearchController: ObservableObject {
     struct Dependencies {
         let loadSavedSearches: @MainActor () async throws -> [SavedSearch]
-        let saveSavedSearches: @MainActor ([SavedSearch]) async throws -> Void
+        let saveSavedSearches: @MainActor ([SavedSearch], [SavedSearch]) async throws -> Void
         let recoverSavedSearches: @MainActor () async throws -> URL?
         let executionContext:
             @MainActor (
@@ -136,8 +136,9 @@ final class WindowSearchController: ObservableObject {
                 guard !Task.isCancelled, savedSearches != searches else { return }
                 savedSearches = searches
             } catch {
-                savedSearchLoadFailure = error.localizedDescription
-                dependencies.reportLoadFailure(error.localizedDescription)
+                let message = ScholiumErrorLocalization.message(error)
+                savedSearchLoadFailure = message
+                dependencies.reportLoadFailure(message)
             }
         }
     }
@@ -149,8 +150,9 @@ final class WindowSearchController: ObservableObject {
             savedSearches = searches
             savedSearchLoadFailure = nil
         } catch {
-            savedSearchLoadFailure = error.localizedDescription
-            dependencies.reportLoadFailure(error.localizedDescription)
+            let message = ScholiumErrorLocalization.message(error)
+            savedSearchLoadFailure = message
+            dependencies.reportLoadFailure(message)
         }
     }
 
@@ -448,16 +450,29 @@ final class WindowSearchController: ObservableObject {
             await initialLoad?.value
             _ = await previous?.value
             guard let self else { return }
-            let proposed = mutation(savedSearches)
-            guard proposed != savedSearches else { return }
+            let expected = savedSearches
+            let proposed = mutation(expected)
+            guard proposed != expected else { return }
             do {
-                try await dependencies.saveSavedSearches(proposed)
+                try await dependencies.saveSavedSearches(proposed, expected)
                 guard !Task.isCancelled else { return }
                 savedSearches = proposed
+                savedSearchLoadFailure = nil
             } catch {
+                guard !Task.isCancelled else { return }
+                let message = ScholiumErrorLocalization.message(error)
+                if let storeError = error as? SavedSearchStoreError {
+                    switch storeError {
+                    case .changed(let current):
+                        savedSearches = current
+                        savedSearchLoadFailure = nil
+                    case .unreadable:
+                        savedSearchLoadFailure = message
+                    }
+                }
                 dependencies.reportSaveFailure(
                     String(
-                        localized: "Could not save search: \(error.localizedDescription)",
+                        localized: "Could not save search: \(message)",
                         table: "Localizable",
                         bundle: .module
                     )

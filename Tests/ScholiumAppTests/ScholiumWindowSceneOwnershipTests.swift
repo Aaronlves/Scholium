@@ -267,7 +267,7 @@ import Testing
                     ObjectIdentifier($0) == renderedModelID
                 })
             let previousRenders = observation.renderedPairs.count
-            activeModel.noteExportPreparationInProgress.toggle()
+            activeModel.noteExportLifecycle.close()
             try await waitForRender(after: previousRenders)
             #expect(observation.constructed.count == 1)
             #expect(observation.identitiesAreCoherent)

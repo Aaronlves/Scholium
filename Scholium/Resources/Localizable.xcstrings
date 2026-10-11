@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Saved Searches changed in another window. Their current definitions were reloaded. Try the action again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Saved Searches changed in another window. Their current definitions were reloaded. Try the action again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已保存的搜索已在另一个窗口中更改。已重新载入当前定义。请重试此操作。"}}}},
     "Starting Sign-In…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Starting Sign-In…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在发起登录…"}}}},
     "Codex Needs Attention": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Codex Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Codex 需要处理"}}}},
     "Enter a whole number from %@ to %@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter a whole number from %@ to %@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请输入 %@ 到 %@ 之间的整数。"}}}},

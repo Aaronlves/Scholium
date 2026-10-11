@@ -503,8 +503,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         try await applicationRuntime.savedSearches()
     }
 
-    func saveSavedSearches(_ searches: [SavedSearch]) async throws {
-        try await applicationRuntime.saveSavedSearches(searches)
+    func saveSavedSearches(_ searches: [SavedSearch], replacing expected: [SavedSearch]) async throws {
+        try await applicationRuntime.saveSavedSearches(searches, replacing: expected)
     }
 
     @discardableResult

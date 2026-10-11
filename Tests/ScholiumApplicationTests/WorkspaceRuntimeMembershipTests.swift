@@ -14,7 +14,7 @@ struct WorkspaceRuntimeMembershipTests {
         #expect(try await runtime.savedSearches().isEmpty)
         #expect(try await runtime.windowSession(id: fixture.session.id) == nil)
 
-        try await runtime.saveSavedSearches(fixture.savedSearches)
+        try await runtime.saveSavedSearches(fixture.savedSearches, replacing: [])
         try await runtime.saveWindowSession(fixture.session)
         #expect(try await runtime.savedSearches() == fixture.savedSearches)
         #expect(try await runtime.windowSession(id: fixture.session.id) == fixture.session)
@@ -280,7 +280,7 @@ struct WorkspaceRuntimeMembershipTests {
         let fixture = try await RuntimeMembershipFixture.make()
         defer { fixture.remove() }
         let seedingRuntime = fixture.liveRuntime()
-        try await seedingRuntime.saveSavedSearches(fixture.savedSearches)
+        try await seedingRuntime.saveSavedSearches(fixture.savedSearches, replacing: [])
         try await seedingRuntime.saveWindowSession(fixture.session)
         await seedingRuntime.shutdown()
 
@@ -310,7 +310,7 @@ struct WorkspaceRuntimeMembershipTests {
         }
 
         await expectRuntimeConfigurationUnavailable("save Saved Searches") {
-            try await snapshot.saveSavedSearches([])
+            try await snapshot.saveSavedSearches([], replacing: fixture.savedSearches)
         }
         await expectRuntimeConfigurationUnavailable("save a window session") {
             try await snapshot.saveWindowSession(WindowSessionSnapshot())

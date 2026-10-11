@@ -330,6 +330,7 @@ struct WindowSearchControllerTests {
             createdAt: Date(timeIntervalSince1970: 1)
         )
         var savedSnapshots: [[SavedSearch]] = []
+        var expectedSnapshots: [[SavedSearch]] = []
         let controller = WindowSearchController(
             discoveryController: DiscoveryController(),
             dependencies: dependencies(
@@ -337,8 +338,9 @@ struct WindowSearchControllerTests {
                     try await Task.sleep(for: .milliseconds(10))
                     return [existing]
                 },
-                saveSavedSearches: {
-                    savedSnapshots.append($0)
+                saveSavedSearches: { searches, expected in
+                    savedSnapshots.append(searches)
+                    expectedSnapshots.append(expected)
                 }
             )
         )
@@ -356,6 +358,7 @@ struct WindowSearchControllerTests {
         #expect(savedSnapshots.count == 2)
         #expect(savedSnapshots[0].map(\.name) == ["First", "Existing"])
         #expect(savedSnapshots[1].map(\.name) == ["Second", "First", "Existing"])
+        #expect(expectedSnapshots == [[existing], savedSnapshots[0]])
         #expect(controller.savedSearches.map(\.name) == ["Second", "First", "Existing"])
     }
 
@@ -441,7 +444,7 @@ struct WindowSearchControllerTests {
             discoveryController: discovery,
             dependencies: WindowSearchController.Dependencies(
                 loadSavedSearches: { [] },
-                saveSavedSearches: { _ in },
+                saveSavedSearches: { _, _ in },
                 recoverSavedSearches: { nil },
                 executionContext: { state in
                     #expect(state.query == "current")
@@ -612,7 +615,7 @@ struct WindowSearchControllerTests {
 
     private func dependencies(
         loadSavedSearches: @escaping @MainActor () async throws -> [SavedSearch] = { [] },
-        saveSavedSearches: @escaping @MainActor ([SavedSearch]) async throws -> Void = { _ in },
+        saveSavedSearches: @escaping @MainActor ([SavedSearch], [SavedSearch]) async throws -> Void = { _, _ in },
         recoverSavedSearches: @escaping @MainActor () async throws -> URL? = { nil },
         executionContext:
             @escaping @MainActor (

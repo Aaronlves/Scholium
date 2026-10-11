@@ -155,7 +155,6 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                     isCurrent(), self.replyPageGeneration == pageGeneration,
                     let previousFingerprint = self.replyPageFingerprint
                 else { return }
-                defer { if isCurrent() { self.replyUpdateTask = nil } }
                 do {
                     guard body.utf8.count <= 16_777_216 else { throw CocoaError(.coderReadCorrupt) }
                     let updated = try await webView.callAsyncJavaScript(

@@ -122,7 +122,7 @@ final class WindowLibraryMutationController: ObservableObject {
 
     let dependencies: WindowLibraryMutationDependencies
     private var operations: (any LibraryMutationUseCases)?
-    private var markdownImportTask: Task<Void, Never>?
+    private var markdownImportTask: (id: UUID, task: Task<Void, Never>)?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
     private var mutationTail: Task<Void, Never>?
@@ -139,7 +139,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     deinit {
-        markdownImportTask?.cancel()
+        markdownImportTask?.task.cancel()
         folderMutationTask?.cancel()
     }
 
@@ -155,7 +155,7 @@ final class WindowLibraryMutationController: ObservableObject {
 
     func cancelAll() {
         batchCancellation?()
-        markdownImportTask?.cancel()
+        markdownImportTask?.task.cancel()
         markdownImportTask = nil
         folderMutationTask?.cancel()
         folderMutationTask = nil
@@ -514,19 +514,24 @@ final class WindowLibraryMutationController: ObservableObject {
             )
             return
         }
-        markdownImportTask = Task { @MainActor [weak self] in
+        let requestID = UUID()
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.markdownImportTask = nil }
+            defer {
+                if self.markdownImportTask?.id == requestID { self.markdownImportTask = nil }
+            }
             do {
-                self.dependencies.presentImportOutcome(
-                    try await self.importMarkdownFiles(urls)
-                )
+                let outcome = try await self.importMarkdownFiles(urls)
+                guard !Task.isCancelled, self.markdownImportTask?.id == requestID else { return }
+                self.dependencies.presentImportOutcome(outcome)
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled, self.markdownImportTask?.id == requestID else { return }
                 self.dependencies.reportError(ScholiumErrorLocalization.message(error))
             }
         }
+        markdownImportTask = (requestID, task)
     }
 
     func recoverInterruptedTransactions() async throws -> [String] {

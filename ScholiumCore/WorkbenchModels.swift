@@ -3,7 +3,6 @@ import ScholiumContracts
 
 public actor SavedSearchStore {
     private let fileURL: URL
-    private var loadFailure: String?
 
     public init(workspaceStorageURL: URL) {
         fileURL = workspaceStorageURL.appendingPathComponent("saved-searches.json", isDirectory: false)
@@ -11,7 +10,6 @@ public actor SavedSearchStore {
 
     public func load() throws -> [SavedSearch] {
         guard ExactStatePreserver.entryExists(at: fileURL) else {
-            loadFailure = nil
             return []
         }
         do {
@@ -26,21 +24,24 @@ public actor SavedSearchStore {
             // Array order is researcher-defined presentation state. Preserve
             // the persisted order instead of silently sorting by creation date.
             let searches = try JSONDecoder.scholium.decode([SavedSearch].self, from: data)
-            loadFailure = nil
             return searches
         } catch {
-            loadFailure = error.localizedDescription
             throw SavedSearchStoreError.unreadable(error.localizedDescription)
         }
     }
 
-    public func save(_ searches: [SavedSearch]) throws {
-        if let loadFailure { throw SavedSearchStoreError.unreadable(loadFailure) }
+    public func save(_ searches: [SavedSearch], replacing expected: [SavedSearch]) throws {
+        let current = try load()
+        let encoder = JSONEncoder.scholium
+        // Compare persisted precision: ISO8601 dates omit fractional seconds.
+        guard try encoder.encode(current) == encoder.encode(expected) else {
+            throw SavedSearchStoreError.changed(current: current)
+        }
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try JSONEncoder.scholium.encode(searches).write(to: fileURL, options: .atomic)
+        try encoder.encode(searches).write(to: fileURL, options: .atomic)
     }
 
     /// Explicitly preserves an unreadable Saved Search document, then returns
@@ -48,12 +49,10 @@ public actor SavedSearchStore {
     @discardableResult
     public func preserveUnreadableAndReset() throws -> URL? {
         guard ExactStatePreserver.entryExists(at: fileURL) else {
-            loadFailure = nil
             return nil
         }
         let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
         if (try? JSONDecoder.scholium.decode([SavedSearch].self, from: data)) != nil {
-            loadFailure = nil
             return nil
         }
         let preserved = try ExactStatePreserver.preserve(
@@ -65,7 +64,6 @@ public actor SavedSearchStore {
                 (try? JSONDecoder.scholium.decode([SavedSearch].self, from: $0)) == nil
             }
         )
-        loadFailure = nil
         return preserved
     }
 }

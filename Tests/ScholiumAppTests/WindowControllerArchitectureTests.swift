@@ -1055,9 +1055,36 @@ struct WindowControllerArchitectureTests {
 
         // Workspace browsing, Library browsing, and automatic current-Note reveal
         // all stage from the last accepted Workspace snapshot.
-        #expect(
-            source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 3
+        let navigationBoundaries = [
+            ("func prepareWorkspaceSelection(", "func validateDocumentIsAvailable("),
+            ("func selectLibrarySourceScope(", "func refreshLibrarySourceScope("),
+            ("private func revealDocumentInLibrary(", "func reconcileDocumentSessionLeases("),
+        ]
+        for (startMarker, endMarker) in navigationBoundaries {
+            let start = try #require(source.range(of: startMarker))
+            let end = try #require(
+                source.range(of: endMarker, range: start.upperBound..<source.endIndex)
+            )
+            let navigationSource = String(source[start.lowerBound..<end.lowerBound])
+            #expect(navigationSource.contains("discoveryController.beginLibraryRequest("))
+            #expect(
+                navigationSource.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 1
+            )
+        }
+
+        // A committed import refreshes its owned projection without starting
+        // another browse after the asynchronous snapshot lookup.
+        let importStart = try #require(source.range(of: "importedDocumentsCommitted: { [weak self] vault in"))
+        let importEnd = try #require(
+            source.range(
+                of: "presentImportOutcome: { [weak self] outcome in",
+                range: importStart.upperBound..<source.endIndex
+            )
         )
+        let importSource = String(source[importStart.lowerBound..<importEnd.lowerBound])
+        #expect(importSource.contains("self.discoveryController.receiveLibraryResult(for: request)"))
+        #expect(!importSource.contains("browseRegisteredVault("))
+        #expect(!importSource.contains("vaultConfig("))
         #expect(source.contains("private func currentWorkspaceVaultSnapshot("))
         #expect(
             source.contains(
@@ -1559,9 +1586,29 @@ struct WindowControllerArchitectureTests {
             ))
         #expect(
             libraryMutationSource.contains(
-                "private var markdownImportTask: Task<Void, Never>?"
+                "private var markdownImportTask: (id: UUID, task: Task<Void, Never>)?"
             ))
-        #expect(libraryMutationSource.contains("func requestMarkdownImport(_ urls: [URL])"))
+        #expect(libraryMutationSource.contains("markdownImportTask?.task.cancel()"))
+        let importStart = try #require(libraryMutationSource.range(of: "func requestMarkdownImport(_ urls: [URL])"))
+        let importEnd = try #require(
+            libraryMutationSource.range(
+                of: "func recoverInterruptedTransactions(",
+                range: importStart.upperBound..<libraryMutationSource.endIndex
+            )
+        )
+        let compactImportRequestSource = String(
+            libraryMutationSource[importStart.lowerBound..<importEnd.lowerBound]
+        ).replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
+        #expect(compactImportRequestSource.contains("markdownImportTask=(requestID,task)"))
+        #expect(
+            compactImportRequestSource.contains(
+                "defer{ifself.markdownImportTask?.id==requestID{self.markdownImportTask=nil}}"
+            ))
+        #expect(
+            compactImportRequestSource.components(
+                separatedBy: "guard!Task.isCancelled,self.markdownImportTask?.id==requestIDelse{return}"
+            ).count - 1 == 2
+        )
         let compactLibraryMutationSource = libraryMutationSource.replacingOccurrences(
             of: #"\s+"#,
             with: "",

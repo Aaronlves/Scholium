@@ -187,7 +187,7 @@ struct SearchResultNavigationTests {
         WindowSearchController(
             discoveryController: window.discoveryController,
             dependencies: .init(
-                loadSavedSearches: { [] }, saveSavedSearches: { _ in }, recoverSavedSearches: { nil },
+                loadSavedSearches: { [] }, saveSavedSearches: { _, _ in }, recoverSavedSearches: { nil },
                 executionContext: { _ in .init(workspaceIsAvailable: false, currentNoteSnapshot: nil, currentVaultID: nil) },
                 resultEvidence: { result, scope in
                     let evidence = await window.currentSearchResultEvidence(for: result, scope: scope)

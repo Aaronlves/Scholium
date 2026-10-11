@@ -382,6 +382,8 @@ enum ScholiumErrorLocalization {
             return switch error {
             case .unreadable(let detail):
                 ScholiumL10n.string("Scholium could not safely load Saved Searches. The existing file was left unchanged. \(detail)", locale: locale)
+            case .changed:
+                ScholiumL10n.string("Saved Searches changed in another window. Their current definitions were reloaded. Try the action again.", locale: locale)
             }
         case let error as SearchTermGroupError:
             return switch error {

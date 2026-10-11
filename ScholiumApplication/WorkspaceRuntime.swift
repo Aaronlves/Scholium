@@ -382,12 +382,12 @@ public actor WorkspaceRuntime {
         return try await savedSearchStore.load()
     }
 
-    public func saveSavedSearches(_ searches: [SavedSearch]) async throws {
+    public func saveSavedSearches(_ searches: [SavedSearch], replacing expected: [SavedSearch]) async throws {
         try requireActive()
         guard case .live = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
-        try await savedSearchStore.save(searches)
+        try await savedSearchStore.save(searches, replacing: expected)
     }
 
     @discardableResult

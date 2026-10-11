@@ -3,16 +3,20 @@ import ScholiumContracts
 
 extension WindowModel {
     func requestCurrentNoteExport() {
-        guard canPerformNoteAction(.export),
+        guard !windowCloseCoordinator.isPreparingOrFinalized,
+            canPerformNoteAction(.export),
             let descriptor = currentDocumentDescriptor,
             let note = currentNote?.hydratedSnapshot
         else { return }
 
-        noteExportPreparationInProgress = true
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.noteExportPreparationInProgress = false }
-            do {
+        noteExportLifecycle.prepare(
+            acquire: { [weak self] in
+                guard let self, !self.windowCloseCoordinator.isPreparingOrFinalized,
+                    self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
+                else {
+                    throw CancellationError()
+                }
+                try Task.checkCancellation()
                 let session = self.documentController.session(for: descriptor)
                 let source: String
                 let citationSnapshot: ZoteroCitationSnapshot?
@@ -21,6 +25,7 @@ extension WindowModel {
                         throw NoteExportActionError.composing
                     }
                     let snapshot = try await session.editorSession.currentTextSnapshot()
+                    try Task.checkCancellation()
                     guard self.documentController.retainedSession(for: descriptor.sessionKey) === session,
                         snapshot.generation == session.editorSession.generation,
                         !session.editorSession.isComposing
@@ -45,6 +50,7 @@ extension WindowModel {
                     ),
                     markdownSource: source
                 )
+                try Task.checkCancellation()
                 guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey else {
                     throw NoteExportActionError.changedDuringPreparation
                 }
@@ -58,29 +64,40 @@ extension WindowModel {
                             .appendingPathComponent(".scholium", isDirectory: true)
                     )
                 }
-                let controller = ScholiumNoteExportWindowController(
+                return WindowNoteExportPayload(
                     document: document, title: note.summary.title,
                     embeddedImages: embeddedImages,
                     excludedRoots: excludedRoots,
-                    appearance: workspaceStore.cssSnippetStore.selectedAppearanceProfile?.settings
+                    appearance: self.workspaceStore.cssSnippetStore.selectedAppearanceProfile?.settings
                         ?? .defaultSettings,
-                    colorScheme: shellState.colorScheme
+                    colorScheme: self.shellState.colorScheme
                 )
-                controller.onClose = { [weak self, weak controller] in
-                    guard let self, self.noteExportWindowController === controller else { return }
-                    self.noteExportWindowController = nil
-                }
-                self.noteExportWindowController = controller
+            },
+            isCurrent: { [weak self] in
+                guard let self else { return false }
+                return !self.windowCloseCoordinator.isPreparingOrFinalized
+                    && self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
+            },
+            publish: { payload, onClose in
+                let controller = ScholiumNoteExportWindowController(
+                    document: payload.document, title: payload.title,
+                    embeddedImages: payload.embeddedImages,
+                    excludedRoots: payload.excludedRoots,
+                    appearance: payload.appearance, colorScheme: payload.colorScheme
+                )
+                controller.onClose = { onClose() }
                 controller.showWindow(nil)
                 controller.window?.makeKeyAndOrderFront(nil)
-            } catch is CancellationError {
-                return
-            } catch {
-                self.reportOperationIssue(error.localizedDescription, kind: .error)
+                return controller
+            },
+            onFailure: { [weak self] error in
+                self?.reportOperationIssue(error.localizedDescription, kind: .error)
             }
-        }
+        )
     }
 }
+
+extension ScholiumNoteExportWindowController: WindowNoteExportPresentation {}
 
 private enum NoteExportActionError: LocalizedError {
     case composing

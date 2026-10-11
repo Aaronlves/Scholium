@@ -78,16 +78,65 @@ struct MCPNoteDisplayTests {
             #expect(await router.handle(.init(tool: .showNote, arguments: wrong)).error?.code == .invalidRequest)
             #expect(window.currentDocumentDescriptor?.sessionKey.noteID == peerID)
             for cancel in [false, true] {
-                var release: CheckedContinuation<Void, Never>?
-                window.enqueueDocumentTransition({ await withCheckedContinuation { release = $0 } })
-                try await wait { release != nil }
+                let gate = AsyncStream<Void>.makeStream()
+                var operationStarted = false
+                defer { gate.continuation.finish() }
+                window.enqueueDocumentTransition({
+                    operationStarted = true
+                    for await _ in gate.stream { break }
+                })
+                do {
+                    try await wait { operationStarted }
+                } catch {
+                    gate.continuation.finish()
+                    window.documentTransitionCoordinator.cancelAll()
+                    await window.waitForPendingDocumentTransitionsForTesting()
+                    throw error
+                }
                 didDispatch = false
                 let pending = Task { await router.handle(.init(tool: .showNote, arguments: args)) }
-                try await wait { didDispatch }
+                defer { pending.cancel() }
+                do {
+                    try await wait { didDispatch }
+                } catch {
+                    pending.cancel()
+                    gate.continuation.finish()
+                    window.documentTransitionCoordinator.cancelAll()
+                    _ = await pending.value
+                    await window.waitForPendingDocumentTransitionsForTesting()
+                    throw error
+                }
                 if cancel { pending.cancel() } else { window.enqueueDocumentTransition({}) }
-                release?.resume()
+                gate.continuation.finish()
                 #expect(await pending.value.error?.code == .workspaceNotReady)
                 await window.waitForPendingDocumentTransitionsForTesting()
+                #expect(window.currentDocumentDescriptor?.sessionKey.noteID == peerID)
+            }
+            do {
+                _ = try await window.windowCloseCoordinator.prepare()
+                var closeRefusalReturned = false
+                let closeRefusal = Task {
+                    let reply = await router.handle(.init(tool: .showNote, arguments: args))
+                    closeRefusalReturned = true
+                    return reply
+                }
+                defer {
+                    closeRefusal.cancel()
+                    window.windowCloseCoordinator.cancelPreparation()
+                }
+                let refusalDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+                do {
+                    while !closeRefusalReturned, ContinuousClock.now < refusalDeadline {
+                        try await Task.sleep(for: .milliseconds(1))
+                    }
+                } catch {
+                    closeRefusal.cancel()
+                    _ = await closeRefusal.value
+                    throw error
+                }
+                #expect(closeRefusalReturned, "Closing-window display must settle without external cancellation")
+                closeRefusal.cancel()
+                #expect(await closeRefusal.value.error?.code == .workspaceNotReady)
                 #expect(window.currentDocumentDescriptor?.sessionKey.noteID == peerID)
             }
             let shown = await router.handle(.init(tool: .showNote, arguments: args))

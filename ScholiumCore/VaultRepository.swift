@@ -485,9 +485,17 @@ public actor VaultRepository {
             // This runs even when Foundation or post-replacement observation fails.
             // Never infer success from candidate bytes while the replaced source
             // has not been accounted for.
-            mutation = try recoveryLedger.reconcileReplacementBackup(mutation, access: descriptorAccess)
-            if mutation.displaced != nil {
-                return .recoveryRequired(try interruptedSaveRecovery(for: mutation))
+            do {
+                mutation = try recoveryLedger.reconcileReplacementBackup(mutation, access: descriptorAccess)
+                if mutation.displaced != nil {
+                    return .recoveryRequired(try interruptedSaveRecovery(for: mutation))
+                }
+            } catch {
+                // Replacement may already have occurred. A failed recovery
+                // binding cannot truthfully promise that no source was written.
+                throw VaultRepositoryError.commitUncertain(
+                    "The exact save transaction \(mutation.id.uuidString) for \(relativePath) could not be reconciled: \(Self.uncertainSaveReason(for: error))"
+                )
             }
             if let knownOutcome = knownNotWrittenOutcome(for: error) {
                 try? recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
@@ -528,8 +536,8 @@ public actor VaultRepository {
                         for: mutation
                     ))
             } catch {
-                throw VaultRepositoryError.recoveryLedgerUnavailable(
-                    "The exact interrupted-save transaction could not be retained: \(error.localizedDescription)"
+                throw VaultRepositoryError.commitUncertain(
+                    "The exact interrupted-save transaction \(mutation.id.uuidString) for \(relativePath) could not be retained: \(Self.uncertainSaveReason(for: error))"
                 )
             }
         }
@@ -1032,6 +1040,13 @@ public actor VaultRepository {
             )
         }
         return transaction
+    }
+
+    private static func uncertainSaveReason(for error: Error) -> String {
+        if let error = error as? VaultRepositoryError, case .recoveryLedgerUnavailable(let reason) = error {
+            return reason
+        }
+        return error.localizedDescription
     }
 
     private func interruptedSaveRecovery(

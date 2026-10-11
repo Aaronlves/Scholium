@@ -77,7 +77,6 @@ struct ContentView: View {
                 workspaceShell
             }
         }
-        .task { await searchController.loadTermGroups() }
         .environment(
             \.openChatExternalMarkdown,
             { url in

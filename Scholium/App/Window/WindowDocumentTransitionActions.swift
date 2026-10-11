@@ -127,6 +127,10 @@ extension WindowModel {
             })
     }
 
+    private var canAcceptDocumentTransition: Bool {
+        !transferInProgress && !windowCloseCoordinator.isPreparingOrFinalized
+    }
+
     /// Serializes every transition that can replace the active document view.
     /// The newest requested destination wins, but an already-running operation
     /// is allowed to finish before the next begins so vault state is never
@@ -145,7 +149,7 @@ extension WindowModel {
         didFinish: (@MainActor () -> Void)? = nil,
         completion: (@MainActor (Result<Void, Error>) -> Void)? = nil
     ) {
-        guard !transferInProgress, !windowCloseCoordinator.isPreparingOrFinalized else {
+        guard canAcceptDocumentTransition else {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             didFinish?()
             completion?(.failure(DocumentControllerError.documentUnavailable))
@@ -327,7 +331,10 @@ extension WindowModel {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
-        guard !windowCloseCoordinator.isPreparingOrFinalized else { return }
+        guard canAcceptDocumentTransition else {
+            didFinish?()
+            return
+        }
         var failurePhase = DocumentTransitionFailurePhase.operation
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in

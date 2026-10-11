@@ -2263,10 +2263,31 @@ final class DocumentController: ObservableObject {
     ) async {
         let message = ScholiumErrorLocalization.message(error)
         setSaveError(message)
-        if Self.isRevisionConflict(error),
-            let diskDocument = try? await loadDocument(for: target),
+        var diskDocument: NoteDocument?
+        if Self.isRevisionConflict(error) {
+            let epoch = hydrationEpoch
+            let path = relativePath(for: target)
             let baseRevision = session.editingRevision
-        {
+            let conflict = session.conflict
+            let publishedSummary = publishedSummaries[target]
+            diskDocument = try? await loadDocument(for: target)
+            // A newer publication or departed owner already supplies the
+            // current recovery state. Neither an older success nor failure
+            // may replace it. Typing can continue against this same base;
+            // comparison below captures the latest checked draft.
+            guard !Task.isCancelled, hydrationEpoch == epoch,
+                retainsSession(session, for: target),
+                relativePath(for: target).utf8.elementsEqual(path.utf8),
+                session.editingRevision == baseRevision,
+                session.conflict == conflict
+            else { return }
+            if let publishedSummary {
+                guard publishedSummaries[target]?.hasSameSourceBinding(as: publishedSummary) == true else { return }
+            } else {
+                guard publishedSummaries[target] == nil else { return }
+            }
+        }
+        if let diskDocument, let baseRevision = session.editingRevision {
             let editorSource = session.retainedExactSource
             session.editingSource = editorSource
             session.conflict = DocumentConflictSnapshot(

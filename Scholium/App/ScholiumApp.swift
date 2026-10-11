@@ -52,10 +52,14 @@ final class WindowModel: ObservableObject {
 
     var windowSessionID = UUID()
     let nativeWindowID: UUID
-    var noteExportWindowController: ScholiumNoteExportWindowController?
+    let noteExportLifecycle = WindowNoteExportLifecycle()
+    var noteExportWindowController: ScholiumNoteExportWindowController? {
+        noteExportLifecycle.presentation as? ScholiumNoteExportWindowController
+    }
+    private var noteExportLifecycleObservation: AnyCancellable?
 
     // MARK: Published State
-    @Published var noteExportPreparationInProgress = false
+    var noteExportPreparationInProgress: Bool { noteExportLifecycle.isPreparing }
     @Published var vaultConfig: VaultConfig?
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other
@@ -79,8 +83,8 @@ final class WindowModel: ObservableObject {
             loadSavedSearches: { [workspaceStore] in
                 try await workspaceStore.savedSearches()
             },
-            saveSavedSearches: { [workspaceStore] searches in
-                try await workspaceStore.saveSavedSearches(searches)
+            saveSavedSearches: { [workspaceStore] searches, expected in
+                try await workspaceStore.saveSavedSearches(searches, replacing: expected)
             },
             recoverSavedSearches: { [workspaceStore] in
                 try await workspaceStore.preserveUnreadableSavedSearchesAndReset()
@@ -219,10 +223,46 @@ final class WindowModel: ObservableObject {
             },
             importedDocumentsCommitted: { [weak self] vault in
                 guard let self else { throw CancellationError() }
-                try await self.refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
-                if self.currentRegisteredVault?.id == vault.id {
-                    try await self.browseRegisteredVault(vault)
+                let runtimeIdentity = self.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                let projection = self.workspaceProjectionController
+                let request: DiscoveryLibraryRequest?
+                if self.currentRegisteredVault?.id == vault.id,
+                    let slot = self.currentWorkspaceSlot,
+                    self.requestedWorkspaceSelection == nil,
+                    !self.discoveryController.libraryRequestIsActive
+                {
+                    request = self.discoveryController.beginLibraryRequest(
+                        workspaceSlot: slot, sourceScope: self.noteSourceScope,
+                        presentation: .stagedReplacement
+                    )
+                } else {
+                    request = nil
                 }
+                defer {
+                    if let request, self.discoveryController.isCurrentLibraryRequest(request) {
+                        self.discoveryController.failLibraryRequest("", for: request)
+                    }
+                }
+                guard let snapshot = try await self.documentController.workspaceSnapshot(vaultID: vault.id) else {
+                    throw WorkspaceRegistryError.incompleteWorkspace
+                }
+                guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity,
+                    self.workspaceProjectionController === projection
+                else { return }
+                // A committed import still refreshes its exact cache when presentation moved on.
+                projection.replaceVaultSnapshot(snapshot)
+                guard !Task.isCancelled, let request,
+                    self.currentRegisteredVault?.id == vault.id,
+                    self.currentWorkspaceSlot == request.workspaceSlot,
+                    self.noteSourceScope == request.sourceScope,
+                    self.requestedWorkspaceSelection == nil,
+                    self.discoveryController.receiveLibraryResult(for: request)
+                else { return }
+                projection.replaceVisibleNotes(
+                    snapshot.documents.map(WindowDocumentLocation.workspace).sorted(by: self.notesAreOrdered)
+                )
+                self.refreshIdentityState(from: snapshot)
+                self.scheduleWorkspaceCatalogRefresh()
             },
             presentImportOutcome: { [weak self] outcome in
                 self?.presentMarkdownImportOutcome(outcome)
@@ -691,6 +731,7 @@ final class WindowModel: ObservableObject {
         },
         finalizeDependencies: { [weak self] in
             guard let self else { return }
+            self.noteExportLifecycle.close()
             self.selectionResult?.result.stop()
             self.selectionResult = nil
             self.libraryMutationController.unbind()
@@ -856,6 +897,9 @@ final class WindowModel: ObservableObject {
                 }
             }
         #endif
+        noteExportLifecycleObservation = noteExportLifecycle.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
         searchController.loadSavedSearches()
         startWorkspaceObservers()
         chatSidebarObservation = chatSidebarPreferences.$isEnabled.dropFirst().sink { [weak self] enabled in
