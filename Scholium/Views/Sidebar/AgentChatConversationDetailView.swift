@@ -327,6 +327,8 @@ struct AgentChatConversationDetailView: View {
     private func conversationDetail(viewportHeight: CGFloat) -> some View {
         let projection = AgentChatTimelineProjection(timelineMessages)
         let visibleTimelineItems = Array(projection.items[readingSession.history.range(in: projection.ids)])
+        let editableRequestIDs = Set(controller.editableRequests.map(\.id))
+        let branchTurnIDs = Set(controller.branchPoints.compactMap(\.turnID))
         return ScrollView {
             // Transcript geometry must describe the loaded messages, rather than
             // LazyVStack's changing estimates as long replies enter the viewport.
@@ -357,7 +359,9 @@ struct AgentChatConversationDetailView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                             Text(passage).font(.callout).textSelection(.enabled)
                         }
-                        timelineItem(item, projection: projection)
+                        timelineItem(
+                            item, projection: projection,
+                            editableRequestIDs: editableRequestIDs, branchTurnIDs: branchTurnIDs)
                     }.id(item.id)
                         .background(AgentChatReadingMarker(id: item.id, session: readingSession))
                 }
@@ -528,7 +532,10 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder
-    private func timelineItem(_ item: AgentChatTimelineItem, projection: AgentChatTimelineProjection) -> some View {
+    private func timelineItem(
+        _ item: AgentChatTimelineItem, projection: AgentChatTimelineProjection,
+        editableRequestIDs: Set<String>, branchTurnIDs: Set<String>
+    ) -> some View {
         if item.isProcess {
             let turnID = item.messages.first?.turnID
             let status = projection.carriesTurnStatus(item) ? turnPresentation(turnID, projection: projection) : nil
@@ -571,7 +578,9 @@ struct AgentChatConversationDetailView: View {
                     presentation: status,
                     isVisible: isVisible)
             }
-            messageView(message)
+            messageView(
+                message, hasEditBoundary: editableRequestIDs.contains(message.id),
+                hasBranchBoundary: message.turnID.map { branchTurnIDs.contains($0) } ?? false)
             if message.role == .user {
                 AgentChatConnectionStatus(
                     controller: controller, diagnosticsPresentation: $diagnosticsPresentation,
@@ -586,7 +595,7 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
-    private func messageView(_ message: AgentChatMessage) -> some View {
+    private func messageView(_ message: AgentChatMessage, hasEditBoundary: Bool, hasBranchBoundary: Bool) -> some View {
         let conversationID = nativeSession.conversationID
         return AgentChatMessageActionVisibility {
             AgentChatMessageSurface(isUser: message.role == .user) {
@@ -641,13 +650,20 @@ struct AgentChatConversationDetailView: View {
                             context: .init(reply: message, history: controller.selected?.messages ?? []),
                             openAttachment: openAttachment, previewMaterial: { try await controller.previewLocalMaterial($0) })
                     }
-                    if hasMessageActions(message) {
-                        messageActions(message, in: conversationID)
-                            .labelStyle(ScholiumSidebarActionLabelStyle())
+                    if hasEditBoundary || hasBranchBoundary || canQuote(message) {
+                        messageActions(
+                            message, in: conversationID,
+                            hasEditBoundary: hasEditBoundary, hasBranchBoundary: hasBranchBoundary
+                        )
+                        .labelStyle(ScholiumSidebarActionLabelStyle())
                     }
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle())
-                .contextMenu { messageActions(message, in: conversationID) }
+                .contextMenu {
+                    messageActions(
+                        message, in: conversationID,
+                        hasEditBoundary: hasEditBoundary, hasBranchBoundary: hasBranchBoundary)
+                }
             }
         }
         .modifier(
@@ -659,20 +675,16 @@ struct AgentChatConversationDetailView: View {
         .accessibilityLabel(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
     }
 
-    private func hasMessageActions(_ message: AgentChatMessage) -> Bool {
-        controller.editableRequests.contains(where: { $0.id == message.id })
-            || message.turnID.map { turnID in controller.branchPoints.contains(where: { $0.turnID == turnID }) } == true
-            || canQuote(message)
-    }
-
     @ViewBuilder
-    private func messageActions(_ message: AgentChatMessage, in conversationID: UUID?) -> some View {
-        if controller.editableRequests.contains(where: { $0.id == message.id }) {
+    private func messageActions(
+        _ message: AgentChatMessage, in conversationID: UUID?, hasEditBoundary: Bool, hasBranchBoundary: Bool
+    ) -> some View {
+        if hasEditBoundary {
             Button("Edit in New Branch", systemImage: ScholiumSidebarAction.edit.symbol) { controller.editInNewBranch(message.id) }
                 .disabled(!controller.canBranch)
                 .help("Edit in New Branch").accessibilityLabel("Edit in New Branch")
         }
-        if let turnID = message.turnID, controller.branchPoints.contains(where: { $0.turnID == turnID }) {
+        if let turnID = message.turnID, hasBranchBoundary {
             Button("Branch from This Turn", systemImage: ScholiumSidebarAction.branch.symbol) { controller.branch(through: turnID) }
                 .disabled(!controller.canBranch)
                 .help("Branch from This Turn").accessibilityLabel("Branch from This Turn")

@@ -1407,14 +1407,17 @@ public actor TriptychControlStore {
         var claimedIDs: Set<UUID> = []
         var unmatched: [(relativePath: String, fingerprint: DocumentFingerprint)] = []
         var changed = false
+        // Only this reserve pass uses the lookup; later reconciliation changes paths and appends records.
+        var existingRecordIndexByPath: [String: Int] = [:]
+        for (index, record) in payload.records.enumerated() where record.vaultID == vaultID {
+            existingRecordIndexByPath[record.relativePath] = index
+        }
 
         // First reserve every identity whose path still exists. This is the
         // authoritative signal that a same-fingerprint file is a copy rather
         // than a rename of that still-present note.
         for document in documents.sorted(by: { $0.relativePath < $1.relativePath }) {
-            if let index = payload.records.firstIndex(where: {
-                $0.vaultID == vaultID && $0.relativePath == document.relativePath
-            }) {
+            if let index = existingRecordIndexByPath[document.relativePath] {
                 if payload.records[index].fingerprint != document.fingerprint {
                     payload.records[index].fingerprint = document.fingerprint
                     payload.records[index].updatedAt = Date()

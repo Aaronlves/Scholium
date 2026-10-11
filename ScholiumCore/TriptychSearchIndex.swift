@@ -2148,7 +2148,7 @@ public actor TriptychSearchIndex {
         // Prepared in the same publication transaction as the exact source
         // fingerprint. Queries never trigger first-use paragraph parsing for
         // an indexed revision, including after application restart.
-        let relatedProjection = try RelatedContentSourceProjection(document: item.document).encoded()
+        let relatedProjection = try RelatedContentSourceProjection(source: item).encoded()
         let relatedLexical = try RelatedContentLexicalProjection(projection: projection).encoded()
         let lineStarts =
             String(

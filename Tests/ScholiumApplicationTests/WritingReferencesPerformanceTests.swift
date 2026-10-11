@@ -16,6 +16,7 @@ struct WritingReferencesPerformanceTests {
         let label = environment["SCHOLIUM_REFERENCE_MEASUREMENT_LABEL"] ?? "diagnostic"
         let threeVaults = environment["SCHOLIUM_REFERENCE_THREE_VAULTS"] == "1"
         let initialOnly = environment["SCHOLIUM_REFERENCE_INITIAL_ONLY"] == "1"
+        let reversePreparationOrder = environment["SCHOLIUM_REFERENCE_REVERSE_PREPARATION_ORDER"] == "1"
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let artifacts = repository.appendingPathComponent(".build/writing-references-performance", isDirectory: true)
@@ -58,6 +59,14 @@ struct WritingReferencesPerformanceTests {
         try Data(draft.utf8).write(to: works.appendingPathComponent("Draft.md"))
         expectedSources["Draft.md"] = draft
         expectedRoles["Draft.md"] = .draftProject
+        let corpusRecords: [[String: String]] = try expectedSources.keys.sorted().map { name in
+            let source = try #require(expectedSources[name])
+            let role = try #require(expectedRoles[name])
+            return ["path": name, "role": role.rawValue, "source_sha256": DocumentFingerprint(content: source).sha256]
+        }
+        let corpusDigest = DocumentFingerprint(
+            data: try JSONSerialization.data(withJSONObject: corpusRecords, options: [.sortedKeys])
+        ).sha256
         print("Recommendation corpus role counts: \(corpusRoleCounts), plus one Works seed")
         let configuration = WorkspaceRuntime.Configuration.live(
             .init(
@@ -295,8 +304,8 @@ struct WritingReferencesPerformanceTests {
                 // time is reported separately; it is not deleted from total work
                 // or confused with foreground/native click-to-paint latency.
                 for trial in 0..<3 {
-                    var unprepared: RelatedContentResponse?
-                    for prepare in [false, true] {
+                    var pairedResponse: RelatedContentResponse?
+                    for prepare in reversePreparationOrder ? [true, false] : [false, true] {
                         activeRuntime = WorkspaceRuntime(configuration: configuration)
                         let handle = try await activeRuntime.openWorkspace(id: workspaceID)
                         if prepare {
@@ -314,7 +323,11 @@ struct WritingReferencesPerformanceTests {
                             handle, vault: vault,
                             scenario: prepare ? "prepared_line_after_restart" : "unprepared_line_after_restart",
                             sample: 0, focus: selectedParagraph, source: longDraft, workload: trial)
-                        if prepare { #expect(result.passages == unprepared?.passages) } else { unprepared = result }
+                        if let pairedResponse {
+                            #expect(result.passages == pairedResponse.passages)
+                        } else {
+                            pairedResponse = result
+                        }
                         await activeRuntime.shutdown()
                     }
                 }
@@ -362,6 +375,8 @@ struct WritingReferencesPerformanceTests {
             "ranking_policy": RelatedContentContract.rankingPolicyVersion,
             "label": label, "notes": count, "paragraphs_per_note": 16,
             "three_vault_corpus": threeVaults, "corpus_note_counts": corpusRoleCounts, "additional_works_seed_notes": 1,
+            "corpus_source_sha256": corpusDigest,
+            "preparation_order": reversePreparationOrder ? "prepared_then_unprepared" : "unprepared_then_prepared",
             "initial_scenario_only": initialOnly,
             "measurement":
                 "Backend diagnostics only; excludes editor capture, debounce, link-action preparation and native publication; native end-to-end latency is unmeasured. Lifecycle timings reported separately.",

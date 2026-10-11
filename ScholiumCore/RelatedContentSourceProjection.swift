@@ -62,6 +62,18 @@ struct RelatedContentSourceProjection: Codable, Sendable {
         try Task.checkCancellation()
         let semantic = MarkdownSemanticDocument(parsing: document)
         try Task.checkCancellation()
+        try self.init(document: document, semantic: semantic)
+    }
+
+    /// The publication source already binds its semantic value to these exact
+    /// canonical bytes. Keep generic Markdown scoring and nested passage
+    /// preparation independent of role-specific or cached Search projections.
+    init(source: SearchIndexDocument) throws {
+        try Task.checkCancellation()
+        try self.init(document: source.document, semantic: source.semantic)
+    }
+
+    private init(document: NoteDocument, semantic: MarkdownSemanticDocument) throws {
         let projection = SearchDocumentProjection(document: document, semantic: semantic)
         noteScoringDocument = .init(segments: projection.segments)
         var paragraphs: [Paragraph] = []

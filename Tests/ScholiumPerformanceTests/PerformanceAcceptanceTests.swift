@@ -200,6 +200,167 @@ struct PerformanceRegressionMicrobenchmarkTests {
         )
     }
 
+    #if DEBUG
+        @Test(
+            "Separate fresh-query rank work from immediate cache hits over 2,056 synthetic Notes",
+            .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_QUERY_CACHE"] == "1"))
+        func searchQueryCacheDiagnostics() async throws {
+            let root = repositoryRoot.appendingPathComponent(
+                ".build/search-query-cache-diagnostics/\(UUID().uuidString.lowercased())", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let vaults = [
+                RegisteredVault(name: "Analyses", role: .sourceCorpus, canonicalPath: "/fixture/analyses"),
+                RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixture/topics"),
+                RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixture/works"),
+            ]
+            let documents = makeSearchFixture(vaults: vaults)
+            let sources = Dictionary(
+                uniqueKeysWithValues: documents.map {
+                    (VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath), $0)
+                })
+            let index = try TriptychSearchIndex(
+                databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(), vaults: vaults)
+            let coldStart = ContinuousClock.now
+            let publication = try await index.synchronize(documents)
+            let coldMS = seconds(coldStart.duration(to: .now)) * 1_000
+            #expect(publication.disposition == .rebuilt)
+            let scenarios = [
+                (label: "lexical_keyword", base: "deliberative keyword:cluster-3", absent: "keyword"),
+                (label: "mixed_script_author", base: "哲学 author:Researcher", absent: "author"),
+                (label: "property_only", base: "property:keywords=cluster-3", absent: "property"),
+            ]
+            let warmupCount = 3
+            let sampleCount = 20
+            var scenarioReports: [[String: Any]] = []
+            for scenario in scenarios {
+                let expected = try await index.testSearch(
+                    SearchRequest(
+                        query: scenario.base, presentationScope: .triptych, executionScope: .triptych, limit: 50))
+                var missSamples: [Double] = []
+                var hitSamples: [Double] = []
+                var records: [[String: Any]] = []
+                for iteration in 0..<(warmupCount + sampleCount) {
+                    // Distinct absent predicates preserve the base result set while
+                    // preventing a prior query from priming this AST's rank cache.
+                    let query = "\(scenario.base) -\(scenario.absent):diagnosticabsent\(iteration)"
+                    let parsed = SearchQueryParser.parse(query)
+                    #expect(parsed.isValid)
+                    let ast = try #require(parsed.ast)
+                    let exclusions = ast.expression.predicates.filter(\.excluded)
+                    #expect(exclusions.count == 1)
+                    let exclusion = NoteSearchMatchReason.excluded(try #require(exclusions.first).clause)
+                    let request = SearchRequest(
+                        query: query, presentationScope: .triptych, executionScope: .triptych, limit: 50)
+                    let before = await index.rankedSearchExecutionCountsForTesting
+                    let missStart = ContinuousClock.now
+                    let fresh = try await index.testSearch(request)
+                    let missMS = seconds(missStart.duration(to: .now)) * 1_000
+                    let afterMiss = await index.rankedSearchExecutionCountsForTesting
+                    #expect(afterMiss.candidateScans == before.candidateScans + 1)
+                    #expect(afterMiss.rankingPasses == before.rankingPasses + 1)
+                    let hitStart = ContinuousClock.now
+                    let repeated = try await index.testSearch(request)
+                    let hitMS = seconds(hitStart.duration(to: .now)) * 1_000
+                    let afterHit = await index.rankedSearchExecutionCountsForTesting
+                    #expect(afterHit.candidateScans == afterMiss.candidateScans)
+                    #expect(afterHit.rankingPasses == afterMiss.rankingPasses)
+                    #expect(repeated == fresh)
+                    // The distinct negative predicate intentionally adds exact
+                    // exclusion evidence. Remove only that one reason when checking
+                    // the base family's otherwise complete result presentation.
+                    let normalized = try fresh.noteResults.map { result in
+                        let matches = result.additionalMatchReasons.indices.filter {
+                            result.additionalMatchReasons[$0] == exclusion
+                        }
+                        #expect(matches.count == 1)
+                        let exclusionIndex = try #require(matches.first)
+                        var remainingReasons = result.additionalMatchReasons
+                        remainingReasons.remove(at: exclusionIndex)
+                        #expect(!remainingReasons.contains(exclusion))
+                        return NoteSearchResult(
+                            resultID: result.resultID, vaultID: result.vaultID, vaultName: result.vaultName,
+                            vaultRole: result.vaultRole, relativePath: result.relativePath,
+                            stableNoteID: result.stableNoteID, title: result.title, matchedField: result.matchedField,
+                            context: result.context, sourceLine: result.sourceLine, snippet: result.snippet,
+                            highlights: result.highlights, matchedFields: result.matchedFields,
+                            rankReason: result.rankReason, primaryMatchReason: result.primaryMatchReason,
+                            additionalMatchReasons: remainingReasons,
+                            paragraphRanges: result.paragraphRanges, sourceRange: result.sourceRange,
+                            freshnessToken: result.freshnessToken, fingerprint: result.fingerprint,
+                            evidentialLayer: result.evidentialLayer, classification: result.classification)
+                    }
+                    #expect(normalized == expected.noteResults)
+                    #expect(fresh.totalResultCount == expected.totalResultCount)
+                    #expect(fresh.results.count == 50 && fresh.hasMore)
+                    #expect(fresh.freshnessToken == .triptych(publication.generation))
+                    var resultRecords: [[String: Any]] = []
+                    for result in fresh.noteResults {
+                        let source = try #require(sources[result.noteReference])
+                        #expect(result.fingerprint == source.document.fingerprint)
+                        #expect(result.vaultRole == source.vaultRole)
+                        #expect(result.stableNoteID == source.stableNoteID)
+                        for locator in result.paragraphRanges + (result.sourceRange.map { [$0] } ?? []) {
+                            #expect(
+                                Range(
+                                    NSRange(location: locator.utf16LowerBound, length: locator.utf16UpperBound - locator.utf16LowerBound),
+                                    in: source.document.rawContent) != nil)
+                        }
+                        resultRecords.append([
+                            "role": result.vaultRole.rawValue, "path": result.relativePath,
+                            "source_sha256": result.fingerprint.sha256,
+                            "source_lower": result.sourceRange?.utf16LowerBound ?? -1,
+                            "source_upper": result.sourceRange?.utf16UpperBound ?? -1,
+                            "snippet_sha256": DocumentFingerprint(content: result.snippet).sha256,
+                            "matched_fields": result.matchedFields.map(\.rawValue),
+                            "rank_reason": result.rankReason.rawValue,
+                        ])
+                    }
+                    if iteration >= warmupCount {
+                        missSamples.append(missMS)
+                        hitSamples.append(hitMS)
+                        records.append([
+                            "sample": iteration - warmupCount, "miss_ms": missMS, "hit_ms": hitMS,
+                            "query_sha256": DocumentFingerprint(content: query).sha256,
+                            "ordered_result_sha256": DocumentFingerprint(
+                                data: try JSONSerialization.data(withJSONObject: resultRecords, options: [.sortedKeys])
+                            ).sha256,
+                            "total_results": try #require(fresh.totalResultCount),
+                        ])
+                    }
+                }
+                func summary(_ samples: [Double]) -> [String: Double] {
+                    let ordered = samples.sorted()
+                    let middle = ordered.count / 2
+                    return [
+                        "min": ordered[0], "max": ordered[ordered.count - 1], "p95": p95(samples),
+                        "median": (ordered[middle - 1] + ordered[middle]) / 2,
+                    ]
+                }
+                scenarioReports.append([
+                    "scenario": scenario.label, "sample_count": sampleCount,
+                    "miss_ms": summary(missSamples), "hit_ms": summary(hitSamples), "samples": records,
+                ])
+            }
+            let report: [String: Any] = [
+                "artifact_schema": "scholium-search-query-cache-diagnostic-v1",
+                "fixture": "synthetic-mixed-script-2056", "fixture_note_count": documents.count,
+                "build_configuration": "debug", "cold_rebuild_ms": coldMS,
+                "machine": hardwareModel(), "operating_system": ProcessInfo.processInfo.operatingSystemVersionString,
+                "xcode": xcodeVersion(), "contract_version": SearchContract.currentVersion,
+                "ranking_policy_version": SearchContract.rankingPolicyVersion,
+                "measurement": "Backend only: each distinct AST's first query versus its immediate identical repeat; excludes native Search publication.",
+                "sampling":
+                    "Three distinct warmup pairs then twenty retained distinct pairs per scenario; missing keyword, author or Property predicates distinguish ASTs without matching fixture content. Scenarios are not pooled.",
+                "oracle":
+                    "Counter-proven miss/hit work; complete SearchResponse equality within each pair; current generation, exact fingerprints, roles, stable IDs and valid UTF-16 locations. Ordered digests exclude random vault UUIDs.",
+                "scenarios": scenarioReports,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+            print("SEARCH_QUERY_CACHE_DIAGNOSTIC \(String(decoding: data, as: UTF8.self))")
+        }
+    #endif
+
     private var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

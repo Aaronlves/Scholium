@@ -138,6 +138,110 @@ struct SearchProjectionPreparationTests {
         #expect(try await index.testSearch(fixture.request("obsolete")).noteResults.isEmpty)
     }
 
+    @Test(
+        "Publication reuses current semantics without changing complete Research material",
+        arguments: [VaultRole.sourceCorpus, .topicKnowledge, .draftProject, .other])
+    func relatedSourceSemanticEquivalence(role: VaultRole) throws {
+        let vaultID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let nested =
+            "\u{FEFF}---\r\nsummary: needle freedom\r\n---\r\n\r\n# Émotion 😀\r\n\r\n- nested needle freedom.\r\n\r\n> [[目标|行动]]{{needle freedom}}.\r\n"
+        let fixtures = [
+            nested,
+            "---\nsummary: |\n  Exact Cafe\u{301} source.\nkeywords: [自由, evidence]\naliases: [Alias]\nauthors: [Author]\npublication_date: '2026'\nunknown: preserved\n---\n\n# Heading 😀\n\nOrdinary [[目标|行动]]{{annotation}} and $x$.\n\n> [!objection]\n> Callout argument.\n\n[^a]: Footnote wording.\n\n$$\nx + y\n$$\n",
+            "---\r\nsummary: [unfinished\r\n---\r\n\r\nAmbiguous boundary 😀.\r\n",
+            "",
+        ]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        for text in fixtures {
+            let document = NoteDocument(relativePath: "Cafe\u{301}.md", rawContent: text)
+            let rawBytes = Data(text.utf8)
+            let standalone = try RelatedContentSourceProjection(document: document)
+            for broken in [false, true] {
+                let source = SearchIndexDocument(
+                    vaultID: vaultID, vaultName: "Fixture", vaultRole: role,
+                    document: document, stableNoteID: "00000000-0000-0000-0000-000000000002",
+                    hasBrokenLink: broken)
+                let reused = try RelatedContentSourceProjection(source: source)
+                // Complete persisted material includes every scoring field, length,
+                // word index, display text and coordinate. Derived retained values
+                // are also checked rather than inferred from encoded equality.
+                #expect(try encoder.encode(reused) == encoder.encode(standalone))
+                #expect(reused.paragraphs.map(\.exactReadableText) == standalone.paragraphs.map(\.exactReadableText))
+                #expect(try encoder.encode(reused.paragraphs.map(\.textIndex)) == encoder.encode(standalone.paragraphs.map(\.textIndex)))
+                #expect(reused.estimatedByteCount == standalone.estimatedByteCount)
+                let bytes = try reused.encoded()
+                let decoded = try RelatedContentSourceProjection.decode(
+                    bytes, checksum: RelatedContentSourceProjection.checksum(bytes), sourceUTF16Count: text.utf16.count)
+                #expect(try encoder.encode(decoded) == encoder.encode(standalone))
+                #expect(Data(source.document.rawContent.utf8) == rawBytes)
+                #expect(source.semantic.fingerprint == document.fingerprint)
+                for paragraph in reused.paragraphs {
+                    let range = try #require(
+                        Range(
+                            NSRange(
+                                location: paragraph.range.utf16LowerBound,
+                                length: paragraph.range.utf16UpperBound - paragraph.range.utf16LowerBound),
+                            in: text))
+                    #expect(
+                        paragraph.displayText.utf8.elementsEqual(
+                            ResearchExcerptPresentation.readableText(String(text[range]), includingAnnotations: true).utf8))
+                }
+                if text.utf8.elementsEqual(nested.utf8) {
+                    // These paragraphs are nested; replacing Research's semantic
+                    // traversal with Search's top-level paragraph list loses both.
+                    #expect(SearchDocumentProjection(document: document).paragraphs.isEmpty)
+                    #expect(reused.paragraphs.map(\.displayText) == ["nested needle freedom.", "行动 (needle freedom)."])
+                    #expect(reused.paragraphs.map { $0.range.line } == [7, 9])
+                    try #require(reused.paragraphs.count == 2)
+                    for (paragraph, exact) in zip(
+                        reused.paragraphs, ["nested needle freedom.", "[[目标|行动]]{{needle freedom}}."])
+                    {
+                        let authoredRange = try #require(text.range(of: exact))
+                        let authored = NSRange(authoredRange, in: text)
+                        #expect(paragraph.range.utf16LowerBound == authored.location)
+                        #expect(paragraph.range.utf16UpperBound == authored.location + authored.length)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test("Stale supplied semantics cannot authorize obsolete Research wording")
+    func relatedSourceStaleSemantic() throws {
+        let vaultID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let document = NoteDocument(relativePath: "Current.md", rawContent: "[[目标|行动]]{{new Cafe\u{301} freedom}}.\r\n")
+        let stale = MarkdownSemanticDocument(
+            parsing: NoteDocument(relativePath: document.relativePath, rawContent: "[[目标|行动]]{{old needle}}.\r\n"))
+        let source = SearchIndexDocument(
+            vaultID: vaultID, vaultName: "Fixture", vaultRole: .sourceCorpus, document: document, semantic: stale)
+        let reused = try RelatedContentSourceProjection(source: source)
+        let standalone = try RelatedContentSourceProjection(document: document)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        #expect(source.semantic.fingerprint == document.fingerprint)
+        #expect(source.semantic.fingerprint != stale.fingerprint)
+        #expect(try encoder.encode(reused) == encoder.encode(standalone))
+        #expect(reused.paragraphs.map(\.displayText) == ["行动 (new Cafe\u{301} freedom)."])
+        #expect(reused.paragraphs.allSatisfy { !$0.displayText.contains("old needle") })
+    }
+
+    @Test("A cancelled publication cannot construct Research material from prepared semantics")
+    func relatedSourceSemanticCancellation() async throws {
+        let vaultID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let source = SearchIndexDocument(
+            vaultID: vaultID, vaultName: "Fixture", vaultRole: .sourceCorpus,
+            document: NoteDocument(relativePath: "Cancelled.md", rawContent: "Current wording."))
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try RelatedContentSourceProjection(source: source)
+        }
+        do {
+            _ = try await cancelled.value
+            Issue.record("Cancelled Research source preparation must throw")
+        } catch is CancellationError {}
+    }
+
     private struct Fixture {
         let root: URL
         let vaultID = UUID()
