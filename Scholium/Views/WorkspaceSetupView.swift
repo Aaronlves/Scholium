@@ -166,6 +166,8 @@ private struct BootstrapFlowView: View {
                 .disabled(!didConfigure && !selectionIsReady)
             }
         }
+        .frame(maxWidth: ScholiumMetrics.Onboarding.contentMaximumWidth, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, ScholiumMetrics.Onboarding.contentInset)
         .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
     }

@@ -207,14 +207,14 @@ struct AppearanceSettingsView: View {
             Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
                 .font(.body)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
         if let storeError = store.storeError {
             Label(storeError, systemImage: "exclamationmark.triangle.fill")
                 .font(.body)
                 .foregroundStyle(.red)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                 .accessibilityIdentifier("settings.css.store-error")
         }
@@ -222,7 +222,7 @@ struct AppearanceSettingsView: View {
             Label(importError, systemImage: "exclamationmark.triangle.fill")
                 .font(.body)
                 .foregroundStyle(.red)
-                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
     }
@@ -274,7 +274,7 @@ struct AppearanceSettingsView: View {
             .disabled(!hasUnsavedChanges || !store.canModifyAppearance || numericDrafts.hasInvalidInput)
             .accessibilityLabel("Save Appearance")
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
         .padding(.vertical, 14)
     }
 

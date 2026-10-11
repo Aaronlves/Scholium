@@ -268,7 +268,8 @@ struct TransactionRecoveryView: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
+        .padding(.horizontal, ScholiumMetrics.ResearchSheet.contentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
     }
 
     private func recoveryErrorSection(

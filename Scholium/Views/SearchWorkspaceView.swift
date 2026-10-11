@@ -398,7 +398,7 @@ struct ResearchSearchView<Library: View>: View {
                 selectionChanged: { queryCaretUTF16 = $0 }
             )
         }
-        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
+        .padding(.horizontal, isAdvanced ? ScholiumMetrics.Search.responsiveMargin : ScholiumSidebarLayout.edgeInset)
         .padding(.top, isAdvanced ? 20 : ScholiumSidebarLayout.edgeInset)
         .padding(.bottom, isAdvanced ? 4 : ScholiumSidebarLayout.itemSpacing)
     }
@@ -438,63 +438,106 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private var searchScopeBar: some View {
-        HStack(spacing: 12) {
-            Text(localizedScopeTitle(controller.search.criteria.scope))
-                .lineLimit(1)
-            searchSummary
-            if controller.search.indeterminateDocumentCount > 0 {
-                Text("Undetermined notes: \(controller.search.indeterminateDocumentCount)")
-                    .help("Some source conditions could not be evaluated. Exclusion does not treat them as absent.")
-            }
-            Spacer(minLength: 0)
+        Group {
             if isAdvanced {
-                savedSearchesMenu
-                termGroupsMenu
-                Button {
-                    paragraphNote = selectedParagraphResult
-                } label: {
-                    Image(systemName: "paragraphsign")
-                }
-                .buttonStyle(ScholiumContentActionButtonStyle())
-                .accessibilityLabel("Matching Paragraphs")
-                .help("Matching Paragraphs")
-                .disabled(selectedParagraphResult == nil)
-                Button {
-                    showsQueryExplanation = true
-                } label: {
-                    Image(systemName: "info.circle")
-                }
-                .buttonStyle(ScholiumContentActionButtonStyle())
-                .help("Explain Query")
-                .accessibilityLabel("Explain Query")
-                .disabled(explanationText == nil)
-                .popover(isPresented: $showsQueryExplanation) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Explain Query").font(ScholiumTypography.interface(.sectionTitle))
-                        ScrollView {
-                            Text(explanationText ?? "")
-                                .font(ScholiumTypography.interface(.body))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 220)
-                    }
-                    .padding(20)
-                    .frame(width: 360)
-                    .accessibilityIdentifier("scholium.searchExplanation")
-                    .onExitCommand {
-                        showsQueryExplanation = false
-                        searchFocused = true
-                    }
+                advancedSearchScopeBar
+            } else {
+                HStack(spacing: 12) {
+                    Text(localizedScopeTitle(controller.search.criteria.scope))
+                        .lineLimit(1)
+                    searchSummary
+                    searchIndeterminateSummary
+                    Spacer(minLength: 0)
                 }
             }
         }
         .font(ScholiumTypography.interface(.small))
         .scholiumForeground(.secondaryText)
         .controlSize(.small)
-        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.textInset)
+        .padding(.horizontal, isAdvanced ? ScholiumMetrics.Search.responsiveMargin : ScholiumSidebarLayout.textInset)
         .padding(.top, isAdvanced ? 8 : 0)
         .padding(.bottom, ScholiumSidebarLayout.rowInset)
+    }
+
+    private var advancedSearchScopeBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Text(localizedScopeTitle(controller.search.criteria.scope))
+                        .lineLimit(1)
+                    searchSummary
+                    searchIndeterminateSummary
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                advancedSearchScopeActions
+            }
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(localizedScopeTitle(controller.search.criteria.scope))
+                    searchSummary
+                    searchIndeterminateSummary
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer(minLength: 0)
+                    advancedSearchScopeActions
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var searchIndeterminateSummary: some View {
+        if controller.search.indeterminateDocumentCount > 0 {
+            Text("Undetermined notes: \(controller.search.indeterminateDocumentCount)")
+                .help("Some source conditions could not be evaluated. Exclusion does not treat them as absent.")
+        }
+    }
+
+    private var advancedSearchScopeActions: some View {
+        HStack(spacing: 12) {
+            savedSearchesMenu
+            termGroupsMenu
+            Button {
+                paragraphNote = selectedParagraphResult
+            } label: {
+                Image(systemName: "paragraphsign")
+            }
+            .buttonStyle(ScholiumContentActionButtonStyle())
+            .accessibilityLabel("Matching Paragraphs")
+            .help("Matching Paragraphs")
+            .disabled(selectedParagraphResult == nil)
+            Button {
+                showsQueryExplanation = true
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(ScholiumContentActionButtonStyle())
+            .help("Explain Query")
+            .accessibilityLabel("Explain Query")
+            .disabled(explanationText == nil)
+            .popover(isPresented: $showsQueryExplanation) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Explain Query").font(ScholiumTypography.interface(.sectionTitle))
+                    ScrollView {
+                        Text(explanationText ?? "")
+                            .font(ScholiumTypography.interface(.body))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 220)
+                }
+                .padding(20)
+                .frame(width: 360)
+                .accessibilityIdentifier("scholium.searchExplanation")
+                .onExitCommand {
+                    showsQueryExplanation = false
+                    searchFocused = true
+                }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var visibleCompletions: [SearchCompletion] {
@@ -664,7 +707,6 @@ struct ResearchSearchView<Library: View>: View {
                         .controlSize(.small)
                 }
             }
-            .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
             .padding(.vertical, ScholiumMetrics.Search.availabilityVerticalInset)
             .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
         }

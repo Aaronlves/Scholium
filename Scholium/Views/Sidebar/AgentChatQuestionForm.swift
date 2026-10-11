@@ -34,31 +34,33 @@ struct AgentChatQuestionForm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let toolContext {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Tool Input Request", bundle: .module).font(.headline)
-                    Text(verbatim: toolContext).font(.caption).foregroundStyle(.secondary)
-                    if let technicalDetail {
-                        DisclosureGroup {
-                            ScrollView { Text(verbatim: technicalDetail).font(.caption.monospaced()).textSelection(.enabled) }.frame(
-                                maxHeight: 100)
-                        } label: {
-                            Text("Details", bundle: .module).font(.caption).foregroundStyle(.secondary)
+            AgentChatContentScroll {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let toolContext {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Tool Input Request", bundle: .module).font(.headline)
+                            Text(verbatim: toolContext).font(.caption).foregroundStyle(.secondary)
+                            if let technicalDetail {
+                                DisclosureGroup {
+                                    ScrollView { Text(verbatim: technicalDetail).font(.caption.monospaced()).textSelection(.enabled) }.frame(
+                                        maxHeight: 100)
+                                } label: {
+                                    Text("Details", bundle: .module).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
-                }.padding(.horizontal, 4)
-            }
-            AgentChatContentScroll {
-                if let question = currentQuestion {
-                    AgentChatQuestionField(
-                        question: question, isReadOnly: isSubmitting,
-                        isLast: questionIndex == questions.count - 1,
-                        canAdvance: questionIndex < questions.count - 1 || canSubmit,
-                        answer: Binding(get: { answers[question.id] }, set: { answers[question.id] = $0 }),
-                        advance: advance
-                    )
-                    .id(question.id)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let question = currentQuestion {
+                        AgentChatQuestionField(
+                            question: question, isReadOnly: isSubmitting,
+                            isLast: questionIndex == questions.count - 1,
+                            canAdvance: questionIndex < questions.count - 1 || canSubmit,
+                            answer: Binding(get: { answers[question.id] }, set: { answers[question.id] = $0 }),
+                            advance: advance
+                        )
+                        .id(question.id)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             if isSubmitting { AgentChatSubmissionStatus(failure: failure) }

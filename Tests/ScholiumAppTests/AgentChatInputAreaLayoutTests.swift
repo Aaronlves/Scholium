@@ -1,5 +1,7 @@
 import AppKit
+import ScholiumContracts
 import SwiftUI
+import Synchronization
 import Testing
 
 @testable import ScholiumApp
@@ -90,5 +92,75 @@ struct AgentChatInputAreaLayoutTests {
         #expect(host.fittingSize.height <= 80 + 12 + ScholiumGrid.Dimension.preferredCustomTarget + 1)
         let frame = control.convert(control.bounds, to: host)
         #expect(host.bounds.contains(frame))
+    }
+
+    @Test("Long tool-request context shares the question-body budget at narrow and ordinary widths", arguments: [220.0, 320.0])
+    func toolRequestContextSharesBodyBudget(width: Double) async throws {
+        _ = NSApplication.shared
+        let bodyBudget: CGFloat = 80
+        let measurement = QuestionFormMeasurement()
+        let question = AgentChatQuestion(
+            id: "synthetic-tool-question", prompt: "Describe the requested source range.",
+            options: [], allowsOther: true, isSecret: false)
+        let host = NSHostingView(
+            rootView: MeasuredQuestionForm(measurement: measurement) {
+                AgentChatQuestionForm(
+                    questions: [question], answers: .constant([question.id: .text("Keep this answer")]),
+                    isSubmitting: false, failure: nil,
+                    toolContext: String(repeating: "Synthetic tool context 保留完整请求说明。\n", count: 30),
+                    technicalDetail: "Synthetic inspectable arguments", reply: {}, skip: {}
+                )
+                .environment(\.agentChatContentMaximumHeight, bodyBudget)
+            }
+            .frame(width: CGFloat(width)))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 180)
+        // This window supplies native layout without ordering, activation or
+        // foreground QA. The real form, including its decision row, is measured.
+        let window = NSWindow(
+            contentRect: host.frame,
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        for _ in 0..<5 {
+            window.layoutIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            await Task.yield()
+        }
+        let size = try #require(measurement.size.withLock { $0 })
+        #expect(size.width.isFinite && size.height.isFinite && size.width > 0)
+        #expect(abs(size.width - CGFloat(width)) < 0.5, "Measure the form at the requested viewport width")
+        #expect(size.height > bodyBudget, "The complete form includes its separate decision row")
+        #expect(!window.isVisible)
+        #expect(
+            size.height
+                <= bodyBudget + ScholiumGrid.Spacing.nestedContentInset + ScholiumMetrics.AgentChat.composerPrimaryControlTarget + 1,
+            "Tool context must scroll with the question rather than displace the separate decision row")
+    }
+}
+
+/// Measure the real form with the width-only proposal used by its input-area
+/// owner. NSHostingView's minimum fittingSize may compress multiline context.
+private final class QuestionFormMeasurement: Sendable {
+    let size = Mutex<CGSize?>(nil)
+}
+
+private struct MeasuredQuestionForm: Layout {
+    let measurement: QuestionFormMeasurement
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(.init(width: proposal.width, height: nil)) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let form = subviews.first else { return }
+        let formProposal = ProposedViewSize(width: bounds.width, height: nil)
+        let size = form.sizeThatFits(formProposal)
+        measurement.size.withLock { $0 = size }
+        form.place(at: bounds.origin, anchor: .topLeading, proposal: formProposal)
     }
 }
