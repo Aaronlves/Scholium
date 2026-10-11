@@ -91,6 +91,7 @@ extension WorkspaceHandle {
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation(admission: admission)
+        let baseSourceInventoryRevision = currentSnapshot.sourceInventoryRevision
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
@@ -170,10 +171,13 @@ extension WorkspaceHandle {
         }
 
         sourceAheadIdentityRecords[source] = nil
+        sourceAheadSourceVersions[source] = nil
+        var committedSourceSummaries: [WorkspaceNoteSummary] = []
         if identityFailure == nil, let movedIdentityRecord {
-            sourceAheadIdentityRecords[destination] = movedIdentityRecord
+            do { committedSourceSummaries.append(try await recordCommittedSource(movedIdentityRecord)) } catch { identityFailure = error }
         } else {
             sourceAheadIdentityRecords[destination] = nil
+            sourceAheadSourceVersions[destination] = nil
         }
         // An incoming-link edit is also an exact source commit. Publish its
         // unchanged identity with that receipt now, so the next operation does
@@ -193,7 +197,7 @@ extension WorkspaceHandle {
                         fingerprint: rewrite.committedRevision, createIfMissing: false, preferredID: before.id,
                         expectedFingerprint: rewrite.previousRevision)
                 else { throw NoteIdentityRecoveryError.identityUnresolved(rewrite.note.relativePath) }
-                sourceAheadIdentityRecords[rewrite.note] = record
+                committedSourceSummaries.append(try await recordCommittedSource(record))
             }
         } catch {
             identityFailure = identityFailure ?? error
@@ -232,6 +236,8 @@ extension WorkspaceHandle {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
+            committedSourceSummaries: committedSourceSummaries,
+            baseSourceInventoryRevision: baseSourceInventoryRevision,
             identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
@@ -243,6 +249,7 @@ extension WorkspaceHandle {
     ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
+        let baseSourceInventoryRevision = currentSnapshot.sourceInventoryRevision
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
@@ -281,6 +288,16 @@ extension WorkspaceHandle {
             repositories: repositories,
             recoveryStore: services.transactionRecoveryStore
         )
+        var incomingIdentities: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
+        let movedSources = Set(noteMoves.map(\.source))
+        for rewrite in plan.rewrites where !movedSources.contains(rewrite.source) {
+            if let record = try await services.controlStore.identityRecord(
+                vaultID: rewrite.source.vaultID, relativePath: rewrite.source.relativePath),
+                record.fingerprint == rewrite.expectedRevision
+            {
+                incomingIdentities[rewrite.source] = record
+            }
+        }
         let commit = try await coordinator.move(plan)
 
         var identityFailure: Error?
@@ -306,15 +323,27 @@ extension WorkspaceHandle {
         for move in commit.noteMoves {
             sourceAheadIdentityRecords[move.source] = nil
             sourceAheadIdentityRecords[move.destination] = nil
+            sourceAheadSourceVersions[move.source] = nil
+            sourceAheadSourceVersions[move.destination] = nil
         }
+        var committedSourceSummaries: [WorkspaceNoteSummary] = []
         if identityFailure == nil {
-            for record in movedIdentityRecords {
-                sourceAheadIdentityRecords[
-                    VaultQualifiedNoteID(
-                        vaultID: record.vaultID,
-                        relativePath: record.relativePath
-                    )] = record
-            }
+            do {
+                for record in movedIdentityRecords {
+                    committedSourceSummaries.append(try await recordCommittedSource(record))
+                }
+                let movedDestinations = Set(commit.noteMoves.map(\.destination))
+                for rewrite in commit.rewrites where !movedDestinations.contains(rewrite.note) {
+                    guard let before = incomingIdentities[rewrite.note],
+                        before.fingerprint == rewrite.previousRevision,
+                        let record = try await services.controlStore.identity(
+                            forVaultID: rewrite.note.vaultID, relativePath: rewrite.note.relativePath,
+                            fingerprint: rewrite.committedRevision, createIfMissing: false,
+                            preferredID: before.id, expectedFingerprint: rewrite.previousRevision)
+                    else { throw NoteIdentityRecoveryError.identityUnresolved(rewrite.note.relativePath) }
+                    committedSourceSummaries.append(try await recordCommittedSource(record))
+                }
+            } catch { identityFailure = error }
         }
 
         let affectedVaultIDs = Set(plan.rewrites.map { $0.source.vaultID })
@@ -341,6 +370,8 @@ extension WorkspaceHandle {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
+            committedSourceSummaries: committedSourceSummaries,
+            baseSourceInventoryRevision: baseSourceInventoryRevision,
             identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
@@ -589,18 +620,23 @@ extension WorkspaceHandle {
         else {
             throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
         }
-        if let note = currentSnapshot.document(id: id),
-            note.fingerprint == expectedRevision,
-            note.stableIdentity.resolvedID == record.id
-        {
-            return record
-        }
-        guard let sourceAhead = sourceAheadIdentityRecords[id],
+        if let sourceAhead = sourceAheadIdentityRecords[id],
             sourceAhead.id == record.id,
             sourceAhead.fingerprint == record.fingerprint
-        else {
-            throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
+        {
+            guard let version = sourceAheadSourceVersions[id],
+                try await repository.sourceVersionIsCurrent(relativePath: id.relativePath, version: version)
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            return record
         }
+        guard let note = currentSnapshot.document(id: id),
+            note.fingerprint == expectedRevision,
+            note.stableIdentity.resolvedID == record.id,
+            let catalog = services.sourceCatalogs[id.vaultID],
+            let version = await catalog.sourceVersion(
+                relativePath: id.relativePath, fingerprint: expectedRevision),
+            try await repository.sourceVersionIsCurrent(relativePath: id.relativePath, version: version)
+        else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
         return record
     }
 

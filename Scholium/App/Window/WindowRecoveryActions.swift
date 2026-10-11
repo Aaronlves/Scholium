@@ -6,19 +6,6 @@ import ScholiumContracts
 extension WindowModel {
     func refreshTransactionRecoveryRecords() async {
         await researchController.refreshTransactionRecoveryRecords()
-        do {
-            interruptedSaveRecoveries =
-                try await researchController
-                .loadInterruptedSaveRecoveries()
-            interruptedSaveRecoveryError = nil
-        } catch {
-            interruptedSaveRecoveries = []
-            interruptedSaveRecoveryError = String(
-                localized: "Scholium could not verify the interrupted save candidates. Their exact bytes remain unchanged. \(error.localizedDescription)",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
     }
 
     func markTransactionRecoveryResolved(_ id: UUID) async throws {

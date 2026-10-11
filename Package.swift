@@ -19,6 +19,12 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "ScholiumNativeFileOperations",
+            path: "ScholiumNativeFileOperations",
+            cSettings: [.unsafeFlags(["-fobjc-arc"])],
+            linkerSettings: [.linkedFramework("AppKit")]
+        ),
+        .target(
             name: "ScholiumContracts",
             dependencies: [
                 .product(name: "Yams", package: "Yams"),
@@ -30,6 +36,7 @@ let package = Package(
             name: "ScholiumCore",
             dependencies: [
                 "ScholiumContracts",
+                "ScholiumNativeFileOperations",
                 .product(name: "Yams", package: "Yams"),
                 .product(name: "Markdown", package: "swift-markdown"),
             ],

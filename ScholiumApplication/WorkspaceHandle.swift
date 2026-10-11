@@ -91,12 +91,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     /// Workspace generation has not arrived yet. This is a bounded authority
     /// bridge for a second revision-checked operation, not a derived cache.
     var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
+    var sourceAheadSourceVersions: [VaultQualifiedNoteID: SourceVersion] = [:]
     var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     var sourceOperationGate = WorkspaceSourceOperationGate()
     var managedCreationPreLeaseBarrierForTesting: (@Sendable () async -> Void)?
     var managedCreationPostSourceBarrierForTesting: (@Sendable () async -> Void)?
     var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
     var hydrationPostReadBarrierForTesting: (@Sendable () async -> Void)?
+    var committedMutationRefreshBarrierForTesting: (@Sendable () async -> Void)?
+
+    func setCommittedMutationRefreshBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+        committedMutationRefreshBarrierForTesting = barrier
+    }
     #if DEBUG
         var liveInventoryPreflightBarrierForTesting: (@Sendable () async -> Void)?
 
@@ -567,12 +573,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
         try requireActive()
-        guard let initial = currentSnapshot.document(id: expected.id),
-            Self.sameSourceBinding(initial, expected),
-            let catalog = services.sourceCatalogs[expected.id.vaultID],
-            let version = await catalog.sourceVersion(
-                relativePath: expected.id.relativePath,
-                fingerprint: expected.fingerprint)
+        guard let version = await hydrationSourceVersion(for: expected)
         else { throw WorkspaceHydrationError.staleSnapshot }
         let repository = try repository(vaultID: expected.id.vaultID)
         let loaded = try await repository.loadCatalogSource(
@@ -587,19 +588,56 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             try await repository.sourceVersionIsCurrent(
                 relativePath: expected.id.relativePath, version: version)
         else { throw WorkspaceHydrationError.staleSnapshot }
-        let finalCatalogVersion = await catalog.sourceVersion(
-            relativePath: expected.id.relativePath,
-            fingerprint: expected.fingerprint)
         let document = try await documentWithCitationSnapshot(
             loaded.document, id: expected.id, expectedNoteID: expected.stableIdentity.resolvedID)
         try requireActive()
-        guard finalCatalogVersion == version,
-            let current = currentSnapshot.document(id: expected.id),
-            Self.sameSourceBinding(current, expected),
+        guard await hydrationSourceVersion(for: expected) == version,
             try await repository.sourceVersionIsCurrent(
                 relativePath: expected.id.relativePath, version: version)
         else { throw WorkspaceHydrationError.staleSnapshot }
-        return WorkspaceNoteSnapshot(summary: current, document: document)
+        let current = currentSnapshot.document(id: expected.id)
+        let summary =
+            current.flatMap {
+                Self.sameSourceBinding($0, expected) ? $0 : nil
+            } ?? expected
+        return WorkspaceNoteSnapshot(summary: summary, document: document)
+    }
+
+    private func hydrationSourceVersion(for expected: WorkspaceNoteSummary) async -> SourceVersion? {
+        if let record = sourceAheadIdentityRecords[expected.id],
+            record.id == expected.stableIdentity.resolvedID,
+            record.fingerprint == expected.fingerprint,
+            let version = sourceAheadSourceVersions[expected.id],
+            version.fingerprint == expected.fingerprint
+        {
+            return version
+        }
+        guard let current = currentSnapshot.document(id: expected.id),
+            Self.sameSourceBinding(current, expected),
+            let catalog = services.sourceCatalogs[expected.id.vaultID]
+        else { return nil }
+        return await catalog.sourceVersion(
+            relativePath: expected.id.relativePath, fingerprint: expected.fingerprint)
+    }
+
+    /// Source identity, descriptor version and compact summary share one
+    /// acceptance point, independent of the disposable Graph/Search refresh.
+    func recordCommittedSource(_ record: NoteIdentityRecord) async throws -> WorkspaceNoteSummary {
+        let id = VaultQualifiedNoteID(vaultID: record.vaultID, relativePath: record.relativePath)
+        let loaded = try await repository(vaultID: record.vaultID).loadCatalogSource(
+            relativePath: record.relativePath)
+        guard loaded.document.fingerprint == record.fingerprint,
+            try await services.controlStore.identityRecord(
+                vaultID: record.vaultID, relativePath: record.relativePath) == record,
+            let vault = assignment.vaults.values.first(where: { $0.id == record.vaultID })
+        else { throw NoteIdentityRecoveryError.identityUnresolved(record.relativePath) }
+        sourceAheadIdentityRecords[id] = record
+        sourceAheadSourceVersions[id] = loaded.version
+        return WorkspaceNoteSummary(
+            id: id, vaultRole: vault.role, stableIdentity: .resolved(record.id),
+            document: loaded.document, fileMetadata: loaded.fileMetadata,
+            graphCounts: .init(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0),
+            derivedProjectionState: .sourceAhead)
     }
 
     private nonisolated static func sameSourceBinding(

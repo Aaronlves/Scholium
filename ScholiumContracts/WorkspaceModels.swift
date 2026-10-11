@@ -823,15 +823,23 @@ public enum WorkspaceEvent: Sendable {
 /// A thrown error therefore never substitutes for a known committed value.
 public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
     public let committedValue: CommittedValue
+    /// Compact exact-source projections accepted while the mutation lease is
+    /// held. These bridge source commits to the next complete derived inventory.
+    public let committedSourceSummaries: [WorkspaceNoteSummary]
+    public let baseSourceInventoryRevision: UInt64?
     public let derivedRefreshWarning: String?
     public let identityRecoveryWarning: String?
 
     public init(
         committedValue: CommittedValue,
+        committedSourceSummaries: [WorkspaceNoteSummary] = [],
+        baseSourceInventoryRevision: UInt64? = nil,
         derivedRefreshWarning: String? = nil,
         identityRecoveryWarning: String? = nil
     ) {
         self.committedValue = committedValue
+        self.committedSourceSummaries = committedSourceSummaries
+        self.baseSourceInventoryRevision = baseSourceInventoryRevision
         self.derivedRefreshWarning = derivedRefreshWarning
         self.identityRecoveryWarning = identityRecoveryWarning
     }

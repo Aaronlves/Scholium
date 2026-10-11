@@ -166,6 +166,7 @@ struct ResearchInspectorView: View {
                 openReference(reference, line, fingerprint)
             },
             externalLinks: externalProjectionKey == resourceProjectionKey ? externalLinks : [],
+            externalProjectionIsReady: externalProjectionKey == resourceProjectionKey,
             openExternalURL: openExternalURL
         )
     }

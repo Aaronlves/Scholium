@@ -615,6 +615,14 @@ struct AgentChatVisualEvidenceTests {
         }
     }
 
+    private func methodSettingsTool(_ capabilities: AgentChatCapabilitiesController) async throws -> AgentChatConnectedTool {
+        try await wait { !capabilities.isRefreshing && !capabilities.isChanging }
+        try #require(capabilities.hasTools)
+        try #require(capabilities.methodError == nil && capabilities.toolError == nil)
+        try #require(capabilities.toolConfigurationError == nil)
+        return try #require(capabilities.tools.first { $0.name == "fixture-library" })
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
     func renderMethodSettings() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -629,60 +637,111 @@ struct AgentChatVisualEvidenceTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
         }
-        try await wait { controller.isLoaded }
-        try FileManager.default.createDirectory(at: controller.runtimeHome, withIntermediateDirectories: true)
-        try Data().write(to: controller.runtimeHome.appendingPathComponent("oauth-fixture"))
-        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
-        try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
-        controller.capabilities.refresh(threadID: nil, reloadWorkspace: true)
-        try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
-        let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
-        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        for kind in AgentChatToolConnection.Kind.allCases {
-            var edit = try #require(controller.capabilities.editTool())
-            edit.connection = .init(
-                name: "research-catalog-\(kind.rawValue)", kind: kind,
-                address: kind == .remote ? "https://example.invalid/mcp" : "/usr/bin/python3",
-                arguments: kind == .local ? ["-m", "research_catalog"] : [],
-                bearerTokenVariable: kind == .remote ? "RESEARCH_API_TOKEN" : "",
-                environmentVariables: kind == .local ? ["RESEARCH_API_TOKEN"] : [])
-            #expect(await controller.capabilities.saveTool(edit))
-            try await wait { controller.capabilities.canConfigureTools }
-            edit = try #require(controller.capabilities.editTool(named: edit.connection.name))
-            for scheme in [ColorScheme.light, .dark] {
-                let content = AgentChatToolEditor(capabilities: controller.capabilities, edit: edit, onClose: {})
-                    .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, scheme)
-                let host = NSHostingView(rootView: content)
-                host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
-                host.frame = NSRect(origin: .zero, size: host.fittingSize)
-                host.layoutSubtreeIfNeeded()
-                let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-                host.cacheDisplay(in: host.bounds, to: bitmap)
-                try #require(bitmap.representation(using: .png, properties: [:]))
-                    .write(to: output.appendingPathComponent("tool-editor-\(kind.rawValue)" + (scheme == .light ? "-light.png" : "-dark.png")))
+        var readiness: Task<AgentChatConnectedTool, Error>?
+        do {
+            try await wait { controller.isLoaded }
+            try FileManager.default.createDirectory(at: controller.runtimeHome, withIntermediateDirectories: true)
+            try Data().write(to: controller.runtimeHome.appendingPathComponent("oauth-fixture"))
+            let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+            controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
+            try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
+            controller.capabilities.refresh(threadID: nil, reloadWorkspace: true)
+            try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
+            let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            for kind in AgentChatToolConnection.Kind.allCases {
+                var edit = try #require(controller.capabilities.editTool())
+                edit.connection = .init(
+                    name: "research-catalog-\(kind.rawValue)", kind: kind,
+                    address: kind == .remote ? "https://example.invalid/mcp" : "/usr/bin/python3",
+                    arguments: kind == .local ? ["-m", "research_catalog"] : [],
+                    bearerTokenVariable: kind == .remote ? "RESEARCH_API_TOKEN" : "",
+                    environmentVariables: kind == .local ? ["RESEARCH_API_TOKEN"] : [])
+                #expect(await controller.capabilities.saveTool(edit))
+                try await wait { controller.capabilities.canConfigureTools }
+                edit = try #require(controller.capabilities.editTool(named: edit.connection.name))
+                for scheme in [ColorScheme.light, .dark] {
+                    let content = AgentChatToolEditor(capabilities: controller.capabilities, edit: edit, onClose: {})
+                        .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, scheme)
+                    let host = NSHostingView(rootView: content)
+                    host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+                    host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                    host.layoutSubtreeIfNeeded()
+                    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    try #require(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: output.appendingPathComponent("tool-editor-\(kind.rawValue)" + (scheme == .light ? "-light.png" : "-dark.png")))
+                }
             }
-        }
-        for pending in [false, true] {
-            if pending {
-                let server = try #require(controller.capabilities.tools.first { $0.name == "fixture-library" })
-                controller.capabilities.signIn(server, threadID: nil) { _ in }
-                try await wait { controller.capabilities.authorizationURL != nil }
-            }
-            for scheme in [ColorScheme.light, .dark] {
-                let content = AgentChatCapabilitiesSettingsView(controller: controller, capabilities: controller.capabilities)
+            let capabilities = controller.capabilities
+            let originalTool = try #require(capabilities.tools.first { $0.name == "fixture-library" })
+            let runtime = try #require(controller.runtime)
+            try Data().write(to: controller.runtimeHome.appendingPathComponent("gate-capability-tools-list"))
+            func settingsContent(_ scheme: ColorScheme) -> some View {
+                AgentChatCapabilitiesSettingsView(controller: controller, capabilities: capabilities)
                     .padding(20).frame(width: 480)
                     .background(Color(nsColor: .windowBackgroundColor))
                     .environment(\.colorScheme, scheme)
-                let host = NSHostingView(rootView: content)
-                host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
-                host.frame = NSRect(origin: .zero, size: host.fittingSize)
-                host.layoutSubtreeIfNeeded()
-                let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-                host.cacheDisplay(in: host.bounds, to: bitmap)
-                try #require(bitmap.representation(using: .png, properties: [:]))
-                    .write(to: output.appendingPathComponent((pending ? "tool-auth-pending" : "methods") + (scheme == .light ? "-light.png" : "-dark.png")))
             }
+            // Retain the mounted Settings identity across appearance and auth state changes.
+            let host = NSHostingView(rootView: settingsContent(.light))
+            host.appearance = NSAppearance(named: .aqua)
+            host.frame = NSRect(origin: .zero, size: host.fittingSize)
+            host.layoutSubtreeIfNeeded()
+            let entered = controller.runtimeHome.appendingPathComponent("entered-capability-tools-list")
+            try await wait { FileManager.default.fileExists(atPath: entered.path) }
+            let heldRequest = try String(contentsOf: entered, encoding: .utf8)
+            try #require(capabilities.isRefreshing && !capabilities.hasTools)
+            try #require(capabilities.tools.first { $0.name == "fixture-library" } == nil)
+            #expect(!capabilities.canSignIn(originalTool))
+            #expect(capabilities.toolError == nil)
+            print("Method Settings mount: gated request \(heldRequest), refreshing=true, hasTools=false, fixture-library=nil")
+            var readinessStarted = false
+            readiness = Task { @MainActor in
+                readinessStarted = true
+                return try await methodSettingsTool(capabilities)
+            }
+            try await wait { readinessStarted }
+            let released = try await runtime.request("fixture/releaseCapabilityToolsList")
+            let releasedIDs = try #require(released.objectValue?["releasedRequestIds"]?.arrayValue)
+            try #require(releasedIDs.count == 1 && releasedIDs.first?.intValue.map(String.init) == heldRequest)
+            _ = try await readiness?.value
+            readiness = nil
+            for pending in [false, true] {
+                if pending {
+                    let server = try await methodSettingsTool(capabilities)
+                    try #require(capabilities.canSignIn(server))
+                    capabilities.signIn(server, threadID: nil) { _ in }
+                    try await wait { capabilities.authorizationURL != nil }
+                }
+                for scheme in [ColorScheme.light, .dark] {
+                    host.rootView = settingsContent(scheme)
+                    host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+                    host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                    host.layoutSubtreeIfNeeded()
+                    _ = try await methodSettingsTool(capabilities)
+                    #expect(capabilities.tools.contains { $0.name == "research-catalog-local" })
+                    #expect(capabilities.tools.contains { $0.name == "research-catalog-remote" })
+                    #expect(capabilities.toolConnections.contains { $0.name == "research-catalog-local" })
+                    #expect(capabilities.toolConnections.contains { $0.name == "research-catalog-remote" })
+                    if pending {
+                        try #require(capabilities.authenticatingTool == "fixture-library")
+                        try #require(capabilities.authorizationURL != nil && capabilities.authenticationError == nil)
+                    }
+                    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    try #require(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: output.appendingPathComponent((pending ? "tool-auth-pending" : "methods") + (scheme == .light ? "-light.png" : "-dark.png")))
+                }
+            }
+        } catch {
+            readiness?.cancel()
+            _ = try? await readiness?.value
+            if let runtime = controller.runtime {
+                _ = try? await runtime.request("fixture/releaseCapabilityToolsList")
+            }
+            await controller.disconnect()
+            throw error
         }
         await controller.disconnect()
     }

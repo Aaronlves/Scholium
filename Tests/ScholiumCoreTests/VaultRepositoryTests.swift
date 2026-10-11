@@ -741,8 +741,7 @@ struct VaultRepositoryTests {
 
         let resultingURL = try await repository.moveToSystemTrash(
             relativePath: "topics/note.md",
-            expectedRevision: original.fingerprint,
-            bindingID: UUID()
+            expectedRevision: original.fingerprint
         )
         defer {
             if let resultingURL {
@@ -779,15 +778,14 @@ struct VaultRepositoryTests {
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await repository.moveToSystemTrash(
                 relativePath: "topics/note.md",
-                expectedRevision: original.fingerprint,
-                bindingID: UUID()
+                expectedRevision: original.fingerprint
             )
         }
         #expect(try Data(contentsOf: f.note) == replacement)
     }
 
     @Test("Native Trash preserves a Note replacement that arrives after the last identity check")
-    func systemTrashBindingRejectsLateNoteReplacement() async throws {
+    func systemTrashReferenceRejectsLateNoteReplacement() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let displacedOriginal = f.note.deletingLastPathComponent()
@@ -802,7 +800,7 @@ struct VaultRepositoryTests {
             ),
             applicationSupportURL: f.support,
             mutationHooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .systemTrashBinding else { return }
+                guard phase == .systemTrashReferenced else { return }
                 try FileManager.default.moveItem(at: f.note, to: displacedOriginal)
                 try replacement.write(to: f.note)
             })
@@ -812,8 +810,7 @@ struct VaultRepositoryTests {
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await repository.moveToSystemTrash(
                 relativePath: "topics/note.md",
-                expectedRevision: original.fingerprint,
-                bindingID: UUID()
+                expectedRevision: original.fingerprint
             )
         }
 
@@ -822,7 +819,7 @@ struct VaultRepositoryTests {
     }
 
     @Test("Native Trash preserves a Folder replacement that arrives after the last identity check")
-    func systemTrashBindingRejectsLateFolderReplacement() async throws {
+    func systemTrashReferenceRejectsLateFolderReplacement() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let originalFolder = f.note.deletingLastPathComponent()
@@ -839,7 +836,7 @@ struct VaultRepositoryTests {
             ),
             applicationSupportURL: f.support,
             mutationHooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .systemTrashBinding else { return }
+                guard phase == .systemTrashReferenced else { return }
                 try FileManager.default.moveItem(at: originalFolder, to: displacedOriginal)
                 try FileManager.default.createDirectory(
                     at: originalFolder,
@@ -858,8 +855,7 @@ struct VaultRepositoryTests {
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await repository.moveFolderToSystemTrash(
                 relativePath: "topics",
-                expectedDirectoryManifest: manifest,
-                bindingID: UUID()
+                expectedDirectoryManifest: manifest
             )
         }
 
@@ -872,61 +868,70 @@ struct VaultRepositoryTests {
                 == Data(original.rawContent.utf8))
     }
 
-    @Test("A bound Note resumes native Trash after process interruption")
-    func systemTrashBindingResumesNoteMove() async throws {
-        enum Interruption: Error { case afterBinding }
+    @Test("Interruption before Finder dispatch preserves the original source for a fresh validated attempt")
+    func systemTrashReferenceInterruptionPreservesSource() async throws {
+        enum Interruption: Error { case beforeNativeDispatch }
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let bindingID = UUID()
         let interrupted = try VaultRepository(
             vaultURL: f.root,
-            identity: VaultIdentity(
-                id: UUID(),
-                canonicalPath: f.root.path,
-                bookmarkData: nil
-            ),
+            identity: VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil),
             applicationSupportURL: f.support,
             mutationHooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .systemTrashBound else { return }
-                throw Interruption.afterBinding
-            })
-        )
+                guard phase == .systemTrashReferenced else { return }
+                throw Interruption.beforeNativeDispatch
+            }))
         let original = try await interrupted.load(relativePath: "topics/note.md")
-
         await #expect(throws: Interruption.self) {
             _ = try await interrupted.moveToSystemTrash(
-                relativePath: "topics/note.md",
-                expectedRevision: original.fingerprint,
-                bindingID: bindingID
-            )
+                relativePath: "topics/note.md", expectedRevision: original.fingerprint)
         }
-        #expect(!FileManager.default.fileExists(atPath: f.note.path))
-        let boundURL = f.root.appendingPathComponent(
-            SystemTrashBindingPath.itemRelativePath(
-                original: "topics/note.md",
-                id: bindingID
-            )
-        )
-        #expect(try Data(contentsOf: boundURL) == Data(original.rawContent.utf8))
-
+        #expect(try Data(contentsOf: f.note) == original.sourceBytes)
         let resumed = try VaultRepository(
-            vaultURL: f.root,
-            identity: await interrupted.identity,
-            applicationSupportURL: f.support
-        )
+            vaultURL: f.root, identity: await interrupted.identity,
+            applicationSupportURL: f.support)
         let resultingURL = try await resumed.moveToSystemTrash(
-            relativePath: "topics/note.md",
-            expectedRevision: original.fingerprint,
-            bindingID: bindingID
-        )
-        defer {
-            if let resultingURL { try? FileManager.default.removeItem(at: resultingURL) }
-        }
+            relativePath: "topics/note.md", expectedRevision: original.fingerprint)
+        defer { if let resultingURL { try? FileManager.default.removeItem(at: resultingURL) } }
+        #expect(!FileManager.default.fileExists(atPath: f.note.path))
+        #expect(try Data(contentsOf: #require(resultingURL)) == original.sourceBytes)
+    }
 
-        #expect(!FileManager.default.fileExists(atPath: boundURL.path))
-        if let resultingURL {
-            #expect(try Data(contentsOf: resultingURL) == Data(original.rawContent.utf8))
+    @Test("Native Trash readback rejects an identical-byte replacement of its returned Note or Folder", arguments: [false, true])
+    func systemTrashReadbackRejectsIdenticalByteReplacement(folder: Bool) async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let originalBytes = try Data(contentsOf: f.note)
+        let preserved = f.root.appendingPathComponent("Preserved-native-original", isDirectory: folder)
+        var knownTrashURL: URL?
+        defer { if let knownTrashURL { try? FileManager.default.removeItem(at: knownTrashURL) } }
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil),
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(didReach: { phase in
+                guard case .systemTrashMoved(let destination) = phase else { return }
+                knownTrashURL = destination
+                try FileManager.default.moveItem(at: destination, to: preserved)
+                if folder { try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false) }
+                try originalBytes.write(to: folder ? destination.appendingPathComponent("note.md") : destination)
+            }))
+        let outcome: SystemTrashOperationOutcome
+        if folder {
+            let manifest = try await repository.systemTrashDirectoryManifest(relativePath: "topics")
+            outcome = await repository.systemTrashFolderOutcome(relativePath: "topics", expectedDirectoryManifest: manifest)
+        } else {
+            outcome = await repository.systemTrashNoteOutcome(
+                relativePath: "topics/note.md", expectedRevision: DocumentFingerprint(data: originalBytes))
         }
+        guard case .outcomeUnknown(let returnedURL, _) = outcome else {
+            Issue.record("A replaced native destination cannot mint a completed receipt.")
+            return
+        }
+        let destination = try #require(knownTrashURL)
+        #expect(returnedURL == destination)
+        #expect(try Data(contentsOf: folder ? preserved.appendingPathComponent("note.md") : preserved) == originalBytes)
+        #expect(try Data(contentsOf: folder ? destination.appendingPathComponent("note.md") : destination) == originalBytes)
     }
 
     @Test("File-operation paths reject traversal, non-Markdown targets, and symlink parents")

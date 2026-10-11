@@ -858,7 +858,15 @@ extension AgentChatController {
             executions[conversationID]?.state == .working
         else {
             if !supported.contains(method) {
-                connectionError = String(localized: "Codex requested an interaction this client does not support.")
+                let explanation = ScholiumL10n.string("Codex requested an interaction this client does not support.")
+                if let conversationID, let execution = executions[conversationID],
+                    execution.state == .working,
+                    params["turnId"] == nil || params["turnId"]?.stringValue == execution.turnID
+                {
+                    executions[conversationID]?.error = explanation
+                } else {
+                    connectionError = explanation
+                }
             }
             Task { try? await runtime.reject(id: id) }
             return

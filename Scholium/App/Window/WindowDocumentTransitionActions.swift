@@ -142,12 +142,16 @@ extension WindowModel {
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
-        didFinish: (@MainActor () -> Void)? = nil
+        didFinish: (@MainActor () -> Void)? = nil,
+        completion: (@MainActor (Result<Void, Error>) -> Void)? = nil
     ) {
         guard !transferInProgress, !windowCloseCoordinator.isPreparingOrFinalized else {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
+            didFinish?()
+            completion?(.failure(DocumentControllerError.documentUnavailable))
             return
         }
+        var outcome: Result<Void, Error> = .failure(CancellationError())
         var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
@@ -240,6 +244,7 @@ extension WindowModel {
                 guard isCurrent() else { throw CancellationError() }
             },
             didFail: { [weak self] error in
+                outcome = .failure(error)
                 guard let self else { return }
                 self.revealRetainedDocumentAfterTransitionFailure()
                 if let customFailure {
@@ -269,6 +274,7 @@ extension WindowModel {
                 }
             },
             didSucceed: { [weak self] in
+                outcome = .success(())
                 if let self, let issueID = self.documentTransitionIssueID {
                     self.shellState.dismissOperationIssue(id: issueID)
                     self.documentTransitionIssueID = nil
@@ -283,6 +289,7 @@ extension WindowModel {
                     )
                 }
                 didFinish?()
+                completion?(outcome)
             }
         )
     }

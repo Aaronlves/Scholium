@@ -18,27 +18,292 @@ struct ExternalMarkdownWindowLifecycleTests {
             let model = fixture.model
             let editor = fixture.editor
             let webView = try #require(editor.webView)
-            #expect(fixture.bridge.focusCount == 0)
-            await model.focusEditorIfPresented()
-            #expect(fixture.bridge.focusCount == 1)
-            #expect(window.firstResponder === webView)
-            await model.focusEditorIfPresented()
-            #expect(fixture.bridge.focusCount == 1)
+            var phase = "first focus request"
+            do {
+                #expect(fixture.bridge.focusCount == 0)
+                await model.focusEditorIfPresented()
+                // A checked refresh may defer this request and resume its retained
+                // one-shot intent after the await returns. Await the actual handoff.
+                phase = "first focus completion"
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                    while fixture.bridge.focusCount < 1 {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                }
+                #expect(fixture.bridge.focusCount == 1)
+                #expect(window.firstResponder === webView)
+                await model.focusEditorIfPresented()
+                #expect(fixture.bridge.focusCount == 1)
 
-            model.selectMode(.read)
+                phase = "Review mode admission"
+                try await selectModeWhenAvailable(model, .read)
+                phase = "Review mode transition"
+                await model.waitForModeTransition()
+                #expect(model.mode == .read)
+                #expect(window.firstResponder !== webView)
+                phase = "Edit mode admission"
+                try await selectModeWhenAvailable(model, .livePreview)
+                #expect(model.editorFocusExecutionID == nil)
+                editor.setMode(.livePreview)
+                phase = "Edit renderer readiness"
+                try await waitForEditorMode(model)
+                phase = "Edit idle state"
+                try await waitUntilIdle(model)
+                phase = "re-entry focus request"
+                await model.focusEditorIfPresented()
+                phase = "re-entry focus completion"
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                    while fixture.bridge.focusCount < 2 {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                }
+                #expect(fixture.bridge.focusCount == 2)
+                #expect(window.firstResponder === webView)
+                #expect(!model.isDirty)
+                #expect(try Data(contentsOf: fixture.url) == Data(editor.checkedSource.utf8))
+            } catch {
+                recordFocusFailure(fixture, phase: phase, error: error)
+                throw error
+            }
+        }
+    }
+
+    @Test("External mode handoffs retain source-bound viewport and an existing editor selection")
+    func modeHandoffRetainsViewportAndSelection() async throws {
+        let source = "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\nFirst 😀 e\u{301} paragraph.\r\n\r\nTail without newline"
+        try await withFocusEditor(source: source) { fixture, _ in
+            let model = fixture.model
+            let snapshot = try #require(model.snapshot)
+            let sourceRange = (source as NSString).range(of: "First 😀 e\u{301} paragraph.")
+            let map = EditorSourceOffsetMap(source: source)
+            let editorLower = try #require(map.editorUTF16Offset(forSourceUTF16Offset: sourceRange.location))
+            let editorUpper = try #require(map.editorUTF16Offset(forSourceUTF16Offset: sourceRange.location + sourceRange.length))
+            let retainedRange = (source as NSString).range(of: "Tail without newline")
+            let retainedLower = try #require(map.editorUTF16Offset(forSourceUTF16Offset: retainedRange.location))
+            let retainedUpper = try #require(map.editorUTF16Offset(forSourceUTF16Offset: retainedRange.location + retainedRange.length))
+            fixture.editor.revealSourceRange(fromUTF16: retainedRange.location, toUTF16: retainedRange.location + retainedRange.length)
+            try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                while fixture.bridge.selections != [.init(anchor: retainedLower, head: retainedUpper)] { await Task.yield() }
+            }
+            fixture.bridge.scrollAnchor = .init(
+                sourceUTF16Offset: editorLower, blockUTF16LowerBound: editorLower,
+                blockUTF16UpperBound: editorUpper, relativeBlockPosition: 0.25, fallbackFraction: 0.6)
+            try await selectModeWhenAvailable(model, .read)
             await model.waitForModeTransition()
-            #expect(model.mode == .read)
-            #expect(window.firstResponder !== webView)
-            model.selectMode(.livePreview)
-            #expect(model.editorFocusExecutionID == nil)
-            editor.setMode(.livePreview)
-            try await waitForEditorMode(model)
             try await waitUntilIdle(model)
-            await model.focusEditorIfPresented()
-            #expect(fixture.bridge.focusCount == 2)
-            #expect(window.firstResponder === webView)
+            #expect(model.mode == .read)
+            #expect(model.readScrollPosition.fraction == 0.6)
+            #expect(model.readScrollPosition.anchor?.sourceUTF16Offset == sourceRange.location)
+            #expect(model.readScrollPosition.anchor?.sourceFingerprint == snapshot.fingerprint.sha256)
+            let restore = try #require(model.readScrollRestoreRequest)
+            #expect(restore.reason == .modeHandoff && restore.position == model.readScrollPosition)
+            model.consumeReadScrollRestore(restore.id - 1, fingerprint: restore.fingerprint, documentID: model.documentID)
+            #expect(model.readScrollRestoreRequest == restore)
+            model.consumeReadScrollRestore(restore.id, fingerprint: restore.fingerprint, documentID: model.documentID)
+            #expect(model.readScrollRestoreRequest == nil)
+
+            let readPosition = ObservedScrollPosition(
+                fraction: 0.8,
+                anchor: .init(
+                    sourceFingerprint: snapshot.fingerprint.sha256,
+                    sourceUTF16Offset: sourceRange.location,
+                    blockUTF16LowerBound: sourceRange.location,
+                    blockUTF16UpperBound: sourceRange.location + sourceRange.length,
+                    relativeBlockPosition: 0.5, fallbackFraction: 0.8))
+            model.observeScrollFraction(0.8, on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
+            model.observeScrollAnchor(try #require(readPosition.anchor), on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
+            // A hidden editor and an old reader revision cannot replace the
+            // active Review position before its next explicit mode handoff.
+            model.observeScrollFraction(0.1, on: .editor, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
+            model.observeScrollFraction(0.2, on: .read, documentID: "old-document", fingerprint: snapshot.fingerprint.sha256)
+            model.observeScrollFraction(0.3, on: .read, documentID: model.documentID, fingerprint: "old-fingerprint")
+            #expect(model.readScrollPosition == readPosition)
+            model.acceptReadSelection(
+                .init(
+                    startLine: 5, endLine: 5, excerpt: "First 😀 e\u{301} paragraph.",
+                    utf16LowerBound: sourceRange.location, utf16UpperBound: sourceRange.location + sourceRange.length),
+                documentID: model.documentID, fingerprint: snapshot.fingerprint)
+            try await selectModeWhenAvailable(model, .livePreview)
+            fixture.editor.setMode(.livePreview)
+            try await waitForEditorMode(model)
+            try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                while fixture.bridge.selections != [.init(anchor: retainedLower, head: retainedUpper)] { await Task.yield() }
+            }
+            #expect(model.editorScrollPosition == readPosition)
+            #expect(fixture.editor.retainedScrollAnchor == readPosition.anchor)
+            let expectedEditorAnchor = MarkdownEditorWireScrollAnchor(
+                sourceUTF16Offset: editorLower, blockUTF16LowerBound: editorLower,
+                blockUTF16UpperBound: editorUpper, relativeBlockPosition: 0.5, fallbackFraction: 0.8)
+            try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                while fixture.bridge.scrollAnchor != expectedEditorAnchor { await Task.yield() }
+            }
+            model.observeScrollFraction(0.1, on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
+            #expect(model.editorScrollPosition == readPosition)
+            try await selectModeWhenAvailable(model, .source)
+            fixture.editor.setMode(.source)
+            try await waitForEditorMode(model)
+            #expect(fixture.bridge.selections == [.init(anchor: retainedLower, head: retainedUpper)])
+            #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+            #expect(try Data(contentsOf: fixture.url) == Data(source.utf8))
             #expect(!model.isDirty)
-            #expect(try Data(contentsOf: fixture.url) == Data(editor.checkedSource.utf8))
+        }
+    }
+
+    @Test("First external editor allocation maps an exact BOM, CRLF and Unicode Review selection")
+    func firstAllocationMapsExactReviewSelection() async throws {
+        let source = "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\nFirst 😀 e\u{301} paragraph.\r\n\r\nTail without newline"
+        let range = (source as NSString).range(of: "First 😀 e\u{301} paragraph.")
+        let selection = MarkdownReviewSelection(
+            startLine: 5, endLine: 5, excerpt: "First 😀 e\u{301} paragraph.",
+            utf16LowerBound: range.location, utf16UpperBound: range.location + range.length)
+        try await withFocusEditor(source: source, reviewSelection: selection) { fixture, _ in
+            let map = EditorSourceOffsetMap(source: source)
+            let lower = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location))
+            let upper = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location + range.length))
+            try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                while fixture.bridge.selections != [.init(anchor: lower, head: upper)] { await Task.yield() }
+            }
+            #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+            #expect(try Data(contentsOf: fixture.url) == Data(source.utf8))
+            #expect(!fixture.model.isDirty)
+        }
+    }
+
+    @Test("External Review handoff rejects a range whose excerpt differs from exact source")
+    func reviewHandoffRejectsProjectedSelection() async throws {
+        try await withFocusEditor { fixture, _ in
+            let model = fixture.model
+            try await selectModeWhenAvailable(model, .read)
+            await model.waitForModeTransition()
+            try await waitUntilIdle(model)
+            let snapshot = try #require(model.snapshot)
+            model.acceptReadSelection(
+                .init(startLine: 1, endLine: 1, excerpt: "Projected text", utf16LowerBound: 3, utf16UpperBound: 11),
+                documentID: model.documentID, fingerprint: snapshot.fingerprint)
+            try await selectModeWhenAvailable(model, .source)
+            fixture.editor.setMode(.source)
+            try await waitForEditorMode(model)
+            #expect(fixture.bridge.selections == [.init(anchor: 0, head: 0)])
+            #expect(Data(fixture.editor.checkedSource.utf8) == Data(snapshot.source.utf8))
+            #expect(!model.isDirty)
+        }
+    }
+
+    enum StartupRefreshStage: CaseIterable {
+        case beforeAttachment, beforeReadiness
+    }
+
+    @Test(
+        "External observation waits for the allocated editor and resumes for active or background entry",
+        arguments: StartupRefreshStage.allCases, [false, true])
+    func startupRefreshDefersUntilReadiness(stage: StartupRefreshStage, applicationActive: Bool) async throws {
+        try await withFocusEditor(applicationActive: applicationActive, startupRefreshStage: stage) { fixture, _ in
+            try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                while fixture.bridge.textQueryCount == 0 || fixture.model.isBusy || fixture.bridge.suspensionID != nil {
+                    try Task.checkCancellation()
+                    await Task.yield()
+                }
+            }
+            #expect(fixture.model.editorSession === fixture.editor)
+            #expect(fixture.model.error == nil && fixture.model.inputResumeError == nil)
+            #expect(fixture.model.editorReady && !fixture.model.isDirty)
+            #expect(Data(fixture.editor.checkedSource.utf8) == Data(try #require(fixture.model.snapshot).source.utf8))
+            #expect(try Data(contentsOf: fixture.url) == Data(fixture.editor.checkedSource.utf8))
+            if applicationActive {
+                await fixture.model.focusEditorIfPresented()
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                    while fixture.bridge.focusCount < 1 {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                }
+                #expect(fixture.bridge.focusCount == 1)
+            } else {
+                #expect(fixture.bridge.focusCount == 0)
+            }
+        }
+    }
+
+    @Test("Closing revokes a queued external read while the editor initialization is held")
+    func closedStartupRefreshDoesNotResume() async throws {
+        try await withFocusEditor(
+            applicationActive: false, startupRefreshStage: .beforeReadiness, closesBeforeReadiness: true
+        ) { fixture, _ in
+            await Task.yield()
+            #expect(fixture.editor.isReady && fixture.editor.isLoaded)
+            #expect(fixture.bridge.textQueryCount == 0 && fixture.bridge.focusCount == 0)
+            #expect(fixture.model.editorFocusExecutionID == nil && !fixture.model.canRequestClose)
+            #expect(fixture.model.error == nil && fixture.model.inputResumeError == nil)
+            let bytes = try Data(contentsOf: fixture.url)
+            #expect(bytes == Data(fixture.editor.checkedSource.utf8))
+        }
+    }
+
+    enum SupersededFindReturn: CaseIterable {
+        case responder, focusRevision, rendererTarget, reactivation, composition, cancellation
+    }
+
+    @Test("A delayed Find clear cannot supersede newer native or editor focus", arguments: SupersededFindReturn.allCases)
+    func delayedFindClearRespectsFocusAuthority(_ cause: SupersededFindReturn) async throws {
+        try await withFocusEditor { fixture, window in
+            let webView = try #require(fixture.editor.webView)
+            #expect(window.makeFirstResponder(webView))
+            let pause = PausedBridgeRequest()
+            fixture.bridge.nextFindClearPause = pause
+            let clearing = Task { await fixture.editor.clearDocumentFind() }
+            do {
+                try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                    await pause.waitForArrival()
+                }
+                switch cause {
+                case .responder:
+                    let field = NSTextView(frame: .zero)
+                    window.contentView?.addSubview(field)
+                    #expect(window.makeFirstResponder(field))
+                case .focusRevision:
+                    fixture.editor.authorizeAutomaticFocus(target: .title)
+                case .rendererTarget:
+                    fixture.editor.updateInteraction(
+                        selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
+                        documentVersion: fixture.editor.generation, interactionRevision: 1,
+                        focusTarget: .title, context: nil)
+                case .reactivation:
+                    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+                case .composition:
+                    fixture.editor.updateInteraction(
+                        selections: [.init(anchor: 0, head: 0)], line: 1, column: 1, lineCount: 1,
+                        documentVersion: fixture.editor.generation, interactionRevision: 1,
+                        context: .init(
+                            selections: [.init(anchor: 0, head: 0)], activeInlineConstructs: [], activeBlockConstructs: [],
+                            composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
+                case .cancellation:
+                    clearing.cancel()
+                }
+                let responder = window.firstResponder
+                pause.release()
+                await clearing.value
+                #expect(fixture.bridge.focusCount == 0)
+                #expect(window.firstResponder === responder)
+                #expect(!fixture.model.isDirty)
+            } catch {
+                pause.release()
+                await clearing.value
+                throw error
+            }
+        }
+    }
+
+    @Test("A current Find dismissal returns editor focus after clearing")
+    func currentFindClearReturnsFocus() async throws {
+        try await withFocusEditor { fixture, window in
+            let webView = try #require(fixture.editor.webView)
+            #expect(window.makeFirstResponder(webView))
+            await fixture.editor.clearDocumentFind()
+            #expect(fixture.bridge.focusCount == 1)
+            #expect(window.firstResponder === webView)
+            #expect(!fixture.model.isDirty)
         }
     }
 
@@ -857,10 +1122,13 @@ struct ExternalMarkdownWindowLifecycleTests {
     }
 
     private func withFocusEditor(
-        applicationActive: Bool = true,
+        applicationActive: Bool = true, source: String? = nil,
+        reviewSelection: MarkdownReviewSelection? = nil,
+        startupRefreshStage: StartupRefreshStage? = nil, closesBeforeReadiness: Bool = false,
         _ operation: @MainActor (EditorFixture, FocusTestWindow) async throws -> Void
     ) async throws {
         try await withFile { url, _ in
+            if let source { try Data(source.utf8).write(to: url) }
             _ = NSApplication.shared
             let bridge = BufferBridge()
             let editor = MarkdownEditorSession(bridgeDispatcher: bridge)
@@ -882,31 +1150,101 @@ struct ExternalMarkdownWindowLifecycleTests {
                 refreshObservation.cancel()
                 refreshes.continuation.finish()
             }
-            await model.open()
-            // Opening schedules its first filesystem observation. Capture both
-            // edges before opening so a fast read cannot be missed, then enter
-            // the mode from a settled fixture rather than racing that refresh.
-            try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
-                var started = false
-                for await refreshing in refreshes.stream {
-                    if refreshing { started = true }
-                    if started && !refreshing { break }
+            let fixture = EditorFixture(url: url, model: model, editor: editor, bridge: bridge)
+            let initializationPause = startupRefreshStage == .beforeReadiness ? PausedBridgeRequest() : nil
+            defer { initializationPause?.release() }
+            var phase = "fixture file opening"
+            do {
+                await model.open()
+                phase = "fixture initial observation completion"
+                // startObservation schedules the initial checked read. Observe
+                // that cycle before allocating the editor instead of adding a
+                // second explicit read that can leave a coalesced read pending.
+                try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                    var started = false
+                    for await refreshing in refreshes.stream {
+                        try Task.checkCancellation()
+                        if refreshing { started = true }
+                        if started && !refreshing { break }
+                    }
+                    try #require(model.snapshot != nil)
+                    phase = "fixture Source admission"
+                    try Task.checkCancellation()
+                    while !model.canSelectMode(.source) {
+                        try Task.checkCancellation()
+                        await Task.yield()
+                    }
+                    try #require(model.error == nil && !model.hasConflict)
+                    if let reviewSelection {
+                        model.acceptReadSelection(
+                            reviewSelection, documentID: model.documentID, fingerprint: try #require(model.snapshot).fingerprint)
+                    }
+                    model.selectMode(.source)
                 }
-                try Task.checkCancellation()
+                try #require(model.mode == .source)
+                phase = "fixture pre-allocation focus request"
+                await model.focusEditorIfPresented()
+                #expect(bridge.focusCount == 0)
+                if startupRefreshStage == .beforeAttachment {
+                    phase = "fixture refresh before editor attachment"
+                    await model.refreshFromDisk()
+                    #expect(model.error == nil && !model.isRefreshing && bridge.textQueryCount == 0)
+                }
+                let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+                window.contentView?.addSubview(webView)
+                editor.attach(webView)
+                editor.loadDocument(try #require(model.snapshot).source, documentID: model.documentID, mode: .source)
+                bridge.nextInitializePause = initializationPause
+                editor.editorBecameReady()
+                if let initializationPause {
+                    phase = "fixture held editor initialization"
+                    try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                        await initializationPause.waitForArrival()
+                    }
+                    #expect(editor.isReady && !editor.isLoaded)
+                    await model.refreshFromDisk()
+                    #expect(model.error == nil && !model.isRefreshing && bridge.textQueryCount == 0)
+                    if closesBeforeReadiness { model.close() }
+                    initializationPause.release()
+                }
+                phase = "fixture editor initialization"
+                try #require(try await editor.waitUntilLoadedForSave())
+            } catch {
+                recordFocusFailure(fixture, phase: phase, error: error)
+                throw error
             }
-            try #require(!model.isBusy)
-            model.selectMode(.source)
-            await model.focusEditorIfPresented()
-            #expect(bridge.focusCount == 0)
-            let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
-            window.contentView?.addSubview(webView)
-            editor.attach(webView)
-            editor.loadDocument(try #require(model.snapshot).source, documentID: model.documentID, mode: .source)
-            editor.editorBecameReady()
-            try #require(try await editor.waitUntilLoadedForSave())
             #expect(!window.isVisible)
             try await operation(EditorFixture(url: url, model: model, editor: editor, bridge: bridge), window)
             #expect(!window.isVisible)
+        }
+    }
+
+    private func recordFocusFailure(_ fixture: EditorFixture, phase: String, error: any Error) {
+        let model = fixture.model
+        let editor = fixture.editor
+        Issue.record(
+            Comment(
+                rawValue:
+                    "External hidden focus failed at \(phase): failure=\(String(describing: error)) "
+                    + "busy=\(model.isBusy) refreshing=\(model.isRefreshing) mode=\(model.mode.rawValue) "
+                    + "modelError=\(model.error ?? "none") inputResumeError=\(model.inputResumeError ?? "none") "
+                    + "editorReady=\(model.editorReady) focusExecutionID=\(String(describing: model.editorFocusExecutionID)) "
+                    + "sameEditor=\(model.editorSession === editor) focusRevision=\(editor.focusRequestRevision) "
+                    + "presentedMode=\(String(describing: editor.presentedMode)) writingFocus=\(editor.hasWritingFocus) "
+                    + "detachmentSuspension=\(editor.detachmentSuspensionID ?? "none") focusCount=\(fixture.bridge.focusCount) "
+                    + "editorLoaded=\(editor.isLoaded) editorError=\(editor.errorMessage ?? "none") "
+                    + "preferredFocus=\(String(describing: editor.preferredDocumentFocusTarget)) "
+                    + "keyWindow=\(editor.webView?.window?.isKeyWindow ?? false) hidden=\(editor.webView?.isHiddenOrHasHiddenAncestor ?? true)"))
+    }
+
+    private func selectModeWhenAvailable(_ model: ExternalMarkdownWindowModel, _ requested: NotePresentationMode) async throws {
+        try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+            while !model.canSelectMode(requested) {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
+            try Task.checkCancellation()
+            model.selectMode(requested)
         }
     }
 
@@ -1110,7 +1448,12 @@ struct ExternalMarkdownWindowLifecycleTests {
         var resumeFailuresRemaining = 0
         var nextTextQueryPause: PausedBridgeRequest?
         var nextFrozenCapturePause: PausedBridgeRequest?
+        var nextFindClearPause: PausedBridgeRequest?
+        var nextInitializePause: PausedBridgeRequest?
+        var scrollAnchor: MarkdownEditorWireScrollAnchor?
+        var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
         var focusCount = 0
+        var textQueryCount = 0
 
         func insertBrowserOnly(_ exact: String) {
             source += exact
@@ -1126,10 +1469,25 @@ struct ExternalMarkdownWindowLifecycleTests {
             switch request.operation {
             case .focus, .focusTitle:
                 focusCount += 1
-            case .initialize(let source, _, _, _, _, _):
+            case .initialize(let source, _, _, let initialSelection, _, _):
                 self.source = source
                 generation = 0
+                selections = initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                if let pause = nextInitializePause {
+                    nextInitializePause = nil
+                    await pause.suspend()
+                }
+            case .revealSourceRange(let from, let to):
+                selections = [.init(anchor: from, head: to)]
+            case .clearDocumentFind:
+                if let pause = nextFindClearPause {
+                    nextFindClearPause = nil
+                    await pause.suspend()
+                }
+            case .setScrollAnchor(let anchor):
+                scrollAnchor = anchor
             case .queryText:
+                textQueryCount += 1
                 if let pause = nextTextQueryPause {
                     nextTextQueryPause = nil
                     await pause.suspend()
@@ -1165,15 +1523,24 @@ struct ExternalMarkdownWindowLifecycleTests {
                 "resultingGeneration": generation,
                 "interactionRevision": generation,
                 "sourceChanged": false,
-                "selections": [["anchor": 0, "head": 0]],
+                "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "accepted": true,
             ]
+            if case .queryScrollAnchor = request.operation, let scrollAnchor {
+                result["scrollAnchor"] = [
+                    "sourceUTF16Offset": scrollAnchor.sourceUTF16Offset,
+                    "blockUTF16LowerBound": scrollAnchor.blockUTF16LowerBound,
+                    "blockUTF16UpperBound": scrollAnchor.blockUTF16UpperBound,
+                    "relativeBlockPosition": scrollAnchor.relativeBlockPosition,
+                    "fallbackFraction": scrollAnchor.fallbackFraction,
+                ]
+            }
             if let text { result["text"] = text }
             if let superseded { result["commitSuperseded"] = superseded }
             if let recovery {
                 result["recovery"] = [
                     "documentID": recovery.documentID, "fingerprint": recovery.fingerprint,
-                    "generation": recovery.generation, "ranges": [["anchor": 0, "head": 0]],
+                    "generation": recovery.generation, "ranges": recovery.ranges.map { ["anchor": $0.anchor, "head": $0.head] },
                     "source": recovery.source, "undoHistoryPreserved": false,
                     "dirty": recovery.dirty, "focusTarget": "editor",
                 ]
@@ -1186,7 +1553,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         {
             .init(
                 documentID: request.documentID, fingerprint: request.startingFingerprint,
-                generation: generation, ranges: [.init(anchor: 0, head: 0)], source: source,
+                generation: generation, ranges: selections, source: source,
                 stateJSON: nil, undoHistoryPreserved: false, dirty: generation > 0, focusTarget: .editor)
         }
     }

@@ -541,7 +541,11 @@ struct WorkspaceToolbarTests {
         let secondContent = try #require(secondButton.superview)
         let firstClose = try #require(firstContent.subviews.first { $0 is NSButton && $0 !== firstButton })
         let secondClose = try #require(secondContent.subviews.first { $0 is NSButton && $0 !== secondButton })
-        #expect(!group.isBordered && group.control.material == .titlebar)
+        let track = try #require(group.control.subviews.first { $0 is NSVisualEffectView } as? NSVisualEffectView)
+        #expect(!group.isBordered && track.material == .titlebar)
+        #expect(track.state == .followsWindowActiveState)
+        #expect(track.layer?.masksToBounds == true)
+        #expect(group.control.layer?.masksToBounds != true)
         #expect(group.control.orderedTabIDs == [first.id, second.id])
         #expect(firstControl.superview === secondControl.superview)
         #expect(firstControl.subviews.allSatisfy { !($0 is NSVisualEffectView) })
@@ -573,6 +577,16 @@ struct WorkspaceToolbarTests {
         #expect(firstButton.superview === firstGlass.contentView)
         #expect(firstContent.frame.size == firstGlass.bounds.size)
         #expect(firstControl.frame.height == DocumentToolbarTabStrip.contentHeight)
+        let glassInStrip = firstGlass.convert(firstGlass.bounds, to: group.control)
+        #expect(glassInStrip.minY > group.control.bounds.minY)
+        #expect(glassInStrip.maxY < group.control.bounds.maxY)
+        #expect(abs(glassInStrip.midY - group.control.bounds.midY) < 0.5)
+        #expect(firstGlass.frame.height >= ScholiumMetrics.Accessibility.preferredCustomTarget)
+        #expect(firstGlass.style == .regular)
+        #expect(!firstGlass.isDescendant(of: track))
+        if #available(macOS 27.0, *) {
+            #expect(firstGlass.effectIsInteractive)
+        }
         #expect(abs(firstClose.frame.midY - firstContent.bounds.midY) < 0.5)
         for (control, id) in [(firstControl, first.id), (secondControl, second.id)] {
             let location = control.convert(

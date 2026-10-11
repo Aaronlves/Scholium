@@ -27,6 +27,8 @@ pending_approvals = {}
 pending_turn_acks = []
 pending_thread_preparations = []
 pending_interrupt_replies = []
+pending_logins = []
+pending_capability_tool_lists = []
 client_capabilities = {}
 tool_config_file = home / 'fixture-tool-config.json'
 
@@ -87,6 +89,17 @@ for line in sys.stdin:
         if params.get('refreshToken'):
             (home / 'runtime-account-refreshed').touch()
         result = {'account': None if (home / 'runtime-signed-out').exists() else {'type': 'chatgpt'}}
+    elif method == 'account/login/start':
+        count = home / 'login-start-count'
+        count.write_text(str(int(count.read_text()) + 1) if count.exists() else '1')
+        pending_logins.append(request['id'])
+        continue
+    elif method == 'test/completeLogin':
+        login_id = pending_logins.pop(0)
+        if params.get('error'):
+            write({'id': login_id, 'error': {'code': -32603, 'message': params['error']}})
+        else:
+            write({'id': login_id, 'result': {'authUrl': params.get('authUrl', 'https://auth.openai.com/fixture')}})
     elif method == 'model/list':
         if (home / 'hold-runtime-model-list').exists():
             (home / 'pending-runtime-model-list').touch()
@@ -192,6 +205,17 @@ for line in sys.stdin:
             result['data'].append({'name': name, 'authStatus': 'unsupported',
                 'runtimeStatus': 'notStarted' if config.get('enabled', True) else 'disabled',
                 'tools': {}, 'resources': [], 'resourceTemplates': []})
+        if (home / 'gate-capability-tools-list').exists():
+            pending_capability_tool_lists.append((request['id'], result))
+            (home / 'entered-capability-tools-list').write_text(str(request['id']))
+            continue
+    elif method == 'fixture/releaseCapabilityToolsList':
+        (home / 'gate-capability-tools-list').unlink(missing_ok=True)
+        released = [request_id for request_id, _ in pending_capability_tool_lists]
+        for request_id, inventory in pending_capability_tool_lists:
+            write({'id': request_id, 'result': inventory})
+        pending_capability_tool_lists.clear()
+        result = {'releasedRequestIds': released}
     elif method == 'mcpServer/oauth/login':
         (home / 'capability-sign-in-requested').touch()
         oauth_request = params

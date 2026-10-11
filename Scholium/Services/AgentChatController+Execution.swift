@@ -997,6 +997,7 @@ extension AgentChatController {
         writingAssistanceExecution = nil
         writingAssistanceID = nil
         connectionID = nil
+        cancelLogin()
         connectionTask?.cancel()
         connectionTask = nil
         quotaTask?.cancel()

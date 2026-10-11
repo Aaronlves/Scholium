@@ -60,10 +60,13 @@ extension WindowModel {
         }
     }
 
+    @discardableResult
     func openSearchSelection(
         _ result: SearchResultSelection,
-        disposition: WindowOpenDisposition
-    ) async {
+        disposition: WindowOpenDisposition,
+        isCurrentRequest: @escaping @MainActor () -> Bool = { true }
+    ) async -> Bool {
+        guard !Task.isCancelled, isCurrentRequest() else { return false }
         switch result {
         case .result(.note(let note)):
             let reference = VaultNoteReference(
@@ -73,15 +76,19 @@ extension WindowModel {
                 relativePath: note.relativePath,
                 stableNoteID: note.stableNoteID
             )
-            openWorkspaceReference(
-                reference,
-                sourceRange: note.sourceRange,
-                fallbackLine: note.sourceLine,
-                sourceFingerprint: note.fingerprint,
-                scope: discoveryController.search.criteria.scope,
-                freshnessToken: note.freshnessToken,
-                placement: disposition == .newTab ? .newTab : .replaceSelected
-            )
+            return await withCheckedContinuation { continuation in
+                openWorkspaceReference(
+                    reference,
+                    sourceRange: note.sourceRange,
+                    fallbackLine: note.sourceLine,
+                    sourceFingerprint: note.fingerprint,
+                    scope: discoveryController.search.criteria.scope,
+                    freshnessToken: note.freshnessToken,
+                    placement: disposition == .newTab ? .newTab : .replaceSelected,
+                    isCurrentRequest: isCurrentRequest,
+                    onCompletion: { continuation.resume(returning: $0) }
+                )
+            }
         }
     }
 

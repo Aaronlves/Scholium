@@ -2,12 +2,89 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import WebKit
 
 @testable import ScholiumApp
 
 @Suite("Document Find presentation")
 @MainActor
 struct DocumentFindPresentationTests {
+    enum SupersededFocusReturn: CaseIterable {
+        case responder, reusedFieldEditor, composition, inactiveWindow, reactivation, hiddenDocument
+    }
+
+    @Test("Find return authority rejects newer native interactions including a reused field editor", arguments: SupersededFocusReturn.allCases)
+    func findReturnAuthorityRejectsNewerNativeFocus(_ cause: SupersededFocusReturn) throws {
+        _ = NSApplication.shared
+        let window = FindFocusWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let webView = WKWebView(frame: window.contentView?.bounds ?? .zero)
+        let findField = FindFocusField(frame: .zero)
+        findField.setAccessibilityIdentifier("scholium.documentFind.query")
+        let fieldEditor = NSTextView(frame: .zero)
+        fieldEditor.isFieldEditor = true
+        fieldEditor.delegate = findField
+        window.contentView?.addSubview(webView)
+        window.contentView?.addSubview(findField)
+        window.contentView?.addSubview(fieldEditor)
+        #expect(window.makeFirstResponder(fieldEditor))
+        let authority = try #require(DocumentFindFocusReturnAuthority(webView: webView))
+        #expect(authority.canRestore(to: webView))
+        switch cause {
+        case .responder:
+            let other = NSTextView(frame: .zero)
+            window.contentView?.addSubview(other)
+            #expect(window.makeFirstResponder(other))
+        case .reusedFieldEditor:
+            let other = FindFocusField(frame: .zero)
+            window.contentView?.addSubview(other)
+            fieldEditor.delegate = other
+            #expect(window.firstResponder === fieldEditor)
+        case .composition:
+            fieldEditor.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0), replacementRange: NSRange(location: 0, length: 0))
+            #expect(fieldEditor.hasMarkedText())
+        case .inactiveWindow:
+            window.reportsKeyWindow = false
+        case .reactivation:
+            NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+            #expect(window.isKeyWindow)
+        case .hiddenDocument:
+            webView.isHidden = true
+        }
+        #expect(!authority.canRestore(to: webView))
+        #expect(!window.isVisible)
+    }
+
+    @Test("A Find-clear task that begins after a newer control takes focus has no return authority")
+    func lateFindClearCannotCaptureUnrelatedInitiator() throws {
+        _ = NSApplication.shared
+        let window = FindFocusWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let webView = WKWebView(frame: window.contentView?.bounds ?? .zero)
+        let other = NSTextView(frame: .zero)
+        window.contentView?.addSubview(webView)
+        window.contentView?.addSubview(other)
+        #expect(window.makeFirstResponder(other))
+        #expect(DocumentFindFocusReturnAuthority(webView: webView) == nil)
+        #expect(window.firstResponder === other)
+        #expect(!window.isVisible)
+    }
+
+    @MainActor
+    private final class FindFocusField: NSTextField, NSTextViewDelegate {}
+
+    @MainActor
+    private final class FindFocusWindow: NSWindow {
+        var reportsKeyWindow = true
+        override var isKeyWindow: Bool { reportsKeyWindow }
+    }
+
     @Test("Summary refresh retains replacement feedback and never requests selection navigation")
     func refreshRetainsReceipt() throws {
         let model = DocumentFindPresentationModel()

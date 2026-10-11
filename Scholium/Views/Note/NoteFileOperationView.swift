@@ -28,6 +28,17 @@ struct NoteFileOperationView: View {
                         .accessibilityIdentifier("scholium.noteFile.destination")
                         .disabled(isWorking)
                 }
+                if let errorMessage {
+                    Label {
+                        Text(verbatim: "\(failureTitle). \(errorMessage)")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
+                    }
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("scholium.noteFile.error")
+                }
             }
         } actions: {
             if isWorking { ProgressView().controlSize(.small).accessibilityLabel(Text(actionTitle)) }
@@ -36,23 +47,13 @@ struct NoteFileOperationView: View {
                 .keyboardShortcut(.cancelAction)
                 .disabled(isWorking)
             Button(actionTitle) { perform() }
+                .accessibilityIdentifier("scholium.noteFile.commit")
                 .disabled(requestedDestinationPath == nil || isWorking)
                 .keyboardShortcut(.defaultAction)
         }
         .interactiveDismissDisabled(isWorking)
         .accessibilityIdentifier("scholium.noteFileOperation")
         .onAppear { configureDefaults() }
-        .alert(
-            alertTitle,
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("Dismiss", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
     }
 
     private var target: NoteMutationTarget {
@@ -75,7 +76,7 @@ struct NoteFileOperationView: View {
         }
     }
 
-    private var alertTitle: String {
+    private var failureTitle: String {
         String(
             format: ScholiumL10n.string("Could Not %@", locale: Locale.current),
             locale: Locale.current,
@@ -121,6 +122,7 @@ struct NoteFileOperationView: View {
     private func perform() {
         guard let requestedDestinationPath else { return }
         isWorking = true
+        errorMessage = nil
         Task {
             do {
                 switch request {

@@ -125,6 +125,8 @@ final class WindowLibraryMutationController: ObservableObject {
     private var markdownImportTask: Task<Void, Never>?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
+    private var mutationTail: Task<Void, Never>?
+    private var mutationTailID: UUID?
     var batchCancellation: (@MainActor () -> Void)?
 
     var hasActiveLibraryMutation: Bool {
@@ -160,6 +162,8 @@ final class WindowLibraryMutationController: ObservableObject {
         mutationTaskCancellations.values.forEach { $0() }
         mutationTaskCancellations.removeAll()
         dropOperations.removeAll()
+        mutationTail = nil
+        mutationTailID = nil
     }
 
     /// The window owns drop work even if Library is hidden or its view is rebuilt.
@@ -213,10 +217,15 @@ final class WindowLibraryMutationController: ObservableObject {
         else { return nil }
         let operationID = UUID()
         dropOperations[target] = operationID
+        let predecessor = mutationTail
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.mutationTaskCancellations[operationID] = nil
+                if self.mutationTailID == operationID {
+                    self.mutationTail = nil
+                    self.mutationTailID = nil
+                }
                 // A cancelled operation must never clear a newer drop for the
                 // same path after a window rebind.
                 if self.dropOperations[target] == operationID {
@@ -224,6 +233,7 @@ final class WindowLibraryMutationController: ObservableObject {
                 }
             }
             do {
+                await predecessor?.value
                 try Task.checkCancellation()
                 guard self.dependencies.context()?.assignmentID == context.assignmentID,
                     self.dependencies.context()?.vault.id == context.vault.id
@@ -239,6 +249,8 @@ final class WindowLibraryMutationController: ObservableObject {
                 self.dependencies.reportError(failureMessage(error))
             }
         }
+        mutationTail = task
+        mutationTailID = operationID
         mutationTaskCancellations[operationID] = { task.cancel() }
         return task
     }
@@ -324,6 +336,7 @@ final class WindowLibraryMutationController: ObservableObject {
         _ target: FolderMutationTarget,
         to destinationRelativePath: String
     ) async throws {
+        try requireFolderMutationAvailable()
         try await withOwnedMutation { [self] in
             try await performMoveFolder(target, to: destinationRelativePath)
         }
@@ -333,9 +346,7 @@ final class WindowLibraryMutationController: ObservableObject {
         _ target: FolderMutationTarget,
         to destinationRelativePath: String
     ) async throws {
-        guard !isMutatingFolder else {
-            throw WindowLibraryMutationError.folderMutationInProgress
-        }
+        try requireFolderMutationAvailable()
         guard let context = dependencies.context(),
             target.vaultID == context.vault.id
         else {
@@ -362,6 +373,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func prepareFolderSystemTrash(_ target: FolderMutationTarget) async throws {
+        try requireFolderMutationAvailable()
         try await withOwnedMutation { [self] in
             try await performPrepareFolderSystemTrash(target)
         }
@@ -370,9 +382,7 @@ final class WindowLibraryMutationController: ObservableObject {
     private func performPrepareFolderSystemTrash(
         _ target: FolderMutationTarget
     ) async throws {
-        guard !isMutatingFolder else {
-            throw WindowLibraryMutationError.folderMutationInProgress
-        }
+        try requireFolderMutationAvailable()
         guard let context = dependencies.context() else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
@@ -595,6 +605,12 @@ final class WindowLibraryMutationController: ObservableObject {
         return operations
     }
 
+    private func requireFolderMutationAvailable() throws {
+        guard !isMutatingFolder else {
+            throw WindowLibraryMutationError.folderMutationInProgress
+        }
+    }
+
     private static func markdownPath(_ requestedPath: String) -> String {
         let trimmed = requestedPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.lowercased().hasSuffix(".md") ? trimmed : trimmed + ".md"
@@ -605,9 +621,22 @@ final class WindowLibraryMutationController: ObservableObject {
     ) async throws -> T {
         guard !isBatchWorking else { throw LibraryNoteBatchError.operationInProgress }
         let operationID = UUID()
-        let task = Task { try await operation() }
+        let predecessor = mutationTail
+        let task = Task {
+            await predecessor?.value
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        mutationTail = Task { _ = try? await task.value }
+        mutationTailID = operationID
         mutationTaskCancellations[operationID] = { task.cancel() }
-        defer { mutationTaskCancellations[operationID] = nil }
+        defer {
+            mutationTaskCancellations[operationID] = nil
+            if mutationTailID == operationID {
+                mutationTail = nil
+                mutationTailID = nil
+            }
+        }
         return try await withTaskCancellationHandler {
             let value = try await task.value
             if task.isCancelled { throw CancellationError() }

@@ -123,6 +123,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     // conversation unread while another window still displays its transcript.
     var transcriptReaders: [UUID: UUID] = [:]
     var connectionTask: Task<Void, Never>?
+    @Published var isStartingLogin = false
+    var loginTask: Task<Void, Never>?
+    var loginID: UUID?
+    var openAuthenticationURL: @MainActor (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     private var initialLoadTask: Task<Void, Never>?
     private let notificationSink: AgentChatNotificationSink
     var quotaTask: Task<Void, Never>?

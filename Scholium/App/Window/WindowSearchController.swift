@@ -53,8 +53,9 @@ final class WindowSearchController: ObservableObject {
         let open:
             @MainActor (
                 SearchResultSelection,
-                WindowOpenDisposition
-            ) async -> Void
+                WindowOpenDisposition,
+                @escaping @MainActor () -> Bool
+            ) async -> Bool
         let hasCurrentNote: @MainActor () -> Bool
         let reportInformation: @MainActor (String) -> Void
         let reportLoadFailure: @MainActor (String) -> Void
@@ -95,6 +96,7 @@ final class WindowSearchController: ObservableObject {
     private var savedSearchMutationTail: Task<Void, Never>?
     private var executionTask: Task<Void, Never>?
     private var executionID: UUID?
+    private var openingRequestID: UUID?
 
     init(
         discoveryController: DiscoveryController,
@@ -219,22 +221,40 @@ final class WindowSearchController: ObservableObject {
         }
         let criteria = discoveryController.search.criteria
         let responseRequestID = discoveryController.search.responseRequestID
+        let requestID = UUID()
+        openingRequestID = requestID
+        let isCurrent: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.openingRequestID == requestID
+                && self.presentation != .inactive
+                && self.discoveryController.search.criteria == criteria
+                && self.discoveryController.search.responseRequestID == responseRequestID
+                && self.discoveryController.search.freshnessToken == searchResult.freshnessToken
+        }
+        defer {
+            if openingRequestID == requestID { openingRequestID = nil }
+        }
         let evidence = await dependencies.resultEvidence(
             searchResult,
             criteria.scope
         )
-        guard !Task.isCancelled,
-            discoveryController.search.criteria == criteria,
-            discoveryController.search.responseRequestID == responseRequestID,
-            discoveryController.search.freshnessToken == searchResult.freshnessToken
-        else { return false }
+        guard !Task.isCancelled, isCurrent() else { return false }
         guard evidence.freshness == searchResult.freshnessToken,
             evidence.fingerprint == searchResult.fingerprint
         else {
             await refreshAfterStaleResult()
             return false
         }
-        await dependencies.open(.result(searchResult), disposition)
+        let opened = await withTaskCancellationHandler {
+            await dependencies.open(.result(searchResult), disposition, isCurrent)
+        } onCancel: { [weak self] in
+            Task { @MainActor in
+                if self?.openingRequestID == requestID { self?.openingRequestID = nil }
+            }
+        }
+        guard !Task.isCancelled, isCurrent() else { return false }
+        openingRequestID = nil
+        guard opened else { return false }
         if presentation != .advanced { dismiss() }
         return true
     }
@@ -413,6 +433,7 @@ final class WindowSearchController: ObservableObject {
     }
 
     private func cancelExecution() {
+        openingRequestID = nil
         executionTask?.cancel()
         executionTask = nil
         executionID = nil

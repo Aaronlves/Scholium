@@ -8,6 +8,20 @@ import Testing
 @Suite("Document Changes presentation", .serialized)
 @MainActor
 struct DocumentChangesPresentationTests {
+    @Test("Changes identifies same-path Notes by their role without altering authored paths")
+    func crossVaultNoteIdentity() {
+        let path = "研究/自由 — e\u{301} 😀.md"
+        let roles: [VaultRole] = [.sourceCorpus, .topicKnowledge, .draftProject]
+        let identities = roles.map {
+            DocumentChangesPresentation.noteIdentity(role: $0, relativePath: path)
+        }
+        #expect(Set(identities).count == roles.count)
+        for (role, identity) in zip(roles, identities) {
+            let expected = ScholiumL10n.dynamicString(role.displayName) + " / " + path
+            #expect(identity.utf8.elementsEqual(expected.utf8))
+        }
+    }
+
     @Test("The sheet never acknowledges a Note merely by showing or closing its comparison")
     func openingAndClosingDoesNotMarkReviewed() async throws {
         _ = NSApplication.shared

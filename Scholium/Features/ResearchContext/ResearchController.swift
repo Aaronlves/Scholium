@@ -85,6 +85,7 @@ final class ResearchController: ObservableObject {
     }
     private var retainedRecoveries: [UUID: RetainedRecovery] = [:]
     private var recoveryRefreshGeneration: UInt64 = 0
+    private var recoveryBindingGeneration: UInt64 = 0
 
     init(
         shellState: WindowShellState = WindowShellState(),
@@ -120,6 +121,7 @@ final class ResearchController: ObservableObject {
         observedDocumentChangesGeneration = snapshot?.documentChangesGeneration
         hasCompleteWorkspaceSnapshot = false
         recoveryRefreshGeneration &+= 1
+        recoveryBindingGeneration &+= 1
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
             relatedMaterials.reset()
@@ -127,6 +129,8 @@ final class ResearchController: ObservableObject {
             retainedRecoveries = [:]
             transactionRecoveryRecords = []
             transactionRecoveryError = nil
+            interruptedSaveRecoveries = []
+            interruptedSaveRecoveryError = nil
         }
         self.capabilities = capabilities
         agentChanges = nil
@@ -160,6 +164,7 @@ final class ResearchController: ObservableObject {
         transactionRecoveryError = nil
         retainedRecoveries = [:]
         recoveryRefreshGeneration &+= 1
+        recoveryBindingGeneration &+= 1
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
     }
@@ -275,11 +280,18 @@ final class ResearchController: ObservableObject {
     }
 
     func refreshTransactionRecoveryRecords() async {
+        guard let capabilities else { return }
         recoveryRefreshGeneration &+= 1
         let generation = recoveryRefreshGeneration
+        let bindingGeneration = recoveryBindingGeneration
+        func isCurrent() -> Bool {
+            generation == recoveryRefreshGeneration
+                && bindingGeneration == recoveryBindingGeneration
+                && !Task.isCancelled
+        }
         do {
-            let durable = try await requireResearch().recoveryRecords()
-            guard generation == recoveryRefreshGeneration else { return }
+            let durable = try await capabilities.research.recoveryRecords()
+            guard isCurrent() else { return }
             let durableIDs = Set(durable.map(\.id))
             // Successful read proves persistence. Unpersisted records remain
             // inspectable; an absent formerly durable record is already resolved.
@@ -289,7 +301,7 @@ final class ResearchController: ObservableObject {
             transactionRecoveryRecords = durable + retainedRecoveryRecords
             transactionRecoveryError = retainedRecoveryFailures
         } catch {
-            guard generation == recoveryRefreshGeneration else { return }
+            guard isCurrent(), !(error is CancellationError) else { return }
             let retainedIDs = Set(retainedRecoveries.keys)
             transactionRecoveryRecords =
                 transactionRecoveryRecords.filter { !retainedIDs.contains($0.id) }
@@ -297,6 +309,25 @@ final class ResearchController: ObservableObject {
             let readFailure = ScholiumL10n.string(
                 "Scholium could not read the durable recovery records. Their file remains unchanged. \(ScholiumErrorLocalization.message(error))")
             transactionRecoveryError = [readFailure, retainedRecoveryFailures].compactMap { $0 }.joined(separator: "\n")
+        }
+
+        // Both recovery groups belong to this captured binding and request.
+        // Rebinding during the first read cannot start a second read in the new
+        // Triptych, and an older second read cannot overwrite a newer refresh.
+        guard isCurrent() else { return }
+        do {
+            let recoveries = try await capabilities.documents.interruptedSaveRecoveries()
+            guard isCurrent() else { return }
+            interruptedSaveRecoveries = recoveries
+            interruptedSaveRecoveryError = nil
+        } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
+            interruptedSaveRecoveries = []
+            interruptedSaveRecoveryError = String(
+                localized: "Scholium could not verify the interrupted save candidates. Their exact bytes remain unchanged. \(error.localizedDescription)",
+                table: "Localizable",
+                bundle: .module
+            )
         }
     }
 
@@ -320,10 +351,6 @@ final class ResearchController: ObservableObject {
             throw TriptychTransactionError.recoveryPersistenceFailed(retained.record, failure)
         }
         try await requireResearch().resolveRecoveryRecord(id)
-    }
-
-    func loadInterruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {
-        try await requireDocuments().interruptedSaveRecoveries()
     }
 
     func interruptedSaveRecoveryContent(
@@ -390,6 +417,7 @@ final class ResearchController: ObservableObject {
         relatedMaterials.reset()
         keptPassages.reset()
         recoveryRefreshGeneration &+= 1
+        recoveryBindingGeneration &+= 1
         retainedRecoveries = [:]
         transactionRecoveryRecords = []
         transactionRecoveryError = nil

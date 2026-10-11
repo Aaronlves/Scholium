@@ -115,8 +115,8 @@ final class WindowModel: ObservableObject {
                     scope: scope
                 )
             },
-            open: { [weak self] result, disposition in
-                await self?.openSearchSelection(result, disposition: disposition)
+            open: { [weak self] result, disposition, isCurrent in
+                await self?.openSearchSelection(result, disposition: disposition, isCurrentRequest: isCurrent) ?? false
             },
             hasCurrentNote: { [weak self] in self?.currentNote != nil },
             reportInformation: { [weak self] message in

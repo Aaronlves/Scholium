@@ -93,6 +93,19 @@ struct ExternalMarkdownWindowView: View {
                             case .success(let value): documentFind.accept(value, for: requestID)
                             case .failure(let error): documentFind.fail(error, for: requestID)
                             }
+                        },
+                        observedScrollPosition: model.readScrollPosition,
+                        scrollRestoreRequest: model.readScrollRestoreRequest,
+                        onScrollRestoreConsumed: { id, fingerprint in
+                            model.consumeReadScrollRestore(id, fingerprint: fingerprint, documentID: documentID)
+                        },
+                        onScrollFractionChange: { fraction in
+                            model.observeScrollFraction(
+                                fraction, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
+                        },
+                        onScrollAnchorChange: { anchor in
+                            model.observeScrollAnchor(
+                                anchor, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
                         }
                     )
                 } editor: {
@@ -107,14 +120,22 @@ struct ExternalMarkdownWindowView: View {
                         userCSS: "",
                         requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(linkPreviews: []),
                         linkCompletionQuery: { _, _ in [] }, linkPreviews: [],
-                        initialScrollFraction: 0, initialScrollAnchor: nil,
+                        initialScrollFraction: model.editorScrollPosition.fraction,
+                        initialScrollAnchor: model.editorScrollPosition.anchor,
                         onDocumentActivity: { model.sourceChanged() },
                         onRequestSave: { Task { await model.save() } },
                         onRequestFind: handleFindShortcut,
                         onRequestDocumentTitleRename: { _, _ in throw ExternalMarkdownWindowIssue.renameUnavailable },
                         onPasteImage: { _ in false },
                         onLinkActivation: { _ in }, onImagePreview: { _ in },
-                        onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in },
+                        onScrollFractionChange: { fraction in
+                            model.observeScrollFraction(
+                                fraction, on: .editor, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
+                        },
+                        onScrollAnchorChange: { anchor in
+                            model.observeScrollAnchor(
+                                anchor, on: .editor, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
+                        },
                         onPreviewFailure: { previewFailureMessage = $0.message }
                     )
                     .id(model.editorSession.viewReconstructionID)

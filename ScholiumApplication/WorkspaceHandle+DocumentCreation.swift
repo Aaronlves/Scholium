@@ -400,7 +400,9 @@ extension WorkspaceHandle {
                             .init(
                                 noteID: noteID, vaultID: id.vaultID, status: .unresolved))
                 }
-                sourceAheadIdentityRecords[id] = createdIdentityRecord
+                if let createdIdentityRecord {
+                    do { _ = try await recordCommittedSource(createdIdentityRecord) } catch { identityRecoveryWarning = error.localizedDescription }
+                }
                 // Queue the only complete derived rebuild before releasing the
                 // source lease. A matching watcher event therefore remains
                 // behind this owned task instead of starting a duplicate cycle.

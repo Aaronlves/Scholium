@@ -7,6 +7,30 @@ import Testing
 @Suite("Window-owned Library drops")
 @MainActor
 struct WindowLibraryDropTests {
+    @Test("A new-location drop waits for the previous move's complete window publication")
+    func consecutiveDropsAreSerializedThroughPublication() async throws {
+        let fixture = DropFixture()
+        let publication = DropFlushGate()
+        fixture.publish = { await publication.suspend() }
+        let first = try #require(fixture.controller.requestNoteDrop(fixture.note, to: "Filed/Note.md"))
+        await publication.waitUntilSuspended()
+        let relocated = NoteMutationTarget(
+            documentID: .init(vaultID: fixture.vault.id, relativePath: "Filed/Note.md"),
+            stableNoteID: fixture.note.stableNoteID, revision: fixture.note.revision)
+        fixture.publish = {}
+        let second = try #require(fixture.controller.requestNoteDrop(relocated, to: "Other/Note.md"))
+        #expect(fixture.operations.noteMoves == ["Filed/Note.md"])
+        #expect(fixture.controller.pendingNoteDrops.count == 2)
+        publication.resume()
+        await first.value
+        await second.value
+        #expect(fixture.operations.noteMoves == ["Filed/Note.md", "Other/Note.md"])
+        #expect(fixture.operations.noteSources == ["Note.md", "Filed/Note.md"])
+        #expect(fixture.committedNotes == 2)
+        #expect(fixture.errors.isEmpty)
+        #expect(!fixture.controller.hasActiveLibraryMutation)
+    }
+
     @Test("A Note drop reserves its identity immediately and releases it after commit")
     func noteDropCompletion() async throws {
         let fixture = DropFixture()
@@ -173,6 +197,7 @@ private final class DropFixture {
     var createdFolders: [String] = []
     var recoveryRefreshes = 0
     var flush: @MainActor () async -> Void = {}
+    var publish: @MainActor () async -> Void = {}
 
     lazy var note = NoteMutationTarget(
         documentID: .init(vaultID: vault.id, relativePath: "Note.md"),
@@ -190,7 +215,10 @@ private final class DropFixture {
                 committedFolderCreated: { [unowned self] in createdFolders.append($0.committedValue.rawValue) },
                 committedFolderMoved: { [unowned self] _ in committedFolders += 1 },
                 committedNoteDuplicated: { _, _, _ in },
-                committedNoteMoved: { [unowned self] _, _ in committedNotes += 1 },
+                committedNoteMoved: { [unowned self] _, _ in
+                    committedNotes += 1
+                    await publish()
+                },
                 committedSystemTrash: { _, _ in }, importedDocumentsCommitted: { _ in },
                 presentImportOutcome: { _ in }, presentSystemTrash: { _ in }, clearPresentedAlert: {},
                 reportError: { [unowned self] in errors.append($0) }, reportInformation: { _ in },
@@ -206,6 +234,7 @@ private final class DropFixture {
 private final class DropOperations: LibraryMutationUseCases {
     var shouldFail = false
     var noteMoves: [String] = []
+    var noteSources: [String] = []
     var folderMoves: [String] = []
     var createdFolderVaults: [UUID] = []
     var beforeFolderCreationReturns: @MainActor () -> Void = {}
@@ -213,6 +242,7 @@ private final class DropOperations: LibraryMutationUseCases {
     func move(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         if shouldFail { throw CocoaError(.fileWriteNoPermission) }
         noteMoves.append(destinationRelativePath)
+        noteSources.append(target.relativePath)
         return .init(
             committedValue: .init(
                 movedNote: target.documentID,

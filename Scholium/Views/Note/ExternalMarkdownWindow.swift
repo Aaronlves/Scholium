@@ -241,6 +241,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     let documentFind = DocumentFindPresentationModel()
     private var fileSession: ExternalMarkdownFileSession?
     private var editorObservation: AnyCancellable?
+    private var editorReadinessObservation: AnyCancellable?
     private var findObservation: AnyCancellable?
     private var findFocusObservation: AnyCancellable?
     private var openingID = UUID()
@@ -276,6 +277,10 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         let value: MarkdownReviewSelection
     }
     private var readSelection: BoundReadSelection?
+    private(set) var readScrollPosition = ObservedScrollPosition()
+    private(set) var editorScrollPosition = ObservedScrollPosition()
+    @Published private(set) var readScrollRestoreRequest: ScrollRestoreRequest?
+    private var nextReadScrollRestoreID: UInt64 = 0
     private weak var window: NSWindow?
     private weak var previousDelegate: (any NSWindowDelegate)?
 
@@ -306,9 +311,28 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     }
 
     private func observeEditor() {
-        editorObservation = editorSession.objectWillChange.sink { [weak self] in
+        let observedEditor = editorSession
+        editorObservation = observedEditor.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
+        editorReadinessObservation = observedEditor.$presentation
+            .map { $0.webContentReady && $0.isLoaded }
+            .removeDuplicates()
+            .sink { [weak self, weak observedEditor] ready in
+                guard ready else { return }
+                let expectedDocumentID = self?.documentID
+                // Published values arrive before their setter commits. Resume
+                // only this retained owner after its readiness turn completes.
+                Task { @MainActor [weak self, weak observedEditor] in
+                    guard let self, let observedEditor, !self.isClosed,
+                        self.editorSession === observedEditor,
+                        self.documentID == expectedDocumentID,
+                        observedEditor.isReady, observedEditor.isLoaded,
+                        self.refreshPending
+                    else { return }
+                    self.refreshAfterOperation()
+                }
+            }
     }
 
     var title: String { displayFilename ?? originalURL.lastPathComponent }
@@ -537,6 +561,12 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         inputResumeError = nil
         readSelection = nil
         snapshot = loaded
+        if readScrollPosition.anchor?.sourceFingerprint != loaded.fingerprint.sha256 {
+            readScrollPosition.anchor = nil
+        }
+        if editorScrollPosition.anchor?.sourceFingerprint != loaded.fingerprint.sha256 {
+            editorScrollPosition.anchor = nil
+        }
         readHTML =
             SafeMarkdownRenderer.render(
                 NoteDocument(relativePath: title, rawContent: loaded.source)
@@ -544,6 +574,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         openingID = UUID()
         mode = previousMode
         didAllocateEditor = mode != .read
+        requestReadScrollRestore(reason: .documentLoad)
         window?.isDocumentEdited = false
         error = nil
         hasConflict = false
@@ -560,9 +591,18 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                 guard let self else { return }
                 do {
                     try await suspendInput()
+                    let handoffAnchor = try? await editorSession.currentScrollAnchor()
                     if await save(allowingLifecycle: true), !isClosed {
+                        if let handoffAnchor {
+                            editorScrollPosition = ObservedScrollPosition(
+                                fraction: handoffAnchor.fallbackFraction, anchor: handoffAnchor)
+                        }
                         await editorSession.resignFocusAndWait()
-                        if !isClosed { mode = .read }
+                        if !isClosed {
+                            readScrollPosition = editorScrollPosition
+                            requestReadScrollRestore(reason: .modeHandoff)
+                            mode = .read
+                        }
                     }
                 } catch { self.error = ScholiumErrorLocalization.message(error) }
                 await resumeInput()
@@ -574,6 +614,22 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         }
         guard requested != .read || !hasConflict else { return }
         if requested != .read {
+            if mode == .read {
+                editorScrollPosition = readScrollPosition
+                editorSession.setScrollPosition(
+                    anchor: editorScrollPosition.anchor,
+                    fallbackFraction: editorScrollPosition.fraction)
+                if let readSelection, readSelection.documentID == documentID,
+                    let snapshot, readSelection.fingerprint == snapshot.fingerprint,
+                    let range = readSelection.value.exactUTF16Range,
+                    range.lowerBound >= 0, range.upperBound <= snapshot.source.utf16.count,
+                    (snapshot.source as NSString).substring(
+                        with: NSRange(location: range.lowerBound, length: range.count)
+                    ).utf8.elementsEqual(readSelection.value.excerpt.utf8)
+                {
+                    editorSession.prepareReadSelection(range)
+                }
+            }
             didAllocateEditor = true
             readSelection = nil
             if let window, window.isKeyWindow, isApplicationActive() {
@@ -650,6 +706,12 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     func refreshFromDisk() async {
         guard !isClosed, !isBusy, inputResumeError == nil, let fileSession, let snapshot else {
+            refreshPending = true
+            return
+        }
+        // Allocation precedes WebKit attachment and initialization. Keep the
+        // checked read pending until its exact editor can capture live input.
+        guard !retainsEditor || editorSession.isReady && editorSession.isLoaded else {
             refreshPending = true
             return
         }
@@ -776,6 +838,57 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     }
     func closeWindow() { window?.performClose(nil) }
 
+    func observeScrollFraction(
+        _ fraction: Double, on surface: DocumentScrollSurface,
+        documentID: String, fingerprint: String
+    ) {
+        guard admitsScrollObservation(on: surface, documentID: documentID, fingerprint: fingerprint) else { return }
+        switch surface {
+        case .read: readScrollPosition.updateFraction(fraction)
+        case .editor: editorScrollPosition.updateFraction(fraction)
+        }
+    }
+
+    func observeScrollAnchor(
+        _ anchor: EditorScrollAnchor, on surface: DocumentScrollSurface,
+        documentID: String, fingerprint: String
+    ) {
+        guard admitsScrollObservation(on: surface, documentID: documentID, fingerprint: fingerprint),
+            let snapshot,
+            anchor.isValid(forUTF16Length: surface == .read ? snapshot.source.utf16.count : editorSession.checkedSource.utf16.count),
+            surface != .read || anchor.sourceFingerprint == fingerprint
+        else { return }
+        switch surface {
+        case .read: readScrollPosition.anchor = anchor
+        case .editor: editorScrollPosition.anchor = anchor
+        }
+    }
+
+    private func admitsScrollObservation(
+        on surface: DocumentScrollSurface, documentID: String, fingerprint: String
+    ) -> Bool {
+        !isClosed && self.documentID == documentID && snapshot?.fingerprint.sha256 == fingerprint
+            && (surface == .read ? mode == .read : mode != .read)
+    }
+
+    private func requestReadScrollRestore(reason: ScrollRestoreReason) {
+        guard let snapshot else { return }
+        nextReadScrollRestoreID &+= 1
+        var position = readScrollPosition
+        if position.anchor?.sourceFingerprint != snapshot.fingerprint.sha256 { position.anchor = nil }
+        readScrollRestoreRequest = ScrollRestoreRequest(
+            id: nextReadScrollRestoreID, fingerprint: snapshot.fingerprint.sha256,
+            position: position, reason: reason)
+    }
+
+    func consumeReadScrollRestore(_ id: UInt64, fingerprint: String, documentID: String) {
+        guard !isClosed, self.documentID == documentID,
+            readScrollRestoreRequest?.id == id,
+            readScrollRestoreRequest?.fingerprint == fingerprint
+        else { return }
+        readScrollRestoreRequest = nil
+    }
+
     func acceptReadSelection(
         _ selection: MarkdownReviewSelection?, documentID: String, fingerprint: DocumentFingerprint
     ) {
@@ -886,7 +999,10 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     }
 
     private func refreshAfterOperation() {
-        if refreshPending && inputResumeError == nil { scheduleRefresh() }
+        if refreshPending && inputResumeError == nil {
+            scheduleRefresh()
+            return
+        }
         // Readiness can arrive while a checked refresh has suspended input.
         // Its completion, not a coalescible view observation of busy state,
         // resumes only the still-pending explicit mode-entry intent.

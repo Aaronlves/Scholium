@@ -373,6 +373,7 @@ extension WorkspaceHandle {
         )
         currentSnapshot = snapshot
         sourceAheadIdentityRecords.removeAll(keepingCapacity: true)
+        sourceAheadSourceVersions.removeAll(keepingCapacity: true)
         let confirmsEarlierFailure = derivedStateRequiresRefresh
         derivedStateRequiresRefresh = false
         let publicationStart = clock.now
@@ -577,12 +578,15 @@ extension WorkspaceHandle {
         let added = newIDs.subtracting(oldIDs).subtracting(movedTo)
         let removed = oldIDs.subtracting(newIDs).subtracting(movedFrom)
         let changed = oldIDs.intersection(newIDs).filter { old[$0] != new[$0] }
+        let oldFolders = Dictionary(uniqueKeysWithValues: previous.vaults.map { ($0.vault.id, $0.folders) })
+        let newFolders = Dictionary(uniqueKeysWithValues: current.vaults.map { ($0.vault.id, $0.folders) })
         return (
             added,
             removed,
             Set(changed),
             moved,
             !added.isEmpty || !removed.isEmpty || !changed.isEmpty || !moved.isEmpty
+                || oldFolders != newFolders
         )
     }
 
@@ -868,6 +872,7 @@ extension WorkspaceHandle {
             pendingSourceCommitRefreshes.removeAll(keepingCapacity: true)
             do {
                 let payload = try WorkspaceRefreshPayload.merged(queued)
+                if let barrier = committedMutationRefreshBarrierForTesting { await barrier() }
                 _ = try await refreshCoordinator.request(payload)
             } catch is CancellationError {
                 return

@@ -429,7 +429,7 @@ struct SidebarTreeTests {
             for style in styles {
                 cell.backgroundStyle = style
                 let title = try #require(cell.titleLabel.textColor)
-                let icon = try #require(cell.imageView?.contentTintColor)
+                let icon = try #require(cell.itemImageView.contentTintColor)
                 let expectedTitle: NSColor =
                     style == .emphasized
                     ? .alternateSelectedControlTextColor : ScholiumColorRole.primaryText.nsColor
@@ -469,10 +469,10 @@ struct SidebarTreeTests {
         let item = SidebarOutlineItem(node: try #require(LibraryTreeProjection(preorderedNotes: [note]).roots.first))
         let cell = SidebarOutlineCell(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
         cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
-        let image = try #require(cell.imageView?.image)
+        let image = try #require(cell.itemImageView.image)
         let generation = cell.representationGeneration
         cell.configure(item: item, isExpanded: false, nativeStrings: strings, presentation: presentation)
-        #expect(cell.imageView?.image === image)
+        #expect(cell.itemImageView.image === image)
         #expect(cell.representationGeneration == generation)
 
         let renamed = WindowDocumentLocation.syntheticPreview(relativePath: "Renamed.md", rawContent: "")
@@ -482,7 +482,7 @@ struct SidebarTreeTests {
         #expect(cell.titleLabel.accessibilityLabel() == "Renamed")
         #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.Renamed.md")
         #expect(cell.titleLabel.toolTip == "Renamed")
-        #expect(cell.imageView?.image === image)
+        #expect(cell.itemImageView.image === image)
 
         let nested = WindowDocumentLocation.syntheticPreview(relativePath: "Folder/Nested.md", rawContent: "")
         let folder = SidebarOutlineItem(node: try #require(LibraryTreeProjection(preorderedNotes: [nested]).roots.first))
@@ -490,10 +490,10 @@ struct SidebarTreeTests {
         cell.configure(item: folder, isExpanded: false, nativeStrings: strings, presentation: presentation)
         #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.folderRow.Folder")
         #expect(cell.titleLabel.accessibilityValue() as? String == "Collapsed")
-        let folderImage = try #require(cell.imageView?.image)
+        let folderImage = try #require(cell.itemImageView.image)
         cell.configure(item: folder, isExpanded: true, nativeStrings: strings, presentation: presentation)
         #expect(cell.titleLabel.accessibilityValue() as? String == "Expanded")
-        #expect(cell.imageView?.image === folderImage)
+        #expect(cell.itemImageView.image === folderImage)
 
         let chinese = SidebarNativeStrings(locale: Locale(identifier: "zh-Hans"))
         cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: presentation)
@@ -504,7 +504,7 @@ struct SidebarTreeTests {
         let expectedLargeImage = try #require(
             NSImage(systemSymbolName: ScholiumSidebarItem.folder.symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: large.textPointSize, weight: .regular)))
-        #expect(cell.imageView?.image?.size == expectedLargeImage.size)
+        #expect(cell.itemImageView.image?.size == expectedLargeImage.size)
         folder.children = []
         cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: large)
         #expect(cell.titleLabel.accessibilityValue() as? String == "空文件夹")
@@ -515,6 +515,52 @@ struct SidebarTreeTests {
         #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.folderRow.Folder")
         #expect(cell.titleLabel.accessibilityLabel() == "Folder")
         #expect(cell.titleLabel.accessibilityValue() as? String == "已展开")
+    }
+
+    @MainActor
+    @Test("Attached source-list item symbols keep equal geometry at every hierarchy depth")
+    func nativeItemSymbolsDoNotReceiveSectionIconSizing() throws {
+        let notes = ["Root.md", "A/First.md", "A/B/Second.md", "A/B/C/Third.md", "A/B/C/D/Fourth.md"].map {
+            WindowDocumentLocation.syntheticPreview(relativePath: $0, rawContent: "# Note\n")
+        }
+        let roots = LibraryTreeProjection(preorderedNotes: notes.sorted { $0.relativePath < $1.relativePath }).roots
+        for enlarged in [false, true] {
+            let configuration = makeSidebarCoordinatorConfiguration(
+                roots: roots, notes: notes,
+                scope: .init(vaultID: UUID(), sourceScope: .library),
+                expandedFolderIDs: ["A", "A/B", "A/B/C", "A/B/C/D"],
+                revealRequest: nil, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+                usesAccessibilitySize: enlarged
+            )
+            let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+            let fixture = makeSidebarCoordinatorOutline(coordinator)
+            defer {
+                coordinator.detach(from: fixture.scrollView)
+                fixture.window.close()
+            }
+            coordinator.apply(configuration: configuration)
+            fixture.window.contentView?.layoutSubtreeIfNeeded()
+            var folderSizes: [NSSize] = []
+            var noteSizes: [NSSize] = []
+            for row in 0..<fixture.outlineView.numberOfRows {
+                let item = try #require(fixture.outlineView.item(atRow: row) as? SidebarOutlineItem)
+                let cell = try #require(fixture.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? SidebarOutlineCell)
+                cell.layoutSubtreeIfNeeded()
+                if item.node.isFolder { folderSizes.append(cell.itemImageView.frame.size) } else { noteSizes.append(cell.itemImageView.frame.size) }
+                let components = cell.draggingImageComponents
+                #expect(components.filter { $0.key == .icon }.count == 1)
+                #expect(components.contains { $0.key == .label })
+                let dragImage = try #require(components.first { $0.key == .icon }?.contents as? NSImage)
+                #expect(dragImage.size == cell.itemImageView.bounds.size)
+                #expect(cell.titleLabel.accessibilityLabel() == cell.titleLabel.stringValue)
+                #expect(cell.itemImageView.isAccessibilityElement() == false)
+            }
+            #expect(folderSizes.count == 4)
+            #expect(noteSizes.count == 5)
+            #expect(folderSizes.allSatisfy { $0 == folderSizes.first })
+            #expect(noteSizes.allSatisfy { $0 == noteSizes.first })
+        }
     }
 
     @MainActor
@@ -624,7 +670,7 @@ struct SidebarTreeTests {
         #expect(cell.titleLabel.accessibilityRole() == .staticText)
         #expect(cell.titleLabel.accessibilityIdentifier() == "scholium.noteRow.First.md")
         #expect(cell.titleLabel.toolTip == notes[0].title)
-        #expect(cell.imageView?.isAccessibilityElement() == false)
+        #expect(cell.itemImageView.isAccessibilityElement() == false)
         let action = try #require(
             cell.titleLabel.accessibilityCustomActions()?.first {
                 $0.name == "Copy Relative Path"
@@ -1962,7 +2008,8 @@ private func makeSidebarCoordinatorConfiguration(
     dropInventory suppliedDropInventory: SidebarTreeDropInventory? = nil,
     onMoveNoteDrop: @escaping (SidebarNoteDragItem, String?) -> Void = { _, _ in },
     onMoveFolderDrop: @escaping (SidebarFolderDragItem, String?) -> Void = { _, _ in },
-    onMoveNotesDrop: @escaping ([SidebarNoteDragItem], String?) -> Void = { _, _ in }
+    onMoveNotesDrop: @escaping ([SidebarNoteDragItem], String?) -> Void = { _, _ in },
+    usesAccessibilitySize: Bool = false
 ) -> SidebarOutlineSourceList {
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
@@ -2000,7 +2047,7 @@ private func makeSidebarCoordinatorConfiguration(
         locale: Locale(identifier: "en_US"),
         expandedFolders: .constant(expandedFolderIDs),
         expandedFolderIDs: expandedFolderIDs,
-        usesAccessibilitySize: false,
+        usesAccessibilitySize: usesAccessibilitySize,
         selectedDocumentPath: selectedDocumentPath,
         context: context,
         dropInventory: dropInventory,

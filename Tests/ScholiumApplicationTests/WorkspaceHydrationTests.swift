@@ -6,6 +6,163 @@ import Testing
 
 @Suite("Workspace demand hydration")
 struct WorkspaceHydrationTests {
+    @Test("Folder link rewrites authorize a later incoming-Note mutation before complete publication")
+    func folderRewritesAdvanceOutsideIdentities() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let old = fixture.analysesURL.appendingPathComponent("Old", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("# Descendant\n".utf8).write(to: old.appendingPathComponent("Descendant.md"))
+        try Data("# Incoming\n\n[[Old/Descendant]]\n".utf8).write(to: fixture.analysesURL.appendingPathComponent("Incoming.md"))
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL)
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let gate = HydrationReadGate()
+        await handle.setCommittedMutationRefreshBarrierForTesting { await gate.hold() }
+        defer {
+            Task {
+                await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+                await gate.release()
+                await runtime.shutdown()
+            }
+        }
+        let first = try await handle.documents.moveFolder(
+            inVault: fixture.analysisNoteID.vaultID, from: "Old", to: "Filed")
+        await gate.waitUntilEntered()
+        #expect(first.identityRecoveryWarning == nil)
+        let second = try await handle.documents.moveFolder(
+            inVault: fixture.analysisNoteID.vaultID, from: "Filed", to: "Other")
+        #expect(second.identityRecoveryWarning == nil)
+        let incoming = try #require(second.committedSourceSummaries.first { $0.id.relativePath == "Incoming.md" })
+        #expect(try await handle.documents.hydrate(incoming).document.rawContent == "# Incoming\n\n[[Other/Descendant]]\n")
+        let moved = try await handle.documents.move(
+            NoteMutationTarget(documentID: incoming.id, stableNoteID: #require(incoming.stableIdentity.resolvedID), revision: incoming.fingerprint),
+            to: "Other/Incoming.md")
+        #expect(moved.identityRecoveryWarning == nil)
+        let target = try #require(moved.committedSourceSummaries.first { $0.id == moved.committedValue.destination })
+        let preview = try await handle.documents.prepareSystemTrash(
+            NoteMutationTarget(documentID: target.id, stableNoteID: #require(target.stableIdentity.resolvedID), revision: target.fingerprint))
+        #expect(preview.sources.first?.relativePath == target.id.relativePath)
+        await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+        await gate.release()
+        await runtime.shutdown()
+    }
+
+    @Test("Repeated moves hydrate each exact committed source while complete derived publication is suspended")
+    func consecutiveSourceAheadMoves() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let sourceBytes = Data("# Agency\n\n[[LocalTarget]]\n".utf8)
+        let old = fixture.analysesURL.appendingPathComponent("Old", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try sourceBytes.write(to: old.appendingPathComponent("Agency.md"))
+        try Data("# Original target\n".utf8).write(to: old.appendingPathComponent("LocalTarget.md"))
+        let filed = fixture.analysesURL.appendingPathComponent("Filed", isDirectory: true)
+        try FileManager.default.createDirectory(at: filed, withIntermediateDirectories: true)
+        try Data("# Different target\n".utf8).write(to: filed.appendingPathComponent("LocalTarget.md"))
+        try Data("# Incoming\n\n[[Old/Agency]]\n".utf8).write(to: fixture.analysesURL.appendingPathComponent("Incoming.md"))
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL)
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let gate = HydrationReadGate()
+        await handle.setCommittedMutationRefreshBarrierForTesting { await gate.hold() }
+        defer {
+            Task {
+                await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+                await gate.release()
+                await runtime.shutdown()
+            }
+        }
+        let originalID = VaultQualifiedNoteID(vaultID: fixture.analysisNoteID.vaultID, relativePath: "Old/Agency.md")
+        let original = try #require(await handle.snapshot().document(id: originalID))
+        let stableID = try #require(original.stableIdentity.resolvedID)
+        let first = try await handle.documents.move(
+            NoteMutationTarget(documentID: original.id, stableNoteID: stableID, revision: original.fingerprint),
+            to: "Filed/Agency.md")
+        await gate.waitUntilEntered()
+        #expect(first.identityRecoveryWarning == nil)
+        #expect(first.committedValue.committedRevision != original.fingerprint)
+        let moved = try #require(first.committedSourceSummaries.first { $0.id == first.committedValue.destination })
+        let hydrated = try await handle.documents.hydrate(moved)
+        #expect(hydrated.document.rawContent == "# Agency\n\n[[Old/LocalTarget]]\n")
+        let second = try await handle.documents.move(
+            NoteMutationTarget(documentID: moved.id, stableNoteID: stableID, revision: moved.fingerprint),
+            to: "Other/Agency.md")
+        #expect(second.identityRecoveryWarning == nil)
+        var next = try #require(second.committedSourceSummaries.first { $0.id == second.committedValue.destination })
+        #expect(try await handle.documents.hydrate(next).document.fingerprint == next.fingerprint)
+        #expect(try await handle.snapshot().document(id: next.id) == nil)
+
+        for destination in ["Old/Agency.md", "Other/Agency.md"] {
+            let repeated = try await handle.documents.move(
+                NoteMutationTarget(documentID: next.id, stableNoteID: stableID, revision: next.fingerprint),
+                to: destination)
+            #expect(repeated.identityRecoveryWarning == nil)
+            next = try #require(repeated.committedSourceSummaries.first { $0.id == repeated.committedValue.destination })
+            #expect(try await handle.documents.hydrate(next).document.fingerprint == next.fingerprint)
+        }
+
+        let incoming = try #require(second.committedSourceSummaries.first { $0.id.relativePath == "Incoming.md" })
+        #expect(try await handle.documents.hydrate(incoming).document.rawContent.contains("[[Other/Agency]]"))
+        let incomingID = try #require(incoming.stableIdentity.resolvedID)
+        let incomingMove = try await handle.documents.move(
+            NoteMutationTarget(documentID: incoming.id, stableNoteID: incomingID, revision: incoming.fingerprint),
+            to: "Other/Incoming.md")
+        #expect(incomingMove.identityRecoveryWarning == nil)
+        let currentIncoming = try #require(
+            incomingMove.committedSourceSummaries.first {
+                $0.id == incomingMove.committedValue.destination
+            })
+        #expect(try await handle.documents.hydrate(currentIncoming).document.fingerprint == currentIncoming.fingerprint)
+        await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+        await gate.release()
+        let rebuilt = try await handle.discovery.refresh()
+        #expect(rebuilt.document(id: next.id)?.stableIdentity.resolvedID == stableID)
+        #expect(rebuilt.document(id: incomingMove.committedValue.destination)?.stableIdentity.resolvedID == incomingID)
+        await runtime.shutdown()
+    }
+
+    @Test("A source-ahead move rejects identical bytes recreated at its committed path")
+    func sourceAheadReplacementDoesNotBorrowIdentity() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL)
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let gate = HydrationReadGate()
+        await handle.setCommittedMutationRefreshBarrierForTesting { await gate.hold() }
+        defer {
+            Task {
+                await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+                await gate.release()
+                await runtime.shutdown()
+            }
+        }
+        let source = try #require(await handle.snapshot().document(id: fixture.analysisNoteID))
+        let moved = try await handle.documents.move(
+            NoteMutationTarget(documentID: source.id, stableNoteID: #require(source.stableIdentity.resolvedID), revision: source.fingerprint),
+            to: "Filed/Agency.md")
+        await gate.waitUntilEntered()
+        let summary = try #require(moved.committedSourceSummaries.first { $0.id == moved.committedValue.destination })
+        let path = fixture.analysesURL.appendingPathComponent(summary.id.relativePath)
+        let bytes = try Data(contentsOf: path)
+        try FileManager.default.moveItem(at: path, to: path.deletingLastPathComponent().appendingPathComponent("External original.md"))
+        try bytes.write(to: path)
+        await #expect(throws: WorkspaceHydrationError.self) { try await handle.documents.hydrate(summary) }
+        await #expect(throws: (any Error).self) {
+            try await handle.documents.move(
+                NoteMutationTarget(documentID: summary.id, stableNoteID: #require(summary.stableIdentity.resolvedID), revision: summary.fingerprint),
+                to: "Other/Agency.md")
+        }
+        #expect(try Data(contentsOf: path) == bytes)
+        await handle.setCommittedMutationRefreshBarrierForTesting(nil)
+        await gate.release()
+        await runtime.shutdown()
+    }
+
     @Test("Hydration preserves BOM, CRLF, malformed YAML, Unicode, and missing final newline")
     func exactBytesAndReadOnlyIdentity() async throws {
         let fixture = try await ApplicationFixture.make()

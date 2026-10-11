@@ -9,6 +9,65 @@ import Testing
 
 @Suite("Links Inspector projection", .serialized)
 struct ConnectionsInspectorTests {
+    @Test("External Links proves Empty only after the current source projection is ready")
+    func externalProjectionReadiness() throws {
+        var context = ConnectionsInspectorContext(
+            graph: nil, catalog: nil,
+            current: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Current.md"),
+            freshness: .current, retryRefresh: {}, openReference: { _, _, _ in })
+        #expect(!context.hasProjection(for: .external))
+        #expect(context.projectionFreshness(for: .external) == .refreshing)
+        let pending = InspectorLinkRow.make(
+            groups: [], external: context.externalLinks, collapsedGroups: [],
+            freshness: context.projectionFreshness(for: .external),
+            emptyAnnouncement: "No External Links", hasProjection: context.hasProjection(for: .external))
+        try #require(pending.count == 1)
+        guard case .freshness(.refreshing) = pending[0] else {
+            Issue.record("An unprepared current source projection must show loading rather than Empty.")
+            return
+        }
+
+        context.externalProjectionIsReady = true
+        #expect(context.hasProjection(for: .external))
+        #expect(!context.hasProjection(for: .incoming))
+        #expect(!context.hasProjection(for: .outgoing))
+        #expect(context.projectionFreshness(for: .external) == .current)
+        let ready = InspectorLinkRow.make(
+            groups: [], external: context.externalLinks, collapsedGroups: [],
+            freshness: context.projectionFreshness(for: .external),
+            emptyAnnouncement: "No External Links", hasProjection: context.hasProjection(for: .external))
+        try #require(ready.count == 1)
+        guard case .empty = ready[0] else {
+            Issue.record("A prepared current source with no external links must prove Empty independently of graph availability.")
+            return
+        }
+    }
+
+    @Test(
+        "Missing internal graph never claims an empty Links scope",
+        arguments: [
+            ResearchProjectionFreshness.refreshing,
+            .unavailable("No complete graph is available."),
+            .failed("Graph refresh failed."),
+        ])
+    func missingGraphState(_ freshness: ResearchProjectionFreshness) throws {
+        let rows = InspectorLinkRow.make(
+            groups: [], external: [], collapsedGroups: [], freshness: freshness,
+            emptyAnnouncement: "No Incoming Links", hasProjection: false)
+        try #require(rows.count == 1)
+        guard case .freshness(let actual) = rows[0] else {
+            Issue.record("An unavailable graph cannot establish that there are no authored links.")
+            return
+        }
+        #expect(actual == freshness)
+
+        let external = InspectorLinkRow.make(
+            groups: [], external: [], collapsedGroups: [], freshness: freshness,
+            emptyAnnouncement: "No External Links", hasProjection: true)
+        #expect(external.count == 2)
+        #expect(external.contains { if case .empty = $0 { true } else { false } })
+    }
+
     @Test("Links publishes only changed navigation context and preserves independent locations")
     @MainActor
     func navigationContextPublications() {

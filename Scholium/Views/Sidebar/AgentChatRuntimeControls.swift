@@ -32,7 +32,7 @@ struct AgentChatConfigurationMenu: View {
             } label: {
                 Text("Model", bundle: .module)
             }.disabled(!canSelectModel)
-            if let selectedModel, !selectedModel.efforts.isEmpty {
+            if showsReasoningMenu {
                 Menu {
                     Picker(
                         "Reasoning",
@@ -41,7 +41,10 @@ struct AgentChatConfigurationMenu: View {
                             set: { selectEffort($0.isEmpty ? nil : $0) })
                     ) {
                         Text("Runtime Default", bundle: .module).tag("")
-                        ForEach(selectedModel.efforts, id: \.self) { effort in
+                        if let unavailableEffort {
+                            Text("Unavailable: \(AgentChatControlLabels.effort(unavailableEffort))").tag(unavailableEffort)
+                        }
+                        ForEach(selectedModel?.efforts ?? [], id: \.self) { effort in
                             Text(AgentChatControlLabels.effort(effort)).tag(effort)
                         }
                     }
@@ -84,6 +87,17 @@ struct AgentChatConfigurationMenu: View {
             ].joined(separator: ", "))
     }
 
+    var unavailableEffort: String? {
+        guard let effort = preferences.effort,
+            selectedModel?.efforts.contains(effort) != true
+        else { return nil }
+        return effort
+    }
+
+    var showsReasoningMenu: Bool {
+        selectedModel?.efforts.isEmpty == false || unavailableEffort != nil
+    }
+
     private var modelLabel: String {
         [modelName, displayEffortLabel].joined(separator: " · ")
     }
@@ -101,7 +115,10 @@ struct AgentChatConfigurationMenu: View {
     }
 
     private var displayEffortLabel: String {
-        effortLabel ?? ScholiumL10n.string("Default", locale: locale)
+        if let unavailableEffort {
+            return ScholiumL10n.string("Unavailable: \(AgentChatControlLabels.effort(unavailableEffort))", locale: locale)
+        }
+        return effortLabel ?? ScholiumL10n.string("Default", locale: locale)
     }
 }
 

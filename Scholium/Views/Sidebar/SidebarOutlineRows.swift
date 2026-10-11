@@ -110,7 +110,7 @@ final class SidebarOutlineCell: NSTableCellView {
     }
 
     let titleLabel = SidebarOutlineLabel(labelWithString: "")
-    private let itemImageView = NSImageView()
+    let itemImageView = NSImageView()
     private var representedContent: Content?
     private(set) var representationGeneration: UInt64 = 0
 
@@ -126,7 +126,11 @@ final class SidebarOutlineCell: NSTableCellView {
 
     private func installContent() {
         textField = titleLabel
-        imageView = itemImageView
+        // Source-list cell image outlets receive AppKit's section-icon
+        // treatment at the first two depths. Our symbol identifies an on-disk
+        // item at every depth, rather than a source-list section. Keep its
+        // geometry with this content owner while the native outline retains
+        // disclosure, indentation, selection, text semantics and row sizing.
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.lineBreakMode = .byTruncatingMiddle
         titleLabel.maximumNumberOfLines = 1
@@ -230,6 +234,19 @@ final class SidebarOutlineCell: NSTableCellView {
         titleLabel.toolTip = nil
         toolTip = nil
         objectValue = nil
+    }
+
+    override var draggingImageComponents: [NSDraggingImageComponent] {
+        guard let bitmap = itemImageView.bitmapImageRepForCachingDisplay(in: itemImageView.bounds) else {
+            return super.draggingImageComponents
+        }
+        itemImageView.cacheDisplay(in: itemImageView.bounds, to: bitmap)
+        let image = NSImage(size: itemImageView.bounds.size)
+        image.addRepresentation(bitmap)
+        let symbol = NSDraggingImageComponent(key: .icon)
+        symbol.contents = image
+        symbol.frame = convert(itemImageView.bounds, from: itemImageView)
+        return [symbol] + super.draggingImageComponents
     }
 
     /// The native outline owns click/drag recognition and context selection;

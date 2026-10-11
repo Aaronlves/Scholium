@@ -50,17 +50,30 @@ final class DocumentWindowLocationStore {
                 $0.document.vaultID == reference.vaultID && $0.document.relativePath == reference.relativePath
             }
         }) {
-            try await owner.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
-            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            try await openRegisteredReference(reference, in: owner, triptychID: triptychID)
             return true
         }
         guard let main = candidates.first(where: { !$0.isDetachedDocumentWindow }) else { return false }
         if main.workspaceProjectionController.cachedNote(vaultID: reference.vaultID, stableNoteID: nil, relativePath: reference.relativePath) == nil {
             _ = await main.refreshAfterResearchHandoff()
         }
-        try await main.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
-        main.nativeWindowCoordinator?.makeKeyAndOrderFront()
+        try await openRegisteredReference(reference, in: main, triptychID: triptychID)
         return true
+    }
+
+    private func openRegisteredReference(
+        _ reference: VaultNoteReference, in model: WindowModel, triptychID: UUID
+    ) async throws {
+        try Task.checkCancellation()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            model.openInNewTab(reference, onCompletion: { continuation.resume(with: $0) })
+        }
+        try Task.checkCancellation()
+        let owner = existingOwner(of: reference, excluding: model) ?? model
+        guard canUseAsDestination(owner, triptychID: triptychID) else {
+            throw DocumentControllerError.documentUnavailable
+        }
+        owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
     }
 
     /// Recovery belongs to the Triptych's research surface, including when its
@@ -100,9 +113,14 @@ final class DocumentWindowLocationStore {
         origins[model.nativeWindowID] = nil
     }
 
-    func revealExisting(_ reference: VaultNoteReference, excluding source: WindowModel) -> Bool {
+    func revealExisting(
+        _ reference: VaultNoteReference, excluding source: WindowModel,
+        onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
+    ) -> Bool {
         guard let id = resolvedKey(for: reference, in: source)?.noteID else { return false }
-        return revealExisting(key: DocumentSessionKey(vaultID: reference.vaultID, noteID: id), excluding: source)
+        return revealExisting(
+            key: DocumentSessionKey(vaultID: reference.vaultID, noteID: id),
+            excluding: source, onSelection: onSelection)
     }
 
     func revealExisting(
@@ -162,6 +180,8 @@ final class DocumentWindowLocationStore {
                     onSelection?(model, selected)
                 }
             )
+        } else {
+            onSelection?(model, false)
         }
         return true
     }

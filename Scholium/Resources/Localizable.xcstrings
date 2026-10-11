@@ -1,6 +1,13 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Starting Sign-In…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Starting Sign-In…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在发起登录…"}}}},
+    "Codex Needs Attention": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Codex Needs Attention"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Codex 需要处理"}}}},
+    "Enter a whole number from %@ to %@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter a whole number from %@ to %@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请输入 %@ 到 %@ 之间的整数。"}}}},
+    "Enter a number from %@ to %@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter a number from %@ to %@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请输入 %@ 到 %@ 之间的数值。"}}}},
+    "Use %@–%@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Use %@–%@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "范围：%@–%@。"}}}},
+    "Whole number: %@–%@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Whole number: %@–%@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "整数：%@–%@。"}}}},
+    "Enter %@–%@.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter %@–%@."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请输入 %@–%@。"}}}},
     "Explain Selection": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Explain Selection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "解释选区"}}}},
     "Polish Selection": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Polish Selection"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "润色选区"}}}},
     "Preview Link or Footnote": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Preview Link or Footnote"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "预览链接或脚注"}}}},

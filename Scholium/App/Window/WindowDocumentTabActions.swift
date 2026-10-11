@@ -4,13 +4,33 @@ import ScholiumContracts
 /// Document tabs as the researcher moves through them: transfer between
 /// windows, selection, navigation history and closing.
 extension WindowModel {
-    func openInNewTab(_ reference: VaultNoteReference) {
-        enqueueDocumentTransition(preparation: openingPreparation(for: reference, placement: .newTab)) { [weak self] in
-            guard let self else { return }
+    func openInNewTab(
+        _ reference: VaultNoteReference,
+        onCompletion: (@MainActor (Result<Void, Error>) -> Void)? = nil
+    ) {
+        var forwarded = false
+        let validate: @MainActor () throws -> Void = { [weak self] in
+            guard let self, !forwarded else { throw CancellationError() }
+            if self.workspaceStore.documentLocations.revealExisting(
+                reference, excluding: self,
+                onSelection: { _, selected in
+                    onCompletion?(selected ? .success(()) : .failure(DocumentControllerError.documentUnavailable))
+                }
+            ) {
+                forwarded = true
+                throw CancellationError()
+            }
+        }
+        enqueueDocumentTransition(
+            preparation: openingPreparation(for: reference, placement: .newTab),
+            validateBeforePreparation: validate
+        ) { [weak self] in
+            guard let self else { throw CancellationError() }
             try await self.activateWorkspaceReference(
-                reference,
-                tabActivation: .place(.newTab)
+                reference, tabActivation: .place(.newTab), validateDisplay: validate
             )
+        } completion: { result in
+            if !forwarded { onCompletion?(result) }
         }
     }
 
@@ -181,47 +201,52 @@ extension WindowModel {
                 position: documentController.navigationPosition(for: displayed)
             )
         }
+        guard let target = documentNavigationHistoryController.target(for: direction) else { return }
         let historyRevision = documentNavigationHistoryController.revision
-        if let target = documentNavigationHistoryController.target(for: direction),
-            workspaceStore.documentLocations.revealExisting(
-                target,
-                excluding: self,
+        let position = documentNavigationHistoryController.position(for: direction)
+        var forwarded = false
+        let validate: @MainActor () throws -> Void = { [weak self] in
+            guard let self, !forwarded,
+                !self.windowCloseCoordinator.isPreparingOrFinalized,
+                self.documentNavigationHistoryController.revision == historyRevision,
+                self.documentNavigationHistoryController.target(for: direction) == target
+            else { throw CancellationError() }
+            if self.workspaceStore.documentLocations.revealExisting(
+                target, excluding: self,
                 onSelection: { [weak self] owner, selected in
                     guard let self, selected,
+                        !self.windowCloseCoordinator.isPreparingOrFinalized,
                         self.documentNavigationHistoryController.revision == historyRevision,
-                        self.documentNavigationHistoryController.target(for: direction) == target
+                        self.documentNavigationHistoryController.target(for: direction) == target,
+                        self.documentNavigationHistoryController.commit(direction, to: target)
                     else { return }
-                    let position = self.documentNavigationHistoryController.position(for: direction)
-                    if self.documentNavigationHistoryController.commit(direction, to: target) {
-                        owner.documentController.restoreNavigationPosition(position, for: target)
-                    }
+                    owner.documentController.restoreNavigationPosition(position, for: target)
                 }
-            )
-        {
-            return
+            ) {
+                forwarded = true
+                throw CancellationError()
+            }
         }
+        do { try validate() } catch { return }
         enqueueDocumentTransition(
             preparation: .openingDocument(
                 placement: .replaceSelected,
-                retainedTab: { [weak self] in
-                    guard let self, let target = self.documentNavigationHistoryController.target(for: direction) else { return nil }
-                    return self.documentTabController.tab(for: target)
-                })
+                retainedTab: { [weak self] in self?.documentTabController.tab(for: target) }),
+            validateBeforePreparation: validate
         ) { [weak self] in
-            guard let self,
-                let target = self.documentNavigationHistoryController.target(
-                    for: direction
-                )
-            else { return }
-            let position = self.documentNavigationHistoryController.position(for: direction)
+            guard let self else { throw CancellationError() }
+            try validate()
             try await self.activateDocument(
-                target,
-                tabActivation: .place(.replaceSelected),
-                recordsNavigationHistory: false
+                target, tabActivation: .place(.replaceSelected),
+                recordsNavigationHistory: false, validateDisplay: validate
             )
-            if self.documentNavigationHistoryController.commit(direction, to: target) {
-                self.documentController.restoreNavigationPosition(position, for: target)
-            }
+        } didSucceed: { [weak self] in
+            guard let self,
+                self.documentNavigationHistoryController.revision == historyRevision,
+                self.documentNavigationHistoryController.target(for: direction) == target,
+                self.documentNavigationHistoryController.commit(direction, to: target)
+            else { return }
+            self.documentController.restoreNavigationPosition(position, for: target)
         }
     }
 

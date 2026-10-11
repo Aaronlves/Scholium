@@ -1030,6 +1030,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
         let normalized = min(1, max(0, fallbackFraction))
+        // A new explicit handoff supersedes the outgoing view's captured
+        // restoration fallback, including on the next renderer allocation.
+        reconstructionScrollAnchor = nil
         pendingScrollFraction = normalized
         pendingScrollAnchor = anchor
         navigationRequestRevision &+= 1
@@ -1971,11 +1974,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func focusIfPresented(
         in mode: MarkdownEditorMode,
         requiringFocusRevision revision: UInt64,
+        target requestedTarget: WindowDocumentFocusTarget? = nil,
         isStillRequested: @escaping @MainActor () -> Bool
     ) async throws {
         try Task.checkCancellation()
         guard let webView else { throw SessionError.unavailable }
-        let target = preferredDocumentFocusTarget ?? .editor
+        let target = requestedTarget ?? preferredDocumentFocusTarget ?? .editor
         var admittedFocusRevision: UInt64?
         let intendedRequestEpoch = requestEpoch
         defer {
@@ -2342,14 +2346,21 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func clearDocumentFind() async {
         guard isReady, isLoaded, let webView else { return }
         let currentDocumentID = documentID
+        let focusRevision = focusRequestRevision
+        let focusTarget = preferredDocumentFocusTarget ?? .editor
+        let mode = presentedMode ?? pendingMode
+        let focusReturn = DocumentFindFocusReturnAuthority(webView: webView)
         do {
             _ = try await send(.clearDocumentFind, in: webView)
-            guard !Task.isCancelled, self.webView === webView,
-                documentID == currentDocumentID,
-                let window = webView.window,
-                window.makeFirstResponder(webView)
-            else { return }
-            try await focusAndWait(.editor)
+            guard !Task.isCancelled, let focusReturn else { return }
+            try await focusIfPresented(
+                in: mode, requiringFocusRevision: focusRevision, target: .editor
+            ) { [weak self] in
+                guard let self else { return false }
+                return self.webView === webView && self.documentID == currentDocumentID
+                    && (self.preferredDocumentFocusTarget ?? .editor) == focusTarget
+                    && focusReturn.canRestore(to: webView)
+            }
         } catch {
             // Find is already dismissed; the retained document owns any editor
             // failure. A failed clear must not transfer focus to another page.

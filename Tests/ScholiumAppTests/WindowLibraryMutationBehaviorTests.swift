@@ -84,6 +84,16 @@ struct WindowLibraryMutationBehaviorTests {
                 defer { entered.continuation.finish() }
                 try await fixture.controller.moveFolder(fixture.folder, to: "Filed")
             }
+            defer { first.cancel() }
+            // If admission regresses behind the FIFO, release the held source
+            // boundary and fail the assertion instead of hanging the runner.
+            let admissionDeadline = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                Issue.record("Conflicting Folder command admission waited for the active source operation.")
+                release.continuation.yield(())
+                release.continuation.finish()
+            }
+            defer { admissionDeadline.cancel() }
             for await _ in entered.stream { break }
             #expect(fixture.controller.isMutatingFolder)
 
@@ -103,6 +113,7 @@ struct WindowLibraryMutationBehaviorTests {
             #expect(FileManager.default.fileExists(atPath: fixture.file.path))
             #expect(!FileManager.default.fileExists(atPath: fixture.vaultURL.appendingPathComponent("Other").path))
 
+            admissionDeadline.cancel()
             fixture.beforeFlush = {}
             release.continuation.yield(())
             try await first.value

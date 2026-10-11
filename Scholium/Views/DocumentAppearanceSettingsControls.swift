@@ -5,6 +5,7 @@ import SwiftUI
 struct AppearanceReadingEditor: View {
     @Binding var profile: DocumentAppearanceProfile
     @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         Section("Reading") {
@@ -22,8 +23,9 @@ struct AppearanceReadingEditor: View {
             }
             .accessibilityIdentifier("scholium.appearance.bodyFont")
             LabeledContent("Body font size") {
-                HStack {
+                HStack(alignment: .top) {
                     AppearanceNumberControl(
+                        field: .bodyFontSize, numericDrafts: $numericDrafts,
                         value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5,
                         title: "Body font size")
                     Text("pt").foregroundStyle(.secondary)
@@ -32,6 +34,7 @@ struct AppearanceReadingEditor: View {
             }
             LabeledContent("Reading line width") {
                 AppearanceDoubleValueControl(
+                    field: .readingLineWidth, numericDrafts: $numericDrafts,
                     value: $profile.settings.lineWidthCharacterUnits,
                     range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
                     step: 1, suffix: "ch", precision: 0, title: "Reading line width",
@@ -39,6 +42,7 @@ struct AppearanceReadingEditor: View {
             }
             LabeledContent("Line spacing") {
                 AppearanceDoubleValueControl(
+                    field: .bodyLineSpacing, numericDrafts: $numericDrafts,
                     value: $profile.settings.body.lineHeight, range: 1.2...2.4,
                     step: 0.05, suffix: "×", precision: 2, title: "Line spacing", accessibilityUnit: nil)
             }
@@ -63,6 +67,7 @@ struct AppearanceReadingEditor: View {
 struct AppearanceSourceEditor: View {
     @Binding var profile: DocumentAppearanceProfile
     @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         Section("Source Font") {
@@ -73,8 +78,9 @@ struct AppearanceSourceEditor: View {
             }
             .accessibilityIdentifier("scholium.appearance.sourceFont")
             LabeledContent("Source font size") {
-                HStack {
+                HStack(alignment: .top) {
                     AppearanceNumberControl(
+                        field: .sourceFontSize, numericDrafts: $numericDrafts,
                         value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25,
                         title: "Source font size")
                     Text("pt").foregroundStyle(.secondary)
@@ -89,18 +95,21 @@ struct AppearanceSourceEditor: View {
 struct TypographySettingsView: View {
     @Binding var profile: DocumentAppearanceProfile
     @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         Group {
             Section("Body Typography") {
                 LabeledContent("Paragraph spacing") {
                     AppearanceDoubleValueControl(
+                        field: .bodyParagraphSpacing, numericDrafts: $numericDrafts,
                         value: $profile.settings.body.paragraphSpacingEm, range: 0...2,
                         step: 0.05, suffix: "em", precision: 2, title: "Paragraph spacing",
                         accessibilityUnit: nil)
                 }
                 LabeledContent("First-line indent") {
                     AppearanceDoubleValueControl(
+                        field: .bodyFirstLineIndent, numericDrafts: $numericDrafts,
                         value: $profile.settings.body.firstLineIndentEm, range: 0...4,
                         step: 0.1, suffix: "em", precision: 2, title: "First-line indent",
                         accessibilityUnit: nil)
@@ -120,18 +129,20 @@ struct TypographySettingsView: View {
                 }
                 LabeledContent("Heading Weight") {
                     AppearanceIntegerControl(
+                        field: .headingWeight, numericDrafts: $numericDrafts,
                         title: "Heading Weight", value: $profile.settings.headings.weight, range: 400...700,
                         step: 50)
                 }
                 LabeledContent("Heading Line Spacing") {
                     AppearanceDoubleValueControl(
+                        field: .headingLineSpacing, numericDrafts: $numericDrafts,
                         value: $profile.settings.headings.lineHeight, range: 1...2.4,
                         step: 0.05, suffix: "×", precision: 2, title: "Heading Line Spacing",
                         accessibilityUnit: nil)
                 }
             }.id(SettingsSection.appearanceHeadingFont)
             Section("Heading Hierarchy") {
-                AppearanceHeadingLevelMatrix(headings: $profile.settings.headings)
+                AppearanceHeadingLevelMatrix(headings: $profile.settings.headings, numericDrafts: $numericDrafts)
             }.id(SettingsSection.appearanceHeadings)
             Section("Text Styles") {
                 roleFont("Body Bold Font", selection: $profile.settings.body.cjkStrongFontFamily)
@@ -159,6 +170,7 @@ struct TypographySettingsView: View {
 
 private struct AppearanceHeadingLevelMatrix: View {
     @Binding var headings: DocumentHeadingAppearance
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         // Keep each level a direct native Form row so search can reveal it
@@ -179,12 +191,12 @@ private struct AppearanceHeadingLevelMatrix: View {
                     }
                     AppearanceHeadingLevelMatrixRow(
                         level: level,
-                        appearance: binding(for: level))
+                        appearance: binding(for: level), numericDrafts: $numericDrafts)
                 }
                 .frame(minWidth: ScholiumMetrics.Settings.headingMatrixMinimumWidth, maxWidth: .infinity, alignment: .leading)
                 AppearanceHeadingLevelDetailRow(
                     level: level,
-                    appearance: binding(for: level))
+                    appearance: binding(for: level), numericDrafts: $numericDrafts)
             }
             .id(SettingsSection.appearanceHeading(level))
         }
@@ -208,12 +220,14 @@ private struct AppearanceHeadingLevelMatrix: View {
 private struct AppearanceHeadingLevelMatrixRow: View {
     let level: AppearanceHeadingLevel
     @Binding var appearance: DocumentHeadingLevelAppearance
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         GridRow {
             settingsMatrixRowLabel(level.title)
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
                 AppearanceNumberControl(
+                    field: .headingScale(level), numericDrafts: $numericDrafts,
                     value: $appearance.scale,
                     range: 0.8...3,
                     step: 0.05,
@@ -231,8 +245,9 @@ private struct AppearanceHeadingLevelMatrixRow: View {
             .pickerStyle(.menu)
             .frame(width: 124, alignment: .leading)
             Group {
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     AppearanceNumberControl(
+                        field: .headingSpaceBefore(level), numericDrafts: $numericDrafts,
                         value: $appearance.spaceBeforeEm,
                         range: 0...4,
                         step: 0.05,
@@ -241,8 +256,9 @@ private struct AppearanceHeadingLevelMatrixRow: View {
                     Text("em")
                         .foregroundStyle(.secondary)
                 }
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     AppearanceNumberControl(
+                        field: .headingSpaceAfter(level), numericDrafts: $numericDrafts,
                         value: $appearance.spaceAfterEm,
                         range: 0...4,
                         step: 0.05,
@@ -259,14 +275,16 @@ private struct AppearanceHeadingLevelMatrixRow: View {
 private struct AppearanceHeadingLevelDetailRow: View {
     let level: AppearanceHeadingLevel
     @Binding var appearance: DocumentHeadingLevelAppearance
+    @Binding var numericDrafts: AppearanceNumericDrafts
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(level.title)
                 .font(.subheadline.weight(.semibold))
             settingsEditorSection("Scale") {
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     AppearanceNumberControl(
+                        field: .headingScale(level), numericDrafts: $numericDrafts,
                         value: $appearance.scale,
                         range: 0.8...3,
                         step: 0.05,
@@ -287,8 +305,9 @@ private struct AppearanceHeadingLevelDetailRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             settingsEditorSection("Space Before") {
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     AppearanceNumberControl(
+                        field: .headingSpaceBefore(level), numericDrafts: $numericDrafts,
                         value: $appearance.spaceBeforeEm,
                         range: 0...4,
                         step: 0.05,
@@ -299,8 +318,9 @@ private struct AppearanceHeadingLevelDetailRow: View {
                 }
             }
             settingsEditorSection("Space After") {
-                HStack(spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     AppearanceNumberControl(
+                        field: .headingSpaceAfter(level), numericDrafts: $numericDrafts,
                         value: $appearance.spaceAfterEm,
                         range: 0...4,
                         step: 0.05,
@@ -314,66 +334,217 @@ private struct AppearanceHeadingLevelDetailRow: View {
     }
 }
 
+// Raw input belongs to the appearance page, including the two adaptive
+// presentations of each heading field. It never becomes saved configuration.
+enum AppearanceNumericField: Hashable {
+    case bodyFontSize, sourceFontSize, readingLineWidth, bodyLineSpacing
+    case bodyParagraphSpacing, bodyFirstLineIndent, headingWeight, headingLineSpacing
+    case headingScale(AppearanceHeadingLevel)
+    case headingSpaceBefore(AppearanceHeadingLevel)
+    case headingSpaceAfter(AppearanceHeadingLevel)
+}
+
+enum AppearanceNumericValidation: Equatable {
+    case valid(Double)
+    case empty
+    case invalidNumber
+    case outOfRange
+
+    var value: Double? {
+        if case .valid(let value) = self { return value }
+        return nil
+    }
+
+    static func parse(
+        _ text: String, range: ClosedRange<Double>, isInteger: Bool = false,
+        locale: Locale
+    ) -> Self {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+        // A trailing decimal separator remains an unfinished edit. Scanner
+        // consumes complete input; it cannot accept a valid numeric prefix.
+        guard !trimmed.hasSuffix(locale.decimalSeparator ?? ".") else { return .invalidNumber }
+        let scanner = Scanner(string: trimmed)
+        scanner.locale = locale
+        scanner.charactersToBeSkipped = nil
+        let candidate: Double?
+        if isInteger {
+            candidate = scanner.scanInt().map(Double.init)
+        } else {
+            candidate = scanner.scanDouble()
+        }
+        guard let candidate, candidate.isFinite, scanner.isAtEnd else { return .invalidNumber }
+        guard range.contains(candidate) else { return .outOfRange }
+        return .valid(candidate)
+    }
+}
+
+struct AppearanceNumericDrafts {
+    private struct Input {
+        let text: String
+        let validation: AppearanceNumericValidation
+    }
+
+    private var inputs: [AppearanceNumericField: Input] = [:]
+
+    var hasInvalidInput: Bool {
+        inputs.values.contains { $0.validation.value == nil }
+    }
+
+    func text(for field: AppearanceNumericField) -> String? { inputs[field]?.text }
+    func validation(for field: AppearanceNumericField) -> AppearanceNumericValidation? {
+        inputs[field]?.validation
+    }
+
+    @discardableResult
+    mutating func update(
+        _ text: String, for field: AppearanceNumericField, range: ClosedRange<Double>,
+        isInteger: Bool = false, locale: Locale
+    ) -> Double? {
+        let validation = AppearanceNumericValidation.parse(
+            text, range: range, isInteger: isInteger, locale: locale)
+        inputs[field] = Input(text: text, validation: validation)
+        return validation.value
+    }
+
+    mutating func clear(_ field: AppearanceNumericField) { inputs[field] = nil }
+    mutating func reset() { inputs.removeAll() }
+}
+
+private struct AppearanceNumericTextField: View {
+    @Environment(\.locale) private var locale
+    let field: AppearanceNumericField
+    @Binding var numericDrafts: AppearanceNumericDrafts
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let precision: Int
+    let isInteger: Bool
+    let title: LocalizedStringResource
+
+    private var format: FloatingPointFormatStyle<Double> {
+        .number.locale(locale).grouping(.never).precision(.fractionLength(0...precision))
+    }
+
+    private var limits: LocalizedStringResource {
+        let lower = range.lowerBound.formatted(format)
+        let upper = range.upperBound.formatted(format)
+        return isInteger
+            ? "Enter a whole number from \(lower) to \(upper)."
+            : "Enter a number from \(lower) to \(upper)."
+    }
+
+    private var error: LocalizedStringResource? {
+        guard let validation = numericDrafts.validation(for: field), validation.value == nil else {
+            return nil
+        }
+        let lower = range.lowerBound.formatted(format)
+        let upper = range.upperBound.formatted(format)
+        switch validation {
+        case .valid: return nil
+        case .outOfRange: return "Use \(lower)–\(upper)."
+        case .empty, .invalidNumber:
+            return isInteger ? "Whole number: \(lower)–\(upper)." : "Enter \(lower)–\(upper)."
+        }
+    }
+
+    private var text: Binding<String> {
+        Binding(
+            get: { numericDrafts.text(for: field) ?? value.formatted(format) },
+            set: { text in
+                if let candidate = numericDrafts.update(
+                    text, for: field, range: range, isInteger: isInteger, locale: locale)
+                {
+                    value = candidate
+                }
+            })
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            TextField("", text: text)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel(Text(title))
+                .accessibilityHint(Text(error ?? limits))
+                .help(Text(limits))
+            if let error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+            }
+        }
+        // Validation grows vertically without changing the adaptive matrix's
+        // width, replacing its text field, or moving native keyboard focus.
+        .frame(width: ScholiumMetrics.Settings.numberFieldWidth, alignment: .trailing)
+    }
+}
+
 private struct AppearanceNumberControl: View {
+    let field: AppearanceNumericField
+    @Binding var numericDrafts: AppearanceNumericDrafts
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let title: LocalizedStringResource
 
-    private var boundedValue: Binding<Double> {
+    private var stepperValue: Binding<Double> {
         Binding(
             get: { value },
             set: { candidate in
                 guard candidate.isFinite else { return }
                 value = min(max(candidate, range.lowerBound), range.upperBound)
+                numericDrafts.clear(field)
             })
     }
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            TextField("", value: boundedValue, format: .number.precision(.fractionLength(0...2)))
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
-                .accessibilityLabel(Text(title))
-            Stepper("", value: boundedValue, in: range, step: step)
-                .labelsHidden()
-                .accessibilityLabel(Text(title))
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            AppearanceNumericTextField(
+                field: field, numericDrafts: $numericDrafts, value: $value,
+                range: range, precision: 2, isInteger: false, title: title)
+            Stepper("", value: stepperValue, in: range, step: step)
+                .labelsHidden().accessibilityLabel(Text(title))
         }
         .fixedSize()
     }
 }
 
 private struct AppearanceIntegerControl: View {
+    let field: AppearanceNumericField
+    @Binding var numericDrafts: AppearanceNumericDrafts
     let title: LocalizedStringResource
     @Binding var value: Int
     let range: ClosedRange<Int>
     let step: Int
 
-    private var boundedValue: Binding<Int> {
+    private var stepperValue: Binding<Int> {
         Binding(
             get: { value },
             set: { candidate in
                 value = min(max(candidate, range.lowerBound), range.upperBound)
+                numericDrafts.clear(field)
             })
     }
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            TextField("", value: boundedValue, format: .number)
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
-                .accessibilityLabel(Text(title))
-            Stepper("", value: boundedValue, in: range, step: step)
-                .labelsHidden()
-                .accessibilityLabel(Text(title))
+        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            AppearanceNumericTextField(
+                field: field, numericDrafts: $numericDrafts,
+                value: Binding(get: { Double(value) }, set: { value = Int($0) }),
+                range: Double(range.lowerBound)...Double(range.upperBound),
+                precision: 0, isInteger: true, title: title)
+            Stepper("", value: stepperValue, in: range, step: step)
+                .labelsHidden().accessibilityLabel(Text(title))
         }
         .fixedSize()
     }
 }
 
 private struct AppearanceDoubleValueControl: View {
+    let field: AppearanceNumericField
+    @Binding var numericDrafts: AppearanceNumericDrafts
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -382,30 +553,23 @@ private struct AppearanceDoubleValueControl: View {
     let title: LocalizedStringResource
     let accessibilityUnit: LocalizedStringResource?
 
-    private var boundedValue: Binding<Double> {
+    private var stepperValue: Binding<Double> {
         Binding(
             get: { value },
             set: { candidate in
                 guard candidate.isFinite else { return }
                 value = min(max(candidate, range.lowerBound), range.upperBound)
+                numericDrafts.clear(field)
             })
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            TextField(
-                "",
-                value: boundedValue,
-                format: .number.precision(.fractionLength(0...precision))
-            )
-            .textFieldStyle(.roundedBorder)
-            .multilineTextAlignment(.trailing)
-            .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
-            .accessibilityLabel(Text(title))
-            Stepper("", value: boundedValue, in: range, step: step)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityLabel(Text(title))
+        HStack(alignment: .top, spacing: 6) {
+            AppearanceNumericTextField(
+                field: field, numericDrafts: $numericDrafts, value: $value,
+                range: range, precision: precision, isInteger: false, title: title)
+            Stepper("", value: stepperValue, in: range, step: step)
+                .labelsHidden().fixedSize().accessibilityLabel(Text(title))
             Text(suffix)
                 .foregroundStyle(.secondary)
                 .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)

@@ -39,6 +39,12 @@ enum DocumentChangesPage: String, CaseIterable {
     case history
 }
 
+enum DocumentChangesPresentation {
+    static func noteIdentity(role: VaultRole, relativePath: String) -> String {
+        ScholiumL10n.dynamicString(role.displayName) + " / " + relativePath
+    }
+}
+
 /// A sheet keeps the capability chosen when it opened. A later workspace
 /// switch cannot retarget a pending acknowledgement or history deletion.
 struct DocumentChangesRouteBinding: Sendable {
@@ -239,6 +245,7 @@ struct DocumentChangesView: View {
             } else if page == .pending, let review {
                 comparisonContent(
                     path: review.summary.relativePath,
+                    role: review.summary.role,
                     comparison: review.comparison,
                     baselineState: review.summary.baselineState,
                     endingSource: review.endingSource,
@@ -247,6 +254,7 @@ struct DocumentChangesView: View {
             } else if page == .history, let historyDetail {
                 comparisonContent(
                     path: historyDetail.batch.relativePath,
+                    role: historyDetail.batch.role,
                     comparison: historyDetail.comparison,
                     baselineState: historyDetail.batch.wasNewDocument ? .newDocument : .known,
                     endingSource: historyDetail.endingSource,
@@ -287,9 +295,9 @@ struct DocumentChangesView: View {
                 .init(
                     id: item.noteID.uuidString,
                     cells: [
-                        displayName(item.relativePath),
+                        DocumentChangesPresentation.noteIdentity(role: item.role, relativePath: item.relativePath),
                         item.savedAt?.formatted(.dateTime.month().day().hour().minute()) ?? "—",
-                    ], help: item.relativePath)
+                    ], help: DocumentChangesPresentation.noteIdentity(role: item.role, relativePath: item.relativePath))
             },
             selection: Binding(
                 get: { selectedNoteID?.uuidString },
@@ -317,9 +325,9 @@ struct DocumentChangesView: View {
                 .init(
                     id: item.id.uuidString,
                     cells: [
-                        displayName(item.relativePath),
+                        DocumentChangesPresentation.noteIdentity(role: item.role, relativePath: item.relativePath),
                         item.reviewedAt.formatted(.dateTime.month().day().hour().minute()),
-                    ], help: item.relativePath)
+                    ], help: DocumentChangesPresentation.noteIdentity(role: item.role, relativePath: item.relativePath))
             },
             selection: Binding(
                 get: { selectedBatchID?.uuidString },
@@ -336,6 +344,7 @@ struct DocumentChangesView: View {
 
     private func comparisonContent(
         path: String,
+        role: VaultRole,
         comparison: ExactSourceComparison?,
         baselineState: DocumentChangeBaselineState,
         endingSource: String,
@@ -346,12 +355,16 @@ struct DocumentChangesView: View {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
                     VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing) {
                         Text(displayName(path)).font(.headline).textSelection(.enabled)
+                        Text(verbatim: DocumentChangesPresentation.noteIdentity(role: role, relativePath: path))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let detail {
                             Text(detail, format: .dateTime.year().month().day().hour().minute())
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    .help(path)
+                    .help(DocumentChangesPresentation.noteIdentity(role: role, relativePath: path))
                     if updatedWhileOpen {
                         Text("Changes were updated elsewhere. This comparison still shows the saved version opened here.")
                             .font(.caption)
@@ -455,7 +468,8 @@ struct DocumentChangesView: View {
                     Button("Delete from History", role: .destructive) {
                         pendingDelete = DeleteTarget(
                             id: historyDetail.batch.id,
-                            path: historyDetail.batch.relativePath
+                            path: DocumentChangesPresentation.noteIdentity(
+                                role: historyDetail.batch.role, relativePath: historyDetail.batch.relativePath)
                         )
                     }
                 } label: {

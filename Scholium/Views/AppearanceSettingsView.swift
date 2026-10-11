@@ -8,6 +8,7 @@ struct AppearanceSettingsView: View {
     @ObservedObject var store: CSSSnippetStore
     @StateObject private var fontCatalog = ScholiumSettingsFontCatalog()
     @State private var draft: DocumentAppearanceProfile?
+    @State private var numericDrafts = AppearanceNumericDrafts()
     @State private var importError: String?
     @State private var showRename = false
     @State private var showDeleteConfirmation = false
@@ -51,7 +52,7 @@ struct AppearanceSettingsView: View {
             if let draft, let saved = store.selectedAppearanceProfile,
                 draft.id == saved.id,
                 let baseline = previous.first(where: { $0.id == draft.id }),
-                draft.settings != baseline.settings
+                draft.settings != baseline.settings || numericDrafts.hasInvalidInput
             {
                 // A successful rename or background refresh cannot erase an
                 // unsaved typography draft. Save still belongs to the store.
@@ -115,6 +116,7 @@ struct AppearanceSettingsView: View {
         ) {
             Button("Restore Defaults", role: .destructive) {
                 draft?.settings = DocumentAppearanceSettings.defaultSettings
+                numericDrafts.reset()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -148,9 +150,12 @@ struct AppearanceSettingsView: View {
         Form {
             configurationSection.id(SettingsSection.appearanceProfile).disabled(!store.canModifyAppearance)
             appearanceRecoverySection
-            AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
-            TypographySettingsView(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
-            AppearanceSourceEditor(profile: profile, fontCatalog: fontCatalog).disabled(!store.canModifyAppearance && !store.canRepairAppearance)
+            AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts).disabled(
+                !store.canModifyAppearance && !store.canRepairAppearance)
+            TypographySettingsView(profile: profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts).disabled(
+                !store.canModifyAppearance && !store.canRepairAppearance)
+            AppearanceSourceEditor(profile: profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts).disabled(
+                !store.canModifyAppearance && !store.canRepairAppearance)
             Section("CSS Snippets") { cssSnippetsContent }.id(SettingsSection.appearanceCSS)
             configurationFileSection.id(SettingsSection.appearanceFile)
         }
@@ -255,18 +260,18 @@ struct AppearanceSettingsView: View {
                 .disabled(!hasUnsavedChanges)
             if store.canRepairAppearance {
                 Button("Repair Saved Profile") {
-                    guard let draft else { return }
+                    guard let draft, !numericDrafts.hasInvalidInput else { return }
                     store.repairAppearanceProfile(draft)
                 }
-                .disabled(store.isRestoringAppearance)
+                .disabled(store.isRestoringAppearance || numericDrafts.hasInvalidInput)
                 .accessibilityIdentifier("scholium.settings.appearance.repair")
             }
             Button("Save Appearance") {
-                guard let draft else { return }
+                guard let draft, !numericDrafts.hasInvalidInput else { return }
                 store.updateAppearance(draft)
             }
             .scholiumSettingsDefaultAction()
-            .disabled(!hasUnsavedChanges || !store.canModifyAppearance)
+            .disabled(!hasUnsavedChanges || !store.canModifyAppearance || numericDrafts.hasInvalidInput)
             .accessibilityLabel("Save Appearance")
         }
         .padding(.horizontal, 24)
@@ -382,11 +387,12 @@ struct AppearanceSettingsView: View {
 
     private var hasUnsavedChanges: Bool {
         guard let draft, let selected = store.selectedAppearanceProfile else { return false }
-        return draft != selected
+        return draft != selected || numericDrafts.hasInvalidInput
     }
 
     private func loadSelectedDraft() {
         draft = store.selectedAppearanceProfile
+        numericDrafts.reset()
     }
 
     private func requestProfileSelection(_ selection: ProfileSelection) {
@@ -410,6 +416,7 @@ struct AppearanceSettingsView: View {
         store.selectAppearance(id)
         if let profile = store.appearanceProfiles.first(where: { $0.id == id }) {
             draft = profile
+            numericDrafts.reset()
         }
     }
 

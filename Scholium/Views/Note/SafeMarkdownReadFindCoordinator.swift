@@ -1,5 +1,63 @@
+import AppKit
 import Foundation
 import WebKit
+
+/// A Find dismissal may return focus only while its native initiator still
+/// owns that handoff. AppKit reuses field editors, so responder identity alone
+/// cannot distinguish the Find field from a newer text-field interaction.
+@MainActor
+final class DocumentFindFocusReturnAuthority: NSObject {
+    private weak var window: NSWindow?
+    private weak var responder: NSResponder?
+    private weak var findField: NSTextField?
+    private let capturedFieldEditor: Bool
+    private var revoked = false
+
+    init?(webView: WKWebView) {
+        guard let window = webView.window, window.isKeyWindow,
+            !webView.isHiddenOrHasHiddenAncestor, window.attachedSheet == nil,
+            (window.firstResponder as? any NSTextInputClient)?.hasMarkedText() != true
+        else { return nil }
+        let responder = window.firstResponder
+        let fieldEditor = responder as? NSTextView
+        let findField = fieldEditor?.isFieldEditor == true ? fieldEditor?.delegate as? NSTextField : responder as? NSTextField
+        let isFindField =
+            findField.map {
+                ["scholium.documentFind.query", "scholium.documentFind.replacement"].contains($0.accessibilityIdentifier())
+            } ?? false
+        guard
+            responder == nil || responder === window
+                || (responder as? NSView)?.isDescendant(of: webView) == true || isFindField
+        else { return nil }
+        self.window = window
+        self.responder = responder
+        self.findField = isFindField ? findField : nil
+        capturedFieldEditor = fieldEditor?.isFieldEditor == true
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(revoke(_:)), name: NSWindow.didResignKeyNotification, object: window)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(revoke(_:)), name: NSApplication.didResignActiveNotification, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func revoke(_ notification: Notification) { revoked = true }
+
+    func canRestore(to webView: WKWebView) -> Bool {
+        guard !revoked, let window, webView.window === window, window.isKeyWindow,
+            !webView.isHiddenOrHasHiddenAncestor, window.attachedSheet == nil,
+            (window.firstResponder as? any NSTextInputClient)?.hasMarkedText() != true
+        else { return false }
+        let current = window.firstResponder
+        if current == nil || current === window || (current as? NSView)?.isDescendant(of: webView) == true { return true }
+        guard current === responder else { return false }
+        if capturedFieldEditor {
+            return findField != nil && (current as? NSTextView)?.delegate === findField
+        }
+        return findField != nil && current === findField
+    }
+}
 
 /// Owns one Review find request, its applied identity, and the cancellable
 /// WebKit query. Page load identity remains supplied by the parent coordinator.
@@ -53,6 +111,12 @@ final class SafeMarkdownReadFindCoordinator {
             ]
         }
         task?.cancel()
+        let focusReturn: DocumentFindFocusReturnAuthority?
+        if case .clear = request.operation {
+            focusReturn = DocumentFindFocusReturnAuthority(webView: webView)
+        } else {
+            focusReturn = nil
+        }
         task = Task { @MainActor [weak self, weak webView] in
             guard let self, let webView else { return }
             do {
@@ -72,7 +136,7 @@ final class SafeMarkdownReadFindCoordinator {
                     total >= 0,
                     current <= total
                 else { return }
-                if case .clear = request.operation {
+                if case .clear = request.operation, focusReturn?.canRestore(to: webView) == true {
                     webView.window?.makeFirstResponder(webView)
                 }
                 self.report?(

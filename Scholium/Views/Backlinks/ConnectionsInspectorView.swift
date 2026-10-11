@@ -85,7 +85,16 @@ struct ConnectionsInspectorContext {
     let retryRefresh: () -> Void
     let openReference: (VaultNoteReference, Int?, DocumentFingerprint?) -> Void
     var externalLinks: [SourceResourceReferences.ExternalLink] = []
+    var externalProjectionIsReady = false
     var openExternalURL: (URL) -> Void = { _ in }
+
+    func hasProjection(for direction: ConnectionDirection) -> Bool {
+        direction == .external ? externalProjectionIsReady : graph != nil && current != nil
+    }
+
+    func projectionFreshness(for direction: ConnectionDirection) -> ResearchProjectionFreshness {
+        direction == .external && !externalProjectionIsReady ? .refreshing : freshness
+    }
 }
 
 enum ConnectionDirection: String, CaseIterable, Identifiable, Sendable {
@@ -298,10 +307,11 @@ enum InspectorLinkRow: Identifiable {
         external: [SourceResourceReferences.ExternalLink],
         collapsedGroups: Set<String>,
         freshness: ResearchProjectionFreshness,
-        emptyAnnouncement: LocalizedStringResource
+        emptyAnnouncement: LocalizedStringResource,
+        hasProjection: Bool = true
     ) -> [Self] {
         var rows: [Self] = freshness.isActionable ? [.freshness(freshness)] : []
-        if groups.isEmpty, external.isEmpty { rows.append(.empty(emptyAnnouncement)) }
+        if hasProjection, groups.isEmpty, external.isEmpty { rows.append(.empty(emptyAnnouncement)) }
         rows.append(contentsOf: external.map(Self.external))
         for (index, group) in groups.enumerated() {
             rows.append(.group(group, separatesFromPrevious: index > 0))
@@ -363,8 +373,9 @@ struct ConnectionsInspectorView: View {
             } : []
         let rows = InspectorLinkRow.make(
             groups: groups, external: external,
-            collapsedGroups: location.collapsedGroups, freshness: context.freshness,
-            emptyAnnouncement: location.query.isEmpty ? direction.emptyAnnouncement : "No Results")
+            collapsedGroups: location.collapsedGroups, freshness: context.projectionFreshness(for: direction),
+            emptyAnnouncement: location.query.isEmpty ? direction.emptyAnnouncement : "No Results",
+            hasProjection: context.hasProjection(for: direction))
         VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             InspectorLinkDirectionControl(direction: $session.direction, isActive: isActive)
                 .padding(.horizontal, ResearchInspectorLayout.contentInset)

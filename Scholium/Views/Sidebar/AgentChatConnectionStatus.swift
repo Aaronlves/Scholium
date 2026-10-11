@@ -71,7 +71,15 @@ struct AgentChatConnectionStatus: View {
         case .connecting:
             return Status(id: "connection", title: ScholiumL10n.string("Connecting…"), isProgress: true)
         case .ready:
-            guard controller.account == nil else { return nil }
+            if controller.account != nil {
+                guard let error = controller.connectionError else { return nil }
+                return Status(
+                    id: "connection", title: ScholiumL10n.string("Codex Needs Attention"),
+                    error: error, actions: [.settings])
+            }
+            if controller.isStartingLogin {
+                return Status(id: "connection", title: ScholiumL10n.string("Starting Sign-In…"), isProgress: true)
+            }
             return Status(
                 id: "connection", title: ScholiumL10n.string(controller.connectionError == nil ? "Sign-In Required" : "Sign-In Failed"),
                 symbol: "person.crop.circle",
@@ -295,7 +303,7 @@ struct AgentChatConnectionStatus: View {
         case .retryLocalHistory: !controller.isLoadingLocalHistory
         case .retryHistorySave: !controller.isRetryingHistorySave
         case .retryStop: controller.canRetryStop
-        case .signIn: !controller.isBusy
+        case .signIn: controller.canStartLogin
         case .retryHistory: !controller.isBusy && controller.connectionState == .ready
         case .refreshSkills: !controller.isBusy && !controller.capabilities.isRefreshing
         case .continueWithoutResending: controller.selected?.pendingMessageID != nil && !controller.isBusy

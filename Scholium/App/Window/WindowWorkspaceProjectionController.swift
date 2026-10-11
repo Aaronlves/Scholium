@@ -93,11 +93,11 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     private var runtimeIdentity: TriptychRuntimeIdentity?
     private var acceptedGeneration: UInt64?
     private var acceptedSnapshot: WorkspaceSnapshot?
-    private struct PendingCreation {
+    private struct PendingSourceCommit {
         let note: WorkspaceNoteSummary
         let baseSourceInventoryRevision: UInt64
     }
-    private var pendingCreations: [VaultQualifiedNoteID: PendingCreation] = [:]
+    private var pendingSourceCommits: [VaultQualifiedNoteID: PendingSourceCommit] = [:]
     private var catalogRevision: UInt64 = 0
     private var catalogRefreshDelayTask: Task<Void, Never>?
     private var catalogNeedsAnotherRefresh = false
@@ -150,7 +150,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         if self.runtimeIdentity != runtimeIdentity {
             state = State()
             acceptedSnapshot = nil
-            pendingCreations.removeAll()
+            pendingSourceCommits.removeAll()
         }
         self.runtimeIdentity = runtimeIdentity
         acceptedGeneration = generation
@@ -218,7 +218,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         runtimeIdentity = nil
         acceptedGeneration = nil
         acceptedSnapshot = nil
-        pendingCreations.removeAll()
+        pendingSourceCommits.removeAll()
         state = State()
     }
 
@@ -238,7 +238,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             vaults = incoming.vaults
         }
         let projectedVaults = vaults.map { vault -> WorkspaceVaultSnapshot in
-            let pending = pendingCreations.values.filter {
+            let pending = pendingSourceCommits.values.filter {
                 $0.note.id.vaultID == vault.vault.id
                     && source.sourceInventoryRevision <= $0.baseSourceInventoryRevision
             }
@@ -362,7 +362,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 commit.sourceAheadSummary, visibleVaultID: visibleVaultID,
                 visibleSourceScope: visibleSourceScope)
         else { return nil }
-        pendingCreations[commit.id] = PendingCreation(
+        pendingSourceCommits[commit.id] = PendingSourceCommit(
             note: commit.sourceAheadSummary,
             baseSourceInventoryRevision: commit.baseSourceInventoryRevision)
         return vault
@@ -423,6 +423,29 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         }
         state = next
         return vaultSnapshot.vault
+    }
+
+    func recordCommittedSources(
+        _ summaries: [WorkspaceNoteSummary],
+        baseSourceInventoryRevision: UInt64,
+        visibleVaultID: UUID?,
+        visibleSourceScope: LibrarySourceScope?
+    ) {
+        guard acceptedSnapshot.map({ $0.sourceInventoryRevision <= baseSourceInventoryRevision }) ?? true else { return }
+        for note in summaries {
+            guard
+                recordCommittedNote(
+                    note, visibleVaultID: visibleVaultID,
+                    visibleSourceScope: visibleSourceScope) != nil
+            else { continue }
+            if let stableID = note.stableIdentity.resolvedID {
+                pendingSourceCommits = pendingSourceCommits.filter {
+                    $0.value.note.stableIdentity.resolvedID != stableID
+                }
+            }
+            pendingSourceCommits[note.id] = PendingSourceCommit(
+                note: note, baseSourceInventoryRevision: baseSourceInventoryRevision)
+        }
     }
 
     /// Installs a durable empty-folder claim without waiting for the complete
@@ -564,59 +587,38 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     /// matching complete Workspace event replaces it.
     func recordCommittedNoteMove(
         _ commit: TriptychMoveCommit,
-        stableIdentity: WorkspaceNoteIdentityState,
+        committedSummary destination: WorkspaceNoteSummary,
+        baseSourceInventoryRevision: UInt64,
         visibleVaultID: UUID?,
         visibleSourceScope: LibrarySourceScope?
     ) -> CommittedMoveProjection? {
-        guard let vaultSnapshot = state.vaultSnapshotsByID[commit.movedNote.vaultID]
+        guard let vaultSnapshot = state.vaultSnapshotsByID[commit.movedNote.vaultID],
+            destination.id == commit.destination,
+            destination.fingerprint == commit.committedRevision,
+            let stableID = destination.stableIdentity.resolvedID
         else { return nil }
-
-        if let destination = vaultSnapshot.documents.first(where: {
-            $0.id == commit.destination
-                && $0.fingerprint == commit.committedRevision
-        }) {
-            return CommittedMoveProjection(
-                note: destination,
-                vault: vaultSnapshot.vault
-            )
+        if let acceptedSnapshot,
+            acceptedSnapshot.sourceInventoryRevision > baseSourceInventoryRevision
+        {
+            guard
+                let current = vaultSnapshot.documents.first(where: {
+                    $0.stableIdentity.resolvedID == stableID && $0.id == commit.destination
+                })
+            else { return nil }
+            return .init(note: current, vault: vaultSnapshot.vault)
         }
-
         guard
             let sourceIndex = vaultSnapshot.documents.firstIndex(where: {
-                $0.id == commit.movedNote
+                $0.stableIdentity.resolvedID == stableID
+                    && $0.id == commit.movedNote
+                    && $0.fingerprint == commit.previousRevision
             })
         else { return nil }
-        let source = vaultSnapshot.documents[sourceIndex]
-        guard source.fingerprint == commit.previousRevision else { return nil }
-        // The move receipt does not contain changed source bytes. A rewrite
-        // must come from the refreshed authoritative summary instead.
-        guard commit.committedRevision == source.fingerprint else { return nil }
-
-        // A move result exposes the new exact revision but not its bytes. The
-        // global overlay only carries source-free metadata; retained sessions
-        // converge through the demand hydration path after publication.
-        let destination = WorkspaceNoteSummary(
-            id: commit.destination,
-            vaultRole: source.vaultRole,
-            stableIdentity: stableIdentity,
-            fingerprint: commit.committedRevision,
-            fileMetadata: source.fileMetadata,
-            graphCounts: source.graphCounts,
-            linkCatalog: LinkCatalogNote(
-                id: commit.destination,
-                title: source.linkCatalog.title,
-                aliases: source.linkCatalog.aliases,
-                headings: source.linkCatalog.headings,
-                blockAnchors: source.linkCatalog.blockAnchors,
-                ambiguousBlockAnchors: source.linkCatalog.ambiguousBlockAnchors
-            ),
-            title: source.title,
-            validationWarnings: source.validationWarnings,
-            propertyTextValues: source.propertyTextValues,
-            canonicalAliases: source.canonicalAliases,
-            canonicalKeywords: source.canonicalKeywords,
-            derivedProjectionState: .sourceAhead
-        )
+        pendingSourceCommits = pendingSourceCommits.filter {
+            $0.value.note.stableIdentity.resolvedID != stableID
+        }
+        pendingSourceCommits[destination.id] = PendingSourceCommit(
+            note: destination, baseSourceInventoryRevision: baseSourceInventoryRevision)
 
         var next = state
         var documents = vaultSnapshot.documents
@@ -728,7 +730,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         if advancesInventory {
             acceptedSnapshot = incoming
         }
-        pendingCreations = pendingCreations.filter {
+        pendingSourceCommits = pendingSourceCommits.filter {
             snapshot.sourceInventoryRevision <= $0.value.baseSourceInventoryRevision
         }
         let status: WorkspaceDerivedRefreshStatus
@@ -737,11 +739,11 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             previousStatus.isAwaitingRefresh
         {
             status = previousStatus
-        } else if case .current = incomingStatus, !pendingCreations.isEmpty {
+        } else if case .current = incomingStatus, !pendingSourceCommits.isEmpty {
             status = .stale(
                 .init(
                     reason: "Committed source is awaiting derived workspace refresh.",
-                    affectedVaultIDs: Set(pendingCreations.values.map { $0.note.id.vaultID }),
+                    affectedVaultIDs: Set(pendingSourceCommits.values.map { $0.note.id.vaultID }),
                     lastKnownGood: .init(snapshot: incoming)))
         } else {
             status = incomingStatus

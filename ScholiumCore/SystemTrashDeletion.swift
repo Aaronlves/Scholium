@@ -3,6 +3,7 @@ import ScholiumContracts
 
 enum SystemTrashDeletionFaultPoint: Hashable, Sendable {
     case afterPlanPersistence
+    case afterNativeRequestPersistence
     case afterSystemTrashMoveBeforeReceipt
     case afterSourceReceipts
 }
@@ -40,6 +41,7 @@ public actor NoteSystemTrashDeletionCoordinator {
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
     private let faultPlan: SystemTrashDeletionFaultPlan
+    private let nativeDispatchBarrierForTesting: (@Sendable () async -> Void)?
 
     public init(
         triptychID: UUID,
@@ -52,6 +54,7 @@ public actor NoteSystemTrashDeletionCoordinator {
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         faultPlan = .none
+        nativeDispatchBarrierForTesting = nil
     }
 
     init(
@@ -59,13 +62,15 @@ public actor NoteSystemTrashDeletionCoordinator {
         repository: VaultRepository,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
-        faultPlan: SystemTrashDeletionFaultPlan
+        faultPlan: SystemTrashDeletionFaultPlan,
+        nativeDispatchBarrierForTesting: (@Sendable () async -> Void)? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.faultPlan = faultPlan
+        self.nativeDispatchBarrierForTesting = nativeDispatchBarrierForTesting
     }
 
     public func prepareNote(
@@ -251,8 +256,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 }
                 try await repository.preflightSystemTrashNote(
                     relativePath: note.relativePath,
-                    expectedRevision: note.expectedRevision,
-                    bindingID: source.id
+                    expectedRevision: note.expectedRevision
                 )
             case .folder:
                 let expected = Dictionary(
@@ -262,8 +266,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 _ = try await repository.moveFolderToSystemTrashPreflight(
                     relativePath: source.relativePath,
                     expectedDocuments: expected,
-                    expectedDirectoryManifest: try requiredDirectoryManifest(source),
-                    bindingID: source.id
+                    expectedDirectoryManifest: try requiredDirectoryManifest(source)
                 )
             }
             for note in source.notes {
@@ -315,65 +318,56 @@ public actor NoteSystemTrashDeletionCoordinator {
                     break
                 }
 
+                // A process exit after Finder accepts the request cannot
+                // leave a replayable pending receipt. Unknown is durable before
+                // dispatch and becomes moved only after exact native readback.
+                plan = replacingReceipt(
+                    in: plan, targetID: source.id,
+                    progress: .outcomeUnknown, resultingTrashPath: nil)
+                try await persist(
+                    plan, replacing: record,
+                    failure: "The native Trash request is starting; no retry is authorized until its exact outcome is recorded.")
+                try faultPlan.trigger(.afterNativeRequestPersistence)
+                if let barrier = nativeDispatchBarrierForTesting { await barrier() }
+                try Task.checkCancellation()
+
+                let nativeOutcome: SystemTrashOperationOutcome
+                switch source.kind {
+                case .note:
+                    guard let note = source.notes.first else {
+                        throw TriptychTransactionError.invalidPlan("A Note system-Trash source has no exact Note target.")
+                    }
+                    nativeOutcome = await repository.systemTrashNoteOutcome(
+                        relativePath: note.relativePath, expectedRevision: note.expectedRevision)
+                case .folder:
+                    nativeOutcome = await repository.systemTrashFolderOutcome(
+                        relativePath: source.relativePath,
+                        expectedDirectoryManifest: try requiredDirectoryManifest(source))
+                }
                 var resultingURL: URL?
-                do {
-                    switch source.kind {
-                    case .note:
-                        guard let note = source.notes.first else {
-                            throw TriptychTransactionError.invalidPlan(
-                                "A Note system-Trash source has no exact Note target."
-                            )
-                        }
-                        resultingURL = try await repository.moveToSystemTrash(
-                            relativePath: note.relativePath,
-                            expectedRevision: note.expectedRevision,
-                            bindingID: source.id
-                        )
-                    case .folder:
-                        resultingURL = try await repository.moveFolderToSystemTrash(
-                            relativePath: source.relativePath,
-                            expectedDirectoryManifest: try requiredDirectoryManifest(source),
-                            bindingID: source.id
-                        )
-                    }
-                    try faultPlan.trigger(.afterSystemTrashMoveBeforeReceipt)
-                } catch {
-                    let nativeOutcomeUnknown = error is SystemTrashMoveError
-                    let bindingExists =
-                        (try? await repository.systemTrashBindingExists(
-                            relativePath: source.relativePath,
-                            kind: source.kind,
-                            bindingID: source.id
-                        )) ?? true
-                    let sourceIsAbsent: Bool
-                    switch source.kind {
-                    case .note:
-                        sourceIsAbsent =
-                            (try? await repository.load(
-                                relativePath: source.relativePath
-                            )) == nil
-                    case .folder:
-                        sourceIsAbsent =
-                            !(await repository.folderExistsForDeletion(
-                                relativePath: source.relativePath
-                            ))
-                    }
-                    let unknown = nativeOutcomeUnknown || (sourceIsAbsent && !bindingExists)
-                    if unknown {
-                        plan = replacingReceipt(
-                            in: plan,
-                            targetID: source.id,
-                            progress: .outcomeUnknown,
-                            resultingTrashPath: (error as? SystemTrashMoveError)
-                                .flatMap { moveError in
-                                    if case .outcomeUnknown(let url, _) = moveError {
-                                        return url?.path
-                                    }
-                                    return nil
-                                } ?? resultingURL?.path
-                        )
-                        try await persist(plan, replacing: record, failure: error.localizedDescription)
-                    }
+                switch nativeOutcome {
+                case .notDispatched(let error):
+                    // Only Core's explicit predispatch result restores replay
+                    // eligibility. An NSError after dispatch is insufficient.
+                    plan = replacingReceipt(
+                        in: plan, targetID: source.id,
+                        progress: .pending, resultingTrashPath: nil)
+                    try await persist(plan, replacing: record, failure: error.localizedDescription)
+                    throw error
+                case .outcomeUnknown(let url, let reason):
+                    plan = replacingReceipt(
+                        in: plan, targetID: source.id,
+                        progress: .outcomeUnknown, resultingTrashPath: url?.path)
+                    try await persist(plan, replacing: record, failure: reason)
+                    throw SystemTrashMoveError.outcomeUnknown(resultingURL: url, reason: reason)
+                case .moved(let url):
+                    resultingURL = url
+                }
+                do { try faultPlan.trigger(.afterSystemTrashMoveBeforeReceipt) } catch {
+                    plan = replacingReceipt(
+                        in: plan, targetID: source.id,
+                        progress: .outcomeUnknown, resultingTrashPath: resultingURL?.path)
+                    try await persist(plan, replacing: record, failure: error.localizedDescription)
                     throw error
                 }
                 plan = replacingReceipt(
@@ -409,12 +403,19 @@ public actor NoteSystemTrashDeletionCoordinator {
             )
             do {
                 try await recoveryStore.record(updated)
+                if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }) {
+                    // Every participant is proved undispatched. Release the
+                    // failed confirmation so a changed source can prepare a
+                    // fresh plan rather than remain behind a deletion gate.
+                    try await recoveryStore.resolve(updated)
+                }
             } catch {
                 throw TriptychTransactionError.recoveryPersistenceFailed(
                     updated,
                     error.localizedDescription
                 )
             }
+            if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }) { throw error }
             throw TriptychTransactionError.recoveryRequired(updated)
         }
     }
@@ -477,8 +478,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                         && source.notes.first?.relativePath == source.relativePath
                         && source.expectedDirectoryManifest == nil
                 case .folder:
-                    !source.notes.isEmpty
-                        && source.expectedDirectoryManifest != nil
+                    source.expectedDirectoryManifest != nil
                         && source.notes.allSatisfy {
                             $0.relativePath.hasPrefix(source.relativePath + "/")
                         }
@@ -501,7 +501,8 @@ public actor NoteSystemTrashDeletionCoordinator {
         try validatePreviewShape(plan.preview)
         let sourceIDs = plan.preview.sources.map(\.id)
         let receiptIDs = plan.sourceReceipts.map(\.targetID)
-        guard recoveryRecord.id == plan.id,
+        guard plan.schemaVersion == 2,
+            recoveryRecord.id == plan.id,
             recoveryRecord.triptychID == triptychID,
             recoveryRecord.operation == .systemTrashDeletion,
             plan.preview.triptychID == triptychID,

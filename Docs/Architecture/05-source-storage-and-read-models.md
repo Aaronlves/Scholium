@@ -70,12 +70,13 @@ Triptych editors before preparation/execution. Durable plans precede filesystem
 effects; each source has an independent receipt/binding identity and duplicates
 fail before side effects.
 
-Core repeats containment/revision checks, renames the entry into a plan-bound
-hidden sibling, proves its inode and exact source or complete manifest, then invokes
-native Trash inside a deleting accessor. Late path replacement is restored or
-retained without entering Trash. Interrupted bindings resume only under their
-exact plan; absent original and absent valid binding report unknown outcome.
-Returned Trash locations are machine-local recovery evidence.
+Inside a deleting accessor, Core rechecks containment, revisions, inode and exact
+source or complete manifest. Its internal Objective-C
+`ScholiumNativeFileOperations` adapter passes an inode-bound Foundation reference
+to Finder, preserving the original restoration location without staging.
+Original-route and returned-object checks reject substitution. Per-source native
+uncertainty persists before dispatch; interruption never authorizes replay. Returned
+Trash locations remain machine-local recovery evidence.
 
 Portable identity and machine-local Agent Changes have independent writers and
 are not deletion cleanup targets. Watchers and Finder/sync observations cannot
@@ -83,12 +84,12 @@ execute a deletion plan.
 
 ## Shared read models and source properties
 
-Workspace summaries carry identity, revision, facts and projections
-without source. Hydration validates descriptor version, exact path, fingerprint
-and identity before returning source to sessions or bounded operations.
-Filename identifies display; metadata cannot authorize writes. Yams-backed
-projection proves ranges, refusing ambiguity. Semantics support discovery,
-not bibliographic validation.
+Source-free Workspace summaries carry identity, revisions, facts and projections.
+Committed summaries and descriptor versions bridge consecutive moves and link
+rewrites to complete derived publication. Hydration validates version, path,
+fingerprint and identity before returning source. Filename and YAML projections
+support display/discovery without write or bibliographic authority. Yams proves
+source ranges and refuses ambiguity.
 
 Disposable source-projection caches bind exact path/fingerprint, role/profile,
 parser/search policy and checked coordinates/payload digest. Fresh descriptor reads

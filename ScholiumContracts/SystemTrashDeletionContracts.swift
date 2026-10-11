@@ -20,7 +20,7 @@ public struct SystemTrashDeletionNoteTarget: Codable, Hashable, Sendable {
     }
 }
 
-/// One selected file or folder passed to Foundation's native system-Trash API.
+/// One selected file or folder passed to AppKit's native system-Trash API.
 /// Each selected source retains its own receipt.
 public struct SystemTrashDeletionSourceTarget: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID

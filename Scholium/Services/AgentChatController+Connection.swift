@@ -222,23 +222,51 @@ extension AgentChatController {
         await disconnect()
     }
 
+    var canStartLogin: Bool {
+        runtime != nil && connectionID != nil && connectionState == .ready
+            && !hasActiveExecutions && !isRefreshingRuntime && !isRenewingSettings && !isStartingLogin
+    }
+
     func login() {
-        guard let runtime, connectionState == .ready, !hasActiveExecutions, !isRefreshingRuntime else { return }
+        guard canStartLogin, let runtime, let connection = connectionID else { return }
         connectionError = nil
-        let connectionID = connectionID
-        connectionTask = Task { [weak self] in
+        let request = UUID()
+        loginID = request
+        isStartingLogin = true
+        loginTask = Task { [weak self] in
+            defer {
+                if let self, self.connectionID == connection, self.loginID == request {
+                    self.loginTask = nil
+                    self.loginID = nil
+                    self.isStartingLogin = false
+                }
+            }
             do {
                 let result = try await runtime.request(
                     "account/login/start", params: ["type": .string("chatgpt")])
-                guard self?.connectionID == connectionID else { return }
+                guard !Task.isCancelled, let self,
+                    self.connectionID == connection, self.loginID == request
+                else { return }
                 guard let raw = result.objectValue?["authUrl"]?.stringValue,
                     let url = URL(string: raw), url.scheme == "https",
                     let host = url.host, host == "auth.openai.com" || host == "chatgpt.com"
                 else {
                     throw CodexConnectionError.invalidMessage
                 }
-                NSWorkspace.shared.open(url)
-            } catch { self?.connectionError = ScholiumErrorLocalization.message(error) }
+                self.openAuthenticationURL(url)
+            } catch {
+                guard !Task.isCancelled, let self,
+                    self.connectionID == connection, self.loginID == request
+                else { return }
+                self.connectionError = ScholiumErrorLocalization.message(error)
+            }
         }
+    }
+
+    func cancelLogin() {
+        loginID = nil
+        loginTask?.cancel()
+        loginTask = nil
+        isStartingLogin = false
     }
 }

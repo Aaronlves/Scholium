@@ -40,6 +40,17 @@ struct FolderFileOperationView: View {
                     }
                 }
                 .disabled(isWorking)
+                if let errorMessage {
+                    Label {
+                        Text(verbatim: "\(failureTitle). \(errorMessage)")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
+                    }
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("scholium.folderFile.error")
+                }
             }
         } actions: {
             if isWorking { ProgressView().controlSize(.small).accessibilityLabel(Text(actionTitle)) }
@@ -48,26 +59,16 @@ struct FolderFileOperationView: View {
                 .keyboardShortcut(.cancelAction)
                 .disabled(isWorking)
             Button(actionTitle) { perform() }
+                .accessibilityIdentifier("scholium.folderFile.commit")
                 .disabled(destinationRelativePath == nil || isWorking)
                 .keyboardShortcut(.defaultAction)
         }
         .interactiveDismissDisabled(isWorking)
         .accessibilityIdentifier("scholium.folderFileOperation")
         .onAppear { configureDefaults() }
-        .alert(
-            alertTitle,
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("Dismiss", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
     }
 
-    private var alertTitle: String {
+    private var failureTitle: String {
         String(
             format: ScholiumL10n.string("Could Not %@ Folder", locale: Locale.current),
             locale: Locale.current,
@@ -145,6 +146,7 @@ struct FolderFileOperationView: View {
     private func perform() {
         guard let destinationRelativePath else { return }
         isWorking = true
+        errorMessage = nil
         Task {
             do {
                 try await actions.move(target, destinationRelativePath)

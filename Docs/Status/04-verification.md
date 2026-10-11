@@ -35,23 +35,21 @@ Logs: `.build/verification/` and `.build/verification-release/`; local candidate
 regressions pass with exact source/highlight checks (`.build/long-focus-proof/`).
 Usefulness and native latency remain open.
 
-**2026-10-08 UTC — Coordinated development checkpoint:**
-`.build/coordinated-checkpoint-20261008T131206Z/result.json` binds source, checks
-and review, including prior daily/headless and citation/offscreen evidence.
-Compact citations, paired recovery and static exports have scoped proof.
-Conflict comparison explicitly names companion replacement for accessibility;
-native AX/VoiceOver remains unverified. Foreground suites, native Chat/citation
-acceptance, external Review-to-Edit blankness, physical input and adaptations
-remain open; the full product gate is incomplete. Earlier native file/window
-and embedded Zotero proof remains under `.build/feature-audit/` and
-`.build/file-move-qa/`; fixture hashes and recovery are preserved.
+**2026-10-11 — Native repairs:** Scoped source-ahead move, native Trash/receipt/restoration
+and live empty-folder tests pass. Uniform icons and inset glass tabs retain native
+geometry; Inspector no longer has a late width jump. Gate/UI results, source hashes,
+measurement and cleanup limits: `.build/native-repairs-20261011/result.json`.
 
-**2026-10-04 — Retained native baseline:** Thirty-three journeys across baseline
-and extension passed; two organization/passage journeys remain qualified by
-system-Trash privacy denial. Xcode 27.0 (27A5218g), Swift 6.4, SDK 27.0, macOS
-27.2; disposable standard 500-Note Triptychs with three separate registrations.
-Scenario/assertion maps and logs: `.build/feature-review/RESULTS.md` and
-`.build/feature-review-extension/RESULTS.md`. These are dated, not fresh execution.
+**2026-10-08 UTC — Coordinated checkpoint:**
+`.build/coordinated-checkpoint-20261008T131206Z/result.json` binds citation/recovery/export
+and companion-label source, checks and review. Native Chat/citation, AX/VoiceOver,
+external Review-to-Edit, input and adaptation acceptance remain open. Earlier
+file/window/Zotero evidence: `.build/feature-audit/`, `.build/file-move-qa/`.
+
+**2026-10-04 — Native baseline:** Thirty-three journeys passed; two organization/passage
+journeys are qualified by Trash privacy denial. Xcode 27.0 (27A5218g), Swift 6.4,
+SDK 27.0, macOS 27.2; standard 500-Note Triptychs, three registrations. Historical
+maps/logs: `.build/feature-review/RESULTS.md`, `.build/feature-review-extension/RESULTS.md`.
 
 | Feature/workflow | Normal use | Keyboard/accessibility | Empty, error, interrupted or repeated flow | Verification/findings |
 | --- | --- | --- | --- | --- |

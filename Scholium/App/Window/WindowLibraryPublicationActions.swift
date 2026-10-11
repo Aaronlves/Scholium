@@ -109,6 +109,13 @@ extension WindowModel {
                 visibleSourceScope: noteSourceScope
             )
         {
+            if let base = outcome.baseSourceInventoryRevision {
+                workspaceProjectionController.recordCommittedSources(
+                    outcome.committedSourceSummaries,
+                    baseSourceInventoryRevision: base,
+                    visibleVaultID: currentRegisteredVault?.id,
+                    visibleSourceScope: noteSourceScope)
+            }
             for move in commit.noteMoves {
                 guard let note = projection.notes.first(where: { $0.id == move.destination }) else { continue }
                 documentController.recordCommittedSourceIfRetained(
@@ -277,15 +284,23 @@ extension WindowModel {
         )
         var presentationWarning: String?
         if outcome.identityRecoveryWarning == nil,
+            let committedSummary = outcome.committedSourceSummaries.first(where: { $0.id == commit.destination }),
+            let baseSourceInventoryRevision = outcome.baseSourceInventoryRevision,
             let projection = workspaceProjectionController.recordCommittedNoteMove(
                 commit,
-                stableIdentity: .resolved(target.stableNoteID),
+                committedSummary: committedSummary,
+                baseSourceInventoryRevision: baseSourceInventoryRevision,
                 visibleVaultID: currentRegisteredVault?.id,
                 visibleSourceScope: noteSourceScope
             )
         {
             // The move receipt has no source bytes. The changed retained
             // document converges from the authorized snapshot publication.
+            workspaceProjectionController.recordCommittedSources(
+                outcome.committedSourceSummaries.filter { $0.id != commit.destination },
+                baseSourceInventoryRevision: baseSourceInventoryRevision,
+                visibleVaultID: currentRegisteredVault?.id,
+                visibleSourceScope: noteSourceScope)
             if !preservesDocument {
                 do {
                     try await activateWorkspaceReference(

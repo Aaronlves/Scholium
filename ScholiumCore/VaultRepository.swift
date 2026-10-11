@@ -732,54 +732,35 @@ public actor VaultRepository {
 
     public func moveToSystemTrash(
         relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        bindingID: UUID
+        expectedRevision: DocumentFingerprint
     ) throws -> URL? {
         return try mutationCoordinator.moveToSystemTrash(
             path: markdownRelativePath(relativePath),
-            expectedRevision: expectedRevision,
-            bindingID: bindingID
+            expectedRevision: expectedRevision
         )
     }
 
     func preflightSystemTrashNote(
         relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        bindingID: UUID
+        expectedRevision: DocumentFingerprint
     ) throws {
+        _ = try preflightExisting(relativePath: relativePath, expectedRevision: expectedRevision)
+    }
+
+    func systemTrashNoteOutcome(relativePath: String, expectedRevision: DocumentFingerprint) -> SystemTrashOperationOutcome {
         do {
-            _ = try preflightExisting(
-                relativePath: relativePath,
-                expectedRevision: expectedRevision
-            )
-            return
-        } catch VaultRepositoryError.fileDoesNotExist {
-            // A process interruption may leave the exact source in the
-            // transaction-owned binding named by the already durable plan.
-        }
-        let boundPath = SystemTrashBindingPath.itemRelativePath(
-            original: relativePath,
-            id: bindingID
-        )
-        let data = try descriptorAccess.read(markdownRelativePath(boundPath))
-        let current = DocumentFingerprint(data: data)
-        guard current == expectedRevision else {
-            throw VaultRepositoryError.conflict(
-                expected: expectedRevision,
-                current: current
-            )
-        }
+            return mutationCoordinator.systemTrashNoteOutcome(
+                path: try markdownRelativePath(relativePath), expectedRevision: expectedRevision)
+        } catch { return .notDispatched(error) }
     }
 
     func moveFolderToSystemTrash(
         relativePath: String,
-        expectedDirectoryManifest: DocumentFingerprint,
-        bindingID: UUID
+        expectedDirectoryManifest: DocumentFingerprint
     ) throws -> URL? {
         let folder = try folderRelativePath(relativePath)
         return try mutationCoordinator.moveDirectoryToSystemTrash(
-            path: folder,
-            bindingID: bindingID
+            path: folder
         ) { candidateURL in
             guard
                 try self.systemTrashDirectoryManifest(at: candidateURL)
@@ -792,30 +773,26 @@ public actor VaultRepository {
         }
     }
 
+    func systemTrashFolderOutcome(relativePath: String, expectedDirectoryManifest: DocumentFingerprint) -> SystemTrashOperationOutcome {
+        do {
+            return mutationCoordinator.systemTrashFolderOutcome(path: try folderRelativePath(relativePath)) { candidateURL in
+                guard try self.systemTrashDirectoryManifest(at: candidateURL) == expectedDirectoryManifest else {
+                    throw VaultRepositoryError.commitUncertain("The folder inventory changed during the coordinated system-Trash operation.")
+                }
+            }
+        } catch { return .notDispatched(error) }
+    }
+
     func moveFolderToSystemTrashPreflight(
         relativePath: String,
         expectedDocuments: [String: DocumentFingerprint],
-        expectedDirectoryManifest: DocumentFingerprint,
-        bindingID: UUID
+        expectedDirectoryManifest: DocumentFingerprint
     ) throws -> VaultRelativeFolderPath {
         let folder = try VaultRelativeFolderPath(relativePath)
         let originalURL = try pathResolver.unresolvedURL(for: folder)
-        let candidateURL: URL
-        if fileManager.fileExists(atPath: originalURL.path) {
-            _ = try preflightFolderDocuments(
-                in: folder,
-                expectedDocuments: expectedDocuments
-            )
-            candidateURL = originalURL
-        } else {
-            candidateURL = SystemTrashBindingPath.itemURL(
-                targetURL: originalURL,
-                id: bindingID,
-                isDirectory: true
-            )
-        }
+        _ = try preflightFolderDocuments(in: folder, expectedDocuments: expectedDocuments)
         guard
-            try systemTrashDirectoryManifest(at: candidateURL)
+            try systemTrashDirectoryManifest(at: originalURL)
                 == expectedDirectoryManifest
         else {
             throw VaultRepositoryError.commitUncertain(
@@ -902,33 +879,6 @@ public actor VaultRepository {
         let canonical = entries.sorted().joined(separator: "\n")
         return DocumentFingerprint(data: Data(canonical.utf8))
     }
-
-    func systemTrashBindingExists(
-        relativePath: String,
-        kind: SystemTrashDeletionSourceKind,
-        bindingID: UUID
-    ) throws -> Bool {
-        switch kind {
-        case .note:
-            return try mutationCoordinator.systemTrashBindingContains(
-                path: markdownRelativePath(relativePath),
-                bindingID: bindingID
-            )
-        case .folder:
-            return try mutationCoordinator.systemTrashBindingContains(
-                path: folderRelativePath(relativePath),
-                bindingID: bindingID
-            )
-        }
-    }
-
-    func folderExistsForDeletion(relativePath: String) -> Bool {
-        guard let folder = try? VaultRelativeFolderPath(relativePath) else {
-            return false
-        }
-        return folderExists(folder)
-    }
-
     /// Removes a file created by the same higher-level transaction when that
     /// transaction must roll back. It is intentionally module-internal and is
     /// bound to the exact fingerprint returned by `create`; ordinary deletion

@@ -17,6 +17,100 @@ private final class WindowSearchPresentationProbe {
 @Suite("Window Search controller")
 @MainActor
 struct WindowSearchControllerTests {
+    @Test("Quick Search retains its complete context when terminal opening fails")
+    func failedOpeningRetainsQuickSearch() async {
+        let fixture = openingFixture(open: { _, _, _ in false })
+        let before = fixture.discovery.search
+        #expect(await fixture.controller.open(.result(.note(fixture.hit)), disposition: .replaceCurrent) == false)
+        #expect(fixture.controller.presentation == .sidebar)
+        #expect(fixture.discovery.search == before)
+    }
+
+    @Test("Terminal opening respects replacement queries and same-session surface transfer", arguments: [false, true])
+    func suspendedOpeningKeepsSearchSession(transfersToAdvanced: Bool) async {
+        let started = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let fixture = openingFixture(open: { _, _, isCurrent in
+            await withCheckedContinuation {
+                release = $0
+                started.continuation.yield(())
+            }
+            return isCurrent()
+        })
+        let opening = Task { await fixture.controller.open(.result(.note(fixture.hit)), disposition: .replaceCurrent) }
+        for await _ in started.stream { break }
+        if transfersToAdvanced { fixture.controller.beginAdvanced() } else { fixture.controller.replaceQuery("new query") }
+        let retained = fixture.discovery.search
+        release?.resume()
+        #expect(await opening.value == transfersToAdvanced)
+        #expect(fixture.controller.presentation == (transfersToAdvanced ? .advanced : .sidebar))
+        #expect(fixture.discovery.search == retained)
+        started.continuation.finish()
+    }
+
+    @Test("A slower earlier Advanced Search click cannot supersede a newer successful click")
+    func reverseOrderedOpeningValidation() async {
+        let started = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        var opened: [String] = []
+        let fixture = openingFixture(
+            resultEvidence: { result, _ in
+                if case .note(let note) = result, note.relativePath == "Result.md" {
+                    await withCheckedContinuation {
+                        release = $0
+                        started.continuation.yield(())
+                    }
+                }
+                return .init(freshness: result.freshnessToken, fingerprint: result.fingerprint)
+            },
+            open: { selection, _, isCurrent in
+                guard isCurrent(), case .result(.note(let note)) = selection else { return false }
+                opened.append(note.relativePath)
+                return true
+            })
+        fixture.controller.beginAdvanced()
+        let earlier = Task { await fixture.controller.open(.result(.note(fixture.hit)), disposition: .replaceCurrent) }
+        for await _ in started.stream { break }
+        let later = NoteSearchResult(
+            vaultID: fixture.hit.vaultID, vaultName: fixture.hit.vaultName, vaultRole: fixture.hit.vaultRole,
+            relativePath: "Later.md", stableNoteID: nil, title: "Later", matchedField: .body,
+            context: nil, sourceLine: 1, snippet: "Later", highlights: [],
+            freshnessToken: fixture.hit.freshnessToken, fingerprint: fixture.hit.fingerprint,
+            evidentialLayer: .paperAnalysis, classification: .retrievalLead)
+        #expect(await fixture.controller.open(.result(.note(later)), disposition: .replaceCurrent))
+        release?.resume()
+        #expect(await earlier.value == false)
+        #expect(opened == ["Later.md"])
+        #expect(fixture.controller.presentation == .advanced)
+        started.continuation.finish()
+    }
+
+    private func openingFixture(
+        resultEvidence: (@MainActor (SearchResult, SearchPresentationScope) async -> WindowSearchResultEvidence)? = nil,
+        open: @escaping @MainActor (SearchResultSelection, WindowOpenDisposition, @escaping @MainActor () -> Bool) async -> Bool
+    ) -> (controller: WindowSearchController, discovery: DiscoveryController, hit: NoteSearchResult) {
+        let discovery = DiscoveryController()
+        let generation = SearchGenerationID(triptychID: UUID(), sequence: 1, sourceManifestHash: "manifest")
+        let freshness = SearchFreshnessToken.triptych(generation)
+        let fingerprint = DocumentFingerprint(content: "# Result\n")
+        let hit = NoteSearchResult(
+            vaultID: UUID(), vaultName: "Analyses", vaultRole: .sourceCorpus,
+            relativePath: "Result.md", stableNoteID: nil, title: "Result", matchedField: .body,
+            context: nil, sourceLine: 1, snippet: "Result", highlights: [], freshnessToken: freshness,
+            fingerprint: fingerprint, evidentialLayer: .paperAnalysis, classification: .retrievalLead)
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                resultEvidence: resultEvidence ?? { _, _ in .init(freshness: freshness, fingerprint: fingerprint) }, open: open))
+        controller.begin(.general)
+        let request = discovery.beginSearch(.init(query: "result", scope: .triptych))
+        discovery.receiveSearchResponse(
+            .init(
+                requestID: request.id, scope: .triptych, explanation: explanation(provider: .note),
+                freshnessToken: freshness, availability: .current(generation), results: [.note(hit)], hasMore: false), for: request)
+        return (controller, discovery, hit)
+    }
+
     @Test("A late result validation cannot open a dismissed or replaced Search", arguments: [false, true])
     func supersededResultValidationIsDiscarded(dismissed: Bool) async {
         let discovery = DiscoveryController()
@@ -41,7 +135,10 @@ struct WindowSearchControllerTests {
                     }
                     return .init(freshness: freshness, fingerprint: fingerprint)
                 },
-                open: { _, _ in probe.openCount += 1 },
+                open: { _, _, _ in
+                    probe.openCount += 1
+                    return true
+                },
                 reportInformation: { probe.informationMessages.append($0) }))
         controller.beginAdvanced()
         let request = discovery.beginSearch(.init(query: "result", scope: .triptych))
@@ -365,7 +462,10 @@ struct WindowSearchControllerTests {
                         fingerprint: DocumentFingerprint(content: "# Changed\n")
                     )
                 },
-                open: { _, _ in probe.openCount += 1 },
+                open: { _, _, _ in
+                    probe.openCount += 1
+                    return true
+                },
                 hasCurrentNote: { true },
                 reportInformation: { probe.informationMessages.append($0) },
                 reportLoadFailure: { _ in },
@@ -540,8 +640,9 @@ struct WindowSearchControllerTests {
         open:
             @escaping @MainActor (
                 SearchResultSelection,
-                WindowOpenDisposition
-            ) async -> Void = { _, _ in },
+                WindowOpenDisposition,
+                @escaping @MainActor () -> Bool
+            ) async -> Bool = { _, _, _ in true },
         hasCurrentNote: @escaping @MainActor () -> Bool = { true },
         reportInformation: @escaping @MainActor (String) -> Void = { _ in },
         setAvailabilityStatus: @escaping @MainActor (String?) -> Void = { _ in }

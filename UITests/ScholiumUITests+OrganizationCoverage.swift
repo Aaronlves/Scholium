@@ -84,6 +84,37 @@ extension ScholiumUITests {
         try organizationAssertMovedNote(
             path: nestedPath, absent: rootURL, bytes: originalBytes, noteID: noteID, vaultID: vaultID, mainID: mainID)
         organizationCaptureDragBoundary("Library drag back to folder", window: main)
+
+        // Start the next gesture as soon as the committed row is available,
+        // without waiting for persisted window state or derived-index refresh.
+        // A source-ahead row must authorize another move of the same Note.
+        for _ in 0..<3 {
+            let nestedRow = outline.descendants(matching: .outlineRow)
+                .containing(.any, identifier: "scholium.noteRow." + nestedPath).firstMatch
+            XCTAssertTrue(nestedRow.waitForExistence(timeout: 5))
+            nestedRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+                .click(forDuration: 0.2, thenDragTo: rootDrop)
+            XCTAssertTrue(
+                waitUntil(timeout: 8) {
+                    FileManager.default.fileExists(atPath: rootURL.path)
+                        && !FileManager.default.fileExists(atPath: nestedURL.path)
+                })
+            let committedRootRow = outline.descendants(matching: .outlineRow)
+                .containing(.any, identifier: "scholium.noteRow." + filename).firstMatch
+            XCTAssertTrue(committedRootRow.waitForExistence(timeout: 5))
+            committedRootRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+                .click(forDuration: 0.2, thenDragTo: folderRow.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
+            XCTAssertTrue(
+                waitUntil(timeout: 8) {
+                    FileManager.default.fileExists(atPath: nestedURL.path)
+                        && !FileManager.default.fileExists(atPath: rootURL.path)
+                })
+            XCTAssertFalse(main.sheets.firstMatch.exists)
+            XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Could not move this note.")).firstMatch.exists)
+        }
+        try organizationAssertMovedNote(
+            path: nestedPath, absent: rootURL, bytes: originalBytes, noteID: noteID, vaultID: vaultID, mainID: mainID)
+        organizationCaptureDragBoundary("Repeated immediate Library moves", window: main)
     }
 
     private func organizationNoteIdentity(at path: String) throws -> [String: Any] {

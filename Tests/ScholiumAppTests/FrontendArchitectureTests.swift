@@ -912,11 +912,11 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("sizingOptions = [.minSize]"))
         #expect(!splitSource.contains("scholium.library.preferred-width"))
         #expect(splitSource.contains("ScholiumFirstApparatusWidthOffer"))
-        #expect(splitSource.contains("firstApparatusWidthOffer.offerAfterReveal()"))
+        #expect(splitSource.contains("firstApparatusWidthOffer.seedForReveal()"))
         #expect(
             splitSource.components(
-                separatedBy: "firstApparatusWidthOffer.offerAfterReveal()"
-            ).count == 3
+                separatedBy: "firstApparatusWidthOffer.seedForReveal()"
+            ).count == 2
         )
         #expect(!splitSource.contains("prepareForReveal(animated:"))
         #expect(!splitSource.contains("revealAnimationDidFinish()"))
@@ -940,7 +940,7 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("placeholderHost.safeAreaRegions = []"))
         #expect(!splitSource.contains("host.safeAreaRegions = []"))
         #expect(documentTabSource.contains("final class DocumentToolbarTabItem: NSToolbarItem"))
-        #expect(documentTabSource.contains("final class DocumentToolbarTabStrip: NSVisualEffectView"))
+        #expect(documentTabSource.contains("final class DocumentToolbarTabStrip: NSView"))
         #expect(!documentTabSource.contains("private let inactiveSurface = NSVisualEffectView()"))
         #expect(!splitSource.contains("DocumentTabContainerView"))
         #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))

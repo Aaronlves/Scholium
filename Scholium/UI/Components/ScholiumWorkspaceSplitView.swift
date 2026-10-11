@@ -154,48 +154,52 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
 
 }
 
-/// A controller-lifetime adapter for the system Inspector's ideal-width
-/// semantics. It owns no persisted value and releases the split geometry after
-/// one completed reveal.
+/// One controller-lifetime suggestion for the initial Inspector width. The
+/// native item receives it while hidden, before collapse animation captures
+/// its destination; AppKit owns every subsequent pane resize.
 @MainActor
 private final class ScholiumFirstApparatusWidthOffer {
     private weak var splitView: NSSplitView?
     private weak var apparatusItem: NSSplitViewItem?
+    private weak var documentItem: NSSplitViewItem?
     private var didOffer = false
 
-    func connect(splitView: NSSplitView, apparatusItem: NSSplitViewItem) {
+    func connect(
+        splitView: NSSplitView,
+        apparatusItem: NSSplitViewItem,
+        documentItem: NSSplitViewItem
+    ) {
         self.splitView = splitView
         self.apparatusItem = apparatusItem
+        self.documentItem = documentItem
     }
 
-    /// Offer the wider study width exactly once after the first explicit
+    /// Seed the wider study width exactly once before the first explicit
     /// reveal. If the window cannot preserve a document region at least as
     /// wide as the Inspector, keep AppKit's result and never reassert it.
-    func offerAfterReveal() {
+    /// Configure the native destination before animation begins, with no
+    /// completion callback allowed to reflow content or replace a user resize.
+    func seedForReveal() {
         guard !didOffer else { return }
         didOffer = true
         guard let splitView,
             let apparatusItem,
-            !apparatusItem.isCollapsed,
-            let apparatusView = splitView.arrangedSubviews.last,
-            let documentView = splitView.arrangedSubviews.dropLast().last
+            let documentItem,
+            apparatusItem.isCollapsed
         else { return }
         splitView.layoutSubtreeIfNeeded()
 
+        let apparatusView = apparatusItem.viewController.view
+        let documentView = documentItem.viewController.view
         let proposedWidth = ScholiumMetrics.Apparatus.firstRevealWidth
         let currentWidth = apparatusView.frame.width
         guard currentWidth < proposedWidth else { return }
-        let additionalWidth = proposedWidth - currentWidth
-        guard documentView.frame.width - additionalWidth >= proposedWidth else {
+        guard documentView.frame.width - proposedWidth - splitView.dividerThickness >= proposedWidth else {
             return
         }
 
-        let dividerIndex = splitView.arrangedSubviews.count - 2
-        splitView.setPosition(
-            splitView.bounds.maxX - proposedWidth,
-            ofDividerAt: dividerIndex
-        )
-        splitView.layoutSubtreeIfNeeded()
+        apparatusView.setFrameSize(
+            .init(width: proposedWidth, height: apparatusView.frame.height))
     }
 }
 
@@ -463,7 +467,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             addSplitViewItem(apparatusItem)
             firstApparatusWidthOffer.connect(
                 splitView: splitView,
-                apparatusItem: apparatusItem
+                apparatusItem: apparatusItem,
+                documentItem: documentItem
             )
         }
 
@@ -545,17 +550,11 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 apparatusItem != nil,
                 researchInspectorIsVisible != visible
             else { return }
+            if visible { firstApparatusWidthOffer.seedForReveal() }
             if animated {
-                let firstApparatusWidthOffer = self.firstApparatusWidthOffer
                 NSAnimationContext.runAnimationGroup { context in
                     context.allowsImplicitAnimation = true
                     apparatusItem.isCollapsed = !visible
-                } completionHandler: {
-                    Task { @MainActor in
-                        if visible {
-                            firstApparatusWidthOffer.offerAfterReveal()
-                        }
-                    }
                 }
             } else {
                 NSAnimationContext.runAnimationGroup { context in
@@ -564,9 +563,6 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                     apparatusItem.isCollapsed = !visible
                 }
                 splitView.layoutSubtreeIfNeeded()
-                if visible {
-                    firstApparatusWidthOffer.offerAfterReveal()
-                }
             }
             reportVisibility()
         }

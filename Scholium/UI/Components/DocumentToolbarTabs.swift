@@ -234,10 +234,13 @@ final class DocumentToolbarTabs: NSObject {
 
     private func tabStripScreenFrame() -> NSRect? {
         let strip = toolbarItem.control
+        // Optical overflow is independent of the interaction region. A plain
+        // unmasked view's visibleRect can extend to its ancestor's bounds.
+        let visibleBounds = strip.bounds.intersection(strip.visibleRect)
         guard let window = strip.window, !strip.isHiddenOrHasHiddenAncestor,
-            window.toolbar?.isVisible != false, !strip.visibleRect.isEmpty
+            window.toolbar?.isVisible != false, !visibleBounds.isEmpty
         else { return nil }
-        return window.convertToScreen(strip.convert(strip.visibleRect, to: nil))
+        return window.convertToScreen(strip.convert(visibleBounds, to: nil))
     }
 
     private func isDetachmentDrop(at point: NSPoint, operation: NSDragOperation, window: NSWindow?) -> Bool {
@@ -308,14 +311,15 @@ final class DocumentToolbarTabs: NSObject {
 /// A single material well keeps adjacent tabs on one surface. The scroll view
 /// lets the toolbar compress this item without clipping the selected tab.
 @MainActor
-final class DocumentToolbarTabStrip: NSVisualEffectView {
+final class DocumentToolbarTabStrip: NSView {
     weak var owner: DocumentToolbarTabs?
     private static let minimumWidth = DocumentToolbarTabControl.preferredInactiveWidth
     static let height: CGFloat = 36
-    static let contentHeight = height - 2
+    static let contentHeight = height
     private static let edgeInset: CGFloat = 4
     private static let separatorSpace: CGFloat = 6
 
+    private let trackSurface = NSVisualEffectView()
     private let scrollView = NSScrollView()
     private let row = NSStackView()
     private(set) var contextEventMonitor: Any?
@@ -402,13 +406,18 @@ final class DocumentToolbarTabStrip: NSVisualEffectView {
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.minimumWidth, height: Self.height))
-        material = .titlebar
-        blendingMode = .withinWindow
-        state = .followsWindowActiveState
-        wantsLayer = true
+        // Clip the rounded base alone. A glass descendant needs room beyond
+        // its shape for the system's optical treatment and sampling; a mask
+        // on the content owner truncates that treatment at the shared track.
+        trackSurface.material = .titlebar
+        trackSurface.blendingMode = .withinWindow
+        trackSurface.state = .followsWindowActiveState
+        trackSurface.wantsLayer = true
+        trackSurface.layer?.cornerRadius = Self.height / 2
+        trackSurface.layer?.masksToBounds = true
+        trackSurface.setAccessibilityElement(false)
+        addSubview(trackSurface)
         registerForDraggedTypes([DocumentToolbarTabItem.pasteboardType])
-        layer?.cornerRadius = Self.height / 2
-        layer?.masksToBounds = true
         setAccessibilityElement(false)
         widthAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumWidth).isActive = true
         setContentHuggingPriority(.init(49), for: .horizontal)
@@ -506,8 +515,9 @@ final class DocumentToolbarTabStrip: NSVisualEffectView {
 
     override func layout() {
         super.layout()
+        trackSurface.frame = bounds
         let wasSelectedVisible = selectedIsFullyVisible()
-        scrollView.frame = bounds.insetBy(dx: Self.edgeInset, dy: 1)
+        scrollView.frame = bounds.insetBy(dx: Self.edgeInset, dy: 0)
         scrollView.layoutSubtreeIfNeeded()
         let viewportWidth = scrollView.contentView.bounds.width
         if abs(viewportWidth - previousViewportWidth) > 0.5 {
@@ -578,6 +588,7 @@ final class DocumentToolbarTabControl: NSView, NSDraggingSource, NSGestureRecogn
     static let minimumWidth: CGFloat = 112
     private static let height = DocumentToolbarTabStrip.contentHeight
     private static let closeWidth: CGFloat = 28
+    private static let selectionInset = ScholiumGrid.Spacing.labelAccessoryGap
     private static let insertionGap: CGFloat = 10
     static let preferredInactiveWidth: CGFloat = 180
 
@@ -615,7 +626,10 @@ final class DocumentToolbarTabControl: NSView, NSDraggingSource, NSGestureRecogn
         registerForDraggedTypes([DocumentToolbarTabItem.pasteboardType])
         selectedSurface.style = .regular
         selectedSurface.tintColor = nil
-        selectedSurface.cornerRadius = Self.height / 2
+        selectedSurface.cornerRadius = (Self.height - Self.selectionInset * 2) / 2
+        if #available(macOS 27.0, *) {
+            selectedSurface.effectIsInteractive = true
+        }
         selectedSurface.contentView = emptyGlassContent
         selectedSurface.setAccessibilityElement(false)
         addSubview(selectedSurface)
@@ -687,18 +701,19 @@ final class DocumentToolbarTabControl: NSView, NSDraggingSource, NSGestureRecogn
         let leading = dropSide == .before ? Self.insertionGap : 0
         let trailing = dropSide == .after ? Self.insertionGap : 0
         let surfaceFrame = NSRect(
-            x: leading, y: 0,
-            width: max(0, bounds.width - leading - trailing), height: bounds.height)
+            x: leading, y: Self.selectionInset,
+            width: max(0, bounds.width - leading - trailing),
+            height: max(0, bounds.height - Self.selectionInset * 2))
         selectedSurface.frame = surfaceFrame
         content.frame = NSRect(
-            origin: content.superview === self ? NSPoint(x: leading, y: 0) : .zero,
+            origin: content.superview === self ? surfaceFrame.origin : .zero,
             size: surfaceFrame.size)
         closeButton.frame = NSRect(
-            x: 0, y: (bounds.height - Self.closeWidth) / 2,
+            x: 0, y: (content.bounds.height - Self.closeWidth) / 2,
             width: Self.closeWidth, height: Self.closeWidth)
         selection.frame = NSRect(
             x: Self.closeWidth, y: 0,
-            width: max(0, surfaceFrame.width - Self.closeWidth * 2), height: bounds.height)
+            width: max(0, surfaceFrame.width - Self.closeWidth * 2), height: content.bounds.height)
     }
 
     override func updateTrackingAreas() {

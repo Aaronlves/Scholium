@@ -47,8 +47,10 @@ extension WindowModel {
     func activateDocument(
         _ document: WindowSelectedDocument,
         tabActivation: DocumentTabActivation,
-        recordsNavigationHistory: Bool = true
+        recordsNavigationHistory: Bool = true,
+        validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
+        try validateDisplay()
         if workspaceStore.documentLocations.revealExisting(document, excluding: self) { return }
         guard let vaultID = document.vaultID,
             let vault = workspaceAssignment?.vaults.values.first(where: {
@@ -61,21 +63,25 @@ extension WindowModel {
         try await activateResolvedDocument(
             document,
             tabActivation: tabActivation,
-            recordsNavigationHistory: recordsNavigationHistory
+            recordsNavigationHistory: recordsNavigationHistory,
+            validateDisplay: validateDisplay
         )
     }
 
     func activateResolvedDocument(
         _ document: WindowSelectedDocument,
         tabActivation: DocumentTabActivation,
-        recordsNavigationHistory: Bool = true
+        recordsNavigationHistory: Bool = true,
+        validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
+        try validateDisplay()
         if case .preserveTabMembership = tabActivation {
             try validateDocumentIsAvailable(document)
             if documentController.canSelectRetainedDocument(document),
                 let vaultID = document.vaultID
             {
                 let stagedLibrary = try await stageDocumentLibrarySelection(vaultID: vaultID)
+                try validateDisplay()
                 try validateDocumentIsAvailable(document)
                 guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
                 guard documentController.canSelectRetainedDocument(document),
@@ -102,7 +108,8 @@ extension WindowModel {
             try await activateResolvedWorkspaceReference(
                 descriptor.reference,
                 tabActivation: tabActivation,
-                recordsNavigationHistory: recordsNavigationHistory
+                recordsNavigationHistory: recordsNavigationHistory,
+                validateDisplay: validateDisplay
             )
         case .unavailable(let vaultID, let relativePath):
             try validateDocumentIsAvailable(document)
@@ -114,6 +121,7 @@ extension WindowModel {
             else { throw WindowNavigationError.noteUnavailable(relativePath) }
             let hydrated = try await hydrateForOpening(summary)
             let stagedLibrary = try await stageDocumentLibrarySelection(vaultID: vaultID)
+            try validateDisplay()
             try validateDocumentIsAvailable(document)
             guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
             try commitDocumentLibrarySelection(stagedLibrary, opening: hydrated.summary)
@@ -476,19 +484,32 @@ extension WindowModel {
         scope: SearchPresentationScope,
         freshnessToken: SearchFreshnessToken,
         placement: DocumentTabPlacement = .replaceSelected,
-        mode: NotePresentationMode? = nil
+        mode: NotePresentationMode? = nil,
+        isCurrentRequest: @escaping @MainActor () -> Bool = { true },
+        onCompletion: @escaping @MainActor (Bool) -> Void = { _ in }
     ) {
+        guard isCurrentRequest() else {
+            onCompletion(false)
+            return
+        }
+        var forwarded = false
         let forwardToExistingOwner: @MainActor () -> Bool = { [weak self] in
             guard let self, let owner = self.workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) else { return false }
+            guard !forwarded else { return true }
+            forwarded = true
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             owner.openWorkspaceReference(
                 reference, sourceRange: sourceRange, fallbackLine: fallbackLine,
                 sourceFingerprint: sourceFingerprint, scope: scope, freshnessToken: freshnessToken,
-                placement: placement, mode: mode)
+                placement: placement, mode: mode,
+                isCurrentRequest: isCurrentRequest, onCompletion: onCompletion)
             return true
         }
         if forwardToExistingOwner() { return }
-        guard let capabilities = windowWorkspaceController.activeCapabilities else { return }
+        guard let capabilities = windowWorkspaceController.activeCapabilities else {
+            onCompletion(false)
+            return
+        }
         let navigationMode = mode ?? presentedDocumentMode
         let target = reference.stableNoteID.flatMap(UUID.init(uuidString:)).map {
             DocumentSessionKey(vaultID: reference.vaultID, noteID: $0)
@@ -502,9 +523,9 @@ extension WindowModel {
         }
         var admittedSummary: WorkspaceNoteSummary?
         let validateDisplay: @MainActor () throws -> Void = { [weak self] in
-            guard self?.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity else {
-                throw CancellationError()
-            }
+            guard isCurrentRequest(),
+                self?.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
+            else { throw CancellationError() }
             // A peer can acquire the target while this request is queued or
             // suspended. Redirect the complete request before preparing the
             // origin; activation's ordinary reveal is not local selection.
@@ -570,6 +591,8 @@ extension WindowModel {
                 mode == nil
                     && self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == false
                 ? nil : navigationMode
+        } completion: { result in
+            if !forwarded { onCompletion((try? result.get()) != nil) }
         }
     }
 

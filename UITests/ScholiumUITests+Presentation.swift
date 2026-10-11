@@ -942,12 +942,37 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertTrue(row.exists)
+        let externalFolder = triptychDirectory.appendingPathComponent("01-analyses/QA Folder Return", isDirectory: true)
+        let outsideVault = homeDirectory.appendingPathComponent("QA Folder Return", isDirectory: true)
+        let externalFolderRow = app.descendants(matching: .any)["scholium.folderRow.QA Folder Return"].firstMatch
+        try FileManager.default.createDirectory(at: externalFolder, withIntermediateDirectories: false)
+        XCTAssertTrue(externalFolderRow.waitForExistence(timeout: 8), "Folder-only filesystem changes must reach the Library.")
+        try FileManager.default.moveItem(at: externalFolder, to: outsideVault)
+        XCTAssertTrue(waitUntil(timeout: 8) { !externalFolderRow.exists })
+        try FileManager.default.moveItem(at: outsideVault, to: externalFolder)
+        XCTAssertTrue(externalFolderRow.waitForExistence(timeout: 8), "An externally restored empty folder must reappear without another Note mutation.")
+        try FileManager.default.removeItem(at: externalFolder)
+        XCTAssertTrue(waitUntil(timeout: 8) { !externalFolderRow.exists })
         app.descendants(matching: .any)["scholium.libraryCreate"].firstMatch.click()
         app.menuItems["New Folder"].click()
         let createdFolder = triptychDirectory.appendingPathComponent("01-analyses/Untitled Folder")
         XCTAssertTrue(waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: createdFolder.path) })
         XCTAssertTrue(
             app.descendants(matching: .any)["scholium.folderRow.Untitled Folder"].firstMatch.waitForExistence(timeout: 8))
+        let emptyFolderRow = app.outlines["scholium.noteList"].firstMatch.descendants(matching: .outlineRow)
+            .containing(.any, identifier: "scholium.folderRow.Untitled Folder").firstMatch
+        emptyFolderRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
+        let folderMenu = app.menus["scholium.folderRow.Untitled Folder"].firstMatch
+        XCTAssertTrue(folderMenu.waitForExistence(timeout: 5))
+        folderMenu.menuItems["Move Folder and Notes to Trash…"].click()
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let trash = sheet.buttons["Move to Trash"].firstMatch
+        XCTAssertTrue(trash.waitForExistence(timeout: 5))
+        XCTAssertTrue(trash.isEnabled)
+        XCTAssertFalse(sheet.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "invalid or duplicate Note inventory")).firstMatch.exists)
+        sheet.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: createdFolder.path))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
     }

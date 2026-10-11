@@ -688,7 +688,13 @@ struct WindowWorkspaceProjectionControllerTests {
 
         let projection = controller.recordCommittedNoteMove(
             commit,
-            stableIdentity: source.stableIdentity,
+            committedSummary: WorkspaceNoteSummary(
+                id: destination, vaultRole: source.vaultRole,
+                stableIdentity: source.stableIdentity,
+                document: NoteDocument(relativePath: destination.relativePath, rawContent: "# Active\n"),
+                fileMetadata: source.fileMetadata, graphCounts: source.graphCounts,
+                derivedProjectionState: .sourceAhead),
+            baseSourceInventoryRevision: initial.sourceInventoryRevision,
             visibleVaultID: fixture.vault.id,
             visibleSourceScope: .library
         )

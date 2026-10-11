@@ -80,6 +80,8 @@ extension WorkspaceHandle {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
+        let previousIdentity = try await services.controlStore.identityRecord(
+            vaultID: id.vaultID, relativePath: id.relativePath)
         let undoEvidence: AgentChange?
         if let undoAgentChangeID {
             let change = try await services.agentChangeStore.change(id: undoAgentChangeID)
@@ -191,6 +193,23 @@ extension WorkspaceHandle {
                     document: (try? await documentWithCitationSnapshot(result.document, id: id))
                         ?? unavailable)
             }
+            var committedSourceSummaries: [WorkspaceNoteSummary] = []
+            var identityRecoveryWarning: String?
+            if let previousIdentity {
+                do {
+                    guard
+                        let record = try await services.controlStore.identity(
+                            forVaultID: id.vaultID, relativePath: id.relativePath,
+                            fingerprint: result.document.fingerprint, createIfMissing: false,
+                            preferredID: previousIdentity.id, expectedFingerprint: previousIdentity.fingerprint)
+                    else { throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath) }
+                    committedSourceSummaries.append(try await recordCommittedSource(record))
+                } catch {
+                    sourceAheadIdentityRecords[id] = nil
+                    sourceAheadSourceVersions[id] = nil
+                    identityRecoveryWarning = error.localizedDescription
+                }
+            }
             if completion == .sourceOnly {
                 // Queue before releasing the mutation lease so the matching
                 // watcher event cannot start a competing refresh first.
@@ -215,7 +234,9 @@ extension WorkspaceHandle {
             return .committed(
                 WorkspaceMutationOutcome(
                     committedValue: committedResult,
-                    derivedRefreshWarning: derivedRefreshWarning
+                    committedSourceSummaries: committedSourceSummaries,
+                    derivedRefreshWarning: derivedRefreshWarning,
+                    identityRecoveryWarning: identityRecoveryWarning
                 ))
         }
     }
@@ -364,6 +385,11 @@ extension WorkspaceHandle {
         do {
             commit = try await systemTrashCoordinator(vaultID: vaultID)
                 .moveToSystemTrash(preview)
+            for note in preview.sources.flatMap(\.notes) {
+                let id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
+                sourceAheadIdentityRecords[id] = nil
+                sourceAheadSourceVersions[id] = nil
+            }
         } catch {
             endSourceMutation(mutationLease)
             ownsMutation = false
