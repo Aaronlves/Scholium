@@ -472,6 +472,130 @@ struct MarkdownFileOpeningLaunchTests {
         }
     }
 
+    @Test("Delegate cold and warm file callbacks leave saved Triptych runtimes inactive")
+    func delegateFileCallbacksRemainIndependent() async throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/DelegateMarkdownRouting-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let registration = try seedRegistration(in: root)
+        let first = root.appendingPathComponent("Cold.md")
+        let second = root.appendingPathComponent("Warm.markdown")
+        let bytes = Data("\u{FEFF}# Independent 中文 😀\r\n".utf8)
+        try bytes.write(to: first)
+        try bytes.write(to: second)
+        let delegate = ScholiumApplicationDelegate()
+        let opening = delegate.markdownFiles
+        defer { opening.prepareTermination() }
+        let bootstrap = ApplicationBootstrapController {
+            root.appendingPathComponent("ApplicationSupport", isDirectory: true)
+        }
+        let external = Routes<ExternalMarkdownWindowRoute>()
+        let workspace = Routes<TriptychWindowRoute>()
+        delegate.application(NSApplication.shared, open: [first])
+        #expect(external.values.isEmpty && !bootstrap.isReady)
+        opening.connect(
+            bootstrap: bootstrap,
+            openExternalWindow: { external.values.append($0) },
+            openWorkspaceWindow: { workspace.values.append($0) },
+            lifecycleRegistry: delegate.windowLifecycleRegistry)
+        try await waitUntil { external.values.count == 1 }
+        guard case .ready(let store) = bootstrap.state else {
+            Issue.record("Missing synthetic store")
+            return
+        }
+        do {
+            delegate.application(NSApplication.shared, open: [second, second])
+            try await waitUntil { external.values.count == 2 }
+            #expect(external.values.map(\.fileURL) == [first, second])
+            #expect(external.values.allSatisfy { !$0.needsOwnershipResolution })
+            #expect(workspace.values.isEmpty)
+            #expect(store.workspaceSnapshots.isEmpty && store.workspaceActivations.isEmpty)
+            #expect(try await store.registeredTriptychs().map(\.id) == [registration.id])
+            #expect(try Data(contentsOf: first) == bytes && Data(contentsOf: second) == bytes)
+            delegate.windowLifecycleRegistry.beginTerminationAttempt()
+            delegate.application(NSApplication.shared, open: [root.appendingPathComponent("Rejected.md")])
+            #expect(external.values.count == 2)
+            delegate.windowLifecycleRegistry.endTerminationAttempt()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test("A fresh registry change routes an earlier external path through its managed owner")
+    func registryChangeCannotReuseExternalClassification() async throws {
+        try await withRouting { opening, _, root, external, workspace in
+            let parent = root.appendingPathComponent("Registered/Topics", isDirectory: true)
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+            let original = parent.appendingPathComponent("Note.md")
+            let bytes = Data("# Same exact source\r\n".utf8)
+            try bytes.write(to: original)
+            opening.requestOpen([original])
+            try await waitUntil { external.values.count == 1 }
+            let assignment = try seedRegistration(in: root)
+            opening.requestOpen([original])
+            try await waitUntil { workspace.values.count == 1 }
+            #expect(external.values.count == 1)
+            #expect(workspace.values.first?.triptychID == assignment.id)
+            #expect(workspace.values.first?.initialDocument?.vaultID == assignment.topicKnowledgeVaultID)
+            #expect(workspace.values.first?.initialDocument?.relativePath == "Note.md")
+            #expect(try Data(contentsOf: original) == bytes)
+        }
+    }
+
+    @Test("Full classification preserves non-Note exclusions and unavailable registered-root routing")
+    func fullClassifierPreservesBoundaries() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/ClassifierBoundaries-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = try seedRegistration(in: root)
+        let folder = root.appendingPathComponent("Registered/Topics")
+        let vault = RegisteredVault(
+            id: triptych.topicKnowledgeVaultID, name: "Topics", role: .topicKnowledge,
+            canonicalPath: folder.path)
+        let assignment = TriptychAssignment(triptych: triptych, vaults: [.topicKnowledge: vault], hasCommonParent: true)
+        for relative in ["Attachments/Original.md", ".scholium/state.md", "Nested/.hidden/Original.md", "Outside.markdown", "../Outside.md"] {
+            #expect(MarkdownFileOpeningController.managedNote(at: folder.appendingPathComponent(relative), assignments: [assignment]) == nil)
+        }
+        #expect(
+            MarkdownFileOpeningController.managedNote(
+                at: root.appendingPathComponent("Registered/Topics-neighbor/Note.md"), assignments: [assignment]) == nil)
+        // An unavailable registered root must still route guarded opening by its
+        // recorded path, rather than authorizing an independent source writer.
+        try FileManager.default.removeItem(at: folder)
+        let managed = MarkdownFileOpeningController.managedNote(at: folder.appendingPathComponent("Nested/Note.md"), assignments: [assignment])
+        #expect(managed?.triptychID == triptych.id)
+        #expect(managed?.reference.vaultID == vault.id && managed?.reference.relativePath == "Nested/Note.md")
+    }
+
+    private struct LaunchRegistry: Encodable {
+        let schemaVersion = 3
+        let vaults: [RegisteredVault]
+        let triptychs: [ScholiumTriptych]
+        let defaultTriptychID: UUID
+    }
+
+    private func seedRegistration(in root: URL) throws -> ScholiumTriptych {
+        var vaults: [RegisteredVault] = []
+        for slot in WorkspaceVaultSlot.allCases {
+            let folder = root.appendingPathComponent("Registered/\(slot.displayName)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            vaults.append(RegisteredVault(name: slot.displayName, role: slot.vaultRole, canonicalPath: folder.path))
+        }
+        let triptych = ScholiumTriptych(
+            name: "Synthetic registered Triptych",
+            paperAnalysisVaultID: vaults[0].id, topicKnowledgeVaultID: vaults[1].id, outputVaultID: vaults[2].id)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let url = registryURL(root)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try encoder.encode(LaunchRegistry(vaults: vaults, triptychs: [triptych], defaultTriptychID: triptych.id)).write(to: url)
+        return triptych
+    }
+
     @MainActor
     private final class RetryGate {
         private var continuation: CheckedContinuation<Void, Never>?

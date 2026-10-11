@@ -185,7 +185,10 @@ final class MarkdownFileOpeningController: ObservableObject {
         // an Open event uses another spelling of its existing root or path.
         // Canonical spelling is only a routing hint; guarded Note opening
         // still establishes containment, stable identity and source authority.
-        let path = routingPath(for: url)
+        return managedMarkdownRelativePath(routingPath: routingPath(for: url), in: vaultRoot)
+    }
+
+    private static func managedMarkdownRelativePath(routingPath path: String, in vaultRoot: URL) -> String? {
         let root = routingPath(for: vaultRoot) + "/"
         guard path.hasPrefix(root) else { return nil }
         let relativePath = String(path.dropFirst(root.count))
@@ -203,14 +206,20 @@ final class MarkdownFileOpeningController: ObservableObject {
         return values.canonicalPath ?? standardized.path
     }
 
-    private static func managedNote(
+    static func managedNote(
         at url: URL, assignments: [TriptychAssignment]
     ) -> (reference: VaultNoteReference, triptychID: UUID)? {
+        guard url.isFileURL, url.pathExtension.lowercased() == "md", !assignments.isEmpty else { return nil }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        // Bind the selected spelling once for this operation. Every later Open
+        // or Retry still resolves it and reads current registry membership anew.
+        let selectedPath = routingPath(for: url)
         for assignment in assignments {
             for vault in assignment.vaults.values {
                 guard
                     let path = managedMarkdownRelativePath(
-                        at: url, in: URL(fileURLWithPath: vault.canonicalPath)
+                        routingPath: selectedPath, in: URL(fileURLWithPath: vault.canonicalPath)
                     )
                 else { continue }
                 return (
