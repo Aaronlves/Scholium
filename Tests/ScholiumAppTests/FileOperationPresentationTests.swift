@@ -222,7 +222,7 @@ struct FileOperationPresentationTests {
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        window.orderFront(nil)
+        window.makeKeyAndOrderFront(nil)
         defer {
             if let sheet = window.attachedSheet {
                 window.endSheet(sheet)
@@ -234,7 +234,9 @@ struct FileOperationPresentationTests {
         try await settleForm(host, phase: "native sheet presentation") { window.attachedSheet != nil }
         let sheet = try #require(window.attachedSheet)
         let form = try #require(sheet.contentView)
-        try await settleForm(form, phase: "commit construction") { self.commitElement(in: form, operation: operation) != nil }
+        try await settleForm(form, phase: "editable control construction") {
+            self.editableControlIfPresent(in: form, operation: operation) != nil
+        }
         try setDraft("Collision", in: form, operation: operation)
         try await settleForm(form, phase: "edited draft admission") { self.commitIsEnabled(in: form, operation: operation) }
         try pressCommit(in: form, operation: operation)
@@ -280,10 +282,14 @@ struct FileOperationPresentationTests {
     }
 
     private func editableControl(in host: NSView, operation: FileOperationFailureFixture) throws -> NSControl {
+        try #require(editableControlIfPresent(in: host, operation: operation))
+    }
+
+    private func editableControlIfPresent(in host: NSView, operation: FileOperationFailureFixture) -> NSControl? {
         if operation == .moveFolder {
-            return try #require(descendants(host).compactMap { $0 as? NSPopUpButton }.first)
+            return descendants(host).compactMap { $0 as? NSPopUpButton }.first
         }
-        return try #require(descendants(host).compactMap { $0 as? NSTextField }.first { $0.isEditable })
+        return descendants(host).compactMap { $0 as? NSTextField }.first { $0.isEditable }
     }
 
     private func draft(in host: NSView, operation: FileOperationFailureFixture) throws -> String {

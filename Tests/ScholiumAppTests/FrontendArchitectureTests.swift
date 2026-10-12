@@ -985,7 +985,6 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.apparatusDivider,
                 ScholiumWorkspaceToolbarController.Item.inspectorModes,
                 .flexibleSpace,
-                .space,
                 ScholiumWorkspaceToolbarController.Item.inspector,
             ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
