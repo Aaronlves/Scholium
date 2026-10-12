@@ -2,7 +2,7 @@ import {exactSourceFitsChanges, exactSourceState} from "./exact-source-history";
 import {boundedUUID} from "./uuid";
 import {isolateHistory} from "@codemirror/commands";
 import {
-  CompletionContext,
+  type CompletionContext,
   acceptCompletion,
   closeCompletion,
   currentCompletions,
@@ -69,6 +69,9 @@ interface SourceRange {
   readonly to: number;
 }
 
+export type WritingContinuationCancellationReason = "superseded" | "typing" | "deletion" | "source" | "caret"
+  | "focus" | "composition" | "configuration" | "mode" | "context" | "dismissed" | "accepted" | "lifecycle" | "watchdog";
+
 interface InputSuggestionOptions {
   nativeFloating: NativeSuggestionPort;
   mode(state: EditorState): EditorMode;
@@ -80,28 +83,31 @@ interface InputSuggestionOptions {
     kind: EditorLinkCompletionKind,
     query: string,
   ): void;
+  cancelWritingTermQuery?(requestID: string): void;
   requestCitationInsertion?(intent: EditorCitationSuggestionIntent): void;
   citationContextRevision?(): number;
   canInsertCitation?(state: EditorState): boolean;
+  canContinueWriting?(state: EditorState, position: number): boolean;
+  writingContextReady?(state: EditorState, position: number): boolean;
   requestWritingContinuation?(requestID: string, state: EditorState, position: number): void;
-  cancelWritingContinuation?(requestID: string): void;
+  cancelWritingContinuation?(requestID: string, reason: WritingContinuationCancellationReason): void;
   didApply(undoLabel: string): void;
 }
 
 export interface EditorInputSuggestionsController {
   readonly extension: Extension;
-  readonly writingCompletionSource: CompletionSource;
   readonly wikilinkCompletionSource: CompletionSource;
   readonly analysisReferenceCompletionSource: CompletionSource;
   readonly citationCompletionSource: CompletionSource;
   readonly slashCompletionSource: CompletionSource;
   readonly calloutCompletionSource: CompletionSource;
   resetDocument(): void;
+  resumeWritingAfterComposition(): void;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
   configureWritingContinuation(enabled: boolean, contextKey: string): void;
   configureWritingIndexContext(contextKey: string): void;
   setWritingContinuationStatus(requestID: string, value: unknown): void;
-  resolveWritingContinuation(requestID: string, value: unknown): void;
+  resolveWritingContinuation(requestID: string, value: unknown): boolean;
 }
 
 type WritingContinuationPhase = "preparing" | "retrieving" | "generating";
@@ -177,7 +183,7 @@ function suggestionSpanIsProtected(options: InputSuggestionOptions, state: Edito
 }
 
 function caretHasInputTrigger(before: string) {
-  return /\[\[[^\]\n]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
+  return /\[\[[^\]\n|]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
 }
 
 interface UnavailableCompletion extends Completion {
@@ -225,7 +231,7 @@ function termSuffix(state: EditorState, position: number, candidate: EditorLinkC
 /** One visible, literal sentence suffix; never hidden newlines, controls or Markdown structures. */
 export function safeContinuationSuffix(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim() || value.length > 512
-    || /[\u0000-\u001f\u007f\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069\\`*_{}[\]<>|]/u.test(value)) return null;
+    || /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\\`*_{}[\]<>|]/u.test(value)) return null;
   // Reject malformed UTF-16 rather than allowing display/insertion disagreement.
   for (let index = 0; index < value.length; index++) {
     const code = value.charCodeAt(index);
@@ -259,24 +265,13 @@ function sentenceBoundaryEnd(value: string, index: number): number | null {
   return cjkTerminator || end === value.length || /\s/u.test(value[end] ?? "") ? end : null;
 }
 
-function sentenceIsUnfinished(before: string): boolean {
-  const withoutTrailingSpace = before.replace(/\s+$/u, "");
-  const withoutClosers = withoutTrailingSpace.replace(
-    new RegExp(`${sentenceClosingCharacters.source}+$`, "u"),
-    "",
-  ).replace(/\s+$/u, "");
-  return !/[.!?。！？…]$/u.test(withoutClosers);
-}
-
 function continuationContextAllowed(options: InputSuggestionOptions, state: EditorState, position: number) {
   if (!isWritingSuggestionContext(options, state)
+    || options.canContinueWriting?.(state, position) === false
     || positionIsProtected(options, state, position)
     || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
   const before = state.sliceDoc(Math.max(0, position - 512), position);
-  return /[\p{L}\p{N}]/u.test(before)
-    && sentenceIsUnfinished(before)
-    && !caretHasInputTrigger(before)
-    && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
+  return /[\p{L}\p{N}]/u.test(before) && !caretHasInputTrigger(before);
 }
 
 function localISODate(date = new Date()) {
@@ -496,18 +491,25 @@ export function createEditorInputSuggestions(
   let indexContextKey = "";
   let linkCatalogEpoch = 0;
   let refreshLinkChoices: (() => void) | undefined;
-  let clearInlineWriting: (() => void) | undefined;
-  let clearAIWriting: (() => void) | undefined;
-  let clearIndexWriting: (() => void) | undefined;
+  let clearInlineWriting: ((reason?: WritingContinuationCancellationReason) => void) | undefined;
+  let resumeInlineWriting: (() => void) | undefined;
+  let reconfigureWriting: ((enabledChanged: boolean) => void) | undefined;
+  let refreshIndexWriting: (() => void) | undefined;
   let showInlineContinuationStatus: ((requestID: string, phase: WritingContinuationPhase) => void) | undefined;
+  // A bridge watchdog, longer than the native service's 30-second deadline.
+  // Preparation and generation each get their own budget; phase updates cannot
+  // keep an unresponsive request alive indefinitely.
+  const continuationWatchdogMilliseconds = 35_000;
   const pendingContinuations = new Map<string, {
     resolve(value: {text: string | null; reason: string | null}): void;
     timeout: ReturnType<typeof setTimeout>;
+    generationStarted: boolean;
+    expire(): void;
   }>();
-  function cancelContinuations() {
+  function cancelContinuations(reason: WritingContinuationCancellationReason) {
     for (const [requestID, pending] of pendingContinuations) {
       clearTimeout(pending.timeout);
-      options.cancelWritingContinuation?.(requestID);
+      options.cancelWritingContinuation?.(requestID, reason);
       pending.resolve({text: null, reason: null});
     }
     pendingContinuations.clear();
@@ -515,37 +517,47 @@ export function createEditorInputSuggestions(
   function requestContinuation(state: EditorState, position: number) {
     const requestID = boundedUUID();
     const promise = new Promise<{text: string | null; reason: string | null}>(resolve => {
-      const timeout = setTimeout(() => {
+      const expire = () => {
         pendingContinuations.delete(requestID);
-        options.cancelWritingContinuation?.(requestID);
+        options.cancelWritingContinuation?.(requestID, "watchdog");
         resolve({text: null, reason: localized("AI continuation timed out.")});
-      }, 8_000);
-      pendingContinuations.set(requestID, {resolve, timeout});
+      };
+      const timeout = setTimeout(expire, continuationWatchdogMilliseconds);
+      pendingContinuations.set(requestID, {resolve, timeout, generationStarted: false, expire});
       if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
       else resolveContinuation(requestID, {text: null, reason: null});
     });
     return {requestID, promise};
   }
   function setContinuationStatus(requestID: string, value: unknown) {
-    if (!pendingContinuations.has(requestID)) return;
+    const pending = pendingContinuations.get(requestID);
+    if (!pending) return;
     const payload = value && typeof value === "object" ? value as {phase?: unknown} : {};
     const phase = payload.phase;
     if (phase !== "preparing" && phase !== "retrieving" && phase !== "generating") return;
+    if (pending.generationStarted && phase !== "generating") return;
+    if (phase === "generating" && !pending.generationStarted) {
+      pending.generationStarted = true;
+      clearTimeout(pending.timeout);
+      pending.timeout = setTimeout(pending.expire, continuationWatchdogMilliseconds);
+    }
     showInlineContinuationStatus?.(requestID, phase);
   }
   function resolveContinuation(requestID: string, value: unknown) {
     const pending = pendingContinuations.get(requestID);
-    if (!pending) return;
+    if (!pending) return false;
     pendingContinuations.delete(requestID);
     clearTimeout(pending.timeout);
     const payload = value && typeof value === "object" ? value as {text?: unknown; reason?: unknown} : {};
     pending.resolve({text: safeContinuationSuffix(payload.text),
       reason: typeof payload.reason === "string" && payload.reason.trim() ? payload.reason.slice(0, 512) : null});
+    return true;
   }
   const pendingLinkQueries = new Map<string, {
     resolve(candidates: EditorLinkCompletionCandidate[]): void;
     timeout: ReturnType<typeof setTimeout>;
     writingTerm?: boolean;
+    unavailable?(): void;
   }>();
 
   function candidateContextIsCurrent(context: CompletionContext, epoch: number) {
@@ -554,263 +566,530 @@ export function createEditorInputSuggestions(
       && view.state.doc === context.state.doc && view.state.selection.eq(context.state.selection);
   }
 
+  function cancelLinkQuery(requestID: string) {
+    const pending = pendingLinkQueries.get(requestID);
+    if (!pending) return;
+    pendingLinkQueries.delete(requestID);
+    globalThis.clearTimeout(pending.timeout);
+    if (pending.writingTerm) options.cancelWritingTermQuery?.(requestID);
+    if (pending.writingTerm) pending.unavailable?.();
+    else pending.resolve([]);
+  }
+
   function cancelWritingTermQueries() {
     for (const [requestID, pending] of pendingLinkQueries) {
-      if (!pending.writingTerm) continue;
-      pendingLinkQueries.delete(requestID);
-      globalThis.clearTimeout(pending.timeout);
-      pending.resolve([]);
+      if (pending.writingTerm) cancelLinkQuery(requestID);
     }
   }
 
   function cancelLinkQueries() {
-    for (const pending of pendingLinkQueries.values()) {
-      globalThis.clearTimeout(pending.timeout);
-      pending.resolve([]);
-    }
-    pendingLinkQueries.clear();
+    for (const requestID of pendingLinkQueries.keys()) cancelLinkQuery(requestID);
+  }
+
+  function retryButton(message: string, retry: () => void, doc: Document = document) {
+    const button = doc.createElement("button");
+    button.className = "scholium-writing-retry";
+    button.type = "button";
+    button.tabIndex = -1; // Option-Return provides the editor's keyboard route.
+    button.textContent = localized("Retry AI");
+    button.title = message;
+    button.setAttribute("aria-label", `${message} ${localized("Retry AI continuation (Option-Return)")}`);
+    button.addEventListener("mousedown", event => event.preventDefault());
+    button.addEventListener("click", event => { event.stopPropagation(); retry(); });
+    return button;
   }
 
   class Ghost extends WidgetType {
-    constructor(readonly text: string, readonly accept: () => void, readonly source: WritingSource, readonly reason: string | null = null) { super(); }
+    constructor(readonly text: string, readonly accept: (text: string, source: WritingSource) => void, readonly source: WritingSource, readonly hold: (text: string, source: WritingSource) => void) { super(); }
+    eq(other: Ghost) { return this.text === other.text && this.source === other.source && this.accept === other.accept && this.hold === other.hold; }
     toDOM() {
       const node = document.createElement("span");
       node.className = "scholium-writing-ghost";
+      node.setAttribute("role", "button");
       const suffix = document.createElement("span");
       suffix.className = "scholium-writing-ghost-text";
-      suffix.textContent = this.text;
       const hint = document.createElement("span");
       hint.className = "scholium-writing-ghost-key";
-      hint.textContent = `${localized(this.source === "ai" ? "AI" : "Index")} ⇥`;
       hint.setAttribute("aria-hidden", "true");
-      node.append(suffix);
-      if (this.reason) {
-        const badge = document.createElement("span");
-        badge.className = "scholium-writing-ghost-error-badge";
-        badge.textContent = "!";
-        badge.setAttribute("aria-hidden", "true");
-        node.append(badge);
-      }
-      node.append(hint);
-      node.setAttribute("role", "button");
+      node.append(suffix, hint);
+      this.updateDOM(node);
+      let pointerIntent: {text: string; source: WritingSource} | null = null;
+      node.addEventListener("mousedown", event => {
+        event.preventDefault();
+        pointerIntent = {text: suffix.textContent ?? "", source: node.dataset.source as WritingSource};
+        this.hold(pointerIntent.text, pointerIntent.source);
+      });
+      node.addEventListener("click", () => {
+        const intent = pointerIntent ?? {text: suffix.textContent ?? "", source: node.dataset.source as WritingSource};
+        pointerIntent = null;
+        if (node.isConnected) this.accept(intent.text, intent.source);
+      });
+      return node;
+    }
+    updateDOM(node: HTMLElement) {
+      node.querySelector(".scholium-writing-ghost-text")!.textContent = this.text;
+      node.querySelector(".scholium-writing-ghost-key")!.textContent = `${localized(this.source === "ai" ? "AI" : "Index")} ⇥`;
+      node.dataset.source = this.source;
       node.setAttribute("aria-label", localizedTemplate(this.source === "ai" ? "Accept AI continuation: {text} (Tab)" : "Accept index suggestion: {text} (Tab)", {text: this.text}));
-      if (this.reason) { node.title = this.reason; node.setAttribute("aria-description", this.reason); }
-      node.addEventListener("mousedown", event => { event.preventDefault(); });
-      node.addEventListener("click", () => this.accept());
-      return node;
+      return true;
     }
     ignoreEvent() { return true; }
   }
-
-  class ContinuationStatus extends WidgetType {
-    constructor(readonly message: string, readonly active: boolean) { super(); }
-    toDOM() {
-      const node = document.createElement("span");
-      node.className = `scholium-writing-status${this.active ? " scholium-writing-status-active" : " scholium-writing-status-error"}`;
-      if (this.active) {
-        const orb = document.createElement("span");
-        orb.className = "scholium-writing-orb";
-        orb.setAttribute("aria-hidden", "true");
-        for (let index = 0; index < 3; index++) {
-          const dot = document.createElement("span");
-          dot.className = "scholium-writing-orb-dot";
-          dot.setAttribute("aria-hidden", "true");
-          orb.append(dot);
-        }
-        node.append(orb);
-      }
-      if (this.active) {
-        const label = document.createElement("span");
-        label.textContent = this.message;
-        node.append(label);
-      } else {
-        const badge = document.createElement("span");
-        badge.className = "scholium-writing-status-badge";
-        badge.textContent = "!";
-        badge.setAttribute("aria-hidden", "true");
-        node.append(badge);
-      }
-      node.setAttribute("role", "status");
-      node.setAttribute("aria-live", "polite");
-      node.setAttribute("aria-atomic", "true");
-      node.setAttribute("aria-label", this.message);
-      node.title = this.message;
-      return node;
-    }
-    ignoreEvent() { return true; }
-  }
-  function requestTerms(query: string, context: CompletionContext) {
+  function requestTerms(query: string) {
     const requestID = boundedUUID();
-    return new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
-      const cancel = () => {
-        const pending = pendingLinkQueries.get(requestID);
-        if (!pending) return;
-        pendingLinkQueries.delete(requestID);
-        globalThis.clearTimeout(pending.timeout);
-        resolve([]);
-      };
-      context.addEventListener("abort", cancel, {onDocChange: true});
+    return new Promise<{current: boolean; candidates: EditorLinkCompletionCandidate[]}>((resolve) => {
+      const cancel = () => cancelLinkQuery(requestID);
       const timeout = globalThis.setTimeout(cancel, 5_000);
-      pendingLinkQueries.set(requestID, {resolve, timeout, writingTerm: true});
+      pendingLinkQueries.set(requestID, {resolve: candidates => resolve({current: true, candidates}),
+        unavailable: () => resolve({current: false, candidates: []}), timeout, writingTerm: true});
       options.requestLinkCompletions(requestID, "term", query);
     });
   }
-  const writingCompletionSource: CompletionSource = (context) => {
-    if (!isWritingSuggestionContext(options, context.state)
-      || positionIsProtected(options, context.state, context.pos)
-      || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
-    const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
+  // Local lookup supplies literal candidates; inlineWriting alone owns insertion.
+  type LocalWritingCandidates = {indexCurrent: boolean; texts: string[]};
+  const localWritingCandidates = (state: EditorState, position: number): Promise<LocalWritingCandidates> | null => {
+    if (!isWritingSuggestionContext(options, state)
+      || options.canContinueWriting?.(state, position) === false
+      || positionIsProtected(options, state, position)
+      || positionIsProtected(options, state, Math.max(0, position - 1))) return null;
+    const before = state.sliceDoc(Math.max(0, position - 512), position);
     const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
-    if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1))
+    if (/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1))
       || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || caretHasInputTrigger(before)) return null;
-    return requestTerms(prefix, context).then(candidates => {
-      if (context.aborted) return null;
-      return {
-        from: context.pos, filter: false,
-        options: candidates.filter(c => c.availability === "available" && termSuffix(context.state, context.pos, c) !== null).map(candidate => ({
-          label: candidate.label, ghostText: termSuffix(context.state, context.pos, candidate),
-          apply: (view: EditorView) => {
-            if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc
-              || !view.state.selection.eq(context.state.selection)) return false;
-            const text = termSuffix(context.state, context.pos, candidate)!;
-            if (!exactSourceFitsChanges(view.state, [{from: context.pos, to: context.pos, insert: text}])) return false;
-            view.dispatch({changes: {from: context.pos, insert: text}, selection: {anchor: context.pos + text.length},
-              annotations: Transaction.userEvent.of("input.complete.scholium.writing")});
-            options.didApply("Complete Term");
-            return true;
-          },
-        })),
-      };
+    return requestTerms(prefix).then(({current, candidates}) => {
+      return {indexCurrent: current, texts: candidates.flatMap(candidate => {
+        const suffix = candidate.availability === "available" ? termSuffix(state, position, candidate) : null;
+        return suffix ? [suffix] : [];
+      })};
     });
   };
+
+  interface DisplayedWritingCandidate {
+    readonly text: string;
+    readonly source: WritingSource;
+    readonly proof: EditorState;
+    readonly indexEpoch: number;
+    readonly confirmed: boolean;
+  }
 
   const inlineWriting = ViewPlugin.fromClass(class {
     decorations: DecorationSet = Decoration.none;
     private generation = 0;
-    private timer: ReturnType<typeof setTimeout> | undefined;
-    private acceptChoice: (() => boolean) | null = null;
+    private localSerial = 0;
+    private localTimer: ReturnType<typeof setTimeout> | undefined;
+    private aiTimer: ReturnType<typeof setTimeout> | undefined;
+    private acceptanceTimer: ReturnType<typeof setTimeout> | undefined;
+    private round: EditorState | null = null;
+    private preview: DisplayedWritingCandidate | null = null;
+    private cachedLocal: DisplayedWritingCandidate | null = null;
+    private awaitingAI = false;
+    private rendered: {text: string; source: WritingSource; position: number} | null = null;
     private continuationRequestID: string | null = null;
-    private source: WritingSource | null = null;
+    private localPending = false;
+    private queuedAcceptance: string | null = null;
+    private pointerHeld = false;
+    private waitingForContext: EditorState | null = null;
+    private deferredAI: {text: string; proof: EditorState; generation: number} | null = null;
+    private failure: string | null = null;
+    private phase: WritingContinuationPhase | null = null;
+    private aiNeedsContext = false;
+    private resumeOnFocus: EditorState | null = null;
+    private suspendedAI: DisplayedWritingCandidate | null = null;
+    private feedbackDOM: HTMLElement | null = null;
+    private activityDOM: HTMLElement | null = null;
+    private mode: EditorMode;
+    private readonly acceptGhost = (text: string, source: WritingSource) => { this.accept(text, source); };
+    private readonly holdGhost = (text: string, source: WritingSource) => {
+      if (this.preview?.text === text && this.preview.source === source) {
+        this.pointerHeld = true;
+      }
+    };
+    private readonly retryAI = () => { this.retry(); };
     constructor(readonly view: EditorView) {
-      clearInlineWriting = () => { this.clear(); this.view.dispatch({}); };
-      clearAIWriting = () => { if (this.source === "ai") { this.clear(); this.view.dispatch({}); } };
-      clearIndexWriting = () => { if (this.source === "index") { this.clear(); this.view.dispatch({}); } };
+      this.mode = options.mode(view.state);
+      clearInlineWriting = (reason = "dismissed") => { this.clear(reason); this.view.dispatch({}); };
+      resumeInlineWriting = () => { this.schedule(); };
+      reconfigureWriting = enabledChanged => {
+        const pendingFocus = this.resumeOnFocus;
+        this.resumeOnFocus = null; this.suspendedAI = null;
+        if (this.round || this.preview || this.waitingForContext) {
+          this.schedule("configuration"); this.view.dispatch({});
+        } else if (continuationEnabled && (enabledChanged || (pendingFocus && this.samePoint(pendingFocus)))) {
+          if (this.view.hasFocus) { this.schedule(); this.view.dispatch({}); }
+          else this.resumeOnFocus = this.view.state;
+        }
+      };
+      refreshIndexWriting = () => {
+        if (this.preview?.source === "ai") return;
+        if (this.preview) this.preview = {...this.preview, confirmed: false};
+        if (this.cachedLocal) this.cachedLocal = {...this.cachedLocal, confirmed: false};
+        if (this.round || this.preview) this.refreshLocal(0);
+      };
       showInlineContinuationStatus = (requestID, phase) => {
-        if (this.continuationRequestID !== requestID || !this.isValidContext()) return;
-        this.showStatus(writingContinuationPhaseLabel(phase), true);
+        if (this.continuationRequestID === requestID && this.isValidContext() && this.phase !== phase) {
+          this.phase = phase;
+          this.renderGenerationActivity();
+          this.view.dispatch({effects: EditorView.announce.of(localized(writingContinuationPhaseLabel(phase)))});
+        }
       };
     }
-    clear() {
-      this.generation++;
-      clearTimeout(this.timer);
-      cancelContinuations();
-      cancelWritingTermQueries();
-      this.acceptChoice = null;
-      this.continuationRequestID = null;
-      this.source = null;
-      this.decorations = Decoration.none;
-    }
     private isValidContext() {
-      return this.view.hasFocus && !this.view.composing
-        && isWritingSuggestionContext(options, this.view.state);
+      return this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
     }
-    private showStatus(message: string, active: boolean) {
-      if (!this.isValidContext()) return;
-      this.decorations = Decoration.set([Decoration.widget({
-        widget: new ContinuationStatus(message, active), side: 1,
-      }).range(this.view.state.selection.main.head)]);
-      this.view.dispatch({});
+    private samePoint(proof: EditorState) {
+      return this.view.state.doc === proof.doc
+        && this.view.state.selection.eq(proof.selection)
+        && this.view.state.field(exactSourceState, false)?.text === proof.field(exactSourceState, false)?.text;
     }
-    accept() {
-      if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
-      return this.acceptChoice();
+    private current(proof: EditorState) { return this.isValidContext() && this.samePoint(proof); }
+    private contextReady() {
+      return options.writingContextReady?.(this.view.state, this.view.state.selection.main.head) !== false;
+    }
+    private readable() {
+      return this.contextReady()
+        && options.canContinueWriting?.(this.view.state, this.view.state.selection.main.head) !== false;
+    }
+    private invalidateRequests(reason: WritingContinuationCancellationReason = "superseded") {
+      this.generation++; this.localSerial++;
+      clearTimeout(this.localTimer); clearTimeout(this.aiTimer); clearTimeout(this.acceptanceTimer);
+      cancelContinuations(reason); cancelWritingTermQueries();
+      this.continuationRequestID = null; this.localPending = false; this.phase = null;
+      this.removeGenerationActivity();
+      this.deferredAI = null; this.round = null; this.aiNeedsContext = false;
+      this.cachedLocal = null; this.awaitingAI = false;
+    }
+    clear(reason: WritingContinuationCancellationReason = "context") {
+      this.invalidateRequests(reason); this.preview = null; this.failure = null;
+      this.queuedAcceptance = null; this.pointerHeld = false; this.waitingForContext = null; this.resumeOnFocus = null;
+      this.suspendedAI = null;
+      this.decorations = Decoration.none; this.rendered = null; this.feedbackDOM?.remove(); this.feedbackDOM = null;
+    }
+    suspend() {
+      const point = this.round ?? this.preview?.proof ?? this.waitingForContext ?? this.resumeOnFocus;
+      const retained = point && !this.view.composing && isWritingSuggestionContext(options, this.view.state) && this.samePoint(point) ? point : null;
+      const candidate = this.preview?.source === "ai" ? this.preview : this.suspendedAI;
+      const reusable = retained && continuationEnabled && candidate?.confirmed
+        && candidate.indexEpoch === linkCatalogEpoch && this.samePoint(candidate.proof) ? candidate : null;
+      this.clear("focus"); this.resumeOnFocus = retained; this.suspendedAI = reusable;
+    }
+    private render(dispatch = true) {
+      const preview = this.preview;
+      const position = this.view.state.selection.main.head;
+      if (!preview) { this.decorations = Decoration.none; this.rendered = null; }
+      else if (!this.rendered || this.rendered.text !== preview.text || this.rendered.source !== preview.source
+        || this.rendered.position !== position) {
+        this.decorations = Decoration.set([Decoration.widget({
+          widget: new Ghost(preview.text, this.acceptGhost, preview.source, this.holdGhost), side: 1,
+        }).range(position)]);
+        this.rendered = {text: preview.text, source: preview.source, position};
+      }
+      this.renderFeedback(); this.renderGenerationActivity();
+      if (dispatch) this.view.dispatch({});
+    }
+    private removeGenerationActivity() {
+      this.activityDOM?.remove(); this.activityDOM = null;
+    }
+    private renderGenerationActivity() {
+      if (this.phase !== "generating" || !this.continuationRequestID || this.preview
+        || !this.round || !this.current(this.round)) { this.removeGenerationActivity(); return; }
+      if (!this.activityDOM) {
+        const node = this.view.dom.ownerDocument.createElement("span");
+        node.className = "scholium-writing-activity";
+        node.setAttribute("aria-hidden", "true");
+        node.style.visibility = "hidden";
+        // Keep the original dots after the caret, but outside CodeMirror's
+        // text layout: a point widget can shrink its measured cursor height.
+        const orb = node.ownerDocument.createElement("span");
+        orb.className = "scholium-writing-orb";
+        for (let index = 0; index < 3; index++) {
+          const dot = node.ownerDocument.createElement("span");
+          dot.className = "scholium-writing-orb-dot"; orb.append(dot);
+        }
+        node.append(orb); this.view.dom.append(node); this.activityDOM = node;
+      }
+      this.placeGenerationActivity();
+    }
+    placeGenerationActivity() {
+      const activity = this.activityDOM, requestID = this.continuationRequestID, proof = this.round;
+      if (!activity || !requestID || !proof) return;
+      this.view.requestMeasure({key: activity, read: () => {
+        const selection = this.view.state.selection.main;
+        const point = this.view.coordsAtPos(selection.head, selection.assoc || 1);
+        const root = this.view.dom.getBoundingClientRect();
+        const viewport = this.view.scrollDOM.getBoundingClientRect();
+        return {point, root, viewport, sx:this.view.scaleX || 1, sy:this.view.scaleY || 1};
+      }, write: ({point, root, viewport, sx, sy}) => {
+        if (this.activityDOM !== activity || this.continuationRequestID !== requestID
+          || this.phase !== "generating" || !this.current(proof)) return;
+        if (!point || point.bottom <= Math.max(root.top, viewport.top)
+          || point.top >= Math.min(root.bottom, viewport.bottom)
+          || point.left < Math.max(root.left, viewport.left) || point.left >= Math.min(root.right, viewport.right)) {
+          activity.style.visibility = "hidden"; return;
+        }
+        const height = point.bottom - point.top;
+        const space = Math.min(root.right, viewport.right) - point.left;
+        const gap = Math.min(height * 0.18, space * 0.15);
+        // Keep all three dots inside a narrow heading's remaining measure.
+        // A fully clipped caret cannot support legible adjacent feedback.
+        const fontSize = Math.min(height * 0.6 / sy, (space - gap - 2 * sx) / (1.2 * sx));
+        if (fontSize < 8) { activity.style.visibility = "hidden"; return; }
+        activity.style.fontSize = `${fontSize}px`;
+        activity.style.left = `${(point.left + gap - root.left) / sx}px`;
+        activity.style.top = `${(point.top + height / 2 - fontSize * sy / 2 - root.top) / sy}px`;
+        activity.style.visibility = "visible";
+      }});
+    }
+    private renderFeedback() {
+      if (!this.failure) { this.feedbackDOM?.remove(); this.feedbackDOM = null; return; }
+      const root = this.view.dom;
+      if (!root) return;
+      if (!this.feedbackDOM) {
+        const node = root.ownerDocument.createElement("div");
+        node.className = "scholium-writing-feedback";
+        node.setAttribute("role", "status"); node.setAttribute("aria-live", "polite");
+        const message = root.ownerDocument.createElement("span");
+        message.className = "scholium-writing-feedback-message";
+        node.append(message, retryButton(this.failure, this.retryAI, root.ownerDocument));
+        node.addEventListener("mousedown", event => event.preventDefault());
+        // A sibling of the scroller/content: never a point decoration, never a
+        // source/caret rectangle, and never part of the document's line height.
+        root.append(node); this.feedbackDOM = node;
+      }
+      this.feedbackDOM.querySelector(".scholium-writing-feedback-message")!.textContent = this.failure;
+      this.feedbackDOM.querySelector("button")!.title = this.failure;
+      this.placeFeedback();
+    }
+    placeFeedback() {
+      const feedback = this.feedbackDOM;
+      if (!feedback) return;
+      this.view.requestMeasure?.({key: this, read: () => {
+        const point = this.view.coordsAtPos(this.view.state.selection.main.head, -1);
+        const root = this.view.dom.getBoundingClientRect();
+        const panel = feedback.getBoundingClientRect();
+        return {point, root, panel, sx: this.view.scaleX || 1, sy: this.view.scaleY || 1};
+      }, write: ({point, root, panel, sx, sy}) => {
+        if (this.feedbackDOM !== feedback || !point) return;
+        const maxRight = Math.min(root.right, window.innerWidth) - 8;
+        const x = Math.max(root.left + 8, Math.min(point.left, maxRight - panel.width));
+        const below = point.bottom + 8;
+        const y = below + panel.height <= window.innerHeight - 8 ? below : Math.max(8, point.top - panel.height - 8);
+        feedback.style.left = `${(x - root.left) / sx}px`; feedback.style.top = `${(y - root.top) / sy}px`;
+      }});
+    }
+    hasFeedback() { return this.failure !== null; }
+    private confirmedLocal() {
+      const candidate = this.cachedLocal;
+      return candidate && candidate.confirmed && candidate.indexEpoch === linkCatalogEpoch
+        && this.current(candidate.proof) ? candidate : null;
+    }
+    private publishAI(text: string, proof: EditorState, generation: number) {
+      if (generation !== this.generation || !this.current(proof)) return;
+      if (!this.contextReady()) { this.deferredAI = {text, proof, generation}; this.waitingForContext = proof; return; }
+      if (!this.readable()) { this.clear(); this.view.dispatch({}); return; }
+      // The visible suffix alone owns acceptance; pending local work stays hidden.
+      if (this.pointerHeld || this.queuedAcceptance) return;
+      this.awaitingAI = false;
+      this.preview = {text, source: "ai", proof, indexEpoch: linkCatalogEpoch, confirmed: true};
+      this.failure = null; this.render();
+    }
+    private startAI(delay: number) {
+      clearTimeout(this.aiTimer);
+      this.aiNeedsContext = false;
+      const proof = this.round, generation = this.generation;
+      if (!proof || !continuationEnabled || !continuationContextAllowed(options, proof, proof.selection.main.head)) {
+        this.awaitingAI = false; this.preview = this.confirmedLocal(); return;
+      }
+      this.awaitingAI = true;
+      this.aiTimer = setTimeout(async () => {
+        if (generation !== this.generation || !this.current(proof)) return;
+        // Parsing can become temporarily unavailable after this timer was
+        // scheduled. Retain the exact round so its ready update can resume AI.
+        if (!this.contextReady()) {
+          this.waitingForContext = proof; this.aiNeedsContext = true; return;
+        }
+        if (!this.readable()) { this.clear(); this.view.dispatch({}); return; }
+        const request = requestContinuation(proof, proof.selection.main.head);
+        this.continuationRequestID = request.requestID; this.phase = "preparing";
+        this.view.dispatch({effects: EditorView.announce.of(localized(writingContinuationPhaseLabel("preparing")))});
+        const result = await request.promise;
+        if (generation !== this.generation || !this.current(proof)) return;
+        this.continuationRequestID = null; this.phase = null;
+        this.removeGenerationActivity();
+        if (result.text) this.publishAI(result.text, proof, generation);
+        else {
+          this.awaitingAI = false; this.failure = result.reason;
+          this.preview = this.confirmedLocal(); this.render();
+        }
+      }, delay);
+    }
+    private refreshLocal(delay: number) {
+      clearTimeout(this.localTimer); this.localSerial++; cancelWritingTermQueries();
+      const proof = this.round ?? this.preview?.proof, generation = this.generation, serial = this.localSerial;
+      if (!proof || !this.current(proof)) return;
+      if (!this.contextReady()) { this.waitingForContext = proof; return; }
+      if (!this.readable()) { this.clear(); return; }
+      this.localPending = true;
+      this.localTimer = setTimeout(async () => {
+        if (generation !== this.generation || serial !== this.localSerial || !this.current(proof)) return;
+        let result: LocalWritingCandidates | null;
+        try { result = await localWritingCandidates(proof, proof.selection.main.head); }
+        catch { result = {texts: [], indexCurrent: false}; }
+        if (generation !== this.generation || serial !== this.localSerial || !this.current(proof)) return;
+        this.localPending = false;
+        if (this.preview?.source === "ai") return;
+        if (!this.contextReady()) { this.waitingForContext = proof; return; }
+        if (!this.readable()) { this.clear(); this.view.dispatch({}); return; }
+        if (result?.indexCurrent === false) {
+          if (this.cachedLocal) this.cachedLocal = {...this.cachedLocal, confirmed: false};
+          if (!this.awaitingAI && this.preview) this.preview = {...this.preview, confirmed: false};
+          this.queuedAcceptance = null; this.render(); return;
+        }
+        const choices = result?.texts ?? [];
+        const text = choices.find(text => text === (this.preview ?? this.cachedLocal)?.text) ?? choices[0];
+        this.cachedLocal = text ? {text, source: "index", proof, indexEpoch: linkCatalogEpoch, confirmed: true} : null;
+        if (this.awaitingAI) return;
+        this.preview = this.cachedLocal;
+        const queued = this.queuedAcceptance; this.queuedAcceptance = null;
+        this.render();
+        if (text && queued === text) this.accept();
+      }, delay);
+    }
+    schedule(reason: WritingContinuationCancellationReason = "superseded") {
+      const candidate = this.preview?.source === "index" ? this.preview : this.cachedLocal;
+      const retained = candidate && this.current(candidate.proof) ? candidate : null;
+      this.invalidateRequests(reason); this.pointerHeld = false; this.cachedLocal = retained;
+      this.resumeOnFocus = null; this.suspendedAI = null;
+      this.awaitingAI = continuationEnabled;
+      this.preview = this.awaitingAI ? null : this.confirmedLocal(); this.failure = null;
+      this.queuedAcceptance = null; this.waitingForContext = null;
+      if (!this.isValidContext()) { this.clear(); return; }
+      this.round = this.view.state;
+      if (!this.contextReady()) {
+        this.waitingForContext = this.round;
+        this.aiNeedsContext = continuationEnabled;
+        this.render(false); return;
+      }
+      if (!this.readable()) { this.clear(); return; }
+      if (this.preview?.source !== "ai") this.refreshLocal(100);
+      this.startAI(400);
+      this.render(false);
+    }
+    retry() {
+      if (!continuationEnabled || !this.failure || !this.isValidContext() || !this.readable()) return false;
+      this.schedule(); this.view.dispatch({}); return true;
+    }
+    private consumeMatchingInput(update: ViewUpdate) {
+      const preview = this.preview;
+      if (!preview || !this.isValidContext() || update.focusChanged || !update.docChanged
+        || !update.transactions.every(t => t.isUserEvent("input.type"))) return false;
+      const previous = update.startState.selection.main;
+      let inserted = "", count = 0, appendOnly = true;
+      update.changes.iterChanges((from, to, _newFrom, _newTo, text) => {
+        count++; if (from !== previous.head || to !== previous.head) appendOnly = false;
+        inserted = text.toString();
+      });
+      if (!previous.empty || count !== 1 || !appendOnly || !inserted || !preview.text.startsWith(inserted)
+        || update.state.selection.main.head !== previous.head + inserted.length) return false;
+      const text = preview.text.slice(inserted.length);
+      this.invalidateRequests("typing"); this.pointerHeld = false; this.failure = null; this.queuedAcceptance = null;
+      this.waitingForContext = null; this.round = update.state;
+      this.preview = text ? {...preview, text, proof: update.state,
+        confirmed: preview.source === "ai" || (preview.confirmed && preview.indexEpoch === linkCatalogEpoch)} : null;
+      if (preview.source === "index") {
+        this.cachedLocal = this.preview;
+        this.awaitingAI = continuationEnabled;
+        if (this.awaitingAI) this.preview = null;
+      }
+      if (!this.contextReady()) {
+        this.waitingForContext = update.state;
+        this.aiNeedsContext = preview.source === "index";
+      }
+      else if (!this.readable()) { this.clear(); return true; }
+      else if (!text) this.schedule();
+      else if (preview.source === "index") {
+        if (!this.cachedLocal?.confirmed) this.refreshLocal(0);
+        this.startAI(400);
+      }
+      this.render(false); return true;
+    }
+    accept(expectedText?: string, expectedSource?: WritingSource) {
+      const preview = this.preview;
+      if (!preview || !this.current(preview.proof)
+        || (expectedText !== undefined && expectedText !== preview.text)
+        || (expectedSource !== undefined && expectedSource !== preview.source)) return false;
+      if (!this.contextReady()) { this.queuedAcceptance = preview.text; this.waitingForContext = preview.proof; return true; }
+      if (!this.readable()) { this.clear(); this.view.dispatch({}); return false; }
+      if (preview.source === "index" && (!preview.confirmed || preview.indexEpoch !== linkCatalogEpoch)) {
+        this.queuedAcceptance = preview.text;
+        if (!this.localPending) this.refreshLocal(0);
+        return true;
+      }
+      const caret = this.view.state.selection.main.head, text = preview.text;
+      if (!exactSourceFitsChanges(this.view.state, [{from: caret, to: caret, insert: text}])) return false;
+      this.clear("accepted");
+      this.view.dispatch({changes: {from: caret, insert: text}, selection: {anchor: caret + text.length},
+        annotations: Transaction.userEvent.of(preview.source === "ai" ? "input.complete.scholium.continuation" : "input.complete.scholium.writing")});
+      options.didApply(preview.source === "ai" ? "Accept AI Continuation" : "Complete Term"); return true;
     }
     update(update: ViewUpdate) {
-      if (!isWritingSuggestionContext(options, update.state)) { this.clear(); return; }
-      if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
-      this.clear();
-      if (!update.docChanged || !this.view.hasFocus
-        || !update.transactions.some(t => t.isUserEvent("input.type"))) return;
-      this.schedule();
-    }
-    schedule() {
-      this.clear();
-      if (!isWritingSuggestionContext(options, this.view.state)) return;
-      const generation = this.generation;
-      const state = this.view.state;
-      const valid = () => this.generation === generation && this.view.state.doc === state.doc
-        && this.view.state.selection.eq(state.selection) && this.view.hasFocus
-        && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
-      const position = state.selection.main.head;
-      const aiEligible = continuationEnabled && continuationContextAllowed(options, state, position);
-      this.source = aiEligible ? "ai" : "index";
-      this.timer = setTimeout(async () => {
-        if (!valid()) return;
-        let fallbackReason: string | null = null;
-        if (aiEligible) {
-          const request = requestContinuation(state, position);
-          this.continuationRequestID = request.requestID;
-          this.showStatus(writingContinuationPhaseLabel("preparing"), true);
-          const result = await request.promise;
-          if (!valid()) return;
-          this.continuationRequestID = null;
-          if (result.text) {
-            const text = result.text;
-            this.acceptChoice = () => {
-              if (!valid() || !exactSourceFitsChanges(this.view.state, [{from: position, to: position, insert: text}])) {
-                this.clear(); this.view.dispatch({}); return false;
-              }
-              this.clear();
-              this.view.dispatch({changes: {from: position, insert: text}, selection: {anchor: position + text.length},
-                annotations: Transaction.userEvent.of("input.complete.scholium.continuation")});
-              options.didApply("Accept AI Continuation");
-              return true;
-            };
-            this.decorations = Decoration.set([Decoration.widget({widget: new Ghost(text, () => this.accept(), "ai"), side: 1}).range(position)]);
-            this.view.dispatch({});
-            return;
-          }
-          fallbackReason = result.reason;
+      const mode = options.mode(update.state), modeChanged = mode !== this.mode; this.mode = mode;
+      if (modeChanged || !isWritingSuggestionContext(options, update.state)) { this.clear(modeChanged ? "mode" : options.isComposing() ? "composition" : "context"); return; }
+      const selectionChanged = update.selectionSet && !update.state.selection.eq(update.startState.selection);
+      const sourceChanged = update.state.field(exactSourceState, false)?.text !== update.startState.field(exactSourceState, false)?.text;
+      if (update.focusChanged && !this.view.hasFocus && !update.docChanged && !selectionChanged && !sourceChanged) {
+        this.suspend(); return;
+      }
+      if (!update.docChanged && !selectionChanged && !update.focusChanged && !sourceChanged) {
+        if ((this.preview || this.round) && this.contextReady() && !this.readable()) { this.clear(); return; }
+        const waiting = this.waitingForContext;
+        if (waiting && this.current(waiting) && this.contextReady()) {
+          this.waitingForContext = null;
+          if (this.aiNeedsContext) this.startAI(400);
+          if (this.deferredAI) {
+            const result = this.deferredAI; this.deferredAI = null;
+            this.acceptanceTimer = setTimeout(() => {
+              this.publishAI(result.text, result.proof, result.generation);
+              if (this.preview?.source === "index" && !this.preview.confirmed) this.refreshLocal(0);
+              else if (this.preview && this.queuedAcceptance === this.preview.text) this.accept();
+            }, 0);
+          } else if (this.preview) {
+            if (this.preview.source === "index" && !this.preview.confirmed) this.refreshLocal(0);
+            else {
+              const queued = this.queuedAcceptance, target = this.preview;
+              if (queued === target.text) this.acceptanceTimer = setTimeout(() => {
+                if (this.preview === target && this.queuedAcceptance === queued) this.accept(target.text, target.source);
+              }, 0);
+            }
+          } else if (this.round) this.refreshLocal(100);
+          else this.schedule();
         }
-        this.source = "index";
-        this.decorations = Decoration.none;
-        this.view.dispatch({});
-        const context = new CompletionContext(state, state.selection.main.head, false, this.view);
-        let result: CompletionResult | null = null;
-        try { result = await writingCompletionSource(context); }
-        catch { /* An unavailable local index has no completion to display. */ }
-        if (!valid()) return;
-        const choice = result?.options[0] as (Completion & {ghostText?: string; apply?: (view: EditorView) => boolean}) | undefined;
-        if (!choice?.ghostText || typeof choice.apply !== "function") {
-          if (fallbackReason) this.showStatus(fallbackReason, false);
-          return;
-        }
-        const apply = choice.apply;
-        this.acceptChoice = () => {
-          if (!valid()) { this.clear(); this.view.dispatch({}); return false; }
-          const accepted = apply(this.view);
-          if (!accepted) { this.clear(); this.view.dispatch({}); }
-          return accepted;
-        };
-        this.decorations = Decoration.set([Decoration.widget({
-          widget: new Ghost(choice.ghostText, () => this.accept(), "index", fallbackReason), side: 1,
-        }).range(state.selection.main.head)]);
-        this.view.dispatch({});
-      }, aiEligible ? 1_200 : 300);
+        if (update.viewportChanged || update.geometryChanged) { this.placeFeedback(); this.placeGenerationActivity(); }
+        return;
+      }
+      if (this.consumeMatchingInput(update)) return;
+      const resume = update.focusChanged && this.resumeOnFocus && this.current(this.resumeOnFocus);
+      const candidate = this.suspendedAI;
+      const reusable = resume && continuationEnabled && candidate?.confirmed
+        && candidate.indexEpoch === linkCatalogEpoch && this.current(candidate.proof) && this.readable() ? candidate : null;
+      const reason = update.docChanged ? update.transactions.some(t => t.isUserEvent("delete")) ? "deletion"
+        : update.transactions.some(t => t.isUserEvent("input.type")) ? "typing" : "source"
+        : update.focusChanged ? "focus" : selectionChanged ? "caret" : "source";
+      this.clear(reason);
+      if (reusable) {
+        this.round = update.state; this.preview = {...reusable, proof: update.state}; this.render(false);
+      } else if (resume || (update.docChanged && this.view.hasFocus
+        && update.transactions.some(t => t.isUserEvent("input.type") || t.isUserEvent("delete")))) this.schedule();
     }
     destroy() {
-      this.clear();
-      clearInlineWriting = undefined;
-      clearAIWriting = undefined;
-      clearIndexWriting = undefined;
-      showInlineContinuationStatus = undefined;
+      this.clear("lifecycle"); clearInlineWriting = undefined; resumeInlineWriting = undefined;
+      reconfigureWriting = undefined; refreshIndexWriting = undefined; showInlineContinuationStatus = undefined;
     }
   }, {
     decorations: value => value.decorations,
     eventHandlers: {
-      compositionstart() { this.clear(); this.view.dispatch({}); },
-      compositionend() { this.schedule(); },
-      blur() { this.clear(); this.view.dispatch({}); },
+      compositionstart() { this.clear("composition"); this.view.dispatch({}); },
+      blur() { this.suspend(); this.view.dispatch({}); },
+      scroll() { this.placeFeedback(); this.placeGenerationActivity(); },
     },
   });
 
@@ -1103,28 +1382,29 @@ export function createEditorInputSuggestions(
     resetDocument() {
       citationDocumentEpoch++;
       linkCatalogEpoch++;
-      clearInlineWriting?.();
-      cancelContinuations();
+      clearInlineWriting?.("lifecycle");
+      cancelContinuations("lifecycle");
       cancelLinkQueries();
     },
     configureWritingContinuation(enabled, contextKey) {
       if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
+      const enabledChanged = continuationEnabled !== enabled;
       continuationEnabled = enabled;
       continuationContextKey = contextKey;
-      clearAIWriting?.();
-      cancelContinuations();
+      reconfigureWriting?.(enabledChanged);
     },
     configureWritingIndexContext(contextKey) {
       if (indexContextKey === contextKey) return;
       indexContextKey = contextKey;
       linkCatalogEpoch++;
-      clearIndexWriting?.();
+      refreshIndexWriting?.();
       cancelLinkQueries();
       refreshLinkChoices?.();
     },
+    // The shared body/title composition gate owns final-input timing.
+    resumeWritingAfterComposition() { resumeInlineWriting?.(); },
     setWritingContinuationStatus: setContinuationStatus,
     resolveWritingContinuation: resolveContinuation,
-    writingCompletionSource,
     extension: [autocompletion({
       override: [
         slashCompletionSource,
@@ -1146,11 +1426,12 @@ export function createEditorInputSuggestions(
         return selected !== null && completionIsUnavailable(currentCompletions(view.state)[selected]);
       }},
       {key: "Tab", run: view => view.plugin(inlineWriting)?.accept() ?? false},
+      {key: "Alt-Enter", run: view => view.plugin(inlineWriting)?.retry() ?? false},
       {key: "Escape", run: view => {
         const plugin = view.plugin(inlineWriting);
         if (!plugin) return false;
-        const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
-        plugin.clear(); view.dispatch({}); return visible;
+        const visible = plugin.decorations.size > 0 || plugin.hasFeedback() || pendingContinuations.size > 0;
+        plugin.clear("dismissed"); view.dispatch({}); return visible;
       }},
     ])), nativePresentation,
     // One acceptance boundary includes our sources and CodeMirror snippets,
@@ -1161,7 +1442,6 @@ export function createEditorInputSuggestions(
       ".scholium-writing-ghost": {color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px"},
       ".scholium-writing-ghost-text": {textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em"},
       ".scholium-writing-ghost-key": {display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap"},
-      ".scholium-writing-ghost-error-badge": {fontSize: "0.65em", marginInlineStart: "0.4em"},
       // Keep CodeMirror's single accessible list and aria-activedescendant relation.
       // Native rows are a pointer/visual projection and do not duplicate that AX tree.
       ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
@@ -1178,9 +1458,12 @@ export function createEditorInputSuggestions(
       if (!pending) return;
       pendingLinkQueries.delete(requestID);
       globalThis.clearTimeout(pending.timeout);
-      pending.resolve(Array.isArray(value)
-        ? value.slice(0, 100).filter(validLinkCandidate)
-        : []);
+      if (pending.writingTerm) {
+        const response = value && typeof value === "object" ? value as {state?: unknown; candidates?: unknown} : {};
+        if (response.state === "current" && Array.isArray(response.candidates)) {
+          pending.resolve(response.candidates.slice(0, 100).filter(validLinkCandidate));
+        } else pending.unavailable?.();
+      } else pending.resolve(Array.isArray(value) ? value.slice(0, 100).filter(validLinkCandidate) : []);
     },
   };
 }

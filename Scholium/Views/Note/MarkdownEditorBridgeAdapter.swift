@@ -50,9 +50,9 @@ enum EditorWritingContinuationUnavailableReason: String, Equatable, Sendable {
 
     var showsInEditor: Bool {
         switch self {
-        case .disabled, .noSuggestion, .invalidContext, .cancelled:
+        case .disabled, .busy, .noSuggestion, .invalidContext, .cancelled:
             false
-        case .notConnected, .notReady, .modelUnavailable, .busy, .connectionError, .timedOut, .serviceError:
+        case .notConnected, .notReady, .modelUnavailable, .connectionError, .timedOut, .serviceError:
             true
         }
     }
@@ -75,9 +75,14 @@ struct EditorWritingContinuationQueryMessage: Equatable, Sendable {
     let editorCaretUTF16Offset: Int
 }
 
+enum EditorWritingContinuationCancellationReason: String, CaseIterable, Sendable {
+    case superseded, typing, deletion, source, caret, focus, composition, configuration, mode, context, dismissed, accepted, lifecycle, watchdog
+}
+
 struct EditorWritingContinuationCancellationMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let requestID: String
+    let reason: EditorWritingContinuationCancellationReason
 }
 
 enum EditorLinkCompletionKind: String, Codable, Hashable, Sendable {
@@ -99,6 +104,17 @@ struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let unavailableReason: String?
     var writingAction: String? = nil
     var replacementUTF16Count: Int? = nil
+}
+
+/// A confirmed empty result differs from a temporarily unavailable local index.
+struct EditorLinkCompletionResponse: Sendable {
+    let candidates: [EditorLinkCompletion]
+    let isCurrent: Bool
+
+    static func current(_ candidates: [EditorLinkCompletion]) -> Self {
+        Self(candidates: candidates, isCurrent: true)
+    }
+    static var unavailable: Self { Self(candidates: [], isCurrent: false) }
 }
 
 struct EditorBridgeChange: Codable, Equatable, Sendable {
@@ -174,6 +190,11 @@ struct EditorCitationInsertionMessage: Equatable, Sendable {
     let reference: MarkdownEditorCitationReference
 }
 
+struct EditorLinkCompletionCancellationMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let requestID: String
+}
+
 struct EditorLinkCompletionQueryMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let requestID: String
@@ -223,6 +244,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestMathRuntime(EditorBridgeEnvelope)
     case requestCitationInsertion(EditorCitationInsertionMessage)
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
+    case cancelWritingTermQuery(EditorLinkCompletionCancellationMessage)
     case writingContinuationQuery(EditorWritingContinuationQueryMessage)
     case cancelWritingContinuation(EditorWritingContinuationCancellationMessage)
     case linkActivated(EditorResourceActivationMessage)
@@ -249,6 +271,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .requestTextPaste(let message): message.envelope
         case .requestCitationInsertion(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
+        case .cancelWritingTermQuery(let message): message.envelope
         case .writingContinuationQuery(let message): message.envelope
         case .cancelWritingContinuation(let message): message.envelope
         case .linkActivated(let message), .imagePreview(let message): message.envelope
@@ -457,12 +480,20 @@ enum EditorBridgeMessageDecoder {
                 .init(
                     envelope: envelope, requestID: requestID,
                     caretUTF16Offset: caret, editorCaretUTF16Offset: editorCaret))
-        case "cancelWritingContinuation":
+        case "cancelWritingTermQuery":
             guard hasOnlyKeys(object, additional: ["type", "requestID"]),
                 let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128),
                 UUID(uuidString: requestID) != nil
             else { return nil }
-            return .cancelWritingContinuation(.init(envelope: envelope, requestID: requestID))
+            return .cancelWritingTermQuery(.init(envelope: envelope, requestID: requestID))
+        case "cancelWritingContinuation":
+            guard hasOnlyKeys(object, additional: ["type", "requestID", "reason"]),
+                let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128),
+                UUID(uuidString: requestID) != nil,
+                let rawReason = boundedString(object["reason"], maximumUTF8Bytes: 32),
+                let reason = EditorWritingContinuationCancellationReason(rawValue: rawReason)
+            else { return nil }
+            return .cancelWritingContinuation(.init(envelope: envelope, requestID: requestID, reason: reason))
         case "requestCitationInsertion":
             guard
                 hasOnlyKeys(

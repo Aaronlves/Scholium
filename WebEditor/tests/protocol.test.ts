@@ -75,8 +75,9 @@ describe("editor protocol", () => {
     expect(generationCanExecuteEditorRequest("releasePreparation", 3, 4)).toBe(false);
   });
 
-  it("uses the interaction-revision byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(50);
+  it("uses the source-free continuation cancellation protocol and rejects its predecessor", () => {
+    expect(EDITOR_PROTOCOL_VERSION).toBe(51);
+    expect(isEditorRequest({...request, protocolVersion: 50})).toBe(false);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};

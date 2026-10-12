@@ -84,27 +84,25 @@ Typing `@` retains Analysis-note choices and adds **Insert Citation…** (§15.5
 Insert exposes Citation, Bibliography and the Citations submenu for Refresh,
 Style and Cancel; cancellation preserves the literal query.
 
-Edit/Source preview uses the document font, dotted underline and AI ⇥/Index ⇥
-badge; it clears the caret without a panel.
-Local completion offers authored alias/keyword suffixes, excluding complete terms
-and undeclared titles. AI continuation defaults off. Writing Assistance selects
-one runtime-inventory model shared by continuation, Explain and Polish, independent of Chat;
-defaults are low cost and low-or-lower supported effort.
-Unavailable models never auto-switch. Enabling permits bounded writing/retrieved
-runtime context with disclosed remote processing and usage.
-After a pause, AI may run at a focused unfinished-sentence caret.
-Completed/protected/structural contexts suppress AI, retaining index completion.
-AI uses current-sentence context; suffix cannot cross a sentence/paragraph.
-Requests show caret phases; Reduce Motion freezes; Off stays quiet.
-AI failure/absence falls back to index; success excludes it.
-Configuration/catalog changes invalidate their channel; stale replies are ignored.
-Connection/model/runtime failures and timeout show a badge after the caret.
-Help/accessibility retain reasons; fallback carries the badge. Cancellation/stale
-work stay quiet; waiting hides preview.
+Edit/Source previews use document typography, dotted underline and AI ⇥/Index ⇥
+badges, preserving caret geometry.
+Local appends exact Triptych body/alias/keyword suffixes, excluding YAML/code/math, hidden destinations,
+metadata-only titles and sentence/paragraph joins.
+AI defaults off. Continuation/Explain/Polish share a low cost model, independent of Chat.
+Automatic uses lowest supported effort. Unavailable choices remain saved/explained without switching. Enabling discloses bounded remote context/retrieval/usage. Paused, focused carets permit AI after typing/deletion in:
+paragraphs, headings, lists, quotes, tables, footnotes and link labels.
+AI completes the current sentence/label.
+Quiet preparation; caret-adjacent generation dots; accessible phases.
+Enabled AI owns previews; hidden local prefetch appears only after failure/absence.
+Configuration cancels stale replies. Enabling resumes readable carets; refocusing reuses AI only at unchanged source/caret/configuration/index.
+Failures expose an accessible explanation and Retry AI outside document geometry; click/Option-Return retries. Cancellation/no candidate stay quiet.
+Index refresh retains suffixes while validating; unavailable differs from empty.
+Tab/click confirms and freezes the displayed suffix.
 Tab appends in one Undo; Return remains newline. Escape dismisses without fallback;
-preview is not source. Typing/caret/focus/composition/configuration changes cancel
-requests/previews. Literal/code/frontmatter/multiple selections suppress both.
-Statuses never enter source/history; spelling/grammar stays separate from prediction.
+preview remains source-neutral. Matching input consumes the suffix;
+Other input/caret/focus/composition/mode changes cancel requests/previews.
+YAML/code/math/HTML, hidden targets/markers and multiple selections suppress both.
+Statuses never enter source/history; spelling/grammar remains separate.
 
 **Find Writing References** in Research (default Shift-Command-J, configurable)
 shares selection recommendations' pane/session. It captures selections,

@@ -393,6 +393,20 @@ struct ContentView: View {
                 guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return .unavailable(.cancelled) }
                 return await appState.continueWriting(at: caret, status: status)
             },
+            writingTerms: { query in
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey,
+                    let capabilities = appState.windowWorkspaceController.activeCapabilities,
+                    let generation = appState.workspaceProjectionController.searchGeneration
+                else { return nil }
+                guard let terms = try? await capabilities.discovery.writingCompletions(matching: query)
+                else { return nil }
+                guard !Task.isCancelled,
+                    appState.currentDocumentDescriptor?.sessionKey == documentKey,
+                    appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                    appState.workspaceProjectionController.searchGeneration == generation
+                else { return nil }
+                return terms
+            },
             requestIdentityResolution: {
                 guard let path = documentPath else { return }
                 appState.requestIdentityResolution(for: path)

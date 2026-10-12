@@ -169,8 +169,20 @@ final class DocumentFindPresentationModel: ObservableObject {
     func fail(_ error: any Error, for requestID: UInt64) {
         guard request?.id == requestID else { return }
         isSearching = false
-        errorMessage = error.localizedDescription
         requestIsPending = false
+        var expectedInvalidation = error is CancellationError
+        if let sessionError = error as? MarkdownEditorSession.SessionError,
+            case .staleRequest = sessionError
+        {
+            expectedInvalidation = true
+        }
+        if expectedInvalidation, isPresented, pendingRefresh {
+            // The page may already have navigated or replaced text. Consume
+            // only the queued summary refresh, never replay that operation.
+            refresh()
+            return
+        }
+        errorMessage = error.localizedDescription
         pendingRefresh = false
     }
 

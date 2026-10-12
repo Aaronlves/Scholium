@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 
 /// Bounded, source-owned writing context. Retrieval supplies background, not a
-/// replacement for the researcher's current sentence or a claim of evidence.
+/// replacement for the researcher's current readable span or a claim of evidence.
 struct WritingContinuationContext: Equatable {
     static let maximumBeforeUTF16Count = 2_400
     static let maximumAfterUTF16Count = 800
@@ -15,12 +15,18 @@ struct WritingContinuationContext: Equatable {
 
     init?(snapshot: MarkdownSourceSelectionSnapshot, caret: Int) {
         guard
-            let sentence = Self.currentSentenceRange(
+            let readable = Self.currentReadableRange(snapshot: snapshot, caret: caret)
+        else { return nil }
+        let sentence: (lowerBound: Int, upperBound: Int) =
+            readable.isProse
+            ? Self.currentSentenceRange(
                 in: snapshot.source,
-                lowerBound: snapshot.sourceRange.utf16LowerBound,
-                upperBound: snapshot.sourceRange.utf16UpperBound,
+                lowerBound: readable.lowerBound,
+                upperBound: readable.upperBound,
                 caret: caret
-            ),
+            ) ?? (readable.lowerBound, readable.upperBound)
+            : (readable.lowerBound, readable.upperBound)
+        guard
             let preceding = Range(
                 NSRange(location: sentence.lowerBound, length: caret - sentence.lowerBound),
                 in: snapshot.source
@@ -45,6 +51,80 @@ struct WritingContinuationContext: Equatable {
         }
         let candidate = (completed + "\n" + after).trimmingCharacters(in: .whitespacesAndNewlines)
         focus = candidate.contains(where: { $0.isLetter || $0.isNumber }) ? candidate : before
+    }
+
+    private static func currentReadableRange(
+        snapshot: MarkdownSourceSelectionSnapshot, caret: Int
+    ) -> (lowerBound: Int, upperBound: Int, isProse: Bool)? {
+        let source = snapshot.source
+        let document = NoteDocument(relativePath: "WritingContext.md", rawContent: source)
+        let lower = max(snapshot.sourceRange.utf16LowerBound, document.bodyUTF16Offset)
+        let upper = snapshot.sourceRange.utf16UpperBound
+        guard document.hasProvableBodyBoundary, lower >= 0, upper > lower,
+            upper <= source.utf16.count,
+            upper - lower <= MarkdownReadableWritingRange.maximumFragmentUTF16Count,
+            caret >= lower, caret <= upper,
+            let range = Range(NSRange(location: lower, length: upper - lower), in: source)
+        else { return nil }
+
+        var proofLower = lower
+        var proofIndex = range.lowerBound
+        var count = upper - lower
+        // A blank source line can split a fenced block in the shared paragraph
+        // capture. Extend local syntax proof backwards, leaving its upper bound
+        // and every provider budget unchanged. Character steps preserve CRLF,
+        // non-BMP and decomposed source boundaries.
+        while proofLower > document.bodyUTF16Offset {
+            let previous = source.index(before: proofIndex)
+            let size = source[previous..<proofIndex].utf16.count
+            guard count + size <= MarkdownReadableWritingRange.maximumFragmentUTF16Count else { break }
+            proofIndex = previous
+            proofLower -= size
+            count += size
+        }
+        let reachesBodyStart = proofLower == document.bodyUTF16Offset
+        var outerComments: [Range<Int>] = []
+        if !reachesBodyStart {
+            // A distant opener can enclose an otherwise ordinary paragraph.
+            // Inspect the omitted prefix only to reject ambiguity, never to
+            // parse or reconstruct it. The original capture starts on a full
+            // source line, so the cut cannot split an opener in this prefix.
+            // Reuse the source-owned comment scanner so closed inline
+            // comments do not make all later prose ambiguous.
+            outerComments = MarkdownSemanticParser.commentRanges(in: document)
+            guard !outerComments.contains(where: { $0.contains(caret) }) else { return nil }
+            let possibleOpeners = try? NSRegularExpression(
+                pattern: #"(?:`{3,}|~{3,}|\$+|<(?:[A-Za-z/]|!(?!--)))"#)
+            let omittedPrefix = NSRange(
+                location: document.bodyUTF16Offset, length: lower - document.bodyUTF16Offset)
+            let nativeSource = source as NSString
+            for opener in possibleOpeners?.matches(in: source, range: omittedPrefix) ?? [] {
+                var previous = opener.range.location
+                while previous > document.bodyUTF16Offset, nativeSource.character(at: previous - 1) == 0x5C { previous -= 1 }
+                if (opener.range.location - previous) % 2 == 0 { return nil }
+            }
+        }
+        let origin = reachesBodyStart ? proofLower : lower
+        guard
+            let readable = reachesBodyStart
+                ? MarkdownReadableWritingRange(bodyFragment: String(source[proofIndex..<range.upperBound]), caretUTF16: caret - proofLower)
+                : MarkdownReadableWritingRange(bodyFragment: String(source[range]), caretUTF16: caret - lower)
+        else { return nil }
+        var readableLower = origin + readable.sourceUTF16Range.lowerBound
+        var readableUpper = origin + readable.sourceUTF16Range.upperBound
+        // A truncated paragraph may contain a distant comment's closing tail.
+        // Clip with the same source-owned spans, not only the caret verdict.
+        for comment in outerComments where comment.overlaps(readableLower..<readableUpper) {
+            if comment.upperBound <= caret {
+                readableLower = max(readableLower, comment.upperBound)
+            } else if comment.lowerBound >= caret {
+                readableUpper = min(readableUpper, comment.lowerBound)
+            } else {
+                return nil
+            }
+        }
+        guard readableLower <= caret, caret <= readableUpper, readableLower < readableUpper else { return nil }
+        return (readableLower, readableUpper, readable.isProse)
     }
 
     private static func currentSentenceRange(
@@ -83,9 +163,11 @@ struct WritingContinuationContext: Equatable {
         }
 
         var sentenceStartIndex = 0
+        var completedSentence: Range<Int>?
         var index = 0
         while index < caretIndex {
             if let end = boundaryEnd(after: index), end <= caretIndex {
+                completedSentence = sentenceStartIndex..<end
                 sentenceStartIndex = end
                 while sentenceStartIndex < caretIndex, characters[sentenceStartIndex].isWhitespace {
                     sentenceStartIndex += 1
@@ -112,6 +194,12 @@ struct WritingContinuationContext: Equatable {
             index += 1
         }
 
+        if !characters[sentenceStartIndex..<caretIndex].contains(where: { $0.isLetter || $0.isNumber }),
+            let completedSentence,
+            characters[completedSentence.upperBound..<caretIndex].allSatisfy(\.isWhitespace)
+        {
+            sentenceStartIndex = completedSentence.lowerBound
+        }
         guard sentenceStartIndex < sentenceEndIndex,
             characters[sentenceStartIndex..<sentenceEndIndex].contains(where: { $0.isLetter || $0.isNumber })
         else { return nil }
@@ -132,7 +220,7 @@ struct WritingContinuationContext: Equatable {
     private static func isSentenceCloser(_ character: Character) -> Bool {
         guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else { return false }
         switch scalar.value {
-        case 0x22, 0x27, 0x29, 0x5D, 0x7D, 0xBB, 0x3009, 0x300D, 0x300F, 0x3011, 0x3015, 0x2019, 0x201D:
+        case 0x22, 0x27, 0x29, 0x5D, 0x7D, 0xBB, 0x3009, 0x300D, 0x300F, 0x3011, 0x3015, 0x2019, 0x201D, 0xFF09, 0x300B:
             return true
         default: return false
         }

@@ -84,42 +84,15 @@ body,
   margin-left: -1px;
 }
 
-/* Writing continuation status follows the live caret. Error badges reserve
-   their small inline footprint so they never cover the source after the caret. */
-.scholium-writing-status {
+/* Caret-adjacent progress is measured outside content, never a text widget. */
+.scholium-writing-activity {
+  position: absolute;
+  z-index: 100;
   display: inline-flex;
-  align-items: baseline;
-  gap: .28em;
-  margin-inline-start: .45em;
   color: var(--scholium-color-secondary-text);
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: .72em;
   line-height: 1;
-  white-space: nowrap;
+  pointer-events: none;
   user-select: none;
-}
-.scholium-writing-status-error {
-  display: inline-flex;
-  align-items: center;
-  margin-inline-end: .2em;
-  vertical-align: baseline;
-}
-.scholium-writing-status-badge,
-.scholium-writing-ghost-error-badge {
-  box-sizing: border-box;
-  display: inline-grid;
-  place-items: center;
-  inline-size: 1.25em;
-  block-size: 1.25em;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  font-weight: 600;
-  line-height: 1;
-  text-decoration: none;
-}
-.scholium-writing-status-badge {
-  flex: none;
 }
 .scholium-writing-orb {
   display: inline-flex;
@@ -149,6 +122,35 @@ body,
     opacity: .86;
     transform: none;
   }
+}
+
+/* Failure/recovery is outside CodeMirror content and cannot set caret geometry. */
+.scholium-writing-feedback {
+  position: absolute;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-inline-size: min(28rem, calc(100% - 16px));
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--scholium-color-secondary-text);
+  border-radius: 4px;
+  color: var(--scholium-color-primary-text);
+  background: var(--scholium-color-document-background);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.scholium-writing-retry {
+  flex: none;
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-block-size: 28px;
+  min-inline-size: 28px;
+  cursor: pointer;
 }
 
 #editor .cm-editor .cm-selectionLayer .cm-selectionBackground {

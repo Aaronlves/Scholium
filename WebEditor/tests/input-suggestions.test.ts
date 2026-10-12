@@ -9,7 +9,10 @@ import {
 } from "@codemirror/autocomplete";
 import {EditorSelection, EditorState, StateEffect, Transaction, type Extension, type TransactionSpec} from "@codemirror/state";
 import {EditorView, keymap, type DecorationSet, type WidgetType, type ViewUpdate} from "@codemirror/view";
-import {history, undo, undoDepth} from "@codemirror/commands";
+import {history, undo, redo, undoDepth} from "@codemirror/commands";
+import {CompositionRequestGate} from "../composition";
+import {scholiumNoteLanguage} from "../language";
+import {createLiveProjectionIndexController} from "../live-projection-index";
 import {parseHTML} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
 import {
@@ -19,6 +22,8 @@ import {
   type EditorCitationSuggestionIntent,
   type EditorInputSuggestionActionCompletion,
 } from "../input-suggestions";
+import {documentFindExtension, performDocumentFind, type DocumentFindRequest} from "../document-find";
+import {writingCaretIsReadable} from "../writing-readable-context";
 import {localizationTesting} from "../localization";
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
@@ -26,36 +31,51 @@ import {normalizedDocumentText} from "../state";
 import type {NativeSuggestionPort} from "../native-floating";
 
 function inlineContinuationHarness(source = "A claim about res", options: {
-  composing?: boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
-  mode?: EditorMode; readOnly?: boolean; editable?: boolean; aiEnabled?: boolean;
+  composing?: boolean; isComposing?: () => boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
+  find?: boolean; mode?: EditorMode; readOnly?: boolean; editable?: boolean; aiEnabled?: boolean;
+  projection?: ReturnType<typeof createLiveProjectionIndexController>; caret?: number; contextReady?: () => boolean; canContinue?: () => boolean;
 } = {}) {
-  const requests: string[] = [], cancelled: string[] = [], terms: string[] = [], labels: string[] = [];
+  const requests: string[] = [], cancelled: string[] = [], terms: string[] = [], labels: string[] = [], announcements: string[] = [];
+  const termQueries: {id: string; kind: string; query: string}[] = [];
+  const cancelledTerms: string[] = [];
+  const cancellationEvents: {id: string; reason: string}[] = [];
   let state = EditorState.create({doc: normalizedDocumentText(source),
     selection: options.multipleSelections ? EditorSelection.create([EditorSelection.cursor(0), EditorSelection.cursor(normalizedDocumentText(source).length)])
-      : {anchor: normalizedDocumentText(source).length},
+      : {anchor: options.caret ?? normalizedDocumentText(source).length},
     extensions: [history(), exactSourceHistory, EditorState.allowMultipleSelections.of(true),
+      ...(options.find ? [documentFindExtension] : []),
       ...(options.readOnly ? [EditorState.readOnly.of(true)] : []),
-      ...(options.editable === false ? [EditorView.editable.of(false)] : [])]})
+      ...(options.editable === false ? [EditorView.editable.of(false)] : []),
+      ...(options.projection ? [scholiumNoteLanguage, options.projection.extension] : [])]})
     .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
   const suggestions = createEditorInputSuggestions({
     nativeFloating: {show: () => 0, hide: () => {}}, mode: () => options.mode ?? "livePreview",
-    dialect: () => dialect, isComposing: () => options.composing ?? false, protectedRanges: () => options.protectedRanges ?? [],
-    requestLinkCompletions: id => { terms.push(id); },
+    dialect: () => dialect, isComposing: () => options.isComposing?.() ?? options.composing ?? false, protectedRanges: () => options.protectedRanges ?? [],
+    writingContextReady: options.contextReady,
+    canContinueWriting: options.canContinue ?? (options.projection ? (state, position) => writingCaretIsReadable(state, options.projection!.index(state), position) : undefined),
+    requestLinkCompletions: (id, kind, query) => { terms.push(id); termQueries.push({id, kind, query}); },
+    cancelWritingTermQuery: id => cancelledTerms.push(id),
     requestWritingContinuation: id => { requests.push(id); },
-    cancelWritingContinuation: id => { cancelled.push(id); }, didApply: label => labels.push(label),
+    cancelWritingContinuation: (id, reason) => { cancelled.push(id); cancellationEvents.push({id, reason}); }, didApply: label => labels.push(label),
   });
   state = state.update({effects: StateEffect.appendConfig.of(suggestions.extension),
     annotations: Transaction.addToHistory.of(false)}).state;
+  const fixtureDOM = parseHTML("<html><body><div id='editor'><div class='cm-content'></div></div></body></html>");
   const view = {get state() {return state;}, composing: false, hasFocus: true,
-    dispatch(spec: TransactionSpec) { state = state.update(spec).state; }} as unknown as EditorView;
+    dom: fixtureDOM.document.getElementById("editor"), requestMeasure: () => {},
+    dispatch(spec: TransactionSpec) {
+      const transaction = state.update(spec);
+      for (const effect of transaction.effects) if (effect.is(EditorView.announce)) announcements.push(effect.value);
+      state = transaction.state;
+    }} as unknown as EditorView;
   // A detached plugin exercises scheduling without pretending to establish WebKit input acceptance.
   const definition = (suggestions.extension as Extension[])[1] as unknown as {create(view: EditorView): {
-    decorations: DecorationSet; schedule(): void; clear(): void; accept(): boolean;
+    decorations: DecorationSet; schedule(): void; clear(): void; accept(): boolean; retry(): boolean; update(update: ViewUpdate): void; destroy(): void;
   }};
   const plugin = definition.create(view);
   suggestions.configureWritingContinuation(options.aiEnabled ?? true, "model-a");
   plugin.schedule();
-  return {suggestions, plugin, requests, cancelled, terms, labels, state: () => state, view};
+  return {suggestions, plugin, requests, cancelled, cancellationEvents, cancelledTerms, terms, termQueries, labels, announcements, state: () => state, view};
 }
 
 function renderedInlineWidget(decorations: DecorationSet) {
@@ -72,15 +92,375 @@ function renderedInlineWidget(decorations: DecorationSet) {
   finally { vi.unstubAllGlobals(); }
 }
 
-describe("AI-first inline continuation", () => {
+describe("Coordinated local and AI writing previews", () => {
+  function typeSuffix(h: ReturnType<typeof inlineContinuationHarness>, text: string) {
+    const transaction = h.state().update({changes: {from: h.state().selection.main.head, insert: text},
+      selection: {anchor: h.state().selection.main.head + text.length}, annotations: Transaction.userEvent.of("input.type")});
+    h.view.dispatch(transaction);
+    h.plugin.update({view: h.view, state: h.state(), startState: transaction.startState,
+      changes: transaction.changes, docChanged: true, selectionSet: true, focusChanged: false,
+      transactions: [transaction]} as unknown as ViewUpdate);
+  }
+
+  it.each((["present", "update", "next"] as const).flatMap(action => [true, false].map(aiEnabled => ({action, aiEnabled}))))(
+    "Find $action and save preserve current candidates or reject departed ones (AI $aiEnabled)", async ({action, aiEnabled}) => {
+    vi.useFakeTimers();
+    const source = "\uFEFFEarlier 😀 e\u0301.\r\nA claim about res";
+    const h = inlineContinuationHarness(source, {find: true, aiEnabled});
+    const dispatch = h.view.dispatch.bind(h.view);
+    h.view.dispatch = (...input: (Transaction | readonly Transaction[] | TransactionSpec)[]) => {
+      const first = input[0];
+      const transactions: readonly Transaction[] = first instanceof Transaction ? [first]
+        : Array.isArray(first) ? first : [h.state().update(...input as TransactionSpec[])];
+      for (const transaction of transactions) {
+        dispatch(transaction);
+        h.plugin.update({view:h.view, state:h.state(), startState:transaction.startState,
+          changes:transaction.changes, docChanged:transaction.docChanged,
+          selectionSet:transaction.selection !== undefined, focusChanged:false,
+          transactions:[transaction]} as unknown as ViewUpdate);
+      }
+    };
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      const original = h.state().selection, id = h.requests[0];
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state:"current", candidates:[localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      const request: DocumentFindRequest = {query:"claim", replacement:"", caseSensitive:false, wholeWord:false, action};
+      performDocumentFind(h.view, request);
+      const selected = h.state().selection;
+      h.suggestions.configureWritingIndexContext("autosave-find");
+      performDocumentFind(h.view, {...request, action:"present"});
+      if (aiEnabled) h.suggestions.resolveWritingContinuation(id, {text:"ponsibility is shared."});
+      await vi.advanceTimersByTimeAsync(0);
+      // Resolve after save validation or after Find has discarded the local round.
+      h.suggestions.resolveLinkCompletionQuery(h.terms.at(-1)!, {state:"current", candidates:[localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.state().field(exactSourceState).text).toBe(source);
+      expect(h.state().selection.eq(selected)).toBe(true);
+      expect(undoDepth(h.state())).toBe(0);
+      expect(h.view.hasFocus).toBe(true);
+      if (action === "present") {
+        expect(selected.eq(original)).toBe(true);
+        expect(h.cancelled).toEqual([]);
+        expect(h.requests).toHaveLength(aiEnabled ? 1 : 0);
+        expect(h.plugin.accept()).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(source + (aiEnabled ? "ponsibility is shared." : "ponsibility"));
+        expect(undo({state:h.state(), dispatch:transaction => h.view.dispatch(transaction)})).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(source);
+      } else {
+        expect(selected.eq(original)).toBe(false);
+        if (aiEnabled) expect(h.cancelled).toContain(id);
+        expect(h.plugin.decorations.size).toBe(0);
+        expect(h.plugin.accept()).toBe(false);
+        expect(h.state().field(exactSourceState).text).toBe(source);
+        expect(h.state().selection.eq(selected)).toBe(true);
+        expect(h.labels).toEqual([]);
+      }
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([
+    ["\uFEFFFirst 😀.\r\nA claim about res", "ponsibility is shared.", "pon"],
+    ["这个论证仍需", "进一步验证。", "进一步"],
+    ["An example ", "🙂 remains useful.", "🙂"],
+  ])("consumes matching AI input immediately and Tab/one Undo changes only the remaining suffix: %s", async (original, suffix, typed) => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness(original);
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: suffix});
+      await vi.advanceTimersByTimeAsync(0);
+      typeSuffix(h, typed);
+      expect(renderedInlineWidget(h.plugin.decorations).node.querySelector(".scholium-writing-ghost-text")?.textContent).toBe(suffix.slice(typed.length));
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(1); expect(h.terms).toHaveLength(original.endsWith(" ") ? 0 : 1);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original + suffix);
+      expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original + typed);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("consumes a confirmed local suffix without another query and dismisses it on mismatching input", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("res", {aiEnabled: false});
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      typeSuffix(h, "pon");
+      expect(renderedInlineWidget(h.plugin.decorations).node.querySelector(".scholium-writing-ghost-text")?.textContent).toBe("sibility");
+      expect(h.terms).toHaveLength(1);
+      typeSuffix(h, "x");
+      expect(h.plugin.decorations.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(h.terms).toHaveLength(2);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+
+  it.each([true, false])("retains matching suffix during parser preparation and confirms queued Tab before insertion (readable %s)", async readable => {
+    vi.useFakeTimers();
+    let ready = true;
+    let allowed = true;
+    const options = {contextReady: () => ready, canContinue: () => ready && allowed};
+    const h = inlineContinuationHarness("A claim about res", options);
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility."});
+      await vi.advanceTimersByTimeAsync(0);
+      ready = false;
+      typeSuffix(h, "pon");
+      expect(renderedInlineWidget(h.plugin.decorations).node.querySelector(".scholium-writing-ghost-text")?.textContent).toBe("sibility.");
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().doc.toString()).toBe("A claim about respon");
+      ready = true;
+      // The production parser may newly identify a protected context.
+      if (!readable) {
+        allowed = false;
+      }
+      h.plugin.update({view: h.view, state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.state().doc.toString()).toBe(readable ? "A claim about responsibility." : "A claim about respon");
+      expect(h.requests).toHaveLength(1);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([false, true])("revokes pending and published AI continuation on an Edit/Source transition (published %s)", async published => {
+    vi.useFakeTimers();
+    const options: {mode: EditorMode} = {mode: "livePreview"};
+    const h = inlineContinuationHarness("A claim about res", options);
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      if (published) {
+        h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility."});
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      options.mode = "source";
+      h.plugin.update({view: h.view, state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      expect(h.plugin.decorations.size).toBe(0); expect(h.plugin.accept()).toBe(false);
+      if (!published) expect(h.cancelled).toEqual(h.requests);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: " stale."});
+      await vi.advanceTimersByTimeAsync(16_000);
+      expect(h.terms).toHaveLength(1); expect(h.plugin.decorations.size).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("accepts a provider result after 20 seconds and keeps retry separate from fallback acceptance", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    try {
+      await vi.advanceTimersByTimeAsync(20_800);
+      expect(h.cancelled).toEqual([]); expect(h.terms).toHaveLength(1);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: "Connection failed. Check Agents & Chat."});
+      await vi.advanceTimersByTimeAsync(0);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: []});
+      await vi.advanceTimersByTimeAsync(0);
+      const failure = h.view.dom.querySelector(".scholium-writing-feedback button")!;
+      expect(h.plugin.decorations.size).toBe(0);
+      expect(failure.textContent).toBe("Retry AI");
+      expect(failure.getAttribute("aria-label")).toContain("Option-Return");
+      expect(h.plugin.retry()).toBe(true);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(2);
+      h.suggestions.resolveWritingContinuation(h.requests[1], {text: "ponsibility."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().doc.toString()).toBe("A claim about responsibility.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([true, false])("schedules local100ms and AI400ms independently and restarts both on input (AI %s)", async aiEnabled => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res", {aiEnabled});
+    try {
+      await vi.advanceTimersByTimeAsync(99); expect(h.terms).toEqual([]); expect(h.requests).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1); expect(h.terms).toHaveLength(1); expect(h.requests).toEqual([]);
+      typeSuffix(h, "p");
+      await vi.advanceTimersByTimeAsync(399);
+      expect(h.cancelledTerms).toContain(h.terms[0]); expect(h.terms).toHaveLength(2); expect(h.requests).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1); expect(h.requests).toHaveLength(aiEnabled ? 1 : 0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["dismiss", "input", "blur", "composition", "timeout", "departure"])("propagates local query cancellation on %s and rejects late results", async reason => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      expect(h.terms).toHaveLength(1);
+      const requestID = h.terms[0];
+      if (reason === "timeout") await vi.advanceTimersByTimeAsync(5_000);
+      else if (reason === "departure") h.suggestions.resetDocument();
+      else if (reason === "input") {
+        const previous = h.state();
+        h.view.dispatch({changes: {from: previous.doc.length, insert: "p"}});
+        h.plugin.update({state: h.state(), startState: previous, docChanged: true,
+          selectionSet: true, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      } else if (reason === "blur" || reason === "composition") {
+        const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+          domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+        };
+        if (reason === "blur") definition.domEventHandlers.blur.call(h.plugin);
+        else definition.domEventHandlers.compositionstart.call(h.plugin);
+      } else h.plugin.clear();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.cancelledTerms).toEqual([requestID]);
+      const source = h.state().field(exactSourceState).text;
+      const historyDepth = undoDepth(h.state());
+      h.suggestions.resolveLinkCompletionQuery(requestID, {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(false);
+      expect(h.state().field(exactSourceState).text).toBe(source);
+      expect(undoDepth(h.state())).toBe(historyDepth);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["livePreview", "source"] as const)("requests local immediately in headings while AI runs independently in %s", async mode => {
+    vi.useFakeTimers();
+    try {
+      for (const source of ["# Unfinished res", "Unfinished res\n==="]) {
+        const projection = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+        const caret = source.indexOf("res") + 3;
+        const h = inlineContinuationHarness(source, {mode, projection, caret});
+        try {
+          await vi.advanceTimersByTimeAsync(800);
+          expect(h.requests).toHaveLength(1);
+          expect(h.terms).toHaveLength(1);
+          h.suggestions.resolveWritingContinuation(h.requests[0], {text: null});
+          await vi.advanceTimersByTimeAsync(0);
+          expect(h.terms).toHaveLength(1);
+          h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+            availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+          await vi.advanceTimersByTimeAsync(0);
+          expect(h.plugin.accept()).toBe(true);
+          expect(h.state().field(exactSourceState).text).toBe(source.replace("res", "responsibility"));
+          expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+          expect(h.state().field(exactSourceState).text).toBe(source);
+        } finally { h.plugin.destroy(); }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(["livePreview", "source"] as const)("accepts a multiword local suffix from heading and AI-off prose in %s", async mode => {
+    vi.useFakeTimers();
+    const typed = "Manual Heading Completion T";
+    const label = "Manual Heading Completion Target";
+    try {
+      for (const prefix of ["# ", "A claim about "]) {
+        const source = "\uFEFFEarlier 😀.\r\n" + prefix + typed;
+        const projection = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+        const h = inlineContinuationHarness(source, {mode, projection, aiEnabled: false});
+        try {
+          await vi.advanceTimersByTimeAsync(100);
+          expect(h.requests).toEqual([]);
+          expect(h.termQueries).toHaveLength(1);
+          expect(h.termQueries[0].kind).toBe("term");
+          expect(h.termQueries[0].query).toBe(prefix === "# " ? " " + typed : prefix + typed);
+          h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label, insertion: label, detail: "",
+            availability: "available", writingAction: "term", replacementUTF16Count: typed.length}]});
+          await vi.advanceTimersByTimeAsync(0);
+          const ghost = renderedInlineWidget(h.plugin.decorations);
+          expect(ghost.node.querySelector(".scholium-writing-ghost-text")?.textContent).toBe("arget");
+          expect(ghost.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
+          expect(h.state().field(exactSourceState).text).toBe(source);
+          expect(undoDepth(h.state())).toBe(0);
+          expect(h.plugin.accept()).toBe(true);
+          expect(h.state().field(exactSourceState).text).toBe(source + "arget");
+          expect(undoDepth(h.state())).toBe(1);
+          expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+          expect(h.state().field(exactSourceState).text).toBe(source);
+          expect(redo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+          expect(h.state().field(exactSourceState).text).toBe(source + "arget");
+        } finally { h.plugin.destroy(); }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each([true, false])("resumes writing only after the shared IME gate commits final source (AI %s)", async aiEnabled => {
+    vi.useFakeTimers();
+    const gate = new CompositionRequestGate<{expiresAt: number}, boolean>(() => false);
+    gate.begin();
+    const revision = gate.revision("editor");
+    const original = "\uFEFFEarlier 😀.\r\n论证尚需";
+    const h = inlineContinuationHarness(original, {aiEnabled, isComposing: () => gate.active});
+    try {
+      // compositionend precedes the shared gate's final-input task.
+      h.plugin.schedule();
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      const from = h.state().doc.length;
+      const transaction = h.state().update({changes: {from, insert: "解释"}, selection: {anchor: from + 2},
+        annotations: Transaction.userEvent.of("input.type.compose")});
+      h.view.dispatch(transaction);
+      h.plugin.update({view: h.view, state: h.state(), startState: transaction.startState,
+        changes: transaction.changes, docChanged: true, selectionSet: true, focusChanged: false,
+        viewportChanged: false, viewportMoved: false, heightChanged: false, geometryChanged: true,
+        transactions: [transaction]});
+      expect(h.state().field(exactSourceState).text).toBe(original + "解释");
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      const depth = undoDepth(h.state());
+      gate.finish("editor", revision);
+      h.suggestions.resumeWritingAfterComposition();
+      const delay = aiEnabled ? 400 : 100;
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(h.requests).toEqual([]); expect(h.terms).toHaveLength(aiEnabled ? 1 : 0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.requests).toHaveLength(aiEnabled ? 1 : 0);
+      expect(h.terms).toHaveLength(1);
+      expect(h.state().field(exactSourceState).text).toBe(original + "解释");
+      expect(undoDepth(h.state())).toBe(depth);
+      if (aiEnabled) h.suggestions.resolveWritingContinuation(h.requests[0], {text: "其适用范围。"});
+      else h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "解释性", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 2}]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(true);
+      const accepted = original + "解释" + (aiEnabled ? "其适用范围。" : "性");
+      expect(h.state().field(exactSourceState).text).toBe(accepted);
+      expect(undoDepth(h.state())).toBe(depth + 1);
+      expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original + "解释");
+      expect(redo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(accepted);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("rejects composition resumption while another composition, blur or teardown owns the editor", async () => {
+    vi.useFakeTimers();
+    const gate = new CompositionRequestGate<{expiresAt: number}, boolean>(() => false);
+    gate.begin();
+    const revision = gate.revision("editor");
+    const h = inlineContinuationHarness("未完成的论证", {isComposing: () => gate.active});
+    try {
+      gate.begin(); // A stale compositionend must not release this newer input.
+      gate.finish("editor", revision);
+      h.suggestions.resumeWritingAfterComposition();
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toEqual([]);
+      gate.finish();
+      Object.defineProperty(h.view, "hasFocus", {value: false, configurable: true});
+      h.suggestions.resumeWritingAfterComposition();
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toEqual([]);
+      Object.defineProperty(h.view, "hasFocus", {value: true});
+      h.plugin.destroy();
+      h.suggestions.resumeWritingAfterComposition();
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      expect(h.state().field(exactSourceState).text).toBe("未完成的论证");
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
   it("rejects a visible ghost as soon as composition starts before its first text change", async () => {
     vi.useFakeTimers();
     const options = {composing: false, aiEnabled: false};
     const h = inlineContinuationHarness("res", options);
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(100);
     expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "",
-      detail: "", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "",
+      detail: "", availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(1);
     options.composing = true;
@@ -90,28 +470,26 @@ describe("AI-first inline continuation", () => {
     h.plugin.clear();
     vi.useRealTimers();
   });
-  it("requests only after an unfinished current sentence", async () => {
+  it("permits short AI continuation after completed readable sentences", async () => {
     vi.useFakeTimers();
-    for (const source of ["A completed claim. ", "A completed claim。", "A completed claim.”"]) {
-      const h = inlineContinuationHarness(source);
-      await vi.advanceTimersByTimeAsync(1_200);
-      expect(h.requests).toEqual([]);
-      expect(h.terms).toEqual([]);
-      h.plugin.clear();
-    }
-    const h = inlineContinuationHarness("Earlier claim. A claim about res");
-    await vi.advanceTimersByTimeAsync(1_200);
-    expect(h.requests).toHaveLength(1);
-    vi.useRealTimers();
+    try {
+      for (const source of ["A completed claim. ", "A completed claim。", "A completed claim.”"]) {
+        const h = inlineContinuationHarness(source);
+        await vi.advanceTimersByTimeAsync(800);
+        expect(h.requests).toHaveLength(1);
+        expect(h.terms).toEqual([]);
+        h.plugin.destroy();
+      }
+    } finally { vi.useRealTimers(); }
   });
 
-  it("waits for AI without exposing or requesting local terms, and accepts one exact Undo event", async () => {
+  it("keeps local requests independent and accepts a validated AI suffix in one Undo, and accepts one exact Undo event", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness("\uFEFFFirst 😀.\r\nA claim about res");
-    await vi.advanceTimersByTimeAsync(1_199);
-    expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+    await vi.advanceTimersByTimeAsync(399);
+    expect(h.requests).toEqual([]); expect(h.terms).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(h.requests).toHaveLength(1); expect(h.terms).toEqual([]);
+    expect(h.requests).toHaveLength(1); expect(h.terms).toHaveLength(1);
     h.suggestions.configureWritingIndexContext("catalog-1");
     expect(h.cancelled).toEqual([]);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility needs qualification."});
@@ -130,41 +508,212 @@ describe("AI-first inline continuation", () => {
     vi.useRealTimers();
   });
 
-  it("shows composing progress and keeps a visible connection failure at the caret", async () => {
+  it.each(["en", "zh-Hans"] as const)("announces %s progress outside content and exposes failure recovery outside caret decorations without changing source", async languageTag => {
+    vi.useFakeTimers();
+    const chinese = languageTag === "zh-Hans";
+    const phases = [
+      {phase: "preparing", label: "Preparing", full: "AI continuation is preparing.", zhLabel: "准备中", zhFull: "AI 续写准备中。"},
+      {phase: "retrieving", label: "Retrieving", full: "AI continuation is retrieving related context.", zhLabel: "检索中", zhFull: "AI 续写正在检索相关上下文。"},
+      {phase: "generating", label: "Composing", full: "AI continuation is composing.", zhLabel: "续写中", zhFull: "AI 续写正在组织句子。"},
+    ] as const;
+    localizationTesting.install({languageTag, strings: Object.fromEntries(phases.flatMap(value => [
+      [value.label, chinese ? value.zhLabel : value.label], [value.full, chinese ? value.zhFull : value.full],
+    ]))});
+    const original = "\uFEFFFirst 😀.\r\nA claim about res";
+    const h = inlineContinuationHarness(original);
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(1);
+      for (const [index, value] of phases.entries()) {
+        if (index > 0) h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: value.phase});
+        expect(h.plugin.decorations.size).toBe(0);
+        expect(h.announcements.at(-1)).toBe(chinese ? value.zhFull : value.full);
+        expect(h.view.dom.querySelector(".cm-content .scholium-writing-status")).toBeNull();
+        expect(h.state().field(exactSourceState).text).toBe(original);
+        expect(undoDepth(h.state())).toBe(0);
+      }
+      const reason = chinese ? "AI 续写无法连接。请检查“智能体与聊天”。" : "AI continuation could not connect. Check Agents & Chat.";
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.terms).toHaveLength(1);
+      expect(h.plugin.decorations.size).toBe(0);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: []});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(false);
+      const error = h.view.dom.querySelector(".scholium-writing-feedback")!;
+      expect(error.querySelector(".scholium-writing-feedback-message")?.textContent).toBe(reason);
+      expect(error.getAttribute("role")).toBe("status");
+      expect(error.getAttribute("aria-live")).toBe("polite");
+      expect(error.querySelector("button")?.getAttribute("aria-label")).toContain(reason);
+      expect(h.plugin.decorations.size).toBe(0);
+      expect(h.state().field(exactSourceState).text).toBe(original);
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); localizationTesting.reset(); vi.useRealTimers(); }
+  });
+
+
+  it("restores the original three dots after the caret only during generation, outside text layout", async () => {
+    vi.useFakeTimers();
+    const original = "\uFEFFFirst 😀.\r\n# Argument res";
+    const h = inlineContinuationHarness(original);
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      const id = h.requests[0];
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBeNull();
+      h.suggestions.setWritingContinuationStatus(id, {phase: "retrieving"});
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBeNull();
+      h.suggestions.setWritingContinuationStatus(id, {phase: "generating"});
+      const activity = h.view.dom.querySelector(".scholium-writing-activity")!;
+      expect(activity).not.toBeNull();
+      expect(activity.parentElement).toBe(h.view.dom);
+      expect(h.view.dom.querySelector(".cm-content")!.contains(activity)).toBe(false);
+      expect(activity.querySelectorAll(".scholium-writing-orb-dot")).toHaveLength(3);
+      expect(activity.getAttribute("aria-hidden")).toBe("true");
+      expect(activity.querySelector("button, [tabindex]")).toBeNull();
+      expect(h.plugin.decorations.size).toBe(0);
+      h.suggestions.setWritingContinuationStatus(id, {phase: "preparing"});
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBe(activity);
+      expect(h.announcements.at(-1)).toBe("AI continuation is composing.");
+      expect(h.state().field(exactSourceState).text).toBe(original);
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["suggestion", "empty", "error", "parserPending"])("removes the generation dots on %s before publishing a suffix or fallback", async outcome => {
+    vi.useFakeTimers();
+    let ready = true;
+    const h = inlineContinuationHarness(undefined, {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).not.toBeNull();
+      ready = outcome !== "parserPending";
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: outcome === "suggestion" || outcome === "parserPending" ? "ponsibility." : null,
+        reason: outcome === "error" ? "AI continuation timed out." : null});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBeNull();
+      if (outcome === "suggestion") expect(renderedInlineWidget(h.plugin.decorations).node.dataset.source).toBe("ai");
+      expect(h.state().field(exactSourceState).text).toBe("A claim about res");
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["reset", "configuration", "focus", "composition", "clear", "destroy", "watchdog"])("removes the generation dots immediately on %s and ignores late status", async ending => {
+    vi.useFakeTimers();
+    let composing = false;
+    const h = inlineContinuationHarness(undefined, {isComposing: () => composing});
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      const id = h.requests[0];
+      h.suggestions.setWritingContinuationStatus(id, {phase: "generating"});
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).not.toBeNull();
+      if (ending === "reset") h.suggestions.resetDocument();
+      else if (ending === "configuration") h.suggestions.configureWritingContinuation(false, "disabled");
+      else if (ending === "destroy") h.plugin.destroy();
+      else if (ending === "watchdog") await vi.advanceTimersByTimeAsync(35_000);
+      else if (ending === "focus" || ending === "composition") {
+        if (ending === "focus") Object.assign(h.view, {hasFocus: false});
+        else composing = true;
+        h.plugin.update({state:h.state(), startState:h.state(), docChanged:false, selectionSet:false,
+          focusChanged:ending === "focus", transactions:[]} as unknown as ViewUpdate);
+      } else h.plugin.clear();
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBeNull();
+      h.suggestions.setWritingContinuationStatus(id, {phase: "generating"});
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBeNull();
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("measures the dots with the same wrap affinity and scale as the caret, and discards stale measures", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
-    await vi.advanceTimersByTimeAsync(1_200);
-    expect(h.requests).toHaveLength(1);
-    expect(h.plugin.decorations.size).toBe(1);
-    h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
-    expect(h.plugin.decorations.size).toBe(1);
-    expect(renderedInlineWidget(h.plugin.decorations).side).toBe(1);
-    h.suggestions.resolveWritingContinuation(h.requests[0], {
-      text: null, reason: "AI continuation could not connect. Check Agents & Chat.",
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(h.terms).toHaveLength(1);
-    expect(h.plugin.decorations.size).toBe(0);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], []);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(h.plugin.decorations.size).toBe(1);
-    expect(h.plugin.accept()).toBe(false);
-    const error = renderedInlineWidget(h.plugin.decorations);
-    expect(error.side).toBe(1);
-    expect(error.node.textContent).toBe("!");
-    expect(error.node.getAttribute("aria-label")).toBe("AI continuation could not connect. Check Agents & Chat.");
-    expect(error.node.querySelectorAll(".scholium-writing-status-badge")).toHaveLength(1);
-    vi.useRealTimers();
+    const measures: NonNullable<Parameters<EditorView["requestMeasure"]>[0]>[] = [];
+    const point = {left:180, right:180, top:120, bottom:160};
+    const bounds = {left:100, right:700, top:80, bottom:600};
+    const coords = vi.fn(() => point);
+    Object.assign(h.view, {coordsAtPos:coords, scrollDOM:h.view.dom, scaleX:2, scaleY:2});
+    Object.defineProperty(h.view.dom, "getBoundingClientRect", {value:() => bounds});
+    vi.spyOn(h.view, "requestMeasure").mockImplementation(request => {if (request) measures.push(request);});
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      const first = h.requests[0];
+      h.suggestions.setWritingContinuationStatus(first, {phase:"generating"});
+      const activity = h.view.dom.querySelector<HTMLElement>(".scholium-writing-activity")!;
+      const measure = measures.at(-1)!;
+      expect(measure).toBeDefined();
+      measure.write?.(measure.read(h.view), h.view);
+      expect(coords).toHaveBeenCalledWith(h.state().selection.main.head, h.state().selection.main.assoc || 1);
+      expect(parseFloat(activity.style.left)).toBeGreaterThan((point.left - bounds.left) / 2);
+      expect(parseFloat(activity.style.top)).toBeGreaterThanOrEqual((point.top - bounds.top) / 2);
+      expect(parseFloat(activity.style.top)).toBeLessThan((point.bottom - bounds.top) / 2);
+      expect(activity.style.visibility).toBe("visible");
+      point.left = 670; point.right = 670;
+      measure.write?.(measure.read(h.view), h.view);
+      expect(activity.style.visibility).toBe("visible");
+      expect(bounds.left + parseFloat(activity.style.left) * 2 + parseFloat(activity.style.fontSize) * 1.2 * 2).toBeLessThanOrEqual(bounds.right);
+      point.left = 698; point.right = 698;
+      measure.write?.(measure.read(h.view), h.view);
+      expect(activity.style.visibility).toBe("hidden");
+      point.left = 180; point.right = 180;
+      point.top = 650; point.bottom = 690;
+      measure.write?.(measure.read(h.view), h.view);
+      expect(activity.style.visibility).toBe("hidden");
+      const delayed = measure.read(h.view);
+      h.plugin.schedule();
+      await vi.advanceTimersByTimeAsync(400);
+      h.suggestions.setWritingContinuationStatus(h.requests[1], {phase:"generating"});
+      const successor = h.view.dom.querySelector(".scholium-writing-activity");
+      measure.write?.(delayed, h.view);
+      h.suggestions.setWritingContinuationStatus(first, {phase:"generating"});
+      expect(successor).not.toBe(activity);
+      expect(h.view.dom.querySelector(".scholium-writing-activity")).toBe(successor);
+      expect(h.view.dom.querySelectorAll(".scholium-writing-activity")).toHaveLength(1);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("keeps preparation time separate from the generation watchdog", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "retrieving"});
+      await vi.advanceTimersByTimeAsync(29_000);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(h.cancelled).toEqual([]); expect(h.terms).toHaveLength(1);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().doc.toString()).toBe("A claim about responsibility.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("repeated generation status cannot extend a stalled request indefinitely", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+      await vi.advanceTimersByTimeAsync(34_000);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.cancelled).toEqual(h.requests); expect(h.terms).toHaveLength(1);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: " stale."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(false);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
   });
 
   it("falls back after timeout and ignores the late AI response", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
-    await vi.advanceTimersByTimeAsync(9_200);
-    expect(h.cancelled).toEqual(h.requests); expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
-      availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.requests).toEqual([]); expect(h.terms).toHaveLength(1);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
     await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(35_700);
+    expect(h.cancelled).toEqual(h.requests);
+    expect(h.view.dom.querySelector(".scholium-writing-feedback")).not.toBeNull();
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: "different sentence."});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.accept()).toBe(true);
@@ -172,24 +721,24 @@ describe("AI-first inline continuation", () => {
     vi.useRealTimers();
   });
 
-  it("uses local term fallback in Source after AI failure", async () => {
+  it("retains local Source prediction with off-content failure recovery", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness("A claim about res", {mode: "source"});
-    await vi.advanceTimersByTimeAsync(1_200);
-    expect(h.requests).toHaveLength(1); expect(h.terms).toEqual([]);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(h.requests).toHaveLength(1); expect(h.terms).toHaveLength(1);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: "Offline"});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
-      availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
     await vi.advanceTimersByTimeAsync(0);
     const fallback = renderedInlineWidget(h.plugin.decorations);
     expect(fallback.node.querySelectorAll(".scholium-writing-status")).toHaveLength(0);
-    expect(fallback.node.querySelectorAll(".scholium-writing-ghost-error-badge")).toHaveLength(1);
+    expect(fallback.node.querySelectorAll(".scholium-writing-retry")).toHaveLength(0);
+    expect(h.view.dom.querySelectorAll(".scholium-writing-retry")).toHaveLength(1);
     expect(fallback.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
     expect(fallback.node.getAttribute("aria-label")).toContain("Accept index suggestion:");
-    expect(fallback.node.getAttribute("aria-description")).toBe("Offline");
-    h.suggestions.configureWritingContinuation(true, "model-b");
+    expect(h.view.dom.querySelector(".scholium-writing-feedback-message")?.textContent).toBe("Offline");
     expect(h.plugin.decorations.size).toBe(1);
     expect(h.plugin.accept()).toBe(true);
     expect(h.state().doc.toString()).toBe("A claim about responsibility");
@@ -199,16 +748,16 @@ describe("AI-first inline continuation", () => {
   it("uses the index when AI is off, with no AI request or failure badge", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
-    await vi.advanceTimersByTimeAsync(299);
+    await vi.advanceTimersByTimeAsync(99);
     expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(h.terms).toHaveLength(1);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
-      availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
     await vi.advanceTimersByTimeAsync(0);
     const ghost = renderedInlineWidget(h.plugin.decorations);
     expect(ghost.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
-    expect(ghost.node.querySelector(".scholium-writing-ghost-error-badge")).toBeNull();
+    expect(ghost.node.querySelector(".scholium-writing-retry")).toBeNull();
     expect(h.plugin.accept()).toBe(true);
     expect(h.state().doc.toString()).toBe("A claim about responsibility");
     vi.useRealTimers();
@@ -217,12 +766,12 @@ describe("AI-first inline continuation", () => {
   it("keeps a quiet AI absence quiet through empty index fallback", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
-    await vi.advanceTimersByTimeAsync(1_200);
+    await vi.advanceTimersByTimeAsync(800);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: ""});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.terms).toHaveLength(1);
     expect(h.plugin.decorations.size).toBe(0);
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], []);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: []});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(0);
     expect(h.plugin.accept()).toBe(false);
@@ -232,31 +781,328 @@ describe("AI-first inline continuation", () => {
   it("discards an old index result on catalog change", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
-    await vi.advanceTimersByTimeAsync(1_200);
+    await vi.advanceTimersByTimeAsync(800);
     h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason: ""});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.terms).toHaveLength(1);
     h.suggestions.configureWritingIndexContext("catalog-2");
-    h.suggestions.resolveLinkCompletionQuery(h.terms[0], [{label: "responsibility", insertion: "", detail: "",
-      availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
+    h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
     await vi.advanceTimersByTimeAsync(0);
     expect(h.plugin.decorations.size).toBe(0);
     expect(h.plugin.accept()).toBe(false);
     vi.useRealTimers();
   });
 
+  it.each([false, true])("resumes only the retained input when parser context becomes ready (dismissed %s)", async dismissed => {
+    vi.useFakeTimers();
+    let ready = false;
+    const h = inlineContinuationHarness("# Unfinished res", {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      if (dismissed) h.plugin.clear();
+      ready = true;
+      const previous = h.state();
+      const transaction = previous.update({effects: StateEffect.define<boolean>().of(true)});
+      h.view.dispatch(transaction);
+      const update = {state: h.state(), startState: previous, changes: transaction.changes, docChanged: false, selectionSet: false,
+        focusChanged: false, transactions: [transaction]} as unknown as ViewUpdate;
+      h.plugin.update(update);
+      h.plugin.update(update);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(dismissed ? 0 : 1);
+      expect(h.terms).toHaveLength(dismissed ? 0 : 1);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([false, true])("retains and validates the same preview after repeated catalog publication (heading %s)", async heading => {
+    vi.useFakeTimers();
+    const original = "\uFEFFEarlier 😀.\r\n" + (heading ? "# " : "A claim about ") + "Manual Heading Completion T";
+    const projection = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const h = inlineContinuationHarness(original, {projection, aiEnabled: false});
+    const candidate = {label: "Manual Heading Completion Target", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 27};
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [candidate]});
+      await vi.advanceTimersByTimeAsync(0);
+      const originalDecoration = h.plugin.decorations;
+      for (const catalog of ["autosave", "source-commit", "publication"]) {
+        h.suggestions.configureWritingIndexContext(catalog);
+        expect(h.plugin.decorations).toBe(originalDecoration);
+        await vi.advanceTimersByTimeAsync(0);
+        h.suggestions.resolveLinkCompletionQuery(h.terms.at(-1)!, {state: "current", candidates: [candidate]});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(h.plugin.decorations).toBe(originalDecoration);
+      }
+      expect(h.requests).toEqual([]);
+      expect(h.state().field(exactSourceState).text).toBe(original);
+      expect(undoDepth(h.state())).toBe(0);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original + "arget");
+      expect(undoDepth(h.state())).toBe(1);
+      expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original);
+      expect(redo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(original + "arget");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("keeps the mounted CodeMirror ghost node through autosave publications and unavailable validation", async () => {
+    vi.useFakeTimers();
+    const {document, window} = parseHTML("<html><head></head><body><div id='editor'></div></body></html>");
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", window);
+    vi.stubGlobal("MutationObserver", window.MutationObserver);
+    // This DOM test deliberately performs no geometry or native event simulation.
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    Object.defineProperty(document, "getSelection", {value: () => null});
+    Object.defineProperty(document, "hasFocus", {value: () => false});
+    const ids: string[] = [], failures: unknown[] = [];
+    const suggestions = createEditorInputSuggestions({
+      nativeFloating: {show: () => 0, hide: () => {}}, mode: () => "source", dialect: () => dialect,
+      isComposing: () => false, protectedRanges: () => [], requestLinkCompletions: id => ids.push(id), didApply: () => {},
+    });
+    let view: EditorView | undefined;
+    try {
+      view = new EditorView({parent: document.getElementById("editor")!, state: EditorState.create({
+        doc: "A claim about re", selection: {anchor: 16},
+        extensions: [history(), exactSourceHistory, suggestions.extension, EditorView.exceptionSink.of(error => failures.push(error))],
+      })});
+      Object.defineProperty(view, "hasFocus", {get: () => true});
+      // Geometry belongs to native QA; the native popup idle read is disjoint from ghost DOM identity.
+      view.coordsAtPos = () => null;
+      view.dispatch({changes: {from: 16, insert: "s"}, selection: {anchor: 17}, annotations: Transaction.userEvent.of("input.type")});
+      await vi.advanceTimersByTimeAsync(100);
+      const candidate = {label: "responsibility", insertion: "", detail: "", availability: "available", writingAction: "term", replacementUTF16Count: 3};
+      suggestions.resolveLinkCompletionQuery(ids[0], {state: "current", candidates: [candidate]});
+      await vi.advanceTimersByTimeAsync(0);
+      const node = view.contentDOM.querySelector(".scholium-writing-ghost");
+      expect(node).not.toBeNull();
+      for (const [key, current] of [["autosave", true], ["index-loading", false], ["index-current", true]] as const) {
+        suggestions.configureWritingIndexContext(key);
+        expect(view.contentDOM.querySelector(".scholium-writing-ghost")).toBe(node);
+        await vi.advanceTimersByTimeAsync(0);
+        suggestions.resolveLinkCompletionQuery(ids.at(-1)!, {state: current ? "current" : "unavailable", candidates: current ? [candidate] : []});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(view.contentDOM.querySelector(".scholium-writing-ghost")).toBe(node);
+        expect(node?.textContent).toContain("ponsibility");
+      }
+      expect(view.state.doc.toString()).toBe("A claim about res");
+      expect(failures).toEqual([]);
+      suggestions.configureWritingIndexContext("confirmed-deleted");
+      await vi.advanceTimersByTimeAsync(0);
+      suggestions.resolveLinkCompletionQuery(ids.at(-1)!, {state: "current", candidates: []});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(view.contentDOM.querySelector(".scholium-writing-ghost")).toBeNull();
+      expect(failures).toEqual([]);
+    } finally { view?.destroy(); vi.unstubAllGlobals(); vi.useRealTimers(); }
+  });
+
+  it.each(["same", "different", "deleted", "unavailable", "timeout"])("queues one acceptance while refreshing and handles %s without stale insertion", async outcome => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
+    const candidate = {label: "responsibility", insertion: "", detail: "",
+      availability: "available", writingAction: "term", replacementUTF16Count: 3};
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [candidate]});
+      await vi.advanceTimersByTimeAsync(0);
+      const visible = h.plugin.decorations;
+      h.suggestions.configureWritingIndexContext("refresh");
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().doc.toString()).toBe("A claim about res");
+      expect(h.plugin.decorations).toBe(visible);
+      await vi.advanceTimersByTimeAsync(0);
+      if (outcome === "timeout") await vi.advanceTimersByTimeAsync(5_000);
+      else h.suggestions.resolveLinkCompletionQuery(h.terms[1], outcome === "unavailable" ? {state: "unavailable", candidates: []}
+        : {state: "current", candidates: outcome === "deleted" ? []
+          : [{...candidate, label: outcome === "different" ? "research" : candidate.label}]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.state().doc.toString()).toBe(outcome === "same" ? "A claim about responsibility" : "A claim about res");
+      expect(h.labels).toEqual(outcome === "same" ? ["Complete Term"] : []);
+      expect(undoDepth(h.state())).toBe(outcome === "same" ? 1 : 0);
+      if (outcome === "unavailable" || outcome === "timeout") {
+        expect(h.plugin.decorations).toBe(visible);
+        expect(h.plugin.accept()).toBe(true); // explicit retry, no stale insertion
+        await vi.advanceTimersByTimeAsync(0);
+        expect(h.terms).toHaveLength(3);
+        expect(h.state().doc.toString()).toBe("A claim about res");
+      }
+      expect(h.requests).toEqual([]);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["dismiss", "blur", "composition", "selection", "input", "exact-source", "AI-enabled", "departure"])(
+    "cancels a queued refreshed acceptance on %s", async reason => {
+      vi.useFakeTimers();
+      const h = inlineContinuationHarness("Earlier.\nA claim about res", {aiEnabled: false});
+      const candidate = {label: "responsibility", insertion: "", detail: "", availability: "available", writingAction: "term", replacementUTF16Count: 3};
+      try {
+        await vi.advanceTimersByTimeAsync(100);
+        h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [candidate]});
+        await vi.advanceTimersByTimeAsync(0);
+        h.suggestions.configureWritingIndexContext("refreshing");
+        expect(h.plugin.accept()).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+        const id = h.terms[1];
+        if (reason === "departure") h.suggestions.resetDocument();
+        else if (reason === "AI-enabled") h.suggestions.configureWritingContinuation(true, "model-a");
+        else if (reason === "selection" || reason === "input" || reason === "exact-source") {
+          const previous = h.state();
+          const transaction = previous.update(reason === "selection" ? {selection: {anchor: 0}}
+            : reason === "input" ? {changes: {from: previous.doc.length, insert: "x"}, selection: {anchor: previous.doc.length + 1},
+              annotations: Transaction.userEvent.of("input.type")}
+            : {effects: setExactSource.of("Earlier.\r\nA claim about res"), annotations: Transaction.addToHistory.of(false)});
+          h.view.dispatch(transaction);
+          h.plugin.update({state: h.state(), startState: previous, changes: transaction.changes, docChanged: transaction.docChanged,
+            selectionSet: transaction.selection !== undefined, focusChanged: false, transactions: [transaction]} as unknown as ViewUpdate);
+        } else if (reason === "blur" || reason === "composition") {
+          const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+            domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+          };
+          (reason === "blur" ? definition.domEventHandlers.blur : definition.domEventHandlers.compositionstart).call(h.plugin);
+        } else h.plugin.clear();
+        const source = h.state().field(exactSourceState).text;
+        h.suggestions.resolveLinkCompletionQuery(id, {state: "current", candidates: [candidate]});
+        await vi.advanceTimersByTimeAsync(800);
+        expect(h.state().field(exactSourceState).text).toBe(source);
+        expect(h.labels).toEqual([]);
+        expect(h.cancelledTerms).toContain(id);
+      } finally { h.plugin.destroy(); vi.useRealTimers(); }
+    });
+
+  it.each([false, true])("keeps the preview through an unchanged selection transaction (AI %s)", async aiEnabled => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {aiEnabled});
+    try {
+      await vi.advanceTimersByTimeAsync(aiEnabled ? 800 : 100);
+      if (aiEnabled) h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility"});
+      else h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(1);
+      const previous = h.state();
+      const transaction = previous.update({selection: previous.selection});
+      expect(transaction.selection).toBeDefined();
+      h.view.dispatch(transaction);
+      h.plugin.update({state: h.state(), startState: previous, changes: transaction.changes, docChanged: false,
+        selectionSet: true, focusChanged: false, transactions: [transaction]} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(h.plugin.decorations.size).toBe(1);
+      expect(h.terms).toHaveLength(1);
+      expect(h.requests).toHaveLength(aiEnabled ? 1 : 0);
+      expect(undoDepth(h.state())).toBe(0);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("A claim about responsibility");
+      expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("A claim about res");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("removes a local suffix whose candidate disappeared from the new catalog", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(1);
+      h.suggestions.configureWritingIndexContext("candidate-deleted");
+      expect(h.plugin.accept()).toBe(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.terms).toHaveLength(2);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[1], {state: "current", candidates: []});
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(h.requests).toEqual([]);
+      expect(h.plugin.decorations.size).toBe(0);
+      expect(h.plugin.accept()).toBe(false);
+      expect(h.state().field(exactSourceState).text).toBe("A claim about res");
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("refreshes an AI fallback locally while retaining the failure reason", async () => {
+    vi.useFakeTimers();
+    const h = inlineContinuationHarness();
+    const reason = "The provider is unavailable.";
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(1);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null, reason});
+      await vi.advanceTimersByTimeAsync(0);
+      const first = h.terms[0];
+      h.suggestions.configureWritingIndexContext("new-catalog");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.terms).toHaveLength(2);
+      expect(h.cancelledTerms).toEqual([first]);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[1], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(h.requests).toHaveLength(1);
+      const ghost = renderedInlineWidget(h.plugin.decorations);
+      expect(ghost.node.querySelector(".scholium-writing-ghost-key")?.textContent).toBe("Index ⇥");
+      expect(h.view.dom.querySelector(".scholium-writing-feedback-message")?.textContent).toBe(reason);
+      expect(ghost.node.querySelector(".scholium-writing-retry")).toBeNull();
+      expect(h.view.dom.querySelector(".scholium-writing-retry")).not.toBeNull();
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["dismiss", "blur", "composition", "selection", "departure", "destroy"])(
+    "does not revive refreshed local completion after %s", async reason => {
+      vi.useFakeTimers();
+      const h = inlineContinuationHarness("A claim about res", {aiEnabled: false});
+      try {
+        await vi.advanceTimersByTimeAsync(100);
+        h.suggestions.configureWritingIndexContext("refreshing");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(h.terms).toHaveLength(2);
+        const fresh = h.terms[1];
+        if (reason === "departure") h.suggestions.resetDocument();
+        else if (reason === "destroy") h.plugin.destroy();
+        else if (reason === "selection") {
+          const previous = h.state();
+          const transaction = previous.update({selection: {anchor: 0}});
+          h.view.dispatch(transaction);
+          h.plugin.update({state: h.state(), startState: previous, changes: transaction.changes, docChanged: false,
+            selectionSet: true, focusChanged: false, transactions: [transaction]} as unknown as ViewUpdate);
+        } else if (reason === "blur" || reason === "composition") {
+          const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+            domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+          };
+          if (reason === "blur") definition.domEventHandlers.blur.call(h.plugin);
+          else definition.domEventHandlers.compositionstart.call(h.plugin);
+        } else h.plugin.clear();
+        h.suggestions.configureWritingIndexContext("later-catalog");
+        h.suggestions.resolveLinkCompletionQuery(fresh, {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+          availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+        await vi.advanceTimersByTimeAsync(2_000);
+        expect(h.terms).toHaveLength(2);
+        expect(h.requests).toEqual([]);
+        expect(h.cancelledTerms).toEqual([h.terms[0], fresh]);
+        expect(h.plugin.decorations.size).toBe(0);
+        expect(h.plugin.accept()).toBe(false);
+        expect(h.state().field(exactSourceState).text).toBe("A claim about res");
+        expect(undoDepth(h.state())).toBe(0);
+      } finally { h.plugin.destroy(); vi.useRealTimers(); }
+    });
+
   it("does not query or accept inline writing in read-only or noneditable states", async () => {
     vi.useFakeTimers();
     for (const options of [{readOnly: true}, {editable: false}]) {
       const h = inlineContinuationHarness("A claim about res", options);
-      await vi.advanceTimersByTimeAsync(1_200);
+      await vi.advanceTimersByTimeAsync(800);
       expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
-      expect(h.suggestions.writingCompletionSource(new CompletionContext(h.state(), h.state().doc.length, false))).toBeNull();
+      expect(h.termQueries).toEqual([]);
       expect(h.plugin.accept()).toBe(false);
     }
     for (const extension of [EditorState.readOnly.of(true), EditorView.editable.of(false)]) {
       const h = inlineContinuationHarness();
-      await vi.advanceTimersByTimeAsync(1_200);
+      await vi.advanceTimersByTimeAsync(800);
       h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponse."});
       await vi.advanceTimersByTimeAsync(0);
       expect(h.plugin.decorations.size).toBe(1);
@@ -268,21 +1114,501 @@ describe("AI-first inline continuation", () => {
     vi.useRealTimers();
   });
 
-  it("cancels on dismissal and model change without falling back", async () => {
+  it.each([false, true])("retains an AI round when parsing becomes unavailable before dispatch (cancelled %s)", async cancelled => {
+    vi.useFakeTimers(); let ready = true;
+    const h = inlineContinuationHarness("res", {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      ready = false;
+      await vi.advanceTimersByTimeAsync(300);
+      expect(h.requests).toHaveLength(0); expect(h.plugin.decorations.size).toBe(0);
+      if (cancelled) h.plugin.clear();
+      ready = true;
+      h.plugin.update({view: h.view, state: h.state(), startState: h.state(),
+        docChanged: false, selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(h.requests).toHaveLength(cancelled ? 0 : 1);
+      if (!cancelled) {
+        expect(h.suggestions.resolveWritingContinuation(h.requests[0], {text: "earch"})).toBe(true);
+        expect(h.suggestions.resolveWritingContinuation(h.requests[0], {text: "obsolete"})).toBe(false);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(renderedInlineWidget(h.plugin.decorations).node.dataset.source).toBe("ai");
+      }
+      expect(h.state().field(exactSourceState).text).toBe("res");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["pending", "failed"])("parser recovery after a late local reply preserves the existing AI round (%s)", async phase => {
+    vi.useFakeTimers(); let ready = true;
+    const h = inlineContinuationHarness("A claim about res", {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      const remote = h.requests[0];
+      ready = false;
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state:"current", candidates:[]});
+      await vi.advanceTimersByTimeAsync(0);
+      if (phase === "failed") {
+        h.suggestions.resolveWritingContinuation(remote, {text:null, reason:"Provider unavailable."});
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      ready = true;
+      h.plugin.update({view:h.view, state:h.state(), startState:h.state(), docChanged:false,
+        selectionSet:false, focusChanged:false, transactions:[]} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toEqual([remote]);
+      expect(h.cancelled).toEqual([]);
+      if (phase === "pending") {
+        h.suggestions.resolveWritingContinuation(remote, {text:"ponsibility."});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(renderedInlineWidget(h.plugin.decorations).node.dataset.source).toBe("ai");
+      } else {
+        h.suggestions.resolveLinkCompletionQuery(h.terms.at(-1)!, {state:"current", candidates:[{label:"responsibility", insertion:"", detail:"",
+          availability:"available", writingAction:"term", replacementUTF16Count:3}]});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(renderedInlineWidget(h.plugin.decorations).node.dataset.source).toBe("index");
+        expect(h.view.dom.querySelector(".scholium-writing-feedback-message")?.textContent).toBe("Provider unavailable.");
+      }
+      expect(h.state().field(exactSourceState).text).toBe("A claim about res");
+      expect(undoDepth(h.state())).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["delete.backward", "delete.forward", "undo", "input.paste"])("starts a new paused writing round only for direct deletion (%s)", async event => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("resX");
+    try {
+      const transaction = h.state().update({changes: {from: 3, to: 4}, selection: {anchor: 3},
+        annotations: Transaction.userEvent.of(event)});
+      h.view.dispatch(transaction);
+      h.plugin.update({view: h.view, state: h.state(), startState: transaction.startState,
+        changes: transaction.changes, docChanged: true, selectionSet: true, focusChanged: false,
+        transactions: [transaction]} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(h.requests).toHaveLength(event.startsWith("delete.") ? 1 : 0);
+      expect(h.state().field(exactSourceState).text).toBe("res");
+      if (h.requests.length) {
+        h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility"});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(h.plugin.accept()).toBe(true);
+        expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe("res");
+      }
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["typing", "deletion", "caret", "focus", "composition", "configuration", "lifecycle"])("reports source-free page cancellation cause (%s)", async reason => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("resX");
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      const id = h.requests[0];
+      if (reason === "typing") typeSuffix(h, "x");
+      else if (reason === "deletion" || reason === "caret") {
+        const transaction = h.state().update({...(reason === "deletion" ? {changes: {from: 3, to: 4}} : {}),
+          selection: {anchor: 3}, annotations: Transaction.userEvent.of(reason === "deletion" ? "delete.backward" : "select.pointer")});
+        h.view.dispatch(transaction);
+        h.plugin.update({view: h.view, state: h.state(), startState: transaction.startState,
+          changes: transaction.changes, docChanged: reason === "deletion", selectionSet: true,
+          focusChanged: false, transactions: [transaction]} as unknown as ViewUpdate);
+      } else if (reason === "focus" || reason === "composition") {
+        const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+          domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+        };
+        if (reason === "focus") {
+          Object.defineProperty(h.view, "hasFocus", {value: false});
+          definition.domEventHandlers.blur.call(h.plugin);
+        } else definition.domEventHandlers.compositionstart.call(h.plugin);
+      } else if (reason === "configuration") h.suggestions.configureWritingContinuation(true, "model-b");
+      else h.suggestions.resetDocument();
+      expect(h.cancellationEvents).toEqual([{id, reason}]);
+      expect(h.suggestions.resolveWritingContinuation(id, {text: "obsolete"})).toBe(false);
+      expect(h.plugin.decorations.size).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("dismissal stays quiet; AI configuration changes reroute active writing and ignore predecessors", async () => {
     vi.useFakeTimers();
     const h = inlineContinuationHarness();
-    await vi.advanceTimersByTimeAsync(1_200);
-    h.plugin.clear();
-    h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponse."});
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(h.terms).toEqual([]); expect(h.plugin.decorations.size).toBe(0);
-    h.plugin.schedule(); await vi.advanceTimersByTimeAsync(1_200);
-    h.suggestions.configureWritingContinuation(true, "model-b");
-    h.suggestions.resolveWritingContinuation(h.requests[1], {text: "ponse."});
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(h.cancelled).toEqual(h.requests); expect(h.terms).toEqual([]);
-    expect(h.plugin.decorations.size).toBe(0);
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.plugin.clear();
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility matters."});
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(h.terms).toHaveLength(1); expect(h.plugin.decorations.size).toBe(0);
+      h.plugin.schedule(); await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.configureWritingContinuation(true, "model-b");
+      h.suggestions.resolveWritingContinuation(h.requests[1], {text: "obsolete."});
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(3);
+      expect(h.cancelled).toEqual(h.requests.slice(0, 2));
+      h.suggestions.configureWritingContinuation(false, "model-b");
+      await vi.advanceTimersByTimeAsync(100);
+      expect(h.terms).toHaveLength(4);
+      h.suggestions.resolveWritingContinuation(h.requests[2], {text: "obsolete."});
+      h.suggestions.resolveLinkCompletionQuery(h.terms[3], {state: "current", candidates: [{label: "responsibility", insertion: "", detail: "",
+        availability: "available", writingAction: "term", replacementUTF16Count: 3}]});
+      await vi.advanceTimersByTimeAsync(0);
+      const preview = h.plugin.decorations;
+      h.suggestions.configureWritingContinuation(false, "model-c");
+      expect(h.plugin.decorations).toBe(preview);
+      h.suggestions.configureWritingContinuation(true, "model-c");
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(4);
+      expect(h.terms).toHaveLength(5);
+      h.suggestions.resolveWritingContinuation(h.requests[3], {text: "ponsibility matters."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.labels).toEqual(["Accept AI Continuation"]);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+
+  const localResponsibility = {label: "responsibility", insertion: "", detail: "",
+    availability: "available", writingAction: "term", replacementUTF16Count: 3};
+  const visibleSuffix = (h: ReturnType<typeof inlineContinuationHarness>) =>
+    renderedInlineWidget(h.plugin.decorations).node.querySelector(".scholium-writing-ghost-text")?.textContent;
+
+  it.each(["success", "absence", "failure", "timeout"])("AI priority hides prefetched Index until a settled fallback (%s)", async outcome => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(0);
+      expect(h.plugin.accept()).toBe(false);
+      await vi.advanceTimersByTimeAsync(700);
+      if (outcome === "timeout") await vi.advanceTimersByTimeAsync(35_000);
+      else h.suggestions.resolveWritingContinuation(h.requests[0], {
+        text: outcome === "success" ? "earch needs care." : null,
+        reason: outcome === "failure" ? "Synthetic service failure" : null,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(visibleSuffix(h)).toBe(outcome === "success" ? "earch needs care." : "ponsibility");
+      const node = renderedInlineWidget(h.plugin.decorations).node;
+      expect(node.dataset.source).toBe(outcome === "success" ? "ai" : "index");
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(outcome === "success" ? "research needs care." : "responsibility");
+      expect(undo({state: h.state(), dispatch: t => h.view.dispatch(t)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("res");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([true, false])("disabling AI publishes only a confirmed current hidden local cache (fresh %s)", async fresh => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0); expect(h.plugin.decorations.size).toBe(0);
+      if (!fresh) h.suggestions.configureWritingIndexContext("changed");
+      h.suggestions.configureWritingContinuation(false, "model-a");
+      expect(h.cancelled).toEqual([h.requests[0]]);
+      if (fresh) expect(visibleSuffix(h)).toBe("ponsibility");
+      else { expect(h.plugin.decorations.size).toBe(0); expect(h.plugin.accept()).toBe(false); }
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "OLD."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.state().field(exactSourceState).text).toBe("res");
+      if (fresh) expect(renderedInlineWidget(h.plugin.decorations).node.dataset.source).toBe("index");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([true, false])("AI absence waits for current cache validation after catalog change (available %s)", async available => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      h.suggestions.configureWritingIndexContext("changed");
+      await vi.advanceTimersByTimeAsync(0);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(0); expect(h.plugin.accept()).toBe(false);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[1], {state: "current", candidates: available ? [localResponsibility] : []});
+      await vi.advanceTimersByTimeAsync(0);
+      if (available) expect(visibleSuffix(h)).toBe("ponsibility");
+      else expect(h.plugin.decorations.size).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["same", "source", "caret", "mode", "composition", "dismiss", "departure", "disabled"])("ordinary blur resumes only its unchanged writing round (%s)", async change => {
+    vi.useFakeTimers(); const options = {mode: "livePreview" as EditorMode}; const h = inlineContinuationHarness("res", options);
+    try {
+      await vi.advanceTimersByTimeAsync(800); expect(h.requests).toHaveLength(1);
+      Object.assign(h.view, {hasFocus: false});
+      const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+        domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+      };
+      definition.domEventHandlers.blur.call(h.plugin);
+      h.plugin.update({state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: true, transactions: []} as unknown as ViewUpdate);
+      expect(h.cancelled).toEqual([h.requests[0]]);
+      if (change === "composition") definition.domEventHandlers.compositionstart.call(h.plugin);
+      else if (change === "dismiss") h.plugin.clear();
+      else if (change === "departure") h.suggestions.resetDocument();
+      else if (change === "disabled") h.suggestions.configureWritingContinuation(false, "model-a");
+      else if (change === "mode") options.mode = "source";
+      const previous = h.state();
+      const transaction = previous.update(change === "source" ? {changes: {from: 0, insert: "x"}}
+        : change === "caret" ? {selection: {anchor: 0}} : {});
+      h.view.dispatch(transaction); Object.assign(h.view, {hasFocus: true});
+      h.plugin.update({state: h.state(), startState: previous, changes: transaction.changes,
+        docChanged: transaction.docChanged, selectionSet: transaction.selection !== undefined,
+        focusChanged: true, transactions: [transaction]} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(change === "same" ? 2 : 1);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "OLD."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["same", "matching-input", "source", "caret", "mode", "composition", "dismiss", "departure", "disabled", "configuration", "index"])("reuses only a validated unchanged AI suffix after blur (%s)", async change => {
+    vi.useFakeTimers(); const options = {mode: "livePreview" as EditorMode}; const h = inlineContinuationHarness("res", options);
+    try {
+      await vi.advanceTimersByTimeAsync(400);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility"});
+      await vi.advanceTimersByTimeAsync(0);
+      if (change === "matching-input") typeSuffix(h, "pon");
+      const original = h.state().field(exactSourceState).text;
+      Object.assign(h.view, {hasFocus: false});
+      const definition = (h.suggestions.extension as Extension[])[1] as unknown as {
+        domEventHandlers: {blur(this: unknown): void; compositionstart(this: unknown): void};
+      };
+      definition.domEventHandlers.blur.call(h.plugin);
+      // CodeMirror delivers focus loss after DOM blur: retention must be idempotent.
+      h.plugin.update({state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: true, transactions: []} as unknown as ViewUpdate);
+      expect(h.plugin.decorations.size).toBe(0);
+      if (change === "composition") definition.domEventHandlers.compositionstart.call(h.plugin);
+      else if (change === "dismiss") h.plugin.clear();
+      else if (change === "departure") h.suggestions.resetDocument();
+      else if (change === "disabled") h.suggestions.configureWritingContinuation(false, "model-a");
+      else if (change === "configuration") h.suggestions.configureWritingContinuation(true, "model-b");
+      else if (change === "index") h.suggestions.configureWritingIndexContext("new-index");
+      else if (change === "mode") options.mode = "source";
+      const previous = h.state();
+      const transaction = previous.update(change === "source" ? {changes: {from: 0, insert: "x"}}
+        : change === "caret" ? {selection: {anchor: 0}} : {});
+      h.view.dispatch(transaction); Object.assign(h.view, {hasFocus: true});
+      h.plugin.update({state: h.state(), startState: previous, changes: transaction.changes,
+        docChanged: transaction.docChanged, selectionSet: transaction.selection !== undefined,
+        focusChanged: true, transactions: [transaction]} as unknown as ViewUpdate);
+      const reused = change === "same" || change === "matching-input";
+      expect(h.plugin.decorations.size).toBe(reused ? 1 : 0);
+      if (reused) {
+        expect(visibleSuffix(h)).toBe(change === "matching-input" ? "sibility" : "ponsibility");
+        expect(h.state().field(exactSourceState).text).toBe(original);
+        await vi.advanceTimersByTimeAsync(800);
+        expect(h.requests).toHaveLength(1);
+        expect(h.plugin.accept()).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe("responsibility");
+        expect(undo(h.view)).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(original);
+      } else {
+        await vi.advanceTimersByTimeAsync(400);
+        expect(h.requests).toHaveLength(change === "configuration" || change === "index" ? 2 : 1);
+        expect(h.plugin.decorations.size).toBe(0);
+      }
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([true, false])("publishes AI while local remains hidden without concurrent ghosts (compatible %s)", async compatible => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations.size).toBe(0); const before = h.plugin.decorations;
+      await vi.advanceTimersByTimeAsync(700);
+      h.suggestions.setWritingContinuationStatus(h.requests[0], {phase: "generating"});
+      expect(h.plugin.decorations).toBe(before);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: compatible ? "ponsibility is shared." : "earch needs care."});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(visibleSuffix(h)).toBe(compatible ? "ponsibility is shared." : "earch needs care.");
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe(compatible ? "responsibility is shared." : "research needs care.");
+      expect(undo({state: h.state(), dispatch: t => h.view.dispatch(t)})).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("res");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("starts a fresh AI-priority round after matching input consumes a local fallback", async () => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null});
+      await vi.advanceTimersByTimeAsync(0); expect(visibleSuffix(h)).toBe("ponsibility");
+      typeSuffix(h, "pon"); expect(h.plugin.decorations.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[1], {text: "dents need care."});
+      await vi.advanceTimersByTimeAsync(0); expect(visibleSuffix(h)).toBe("dents need care.");
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("respondents need care.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each(["same", "model", "effort", "source", "caret", "departure", "disabled"])("enabling in Settings resumes only the unchanged focused caret (%s)", async change => {
+    vi.useFakeTimers(); const h=inlineContinuationHarness("res",{aiEnabled:false});
+    try {
+      h.plugin.clear(); Object.assign(h.view,{hasFocus:false});
+      h.suggestions.configureWritingContinuation(true,"model-a");
+      await vi.advanceTimersByTimeAsync(800); expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
+      if (change==="model" || change==="effort") h.suggestions.configureWritingContinuation(true,change);
+      if (change==="departure") h.suggestions.resetDocument();
+      else if (change==="disabled") h.suggestions.configureWritingContinuation(false,"model-a");
+      const previous=h.state();
+      const transaction=previous.update(change==="source" ? {changes:{from:0,insert:"x"}} : change==="caret" ? {selection:{anchor:0}} : {});
+      h.view.dispatch(transaction); Object.assign(h.view,{hasFocus:true});
+      h.plugin.update({state:h.state(),startState:previous,changes:transaction.changes,docChanged:transaction.docChanged,
+        selectionSet:transaction.selection!==undefined,focusChanged:true,transactions:[transaction]} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(h.requests).toHaveLength(["same","model","effort"].includes(change) ? 1 : 0);
+      expect(h.terms).toHaveLength(["same","model","effort"].includes(change) ? 1 : 0);
+    } finally {h.plugin.destroy();vi.useRealTimers();}
+  });
+
+  it("ignores local replies after AI publication and cancels pending AI when local is accepted", async () => {
+    vi.useFakeTimers();
+    for (const aiFirst of [true, false]) {
+      const h = inlineContinuationHarness("res");
+      try {
+        await vi.advanceTimersByTimeAsync(800);
+        if (aiFirst) {
+          h.suggestions.resolveWritingContinuation(h.requests[0], {text: "earch is needed."});
+          await vi.advanceTimersByTimeAsync(0);
+        } else {
+          h.suggestions.resolveWritingContinuation(h.requests[0], {text: null});
+          await vi.advanceTimersByTimeAsync(0);
+        }
+        h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(visibleSuffix(h)).toBe(aiFirst ? "earch is needed." : "ponsibility");
+        expect(h.plugin.accept()).toBe(true);
+        h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility is shared."});
+        await vi.advanceTimersByTimeAsync(0);
+        expect(h.state().field(exactSourceState).text).toBe(aiFirst ? "research is needed." : "responsibility");
+        expect(h.plugin.decorations.size).toBe(0);
+        expect(h.cancelled).toEqual([]);
+      } finally { h.plugin.destroy(); }
+    }
     vi.useRealTimers();
+  });
+
+  it("freezes queued AI Tab through parser readiness and late local publication", async () => {
+    vi.useFakeTimers(); let ready = true; const h = inlineContinuationHarness("res", {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "earch needs care."});
+      await vi.advanceTimersByTimeAsync(0);
+      ready = false; expect(h.plugin.accept()).toBe(true);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      ready = true;
+      h.plugin.update({state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.state().field(exactSourceState).text).toBe("research needs care.");
+      expect(h.labels).toEqual(["Accept AI Continuation"]);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("restarts AI priority after matching fallback input waits for parsing", async () => {
+    vi.useFakeTimers(); let ready = true; const h = inlineContinuationHarness("res", {contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: null});
+      await vi.advanceTimersByTimeAsync(0);
+      ready = false; typeSuffix(h, "pon");
+      expect(h.plugin.decorations.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(1_000); expect(h.requests).toHaveLength(1);
+      ready = true;
+      h.plugin.update({state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(399); expect(h.requests).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1); expect(h.requests).toHaveLength(2);
+      h.suggestions.resolveWritingContinuation(h.requests[1], {text: "dents need care."});
+      await vi.advanceTimersByTimeAsync(0); expect(visibleSuffix(h)).toBe("dents need care.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([false, true])("restores AI after configuration waits for parsing with retained local (already enabled %s)", async enabled => {
+    vi.useFakeTimers(); let ready = true;
+    const h = inlineContinuationHarness("res", {aiEnabled: enabled, contextReady: () => ready});
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(700);
+      ready = false; h.suggestions.configureWritingContinuation(true, "model-b");
+      expect(h.plugin.decorations.size).toBe(0);
+      await vi.advanceTimersByTimeAsync(1_000); expect(h.requests).toHaveLength(enabled ? 1 : 0);
+      ready = true;
+      h.plugin.update({state: h.state(), startState: h.state(), docChanged: false,
+        selectionSet: false, focusChanged: false, transactions: []} as unknown as ViewUpdate);
+      await vi.advanceTimersByTimeAsync(399); expect(h.requests).toHaveLength(enabled ? 1 : 0);
+      await vi.advanceTimersByTimeAsync(1); expect(h.requests).toHaveLength(enabled ? 2 : 1);
+      expect(h.plugin.decorations.size).toBe(0);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("retains hidden local prefetch and pending AI through an index refresh", async () => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(700); const before = h.plugin.decorations;
+      h.suggestions.configureWritingIndexContext("autosave");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.plugin.decorations).toBe(before); expect(h.cancelled).toEqual([]);
+      h.suggestions.resolveLinkCompletionQuery(h.terms[1], {state: "current", candidates: [localResponsibility]});
+      await vi.advanceTimersByTimeAsync(0);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility is shared."});
+      await vi.advanceTimersByTimeAsync(0); expect(visibleSuffix(h)).toBe("ponsibility is shared.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("rejects a captured pointer target after matching AI input changes its visible suffix", async () => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility is shared."});
+      await vi.advanceTimersByTimeAsync(0);
+      vi.stubGlobal("document", h.view.dom.ownerDocument);
+      let node!: HTMLElement;
+      h.plugin.decorations.between(0, 100, (_from, _to, d) => { node = d.spec.widget.toDOM(h.view); });
+      vi.unstubAllGlobals(); h.view.dom.append(node);
+      const Event = node.ownerDocument.defaultView!.Event;
+      node.dispatchEvent(new Event("mousedown"));
+      typeSuffix(h, "pon");
+      h.plugin.decorations.between(0, 100, (_from, _to, d) => d.spec.widget.updateDOM(node));
+      node.dispatchEvent(new Event("click"));
+      expect(h.state().field(exactSourceState).text).toBe("respon");
+      expect(h.labels).toEqual([]); expect(visibleSuffix(h)).toBe("sibility is shared.");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("accepts the consumed AI suffix and provenance through a reused widget DOM", async () => {
+    vi.useFakeTimers(); const h = inlineContinuationHarness("res");
+    try {
+      await vi.advanceTimersByTimeAsync(800);
+      h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility is shared."});
+      await vi.advanceTimersByTimeAsync(0);
+      vi.stubGlobal("document", h.view.dom.ownerDocument); let node!: HTMLElement;
+      h.plugin.decorations.between(0, 100, (_from, _to, d) => { node = d.spec.widget.toDOM(h.view); });
+      vi.unstubAllGlobals(); h.view.dom.append(node);
+      typeSuffix(h, "pon");
+      h.plugin.decorations.between(0, 100, (_from, _to, d) => d.spec.widget.updateDOM(node));
+      const Event = node.ownerDocument.defaultView!.Event;
+      node.dispatchEvent(new Event("mousedown")); node.dispatchEvent(new Event("click"));
+      expect(h.state().field(exactSourceState).text).toBe("responsibility is shared.");
+      expect(h.labels).toEqual(["Accept AI Continuation"]);
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it("rejects every C1 and direction-control suffix without rejecting visible multilingual or ZWJ text", () => {
+    const forbidden = [...Array.from({length:32}, (_, i) => String.fromCodePoint(0x80 + i)), "\u061c", "\u200e", "\u200f"];
+    for (const control of forbidden) expect(safeContinuationSuffix("a" + control + "b")).toBeNull();
+    for (const suffix of [" follows.", "进一步验证。", " فرضية", " e\u0301.", " 👩‍👩‍👧‍👦 remains."]) expect(safeContinuationSuffix(suffix)).toBe(suffix);
   });
 
   it("rejects multiline, hidden controls, Markdown structures and malformed UTF16", () => {
@@ -302,7 +1628,7 @@ describe("AI-first inline continuation", () => {
       ["[[respons", {}], ["Claim @author", {}], ["Claim /table", {}],
     ] as const) {
       const h = inlineContinuationHarness(source, options);
-      await vi.advanceTimersByTimeAsync(1_200);
+      await vi.advanceTimersByTimeAsync(800);
       expect(h.requests).toEqual([]); expect(h.terms).toEqual([]);
       h.plugin.clear();
     }
@@ -472,7 +1798,6 @@ describe("Edit input suggestions", () => {
       [suggestions.wikilinkCompletionSource, "[["],
       [suggestions.analysisReferenceCompletionSource, "@"],
       [suggestions.citationCompletionSource, "@"],
-      [suggestions.writingCompletionSource, "res"],
     ] as const) {
       expect(synchronousResult(source, text)).toBeNull();
     }
@@ -918,61 +2243,67 @@ describe("Edit input suggestions", () => {
 });
 
 describe("Indexed writing suggestions", () => {
+  const candidate = {label: "responsibility", insertion: "responsibility", detail: "Origin",
+    availability: "available", writingAction: "term", replacementUTF16Count: 3};
+
+  async function localPreview(text: string, options: Parameters<typeof inlineContinuationHarness>[1] = {}) {
+    const h = inlineContinuationHarness(text, {...options, aiEnabled: false});
+    await vi.advanceTimersByTimeAsync(100);
+    if (h.terms[0]) h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state:"current", candidates:[candidate]});
+    await vi.advanceTimersByTimeAsync(0);
+    return h;
+  }
+
   it.each(["Compare [[Value]] with res", "Email author@example.org and res", "Compare A/B with res"])(
     "completes after finished syntax and ordinary punctuation: %s", async text => {
-      const {suggestions, request} = controller();
-      const state = EditorState.create({doc: text, selection: {anchor: text.length}});
-      const pending = suggestions.writingCompletionSource(new CompletionContext(state, text.length, false));
-      expect(request()?.kind).toBe("term");
-      suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility",
-        detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
-      const result = (await pending)!;
-      const mutable = mutableView(state);
-      const choice = result.options[0];
-      if (typeof choice.apply === "function") choice.apply(mutable.view, choice, result.from, text.length);
-      expect(mutable.state().doc.toString()).toBe(text + "ponsibility");
+      vi.useFakeTimers(); const h = await localPreview(text);
+      try {
+        expect(h.termQueries[0]?.kind).toBe("term");
+        expect(h.plugin.accept()).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(text + "ponsibility");
+      } finally { h.plugin.destroy(); vi.useRealTimers(); }
     });
 
-  it.each(["Read [[Val", "According to @Scanlon res", "Try /date"])("suppresses Index while a caret-owned trigger remains open: %s", text => {
-    const {suggestions, request} = controller();
-    expect(synchronousResult(suggestions.writingCompletionSource, text)).toBeNull();
-    expect(request()).toBeNull();
+  it.each(["Read [[Val", "According to @Scanlon res", "Try /date"])("suppresses Index while a caret-owned trigger remains open: %s", async text => {
+    vi.useFakeTimers(); const h = await localPreview(text);
+    try { expect(h.termQueries).toEqual([]); expect(h.plugin.accept()).toBe(false); }
+    finally { h.plugin.destroy(); vi.useRealTimers(); }
   });
-  it("inserts a term as ordinary text and rejects acceptance after an edit", async () => {
-    const {suggestions, request} = controller();
-    const state = EditorState.create({doc: "res", selection: {anchor: 3}});
-    const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
-    expect(request()?.kind).toBe("term");
-    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
-    const result = (await pending)!;
-    const mutable = mutableView(state);
-    const choice = result.options[0];
-    if (typeof choice.apply === "function") choice.apply(mutable.view, choice, result.from, 3);
-    expect(mutable.state().doc.toString()).toBe("responsibility");
-    const changed = mutableView(state);
-    changed.view.dispatch({changes: {from: 3, insert: "x"}});
-    if (typeof choice.apply === "function") choice.apply(changed.view, choice, result.from, 3);
-    expect(changed.state().doc.toString()).toBe("resx");
+
+  it("inserts a term as ordinary text and rejects the previous candidate after an edit", async () => {
+    vi.useFakeTimers(); const h = await localPreview("res"), changed = await localPreview("res");
+    try {
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("responsibility");
+      const transaction = changed.state().update({changes:{from:3,insert:"x"}, selection:{anchor:4}, userEvent:"input.type"});
+      changed.view.dispatch(transaction);
+      changed.plugin.update({view:changed.view,state:changed.state(),startState:transaction.startState,
+        changes:transaction.changes,docChanged:true,selectionSet:true,focusChanged:false,transactions:[transaction]} as unknown as ViewUpdate);
+      expect(changed.plugin.accept()).toBe(false);
+      expect(changed.state().field(exactSourceState).text).toBe("resx");
+    } finally { h.plugin.destroy(); changed.plugin.destroy(); vi.useRealTimers(); }
   });
+
   it("preserves capitalization and source bytes before the ghost suffix", async () => {
-    const {suggestions, request} = controller();
-    const state = EditorState.create({doc: "Res", selection: {anchor: 3}});
-    const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
-    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", availability: "available", writingAction: "term", replacementUTF16Count: 3}]);
-    const result = (await pending)!;
-    const mutable = mutableView(state);
-    const choice = result.options[0];
-    if (typeof choice.apply === "function") choice.apply(mutable.view, choice, result.from, 3);
-    expect(mutable.state().doc.toString()).toBe("Responsibility");
+    vi.useFakeTimers(); const h = await localPreview("\uFEFFEarlier 😀 e\u0301.\r\nRes");
+    try {
+      expect(h.plugin.accept()).toBe(true);
+      expect(h.state().field(exactSourceState).text).toBe("\uFEFFEarlier 😀 e\u0301.\r\nResponsibility");
+    } finally { h.plugin.destroy(); vi.useRealTimers(); }
   });
-  it("leaves IME composition and existing word tails untouched", () => {
-    expect(synchronousResult(controller("livePreview", [], true).suggestions.writingCompletionSource, "res")).toBeNull();
-    const state = EditorState.create({doc: "result", selection: {anchor: 3}});
-    expect(controller().suggestions.writingCompletionSource(new CompletionContext(state, 3, false))).toBeNull();
+
+  it("leaves IME composition and existing word tails untouched", async () => {
+    vi.useFakeTimers(); const composing = await localPreview("res", {composing:true}), tail = await localPreview("result", {caret:3});
+    try {
+      for (const h of [composing, tail]) { expect(h.termQueries).toEqual([]); expect(h.plugin.accept()).toBe(false); }
+    } finally { composing.plugin.destroy(); tail.plugin.destroy(); vi.useRealTimers(); }
   });
-  it("does not suggest after spaces or at the end of a protected region", () => {
-    expect(synchronousResult(controller().suggestions.writingCompletionSource, "   ")).toBeNull();
-    expect(synchronousResult(controller("source", [{from: 0, to: 3}]).suggestions.writingCompletionSource, "res")).toBeNull();
+
+  it("does not suggest after spaces or at the end of a protected region", async () => {
+    vi.useFakeTimers(); const blank = await localPreview("   "), protectedText = await localPreview("res", {mode:"source", protectedRanges:[{from:0,to:3}]});
+    try {
+      for (const h of [blank, protectedText]) { expect(h.termQueries).toEqual([]); expect(h.plugin.accept()).toBe(false); }
+    } finally { blank.plugin.destroy(); protectedText.plugin.destroy(); vi.useRealTimers(); }
   });
 });
 

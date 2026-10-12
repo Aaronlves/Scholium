@@ -1,3 +1,4 @@
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumApp
@@ -5,6 +6,40 @@ import Testing
 @Suite("Editor writing continuation request ownership")
 @MainActor
 struct EditorWritingContinuationControllerTests {
+    @Test(
+        "Retained or preparing editor cancellation releases its request and rejects late output",
+        arguments: [DocumentSurfaceVisibility.retained, .preparing])
+    func inactiveCoordinatorCancelsRequest(visibility: DocumentSurfaceVisibility) async {
+        let session = MarkdownEditorSession(
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            citationIntegration: UnavailableContinuationCitationPort()
+        )
+        let coordinator = MarkdownEditorWebView.Coordinator(
+            session: session, performanceDocumentID: "continuation-fixture",
+            onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
+            onRequestDocumentTitleRename: { _, title in title },
+            linkCompletionQuery: { _, _ in .current([]) }, onLinkActivation: { _ in },
+            onImagePreview: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }
+        )
+        let query = SuspendedContinuationQuery()
+        var publications: [EditorWritingContinuationController.Publication] = []
+        let task = coordinator.writingContinuation.start(
+            requestID: "hidden-editor", sourceCaret: 2, editorCaret: 2,
+            query: { _, status in await query.run(status: status) },
+            isCurrent: { true }, publish: { publications.append($0) }
+        )
+        await query.waitUntilStarted()
+        coordinator.surfaceVisibility = visibility
+        #expect(coordinator.writingContinuation.requestID == nil)
+        #expect(coordinator.writingContinuation.editorCaret == nil)
+        coordinator.surfaceVisibility = .active
+        query.finish(.suggestion("late output"))
+        await task.value
+        #expect(task.isCancelled)
+        #expect(publications.isEmpty)
+        #expect(coordinator.writingContinuation.requestID == nil)
+    }
+
     @Test("A replaced request cannot publish or clear its successor, even with a reused request ID")
     func replacedRequestCannotAffectSuccessor() async {
         let controller = EditorWritingContinuationController()
@@ -143,4 +178,16 @@ private final class SuspendedContinuationQuery {
 @MainActor
 private final class PageAdmission {
     var isCurrent = true
+}
+
+private actor UnavailableContinuationCitationPort: ZoteroDocumentIntegrating {
+    func run(
+        transactionID: String, command: ZoteroDocumentCommand, documentID: String,
+        authority: @escaping @Sendable () async -> ZoteroDocumentAuthority,
+        handler: @escaping @Sendable (ZoteroDocumentCallback) async throws -> ZoteroDocumentReply
+    ) async -> ZoteroDocumentIntegrationResult {
+        Issue.record("A continuation ownership test must not request Zotero.")
+        return .init(status: .unavailable, remoteCleanupConfirmed: false, callbackCount: 0, message: nil)
+    }
+    func cancelCurrentTransaction(transactionID: String) async {}
 }

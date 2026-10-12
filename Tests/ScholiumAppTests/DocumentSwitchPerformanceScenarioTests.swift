@@ -508,7 +508,7 @@ import WebKit
                         session: editor, documentID: editor.bridgeDocumentID, documentTitle: "Synthetic",
                         performanceDocumentID: "synthetic-hidden-switch", source: document.source, mode: model.retainedEditorMode,
                         presentationCSS: "", userCSS: "", requiresMathRuntime: false,
-                        linkCompletionQuery: { _, _ in [] }, linkPreviews: [],
+                        linkCompletionQuery: { _, _ in .current([]) }, linkPreviews: [],
                         initialScrollFraction: model.editorScrollFraction, initialScrollAnchor: model.editorScrollAnchor,
                         onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
                         onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },

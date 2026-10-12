@@ -1,3 +1,4 @@
+import {writingCaretIsReadable} from "./writing-readable-context";
 import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets} from "./document-widget-readiness";
 import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
@@ -48,6 +49,7 @@ import {
   indentUnit,
   indentOnInput,
   syntaxTree,
+  syntaxTreeAvailable,
 } from "@codemirror/language";
 import {
   cursorLineBoundaryBackward,
@@ -210,7 +212,7 @@ interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   prepareForReuse(): boolean;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
-  resolveWritingContinuation(requestID: string, value: unknown): void;
+  resolveWritingContinuation(requestID: string, value: unknown): boolean;
   setWritingContinuationStatus(requestID: string, value: unknown): void;
   resolveDocumentTitleRename(
     requestID: string,
@@ -1859,6 +1861,8 @@ const inputSuggestions = createEditorInputSuggestions({
   dialect: () => editingDialect,
   isComposing: () => editor.compositionStarted || compositionGate.active,
   protectedRanges: protectedCommandRanges,
+  canContinueWriting: (state, position) => writingCaretIsReadable(state, liveProjectionIndex.index(state), position),
+  writingContextReady: (state, position) => syntaxTreeAvailable(state, Math.min(state.doc.length, position + 1)),
   requestLinkCompletions: (requestID, completionKind, query) => {
     post({type: "linkCompletionQuery", requestID, completionKind, query});
   },
@@ -1870,7 +1874,8 @@ const inputSuggestions = createEditorInputSuggestions({
     }
     post({type: "writingContinuationQuery", requestID, caretUTF16Offset, editorCaretUTF16Offset: position});
   },
-  cancelWritingContinuation: requestID => post({type: "cancelWritingContinuation", requestID}),
+  cancelWritingContinuation: (requestID, reason) => post({type: "cancelWritingContinuation", requestID, reason}),
+  cancelWritingTermQuery: requestID => post({type: "cancelWritingTermQuery", requestID}),
   didApply: (undoLabel) => {
     lastUndoLabel = undoLabel;
     lastRedoLabel = undoLabel;
@@ -2760,10 +2765,12 @@ function finishComposition(owner: "editor" | "title") {
   // gate closed until that task has published its source generation.
   const attachment = documentAttachment;
   window.setTimeout(() => {
-    if (attachment !== documentAttachment) return;
+    if (attachment !== documentAttachment || revision === undefined
+      || revision !== compositionGate.revision(owner)) return;
     const pending = compositionGate.finish(owner, revision);
     for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
     publishEditorContext();
+    if (owner === "editor" && !compositionGate.active) inputSuggestions.resumeWritingAfterComposition();
   }, 0);
 }
 editor.contentDOM.addEventListener("compositionend", event => {

@@ -35,14 +35,9 @@ import ScholiumContracts
         vocabulary = [:]
     }
 
-    func terms(_ query: String, notes: [WorkspaceCatalogNote]) -> [EditorLinkCompletion] {
-        guard query.count >= 2 else { return [] }
-        let suffixes = (2...min(48, query.count)).reversed().compactMap { count -> String? in
-            let suffix = String(query.suffix(count))
-            let previous = query.dropLast(count).last
-            guard previous == nil || previous?.isWhitespace == true || SearchTokenization.containsCJK(suffix) else { return nil }
-            return suffix
-        }
+    func terms(_ query: String, notes: [WorkspaceCatalogNote], bodyTerms: [String] = []) -> [EditorLinkCompletion] {
+        let suffixes = WritingCompletionPrefix.suffixes(in: query)
+        guard !suffixes.isEmpty else { return [] }
         var seen = Set<String>()
         var result: [(EditorLinkCompletion, Int)] = []
         for note in notes {
@@ -53,8 +48,7 @@ import ScholiumContracts
                 let normalized = SearchTextNormalization.normalize(word)
                 guard
                     let prefix = suffixes.first(where: {
-                        let value = SearchTextNormalization.normalize($0)
-                        return value.count >= 2 && normalized.hasPrefix(value) && normalized != value
+                        WritingCompletionPrefix.canAppend(word, after: $0)
                     }), seen.insert(normalized).inserted
                 else { continue }
                 var candidate = EditorLinkCompletion(
@@ -66,8 +60,22 @@ import ScholiumContracts
                 result.append((candidate, prefix.utf16.count))
             }
         }
+        for word in bodyTerms {
+            let normalized = SearchTextNormalization.normalize(word)
+            guard let prefix = suffixes.first(where: { WritingCompletionPrefix.canAppend(word, after: $0) }),
+                seen.insert(normalized).inserted
+            else { continue }
+            var candidate = EditorLinkCompletion(
+                label: word, insertion: Self.plainMarkdown(word), detail: "", displayText: nil,
+                availability: .available, unavailableReason: nil)
+            candidate.writingAction = "term"
+            candidate.replacementUTF16Count = prefix.utf16.count
+            result.append((candidate, prefix.utf16.count))
+        }
         return result.sorted {
-            $0.1 == $1.1 ? $0.0.label < $1.0.label : $0.1 > $1.1
+            if $0.1 != $1.1 { return $0.1 > $1.1 }
+            if $0.0.label.utf16.count != $1.0.label.utf16.count { return $0.0.label.utf16.count < $1.0.label.utf16.count }
+            return $0.0.label < $1.0.label
         }.prefix(5).map(\.0)
     }
 

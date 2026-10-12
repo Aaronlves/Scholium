@@ -34,6 +34,7 @@ struct WritingAssistanceModelSettingsContent: View {
 }
 
 struct WritingContinuationSettingsContent: View {
+    @Environment(\.agentChatSettingsController) private var controller
     @ObservedObject private var preferences = WritingAssistancePreferences.shared
 
     var body: some View {
@@ -42,6 +43,19 @@ struct WritingContinuationSettingsContent: View {
                 Text(ScholiumL10n.WritingAssistance.enable)
             }
             .accessibilityIdentifier("scholium.settings.writingContinuation.enabled")
+            if let controller {
+                WritingContinuationEffortSettings(controller: controller, preferences: preferences)
+                    .id(controller.triptychID)
+            } else {
+                WritingContinuationEffortPicker(preferences: preferences, efforts: [])
+                Text(ScholiumL10n.WritingAssistance.openTriptych)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(ScholiumL10n.WritingAssistance.effortExplanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Text(ScholiumL10n.WritingAssistance.trigger)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -96,5 +110,69 @@ private struct WritingAssistanceModelPicker: View {
         }
         .disabled(availableModels.isEmpty)
         .accessibilityIdentifier("scholium.settings.writingContinuation.model")
+    }
+}
+
+private struct WritingContinuationEffortSettings: View {
+    @ObservedObject var controller: AgentChatController
+    @ObservedObject var preferences: WritingAssistancePreferences
+
+    private var connected: Bool { controller.connectionState == .ready && controller.account != nil }
+    private var model: AgentChatModel? {
+        connected ? controller.writingAssistanceModels.first { $0.model == preferences.model } : nil
+    }
+
+    var body: some View {
+        WritingContinuationEffortPicker(preferences: preferences, efforts: model.map { controller.continuationEfforts(for: $0) } ?? [])
+        if !connected {
+            Text(ScholiumL10n.WritingAssistance.connect)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if model == nil {
+            Text(ScholiumL10n.WritingAssistance.unavailableModel)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct WritingContinuationEffortPicker: View {
+    @ObservedObject var preferences: WritingAssistancePreferences
+    let efforts: [String]
+    private var effectiveAutomatic: String {
+        efforts.first.map(AgentChatControlLabels.effort) ?? ScholiumL10n.string("Unavailable")
+    }
+    private var unavailableSelection: Bool {
+        guard let effort = preferences.continuationEffort else { return false }
+        return !preferences.continuationEffortIsValid || !efforts.contains(effort)
+    }
+
+    var body: some View {
+        Picker(selection: $preferences.continuationEffort) {
+            Text(ScholiumL10n.WritingAssistance.automaticEffort(effectiveAutomatic))
+                .tag(Optional<String>.none)
+            if unavailableSelection, let selected = preferences.continuationEffort {
+                if preferences.continuationEffortIsValid {
+                    Text("Unavailable: \(AgentChatControlLabels.effort(selected))", bundle: .module)
+                        .tag(Optional(selected)).disabled(true)
+                } else {
+                    Text(ScholiumL10n.WritingAssistance.invalidEffort)
+                        .tag(Optional(selected)).disabled(true)
+                }
+            }
+            ForEach(efforts, id: \.self) { effort in
+                Text(verbatim: AgentChatControlLabels.effort(effort)).tag(Optional(effort))
+            }
+        } label: {
+            Text(ScholiumL10n.WritingAssistance.effort)
+        }
+        .disabled(efforts.isEmpty)
+        .accessibilityIdentifier("scholium.settings.writingContinuation.effort")
+        .id(SettingsSection.writingEffort)
+        if unavailableSelection {
+            Text(ScholiumL10n.WritingAssistance.unavailableEffort)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

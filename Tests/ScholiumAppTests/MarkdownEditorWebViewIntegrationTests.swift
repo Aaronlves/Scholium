@@ -400,114 +400,322 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Inline writing badges clear mid-line source and preview inherits the editor font", arguments: [MarkdownEditorMode.livePreview, .source])
+    @Test("Off-content writing recovery preserves document geometry and preview font", arguments: [MarkdownEditorMode.livePreview, .source])
     func inlineWritingPresentationGeometry(mode: MarkdownEditorMode) async throws {
-        let source = "A claim about res, although"
+        let source = "A claim about res"
         let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let geometry = try #require(
             try await harness.callPageJavaScript(
                 """
-                const line = Array.from(document.querySelectorAll('.cm-line'))
-                  .find(candidate => candidate.textContent?.includes('A claim about res, although'));
-                if (!line) return null;
                 await document.fonts.ready;
-                const beforeHeight = line.getBoundingClientRect().height;
-                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                let textNode;
-                let candidate;
-                while ((candidate = walker.nextNode())) {
-                  if (candidate.textContent?.includes('res')) textNode = candidate;
-                }
-                if (!textNode) return null;
-                const offset = textNode.textContent.indexOf('res') + 3;
-                const caret = document.createRange();
-                caret.setStart(textNode, offset - 1);
-                caret.setEnd(textNode, offset);
-                const caretBefore = caret.getBoundingClientRect().right;
-                const status = document.createElement('span');
-                status.className = 'scholium-writing-status scholium-writing-status-error';
-                const badge = document.createElement('span');
-                badge.className = 'scholium-writing-status-badge';
-                badge.textContent = '!';
-                status.append(badge);
-                const insertion = document.createRange();
-                insertion.setStart(textNode, offset);
-                insertion.collapse(true);
-                insertion.insertNode(status);
-                const statusRect = status.getBoundingClientRect();
-                const preceding = status.previousSibling;
-                if (!preceding || preceding.nodeType !== Node.TEXT_NODE) return null;
-                const caretAfterRange = document.createRange();
-                caretAfterRange.setStart(preceding, preceding.length - 1);
-                caretAfterRange.setEnd(preceding, preceding.length);
-                const caretAfter = caretAfterRange.getBoundingClientRect().right;
-                const followingWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                let commaNode;
-                while ((candidate = followingWalker.nextNode())) {
-                  if (candidate.textContent?.includes(',')) { commaNode = candidate; break; }
-                }
-                if (!commaNode) return null;
-                const commaOffset = commaNode.textContent.indexOf(',');
-                const comma = document.createRange();
-                comma.setStart(commaNode, commaOffset);
-                comma.setEnd(commaNode, commaOffset + 1);
-                const commaX = comma.getBoundingClientRect().left;
-                const badgeRight = badge.getBoundingClientRect().right;
-                const errorHeight = line.getBoundingClientRect().height;
-                const endWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                let endNode;
-                while ((candidate = endWalker.nextNode())) {
-                  if (candidate.textContent?.endsWith('although')) endNode = candidate;
-                }
-                if (!endNode) return null;
-                const end = document.createRange();
-                end.setStart(endNode, endNode.length - 1);
-                end.setEnd(endNode, endNode.length);
-                const endX = end.getBoundingClientRect().right;
-                const ghost = document.createElement('span');
-                ghost.className = 'scholium-writing-ghost';
-                const suffix = document.createElement('span');
-                suffix.className = 'scholium-writing-ghost-text';
-                suffix.textContent = 'ponsibility';
-                const hint = document.createElement('span');
-                hint.className = 'scholium-writing-ghost-key';
-                hint.textContent = 'Index ⇥';
-                ghost.append(suffix, hint);
-                line.append(ghost);
-                const previewHeight = line.getBoundingClientRect().height;
-                const lineStyle = getComputedStyle(line);
-                const ghostStyle = getComputedStyle(suffix);
-                const result = {
-                  beforeHeight, errorHeight, previewHeight, statusWidth: statusRect.width,
-                  statusHeight: statusRect.height, caretShift: caretAfter - caretBefore,
-                  sourceGap: commaX - badgeRight,
-                  ghostGap: suffix.getBoundingClientRect().left - endX,
-                  lineFamily: lineStyle.fontFamily, ghostFamily: ghostStyle.fontFamily,
-                  lineSize: lineStyle.fontSize, ghostSize: ghostStyle.fontSize,
-                };
-                ghost.remove();
-                status.remove();
-                return result;
+                const editor = document.querySelector('.cm-editor');
+                const line = [...document.querySelectorAll('.cm-line')].find(n => n.textContent.includes('A claim about res'));
+                const before = line.getBoundingClientRect();
+                const feedback = document.createElement('div'); feedback.className = 'scholium-writing-feedback';
+                feedback.textContent = 'AI continuation timed out. Retry AI'; editor.append(feedback);
+                const after = line.getBoundingClientRect();
+                const ghost = document.createElement('span'); ghost.className = 'scholium-writing-ghost';
+                const suffix = document.createElement('span'); suffix.className = 'scholium-writing-ghost-text';
+                suffix.textContent = 'ponsibility'; ghost.append(suffix); line.append(ghost);
+                const lineStyle = getComputedStyle(line), ghostStyle = getComputedStyle(suffix);
+                const result = {beforeHeight:before.height, afterHeight:after.height,
+                  beforeLeft:before.left, afterLeft:after.left, offContent:!document.querySelector('.cm-content').contains(feedback),
+                  fontMatches:lineStyle.fontFamily===ghostStyle.fontFamily && lineStyle.fontSize===ghostStyle.fontSize};
+                ghost.remove(); feedback.remove(); return result;
                 """) as? [String: Any])
-        let beforeHeight = try #require((geometry["beforeHeight"] as? NSNumber)?.doubleValue)
-        let errorHeight = try #require((geometry["errorHeight"] as? NSNumber)?.doubleValue)
-        let previewHeight = try #require((geometry["previewHeight"] as? NSNumber)?.doubleValue)
-        let statusWidth = try #require((geometry["statusWidth"] as? NSNumber)?.doubleValue)
-        let statusHeight = try #require((geometry["statusHeight"] as? NSNumber)?.doubleValue)
-        let caretShift = try #require((geometry["caretShift"] as? NSNumber)?.doubleValue)
-        let sourceGap = try #require((geometry["sourceGap"] as? NSNumber)?.doubleValue)
-        let ghostGap = try #require((geometry["ghostGap"] as? NSNumber)?.doubleValue)
-        #expect(abs(beforeHeight - errorHeight) < 0.5)
-        #expect(abs(beforeHeight - previewHeight) < 0.5)
-        #expect(statusWidth > 0 && statusHeight > 0)
-        #expect(abs(caretShift) < 0.5, "Caret shift: \(caretShift); geometry: \(geometry)")
-        #expect(sourceGap >= -0.5, "Badge covers source: \(geometry)")
-        #expect(ghostGap >= 1 && ghostGap <= 5, "Ghost gap: \(ghostGap); geometry: \(geometry)")
-        #expect(geometry["ghostFamily"] as? String == geometry["lineFamily"] as? String)
-        #expect(geometry["ghostSize"] as? String == geometry["lineSize"] as? String)
+        #expect(geometry["offContent"] as? Bool == true)
+        #expect(geometry["fontMatches"] as? Bool == true)
+        #expect(geometry["beforeHeight"] as? Double == geometry["afterHeight"] as? Double)
+        #expect(geometry["beforeLeft"] as? Double == geometry["afterLeft"] as? Double)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "Native generation dots follow the full-height caret and preserve the AI suffix and one Undo",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_NATIVE_WRITING_GUI"] == "1"))
+    func writingPredictionCaretDuringPendingAI() async throws {
+        let source = "# Argument re"
+        var requested = false
+        var startGenerating: CheckedContinuation<Void, Never>?
+        var reply: CheckedContinuation<EditorWritingContinuationResult, Never>?
+        _ = NSApplication.shared
+        let priorPolicy = NSApp.activationPolicy()
+        NSApp.setActivationPolicy(.regular)
+        let harness = EditorHarness(
+            source: source,
+            initialSourceRange: source.utf16.count..<source.utf16.count,
+            laysOutForPointerTesting: true,
+            linkCompletionQuery: { kind, _ in
+                guard kind == .term else { return .current([]) }
+                return .current([
+                    EditorLinkCompletion(
+                        label: "responsibility", insertion: "", detail: "synthetic",
+                        displayText: nil, availability: .available, unavailableReason: nil,
+                        writingAction: "term", replacementUTF16Count: 3)
+                ])
+            },
+            writingContinuationEnabled: true,
+            writingContinuationQuery: { _, status in
+                requested = true
+                await withCheckedContinuation { startGenerating = $0 }
+                guard !Task.isCancelled else { return .unavailable(.cancelled) }
+                status(.generating)
+                return await withCheckedContinuation { reply = $0 }
+            })
+        defer {
+            startGenerating?.resume()
+            reply?.resume(returning: .unavailable(.cancelled))
+            harness.close()
+            NSApp.setActivationPolicy(priorPolicy)
+        }
+        try await harness.waitUntilReady()
+        harness.activateForWritingTesting()
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
+        let focusDeadline = ContinuousClock.now.advanced(by: .seconds(40))
+        while try await harness.callPageJavaScript("return document.hasFocus();") as? Bool != true {
+            guard ContinuousClock.now < focusDeadline else {
+                Issue.record("Native test host could not activate its synthetic editor window")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 's');")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while !requested {
+            guard ContinuousClock.now < deadline else {
+                Issue.record("Native focused editor did not issue the synthetic AI request")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let geometryScript =
+            """
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const line = [...document.querySelectorAll('.cm-line')].find(n => n.textContent.includes('Argument res'));
+            const walk = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            let text, node;
+            while ((node = walk.nextNode())) if (node.textContent.endsWith('res')) text = node;
+            if (!text) return null;
+            const range = document.createRange(); range.setStart(text, text.length - 1); range.setEnd(text, text.length);
+            const glyph = range.getBoundingClientRect();
+            const cursor = document.querySelector('.cm-cursor-primary');
+            const rect = cursor.getBoundingClientRect();
+            return {glyphHeight:glyph.height, glyphTop:glyph.top, glyphRight:glyph.right,
+              caretHeight:parseFloat(cursor.style.height), caretRectHeight:rect.height, caretTop:rect.top, caretLeft:rect.left,
+              lineHeight:line.getBoundingClientRect().height,
+              waitingWidgets:document.querySelectorAll('.cm-content .scholium-writing-activity').length,
+              dots:document.querySelectorAll('.scholium-writing-activity .scholium-writing-orb-dot').length,
+              activityLeft:document.querySelector('.scholium-writing-activity')?.getBoundingClientRect().left ?? null,
+              activityTop:document.querySelector('.scholium-writing-activity')?.getBoundingClientRect().top ?? null,
+              activityBottom:document.querySelector('.scholium-writing-activity')?.getBoundingClientRect().bottom ?? null,
+              activityPointer:document.querySelector('.scholium-writing-activity') ? getComputedStyle(document.querySelector('.scholium-writing-activity')).pointerEvents : null,
+              animation:document.querySelector('.scholium-writing-orb-dot') ? getComputedStyle(document.querySelector('.scholium-writing-orb-dot')).animationName : null,
+              reduceMotion:matchMedia('(prefers-reduced-motion: reduce)').matches};
+            """
+        let before = try #require(try await harness.callPageJavaScript(geometryScript) as? [String: Any])
+        #expect(before["dots"] as? Int == 0, "Preparation remains quiet")
+        let start = try #require(startGenerating)
+        startGenerating = nil
+        start.resume()
+        let animationDeadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while try await harness.callPageJavaScript("return document.querySelector('.scholium-writing-activity')?.style.visibility === 'visible';") as? Bool
+            != true
+        {
+            guard ContinuousClock.now < animationDeadline else {
+                Issue.record("Generation dots did not become visible after the native generating status")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let geometry = try #require(try await harness.callPageJavaScript(geometryScript) as? [String: Any])
+        for key in ["glyphHeight", "glyphTop", "glyphRight", "caretHeight", "caretRectHeight", "caretTop", "caretLeft", "lineHeight"] {
+            #expect(
+                (before[key] as? NSNumber)?.doubleValue == (geometry[key] as? NSNumber)?.doubleValue,
+                "Generation animation changed \(key): \(before) -> \(geometry)")
+        }
+        #expect(geometry["dots"] as? Int == 3)
+        #expect(geometry["activityPointer"] as? String == "none")
+        let activityLeft = try #require((geometry["activityLeft"] as? NSNumber)?.doubleValue)
+        let caretLeft = try #require((geometry["caretLeft"] as? NSNumber)?.doubleValue)
+        #expect(activityLeft > caretLeft + 2, "Dots must follow, rather than obscure, the actual caret")
+        let center =
+            (try #require((geometry["activityTop"] as? NSNumber)?.doubleValue)
+                + (try #require((geometry["activityBottom"] as? NSNumber)?.doubleValue))) / 2
+        #expect(center >= (try #require((geometry["caretTop"] as? NSNumber)?.doubleValue)))
+        #expect(
+            center <= (try #require((geometry["caretTop"] as? NSNumber)?.doubleValue))
+                + (try #require((geometry["caretRectHeight"] as? NSNumber)?.doubleValue)))
+        #expect(geometry["animation"] as? String == (geometry["reduceMotion"] as? Bool == true ? "none" : "scholium-writing-composing"))
+        let glyphHeight = try #require((geometry["glyphHeight"] as? NSNumber)?.doubleValue)
+        let caretHeight = try #require((geometry["caretHeight"] as? NSNumber)?.doubleValue)
+        #expect(caretHeight >= glyphHeight * 0.85, "Native waiting caret collapsed: \(geometry)")
+        #expect(geometry["waitingWidgets"] as? Int == 0, "Waiting status must not own a content/caret decoration")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source + "s")
+        #expect(
+            try await harness.callPageJavaScript("return document.querySelector('.scholium-writing-ghost-text') === null;") as? Bool == true,
+            "AI owns the waiting round; hidden local prefetch cannot replace it")
+        print("NATIVE_WRITING_PENDING_GEOMETRY \(geometry)")
+        if let pending = reply {
+            reply = nil
+            pending.resume(returning: .suggestion("ponsibility is shared."))
+        }
+        let aiDeadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while try await harness.callPageJavaScript("return document.querySelector('.scholium-writing-ghost')?.dataset.source;") as? String != "ai" {
+            guard ContinuousClock.now < aiDeadline else { throw MarkdownEditorSession.SessionError.unavailable }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await harness.callPageJavaScript("return document.querySelector('.scholium-writing-activity') === null;") as? Bool == true)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'pon');")
+        try await harness.waitUntilText(source + "spon")
+        #expect(
+            try await harness.callPageJavaScript("return document.querySelector('.scholium-writing-ghost-text')?.textContent;") as? String
+                == "sibility is shared.")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'Tab', code:'Tab', bubbles:true, cancelable:true}));")
+        try await harness.waitUntilText(source + "sponsibility is shared.")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', metaKey:true, bubbles:true, cancelable:true}));"
+        )
+        try await harness.waitUntilText(source + "spon")
+        print("NATIVE_WRITING_STABLE_SUFFIX_TAB_ONE_UNDO_PASSED")
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "Only admitted editor changes may cancel a current continuation",
+        arguments: ["staleCaret", "staleTitle", "invalidRange", "duplicateDelta", "currentCaret", "currentSource"])
+    func writingContinuationIgnoresRejectedEditorMessages(change: String) async throws {
+        let original = "\u{feff}Earlier 😀.\r\nA claim about re"
+        let harness = EditorHarness(source: original, ordersWindowFront: false)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let end = original.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        try await harness.session.perform(.pastePlain, argument: "s")
+        let current = try await harness.session.currentText(for: harness.documentID)
+        let caret = end + 1
+        let session = harness.session
+        let coordinator = try #require(session.webView?.navigationDelegate as? MarkdownEditorWebView.Coordinator)
+        let revision = (session.rendererInteractionRevision ?? 0) + 10
+        session.updateInteraction(
+            selections: [.init(anchor: caret, head: caret)], line: 2, column: 18, lineCount: 2,
+            documentVersion: session.generation, interactionRevision: revision, context: nil)
+        let envelope = EditorBridgeEnvelope(
+            protocolVersion: markdownEditorProtocolVersion,
+            sessionID: session.sessionID.uuidString, documentID: harness.documentID,
+            startingFingerprint: session.startingFingerprint, documentVersion: session.generation)
+        var reply: CheckedContinuation<EditorWritingContinuationResult, Never>?
+        var publications: [EditorWritingContinuationController.Publication] = []
+        let task = coordinator.writingContinuation.start(
+            requestID: "admission-fixture", sourceCaret: current.utf16.count,
+            editorCaret: caret, query: { _, _ in await withCheckedContinuation { reply = $0 } },
+            isCurrent: { coordinator.admitsWritingContinuationPublication(envelope, source: current, editorCaret: caret) },
+            publish: { publications.append($0) })
+        defer {
+            task.cancel()
+            reply?.resume(returning: .unavailable(.cancelled))
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while reply == nil {
+            guard ContinuousClock.now < deadline else { throw MarkdownEditorSession.SessionError.unavailable }
+            await Task.yield()
+        }
+        if change == "currentSource" {
+            try await session.perform(.pastePlain, argument: "x")
+        } else {
+            var payload: [String: Any] = [
+                "protocolVersion": markdownEditorProtocolVersion,
+                "sessionID": session.sessionID.uuidString, "documentID": harness.documentID,
+                "startingFingerprint": session.startingFingerprint, "documentVersion": session.generation,
+            ]
+            if change == "duplicateDelta" {
+                payload.merge([
+                    "type": "documentChanged", "baseGeneration": session.generation - 1,
+                    "resultingGeneration": session.generation,
+                    "changes": [["from": end, "to": end, "insert": "s", "exactInsert": "s"]],
+                ]) { _, new in new }
+            } else {
+                let target = change == "invalidRange" ? caret + 100 : 0
+                payload.merge([
+                    "type": "interactionChanged", "interactionRevision": change == "staleCaret" || change == "staleTitle" ? revision - 1 : revision + 1,
+                    "selections": [["anchor": target, "head": target]], "line": 1, "column": 1, "lineCount": 2,
+                ]) { _, new in new }
+                if change == "staleTitle" { payload["focusTarget"] = "title" }
+            }
+            _ = try await harness.callPageJavaScript("window.webkit.messageHandlers.scholium.postMessage(payload);", arguments: ["payload": payload])
+            _ = try await session.currentText(for: harness.documentID)
+        }
+        let shouldCancel = change == "currentCaret" || change == "currentSource"
+        #expect(task.isCancelled == shouldCancel)
+        #expect(coordinator.writingContinuation.requestID == (shouldCancel ? nil : "admission-fixture"))
+        if !shouldCancel {
+            #expect(session.checkedSource == current)
+            #expect(session.rendererInteractionRevision == revision)
+            #expect(coordinator.admitsWritingContinuationPublication(envelope, source: current, editorCaret: caret))
+        }
+        reply?.resume(returning: .suggestion("ponsibility"))
+        reply = nil
+        await task.value
+        #expect(publications == (shouldCancel ? [] : [.result(.suggestion("ponsibility"))]))
+        await harness.closeAndDrain()
+    }
+
+    @Test("A continuation survives same-source autosave rebase but rejects changed source or caret", arguments: ["save", "source", "caret"])
+    func writingContinuationSurvivesAutosaveRebase(change: String) async throws {
+        let source = "\u{feff}Earlier 😀.\r\nA claim about re"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let end = source.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
+        harness.revealEditorRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        try await harness.session.perform(.pastePlain, argument: "s")
+        let current = try await harness.session.currentText(for: harness.documentID)
+        #expect(current == source + "s")
+        let coordinator = try #require(harness.session.webView?.navigationDelegate as? MarkdownEditorWebView.Coordinator)
+        let caret = end + 1
+        let envelope = EditorBridgeEnvelope(
+            protocolVersion: markdownEditorProtocolVersion,
+            sessionID: harness.session.sessionID.uuidString, documentID: harness.documentID,
+            startingFingerprint: harness.session.startingFingerprint, documentVersion: harness.session.generation)
+        #expect(coordinator.admitsWritingContinuationPublication(envelope, source: current, editorCaret: caret))
+        var reply: CheckedContinuation<EditorWritingContinuationResult, Never>?
+        var publications: [EditorWritingContinuationController.Publication] = []
+        let task = coordinator.writingContinuation.start(
+            requestID: "autosave-fixture", sourceCaret: current.utf16.count,
+            editorCaret: caret, query: { _, _ in await withCheckedContinuation { reply = $0 } },
+            isCurrent: { coordinator.admitsWritingContinuationPublication(envelope, source: current, editorCaret: caret) },
+            publish: { publications.append($0) })
+        defer {
+            task.cancel()
+            reply?.resume(returning: .unavailable(.cancelled))
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while reply == nil {
+            guard ContinuousClock.now < deadline else { throw MarkdownEditorSession.SessionError.unavailable }
+            await Task.yield()
+        }
+        _ = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: current, committedText: current,
+            fingerprint: DocumentFingerprint(content: current), documentID: harness.documentID)
+        #expect(envelope.startingFingerprint != harness.session.startingFingerprint)
+        if change == "source" {
+            try await harness.session.perform(.pastePlain, argument: "x")
+        } else if change == "caret" {
+            harness.revealEditorRange(fromUTF16: caret - 1, toUTF16: caret - 1)
+            try await harness.waitUntilSelection(head: caret - 1)
+        }
+        #expect(coordinator.admitsWritingContinuationPublication(envelope, source: current, editorCaret: caret) == (change == "save"))
+        reply?.resume(returning: .suggestion("ponsibility is shared."))
+        reply = nil
+        await task.value
+        #expect(publications == (change == "save" ? [.result(.suggestion("ponsibility is shared."))] : []))
+        if change == "save" { #expect(try await harness.session.currentText(for: harness.documentID) == current) }
         await harness.closeAndDrain()
     }
 
@@ -2987,16 +3195,84 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Native preparation shares prose geometry and blocks initial and same-ID loading", arguments: [720.0, 480.0])
-    func nativePreparationIsPaintedBeforeInitialization(viewportWidth: Double) async throws {
+    private static func preparationPaintedBandCount(
+        in bitmap: NSBitmapImageRep, over paper: NSColor, below fraction: Double = 0
+    ) throws -> Int {
+        let backgroundColor = try #require(paper.usingColorSpace(.deviceRGB))
+        func compositeAt(x: Int, y: Int) throws -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+            let color = try #require(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+            let alpha = color.alphaComponent
+            return (
+                color.redComponent * alpha + backgroundColor.redComponent * (1 - alpha),
+                color.greenComponent * alpha + backgroundColor.greenComponent * (1 - alpha),
+                color.blueComponent * alpha + backgroundColor.blueComponent * (1 - alpha)
+            )
+        }
+        let stepX = max(1, bitmap.pixelsWide / 180)
+        let stepY = max(1, bitmap.pixelsHigh / 260)
+        var bandCount = 0
+        var previousRowWasPainted = false
+        let startY = max(bitmap.pixelsHigh / 20, Int(Double(bitmap.pixelsHigh) * fraction))
+        for y in stride(from: startY, to: bitmap.pixelsHigh * 19 / 20, by: stepY) {
+            let background = try compositeAt(x: bitmap.pixelsWide - stepX - 1, y: y)
+            var run = 0
+            var longestRun = 0
+            for x in stride(from: bitmap.pixelsWide / 20, to: bitmap.pixelsWide * 19 / 20, by: stepX) {
+                let color = try compositeAt(x: x, y: y)
+                let differs =
+                    max(
+                        max(abs(color.red - background.red), abs(color.green - background.green)),
+                        abs(color.blue - background.blue)
+                    ) > 0.03
+                run = differs ? run + stepX : 0
+                longestRun = max(longestRun, run)
+            }
+            let rowWasPainted = longestRun >= bitmap.pixelsWide / 4
+            if rowWasPainted && !previousRowWasPainted { bandCount += 1 }
+            previousRowWasPainted = rowWasPainted
+        }
+        return bandCount
+    }
+
+    @Test("Preparation sampler sees translucent bars over paper while blank images remain empty", arguments: [false, true])
+    func preparationPaintSampler(isDark: Bool) throws {
+        let appearance = try #require(NSAppearance(named: isDark ? .darkAqua : .aqua))
+        var paper: NSColor?
+        appearance.performAsCurrentDrawingAppearance {
+            paper = ScholiumColorRole.documentBackground.nsColor.usingColorSpace(.deviceRGB)
+        }
+        let background = try #require(paper)
+        let bitmap = try #require(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: 200, pixelsHigh: 200, bitsPerSample: 8,
+                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                bytesPerRow: 0, bitsPerPixel: 0))
+        try #require(bitmap.bitmapData).initialize(repeating: 0, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
+        #expect(try Self.preparationPaintedBandCount(in: bitmap, over: background) == 0)
+        #expect(try Self.preparationPaintedBandCount(in: bitmap, over: background, below: 0.5) == 0)
+        let channel: CGFloat = isDark ? 1 : 0
+        let ink = NSColor(deviceRed: channel, green: channel, blue: channel, alpha: 0.25)
+        for y in [28, 75, 123, 166] {
+            for row in y..<(y + 12) {
+                for x in 20..<180 { bitmap.setColor(ink, atX: x, y: row) }
+            }
+        }
+        #expect(try Self.preparationPaintedBandCount(in: bitmap, over: background) == 4)
+        #expect(try Self.preparationPaintedBandCount(in: bitmap, over: background, below: 0.5) == 2)
+    }
+
+    @Test("Native preparation shares prose geometry and blocks initial and same-ID loading", arguments: [720.0, 480.0], [false, true])
+    func nativePreparationIsPaintedBeforeInitialization(viewportWidth: Double, isDark: Bool) async throws {
         let source = "\u{FEFF}---\r\nunknown: 字😀\r\n---\r\nAuthored passage.\r\n"
         let dispatcher = SuspendingInitialSelectionBridgeDispatcher(holdsBeforeInitialization: true)
         let size = NSSize(width: viewportWidth, height: 520)
         let harness = EditorHarness(
             source: source, bridgeDispatcher: dispatcher,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
-            initialWindowSize: size, fixedLayoutSize: size, laysOutForPointerTesting: true
+            initialWindowSize: size, fixedLayoutSize: size, laysOutForPointerTesting: true,
+            ordersWindowFront: false
         )
+        harness.setWindowAppearance(isDark ? .darkAqua : .aqua)
         defer {
             dispatcher.resume()
             harness.close()
@@ -9410,6 +9686,15 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func hideWindowForUnfocusedInputTesting() { window.orderOut(nil) }
 
+        func setWindowAppearance(_ appearance: NSAppearance.Name) { window.appearance = NSAppearance(named: appearance) }
+
+        func activateForWritingTesting() {
+            NSApp.finishLaunching()
+            window.makeKeyAndOrderFront(nil)
+            if let webView = session.webView { window.makeFirstResponder(webView) }
+            NSApp.activate()
+        }
+
         func nativeSelectionActionBar() -> SelectionActionBar? {
             func find(in view: NSView) -> SelectionActionBar? {
                 if let bar = view as? SelectionActionBar { return bar }
@@ -9435,7 +9720,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false,
+            ordersWindowFront: Bool = true,
             onAskAgent: AgentSelectionInquiryHandler? = nil,
+            linkCompletionQuery: @escaping @MainActor (EditorLinkCompletionKind, String) async -> EditorLinkCompletionResponse = { _, _ in .current([]) },
             writingContinuationEnabled: Bool = false,
             writingContinuationQuery: @escaping EditorWritingContinuationQuery = { _, _ in .unavailable(nil) },
             imageResourcesQuery: @escaping EditorImageResourceQuery = { _ in [:] },
@@ -9465,6 +9752,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentTitle: documentTitle
             )
             sourceBox.presentationCSS = initialPresentationCSS
+            sourceBox.linkCompletionQuery = linkCompletionQuery
             sourceBox.writingContinuationEnabled = writingContinuationEnabled
             sourceBox.writingContinuationQuery = writingContinuationQuery
             sourceBox.imageResourcesQuery = imageResourcesQuery
@@ -9502,7 +9790,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             window.setContentSize(initialWindowSize)
             hostingController.view.frame = window.contentView?.bounds ?? .zero
             hostingController.view.autoresizingMask = [.width, .height]
-            window.orderFrontRegardless()
+            if ordersWindowFront { window.orderFrontRegardless() }
         }
 
         func waitUntilReady() async throws {
@@ -9577,6 +9865,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         /// Captures the real native drawing at its viewport size. The hosting
         /// view's cacheDisplay does not preserve SwiftUI compositing transforms.
+        /// This drawing is transparent; sample it over the actual document paper
+        /// instead of treating transparent and translucent black as identical.
         func preparationPaintedBandCount(below fraction: Double = 0) throws -> Int {
             let root = try preparationDrawing()
             root.layoutSubtreeIfNeeded()
@@ -9591,30 +9881,12 @@ struct MarkdownEditorWebViewIntegrationTests {
                 try #require(destination.path.hasPrefix(buildRoot.path + "/"))
                 try #require(bitmap.representation(using: .png, properties: [:])).write(to: destination, options: .atomic)
             }
-            let stepX = max(1, bitmap.pixelsWide / 180)
-            let stepY = max(1, bitmap.pixelsHigh / 260)
-            var bandCount = 0
-            var previousRowWasPainted = false
-            let startY = max(bitmap.pixelsHigh / 20, Int(Double(bitmap.pixelsHigh) * fraction))
-            for y in stride(from: startY, to: bitmap.pixelsHigh * 19 / 20, by: stepY) {
-                let background = try #require(bitmap.colorAt(x: bitmap.pixelsWide - stepX - 1, y: y)?.usingColorSpace(.deviceRGB))
-                var run = 0
-                var longestRun = 0
-                for x in stride(from: bitmap.pixelsWide / 20, to: bitmap.pixelsWide * 19 / 20, by: stepX) {
-                    let color = try #require(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
-                    let differs =
-                        max(
-                            max(abs(color.redComponent - background.redComponent), abs(color.greenComponent - background.greenComponent)),
-                            abs(color.blueComponent - background.blueComponent)
-                        ) > 0.03
-                    run = differs ? run + stepX : 0
-                    longestRun = max(longestRun, run)
-                }
-                let rowWasPainted = longestRun >= bitmap.pixelsWide / 4
-                if rowWasPainted && !previousRowWasPainted { bandCount += 1 }
-                previousRowWasPainted = rowWasPainted
+            var paper: NSColor?
+            root.effectiveAppearance.performAsCurrentDrawingAppearance {
+                paper = ScholiumColorRole.documentBackground.nsColor.usingColorSpace(.deviceRGB)
             }
-            return bandCount
+            return try MarkdownEditorWebViewIntegrationTests.preparationPaintedBandCount(
+                in: bitmap, over: #require(paper), below: fraction)
         }
 
         func waitUntilLoaded(documentID: String) async throws {
@@ -9676,6 +9948,17 @@ struct MarkdownEditorWebViewIntegrationTests {
                 try await Task.sleep(for: .milliseconds(20))
             }
             sourceBox.showsEditor = true
+        }
+
+        func waitUntilText(_ expected: String) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+            while try await session.currentText(for: documentID) != expected {
+                guard ContinuousClock.now < deadline else {
+                    Issue.record("Native synthetic writing did not reach its expected exact source")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
         }
 
         func waitUntilFocused() async throws {
@@ -10406,6 +10689,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var writingContinuationEnabled = false
         @Published var writingContinuationModel = "model-a"
         @Published var writingIndexContextKey = ""
+        var linkCompletionQuery: @MainActor (EditorLinkCompletionKind, String) async -> EditorLinkCompletionResponse = { _, _ in .current([]) }
         var writingContinuationQuery: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
         @Published var imageResourceContextKey = "image-harness"
         var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
@@ -10496,7 +10780,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
                     linkPreviews: linkPreviews
                 ),
-                linkCompletionQuery: { _, _ in [] },
+                linkCompletionQuery: sourceBox.linkCompletionQuery,
                 linkPreviews: linkPreviews,
                 initialScrollFraction: 0,
                 initialScrollAnchor: sourceBox.scrollAnchor,

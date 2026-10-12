@@ -189,6 +189,74 @@ extension WorkspaceHandle {
         return measurement
     }
 
+    func writingCompletions(matching query: String) async throws -> [String] {
+        try requireActive()
+        try Task.checkCancellation()
+        let availability = await services.searchIndex.availability()
+        try requireActive()
+        try Task.checkCancellation()
+        guard currentSnapshot.phase.isComplete,
+            let generation = currentSnapshot.discovery.searchGeneration,
+            availability == .current(generation),
+            !derivedStateRequiresRefresh, pendingSourceCommitRefreshes.isEmpty,
+            sourceCommitRefreshTask == nil, pendingLiveEvents.isEmpty, liveIndexRefreshTask == nil
+        else { throw WritingCompletionLookupError.indexNotCurrent }
+        let captured = currentSnapshot
+        let fingerprints = Dictionary(captured.vaults.flatMap(\.documents).map { ($0.id, $0.fingerprint) }, uniquingKeysWith: { first, _ in first })
+        writingCompletionMemo.retain(fingerprints)
+        var measurement = WritingCompletionLookupMeasurement()
+        defer {
+            if !isShutDown {
+                lastWritingCompletionMeasurement = measurement
+            }
+        }
+        let candidates = try await services.searchIndex.writingCompletionSources(matching: query)
+        var terms = Set<String>()
+        for candidate in candidates {
+            try requireActive()
+            try Task.checkCancellation()
+            guard fingerprints[candidate.note] == candidate.fingerprint else {
+                throw WritingCompletionLookupError.indexNotCurrent
+            }
+            do {
+                let document = try await loadRelatedContentSource(candidate.note)
+                if let barrier = writingCompletionPostSourceReadBarrierForTesting { await barrier() }
+                try requireActive()
+                try Task.checkCancellation()
+                guard document.fingerprint == candidate.fingerprint else {
+                    throw WritingCompletionLookupError.indexNotCurrent
+                }
+                measurement.sourceReads += 1
+                let prepared = try writingCompletionMemo.vocabulary(for: candidate.note, document: document)
+                if prepared.reused { measurement.projectionReuses += 1 } else { measurement.projectionBuilds += 1 }
+                terms.formUnion(try prepared.value.terms(matching: query))
+                if terms.count >= 32 { break }
+            } catch is CancellationError { throw CancellationError() } catch {
+                writingCompletionMemo.remove(candidate.note)
+                throw WritingCompletionLookupError.sourceUnavailable
+            }
+        }
+        try requireActive()
+        try Task.checkCancellation()
+        let finalAvailability = await services.searchIndex.availability()
+        try requireActive()
+        try Task.checkCancellation()
+        guard currentSnapshot.phase.isComplete,
+            currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes,
+            finalAvailability == .current(generation),
+            !derivedStateRequiresRefresh, pendingSourceCommitRefreshes.isEmpty,
+            sourceCommitRefreshTask == nil, pendingLiveEvents.isEmpty, liveIndexRefreshTask == nil
+        else { throw WritingCompletionLookupError.indexNotCurrent }
+        return terms.sorted {
+            let lhs = WritingCompletionPrefix.matchingCount($0, query: query)
+            let rhs = WritingCompletionPrefix.matchingCount($1, query: query)
+            if lhs != rhs { return lhs > rhs }
+            if $0.utf16.count != $1.utf16.count { return $0.utf16.count < $1.utf16.count }
+            return $0 < $1
+        }.prefix(32).map { $0 }
+    }
+
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         lastRelatedContentMeasurement = nil
         let started = ContinuousClock.now
@@ -639,4 +707,70 @@ extension WorkspaceHandle {
         )
     }
 
+}
+
+private enum WritingCompletionLookupError: Error {
+    case indexNotCurrent, sourceUnavailable
+}
+
+/// Counts only; no source, query, or result content is logged.
+struct WritingCompletionLookupMeasurement: Sendable {
+    var sourceReads = 0
+    var projectionBuilds = 0
+    var projectionReuses = 0
+}
+
+/// Runtime-owned, bounded memo of query-independent parsing work. A hit never
+/// bypasses the fresh authorized source read or generation/publication guards.
+struct WritingCompletionProjectionMemo: Sendable {
+    private struct Entry: Sendable {
+        let fingerprint: DocumentFingerprint
+        let value: WritingCompletionVocabulary
+        var lastAccess: UInt64
+    }
+    private var entries: [VaultQualifiedNoteID: Entry] = [:]
+    private var access: UInt64 = 0
+    private let maximumEntries: Int
+    private let maximumEstimatedBytes: Int
+    private(set) var estimatedByteCount = 0
+    var entryCount: Int { entries.count }
+
+    init(maximumEntries: Int = 64, maximumEstimatedBytes: Int = 4 * 1_024 * 1_024) {
+        self.maximumEntries = max(0, maximumEntries)
+        self.maximumEstimatedBytes = max(0, maximumEstimatedBytes)
+    }
+
+    mutating func vocabulary(for note: VaultQualifiedNoteID, document: NoteDocument) throws -> (value: WritingCompletionVocabulary, reused: Bool) {
+        try Task.checkCancellation()
+        access &+= 1
+        if var entry = entries[note], entry.fingerprint == document.fingerprint {
+            entry.lastAccess = access
+            entries[note] = entry
+            return (entry.value, true)
+        }
+        remove(note)
+        let value = try WritingCompletionVocabulary(document: document)
+        let cost = value.estimatedByteCount
+        guard maximumEntries > 0, cost <= maximumEstimatedBytes else { return (value, false) }
+        while entries.count >= maximumEntries || estimatedByteCount + cost > maximumEstimatedBytes {
+            guard let oldest = entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key else { break }
+            remove(oldest)
+        }
+        entries[note] = .init(fingerprint: document.fingerprint, value: value, lastAccess: access)
+        estimatedByteCount += cost
+        return (value, false)
+    }
+
+    mutating func retain(_ fingerprints: [VaultQualifiedNoteID: DocumentFingerprint]) {
+        for note in entries.keys.filter({ fingerprints[$0] != entries[$0]?.fingerprint }) { remove(note) }
+    }
+
+    mutating func remove(_ note: VaultQualifiedNoteID) {
+        if let old = entries.removeValue(forKey: note) { estimatedByteCount -= old.value.estimatedByteCount }
+    }
+
+    mutating func clear() {
+        entries.removeAll()
+        estimatedByteCount = 0
+    }
 }

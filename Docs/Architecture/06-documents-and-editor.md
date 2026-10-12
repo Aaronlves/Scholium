@@ -145,17 +145,19 @@ cancellation revokes acceptance and drains callbacks. Document notices inspect
 committed Review source/companion or the retained editor pair. Persistence belongs
 to [Source Storage](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-boundary).
 
-Writing continuation shares the retained editor's inline suggestion owner, with
-separate generation-bound request/cancellation messages. A short post-input pause
-may request only an unfinished current sentence; completed sentences and structural
-contexts suppress AI while local completion remains independent. Window composition
-captures the checked current sentence inside its paragraph and insertion receipt,
-packs bounded Related-Content background, and rechecks identity, focus, conflict
-and configuration before generation and publication. Its one-result retrieval cache
-is bound to runtime, Note, complete Search generation, exact seed revision and focus;
-it is neither another index nor query history. Returned text and status stay request-bound
-through inline preview; identity guards clear both. Machine-local Writing Assistance preferences share the model with explicit
-selection actions and remain independent of conversation settings.
+One suffix owns acceptance. Enabled AI owns previews; local follows failure/absence.
+AI reuse requires unchanged source/caret/configuration/index. Acceptance freezes targets;
+refresh validates; distinguish unavailable/empty. Application shares Triptych FTS generations, checks fresh source fingerprints.
+Bounded Note/fingerprint prose/token memo prunes changed/departed membership,
+clears on shutdown; preserves reads/publication guards and never persists.
+Window captures checked readable spans/insertion receipts, parsing selected
+syntax-proof fragments (≤32k UTF-16); unresolved multiline boundaries
+use local fallback. Bounded Related-Content and identity/focus/conflict/configuration
+checks precede generation/publication. Finishing requests await cleanup. Retrieval binds runtime/Note,
+complete Search generation, seed revision/focus without history. Off-content status
+preserves geometry; publication survives saved-base rebases of unchanged live source/caret. Machine-local preferences share selection
+model independently of Chat; effort keys cancellation.
+Automatic uses lowest advertised effort; unsupported choices never substitute.
 
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).

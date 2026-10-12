@@ -115,6 +115,9 @@ struct SettingsSearchTarget: Identifiable, Equatable {
             Self(
                 "writing.model", .writingModel, ScholiumL10n.WritingAssistance.model, ["续写模型", "解释模型", "润色模型"]),
             Self(
+                "writing.effort", .writingEffort, ScholiumL10n.WritingAssistance.effort,
+                ["AI Continuation effort", "thinking effort", "reasoning effort", "automatic", "fastest", "续写思考强度", "续写推理强度", "思考强度", "自动", "最快"]),
+            Self(
                 "writing.selection", .writingSelection, "Selection Actions",
                 ["selection", "prompt", "instruction", "选段操作", "选区操作", "指令"]),
             Self(

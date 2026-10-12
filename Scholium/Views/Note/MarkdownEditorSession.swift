@@ -285,6 +285,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     // deadline expiry until the actual WebKit dispatch has returned.
     private var unfinishedBridgeDispatches: Set<UUID> = []
     private var requestEpoch: UInt64 = 0
+    private var lastQueueInvalidationPreservedRenderer = false
     private var modeTransitionEpoch: UInt64 = 0
     private var modeTransitionTask: Task<Void, Never>?
     private var modeTransitionID: UUID?
@@ -569,6 +570,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Applies the rAF-coalesced interaction envelope. Exact cursor
     /// coordinates stay readable for commands and recovery, but they are not
     /// Observable state. Only a semantic availability change invalidates UI.
+    @discardableResult
     func updateInteraction(
         selections: [MarkdownEditorSelectionRange],
         line: Int,
@@ -578,8 +580,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         interactionRevision: Int,
         focusTarget: WindowDocumentFocusTarget? = nil,
         context semanticContext: MarkdownEditorContext?
-    ) {
-        guard !presentationIsClosed else { return }
+    ) -> Bool {
+        guard !presentationIsClosed else { return false }
         let previousSelection = lastKnownSelectionSnapshot?.ranges
         let previousRendererRevision = rendererInteractionRevision
         let wasComposing = context?.composing == true
@@ -591,7 +593,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 forEditorUTF16Length: checkedEditorUTF16Length
             ),
             semanticContext?.selections == nil || semanticContext?.selections == selections
-        else { return }
+        else { return false }
         rendererInteractionRevision = interactionRevision
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: documentID,
@@ -622,6 +624,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             selectionChanges.send(hasNonemptySelection)
         }
         flushPendingSourceRange()
+        return true
     }
 
     func reportError(_ message: String) {
@@ -1408,18 +1411,53 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?
     ) {
         guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        let epoch = requestEpoch
         let identity = documentID
-        let result = try await send(.queryText, in: webView)
-        guard epoch == requestEpoch, identity == documentID, self.webView === webView,
-            result.resultingGeneration == generation, !isComposing, let source = result.text
-        else { throw SessionError.invalidResult }
-        let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: mode)
-        let point = result.selections.first.flatMap { selection -> MarkdownEditorInsertionPoint? in
-            guard !selection.isNonempty else { return nil }
-            return .init(sessionID: sessionID, documentID: identity, generation: generation, selection: selection)
+        let sourceAtStart = checkedSource
+        let generationAtStart = generation
+        let interactionAtStart = rendererInteractionRevision
+        let selectionsAtStart = lastKnownSelectionSnapshot?.ranges
+        let modeAtStart = modeTransitionEpoch
+        let interactionAuthorityAtStart = citationInteractionRevision
+        func unchangedWritingPoint() -> Bool {
+            isReady && isLoaded && !isComposing && self.webView === webView && documentID == identity
+                && generation == generationAtStart && modeTransitionEpoch == modeAtStart
+                && citationInteractionRevision == interactionAuthorityAtStart
+                && checkedSource.utf8.elementsEqual(sourceAtStart.utf8)
+                && lastKnownSelectionSnapshot?.ranges == selectionsAtStart
+                && rendererInteractionRevision == interactionAtStart
         }
-        return (snapshot, point)
+        // A save may rebase only the committed fingerprint while this read is
+        // suspended. Recapture once, under the new bridge identity, only when
+        // its source, interaction and renderer lifetime are still proved equal.
+        for attempt in 0..<2 {
+            try Task.checkCancellation()
+            let epoch = requestEpoch
+            do {
+                let result = try await send(.queryText, in: webView)
+                try Task.checkCancellation()
+                guard epoch == requestEpoch, unchangedWritingPoint(),
+                    result.resultingGeneration == generation, result.selections == selectionsAtStart,
+                    result.interactionRevision == interactionAtStart, let source = result.text
+                else { throw SessionError.staleRequest }
+                let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, mode: mode)
+                let point = result.selections.first.flatMap { selection -> MarkdownEditorInsertionPoint? in
+                    guard !selection.isNonempty else { return nil }
+                    return .init(sessionID: sessionID, documentID: identity, generation: generation, selection: selection)
+                }
+                return (snapshot, point)
+            } catch {
+                let invalidatedRead =
+                    error is CancellationError
+                    || (error as? SessionError).map {
+                        if case .staleRequest = $0 { true } else { false }
+                    } == true
+                guard attempt == 0, invalidatedRead, !Task.isCancelled,
+                    epoch &+ 1 == requestEpoch, lastQueueInvalidationPreservedRenderer,
+                    interactionAtStart != nil, unchangedWritingPoint()
+                else { throw error }
+            }
+        }
+        throw SessionError.staleRequest
     }
 
     var hasWritingFocus: Bool {
@@ -3249,6 +3287,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         preservingRendererInteraction: Bool = false
     ) {
         requestEpoch &+= 1
+        lastQueueInvalidationPreservedRenderer = preservingRendererInteraction
         openingImageWaitTask?.cancel()
         openingImageWaitTask = nil
         openingImageWaitID = nil

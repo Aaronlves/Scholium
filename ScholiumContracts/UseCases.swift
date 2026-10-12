@@ -200,6 +200,8 @@ public protocol DiscoveryUseCases: Sendable {
     func refresh() async throws -> WorkspaceSnapshot
     func search(_ request: SearchRequest) async throws -> SearchResponse
     func searchCompletions(_ request: SearchCompletionRequest) async throws -> SearchCompletionResponse
+    /// Existing words/short phrases from this Triptych's current authored body.
+    func writingCompletions(matching query: String) async throws -> [String]
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse
     /// Prepare Note-level discovery without publishing or retaining result cards.
     func prepareRelatedContent(_ request: RelatedContentRequest) async throws

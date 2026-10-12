@@ -800,6 +800,40 @@ public actor TriptychSearchIndex {
         }
     }
 
+    /// The existing FTS generation admits local-writing sources across all vaults.
+    /// Original current body prose, checked by Application, decides final terms.
+    public func writingCompletionSources(matching query: String) throws -> [(note: VaultQualifiedNoteID, fingerprint: DocumentFingerprint)] {
+        var expressions = Set<String>()
+        for prefix in WritingCompletionPrefix.suffixes(in: query) {
+            // One Latin letter alone is too broad; longer multiword and CJK prefixes remain eligible.
+            guard prefix.trimmingCharacters(in: .whitespaces).count >= 2 else { continue }
+            if let expression = try database.ftsExpression(for: [.init(field: nil, value: .prefix(prefix), sourceRange: 0..<0)]) {
+                expressions.insert("{body headings callouts footnotes link_annotations} : (" + expression + ")")
+            }
+        }
+        guard !expressions.isEmpty else { return [] }
+        return try database.readTransaction {
+            var candidates: [(note: VaultQualifiedNoteID, fingerprint: DocumentFingerprint)] = []
+            try database.query(
+                """
+                SELECT d.vault_id, d.relative_path, d.fingerprint_sha256, d.fingerprint_byte_count
+                FROM search_fts JOIN search_documents d ON d.id = search_fts.document_id
+                WHERE search_fts MATCH ?
+                ORDER BY bm25(search_fts), d.path_key, d.relative_path
+                ;
+                """, bindings: [.text(expressions.sorted().map { "(" + $0 + ")" }.joined(separator: " OR "))]
+            ) { row in
+                try Task.checkCancellation()
+                if let vault = row.text(at: 0).flatMap(UUID.init(uuidString:)), let path = row.text(at: 1),
+                    let hash = row.text(at: 2)
+                {
+                    candidates.append((.init(vaultID: vault, relativePath: path), .init(sha256: hash, byteCount: row.int(at: 3))))
+                }
+            }
+            return candidates
+        }
+    }
+
     /// Returns lexical completion terms from the same committed FTS
     /// generation used by Search. The caller supplies already-authorized scope
     /// and, during progressive opening, the exact source/fingerprint subset.

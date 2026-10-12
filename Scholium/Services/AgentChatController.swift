@@ -334,7 +334,15 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         models.filter(CodexWritingAssistance.supports)
     }
 
-    var isWritingAssistanceBusy: Bool { writingAssistanceExecution != nil }
+    func continuationEfforts(for model: AgentChatModel) -> [String] {
+        CodexWritingAssistance.continuationEfforts(model)
+    }
+
+    // A finishing request has released generation ownership; the next request
+    // joins its existing cleanup before starting, rather than disappearing.
+    var isWritingAssistanceBusy: Bool {
+        writingAssistanceExecution.map { !$0.isFinishing } ?? false
+    }
 
     func canRequestWritingAssistance(model: String) -> Bool {
         connectionState == .ready && account != nil && !isRenewingSettings && !capabilities.isChanging
@@ -362,12 +370,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         before: String,
         after: String,
         background: [String],
-        model: String
+        model: String,
+        effort: String?
     ) async throws -> Result<String, AgentChatWritingContinuationFailure> {
         do {
             return .success(
                 try await writingAssistance(
-                    .init(before: before, after: after, background: background, model: model)
+                    .init(before: before, after: after, background: background, model: model, effort: effort)
                 )
             )
         } catch is CancellationError {
@@ -379,7 +388,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             case .busy: failure = .busy
             case .invalidContext: failure = .invalidContext
             case .invalidOutput: failure = .noSuggestion
-            case .unsafeRuntime: failure = .serviceError
+            case .unsafeRuntime, .generationFailed: failure = .serviceError
             case .timedOut: failure = .timedOut
             }
             return .failure(failure)

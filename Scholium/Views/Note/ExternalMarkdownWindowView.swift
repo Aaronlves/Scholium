@@ -119,7 +119,7 @@ struct ExternalMarkdownWindowView: View {
                         presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: model.documentTextScale).css,
                         userCSS: "",
                         requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(linkPreviews: []),
-                        linkCompletionQuery: { _, _ in [] }, linkPreviews: [],
+                        linkCompletionQuery: { _, _ in .unavailable }, linkPreviews: [],
                         initialScrollFraction: model.editorScrollPosition.fraction,
                         initialScrollAnchor: model.editorScrollPosition.anchor,
                         onDocumentActivity: { model.sourceChanged() },

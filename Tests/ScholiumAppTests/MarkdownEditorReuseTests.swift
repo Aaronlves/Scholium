@@ -946,7 +946,7 @@ struct MarkdownEditorReuseTests {
                     presentationCSS: "",
                     userCSS: "",
                     requiresMathRuntime: false,
-                    linkCompletionQuery: { _, _ in [] },
+                    linkCompletionQuery: { _, _ in .current([]) },
                     linkPreviews: [],
                     initialScrollFraction: 0,
                     initialScrollAnchor: nil,

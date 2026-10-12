@@ -13,6 +13,126 @@ import WebKit
 struct AgentChatDocumentObservationTests {
     private let source = "\u{FEFF}# A\r\n😀 e\u{301} 原文\r\ntail"
 
+    @Test(
+        "Writing capture survives only one same-source save rebase",
+        arguments: ["save", "source", "caret", "mode", "composition", "cancel", "document", "twoSaves"])
+    func writingCaptureSaveRebase(boundary: String) async throws {
+        let source = "\u{feff}# Context\r\n\r\nA claim about res "
+        let fixture = try await EditorFixture.make(source: source)
+        defer { fixture.close() }
+        let end = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: source.utf16.count))
+        fixture.select([.init(anchor: end, head: end)])
+        fixture.dispatcher.holdQuery = true
+        let pending = Task { try await fixture.editor.writingContextSnapshot(mode: .selectionOrParagraph) }
+        defer { pending.cancel() }
+        try await wait { fixture.dispatcher.hasPendingQuery }
+        if boundary == "save" || boundary == "twoSaves" {
+            _ = try await fixture.editor.acknowledgeCommittedSnapshot(
+                expectedText: source, committedText: source,
+                fingerprint: DocumentFingerprint(content: source), documentID: fixture.editor.documentID)
+            if boundary == "twoSaves" {
+                _ = try await fixture.editor.acknowledgeCommittedSnapshot(
+                    expectedText: source, committedText: source,
+                    fingerprint: DocumentFingerprint(content: source), documentID: fixture.editor.documentID)
+            }
+        } else if boundary == "caret" || boundary == "composition" {
+            fixture.select(
+                [.init(anchor: boundary == "caret" ? end - 1 : end, head: boundary == "caret" ? end - 1 : end)], composing: boundary == "composition")
+        } else if boundary == "cancel" {
+            pending.cancel()
+        } else if boundary == "mode" {
+            fixture.editor.setMode(.livePreview)
+        } else {
+            fixture.editor.loadDocument(
+                boundary == "source" ? source + "Changed" : source,
+                documentID: boundary == "document" ? "Other.md" : fixture.editor.documentID, mode: .source)
+        }
+        fixture.dispatcher.releaseQuery()
+        if boundary == "save" {
+            let captured = try await pending.value
+            #expect(captured.snapshot.source.utf8.elementsEqual(source.utf8))
+            let point = try #require(captured.point)
+            #expect(fixture.editor.acceptsInsertionPoint(point))
+            #expect(point.selection.head == end)
+            #expect(fixture.dispatcher.operations.filter { if case .queryText = $0 { true } else { false } }.count == 2)
+        } else {
+            do {
+                _ = try await pending.value
+                Issue.record("A changed or cancelled writing capture was accepted: \(boundary)")
+            } catch {}
+        }
+    }
+
+    @Test(
+        "Autosave rejects an overtaken Find reply, refreshes its summary and protects the AI writing point",
+        arguments: [DocumentFindAction.present, .update, .next])
+    func findAutosaveContinuationBoundary(action: DocumentFindAction) async throws {
+        let source = "\u{feff}# Find\r\n\r\n😀 e\u{301} A claim about res"
+        let fixture = try await EditorFixture.make(source: source)
+        defer { fixture.close() }
+        let end = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: source.utf16.count))
+        fixture.select([.init(anchor: end, head: end)], focusTarget: .editor)
+        let captured = try await fixture.editor.writingContextSnapshot(mode: .selectionOrParagraph)
+        let point = try #require(captured.point)
+        let controller = EditorWritingContinuationController()
+        var reply: CheckedContinuation<EditorWritingContinuationResult, Never>?
+        var publications: [EditorWritingContinuationController.Publication] = []
+        let ai = controller.start(
+            requestID: "find-save-ai", sourceCaret: source.utf16.count, editorCaret: end,
+            query: { _, _ in await withCheckedContinuation { reply = $0 } },
+            isCurrent: { fixture.editor.acceptsInsertionPoint(point) },
+            publish: { publications.append($0) })
+        defer {
+            ai.cancel()
+            reply?.resume(returning: .unavailable(nil))
+            reply = nil
+        }
+        try await wait { reply != nil }
+        let model = DocumentFindPresentationModel()
+        model.present()
+        model.setQuery("claim")
+        let request = try #require(model.request)
+        let query = DocumentFindQuery(query: request.query, replacement: "", caseSensitive: false, wholeWord: false, action: action)
+        fixture.dispatcher.holdFind = true
+        let finding = Task {
+            do { model.accept(try await fixture.editor.performDocumentFind(query), for: request.id) } catch { model.fail(error, for: request.id) }
+        }
+        defer { finding.cancel() }
+        try await wait { fixture.dispatcher.hasPendingFind }
+        // Mirror a save publication while the old Find response is still held.
+        _ = try await fixture.editor.acknowledgeCommittedSnapshot(
+            expectedText: source, committedText: source,
+            fingerprint: DocumentFingerprint(content: source), documentID: fixture.editor.documentID)
+        model.refresh()
+        let savedSelection = try #require(fixture.editor.context).selections
+        fixture.dispatcher.releaseFind()
+        await finding.value
+        #expect(model.errorMessage == nil)
+        let refresh = try #require(model.request)
+        #expect(refresh.id != request.id)
+        try #require(refresh.operation == .execute(.present))
+        #expect(model.hasPendingRequest)
+        model.accept(try await fixture.editor.performDocumentFind(try #require(refresh.editorQuery)), for: refresh.id)
+        #expect(model.result.total == 1)
+        #expect(!model.hasPendingRequest)
+        let continuation = try #require(reply)
+        reply = nil
+        continuation.resume(returning: .suggestion("ponsibility is shared."))
+        await ai.value
+        #expect(publications == (action == .present ? [.result(.suggestion("ponsibility is shared."))] : []))
+        #expect(fixture.editor.acceptsInsertionPoint(point) == (action == .present))
+        #expect(fixture.editor.checkedSource.utf8.elementsEqual(source.utf8))
+        #expect(fixture.editor.context?.selections == savedSelection)
+        #expect(fixture.editor.context?.undoLabel == "Original Undo")
+        #expect(fixture.editor.preferredDocumentFocusTarget == .editor)
+        #expect(fixture.webView.window == nil)
+        #expect(
+            fixture.dispatcher.operations.compactMap { operation -> DocumentFindAction? in
+                guard case .documentFind(let query) = operation else { return nil }
+                return query.action
+            } == [action, .present])
+    }
+
     @Test("Editor selections map normalized offsets to exact UTF-8 extents without returning source text")
     func exactSourceExtents() throws {
         let expected = AgentChatDocumentObservation.Selection.range(
@@ -784,6 +904,7 @@ struct AgentChatDocumentObservationTests {
 
         func close() {
             dispatcher.releaseQuery()
+            dispatcher.releaseFind()
             dispatcher.commitResponseWillReturn = nil
             editor.removeSourceChangeHandler()
             editor.removeCommittedTextSynchronizer()
@@ -802,6 +923,9 @@ struct AgentChatDocumentObservationTests {
         var queryFailure: Error?
         var commitResponseWillReturn: (() -> Void)?
         var holdQuery = false
+        var holdFind = false
+        private var pendingFind: CheckedContinuation<Void, Never>?
+        var hasPendingFind: Bool { pendingFind != nil }
         private var pendingQuery: CheckedContinuation<Void, Never>?
         var hasPendingQuery: Bool { pendingQuery != nil }
         var context: MarkdownEditorContext {
@@ -816,6 +940,12 @@ struct AgentChatDocumentObservationTests {
             continuation?.resume()
         }
 
+        func releaseFind() {
+            let continuation = pendingFind
+            pendingFind = nil
+            continuation?.resume()
+        }
+
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             operations.append(request.operation)
@@ -824,6 +954,11 @@ struct AgentChatDocumentObservationTests {
                 generation = 0
                 selections = selection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
             }
+            if case .documentFind(let query) = request.operation, query.action != .present {
+                // A Find navigation changes only the selection before its reply.
+                selections = [.init(anchor: 0, head: 1)]
+                interactionRevision += 1
+            }
             var result: [String: Any] = [
                 "requestID": request.requestID.uuidString, "resultingGeneration": generation,
                 "interactionRevision": interactionRevision,
@@ -831,6 +966,13 @@ struct AgentChatDocumentObservationTests {
                 "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "context": try JSONSerialization.jsonObject(with: JSONEncoder().encode(context)),
             ]
+            if case .documentFind = request.operation {
+                result["find"] = ["current": 0, "total": 1, "replaceable": 1, "canReplaceCurrent": true]
+                if holdFind {
+                    holdFind = false
+                    await withCheckedContinuation { pendingFind = $0 }
+                }
+            }
             if case .queryText = request.operation {
                 if let queryFailure { throw queryFailure }
                 result["text"] = source

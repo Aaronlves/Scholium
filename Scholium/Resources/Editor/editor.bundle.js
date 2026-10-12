@@ -1,90 +1,2054 @@
 "use strict";
 (() => {
-  // document-widget-readiness.ts
-  var pendingWidgets = /* @__PURE__ */ new WeakMap();
-  function beginDocumentWidgetPreparation(node) {
-    const document2 = node.ownerDocument;
-    let pending = pendingWidgets.get(document2);
-    if (!pending) pendingWidgets.set(document2, pending = /* @__PURE__ */ new Map());
-    const widgets = pending;
-    widgets.get(node)?.finish();
-    let resolve;
-    const ready = new Promise((complete) => {
-      resolve = complete;
-    });
-    const entry = {
-      node,
-      ready,
-      finish() {
-        if (widgets.get(node) === entry) widgets.delete(node);
-        resolve();
-      }
-    };
-    widgets.set(node, entry);
-    return entry;
-  }
-  async function awaitVisibleDocumentWidgets(root, viewport, requireCurrent) {
-    requireCurrent();
-    const visible = (entry) => {
-      if (!root.isConnected || !entry.node.isConnected || !root.contains(entry.node)) return false;
-      const bounds = viewport.getBoundingClientRect();
-      const rect = entry.node.getBoundingClientRect();
-      return rect.right >= bounds.left && rect.left <= bounds.right && rect.bottom >= bounds.top && rect.top <= bounds.bottom;
-    };
-    const pending = new Set(Array.from(pendingWidgets.get(root.ownerDocument)?.values() ?? []).filter(visible));
-    if (pending.size === 0) return false;
-    const owner = root.ownerDocument.defaultView;
-    await new Promise((resolve, reject) => {
-      let finished = false;
-      const finish = (error) => {
-        if (finished) return;
-        finished = true;
-        observer.disconnect();
-        viewport.removeEventListener("scroll", check);
-        owner.removeEventListener("resize", check);
-        if (error === void 0) resolve();
-        else reject(error);
+  // node_modules/@lezer/common/dist/index.js
+  var DefaultBufferLength = 1024;
+  var nextPropID = 0;
+  var Range = class {
+    constructor(from, to) {
+      this.from = from;
+      this.to = to;
+    }
+  };
+  var NodeProp = class {
+    /**
+    Create a new node prop type.
+    */
+    constructor(config2 = {}) {
+      this.id = nextPropID++;
+      this.perNode = !!config2.perNode;
+      this.deserialize = config2.deserialize || (() => {
+        throw new Error("This node type doesn't define a deserialize function");
+      });
+      this.combine = config2.combine || null;
+    }
+    /**
+    This is meant to be used with
+    [`NodeSet.extend`](#common.NodeSet.extend) or
+    [`LRParser.configure`](#lr.ParserConfig.props) to compute
+    prop values for each node type in the set. Takes a [match
+    object](#common.NodeType^match) or function that returns undefined
+    if the node type doesn't get this prop, and the prop's value if
+    it does.
+    */
+    add(match) {
+      if (this.perNode)
+        throw new RangeError("Can't add per-node props to node types");
+      if (typeof match != "function")
+        match = NodeType.match(match);
+      return (type) => {
+        let result = match(type);
+        return result === void 0 ? null : [this, result];
       };
-      const check = () => {
-        try {
-          requireCurrent();
-          for (const entry of pending) if (!visible(entry)) pending.delete(entry);
-          if (pending.size === 0) finish();
-        } catch (error) {
-          finish(error);
+    }
+  };
+  NodeProp.closedBy = new NodeProp({ deserialize: (str) => str.split(" ") });
+  NodeProp.openedBy = new NodeProp({ deserialize: (str) => str.split(" ") });
+  NodeProp.group = new NodeProp({ deserialize: (str) => str.split(" ") });
+  NodeProp.isolate = new NodeProp({ deserialize: (value) => {
+    if (value && value != "rtl" && value != "ltr" && value != "auto")
+      throw new RangeError("Invalid value for isolate: " + value);
+    return value || "auto";
+  } });
+  NodeProp.contextHash = new NodeProp({ perNode: true });
+  NodeProp.lookAhead = new NodeProp({ perNode: true });
+  NodeProp.mounted = new NodeProp({ perNode: true });
+  var MountedTree = class {
+    constructor(tree, overlay, parser7, bracketed = false) {
+      this.tree = tree;
+      this.overlay = overlay;
+      this.parser = parser7;
+      this.bracketed = bracketed;
+    }
+    /**
+    @internal
+    */
+    static get(tree) {
+      return tree && tree.props && tree.props[NodeProp.mounted.id];
+    }
+  };
+  var noProps = /* @__PURE__ */ Object.create(null);
+  var NodeType = class _NodeType {
+    /**
+    @internal
+    */
+    constructor(name2, props, id2, flags = 0) {
+      this.name = name2;
+      this.props = props;
+      this.id = id2;
+      this.flags = flags;
+    }
+    /**
+    Define a node type.
+    */
+    static define(spec) {
+      let props = spec.props && spec.props.length ? /* @__PURE__ */ Object.create(null) : noProps;
+      let flags = (spec.top ? 1 : 0) | (spec.skipped ? 2 : 0) | (spec.error ? 4 : 0) | (spec.name == null ? 8 : 0);
+      let type = new _NodeType(spec.name || "", props, spec.id, flags);
+      if (spec.props)
+        for (let src of spec.props) {
+          if (!Array.isArray(src))
+            src = src(type);
+          if (src) {
+            if (src[0].perNode)
+              throw new RangeError("Can't store a per-node prop on a node type");
+            props[src[0].id] = src[1];
+          }
+        }
+      return type;
+    }
+    /**
+    Retrieves a node prop for this type. Will return `undefined` if
+    the prop isn't present on this node.
+    */
+    prop(prop) {
+      return this.props[prop.id];
+    }
+    /**
+    True when this is the top node of a grammar.
+    */
+    get isTop() {
+      return (this.flags & 1) > 0;
+    }
+    /**
+    True when this node is produced by a skip rule.
+    */
+    get isSkipped() {
+      return (this.flags & 2) > 0;
+    }
+    /**
+    Indicates whether this is an error node.
+    */
+    get isError() {
+      return (this.flags & 4) > 0;
+    }
+    /**
+    When true, this node type doesn't correspond to a user-declared
+    named node, for example because it is used to cache repetition.
+    */
+    get isAnonymous() {
+      return (this.flags & 8) > 0;
+    }
+    /**
+    Returns true when this node's name or one of its
+    [groups](#common.NodeProp^group) matches the given string.
+    */
+    is(name2) {
+      if (typeof name2 == "string") {
+        if (this.name == name2)
+          return true;
+        let group = this.prop(NodeProp.group);
+        return group ? group.indexOf(name2) > -1 : false;
+      }
+      return this.id == name2;
+    }
+    /**
+    Create a function from node types to arbitrary values by
+    specifying an object whose property names are node or
+    [group](#common.NodeProp^group) names. Often useful with
+    [`NodeProp.add`](#common.NodeProp.add). You can put multiple
+    names, separated by spaces, in a single property name to map
+    multiple node names to a single value.
+    */
+    static match(map) {
+      let direct = /* @__PURE__ */ Object.create(null);
+      for (let prop in map)
+        for (let name2 of prop.split(" "))
+          direct[name2] = map[prop];
+      return (node) => {
+        for (let groups = node.prop(NodeProp.group), i2 = -1; i2 < (groups ? groups.length : 0); i2++) {
+          let found = direct[i2 < 0 ? node.name : groups[i2]];
+          if (found)
+            return found;
         }
       };
-      const observer = new owner.MutationObserver(check);
-      observer.observe(root.ownerDocument.documentElement, { childList: true, subtree: true });
-      viewport.addEventListener("scroll", check, { passive: true });
-      owner.addEventListener("resize", check);
-      for (const entry of pending) {
-        void entry.ready.then(() => {
-          pending.delete(entry);
-          check();
-        });
+    }
+  };
+  NodeType.none = new NodeType(
+    "",
+    /* @__PURE__ */ Object.create(null),
+    0,
+    8
+    /* NodeFlag.Anonymous */
+  );
+  var NodeSet = class _NodeSet {
+    /**
+    Create a set with the given types. The `id` property of each
+    type should correspond to its position within the array.
+    */
+    constructor(types2) {
+      this.types = types2;
+      for (let i2 = 0; i2 < types2.length; i2++)
+        if (types2[i2].id != i2)
+          throw new RangeError("Node type ids should correspond to array positions when creating a node set");
+    }
+    /**
+    Create a copy of this set with some node properties added. The
+    arguments to this method can be created with
+    [`NodeProp.add`](#common.NodeProp.add).
+    */
+    extend(...props) {
+      let newTypes = [];
+      for (let type of this.types) {
+        let newProps = null;
+        for (let source of props) {
+          let add2 = source(type);
+          if (add2) {
+            if (!newProps)
+              newProps = Object.assign({}, type.props);
+            let value = add2[1], prop = add2[0];
+            if (prop.combine && prop.id in newProps)
+              value = prop.combine(newProps[prop.id], value);
+            newProps[prop.id] = value;
+          }
+        }
+        newTypes.push(newProps ? new NodeType(type.name, newProps, type.id, type.flags) : type);
       }
-      check();
-    });
-    requireCurrent();
+      return new _NodeSet(newTypes);
+    }
+  };
+  var CachedNode = /* @__PURE__ */ new WeakMap();
+  var CachedInnerNode = /* @__PURE__ */ new WeakMap();
+  var IterMode;
+  (function(IterMode2) {
+    IterMode2[IterMode2["ExcludeBuffers"] = 1] = "ExcludeBuffers";
+    IterMode2[IterMode2["IncludeAnonymous"] = 2] = "IncludeAnonymous";
+    IterMode2[IterMode2["IgnoreMounts"] = 4] = "IgnoreMounts";
+    IterMode2[IterMode2["IgnoreOverlays"] = 8] = "IgnoreOverlays";
+    IterMode2[IterMode2["EnterBracketed"] = 16] = "EnterBracketed";
+  })(IterMode || (IterMode = {}));
+  var Tree = class _Tree {
+    /**
+    Construct a new tree. See also [`Tree.build`](#common.Tree^build).
+    */
+    constructor(type, children, positions, length, props) {
+      this.type = type;
+      this.children = children;
+      this.positions = positions;
+      this.length = length;
+      this.props = null;
+      if (props && props.length) {
+        this.props = /* @__PURE__ */ Object.create(null);
+        for (let [prop, value] of props)
+          this.props[typeof prop == "number" ? prop : prop.id] = value;
+      }
+    }
+    /**
+    @internal
+    */
+    toString() {
+      let mounted = MountedTree.get(this);
+      if (mounted && !mounted.overlay)
+        return mounted.tree.toString();
+      let children = "";
+      for (let ch of this.children) {
+        let str = ch.toString();
+        if (str) {
+          if (children)
+            children += ",";
+          children += str;
+        }
+      }
+      return !this.type.name ? children : (/\W/.test(this.type.name) && !this.type.isError ? JSON.stringify(this.type.name) : this.type.name) + (children.length ? "(" + children + ")" : "");
+    }
+    /**
+    Get a [tree cursor](#common.TreeCursor) positioned at the top of
+    the tree. Mode can be used to [control](#common.IterMode) which
+    nodes the cursor visits.
+    */
+    cursor(mode = 0) {
+      return new TreeCursor(this.topNode, mode);
+    }
+    /**
+    Get a [tree cursor](#common.TreeCursor) pointing into this tree
+    at the given position and side (see
+    [`moveTo`](#common.TreeCursor.moveTo).
+    */
+    cursorAt(pos, side = 0, mode = 0) {
+      let scope = CachedNode.get(this) || this.topNode;
+      let cursor = new TreeCursor(scope);
+      cursor.moveTo(pos, side);
+      CachedNode.set(this, cursor._tree);
+      return cursor;
+    }
+    /**
+    Get a [syntax node](#common.SyntaxNode) object for the top of the
+    tree.
+    */
+    get topNode() {
+      return new TreeNode(this, 0, 0, null);
+    }
+    /**
+    Get the [syntax node](#common.SyntaxNode) at the given position.
+    If `side` is -1, this will move into nodes that end at the
+    position. If 1, it'll move into nodes that start at the
+    position. With 0, it'll only enter nodes that cover the position
+    from both sides.
+    
+    Note that this will not enter
+    [overlays](#common.MountedTree.overlay), and you often want
+    [`resolveInner`](#common.Tree.resolveInner) instead.
+    */
+    resolve(pos, side = 0) {
+      let node = resolveNode(CachedNode.get(this) || this.topNode, pos, side, false);
+      CachedNode.set(this, node);
+      return node;
+    }
+    /**
+    Like [`resolve`](#common.Tree.resolve), but will enter
+    [overlaid](#common.MountedTree.overlay) nodes, producing a syntax node
+    pointing into the innermost overlaid tree at the given position
+    (with parent links going through all parent structure, including
+    the host trees).
+    */
+    resolveInner(pos, side = 0) {
+      let node = resolveNode(CachedInnerNode.get(this) || this.topNode, pos, side, true);
+      CachedInnerNode.set(this, node);
+      return node;
+    }
+    /**
+    In some situations, it can be useful to iterate through all
+    nodes around a position, including those in overlays that don't
+    directly cover the position. This method gives you an iterator
+    that will produce all nodes, from small to big, around the given
+    position.
+    */
+    resolveStack(pos, side = 0) {
+      return stackIterator(this, pos, side);
+    }
+    /**
+    Iterate over the tree and its children, calling `enter` for any
+    node that touches the `from`/`to` region (if given) before
+    running over such a node's children, and `leave` (if given) when
+    leaving the node. When `enter` returns `false`, that node will
+    not have its children iterated over (or `leave` called).
+    */
+    iterate(spec) {
+      let { enter, leave, from = 0, to = this.length } = spec;
+      let mode = spec.mode || 0, anon = (mode & IterMode.IncludeAnonymous) > 0;
+      for (let c = this.cursor(mode | IterMode.IncludeAnonymous); ; ) {
+        let entered = false;
+        if (c.from <= to && c.to >= from && (!anon && c.type.isAnonymous || enter(c) !== false)) {
+          if (c.firstChild())
+            continue;
+          entered = true;
+        }
+        for (; ; ) {
+          if (entered && leave && (anon || !c.type.isAnonymous))
+            leave(c);
+          if (c.nextSibling())
+            break;
+          if (!c.parent())
+            return;
+          entered = true;
+        }
+      }
+    }
+    /**
+    Get the value of the given [node prop](#common.NodeProp) for this
+    node. Works with both per-node and per-type props.
+    */
+    prop(prop) {
+      return !prop.perNode ? this.type.prop(prop) : this.props ? this.props[prop.id] : void 0;
+    }
+    /**
+    Returns the node's [per-node props](#common.NodeProp.perNode) in a
+    format that can be passed to the [`Tree`](#common.Tree)
+    constructor.
+    */
+    get propValues() {
+      let result = [];
+      if (this.props)
+        for (let id2 in this.props)
+          result.push([+id2, this.props[id2]]);
+      return result;
+    }
+    /**
+    Balance the direct children of this tree, producing a copy of
+    which may have children grouped into subtrees with type
+    [`NodeType.none`](#common.NodeType^none).
+    */
+    balance(config2 = {}) {
+      return this.children.length <= 8 ? this : balanceRange(NodeType.none, this.children, this.positions, 0, this.children.length, 0, this.length, (children, positions, length) => new _Tree(this.type, children, positions, length, this.propValues), config2.makeTree || ((children, positions, length) => new _Tree(NodeType.none, children, positions, length)));
+    }
+    /**
+    Build a tree from a postfix-ordered buffer of node information,
+    or a cursor over such a buffer.
+    */
+    static build(data2) {
+      return buildTree(data2);
+    }
+  };
+  Tree.empty = new Tree(NodeType.none, [], [], 0);
+  var FlatBufferCursor = class _FlatBufferCursor {
+    constructor(buffer, index) {
+      this.buffer = buffer;
+      this.index = index;
+    }
+    get id() {
+      return this.buffer[this.index - 4];
+    }
+    get start() {
+      return this.buffer[this.index - 3];
+    }
+    get end() {
+      return this.buffer[this.index - 2];
+    }
+    get size() {
+      return this.buffer[this.index - 1];
+    }
+    get pos() {
+      return this.index;
+    }
+    next() {
+      this.index -= 4;
+    }
+    fork() {
+      return new _FlatBufferCursor(this.buffer, this.index);
+    }
+  };
+  var TreeBuffer = class _TreeBuffer {
+    /**
+    Create a tree buffer.
+    */
+    constructor(buffer, length, set) {
+      this.buffer = buffer;
+      this.length = length;
+      this.set = set;
+    }
+    /**
+    @internal
+    */
+    get type() {
+      return NodeType.none;
+    }
+    /**
+    @internal
+    */
+    toString() {
+      let result = [];
+      for (let index = 0; index < this.buffer.length; ) {
+        result.push(this.childString(index));
+        index = this.buffer[index + 3];
+      }
+      return result.join(",");
+    }
+    /**
+    @internal
+    */
+    childString(index) {
+      let id2 = this.buffer[index], endIndex = this.buffer[index + 3];
+      let type = this.set.types[id2], result = type.name;
+      if (/\W/.test(result) && !type.isError)
+        result = JSON.stringify(result);
+      index += 4;
+      if (endIndex == index)
+        return result;
+      let children = [];
+      while (index < endIndex) {
+        children.push(this.childString(index));
+        index = this.buffer[index + 3];
+      }
+      return result + "(" + children.join(",") + ")";
+    }
+    /**
+    @internal
+    */
+    findChild(startIndex, endIndex, dir, pos, side) {
+      let { buffer } = this, pick = -1;
+      for (let i2 = startIndex; i2 != endIndex; i2 = buffer[i2 + 3]) {
+        if (checkSide(side, pos, buffer[i2 + 1], buffer[i2 + 2])) {
+          pick = i2;
+          if (dir > 0)
+            break;
+        }
+      }
+      return pick;
+    }
+    /**
+    @internal
+    */
+    slice(startI, endI, from) {
+      let b = this.buffer;
+      let copy = new Uint16Array(endI - startI), len = 0;
+      for (let i2 = startI, j = 0; i2 < endI; ) {
+        copy[j++] = b[i2++];
+        copy[j++] = b[i2++] - from;
+        let to = copy[j++] = b[i2++] - from;
+        copy[j++] = b[i2++] - startI;
+        len = Math.max(len, to);
+      }
+      return new _TreeBuffer(copy, len, this.set);
+    }
+  };
+  function checkSide(side, pos, from, to) {
+    switch (side) {
+      case -2:
+        return from < pos;
+      case -1:
+        return to >= pos && from < pos;
+      case 0:
+        return from < pos && to > pos;
+      case 1:
+        return from <= pos && to > pos;
+      case 2:
+        return to > pos;
+      case 4:
+        return true;
+    }
+  }
+  function resolveNode(node, pos, side, overlays) {
+    var _a2;
+    while (node.from == node.to || (side < 1 ? node.from >= pos : node.from > pos) || (side > -1 ? node.to <= pos : node.to < pos)) {
+      let parent = !overlays && node instanceof TreeNode && node.index < 0 ? null : node.parent;
+      if (!parent)
+        return node;
+      node = parent;
+    }
+    let mode = overlays ? 0 : IterMode.IgnoreOverlays;
+    if (overlays)
+      for (let scan = node, parent = scan.parent; parent; scan = parent, parent = scan.parent) {
+        if (scan instanceof TreeNode && scan.index < 0 && ((_a2 = parent.enter(pos, side, mode)) === null || _a2 === void 0 ? void 0 : _a2.from) != scan.from)
+          node = parent;
+      }
+    for (; ; ) {
+      let inner = node.enter(pos, side, mode);
+      if (!inner)
+        return node;
+      node = inner;
+    }
+  }
+  var BaseNode = class {
+    cursor(mode = 0) {
+      return new TreeCursor(this, mode);
+    }
+    getChild(type, before = null, after = null) {
+      let r = getChildren(this, type, before, after);
+      return r.length ? r[0] : null;
+    }
+    getChildren(type, before = null, after = null) {
+      return getChildren(this, type, before, after);
+    }
+    resolve(pos, side = 0) {
+      return resolveNode(this, pos, side, false);
+    }
+    resolveInner(pos, side = 0) {
+      return resolveNode(this, pos, side, true);
+    }
+    matchContext(context) {
+      return matchNodeContext(this.parent, context);
+    }
+    enterUnfinishedNodesBefore(pos) {
+      let scan = this.childBefore(pos), node = this;
+      while (scan) {
+        let last = scan.lastChild;
+        if (!last || last.to != scan.to)
+          break;
+        if (last.type.isError && last.from == last.to) {
+          node = scan;
+          scan = last.prevSibling;
+        } else {
+          scan = last;
+        }
+      }
+      return node;
+    }
+    get node() {
+      return this;
+    }
+    get next() {
+      return this.parent;
+    }
+  };
+  var TreeNode = class _TreeNode extends BaseNode {
+    constructor(_tree, from, index, _parent) {
+      super();
+      this._tree = _tree;
+      this.from = from;
+      this.index = index;
+      this._parent = _parent;
+    }
+    get type() {
+      return this._tree.type;
+    }
+    get name() {
+      return this._tree.type.name;
+    }
+    get to() {
+      return this.from + this._tree.length;
+    }
+    nextChild(i2, dir, pos, side, mode = 0) {
+      for (let parent = this; ; ) {
+        for (let { children, positions } = parent._tree, e = dir > 0 ? children.length : -1; i2 != e; i2 += dir) {
+          let next = children[i2], start = positions[i2] + parent.from, mounted;
+          if (!(mode & IterMode.EnterBracketed && next instanceof Tree && (mounted = MountedTree.get(next)) && !mounted.overlay && mounted.bracketed && pos >= start && pos <= start + next.length) && !checkSide(side, pos, start, start + next.length))
+            continue;
+          if (next instanceof TreeBuffer) {
+            if (mode & IterMode.ExcludeBuffers)
+              continue;
+            let index = next.findChild(0, next.buffer.length, dir, pos - start, side);
+            if (index > -1)
+              return new BufferNode(new BufferContext(parent, next, i2, start), null, index);
+          } else if (mode & IterMode.IncludeAnonymous || (!next.type.isAnonymous || hasChild(next))) {
+            let mounted2;
+            if (!(mode & IterMode.IgnoreMounts) && (mounted2 = MountedTree.get(next)) && !mounted2.overlay)
+              return new _TreeNode(mounted2.tree, start, i2, parent);
+            let inner = new _TreeNode(next, start, i2, parent);
+            return mode & IterMode.IncludeAnonymous || !inner.type.isAnonymous ? inner : inner.nextChild(dir < 0 ? next.children.length - 1 : 0, dir, pos, side, mode);
+          }
+        }
+        if (mode & IterMode.IncludeAnonymous || !parent.type.isAnonymous)
+          return null;
+        if (parent.index >= 0)
+          i2 = parent.index + dir;
+        else
+          i2 = dir < 0 ? -1 : parent._parent._tree.children.length;
+        parent = parent._parent;
+        if (!parent)
+          return null;
+      }
+    }
+    get firstChild() {
+      return this.nextChild(
+        0,
+        1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    get lastChild() {
+      return this.nextChild(
+        this._tree.children.length - 1,
+        -1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    childAfter(pos) {
+      return this.nextChild(
+        0,
+        1,
+        pos,
+        2
+        /* Side.After */
+      );
+    }
+    childBefore(pos) {
+      return this.nextChild(
+        this._tree.children.length - 1,
+        -1,
+        pos,
+        -2
+        /* Side.Before */
+      );
+    }
+    prop(prop) {
+      return this._tree.prop(prop);
+    }
+    enter(pos, side, mode = 0) {
+      let mounted;
+      if (!(mode & IterMode.IgnoreOverlays) && (mounted = MountedTree.get(this._tree)) && mounted.overlay) {
+        let rPos = pos - this.from, enterBracketed = mode & IterMode.EnterBracketed && mounted.bracketed;
+        for (let { from, to } of mounted.overlay) {
+          if ((side > 0 || enterBracketed ? from <= rPos : from < rPos) && (side < 0 || enterBracketed ? to >= rPos : to > rPos))
+            return new _TreeNode(mounted.tree, mounted.overlay[0].from + this.from, -1, this);
+        }
+      }
+      return this.nextChild(0, 1, pos, side, mode);
+    }
+    nextSignificantParent() {
+      let val = this;
+      while (val.type.isAnonymous && val._parent)
+        val = val._parent;
+      return val;
+    }
+    get parent() {
+      return this._parent ? this._parent.nextSignificantParent() : null;
+    }
+    get nextSibling() {
+      return this._parent && this.index >= 0 ? this._parent.nextChild(
+        this.index + 1,
+        1,
+        0,
+        4
+        /* Side.DontCare */
+      ) : null;
+    }
+    get prevSibling() {
+      return this._parent && this.index >= 0 ? this._parent.nextChild(
+        this.index - 1,
+        -1,
+        0,
+        4
+        /* Side.DontCare */
+      ) : null;
+    }
+    get tree() {
+      return this._tree;
+    }
+    toTree() {
+      return this._tree;
+    }
+    /**
+    @internal
+    */
+    toString() {
+      return this._tree.toString();
+    }
+  };
+  function getChildren(node, type, before, after) {
+    let cur2 = node.cursor(), result = [];
+    if (!cur2.firstChild())
+      return result;
+    if (before != null)
+      for (let found = false; !found; ) {
+        found = cur2.type.is(before);
+        if (!cur2.nextSibling())
+          return result;
+      }
+    for (; ; ) {
+      if (after != null && cur2.type.is(after))
+        return result;
+      if (cur2.type.is(type))
+        result.push(cur2.node);
+      if (!cur2.nextSibling())
+        return after == null ? result : [];
+    }
+  }
+  function matchNodeContext(node, context, i2 = context.length - 1) {
+    for (let p = node; i2 >= 0; p = p.parent) {
+      if (!p)
+        return false;
+      if (!p.type.isAnonymous) {
+        if (context[i2] && context[i2] != p.name)
+          return false;
+        i2--;
+      }
+    }
     return true;
   }
-  var mathRuntimeSettledEvent = "scholium-math-runtime-settled";
-  async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
-    requireCurrent();
-    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
-      if (!image.isConnected || decoded.has(image)) return false;
-      const imageRect = image.getBoundingClientRect();
-      const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
-      return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
-    });
-    if (pending.length === 0) return false;
-    pending.forEach((image) => decoded.add(image));
-    await Promise.all(pending.map((image) => image.decode().catch(() => {
-    })));
-    requireCurrent();
-    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
-    return true;
+  var BufferContext = class {
+    constructor(parent, buffer, index, start) {
+      this.parent = parent;
+      this.buffer = buffer;
+      this.index = index;
+      this.start = start;
+    }
+  };
+  var BufferNode = class _BufferNode extends BaseNode {
+    get name() {
+      return this.type.name;
+    }
+    get from() {
+      return this.context.start + this.context.buffer.buffer[this.index + 1];
+    }
+    get to() {
+      return this.context.start + this.context.buffer.buffer[this.index + 2];
+    }
+    constructor(context, _parent, index) {
+      super();
+      this.context = context;
+      this._parent = _parent;
+      this.index = index;
+      this.type = context.buffer.set.types[context.buffer.buffer[index]];
+    }
+    child(dir, pos, side) {
+      let { buffer } = this.context;
+      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], dir, pos - this.context.start, side);
+      return index < 0 ? null : new _BufferNode(this.context, this, index);
+    }
+    get firstChild() {
+      return this.child(
+        1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    get lastChild() {
+      return this.child(
+        -1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    childAfter(pos) {
+      return this.child(
+        1,
+        pos,
+        2
+        /* Side.After */
+      );
+    }
+    childBefore(pos) {
+      return this.child(
+        -1,
+        pos,
+        -2
+        /* Side.Before */
+      );
+    }
+    prop(prop) {
+      return this.type.prop(prop);
+    }
+    enter(pos, side, mode = 0) {
+      if (mode & IterMode.ExcludeBuffers)
+        return null;
+      let { buffer } = this.context;
+      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], side > 0 ? 1 : -1, pos - this.context.start, side);
+      return index < 0 ? null : new _BufferNode(this.context, this, index);
+    }
+    get parent() {
+      return this._parent || this.context.parent.nextSignificantParent();
+    }
+    externalSibling(dir) {
+      return this._parent ? null : this.context.parent.nextChild(
+        this.context.index + dir,
+        dir,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    get nextSibling() {
+      let { buffer } = this.context;
+      let after = buffer.buffer[this.index + 3];
+      if (after < (this._parent ? buffer.buffer[this._parent.index + 3] : buffer.buffer.length))
+        return new _BufferNode(this.context, this._parent, after);
+      return this.externalSibling(1);
+    }
+    get prevSibling() {
+      let { buffer } = this.context;
+      let parentStart = this._parent ? this._parent.index + 4 : 0;
+      if (this.index == parentStart)
+        return this.externalSibling(-1);
+      return new _BufferNode(this.context, this._parent, buffer.findChild(
+        parentStart,
+        this.index,
+        -1,
+        0,
+        4
+        /* Side.DontCare */
+      ));
+    }
+    get tree() {
+      return null;
+    }
+    toTree() {
+      let children = [], positions = [];
+      let { buffer } = this.context;
+      let startI = this.index + 4, endI = buffer.buffer[this.index + 3];
+      if (endI > startI) {
+        let from = buffer.buffer[this.index + 1];
+        children.push(buffer.slice(startI, endI, from));
+        positions.push(0);
+      }
+      return new Tree(this.type, children, positions, this.to - this.from);
+    }
+    /**
+    @internal
+    */
+    toString() {
+      return this.context.buffer.childString(this.index);
+    }
+  };
+  function iterStack(heads) {
+    if (!heads.length)
+      return null;
+    let pick = 0, picked = heads[0];
+    for (let i2 = 1; i2 < heads.length; i2++) {
+      let node = heads[i2];
+      if (node.from > picked.from || node.to < picked.to) {
+        picked = node;
+        pick = i2;
+      }
+    }
+    let next = picked instanceof TreeNode && picked.index < 0 ? null : picked.parent;
+    let newHeads = heads.slice();
+    if (next)
+      newHeads[pick] = next;
+    else
+      newHeads.splice(pick, 1);
+    return new StackIterator(newHeads, picked);
+  }
+  var StackIterator = class {
+    constructor(heads, node) {
+      this.heads = heads;
+      this.node = node;
+    }
+    get next() {
+      return iterStack(this.heads);
+    }
+  };
+  function stackIterator(tree, pos, side) {
+    let inner = tree.resolveInner(pos, side), layers = null;
+    for (let scan = inner instanceof TreeNode ? inner : inner.context.parent; scan; scan = scan.parent) {
+      if (scan.index < 0) {
+        let parent = scan.parent;
+        (layers || (layers = [inner])).push(parent.resolve(pos, side));
+        scan = parent;
+      } else {
+        let mount = MountedTree.get(scan.tree);
+        if (mount && mount.overlay && mount.overlay[0].from <= pos && mount.overlay[mount.overlay.length - 1].to >= pos) {
+          let root = new TreeNode(mount.tree, mount.overlay[0].from + scan.from, -1, scan);
+          (layers || (layers = [inner])).push(resolveNode(root, pos, side, false));
+        }
+      }
+    }
+    return layers ? iterStack(layers) : inner;
+  }
+  var TreeCursor = class {
+    /**
+    Shorthand for `.type.name`.
+    */
+    get name() {
+      return this.type.name;
+    }
+    /**
+    @internal
+    */
+    constructor(node, mode = 0) {
+      this.buffer = null;
+      this.stack = [];
+      this.index = 0;
+      this.bufferNode = null;
+      this.mode = mode & ~IterMode.EnterBracketed;
+      if (node instanceof TreeNode) {
+        this.yieldNode(node);
+      } else {
+        this._tree = node.context.parent;
+        this.buffer = node.context;
+        for (let n = node._parent; n; n = n._parent)
+          this.stack.unshift(n.index);
+        this.bufferNode = node;
+        this.yieldBuf(node.index);
+      }
+    }
+    yieldNode(node) {
+      if (!node)
+        return false;
+      this._tree = node;
+      this.type = node.type;
+      this.from = node.from;
+      this.to = node.to;
+      return true;
+    }
+    yieldBuf(index, type) {
+      this.index = index;
+      let { start, buffer } = this.buffer;
+      this.type = type || buffer.set.types[buffer.buffer[index]];
+      this.from = start + buffer.buffer[index + 1];
+      this.to = start + buffer.buffer[index + 2];
+      return true;
+    }
+    /**
+    @internal
+    */
+    yield(node) {
+      if (!node)
+        return false;
+      if (node instanceof TreeNode) {
+        this.buffer = null;
+        return this.yieldNode(node);
+      }
+      this.buffer = node.context;
+      return this.yieldBuf(node.index, node.type);
+    }
+    /**
+    @internal
+    */
+    toString() {
+      return this.buffer ? this.buffer.buffer.childString(this.index) : this._tree.toString();
+    }
+    /**
+    @internal
+    */
+    enterChild(dir, pos, side) {
+      if (!this.buffer)
+        return this.yield(this._tree.nextChild(dir < 0 ? this._tree._tree.children.length - 1 : 0, dir, pos, side, this.mode));
+      let { buffer } = this.buffer;
+      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], dir, pos - this.buffer.start, side);
+      if (index < 0)
+        return false;
+      this.stack.push(this.index);
+      return this.yieldBuf(index);
+    }
+    /**
+    Move the cursor to this node's first child. When this returns
+    false, the node has no child, and the cursor has not been moved.
+    */
+    firstChild() {
+      return this.enterChild(
+        1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    /**
+    Move the cursor to this node's last child.
+    */
+    lastChild() {
+      return this.enterChild(
+        -1,
+        0,
+        4
+        /* Side.DontCare */
+      );
+    }
+    /**
+    Move the cursor to the first child that ends after `pos`.
+    */
+    childAfter(pos) {
+      return this.enterChild(
+        1,
+        pos,
+        2
+        /* Side.After */
+      );
+    }
+    /**
+    Move to the last child that starts before `pos`.
+    */
+    childBefore(pos) {
+      return this.enterChild(
+        -1,
+        pos,
+        -2
+        /* Side.Before */
+      );
+    }
+    /**
+    Move the cursor to the child around `pos`. If side is -1 the
+    child may end at that position, when 1 it may start there. This
+    will also enter [overlaid](#common.MountedTree.overlay)
+    [mounted](#common.NodeProp^mounted) trees unless `overlays` is
+    set to false.
+    */
+    enter(pos, side, mode = this.mode) {
+      if (!this.buffer)
+        return this.yield(this._tree.enter(pos, side, mode));
+      return mode & IterMode.ExcludeBuffers ? false : this.enterChild(1, pos, side);
+    }
+    /**
+    Move to the node's parent node, if this isn't the top node.
+    */
+    parent() {
+      if (!this.buffer)
+        return this.yieldNode(this.mode & IterMode.IncludeAnonymous ? this._tree._parent : this._tree.parent);
+      if (this.stack.length)
+        return this.yieldBuf(this.stack.pop());
+      let parent = this.mode & IterMode.IncludeAnonymous ? this.buffer.parent : this.buffer.parent.nextSignificantParent();
+      this.buffer = null;
+      return this.yieldNode(parent);
+    }
+    /**
+    @internal
+    */
+    sibling(dir) {
+      if (!this.buffer)
+        return !this._tree._parent ? false : this.yield(this._tree.index < 0 ? null : this._tree._parent.nextChild(this._tree.index + dir, dir, 0, 4, this.mode));
+      let { buffer } = this.buffer, d = this.stack.length - 1;
+      if (dir < 0) {
+        let parentStart = d < 0 ? 0 : this.stack[d] + 4;
+        if (this.index != parentStart)
+          return this.yieldBuf(buffer.findChild(
+            parentStart,
+            this.index,
+            -1,
+            0,
+            4
+            /* Side.DontCare */
+          ));
+      } else {
+        let after = buffer.buffer[this.index + 3];
+        if (after < (d < 0 ? buffer.buffer.length : buffer.buffer[this.stack[d] + 3]))
+          return this.yieldBuf(after);
+      }
+      return d < 0 ? this.yield(this.buffer.parent.nextChild(this.buffer.index + dir, dir, 0, 4, this.mode)) : false;
+    }
+    /**
+    Move to this node's next sibling, if any.
+    */
+    nextSibling() {
+      return this.sibling(1);
+    }
+    /**
+    Move to this node's previous sibling, if any.
+    */
+    prevSibling() {
+      return this.sibling(-1);
+    }
+    atLastNode(dir) {
+      let index, parent, { buffer } = this;
+      if (buffer) {
+        if (dir > 0) {
+          if (this.index < buffer.buffer.buffer.length)
+            return false;
+        } else {
+          for (let i2 = 0; i2 < this.index; i2++)
+            if (buffer.buffer.buffer[i2 + 3] < this.index)
+              return false;
+        }
+        ({ index, parent } = buffer);
+      } else {
+        ({ index, _parent: parent } = this._tree);
+      }
+      for (; parent; { index, _parent: parent } = parent) {
+        if (index > -1)
+          for (let i2 = index + dir, e = dir < 0 ? -1 : parent._tree.children.length; i2 != e; i2 += dir) {
+            let child = parent._tree.children[i2];
+            if (this.mode & IterMode.IncludeAnonymous || child instanceof TreeBuffer || !child.type.isAnonymous || hasChild(child))
+              return false;
+          }
+      }
+      return true;
+    }
+    move(dir, enter) {
+      if (enter && this.enterChild(
+        dir,
+        0,
+        4
+        /* Side.DontCare */
+      ))
+        return true;
+      for (; ; ) {
+        if (this.sibling(dir))
+          return true;
+        if (this.atLastNode(dir) || !this.parent())
+          return false;
+      }
+    }
+    /**
+    Move to the next node in a
+    [pre-order](https://en.wikipedia.org/wiki/Tree_traversal#Pre-order,_NLR)
+    traversal, going from a node to its first child or, if the
+    current node is empty or `enter` is false, its next sibling or
+    the next sibling of the first parent node that has one.
+    */
+    next(enter = true) {
+      return this.move(1, enter);
+    }
+    /**
+    Move to the next node in a last-to-first pre-order traversal. A
+    node is followed by its last child or, if it has none, its
+    previous sibling or the previous sibling of the first parent
+    node that has one.
+    */
+    prev(enter = true) {
+      return this.move(-1, enter);
+    }
+    /**
+    Move the cursor to the innermost node that covers `pos`. If
+    `side` is -1, it will enter nodes that end at `pos`. If it is 1,
+    it will enter nodes that start at `pos`.
+    */
+    moveTo(pos, side = 0) {
+      while (this.from == this.to || (side < 1 ? this.from >= pos : this.from > pos) || (side > -1 ? this.to <= pos : this.to < pos))
+        if (!this.parent())
+          break;
+      while (this.enterChild(1, pos, side)) {
+      }
+      return this;
+    }
+    /**
+    Get a [syntax node](#common.SyntaxNode) at the cursor's current
+    position.
+    */
+    get node() {
+      if (!this.buffer)
+        return this._tree;
+      let cache2 = this.bufferNode, result = null, depth2 = 0;
+      if (cache2 && cache2.context == this.buffer) {
+        scan: for (let index = this.index, d = this.stack.length; d >= 0; ) {
+          for (let c = cache2; c; c = c._parent)
+            if (c.index == index) {
+              if (index == this.index)
+                return c;
+              result = c;
+              depth2 = d + 1;
+              break scan;
+            }
+          index = this.stack[--d];
+        }
+      }
+      for (let i2 = depth2; i2 < this.stack.length; i2++)
+        result = new BufferNode(this.buffer, result, this.stack[i2]);
+      return this.bufferNode = new BufferNode(this.buffer, result, this.index);
+    }
+    /**
+    Get the [tree](#common.Tree) that represents the current node, if
+    any. Will return null when the node is in a [tree
+    buffer](#common.TreeBuffer).
+    */
+    get tree() {
+      return this.buffer ? null : this._tree._tree;
+    }
+    /**
+    Iterate over the current node and all its descendants, calling
+    `enter` when entering a node and `leave`, if given, when leaving
+    one. When `enter` returns `false`, any children of that node are
+    skipped, and `leave` isn't called for it.
+    */
+    iterate(enter, leave) {
+      for (let depth2 = 0; ; ) {
+        let mustLeave = false;
+        if (this.type.isAnonymous || enter(this) !== false) {
+          if (this.firstChild()) {
+            depth2++;
+            continue;
+          }
+          if (!this.type.isAnonymous)
+            mustLeave = true;
+        }
+        for (; ; ) {
+          if (mustLeave && leave)
+            leave(this);
+          mustLeave = this.type.isAnonymous;
+          if (!depth2)
+            return;
+          if (this.nextSibling())
+            break;
+          this.parent();
+          depth2--;
+          mustLeave = true;
+        }
+      }
+    }
+    /**
+    Test whether the current node matches a given context—a sequence
+    of direct parent node names. Empty strings in the context array
+    are treated as wildcards.
+    */
+    matchContext(context) {
+      if (!this.buffer)
+        return matchNodeContext(this.node.parent, context);
+      let { buffer } = this.buffer, { types: types2 } = buffer.set;
+      for (let i2 = context.length - 1, d = this.stack.length - 1; i2 >= 0; d--) {
+        if (d < 0)
+          return matchNodeContext(this._tree, context, i2);
+        let type = types2[buffer.buffer[this.stack[d]]];
+        if (!type.isAnonymous) {
+          if (context[i2] && context[i2] != type.name)
+            return false;
+          i2--;
+        }
+      }
+      return true;
+    }
+  };
+  function hasChild(tree) {
+    return tree.children.some((ch) => ch instanceof TreeBuffer || !ch.type.isAnonymous || hasChild(ch));
+  }
+  function buildTree(data2) {
+    var _a2;
+    let { buffer, nodeSet, maxBufferLength = DefaultBufferLength, reused = [], minRepeatType = nodeSet.types.length } = data2;
+    let cursor = Array.isArray(buffer) ? new FlatBufferCursor(buffer, buffer.length) : buffer;
+    let types2 = nodeSet.types;
+    let contextHash = 0, lookAhead = 0;
+    function takeNode(parentStart, minPos, children2, positions2, inRepeat, depth2) {
+      let { id: id2, start, end, size } = cursor;
+      let lookAheadAtStart = lookAhead, contextAtStart = contextHash;
+      if (size < 0) {
+        cursor.next();
+        if (size == -1) {
+          let node2 = reused[id2];
+          children2.push(node2);
+          positions2.push(start - parentStart);
+          return;
+        } else if (size == -3) {
+          contextHash = id2;
+          return;
+        } else if (size == -4) {
+          lookAhead = id2;
+          return;
+        } else {
+          throw new RangeError(`Unrecognized record size: ${size}`);
+        }
+      }
+      let type = types2[id2], node, buffer2;
+      let startPos = start - parentStart;
+      if (end - start <= maxBufferLength && (buffer2 = findBufferSize(cursor.pos - minPos, inRepeat))) {
+        let data3 = new Uint16Array(buffer2.size - buffer2.skip);
+        let endPos = cursor.pos - buffer2.size, index = data3.length;
+        while (cursor.pos > endPos)
+          index = copyToBuffer(buffer2.start, data3, index);
+        node = new TreeBuffer(data3, end - buffer2.start, nodeSet);
+        startPos = buffer2.start - parentStart;
+      } else {
+        let endPos = cursor.pos - size;
+        cursor.next();
+        let localChildren = [], localPositions = [];
+        let localInRepeat = id2 >= minRepeatType ? id2 : -1;
+        let lastGroup = 0, lastEnd = end;
+        while (cursor.pos > endPos) {
+          if (localInRepeat >= 0 && cursor.id == localInRepeat && cursor.size >= 0) {
+            if (cursor.end <= lastEnd - maxBufferLength) {
+              makeRepeatLeaf(localChildren, localPositions, start, lastGroup, cursor.end, lastEnd, localInRepeat, lookAheadAtStart, contextAtStart);
+              lastGroup = localChildren.length;
+              lastEnd = cursor.end;
+            }
+            cursor.next();
+          } else if (depth2 > 2500) {
+            takeFlatNode(start, endPos, localChildren, localPositions);
+          } else {
+            takeNode(start, endPos, localChildren, localPositions, localInRepeat, depth2 + 1);
+          }
+        }
+        if (localInRepeat >= 0 && lastGroup > 0 && lastGroup < localChildren.length)
+          makeRepeatLeaf(localChildren, localPositions, start, lastGroup, start, lastEnd, localInRepeat, lookAheadAtStart, contextAtStart);
+        localChildren.reverse();
+        localPositions.reverse();
+        if (localInRepeat > -1 && lastGroup > 0) {
+          let make = makeBalanced(type, contextAtStart);
+          node = balanceRange(type, localChildren, localPositions, 0, localChildren.length, 0, end - start, make, make);
+        } else {
+          node = makeTree(type, localChildren, localPositions, end - start, lookAheadAtStart - end, contextAtStart);
+        }
+      }
+      children2.push(node);
+      positions2.push(startPos);
+    }
+    function takeFlatNode(parentStart, minPos, children2, positions2) {
+      let nodes = [];
+      let nodeCount = 0, stopAt = -1;
+      while (cursor.pos > minPos) {
+        let { id: id2, start, end, size } = cursor;
+        if (size > 4) {
+          cursor.next();
+        } else if (stopAt > -1 && start < stopAt) {
+          break;
+        } else {
+          if (stopAt < 0)
+            stopAt = end - maxBufferLength;
+          nodes.push(id2, start, end);
+          nodeCount++;
+          cursor.next();
+        }
+      }
+      if (nodeCount) {
+        let buffer2 = new Uint16Array(nodeCount * 4);
+        let start = nodes[nodes.length - 2];
+        for (let i2 = nodes.length - 3, j = 0; i2 >= 0; i2 -= 3) {
+          buffer2[j++] = nodes[i2];
+          buffer2[j++] = nodes[i2 + 1] - start;
+          buffer2[j++] = nodes[i2 + 2] - start;
+          buffer2[j++] = j;
+        }
+        children2.push(new TreeBuffer(buffer2, nodes[2] - start, nodeSet));
+        positions2.push(start - parentStart);
+      }
+    }
+    function makeBalanced(type, contextHash2) {
+      return (children2, positions2, length2) => {
+        let lookAhead2 = 0, lastI = children2.length - 1, last, lookAheadProp;
+        if (lastI >= 0 && (last = children2[lastI]) instanceof Tree) {
+          if (!lastI && last.type == type && last.length == length2)
+            return last;
+          if (lookAheadProp = last.prop(NodeProp.lookAhead))
+            lookAhead2 = positions2[lastI] + last.length + lookAheadProp;
+        }
+        return makeTree(type, children2, positions2, length2, lookAhead2, contextHash2);
+      };
+    }
+    function makeRepeatLeaf(children2, positions2, base2, i2, from, to, type, lookAhead2, contextHash2) {
+      let localChildren = [], localPositions = [];
+      while (children2.length > i2) {
+        localChildren.push(children2.pop());
+        localPositions.push(positions2.pop() + base2 - from);
+      }
+      children2.push(makeTree(nodeSet.types[type], localChildren, localPositions, to - from, lookAhead2 - to, contextHash2));
+      positions2.push(from - base2);
+    }
+    function makeTree(type, children2, positions2, length2, lookAhead2, contextHash2, props) {
+      if (contextHash2) {
+        let pair2 = [NodeProp.contextHash, contextHash2];
+        props = props ? [pair2].concat(props) : [pair2];
+      }
+      if (lookAhead2 > 25) {
+        let pair2 = [NodeProp.lookAhead, lookAhead2];
+        props = props ? [pair2].concat(props) : [pair2];
+      }
+      return new Tree(type, children2, positions2, length2, props);
+    }
+    function findBufferSize(maxSize, inRepeat) {
+      let fork = cursor.fork();
+      let size = 0, start = 0, skip = 0, minStart = fork.end - maxBufferLength;
+      let result = { size: 0, start: 0, skip: 0 };
+      scan: for (let minPos = fork.pos - maxSize; fork.pos > minPos; ) {
+        let nodeSize2 = fork.size;
+        if (fork.id == inRepeat && nodeSize2 >= 0) {
+          result.size = size;
+          result.start = start;
+          result.skip = skip;
+          skip += 4;
+          size += 4;
+          fork.next();
+          continue;
+        }
+        let startPos = fork.pos - nodeSize2;
+        if (nodeSize2 < 0 || startPos < minPos || fork.start < minStart)
+          break;
+        let localSkipped = fork.id >= minRepeatType ? 4 : 0;
+        let nodeStart2 = fork.start;
+        fork.next();
+        while (fork.pos > startPos) {
+          if (fork.size < 0) {
+            if (fork.size == -3 || fork.size == -4)
+              localSkipped += 4;
+            else
+              break scan;
+          } else if (fork.id >= minRepeatType) {
+            localSkipped += 4;
+          }
+          fork.next();
+        }
+        start = nodeStart2;
+        size += nodeSize2;
+        skip += localSkipped;
+      }
+      if (inRepeat < 0 || size == maxSize) {
+        result.size = size;
+        result.start = start;
+        result.skip = skip;
+      }
+      return result.size > 4 ? result : void 0;
+    }
+    function copyToBuffer(bufferStart, buffer2, index) {
+      let { id: id2, start, end, size } = cursor;
+      cursor.next();
+      if (size >= 0 && id2 < minRepeatType) {
+        let startIndex = index;
+        if (size > 4) {
+          let endPos = cursor.pos - (size - 4);
+          while (cursor.pos > endPos)
+            index = copyToBuffer(bufferStart, buffer2, index);
+        }
+        buffer2[--index] = startIndex;
+        buffer2[--index] = end - bufferStart;
+        buffer2[--index] = start - bufferStart;
+        buffer2[--index] = id2;
+      } else if (size == -3) {
+        contextHash = id2;
+      } else if (size == -4) {
+        lookAhead = id2;
+      }
+      return index;
+    }
+    let children = [], positions = [];
+    while (cursor.pos > 0)
+      takeNode(data2.start || 0, data2.bufferStart || 0, children, positions, -1, 0);
+    let length = (_a2 = data2.length) !== null && _a2 !== void 0 ? _a2 : children.length ? positions[0] + children[0].length : 0;
+    return new Tree(types2[data2.topID], children.reverse(), positions.reverse(), length);
+  }
+  var nodeSizeCache = /* @__PURE__ */ new WeakMap();
+  function nodeSize(balanceType, node) {
+    if (!balanceType.isAnonymous || node instanceof TreeBuffer || node.type != balanceType)
+      return 1;
+    let size = nodeSizeCache.get(node);
+    if (size == null) {
+      size = 1;
+      for (let child of node.children) {
+        if (child.type != balanceType || !(child instanceof Tree)) {
+          size = 1;
+          break;
+        }
+        size += nodeSize(balanceType, child);
+      }
+      nodeSizeCache.set(node, size);
+    }
+    return size;
+  }
+  function balanceRange(balanceType, children, positions, from, to, start, length, mkTop, mkTree) {
+    let total = 0;
+    for (let i2 = from; i2 < to; i2++)
+      total += nodeSize(balanceType, children[i2]);
+    let maxChild = Math.ceil(
+      total * 1.5 / 8
+      /* Balance.BranchFactor */
+    );
+    let localChildren = [], localPositions = [];
+    function divide(children2, positions2, from2, to2, offset) {
+      for (let i2 = from2; i2 < to2; ) {
+        let groupFrom = i2, groupStart = positions2[i2], groupSize = nodeSize(balanceType, children2[i2]);
+        i2++;
+        for (; i2 < to2; i2++) {
+          let nextSize = nodeSize(balanceType, children2[i2]);
+          if (groupSize + nextSize >= maxChild)
+            break;
+          groupSize += nextSize;
+        }
+        if (i2 == groupFrom + 1) {
+          if (groupSize > maxChild) {
+            let only2 = children2[groupFrom];
+            divide(only2.children, only2.positions, 0, only2.children.length, positions2[groupFrom] + offset);
+            continue;
+          }
+          localChildren.push(children2[groupFrom]);
+        } else {
+          let length2 = positions2[i2 - 1] + children2[i2 - 1].length - groupStart;
+          localChildren.push(balanceRange(balanceType, children2, positions2, groupFrom, i2, groupStart, length2, null, mkTree));
+        }
+        localPositions.push(groupStart + offset - start);
+      }
+    }
+    divide(children, positions, from, to, 0);
+    return (mkTop || mkTree)(localChildren, localPositions, length);
+  }
+  var NodeWeakMap = class {
+    constructor() {
+      this.map = /* @__PURE__ */ new WeakMap();
+    }
+    setBuffer(buffer, index, value) {
+      let inner = this.map.get(buffer);
+      if (!inner)
+        this.map.set(buffer, inner = /* @__PURE__ */ new Map());
+      inner.set(index, value);
+    }
+    getBuffer(buffer, index) {
+      let inner = this.map.get(buffer);
+      return inner && inner.get(index);
+    }
+    /**
+    Set the value for this syntax node.
+    */
+    set(node, value) {
+      if (node instanceof BufferNode)
+        this.setBuffer(node.context.buffer, node.index, value);
+      else if (node instanceof TreeNode)
+        this.map.set(node.tree, value);
+    }
+    /**
+    Retrieve value for this syntax node, if it exists in the map.
+    */
+    get(node) {
+      return node instanceof BufferNode ? this.getBuffer(node.context.buffer, node.index) : node instanceof TreeNode ? this.map.get(node.tree) : void 0;
+    }
+    /**
+    Set the value for the node that a cursor currently points to.
+    */
+    cursorSet(cursor, value) {
+      if (cursor.buffer)
+        this.setBuffer(cursor.buffer.buffer, cursor.index, value);
+      else
+        this.map.set(cursor.tree, value);
+    }
+    /**
+    Retrieve the value for the node that a cursor currently points
+    to.
+    */
+    cursorGet(cursor) {
+      return cursor.buffer ? this.getBuffer(cursor.buffer.buffer, cursor.index) : this.map.get(cursor.tree);
+    }
+  };
+  var TreeFragment = class _TreeFragment {
+    /**
+    Construct a tree fragment. You'll usually want to use
+    [`addTree`](#common.TreeFragment^addTree) and
+    [`applyChanges`](#common.TreeFragment^applyChanges) instead of
+    calling this directly.
+    */
+    constructor(from, to, tree, offset, openStart = false, openEnd = false) {
+      this.from = from;
+      this.to = to;
+      this.tree = tree;
+      this.offset = offset;
+      this.open = (openStart ? 1 : 0) | (openEnd ? 2 : 0);
+    }
+    /**
+    Whether the start of the fragment represents the start of a
+    parse, or the end of a change. (In the second case, it may not
+    be safe to reuse some nodes at the start, depending on the
+    parsing algorithm.)
+    */
+    get openStart() {
+      return (this.open & 1) > 0;
+    }
+    /**
+    Whether the end of the fragment represents the end of a
+    full-document parse, or the start of a change.
+    */
+    get openEnd() {
+      return (this.open & 2) > 0;
+    }
+    /**
+    Create a set of fragments from a freshly parsed tree, or update
+    an existing set of fragments by replacing the ones that overlap
+    with a tree with content from the new tree. When `partial` is
+    true, the parse is treated as incomplete, and the resulting
+    fragment has [`openEnd`](#common.TreeFragment.openEnd) set to
+    true.
+    */
+    static addTree(tree, fragments = [], partial = false) {
+      let result = [new _TreeFragment(0, tree.length, tree, 0, false, partial)];
+      for (let f of fragments)
+        if (f.to > tree.length)
+          result.push(f);
+      return result;
+    }
+    /**
+    Apply a set of edits to an array of fragments, removing or
+    splitting fragments as necessary to remove edited ranges, and
+    adjusting offsets for fragments that moved.
+    */
+    static applyChanges(fragments, changes, minGap = 128) {
+      if (!changes.length)
+        return fragments;
+      let result = [];
+      let fI = 1, nextF = fragments.length ? fragments[0] : null;
+      for (let cI = 0, pos = 0, off = 0; ; cI++) {
+        let nextC = cI < changes.length ? changes[cI] : null;
+        let nextPos = nextC ? nextC.fromA : 1e9;
+        if (nextPos - pos >= minGap)
+          while (nextF && nextF.from < nextPos) {
+            let cut = nextF;
+            if (pos >= cut.from || nextPos <= cut.to || off) {
+              let fFrom = Math.max(cut.from, pos) - off, fTo = Math.min(cut.to, nextPos) - off;
+              cut = fFrom >= fTo ? null : new _TreeFragment(fFrom, fTo, cut.tree, cut.offset + off, cI > 0, !!nextC);
+            }
+            if (cut)
+              result.push(cut);
+            if (nextF.to > nextPos)
+              break;
+            nextF = fI < fragments.length ? fragments[fI++] : null;
+          }
+        if (!nextC)
+          break;
+        pos = nextC.toA;
+        off = nextC.toA - nextC.toB;
+      }
+      return result;
+    }
+  };
+  var Parser = class {
+    /**
+    Start a parse, returning a [partial parse](#common.PartialParse)
+    object. [`fragments`](#common.TreeFragment) can be passed in to
+    make the parse incremental.
+    
+    By default, the entire input is parsed. You can pass `ranges`,
+    which should be a sorted array of non-empty, non-overlapping
+    ranges, to parse only those ranges. The tree returned in that
+    case will start at `ranges[0].from`.
+    */
+    startParse(input, fragments, ranges) {
+      if (typeof input == "string")
+        input = new StringInput(input);
+      ranges = !ranges ? [new Range(0, input.length)] : ranges.length ? ranges.map((r) => new Range(r.from, r.to)) : [new Range(0, 0)];
+      return this.createParse(input, fragments || [], ranges);
+    }
+    /**
+    Run a full parse, returning the resulting tree.
+    */
+    parse(input, fragments, ranges) {
+      let parse = this.startParse(input, fragments, ranges);
+      for (; ; ) {
+        let done = parse.advance();
+        if (done)
+          return done;
+      }
+    }
+  };
+  var StringInput = class {
+    constructor(string2) {
+      this.string = string2;
+    }
+    get length() {
+      return this.string.length;
+    }
+    chunk(from) {
+      return this.string.slice(from);
+    }
+    get lineChunks() {
+      return false;
+    }
+    read(from, to) {
+      return this.string.slice(from, to);
+    }
+  };
+  function parseMixed(nest) {
+    return (parse, input, fragments, ranges) => new MixedParse(parse, nest, input, fragments, ranges);
+  }
+  var InnerParse = class {
+    constructor(parser7, parse, overlay, bracketed, target, from) {
+      this.parser = parser7;
+      this.parse = parse;
+      this.overlay = overlay;
+      this.bracketed = bracketed;
+      this.target = target;
+      this.from = from;
+    }
+  };
+  function checkRanges(ranges) {
+    if (!ranges.length || ranges.some((r) => r.from >= r.to))
+      throw new RangeError("Invalid inner parse ranges given: " + JSON.stringify(ranges));
+  }
+  var ActiveOverlay = class {
+    constructor(parser7, predicate, mounts, index, start, bracketed, target, prev) {
+      this.parser = parser7;
+      this.predicate = predicate;
+      this.mounts = mounts;
+      this.index = index;
+      this.start = start;
+      this.bracketed = bracketed;
+      this.target = target;
+      this.prev = prev;
+      this.depth = 0;
+      this.ranges = [];
+    }
+  };
+  var stoppedInner = new NodeProp({ perNode: true });
+  var MixedParse = class {
+    constructor(base2, nest, input, fragments, ranges) {
+      this.nest = nest;
+      this.input = input;
+      this.fragments = fragments;
+      this.ranges = ranges;
+      this.inner = [];
+      this.innerDone = 0;
+      this.baseTree = null;
+      this.stoppedAt = null;
+      this.baseParse = base2;
+    }
+    advance() {
+      if (this.baseParse) {
+        let done2 = this.baseParse.advance();
+        if (!done2)
+          return null;
+        this.baseParse = null;
+        this.baseTree = done2;
+        this.startInner();
+        if (this.stoppedAt != null)
+          for (let inner2 of this.inner)
+            inner2.parse.stopAt(this.stoppedAt);
+      }
+      if (this.innerDone == this.inner.length) {
+        let result = this.baseTree;
+        if (this.stoppedAt != null)
+          result = new Tree(result.type, result.children, result.positions, result.length, result.propValues.concat([[stoppedInner, this.stoppedAt]]));
+        return result;
+      }
+      let inner = this.inner[this.innerDone], done = inner.parse.advance();
+      if (done) {
+        this.innerDone++;
+        let props = Object.assign(/* @__PURE__ */ Object.create(null), inner.target.props);
+        props[NodeProp.mounted.id] = new MountedTree(done, inner.overlay, inner.parser, inner.bracketed);
+        inner.target.props = props;
+      }
+      return null;
+    }
+    get parsedPos() {
+      if (this.baseParse)
+        return 0;
+      let pos = this.input.length;
+      for (let i2 = this.innerDone; i2 < this.inner.length; i2++) {
+        if (this.inner[i2].from < pos)
+          pos = Math.min(pos, this.inner[i2].parse.parsedPos);
+      }
+      return pos;
+    }
+    stopAt(pos) {
+      this.stoppedAt = pos;
+      if (this.baseParse)
+        this.baseParse.stopAt(pos);
+      else
+        for (let i2 = this.innerDone; i2 < this.inner.length; i2++)
+          this.inner[i2].parse.stopAt(pos);
+    }
+    startInner() {
+      let fragmentCursor = new FragmentCursor(this.fragments);
+      let overlay = null;
+      let covered = null;
+      let cursor = new TreeCursor(new TreeNode(this.baseTree, this.ranges[0].from, 0, null), IterMode.IncludeAnonymous | IterMode.IgnoreMounts);
+      scan: for (let nest, isCovered; ; ) {
+        let enter = true, range;
+        if (this.stoppedAt != null && cursor.from >= this.stoppedAt) {
+          enter = false;
+        } else if (fragmentCursor.hasNode(cursor)) {
+          if (overlay) {
+            let match = overlay.mounts.find((m) => m.frag.from <= cursor.from && m.frag.to >= cursor.to && m.mount.overlay);
+            if (match)
+              for (let r of match.mount.overlay) {
+                let from = r.from + match.pos, to = r.to + match.pos;
+                if (from >= cursor.from && to <= cursor.to && !overlay.ranges.some((r2) => r2.from < to && r2.to > from))
+                  overlay.ranges.push({ from, to });
+              }
+          }
+          enter = false;
+        } else if (covered && (isCovered = checkCover(covered.ranges, cursor.from, cursor.to))) {
+          enter = isCovered != 2;
+        } else if (!cursor.type.isAnonymous && (nest = this.nest(cursor, this.input)) && (cursor.from < cursor.to || !nest.overlay)) {
+          if (!cursor.tree) {
+            materialize(cursor);
+            if (overlay)
+              overlay.depth++;
+            if (covered)
+              covered.depth++;
+          }
+          let oldMounts = fragmentCursor.findMounts(cursor.from, nest.parser);
+          if (typeof nest.overlay == "function") {
+            overlay = new ActiveOverlay(nest.parser, nest.overlay, oldMounts, this.inner.length, cursor.from, !!nest.bracketed, cursor.tree, overlay);
+          } else {
+            let ranges = punchRanges(this.ranges, nest.overlay || (cursor.from < cursor.to ? [new Range(cursor.from, cursor.to)] : []));
+            if (ranges.length)
+              checkRanges(ranges);
+            if (ranges.length || !nest.overlay)
+              this.inner.push(new InnerParse(nest.parser, ranges.length ? nest.parser.startParse(this.input, enterFragments(oldMounts, ranges), ranges) : nest.parser.startParse(""), nest.overlay ? nest.overlay.map((r) => new Range(r.from - cursor.from, r.to - cursor.from)) : null, !!nest.bracketed, cursor.tree, ranges.length ? ranges[0].from : cursor.from));
+            if (!nest.overlay)
+              enter = false;
+            else if (ranges.length)
+              covered = { ranges, depth: 0, prev: covered };
+          }
+        } else if (overlay && (range = overlay.predicate(cursor))) {
+          if (range === true)
+            range = new Range(cursor.from, cursor.to);
+          if (range.from < range.to) {
+            let last = overlay.ranges.length - 1;
+            if (last >= 0 && overlay.ranges[last].to == range.from)
+              overlay.ranges[last] = { from: overlay.ranges[last].from, to: range.to };
+            else
+              overlay.ranges.push(range);
+          }
+        }
+        if (enter && cursor.firstChild()) {
+          if (overlay)
+            overlay.depth++;
+          if (covered)
+            covered.depth++;
+        } else {
+          for (; ; ) {
+            if (cursor.nextSibling())
+              break;
+            if (!cursor.parent())
+              break scan;
+            if (overlay && !--overlay.depth) {
+              let ranges = punchRanges(this.ranges, overlay.ranges);
+              if (ranges.length) {
+                checkRanges(ranges);
+                this.inner.splice(overlay.index, 0, new InnerParse(overlay.parser, overlay.parser.startParse(this.input, enterFragments(overlay.mounts, ranges), ranges), overlay.ranges.map((r) => new Range(r.from - overlay.start, r.to - overlay.start)), overlay.bracketed, overlay.target, ranges[0].from));
+              }
+              overlay = overlay.prev;
+            }
+            if (covered && !--covered.depth)
+              covered = covered.prev;
+          }
+        }
+      }
+    }
+  };
+  function checkCover(covered, from, to) {
+    for (let range of covered) {
+      if (range.from >= to)
+        break;
+      if (range.to > from)
+        return range.from <= from && range.to >= to ? 2 : 1;
+    }
+    return 0;
+  }
+  function sliceBuf(buf, startI, endI, nodes, positions, off) {
+    if (startI < endI) {
+      let from = buf.buffer[startI + 1];
+      nodes.push(buf.slice(startI, endI, from));
+      positions.push(from - off);
+    }
+  }
+  function materialize(cursor) {
+    let { node } = cursor, stack = [];
+    let buffer = node.context.buffer;
+    do {
+      stack.push(cursor.index);
+      cursor.parent();
+    } while (!cursor.tree);
+    let base2 = cursor.tree, i2 = base2.children.indexOf(buffer);
+    let buf = base2.children[i2], b = buf.buffer, newStack = [i2];
+    function split(startI, endI, type, innerOffset, length, stackPos) {
+      let targetI = stack[stackPos];
+      let children = [], positions = [];
+      sliceBuf(buf, startI, targetI, children, positions, innerOffset);
+      let from = b[targetI + 1], to = b[targetI + 2];
+      newStack.push(children.length);
+      let child = stackPos ? split(targetI + 4, b[targetI + 3], buf.set.types[b[targetI]], from, to - from, stackPos - 1) : node.toTree();
+      children.push(child);
+      positions.push(from - innerOffset);
+      sliceBuf(buf, b[targetI + 3], endI, children, positions, innerOffset);
+      return new Tree(type, children, positions, length);
+    }
+    base2.children[i2] = split(0, b.length, NodeType.none, 0, buf.length, stack.length - 1);
+    for (let index of newStack) {
+      let tree = cursor.tree.children[index], pos = cursor.tree.positions[index];
+      cursor.yield(new TreeNode(tree, pos + cursor.from, index, cursor._tree));
+    }
+  }
+  var StructureCursor = class {
+    constructor(root, offset) {
+      this.offset = offset;
+      this.done = false;
+      this.cursor = root.cursor(IterMode.IncludeAnonymous | IterMode.IgnoreMounts);
+    }
+    // Move to the first node (in pre-order) that starts at or after `pos`.
+    moveTo(pos) {
+      let { cursor } = this, p = pos - this.offset;
+      while (!this.done && cursor.from < p) {
+        if (cursor.to >= pos && cursor.enter(p, 1, IterMode.IgnoreOverlays | IterMode.ExcludeBuffers)) ;
+        else if (cursor.to <= pos) {
+          if (!cursor.next(false))
+            this.done = true;
+        } else {
+          break;
+        }
+      }
+    }
+    hasNode(cursor) {
+      this.moveTo(cursor.from);
+      if (!this.done && this.cursor.from + this.offset == cursor.from && this.cursor.tree) {
+        for (let tree = this.cursor.tree; ; ) {
+          if (tree == cursor.tree)
+            return true;
+          if (tree.children.length && tree.positions[0] == 0 && tree.children[0] instanceof Tree)
+            tree = tree.children[0];
+          else
+            break;
+        }
+      }
+      return false;
+    }
+  };
+  var FragmentCursor = class {
+    constructor(fragments) {
+      var _a2;
+      this.fragments = fragments;
+      this.curTo = 0;
+      this.fragI = 0;
+      if (fragments.length) {
+        let first = this.curFrag = fragments[0];
+        this.curTo = (_a2 = first.tree.prop(stoppedInner)) !== null && _a2 !== void 0 ? _a2 : first.to;
+        this.inner = new StructureCursor(first.tree, -first.offset);
+      } else {
+        this.curFrag = this.inner = null;
+      }
+    }
+    hasNode(node) {
+      while (this.curFrag && node.from >= this.curTo)
+        this.nextFrag();
+      return this.curFrag && this.curFrag.from <= node.from && this.curTo >= node.to && this.inner.hasNode(node);
+    }
+    nextFrag() {
+      var _a2;
+      this.fragI++;
+      if (this.fragI == this.fragments.length) {
+        this.curFrag = this.inner = null;
+      } else {
+        let frag = this.curFrag = this.fragments[this.fragI];
+        this.curTo = (_a2 = frag.tree.prop(stoppedInner)) !== null && _a2 !== void 0 ? _a2 : frag.to;
+        this.inner = new StructureCursor(frag.tree, -frag.offset);
+      }
+    }
+    findMounts(pos, parser7) {
+      var _a2;
+      let result = [];
+      if (this.inner) {
+        this.inner.cursor.moveTo(pos, 1);
+        for (let pos2 = this.inner.cursor.node; pos2; pos2 = pos2.parent) {
+          let mount = (_a2 = pos2.tree) === null || _a2 === void 0 ? void 0 : _a2.prop(NodeProp.mounted);
+          if (mount && mount.parser == parser7) {
+            for (let i2 = this.fragI; i2 < this.fragments.length; i2++) {
+              let frag = this.fragments[i2];
+              if (frag.from >= pos2.to)
+                break;
+              if (frag.tree == this.curFrag.tree)
+                result.push({
+                  frag,
+                  pos: pos2.from - frag.offset,
+                  mount
+                });
+            }
+          }
+        }
+      }
+      return result;
+    }
+  };
+  function punchRanges(outer, ranges) {
+    let copy = null, current = ranges;
+    for (let i2 = 1, j = 0; i2 < outer.length; i2++) {
+      let gapFrom = outer[i2 - 1].to, gapTo = outer[i2].from;
+      for (; j < current.length; j++) {
+        let r = current[j];
+        if (r.from >= gapTo)
+          break;
+        if (r.to <= gapFrom)
+          continue;
+        if (!copy)
+          current = copy = ranges.slice();
+        if (r.from < gapFrom) {
+          copy[j] = new Range(r.from, gapFrom);
+          if (r.to > gapTo)
+            copy.splice(j + 1, 0, new Range(gapTo, r.to));
+        } else if (r.to > gapTo) {
+          copy[j--] = new Range(gapTo, r.to);
+        } else {
+          copy.splice(j--, 1);
+        }
+      }
+    }
+    return current;
+  }
+  function findCoverChanges(a, b, from, to) {
+    let iA = 0, iB = 0, inA = false, inB = false, pos = -1e9;
+    let result = [];
+    for (; ; ) {
+      let nextA = iA == a.length ? 1e9 : inA ? a[iA].to : a[iA].from;
+      let nextB = iB == b.length ? 1e9 : inB ? b[iB].to : b[iB].from;
+      if (inA != inB) {
+        let start = Math.max(pos, from), end = Math.min(nextA, nextB, to);
+        if (start < end)
+          result.push(new Range(start, end));
+      }
+      pos = Math.min(nextA, nextB);
+      if (pos == 1e9)
+        break;
+      if (nextA == pos) {
+        if (!inA)
+          inA = true;
+        else {
+          inA = false;
+          iA++;
+        }
+      }
+      if (nextB == pos) {
+        if (!inB)
+          inB = true;
+        else {
+          inB = false;
+          iB++;
+        }
+      }
+    }
+    return result;
+  }
+  function enterFragments(mounts, ranges) {
+    let result = [];
+    for (let { pos, mount, frag } of mounts) {
+      let startPos = pos + (mount.overlay ? mount.overlay[0].from : 0), endPos = startPos + mount.tree.length;
+      let from = Math.max(frag.from, startPos), to = Math.min(frag.to, endPos);
+      if (mount.overlay) {
+        let overlay = mount.overlay.map((r) => new Range(r.from + pos, r.to + pos));
+        let changes = findCoverChanges(ranges, overlay, from, to);
+        for (let i2 = 0, pos2 = from; ; i2++) {
+          let last = i2 == changes.length, end = last ? to : changes[i2].from;
+          if (end > pos2)
+            result.push(new TreeFragment(pos2, end, mount.tree, -startPos, frag.from >= pos2 || frag.openStart, frag.to <= end || frag.openEnd));
+          if (last)
+            break;
+          pos2 = changes[i2].to;
+        }
+      } else {
+        result.push(new TreeFragment(from, to, mount.tree, -startPos, frag.from >= startPos || frag.openStart, frag.to <= endPos || frag.openEnd));
+      }
+    }
+    return result;
   }
 
   // node_modules/@marijn/find-cluster-break/src/index.js
@@ -2751,7 +4715,7 @@
     Create a [range](https://codemirror.net/6/docs/ref/#state.Range) with this value.
     */
     range(from, to = from) {
-      return Range.create(from, to, this);
+      return Range2.create(from, to, this);
     }
   };
   RangeValue.prototype.startSide = RangeValue.prototype.endSide = 0;
@@ -2760,7 +4724,7 @@
   function cmpVal(a, b) {
     return a == b || a.constructor == b.constructor && a.eq(b);
   }
-  var Range = class _Range {
+  var Range2 = class _Range {
     constructor(from, to, value) {
       this.from = from;
       this.to = to;
@@ -2908,7 +4872,7 @@
         } else {
           if (!filter || filterFrom > cur2.to || filterTo < cur2.from || filter(cur2.from, cur2.to, cur2.value)) {
             if (!builder.addInner(cur2.from, cur2.to, cur2.value))
-              spill.push(Range.create(cur2.from, cur2.to, cur2.value));
+              spill.push(Range2.create(cur2.from, cur2.to, cur2.value));
           }
           cur2.next();
         }
@@ -3051,7 +5015,7 @@
     */
     static of(ranges, sort = false) {
       let build = new RangeSetBuilder();
-      for (let range of ranges instanceof Range ? [ranges] : sort ? lazySort(ranges) : ranges)
+      for (let range of ranges instanceof Range2 ? [ranges] : sort ? lazySort(ranges) : ranges)
         build.add(range.from, range.to, range.value);
       return build.finish();
     }
@@ -13792,2057 +15756,6 @@
     return last;
   }
 
-  // node_modules/@lezer/common/dist/index.js
-  var DefaultBufferLength = 1024;
-  var nextPropID = 0;
-  var Range2 = class {
-    constructor(from, to) {
-      this.from = from;
-      this.to = to;
-    }
-  };
-  var NodeProp = class {
-    /**
-    Create a new node prop type.
-    */
-    constructor(config2 = {}) {
-      this.id = nextPropID++;
-      this.perNode = !!config2.perNode;
-      this.deserialize = config2.deserialize || (() => {
-        throw new Error("This node type doesn't define a deserialize function");
-      });
-      this.combine = config2.combine || null;
-    }
-    /**
-    This is meant to be used with
-    [`NodeSet.extend`](#common.NodeSet.extend) or
-    [`LRParser.configure`](#lr.ParserConfig.props) to compute
-    prop values for each node type in the set. Takes a [match
-    object](#common.NodeType^match) or function that returns undefined
-    if the node type doesn't get this prop, and the prop's value if
-    it does.
-    */
-    add(match) {
-      if (this.perNode)
-        throw new RangeError("Can't add per-node props to node types");
-      if (typeof match != "function")
-        match = NodeType.match(match);
-      return (type) => {
-        let result = match(type);
-        return result === void 0 ? null : [this, result];
-      };
-    }
-  };
-  NodeProp.closedBy = new NodeProp({ deserialize: (str) => str.split(" ") });
-  NodeProp.openedBy = new NodeProp({ deserialize: (str) => str.split(" ") });
-  NodeProp.group = new NodeProp({ deserialize: (str) => str.split(" ") });
-  NodeProp.isolate = new NodeProp({ deserialize: (value) => {
-    if (value && value != "rtl" && value != "ltr" && value != "auto")
-      throw new RangeError("Invalid value for isolate: " + value);
-    return value || "auto";
-  } });
-  NodeProp.contextHash = new NodeProp({ perNode: true });
-  NodeProp.lookAhead = new NodeProp({ perNode: true });
-  NodeProp.mounted = new NodeProp({ perNode: true });
-  var MountedTree = class {
-    constructor(tree, overlay, parser7, bracketed = false) {
-      this.tree = tree;
-      this.overlay = overlay;
-      this.parser = parser7;
-      this.bracketed = bracketed;
-    }
-    /**
-    @internal
-    */
-    static get(tree) {
-      return tree && tree.props && tree.props[NodeProp.mounted.id];
-    }
-  };
-  var noProps = /* @__PURE__ */ Object.create(null);
-  var NodeType = class _NodeType {
-    /**
-    @internal
-    */
-    constructor(name2, props, id2, flags = 0) {
-      this.name = name2;
-      this.props = props;
-      this.id = id2;
-      this.flags = flags;
-    }
-    /**
-    Define a node type.
-    */
-    static define(spec) {
-      let props = spec.props && spec.props.length ? /* @__PURE__ */ Object.create(null) : noProps;
-      let flags = (spec.top ? 1 : 0) | (spec.skipped ? 2 : 0) | (spec.error ? 4 : 0) | (spec.name == null ? 8 : 0);
-      let type = new _NodeType(spec.name || "", props, spec.id, flags);
-      if (spec.props)
-        for (let src of spec.props) {
-          if (!Array.isArray(src))
-            src = src(type);
-          if (src) {
-            if (src[0].perNode)
-              throw new RangeError("Can't store a per-node prop on a node type");
-            props[src[0].id] = src[1];
-          }
-        }
-      return type;
-    }
-    /**
-    Retrieves a node prop for this type. Will return `undefined` if
-    the prop isn't present on this node.
-    */
-    prop(prop) {
-      return this.props[prop.id];
-    }
-    /**
-    True when this is the top node of a grammar.
-    */
-    get isTop() {
-      return (this.flags & 1) > 0;
-    }
-    /**
-    True when this node is produced by a skip rule.
-    */
-    get isSkipped() {
-      return (this.flags & 2) > 0;
-    }
-    /**
-    Indicates whether this is an error node.
-    */
-    get isError() {
-      return (this.flags & 4) > 0;
-    }
-    /**
-    When true, this node type doesn't correspond to a user-declared
-    named node, for example because it is used to cache repetition.
-    */
-    get isAnonymous() {
-      return (this.flags & 8) > 0;
-    }
-    /**
-    Returns true when this node's name or one of its
-    [groups](#common.NodeProp^group) matches the given string.
-    */
-    is(name2) {
-      if (typeof name2 == "string") {
-        if (this.name == name2)
-          return true;
-        let group = this.prop(NodeProp.group);
-        return group ? group.indexOf(name2) > -1 : false;
-      }
-      return this.id == name2;
-    }
-    /**
-    Create a function from node types to arbitrary values by
-    specifying an object whose property names are node or
-    [group](#common.NodeProp^group) names. Often useful with
-    [`NodeProp.add`](#common.NodeProp.add). You can put multiple
-    names, separated by spaces, in a single property name to map
-    multiple node names to a single value.
-    */
-    static match(map) {
-      let direct = /* @__PURE__ */ Object.create(null);
-      for (let prop in map)
-        for (let name2 of prop.split(" "))
-          direct[name2] = map[prop];
-      return (node) => {
-        for (let groups = node.prop(NodeProp.group), i2 = -1; i2 < (groups ? groups.length : 0); i2++) {
-          let found = direct[i2 < 0 ? node.name : groups[i2]];
-          if (found)
-            return found;
-        }
-      };
-    }
-  };
-  NodeType.none = new NodeType(
-    "",
-    /* @__PURE__ */ Object.create(null),
-    0,
-    8
-    /* NodeFlag.Anonymous */
-  );
-  var NodeSet = class _NodeSet {
-    /**
-    Create a set with the given types. The `id` property of each
-    type should correspond to its position within the array.
-    */
-    constructor(types2) {
-      this.types = types2;
-      for (let i2 = 0; i2 < types2.length; i2++)
-        if (types2[i2].id != i2)
-          throw new RangeError("Node type ids should correspond to array positions when creating a node set");
-    }
-    /**
-    Create a copy of this set with some node properties added. The
-    arguments to this method can be created with
-    [`NodeProp.add`](#common.NodeProp.add).
-    */
-    extend(...props) {
-      let newTypes = [];
-      for (let type of this.types) {
-        let newProps = null;
-        for (let source of props) {
-          let add2 = source(type);
-          if (add2) {
-            if (!newProps)
-              newProps = Object.assign({}, type.props);
-            let value = add2[1], prop = add2[0];
-            if (prop.combine && prop.id in newProps)
-              value = prop.combine(newProps[prop.id], value);
-            newProps[prop.id] = value;
-          }
-        }
-        newTypes.push(newProps ? new NodeType(type.name, newProps, type.id, type.flags) : type);
-      }
-      return new _NodeSet(newTypes);
-    }
-  };
-  var CachedNode = /* @__PURE__ */ new WeakMap();
-  var CachedInnerNode = /* @__PURE__ */ new WeakMap();
-  var IterMode;
-  (function(IterMode2) {
-    IterMode2[IterMode2["ExcludeBuffers"] = 1] = "ExcludeBuffers";
-    IterMode2[IterMode2["IncludeAnonymous"] = 2] = "IncludeAnonymous";
-    IterMode2[IterMode2["IgnoreMounts"] = 4] = "IgnoreMounts";
-    IterMode2[IterMode2["IgnoreOverlays"] = 8] = "IgnoreOverlays";
-    IterMode2[IterMode2["EnterBracketed"] = 16] = "EnterBracketed";
-  })(IterMode || (IterMode = {}));
-  var Tree = class _Tree {
-    /**
-    Construct a new tree. See also [`Tree.build`](#common.Tree^build).
-    */
-    constructor(type, children, positions, length, props) {
-      this.type = type;
-      this.children = children;
-      this.positions = positions;
-      this.length = length;
-      this.props = null;
-      if (props && props.length) {
-        this.props = /* @__PURE__ */ Object.create(null);
-        for (let [prop, value] of props)
-          this.props[typeof prop == "number" ? prop : prop.id] = value;
-      }
-    }
-    /**
-    @internal
-    */
-    toString() {
-      let mounted = MountedTree.get(this);
-      if (mounted && !mounted.overlay)
-        return mounted.tree.toString();
-      let children = "";
-      for (let ch of this.children) {
-        let str = ch.toString();
-        if (str) {
-          if (children)
-            children += ",";
-          children += str;
-        }
-      }
-      return !this.type.name ? children : (/\W/.test(this.type.name) && !this.type.isError ? JSON.stringify(this.type.name) : this.type.name) + (children.length ? "(" + children + ")" : "");
-    }
-    /**
-    Get a [tree cursor](#common.TreeCursor) positioned at the top of
-    the tree. Mode can be used to [control](#common.IterMode) which
-    nodes the cursor visits.
-    */
-    cursor(mode = 0) {
-      return new TreeCursor(this.topNode, mode);
-    }
-    /**
-    Get a [tree cursor](#common.TreeCursor) pointing into this tree
-    at the given position and side (see
-    [`moveTo`](#common.TreeCursor.moveTo).
-    */
-    cursorAt(pos, side = 0, mode = 0) {
-      let scope = CachedNode.get(this) || this.topNode;
-      let cursor = new TreeCursor(scope);
-      cursor.moveTo(pos, side);
-      CachedNode.set(this, cursor._tree);
-      return cursor;
-    }
-    /**
-    Get a [syntax node](#common.SyntaxNode) object for the top of the
-    tree.
-    */
-    get topNode() {
-      return new TreeNode(this, 0, 0, null);
-    }
-    /**
-    Get the [syntax node](#common.SyntaxNode) at the given position.
-    If `side` is -1, this will move into nodes that end at the
-    position. If 1, it'll move into nodes that start at the
-    position. With 0, it'll only enter nodes that cover the position
-    from both sides.
-    
-    Note that this will not enter
-    [overlays](#common.MountedTree.overlay), and you often want
-    [`resolveInner`](#common.Tree.resolveInner) instead.
-    */
-    resolve(pos, side = 0) {
-      let node = resolveNode(CachedNode.get(this) || this.topNode, pos, side, false);
-      CachedNode.set(this, node);
-      return node;
-    }
-    /**
-    Like [`resolve`](#common.Tree.resolve), but will enter
-    [overlaid](#common.MountedTree.overlay) nodes, producing a syntax node
-    pointing into the innermost overlaid tree at the given position
-    (with parent links going through all parent structure, including
-    the host trees).
-    */
-    resolveInner(pos, side = 0) {
-      let node = resolveNode(CachedInnerNode.get(this) || this.topNode, pos, side, true);
-      CachedInnerNode.set(this, node);
-      return node;
-    }
-    /**
-    In some situations, it can be useful to iterate through all
-    nodes around a position, including those in overlays that don't
-    directly cover the position. This method gives you an iterator
-    that will produce all nodes, from small to big, around the given
-    position.
-    */
-    resolveStack(pos, side = 0) {
-      return stackIterator(this, pos, side);
-    }
-    /**
-    Iterate over the tree and its children, calling `enter` for any
-    node that touches the `from`/`to` region (if given) before
-    running over such a node's children, and `leave` (if given) when
-    leaving the node. When `enter` returns `false`, that node will
-    not have its children iterated over (or `leave` called).
-    */
-    iterate(spec) {
-      let { enter, leave, from = 0, to = this.length } = spec;
-      let mode = spec.mode || 0, anon = (mode & IterMode.IncludeAnonymous) > 0;
-      for (let c = this.cursor(mode | IterMode.IncludeAnonymous); ; ) {
-        let entered = false;
-        if (c.from <= to && c.to >= from && (!anon && c.type.isAnonymous || enter(c) !== false)) {
-          if (c.firstChild())
-            continue;
-          entered = true;
-        }
-        for (; ; ) {
-          if (entered && leave && (anon || !c.type.isAnonymous))
-            leave(c);
-          if (c.nextSibling())
-            break;
-          if (!c.parent())
-            return;
-          entered = true;
-        }
-      }
-    }
-    /**
-    Get the value of the given [node prop](#common.NodeProp) for this
-    node. Works with both per-node and per-type props.
-    */
-    prop(prop) {
-      return !prop.perNode ? this.type.prop(prop) : this.props ? this.props[prop.id] : void 0;
-    }
-    /**
-    Returns the node's [per-node props](#common.NodeProp.perNode) in a
-    format that can be passed to the [`Tree`](#common.Tree)
-    constructor.
-    */
-    get propValues() {
-      let result = [];
-      if (this.props)
-        for (let id2 in this.props)
-          result.push([+id2, this.props[id2]]);
-      return result;
-    }
-    /**
-    Balance the direct children of this tree, producing a copy of
-    which may have children grouped into subtrees with type
-    [`NodeType.none`](#common.NodeType^none).
-    */
-    balance(config2 = {}) {
-      return this.children.length <= 8 ? this : balanceRange(NodeType.none, this.children, this.positions, 0, this.children.length, 0, this.length, (children, positions, length) => new _Tree(this.type, children, positions, length, this.propValues), config2.makeTree || ((children, positions, length) => new _Tree(NodeType.none, children, positions, length)));
-    }
-    /**
-    Build a tree from a postfix-ordered buffer of node information,
-    or a cursor over such a buffer.
-    */
-    static build(data2) {
-      return buildTree(data2);
-    }
-  };
-  Tree.empty = new Tree(NodeType.none, [], [], 0);
-  var FlatBufferCursor = class _FlatBufferCursor {
-    constructor(buffer, index) {
-      this.buffer = buffer;
-      this.index = index;
-    }
-    get id() {
-      return this.buffer[this.index - 4];
-    }
-    get start() {
-      return this.buffer[this.index - 3];
-    }
-    get end() {
-      return this.buffer[this.index - 2];
-    }
-    get size() {
-      return this.buffer[this.index - 1];
-    }
-    get pos() {
-      return this.index;
-    }
-    next() {
-      this.index -= 4;
-    }
-    fork() {
-      return new _FlatBufferCursor(this.buffer, this.index);
-    }
-  };
-  var TreeBuffer = class _TreeBuffer {
-    /**
-    Create a tree buffer.
-    */
-    constructor(buffer, length, set) {
-      this.buffer = buffer;
-      this.length = length;
-      this.set = set;
-    }
-    /**
-    @internal
-    */
-    get type() {
-      return NodeType.none;
-    }
-    /**
-    @internal
-    */
-    toString() {
-      let result = [];
-      for (let index = 0; index < this.buffer.length; ) {
-        result.push(this.childString(index));
-        index = this.buffer[index + 3];
-      }
-      return result.join(",");
-    }
-    /**
-    @internal
-    */
-    childString(index) {
-      let id2 = this.buffer[index], endIndex = this.buffer[index + 3];
-      let type = this.set.types[id2], result = type.name;
-      if (/\W/.test(result) && !type.isError)
-        result = JSON.stringify(result);
-      index += 4;
-      if (endIndex == index)
-        return result;
-      let children = [];
-      while (index < endIndex) {
-        children.push(this.childString(index));
-        index = this.buffer[index + 3];
-      }
-      return result + "(" + children.join(",") + ")";
-    }
-    /**
-    @internal
-    */
-    findChild(startIndex, endIndex, dir, pos, side) {
-      let { buffer } = this, pick = -1;
-      for (let i2 = startIndex; i2 != endIndex; i2 = buffer[i2 + 3]) {
-        if (checkSide(side, pos, buffer[i2 + 1], buffer[i2 + 2])) {
-          pick = i2;
-          if (dir > 0)
-            break;
-        }
-      }
-      return pick;
-    }
-    /**
-    @internal
-    */
-    slice(startI, endI, from) {
-      let b = this.buffer;
-      let copy = new Uint16Array(endI - startI), len = 0;
-      for (let i2 = startI, j = 0; i2 < endI; ) {
-        copy[j++] = b[i2++];
-        copy[j++] = b[i2++] - from;
-        let to = copy[j++] = b[i2++] - from;
-        copy[j++] = b[i2++] - startI;
-        len = Math.max(len, to);
-      }
-      return new _TreeBuffer(copy, len, this.set);
-    }
-  };
-  function checkSide(side, pos, from, to) {
-    switch (side) {
-      case -2:
-        return from < pos;
-      case -1:
-        return to >= pos && from < pos;
-      case 0:
-        return from < pos && to > pos;
-      case 1:
-        return from <= pos && to > pos;
-      case 2:
-        return to > pos;
-      case 4:
-        return true;
-    }
-  }
-  function resolveNode(node, pos, side, overlays) {
-    var _a2;
-    while (node.from == node.to || (side < 1 ? node.from >= pos : node.from > pos) || (side > -1 ? node.to <= pos : node.to < pos)) {
-      let parent = !overlays && node instanceof TreeNode && node.index < 0 ? null : node.parent;
-      if (!parent)
-        return node;
-      node = parent;
-    }
-    let mode = overlays ? 0 : IterMode.IgnoreOverlays;
-    if (overlays)
-      for (let scan = node, parent = scan.parent; parent; scan = parent, parent = scan.parent) {
-        if (scan instanceof TreeNode && scan.index < 0 && ((_a2 = parent.enter(pos, side, mode)) === null || _a2 === void 0 ? void 0 : _a2.from) != scan.from)
-          node = parent;
-      }
-    for (; ; ) {
-      let inner = node.enter(pos, side, mode);
-      if (!inner)
-        return node;
-      node = inner;
-    }
-  }
-  var BaseNode = class {
-    cursor(mode = 0) {
-      return new TreeCursor(this, mode);
-    }
-    getChild(type, before = null, after = null) {
-      let r = getChildren(this, type, before, after);
-      return r.length ? r[0] : null;
-    }
-    getChildren(type, before = null, after = null) {
-      return getChildren(this, type, before, after);
-    }
-    resolve(pos, side = 0) {
-      return resolveNode(this, pos, side, false);
-    }
-    resolveInner(pos, side = 0) {
-      return resolveNode(this, pos, side, true);
-    }
-    matchContext(context) {
-      return matchNodeContext(this.parent, context);
-    }
-    enterUnfinishedNodesBefore(pos) {
-      let scan = this.childBefore(pos), node = this;
-      while (scan) {
-        let last = scan.lastChild;
-        if (!last || last.to != scan.to)
-          break;
-        if (last.type.isError && last.from == last.to) {
-          node = scan;
-          scan = last.prevSibling;
-        } else {
-          scan = last;
-        }
-      }
-      return node;
-    }
-    get node() {
-      return this;
-    }
-    get next() {
-      return this.parent;
-    }
-  };
-  var TreeNode = class _TreeNode extends BaseNode {
-    constructor(_tree, from, index, _parent) {
-      super();
-      this._tree = _tree;
-      this.from = from;
-      this.index = index;
-      this._parent = _parent;
-    }
-    get type() {
-      return this._tree.type;
-    }
-    get name() {
-      return this._tree.type.name;
-    }
-    get to() {
-      return this.from + this._tree.length;
-    }
-    nextChild(i2, dir, pos, side, mode = 0) {
-      for (let parent = this; ; ) {
-        for (let { children, positions } = parent._tree, e = dir > 0 ? children.length : -1; i2 != e; i2 += dir) {
-          let next = children[i2], start = positions[i2] + parent.from, mounted;
-          if (!(mode & IterMode.EnterBracketed && next instanceof Tree && (mounted = MountedTree.get(next)) && !mounted.overlay && mounted.bracketed && pos >= start && pos <= start + next.length) && !checkSide(side, pos, start, start + next.length))
-            continue;
-          if (next instanceof TreeBuffer) {
-            if (mode & IterMode.ExcludeBuffers)
-              continue;
-            let index = next.findChild(0, next.buffer.length, dir, pos - start, side);
-            if (index > -1)
-              return new BufferNode(new BufferContext(parent, next, i2, start), null, index);
-          } else if (mode & IterMode.IncludeAnonymous || (!next.type.isAnonymous || hasChild(next))) {
-            let mounted2;
-            if (!(mode & IterMode.IgnoreMounts) && (mounted2 = MountedTree.get(next)) && !mounted2.overlay)
-              return new _TreeNode(mounted2.tree, start, i2, parent);
-            let inner = new _TreeNode(next, start, i2, parent);
-            return mode & IterMode.IncludeAnonymous || !inner.type.isAnonymous ? inner : inner.nextChild(dir < 0 ? next.children.length - 1 : 0, dir, pos, side, mode);
-          }
-        }
-        if (mode & IterMode.IncludeAnonymous || !parent.type.isAnonymous)
-          return null;
-        if (parent.index >= 0)
-          i2 = parent.index + dir;
-        else
-          i2 = dir < 0 ? -1 : parent._parent._tree.children.length;
-        parent = parent._parent;
-        if (!parent)
-          return null;
-      }
-    }
-    get firstChild() {
-      return this.nextChild(
-        0,
-        1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    get lastChild() {
-      return this.nextChild(
-        this._tree.children.length - 1,
-        -1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    childAfter(pos) {
-      return this.nextChild(
-        0,
-        1,
-        pos,
-        2
-        /* Side.After */
-      );
-    }
-    childBefore(pos) {
-      return this.nextChild(
-        this._tree.children.length - 1,
-        -1,
-        pos,
-        -2
-        /* Side.Before */
-      );
-    }
-    prop(prop) {
-      return this._tree.prop(prop);
-    }
-    enter(pos, side, mode = 0) {
-      let mounted;
-      if (!(mode & IterMode.IgnoreOverlays) && (mounted = MountedTree.get(this._tree)) && mounted.overlay) {
-        let rPos = pos - this.from, enterBracketed = mode & IterMode.EnterBracketed && mounted.bracketed;
-        for (let { from, to } of mounted.overlay) {
-          if ((side > 0 || enterBracketed ? from <= rPos : from < rPos) && (side < 0 || enterBracketed ? to >= rPos : to > rPos))
-            return new _TreeNode(mounted.tree, mounted.overlay[0].from + this.from, -1, this);
-        }
-      }
-      return this.nextChild(0, 1, pos, side, mode);
-    }
-    nextSignificantParent() {
-      let val = this;
-      while (val.type.isAnonymous && val._parent)
-        val = val._parent;
-      return val;
-    }
-    get parent() {
-      return this._parent ? this._parent.nextSignificantParent() : null;
-    }
-    get nextSibling() {
-      return this._parent && this.index >= 0 ? this._parent.nextChild(
-        this.index + 1,
-        1,
-        0,
-        4
-        /* Side.DontCare */
-      ) : null;
-    }
-    get prevSibling() {
-      return this._parent && this.index >= 0 ? this._parent.nextChild(
-        this.index - 1,
-        -1,
-        0,
-        4
-        /* Side.DontCare */
-      ) : null;
-    }
-    get tree() {
-      return this._tree;
-    }
-    toTree() {
-      return this._tree;
-    }
-    /**
-    @internal
-    */
-    toString() {
-      return this._tree.toString();
-    }
-  };
-  function getChildren(node, type, before, after) {
-    let cur2 = node.cursor(), result = [];
-    if (!cur2.firstChild())
-      return result;
-    if (before != null)
-      for (let found = false; !found; ) {
-        found = cur2.type.is(before);
-        if (!cur2.nextSibling())
-          return result;
-      }
-    for (; ; ) {
-      if (after != null && cur2.type.is(after))
-        return result;
-      if (cur2.type.is(type))
-        result.push(cur2.node);
-      if (!cur2.nextSibling())
-        return after == null ? result : [];
-    }
-  }
-  function matchNodeContext(node, context, i2 = context.length - 1) {
-    for (let p = node; i2 >= 0; p = p.parent) {
-      if (!p)
-        return false;
-      if (!p.type.isAnonymous) {
-        if (context[i2] && context[i2] != p.name)
-          return false;
-        i2--;
-      }
-    }
-    return true;
-  }
-  var BufferContext = class {
-    constructor(parent, buffer, index, start) {
-      this.parent = parent;
-      this.buffer = buffer;
-      this.index = index;
-      this.start = start;
-    }
-  };
-  var BufferNode = class _BufferNode extends BaseNode {
-    get name() {
-      return this.type.name;
-    }
-    get from() {
-      return this.context.start + this.context.buffer.buffer[this.index + 1];
-    }
-    get to() {
-      return this.context.start + this.context.buffer.buffer[this.index + 2];
-    }
-    constructor(context, _parent, index) {
-      super();
-      this.context = context;
-      this._parent = _parent;
-      this.index = index;
-      this.type = context.buffer.set.types[context.buffer.buffer[index]];
-    }
-    child(dir, pos, side) {
-      let { buffer } = this.context;
-      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], dir, pos - this.context.start, side);
-      return index < 0 ? null : new _BufferNode(this.context, this, index);
-    }
-    get firstChild() {
-      return this.child(
-        1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    get lastChild() {
-      return this.child(
-        -1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    childAfter(pos) {
-      return this.child(
-        1,
-        pos,
-        2
-        /* Side.After */
-      );
-    }
-    childBefore(pos) {
-      return this.child(
-        -1,
-        pos,
-        -2
-        /* Side.Before */
-      );
-    }
-    prop(prop) {
-      return this.type.prop(prop);
-    }
-    enter(pos, side, mode = 0) {
-      if (mode & IterMode.ExcludeBuffers)
-        return null;
-      let { buffer } = this.context;
-      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], side > 0 ? 1 : -1, pos - this.context.start, side);
-      return index < 0 ? null : new _BufferNode(this.context, this, index);
-    }
-    get parent() {
-      return this._parent || this.context.parent.nextSignificantParent();
-    }
-    externalSibling(dir) {
-      return this._parent ? null : this.context.parent.nextChild(
-        this.context.index + dir,
-        dir,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    get nextSibling() {
-      let { buffer } = this.context;
-      let after = buffer.buffer[this.index + 3];
-      if (after < (this._parent ? buffer.buffer[this._parent.index + 3] : buffer.buffer.length))
-        return new _BufferNode(this.context, this._parent, after);
-      return this.externalSibling(1);
-    }
-    get prevSibling() {
-      let { buffer } = this.context;
-      let parentStart = this._parent ? this._parent.index + 4 : 0;
-      if (this.index == parentStart)
-        return this.externalSibling(-1);
-      return new _BufferNode(this.context, this._parent, buffer.findChild(
-        parentStart,
-        this.index,
-        -1,
-        0,
-        4
-        /* Side.DontCare */
-      ));
-    }
-    get tree() {
-      return null;
-    }
-    toTree() {
-      let children = [], positions = [];
-      let { buffer } = this.context;
-      let startI = this.index + 4, endI = buffer.buffer[this.index + 3];
-      if (endI > startI) {
-        let from = buffer.buffer[this.index + 1];
-        children.push(buffer.slice(startI, endI, from));
-        positions.push(0);
-      }
-      return new Tree(this.type, children, positions, this.to - this.from);
-    }
-    /**
-    @internal
-    */
-    toString() {
-      return this.context.buffer.childString(this.index);
-    }
-  };
-  function iterStack(heads) {
-    if (!heads.length)
-      return null;
-    let pick = 0, picked = heads[0];
-    for (let i2 = 1; i2 < heads.length; i2++) {
-      let node = heads[i2];
-      if (node.from > picked.from || node.to < picked.to) {
-        picked = node;
-        pick = i2;
-      }
-    }
-    let next = picked instanceof TreeNode && picked.index < 0 ? null : picked.parent;
-    let newHeads = heads.slice();
-    if (next)
-      newHeads[pick] = next;
-    else
-      newHeads.splice(pick, 1);
-    return new StackIterator(newHeads, picked);
-  }
-  var StackIterator = class {
-    constructor(heads, node) {
-      this.heads = heads;
-      this.node = node;
-    }
-    get next() {
-      return iterStack(this.heads);
-    }
-  };
-  function stackIterator(tree, pos, side) {
-    let inner = tree.resolveInner(pos, side), layers = null;
-    for (let scan = inner instanceof TreeNode ? inner : inner.context.parent; scan; scan = scan.parent) {
-      if (scan.index < 0) {
-        let parent = scan.parent;
-        (layers || (layers = [inner])).push(parent.resolve(pos, side));
-        scan = parent;
-      } else {
-        let mount = MountedTree.get(scan.tree);
-        if (mount && mount.overlay && mount.overlay[0].from <= pos && mount.overlay[mount.overlay.length - 1].to >= pos) {
-          let root = new TreeNode(mount.tree, mount.overlay[0].from + scan.from, -1, scan);
-          (layers || (layers = [inner])).push(resolveNode(root, pos, side, false));
-        }
-      }
-    }
-    return layers ? iterStack(layers) : inner;
-  }
-  var TreeCursor = class {
-    /**
-    Shorthand for `.type.name`.
-    */
-    get name() {
-      return this.type.name;
-    }
-    /**
-    @internal
-    */
-    constructor(node, mode = 0) {
-      this.buffer = null;
-      this.stack = [];
-      this.index = 0;
-      this.bufferNode = null;
-      this.mode = mode & ~IterMode.EnterBracketed;
-      if (node instanceof TreeNode) {
-        this.yieldNode(node);
-      } else {
-        this._tree = node.context.parent;
-        this.buffer = node.context;
-        for (let n = node._parent; n; n = n._parent)
-          this.stack.unshift(n.index);
-        this.bufferNode = node;
-        this.yieldBuf(node.index);
-      }
-    }
-    yieldNode(node) {
-      if (!node)
-        return false;
-      this._tree = node;
-      this.type = node.type;
-      this.from = node.from;
-      this.to = node.to;
-      return true;
-    }
-    yieldBuf(index, type) {
-      this.index = index;
-      let { start, buffer } = this.buffer;
-      this.type = type || buffer.set.types[buffer.buffer[index]];
-      this.from = start + buffer.buffer[index + 1];
-      this.to = start + buffer.buffer[index + 2];
-      return true;
-    }
-    /**
-    @internal
-    */
-    yield(node) {
-      if (!node)
-        return false;
-      if (node instanceof TreeNode) {
-        this.buffer = null;
-        return this.yieldNode(node);
-      }
-      this.buffer = node.context;
-      return this.yieldBuf(node.index, node.type);
-    }
-    /**
-    @internal
-    */
-    toString() {
-      return this.buffer ? this.buffer.buffer.childString(this.index) : this._tree.toString();
-    }
-    /**
-    @internal
-    */
-    enterChild(dir, pos, side) {
-      if (!this.buffer)
-        return this.yield(this._tree.nextChild(dir < 0 ? this._tree._tree.children.length - 1 : 0, dir, pos, side, this.mode));
-      let { buffer } = this.buffer;
-      let index = buffer.findChild(this.index + 4, buffer.buffer[this.index + 3], dir, pos - this.buffer.start, side);
-      if (index < 0)
-        return false;
-      this.stack.push(this.index);
-      return this.yieldBuf(index);
-    }
-    /**
-    Move the cursor to this node's first child. When this returns
-    false, the node has no child, and the cursor has not been moved.
-    */
-    firstChild() {
-      return this.enterChild(
-        1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    /**
-    Move the cursor to this node's last child.
-    */
-    lastChild() {
-      return this.enterChild(
-        -1,
-        0,
-        4
-        /* Side.DontCare */
-      );
-    }
-    /**
-    Move the cursor to the first child that ends after `pos`.
-    */
-    childAfter(pos) {
-      return this.enterChild(
-        1,
-        pos,
-        2
-        /* Side.After */
-      );
-    }
-    /**
-    Move to the last child that starts before `pos`.
-    */
-    childBefore(pos) {
-      return this.enterChild(
-        -1,
-        pos,
-        -2
-        /* Side.Before */
-      );
-    }
-    /**
-    Move the cursor to the child around `pos`. If side is -1 the
-    child may end at that position, when 1 it may start there. This
-    will also enter [overlaid](#common.MountedTree.overlay)
-    [mounted](#common.NodeProp^mounted) trees unless `overlays` is
-    set to false.
-    */
-    enter(pos, side, mode = this.mode) {
-      if (!this.buffer)
-        return this.yield(this._tree.enter(pos, side, mode));
-      return mode & IterMode.ExcludeBuffers ? false : this.enterChild(1, pos, side);
-    }
-    /**
-    Move to the node's parent node, if this isn't the top node.
-    */
-    parent() {
-      if (!this.buffer)
-        return this.yieldNode(this.mode & IterMode.IncludeAnonymous ? this._tree._parent : this._tree.parent);
-      if (this.stack.length)
-        return this.yieldBuf(this.stack.pop());
-      let parent = this.mode & IterMode.IncludeAnonymous ? this.buffer.parent : this.buffer.parent.nextSignificantParent();
-      this.buffer = null;
-      return this.yieldNode(parent);
-    }
-    /**
-    @internal
-    */
-    sibling(dir) {
-      if (!this.buffer)
-        return !this._tree._parent ? false : this.yield(this._tree.index < 0 ? null : this._tree._parent.nextChild(this._tree.index + dir, dir, 0, 4, this.mode));
-      let { buffer } = this.buffer, d = this.stack.length - 1;
-      if (dir < 0) {
-        let parentStart = d < 0 ? 0 : this.stack[d] + 4;
-        if (this.index != parentStart)
-          return this.yieldBuf(buffer.findChild(
-            parentStart,
-            this.index,
-            -1,
-            0,
-            4
-            /* Side.DontCare */
-          ));
-      } else {
-        let after = buffer.buffer[this.index + 3];
-        if (after < (d < 0 ? buffer.buffer.length : buffer.buffer[this.stack[d] + 3]))
-          return this.yieldBuf(after);
-      }
-      return d < 0 ? this.yield(this.buffer.parent.nextChild(this.buffer.index + dir, dir, 0, 4, this.mode)) : false;
-    }
-    /**
-    Move to this node's next sibling, if any.
-    */
-    nextSibling() {
-      return this.sibling(1);
-    }
-    /**
-    Move to this node's previous sibling, if any.
-    */
-    prevSibling() {
-      return this.sibling(-1);
-    }
-    atLastNode(dir) {
-      let index, parent, { buffer } = this;
-      if (buffer) {
-        if (dir > 0) {
-          if (this.index < buffer.buffer.buffer.length)
-            return false;
-        } else {
-          for (let i2 = 0; i2 < this.index; i2++)
-            if (buffer.buffer.buffer[i2 + 3] < this.index)
-              return false;
-        }
-        ({ index, parent } = buffer);
-      } else {
-        ({ index, _parent: parent } = this._tree);
-      }
-      for (; parent; { index, _parent: parent } = parent) {
-        if (index > -1)
-          for (let i2 = index + dir, e = dir < 0 ? -1 : parent._tree.children.length; i2 != e; i2 += dir) {
-            let child = parent._tree.children[i2];
-            if (this.mode & IterMode.IncludeAnonymous || child instanceof TreeBuffer || !child.type.isAnonymous || hasChild(child))
-              return false;
-          }
-      }
-      return true;
-    }
-    move(dir, enter) {
-      if (enter && this.enterChild(
-        dir,
-        0,
-        4
-        /* Side.DontCare */
-      ))
-        return true;
-      for (; ; ) {
-        if (this.sibling(dir))
-          return true;
-        if (this.atLastNode(dir) || !this.parent())
-          return false;
-      }
-    }
-    /**
-    Move to the next node in a
-    [pre-order](https://en.wikipedia.org/wiki/Tree_traversal#Pre-order,_NLR)
-    traversal, going from a node to its first child or, if the
-    current node is empty or `enter` is false, its next sibling or
-    the next sibling of the first parent node that has one.
-    */
-    next(enter = true) {
-      return this.move(1, enter);
-    }
-    /**
-    Move to the next node in a last-to-first pre-order traversal. A
-    node is followed by its last child or, if it has none, its
-    previous sibling or the previous sibling of the first parent
-    node that has one.
-    */
-    prev(enter = true) {
-      return this.move(-1, enter);
-    }
-    /**
-    Move the cursor to the innermost node that covers `pos`. If
-    `side` is -1, it will enter nodes that end at `pos`. If it is 1,
-    it will enter nodes that start at `pos`.
-    */
-    moveTo(pos, side = 0) {
-      while (this.from == this.to || (side < 1 ? this.from >= pos : this.from > pos) || (side > -1 ? this.to <= pos : this.to < pos))
-        if (!this.parent())
-          break;
-      while (this.enterChild(1, pos, side)) {
-      }
-      return this;
-    }
-    /**
-    Get a [syntax node](#common.SyntaxNode) at the cursor's current
-    position.
-    */
-    get node() {
-      if (!this.buffer)
-        return this._tree;
-      let cache2 = this.bufferNode, result = null, depth2 = 0;
-      if (cache2 && cache2.context == this.buffer) {
-        scan: for (let index = this.index, d = this.stack.length; d >= 0; ) {
-          for (let c = cache2; c; c = c._parent)
-            if (c.index == index) {
-              if (index == this.index)
-                return c;
-              result = c;
-              depth2 = d + 1;
-              break scan;
-            }
-          index = this.stack[--d];
-        }
-      }
-      for (let i2 = depth2; i2 < this.stack.length; i2++)
-        result = new BufferNode(this.buffer, result, this.stack[i2]);
-      return this.bufferNode = new BufferNode(this.buffer, result, this.index);
-    }
-    /**
-    Get the [tree](#common.Tree) that represents the current node, if
-    any. Will return null when the node is in a [tree
-    buffer](#common.TreeBuffer).
-    */
-    get tree() {
-      return this.buffer ? null : this._tree._tree;
-    }
-    /**
-    Iterate over the current node and all its descendants, calling
-    `enter` when entering a node and `leave`, if given, when leaving
-    one. When `enter` returns `false`, any children of that node are
-    skipped, and `leave` isn't called for it.
-    */
-    iterate(enter, leave) {
-      for (let depth2 = 0; ; ) {
-        let mustLeave = false;
-        if (this.type.isAnonymous || enter(this) !== false) {
-          if (this.firstChild()) {
-            depth2++;
-            continue;
-          }
-          if (!this.type.isAnonymous)
-            mustLeave = true;
-        }
-        for (; ; ) {
-          if (mustLeave && leave)
-            leave(this);
-          mustLeave = this.type.isAnonymous;
-          if (!depth2)
-            return;
-          if (this.nextSibling())
-            break;
-          this.parent();
-          depth2--;
-          mustLeave = true;
-        }
-      }
-    }
-    /**
-    Test whether the current node matches a given context—a sequence
-    of direct parent node names. Empty strings in the context array
-    are treated as wildcards.
-    */
-    matchContext(context) {
-      if (!this.buffer)
-        return matchNodeContext(this.node.parent, context);
-      let { buffer } = this.buffer, { types: types2 } = buffer.set;
-      for (let i2 = context.length - 1, d = this.stack.length - 1; i2 >= 0; d--) {
-        if (d < 0)
-          return matchNodeContext(this._tree, context, i2);
-        let type = types2[buffer.buffer[this.stack[d]]];
-        if (!type.isAnonymous) {
-          if (context[i2] && context[i2] != type.name)
-            return false;
-          i2--;
-        }
-      }
-      return true;
-    }
-  };
-  function hasChild(tree) {
-    return tree.children.some((ch) => ch instanceof TreeBuffer || !ch.type.isAnonymous || hasChild(ch));
-  }
-  function buildTree(data2) {
-    var _a2;
-    let { buffer, nodeSet, maxBufferLength = DefaultBufferLength, reused = [], minRepeatType = nodeSet.types.length } = data2;
-    let cursor = Array.isArray(buffer) ? new FlatBufferCursor(buffer, buffer.length) : buffer;
-    let types2 = nodeSet.types;
-    let contextHash = 0, lookAhead = 0;
-    function takeNode(parentStart, minPos, children2, positions2, inRepeat, depth2) {
-      let { id: id2, start, end, size } = cursor;
-      let lookAheadAtStart = lookAhead, contextAtStart = contextHash;
-      if (size < 0) {
-        cursor.next();
-        if (size == -1) {
-          let node2 = reused[id2];
-          children2.push(node2);
-          positions2.push(start - parentStart);
-          return;
-        } else if (size == -3) {
-          contextHash = id2;
-          return;
-        } else if (size == -4) {
-          lookAhead = id2;
-          return;
-        } else {
-          throw new RangeError(`Unrecognized record size: ${size}`);
-        }
-      }
-      let type = types2[id2], node, buffer2;
-      let startPos = start - parentStart;
-      if (end - start <= maxBufferLength && (buffer2 = findBufferSize(cursor.pos - minPos, inRepeat))) {
-        let data3 = new Uint16Array(buffer2.size - buffer2.skip);
-        let endPos = cursor.pos - buffer2.size, index = data3.length;
-        while (cursor.pos > endPos)
-          index = copyToBuffer(buffer2.start, data3, index);
-        node = new TreeBuffer(data3, end - buffer2.start, nodeSet);
-        startPos = buffer2.start - parentStart;
-      } else {
-        let endPos = cursor.pos - size;
-        cursor.next();
-        let localChildren = [], localPositions = [];
-        let localInRepeat = id2 >= minRepeatType ? id2 : -1;
-        let lastGroup = 0, lastEnd = end;
-        while (cursor.pos > endPos) {
-          if (localInRepeat >= 0 && cursor.id == localInRepeat && cursor.size >= 0) {
-            if (cursor.end <= lastEnd - maxBufferLength) {
-              makeRepeatLeaf(localChildren, localPositions, start, lastGroup, cursor.end, lastEnd, localInRepeat, lookAheadAtStart, contextAtStart);
-              lastGroup = localChildren.length;
-              lastEnd = cursor.end;
-            }
-            cursor.next();
-          } else if (depth2 > 2500) {
-            takeFlatNode(start, endPos, localChildren, localPositions);
-          } else {
-            takeNode(start, endPos, localChildren, localPositions, localInRepeat, depth2 + 1);
-          }
-        }
-        if (localInRepeat >= 0 && lastGroup > 0 && lastGroup < localChildren.length)
-          makeRepeatLeaf(localChildren, localPositions, start, lastGroup, start, lastEnd, localInRepeat, lookAheadAtStart, contextAtStart);
-        localChildren.reverse();
-        localPositions.reverse();
-        if (localInRepeat > -1 && lastGroup > 0) {
-          let make = makeBalanced(type, contextAtStart);
-          node = balanceRange(type, localChildren, localPositions, 0, localChildren.length, 0, end - start, make, make);
-        } else {
-          node = makeTree(type, localChildren, localPositions, end - start, lookAheadAtStart - end, contextAtStart);
-        }
-      }
-      children2.push(node);
-      positions2.push(startPos);
-    }
-    function takeFlatNode(parentStart, minPos, children2, positions2) {
-      let nodes = [];
-      let nodeCount = 0, stopAt = -1;
-      while (cursor.pos > minPos) {
-        let { id: id2, start, end, size } = cursor;
-        if (size > 4) {
-          cursor.next();
-        } else if (stopAt > -1 && start < stopAt) {
-          break;
-        } else {
-          if (stopAt < 0)
-            stopAt = end - maxBufferLength;
-          nodes.push(id2, start, end);
-          nodeCount++;
-          cursor.next();
-        }
-      }
-      if (nodeCount) {
-        let buffer2 = new Uint16Array(nodeCount * 4);
-        let start = nodes[nodes.length - 2];
-        for (let i2 = nodes.length - 3, j = 0; i2 >= 0; i2 -= 3) {
-          buffer2[j++] = nodes[i2];
-          buffer2[j++] = nodes[i2 + 1] - start;
-          buffer2[j++] = nodes[i2 + 2] - start;
-          buffer2[j++] = j;
-        }
-        children2.push(new TreeBuffer(buffer2, nodes[2] - start, nodeSet));
-        positions2.push(start - parentStart);
-      }
-    }
-    function makeBalanced(type, contextHash2) {
-      return (children2, positions2, length2) => {
-        let lookAhead2 = 0, lastI = children2.length - 1, last, lookAheadProp;
-        if (lastI >= 0 && (last = children2[lastI]) instanceof Tree) {
-          if (!lastI && last.type == type && last.length == length2)
-            return last;
-          if (lookAheadProp = last.prop(NodeProp.lookAhead))
-            lookAhead2 = positions2[lastI] + last.length + lookAheadProp;
-        }
-        return makeTree(type, children2, positions2, length2, lookAhead2, contextHash2);
-      };
-    }
-    function makeRepeatLeaf(children2, positions2, base2, i2, from, to, type, lookAhead2, contextHash2) {
-      let localChildren = [], localPositions = [];
-      while (children2.length > i2) {
-        localChildren.push(children2.pop());
-        localPositions.push(positions2.pop() + base2 - from);
-      }
-      children2.push(makeTree(nodeSet.types[type], localChildren, localPositions, to - from, lookAhead2 - to, contextHash2));
-      positions2.push(from - base2);
-    }
-    function makeTree(type, children2, positions2, length2, lookAhead2, contextHash2, props) {
-      if (contextHash2) {
-        let pair2 = [NodeProp.contextHash, contextHash2];
-        props = props ? [pair2].concat(props) : [pair2];
-      }
-      if (lookAhead2 > 25) {
-        let pair2 = [NodeProp.lookAhead, lookAhead2];
-        props = props ? [pair2].concat(props) : [pair2];
-      }
-      return new Tree(type, children2, positions2, length2, props);
-    }
-    function findBufferSize(maxSize, inRepeat) {
-      let fork = cursor.fork();
-      let size = 0, start = 0, skip = 0, minStart = fork.end - maxBufferLength;
-      let result = { size: 0, start: 0, skip: 0 };
-      scan: for (let minPos = fork.pos - maxSize; fork.pos > minPos; ) {
-        let nodeSize2 = fork.size;
-        if (fork.id == inRepeat && nodeSize2 >= 0) {
-          result.size = size;
-          result.start = start;
-          result.skip = skip;
-          skip += 4;
-          size += 4;
-          fork.next();
-          continue;
-        }
-        let startPos = fork.pos - nodeSize2;
-        if (nodeSize2 < 0 || startPos < minPos || fork.start < minStart)
-          break;
-        let localSkipped = fork.id >= minRepeatType ? 4 : 0;
-        let nodeStart2 = fork.start;
-        fork.next();
-        while (fork.pos > startPos) {
-          if (fork.size < 0) {
-            if (fork.size == -3 || fork.size == -4)
-              localSkipped += 4;
-            else
-              break scan;
-          } else if (fork.id >= minRepeatType) {
-            localSkipped += 4;
-          }
-          fork.next();
-        }
-        start = nodeStart2;
-        size += nodeSize2;
-        skip += localSkipped;
-      }
-      if (inRepeat < 0 || size == maxSize) {
-        result.size = size;
-        result.start = start;
-        result.skip = skip;
-      }
-      return result.size > 4 ? result : void 0;
-    }
-    function copyToBuffer(bufferStart, buffer2, index) {
-      let { id: id2, start, end, size } = cursor;
-      cursor.next();
-      if (size >= 0 && id2 < minRepeatType) {
-        let startIndex = index;
-        if (size > 4) {
-          let endPos = cursor.pos - (size - 4);
-          while (cursor.pos > endPos)
-            index = copyToBuffer(bufferStart, buffer2, index);
-        }
-        buffer2[--index] = startIndex;
-        buffer2[--index] = end - bufferStart;
-        buffer2[--index] = start - bufferStart;
-        buffer2[--index] = id2;
-      } else if (size == -3) {
-        contextHash = id2;
-      } else if (size == -4) {
-        lookAhead = id2;
-      }
-      return index;
-    }
-    let children = [], positions = [];
-    while (cursor.pos > 0)
-      takeNode(data2.start || 0, data2.bufferStart || 0, children, positions, -1, 0);
-    let length = (_a2 = data2.length) !== null && _a2 !== void 0 ? _a2 : children.length ? positions[0] + children[0].length : 0;
-    return new Tree(types2[data2.topID], children.reverse(), positions.reverse(), length);
-  }
-  var nodeSizeCache = /* @__PURE__ */ new WeakMap();
-  function nodeSize(balanceType, node) {
-    if (!balanceType.isAnonymous || node instanceof TreeBuffer || node.type != balanceType)
-      return 1;
-    let size = nodeSizeCache.get(node);
-    if (size == null) {
-      size = 1;
-      for (let child of node.children) {
-        if (child.type != balanceType || !(child instanceof Tree)) {
-          size = 1;
-          break;
-        }
-        size += nodeSize(balanceType, child);
-      }
-      nodeSizeCache.set(node, size);
-    }
-    return size;
-  }
-  function balanceRange(balanceType, children, positions, from, to, start, length, mkTop, mkTree) {
-    let total = 0;
-    for (let i2 = from; i2 < to; i2++)
-      total += nodeSize(balanceType, children[i2]);
-    let maxChild = Math.ceil(
-      total * 1.5 / 8
-      /* Balance.BranchFactor */
-    );
-    let localChildren = [], localPositions = [];
-    function divide(children2, positions2, from2, to2, offset) {
-      for (let i2 = from2; i2 < to2; ) {
-        let groupFrom = i2, groupStart = positions2[i2], groupSize = nodeSize(balanceType, children2[i2]);
-        i2++;
-        for (; i2 < to2; i2++) {
-          let nextSize = nodeSize(balanceType, children2[i2]);
-          if (groupSize + nextSize >= maxChild)
-            break;
-          groupSize += nextSize;
-        }
-        if (i2 == groupFrom + 1) {
-          if (groupSize > maxChild) {
-            let only2 = children2[groupFrom];
-            divide(only2.children, only2.positions, 0, only2.children.length, positions2[groupFrom] + offset);
-            continue;
-          }
-          localChildren.push(children2[groupFrom]);
-        } else {
-          let length2 = positions2[i2 - 1] + children2[i2 - 1].length - groupStart;
-          localChildren.push(balanceRange(balanceType, children2, positions2, groupFrom, i2, groupStart, length2, null, mkTree));
-        }
-        localPositions.push(groupStart + offset - start);
-      }
-    }
-    divide(children, positions, from, to, 0);
-    return (mkTop || mkTree)(localChildren, localPositions, length);
-  }
-  var NodeWeakMap = class {
-    constructor() {
-      this.map = /* @__PURE__ */ new WeakMap();
-    }
-    setBuffer(buffer, index, value) {
-      let inner = this.map.get(buffer);
-      if (!inner)
-        this.map.set(buffer, inner = /* @__PURE__ */ new Map());
-      inner.set(index, value);
-    }
-    getBuffer(buffer, index) {
-      let inner = this.map.get(buffer);
-      return inner && inner.get(index);
-    }
-    /**
-    Set the value for this syntax node.
-    */
-    set(node, value) {
-      if (node instanceof BufferNode)
-        this.setBuffer(node.context.buffer, node.index, value);
-      else if (node instanceof TreeNode)
-        this.map.set(node.tree, value);
-    }
-    /**
-    Retrieve value for this syntax node, if it exists in the map.
-    */
-    get(node) {
-      return node instanceof BufferNode ? this.getBuffer(node.context.buffer, node.index) : node instanceof TreeNode ? this.map.get(node.tree) : void 0;
-    }
-    /**
-    Set the value for the node that a cursor currently points to.
-    */
-    cursorSet(cursor, value) {
-      if (cursor.buffer)
-        this.setBuffer(cursor.buffer.buffer, cursor.index, value);
-      else
-        this.map.set(cursor.tree, value);
-    }
-    /**
-    Retrieve the value for the node that a cursor currently points
-    to.
-    */
-    cursorGet(cursor) {
-      return cursor.buffer ? this.getBuffer(cursor.buffer.buffer, cursor.index) : this.map.get(cursor.tree);
-    }
-  };
-  var TreeFragment = class _TreeFragment {
-    /**
-    Construct a tree fragment. You'll usually want to use
-    [`addTree`](#common.TreeFragment^addTree) and
-    [`applyChanges`](#common.TreeFragment^applyChanges) instead of
-    calling this directly.
-    */
-    constructor(from, to, tree, offset, openStart = false, openEnd = false) {
-      this.from = from;
-      this.to = to;
-      this.tree = tree;
-      this.offset = offset;
-      this.open = (openStart ? 1 : 0) | (openEnd ? 2 : 0);
-    }
-    /**
-    Whether the start of the fragment represents the start of a
-    parse, or the end of a change. (In the second case, it may not
-    be safe to reuse some nodes at the start, depending on the
-    parsing algorithm.)
-    */
-    get openStart() {
-      return (this.open & 1) > 0;
-    }
-    /**
-    Whether the end of the fragment represents the end of a
-    full-document parse, or the start of a change.
-    */
-    get openEnd() {
-      return (this.open & 2) > 0;
-    }
-    /**
-    Create a set of fragments from a freshly parsed tree, or update
-    an existing set of fragments by replacing the ones that overlap
-    with a tree with content from the new tree. When `partial` is
-    true, the parse is treated as incomplete, and the resulting
-    fragment has [`openEnd`](#common.TreeFragment.openEnd) set to
-    true.
-    */
-    static addTree(tree, fragments = [], partial = false) {
-      let result = [new _TreeFragment(0, tree.length, tree, 0, false, partial)];
-      for (let f of fragments)
-        if (f.to > tree.length)
-          result.push(f);
-      return result;
-    }
-    /**
-    Apply a set of edits to an array of fragments, removing or
-    splitting fragments as necessary to remove edited ranges, and
-    adjusting offsets for fragments that moved.
-    */
-    static applyChanges(fragments, changes, minGap = 128) {
-      if (!changes.length)
-        return fragments;
-      let result = [];
-      let fI = 1, nextF = fragments.length ? fragments[0] : null;
-      for (let cI = 0, pos = 0, off = 0; ; cI++) {
-        let nextC = cI < changes.length ? changes[cI] : null;
-        let nextPos = nextC ? nextC.fromA : 1e9;
-        if (nextPos - pos >= minGap)
-          while (nextF && nextF.from < nextPos) {
-            let cut = nextF;
-            if (pos >= cut.from || nextPos <= cut.to || off) {
-              let fFrom = Math.max(cut.from, pos) - off, fTo = Math.min(cut.to, nextPos) - off;
-              cut = fFrom >= fTo ? null : new _TreeFragment(fFrom, fTo, cut.tree, cut.offset + off, cI > 0, !!nextC);
-            }
-            if (cut)
-              result.push(cut);
-            if (nextF.to > nextPos)
-              break;
-            nextF = fI < fragments.length ? fragments[fI++] : null;
-          }
-        if (!nextC)
-          break;
-        pos = nextC.toA;
-        off = nextC.toA - nextC.toB;
-      }
-      return result;
-    }
-  };
-  var Parser = class {
-    /**
-    Start a parse, returning a [partial parse](#common.PartialParse)
-    object. [`fragments`](#common.TreeFragment) can be passed in to
-    make the parse incremental.
-    
-    By default, the entire input is parsed. You can pass `ranges`,
-    which should be a sorted array of non-empty, non-overlapping
-    ranges, to parse only those ranges. The tree returned in that
-    case will start at `ranges[0].from`.
-    */
-    startParse(input, fragments, ranges) {
-      if (typeof input == "string")
-        input = new StringInput(input);
-      ranges = !ranges ? [new Range2(0, input.length)] : ranges.length ? ranges.map((r) => new Range2(r.from, r.to)) : [new Range2(0, 0)];
-      return this.createParse(input, fragments || [], ranges);
-    }
-    /**
-    Run a full parse, returning the resulting tree.
-    */
-    parse(input, fragments, ranges) {
-      let parse = this.startParse(input, fragments, ranges);
-      for (; ; ) {
-        let done = parse.advance();
-        if (done)
-          return done;
-      }
-    }
-  };
-  var StringInput = class {
-    constructor(string2) {
-      this.string = string2;
-    }
-    get length() {
-      return this.string.length;
-    }
-    chunk(from) {
-      return this.string.slice(from);
-    }
-    get lineChunks() {
-      return false;
-    }
-    read(from, to) {
-      return this.string.slice(from, to);
-    }
-  };
-  function parseMixed(nest) {
-    return (parse, input, fragments, ranges) => new MixedParse(parse, nest, input, fragments, ranges);
-  }
-  var InnerParse = class {
-    constructor(parser7, parse, overlay, bracketed, target, from) {
-      this.parser = parser7;
-      this.parse = parse;
-      this.overlay = overlay;
-      this.bracketed = bracketed;
-      this.target = target;
-      this.from = from;
-    }
-  };
-  function checkRanges(ranges) {
-    if (!ranges.length || ranges.some((r) => r.from >= r.to))
-      throw new RangeError("Invalid inner parse ranges given: " + JSON.stringify(ranges));
-  }
-  var ActiveOverlay = class {
-    constructor(parser7, predicate, mounts, index, start, bracketed, target, prev) {
-      this.parser = parser7;
-      this.predicate = predicate;
-      this.mounts = mounts;
-      this.index = index;
-      this.start = start;
-      this.bracketed = bracketed;
-      this.target = target;
-      this.prev = prev;
-      this.depth = 0;
-      this.ranges = [];
-    }
-  };
-  var stoppedInner = new NodeProp({ perNode: true });
-  var MixedParse = class {
-    constructor(base2, nest, input, fragments, ranges) {
-      this.nest = nest;
-      this.input = input;
-      this.fragments = fragments;
-      this.ranges = ranges;
-      this.inner = [];
-      this.innerDone = 0;
-      this.baseTree = null;
-      this.stoppedAt = null;
-      this.baseParse = base2;
-    }
-    advance() {
-      if (this.baseParse) {
-        let done2 = this.baseParse.advance();
-        if (!done2)
-          return null;
-        this.baseParse = null;
-        this.baseTree = done2;
-        this.startInner();
-        if (this.stoppedAt != null)
-          for (let inner2 of this.inner)
-            inner2.parse.stopAt(this.stoppedAt);
-      }
-      if (this.innerDone == this.inner.length) {
-        let result = this.baseTree;
-        if (this.stoppedAt != null)
-          result = new Tree(result.type, result.children, result.positions, result.length, result.propValues.concat([[stoppedInner, this.stoppedAt]]));
-        return result;
-      }
-      let inner = this.inner[this.innerDone], done = inner.parse.advance();
-      if (done) {
-        this.innerDone++;
-        let props = Object.assign(/* @__PURE__ */ Object.create(null), inner.target.props);
-        props[NodeProp.mounted.id] = new MountedTree(done, inner.overlay, inner.parser, inner.bracketed);
-        inner.target.props = props;
-      }
-      return null;
-    }
-    get parsedPos() {
-      if (this.baseParse)
-        return 0;
-      let pos = this.input.length;
-      for (let i2 = this.innerDone; i2 < this.inner.length; i2++) {
-        if (this.inner[i2].from < pos)
-          pos = Math.min(pos, this.inner[i2].parse.parsedPos);
-      }
-      return pos;
-    }
-    stopAt(pos) {
-      this.stoppedAt = pos;
-      if (this.baseParse)
-        this.baseParse.stopAt(pos);
-      else
-        for (let i2 = this.innerDone; i2 < this.inner.length; i2++)
-          this.inner[i2].parse.stopAt(pos);
-    }
-    startInner() {
-      let fragmentCursor = new FragmentCursor(this.fragments);
-      let overlay = null;
-      let covered = null;
-      let cursor = new TreeCursor(new TreeNode(this.baseTree, this.ranges[0].from, 0, null), IterMode.IncludeAnonymous | IterMode.IgnoreMounts);
-      scan: for (let nest, isCovered; ; ) {
-        let enter = true, range;
-        if (this.stoppedAt != null && cursor.from >= this.stoppedAt) {
-          enter = false;
-        } else if (fragmentCursor.hasNode(cursor)) {
-          if (overlay) {
-            let match = overlay.mounts.find((m) => m.frag.from <= cursor.from && m.frag.to >= cursor.to && m.mount.overlay);
-            if (match)
-              for (let r of match.mount.overlay) {
-                let from = r.from + match.pos, to = r.to + match.pos;
-                if (from >= cursor.from && to <= cursor.to && !overlay.ranges.some((r2) => r2.from < to && r2.to > from))
-                  overlay.ranges.push({ from, to });
-              }
-          }
-          enter = false;
-        } else if (covered && (isCovered = checkCover(covered.ranges, cursor.from, cursor.to))) {
-          enter = isCovered != 2;
-        } else if (!cursor.type.isAnonymous && (nest = this.nest(cursor, this.input)) && (cursor.from < cursor.to || !nest.overlay)) {
-          if (!cursor.tree) {
-            materialize(cursor);
-            if (overlay)
-              overlay.depth++;
-            if (covered)
-              covered.depth++;
-          }
-          let oldMounts = fragmentCursor.findMounts(cursor.from, nest.parser);
-          if (typeof nest.overlay == "function") {
-            overlay = new ActiveOverlay(nest.parser, nest.overlay, oldMounts, this.inner.length, cursor.from, !!nest.bracketed, cursor.tree, overlay);
-          } else {
-            let ranges = punchRanges(this.ranges, nest.overlay || (cursor.from < cursor.to ? [new Range2(cursor.from, cursor.to)] : []));
-            if (ranges.length)
-              checkRanges(ranges);
-            if (ranges.length || !nest.overlay)
-              this.inner.push(new InnerParse(nest.parser, ranges.length ? nest.parser.startParse(this.input, enterFragments(oldMounts, ranges), ranges) : nest.parser.startParse(""), nest.overlay ? nest.overlay.map((r) => new Range2(r.from - cursor.from, r.to - cursor.from)) : null, !!nest.bracketed, cursor.tree, ranges.length ? ranges[0].from : cursor.from));
-            if (!nest.overlay)
-              enter = false;
-            else if (ranges.length)
-              covered = { ranges, depth: 0, prev: covered };
-          }
-        } else if (overlay && (range = overlay.predicate(cursor))) {
-          if (range === true)
-            range = new Range2(cursor.from, cursor.to);
-          if (range.from < range.to) {
-            let last = overlay.ranges.length - 1;
-            if (last >= 0 && overlay.ranges[last].to == range.from)
-              overlay.ranges[last] = { from: overlay.ranges[last].from, to: range.to };
-            else
-              overlay.ranges.push(range);
-          }
-        }
-        if (enter && cursor.firstChild()) {
-          if (overlay)
-            overlay.depth++;
-          if (covered)
-            covered.depth++;
-        } else {
-          for (; ; ) {
-            if (cursor.nextSibling())
-              break;
-            if (!cursor.parent())
-              break scan;
-            if (overlay && !--overlay.depth) {
-              let ranges = punchRanges(this.ranges, overlay.ranges);
-              if (ranges.length) {
-                checkRanges(ranges);
-                this.inner.splice(overlay.index, 0, new InnerParse(overlay.parser, overlay.parser.startParse(this.input, enterFragments(overlay.mounts, ranges), ranges), overlay.ranges.map((r) => new Range2(r.from - overlay.start, r.to - overlay.start)), overlay.bracketed, overlay.target, ranges[0].from));
-              }
-              overlay = overlay.prev;
-            }
-            if (covered && !--covered.depth)
-              covered = covered.prev;
-          }
-        }
-      }
-    }
-  };
-  function checkCover(covered, from, to) {
-    for (let range of covered) {
-      if (range.from >= to)
-        break;
-      if (range.to > from)
-        return range.from <= from && range.to >= to ? 2 : 1;
-    }
-    return 0;
-  }
-  function sliceBuf(buf, startI, endI, nodes, positions, off) {
-    if (startI < endI) {
-      let from = buf.buffer[startI + 1];
-      nodes.push(buf.slice(startI, endI, from));
-      positions.push(from - off);
-    }
-  }
-  function materialize(cursor) {
-    let { node } = cursor, stack = [];
-    let buffer = node.context.buffer;
-    do {
-      stack.push(cursor.index);
-      cursor.parent();
-    } while (!cursor.tree);
-    let base2 = cursor.tree, i2 = base2.children.indexOf(buffer);
-    let buf = base2.children[i2], b = buf.buffer, newStack = [i2];
-    function split(startI, endI, type, innerOffset, length, stackPos) {
-      let targetI = stack[stackPos];
-      let children = [], positions = [];
-      sliceBuf(buf, startI, targetI, children, positions, innerOffset);
-      let from = b[targetI + 1], to = b[targetI + 2];
-      newStack.push(children.length);
-      let child = stackPos ? split(targetI + 4, b[targetI + 3], buf.set.types[b[targetI]], from, to - from, stackPos - 1) : node.toTree();
-      children.push(child);
-      positions.push(from - innerOffset);
-      sliceBuf(buf, b[targetI + 3], endI, children, positions, innerOffset);
-      return new Tree(type, children, positions, length);
-    }
-    base2.children[i2] = split(0, b.length, NodeType.none, 0, buf.length, stack.length - 1);
-    for (let index of newStack) {
-      let tree = cursor.tree.children[index], pos = cursor.tree.positions[index];
-      cursor.yield(new TreeNode(tree, pos + cursor.from, index, cursor._tree));
-    }
-  }
-  var StructureCursor = class {
-    constructor(root, offset) {
-      this.offset = offset;
-      this.done = false;
-      this.cursor = root.cursor(IterMode.IncludeAnonymous | IterMode.IgnoreMounts);
-    }
-    // Move to the first node (in pre-order) that starts at or after `pos`.
-    moveTo(pos) {
-      let { cursor } = this, p = pos - this.offset;
-      while (!this.done && cursor.from < p) {
-        if (cursor.to >= pos && cursor.enter(p, 1, IterMode.IgnoreOverlays | IterMode.ExcludeBuffers)) ;
-        else if (cursor.to <= pos) {
-          if (!cursor.next(false))
-            this.done = true;
-        } else {
-          break;
-        }
-      }
-    }
-    hasNode(cursor) {
-      this.moveTo(cursor.from);
-      if (!this.done && this.cursor.from + this.offset == cursor.from && this.cursor.tree) {
-        for (let tree = this.cursor.tree; ; ) {
-          if (tree == cursor.tree)
-            return true;
-          if (tree.children.length && tree.positions[0] == 0 && tree.children[0] instanceof Tree)
-            tree = tree.children[0];
-          else
-            break;
-        }
-      }
-      return false;
-    }
-  };
-  var FragmentCursor = class {
-    constructor(fragments) {
-      var _a2;
-      this.fragments = fragments;
-      this.curTo = 0;
-      this.fragI = 0;
-      if (fragments.length) {
-        let first = this.curFrag = fragments[0];
-        this.curTo = (_a2 = first.tree.prop(stoppedInner)) !== null && _a2 !== void 0 ? _a2 : first.to;
-        this.inner = new StructureCursor(first.tree, -first.offset);
-      } else {
-        this.curFrag = this.inner = null;
-      }
-    }
-    hasNode(node) {
-      while (this.curFrag && node.from >= this.curTo)
-        this.nextFrag();
-      return this.curFrag && this.curFrag.from <= node.from && this.curTo >= node.to && this.inner.hasNode(node);
-    }
-    nextFrag() {
-      var _a2;
-      this.fragI++;
-      if (this.fragI == this.fragments.length) {
-        this.curFrag = this.inner = null;
-      } else {
-        let frag = this.curFrag = this.fragments[this.fragI];
-        this.curTo = (_a2 = frag.tree.prop(stoppedInner)) !== null && _a2 !== void 0 ? _a2 : frag.to;
-        this.inner = new StructureCursor(frag.tree, -frag.offset);
-      }
-    }
-    findMounts(pos, parser7) {
-      var _a2;
-      let result = [];
-      if (this.inner) {
-        this.inner.cursor.moveTo(pos, 1);
-        for (let pos2 = this.inner.cursor.node; pos2; pos2 = pos2.parent) {
-          let mount = (_a2 = pos2.tree) === null || _a2 === void 0 ? void 0 : _a2.prop(NodeProp.mounted);
-          if (mount && mount.parser == parser7) {
-            for (let i2 = this.fragI; i2 < this.fragments.length; i2++) {
-              let frag = this.fragments[i2];
-              if (frag.from >= pos2.to)
-                break;
-              if (frag.tree == this.curFrag.tree)
-                result.push({
-                  frag,
-                  pos: pos2.from - frag.offset,
-                  mount
-                });
-            }
-          }
-        }
-      }
-      return result;
-    }
-  };
-  function punchRanges(outer, ranges) {
-    let copy = null, current = ranges;
-    for (let i2 = 1, j = 0; i2 < outer.length; i2++) {
-      let gapFrom = outer[i2 - 1].to, gapTo = outer[i2].from;
-      for (; j < current.length; j++) {
-        let r = current[j];
-        if (r.from >= gapTo)
-          break;
-        if (r.to <= gapFrom)
-          continue;
-        if (!copy)
-          current = copy = ranges.slice();
-        if (r.from < gapFrom) {
-          copy[j] = new Range2(r.from, gapFrom);
-          if (r.to > gapTo)
-            copy.splice(j + 1, 0, new Range2(gapTo, r.to));
-        } else if (r.to > gapTo) {
-          copy[j--] = new Range2(gapTo, r.to);
-        } else {
-          copy.splice(j--, 1);
-        }
-      }
-    }
-    return current;
-  }
-  function findCoverChanges(a, b, from, to) {
-    let iA = 0, iB = 0, inA = false, inB = false, pos = -1e9;
-    let result = [];
-    for (; ; ) {
-      let nextA = iA == a.length ? 1e9 : inA ? a[iA].to : a[iA].from;
-      let nextB = iB == b.length ? 1e9 : inB ? b[iB].to : b[iB].from;
-      if (inA != inB) {
-        let start = Math.max(pos, from), end = Math.min(nextA, nextB, to);
-        if (start < end)
-          result.push(new Range2(start, end));
-      }
-      pos = Math.min(nextA, nextB);
-      if (pos == 1e9)
-        break;
-      if (nextA == pos) {
-        if (!inA)
-          inA = true;
-        else {
-          inA = false;
-          iA++;
-        }
-      }
-      if (nextB == pos) {
-        if (!inB)
-          inB = true;
-        else {
-          inB = false;
-          iB++;
-        }
-      }
-    }
-    return result;
-  }
-  function enterFragments(mounts, ranges) {
-    let result = [];
-    for (let { pos, mount, frag } of mounts) {
-      let startPos = pos + (mount.overlay ? mount.overlay[0].from : 0), endPos = startPos + mount.tree.length;
-      let from = Math.max(frag.from, startPos), to = Math.min(frag.to, endPos);
-      if (mount.overlay) {
-        let overlay = mount.overlay.map((r) => new Range2(r.from + pos, r.to + pos));
-        let changes = findCoverChanges(ranges, overlay, from, to);
-        for (let i2 = 0, pos2 = from; ; i2++) {
-          let last = i2 == changes.length, end = last ? to : changes[i2].from;
-          if (end > pos2)
-            result.push(new TreeFragment(pos2, end, mount.tree, -startPos, frag.from >= pos2 || frag.openStart, frag.to <= end || frag.openEnd));
-          if (last)
-            break;
-          pos2 = changes[i2].to;
-        }
-      } else {
-        result.push(new TreeFragment(from, to, mount.tree, -startPos, frag.from >= startPos || frag.openStart, frag.to <= endPos || frag.openEnd));
-      }
-    }
-    return result;
-  }
-
   // node_modules/@lezer/highlight/dist/index.js
   var nextTagID = 0;
   var Tag = class _Tag {
@@ -16716,6 +16629,10 @@
     let result = parse.isDone(upto) || parse.work(timeout, upto) ? parse.tree : null;
     parse.updateViewport(oldVieport);
     return result;
+  }
+  function syntaxTreeAvailable(state, upto = state.doc.length) {
+    var _a2;
+    return ((_a2 = state.field(Language.state, false)) === null || _a2 === void 0 ? void 0 : _a2.context.isDone(upto)) || false;
   }
   function forceParsing(view, upto = view.viewport.to, timeout = 100) {
     let success = ensureSyntaxTree(view.state, upto, timeout);
@@ -18268,6 +18185,1193 @@
     auto: /* @__PURE__ */ Decoration.mark({ class: "cm-iso", inclusive: true, attributes: { dir: "auto" }, bidiIsolate: null })
   };
 
+  // footnote-presentation.ts
+  var scholiumFootnoteDialect = {
+    namedReferenceOpening: "[^",
+    namedReferenceClosing: "]",
+    definitionSeparator: ":",
+    inlineOpening: "^[",
+    continuationIndentSpaces: 2,
+    allowsTabContinuation: true,
+    caseSensitiveIdentifiers: true,
+    ordinalByFirstReference: true
+  };
+  function supportsFootnoteDialect(dialect) {
+    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
+  }
+  function sourceLines(source) {
+    if (source.length === 0) return [];
+    const lines = [];
+    let from = 0;
+    while (from < source.length) {
+      const newline3 = source.indexOf("\n", from);
+      const contentTo = newline3 < 0 ? source.length : newline3;
+      const to = newline3 < 0 ? source.length : newline3 + 1;
+      const raw = source.slice(from, contentTo);
+      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+      lines.push({ from, contentTo: from + text.length, to, text });
+      from = to;
+    }
+    return lines;
+  }
+  function overlaps(ranges, from, to) {
+    return ranges.some((range) => range.from < to && range.to > from);
+  }
+  function isEscaped(source, offset) {
+    let backslashes = 0;
+    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
+    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
+    const lines = sourceLines(source);
+    const rawDefinitions = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (overlaps(excluded, line.from, line.contentTo)) continue;
+      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
+      if (!match) continue;
+      const parts = [match[2]];
+      const firstLineContentFrom = line.contentTo - match[2].length;
+      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
+      let foundContentStart = /\S/.test(match[2]);
+      let to = line.to;
+      let continuation = index + 1;
+      while (continuation < lines.length) {
+        const candidate = lines[continuation];
+        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
+        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
+        if (!foundContentStart && /\S/.test(continuationText)) {
+          const removedIndent = candidate.text.length - continuationText.length;
+          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
+          contentFrom = candidate.from + removedIndent + leadingWhitespace;
+          foundContentStart = true;
+        }
+        parts.push(continuationText);
+        to = candidate.to;
+        continuation += 1;
+      }
+      rawDefinitions.push({
+        identifier: match[1],
+        content: parts.join("\n").trim(),
+        contentFrom,
+        from: line.from,
+        to,
+        isInline: false,
+        marker: { from: line.from, to: line.contentTo }
+      });
+      index = continuation - 1;
+    }
+    const rawReferences = [];
+    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps(excluded, from, to) || rawDefinitions.some((definition) => overlaps([definition.marker], from, to)) || isEscaped(source, from)) continue;
+      rawReferences.push({
+        identifier: match[1],
+        from,
+        to,
+        isInline: false,
+        inlineContent: null
+      });
+    }
+    let inlineCounter = 0;
+    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps(excluded, from, to) || isEscaped(source, from)) continue;
+      inlineCounter += 1;
+      const identifier5 = `inline-${inlineCounter}`;
+      rawReferences.push({
+        identifier: identifier5,
+        from,
+        to,
+        isInline: true,
+        inlineContent: match[1]
+      });
+      rawDefinitions.push({
+        identifier: identifier5,
+        content: match[1],
+        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
+        from,
+        to,
+        isInline: true,
+        marker: { from, to }
+      });
+    }
+    rawReferences.sort((left, right) => left.from - right.from);
+    const ordinalByIdentifier = /* @__PURE__ */ new Map();
+    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
+    for (const reference of rawReferences) {
+      if (!ordinalByIdentifier.has(reference.identifier)) {
+        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
+      }
+      occurrenceByIdentifier.set(
+        reference.identifier,
+        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
+      );
+    }
+    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
+    for (const definition of rawDefinitions) {
+      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
+        firstDefinitionByIdentifier.set(definition.identifier, definition);
+      }
+    }
+    occurrenceByIdentifier.clear();
+    const references = rawReferences.map((reference) => {
+      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
+      occurrenceByIdentifier.set(reference.identifier, occurrence);
+      const definition = firstDefinitionByIdentifier.get(reference.identifier);
+      return {
+        identifier: reference.identifier,
+        ordinal: ordinalByIdentifier.get(reference.identifier),
+        occurrence,
+        isInline: reference.isInline,
+        definitionFrom: definition?.from ?? null,
+        definitionContentFrom: definition?.contentFrom ?? null,
+        from: reference.from,
+        to: reference.to
+      };
+    });
+    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
+      identifier: definition.identifier,
+      content: definition.content,
+      contentFrom: definition.contentFrom,
+      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
+      isInline: definition.isInline,
+      from: definition.from,
+      to: definition.to
+    })).sort((left, right) => {
+      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
+      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
+      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
+    });
+    return { definitions, references };
+  }
+
+  // projection-index.ts
+  function compareRanges(left, right) {
+    return left.from - right.from || left.to - right.to;
+  }
+  var prefixMaximumEnds = /* @__PURE__ */ new WeakMap();
+  function maximumEndsFor(ranges) {
+    const cached = prefixMaximumEnds.get(ranges);
+    if (cached) return cached;
+    let maximum = -1;
+    const values2 = Object.freeze(ranges.map((range) => {
+      maximum = Math.max(maximum, range.to);
+      return maximum;
+    }));
+    prefixMaximumEnds.set(ranges, values2);
+    return values2;
+  }
+  function immutableProjectionRanges(ranges) {
+    const immutable = Object.freeze(ranges.map((range) => Object.freeze({ ...range })).sort(compareRanges));
+    maximumEndsFor(immutable);
+    return immutable;
+  }
+  function projectionRangeDifference(requested, covered) {
+    const missing = [];
+    let coveredIndex = 0;
+    for (const target of requested) {
+      if (target.to <= target.from) continue;
+      while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
+        coveredIndex += 1;
+      }
+      let cursor = target.from;
+      let index = coveredIndex;
+      while (index < covered.length && covered[index].from < target.to) {
+        const existing = covered[index];
+        if (existing.from > cursor) {
+          missing.push({ from: cursor, to: Math.min(existing.from, target.to) });
+        }
+        cursor = Math.max(cursor, existing.to);
+        if (cursor >= target.to) break;
+        index += 1;
+      }
+      if (cursor < target.to) missing.push({ from: cursor, to: target.to });
+      coveredIndex = index;
+    }
+    return immutableProjectionRanges(missing);
+  }
+  function commandProtectionRanges(literalRanges, frontmatterRange) {
+    return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
+  }
+  function projectionRangesIntersecting(ranges, from, to) {
+    let low = 0;
+    let high = ranges.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (ranges[middle].from < to) low = middle + 1;
+      else high = middle;
+    }
+    const maximumEnds = maximumEndsFor(ranges);
+    const matches = [];
+    for (let index = low - 1; index >= 0 && maximumEnds[index] > from; index -= 1) {
+      if (ranges[index].to > from) matches.push(ranges[index]);
+    }
+    matches.reverse();
+    return matches;
+  }
+  function projectionRangeContaining(ranges, offset) {
+    const candidates = projectionRangesIntersecting(ranges, offset, offset + 1);
+    return candidates[0] ?? null;
+  }
+  function projectionRangeAtBoundary(ranges, offset, boundary2) {
+    const candidates = projectionRangesIntersecting(
+      ranges,
+      Math.max(0, offset - 1),
+      offset + 1
+    );
+    return candidates.find(
+      (range) => boundary2 === "start" ? range.from === offset : range.to === offset
+    ) ?? null;
+  }
+  function projectionSelectionOverlaps(ranges, selection) {
+    if (selection.from === selection.to) {
+      return projectionRangeContaining(ranges, selection.from) !== null;
+    }
+    return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
+  }
+  function projectionBoundaryTouches(ranges, offset) {
+    const candidates = projectionRangesIntersecting(
+      ranges,
+      Math.max(0, offset - 1),
+      offset + 1
+    );
+    return candidates.some((range) => offset >= range.from && offset <= range.to);
+  }
+
+  // link-annotation.ts
+  function isEscaped2(source, position) {
+    let backslashes = 0;
+    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function hasVisibleMarkdownContent(markdown2) {
+    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
+    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
+    return remaining.trim().length > 0;
+  }
+  function linkAnnotationAfter(source, linkTo) {
+    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
+    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
+      const pair2 = source.slice(cursor, cursor + 2);
+      if (pair2 === "{{" && !isEscaped2(source, cursor)) return null;
+      if (pair2 !== "}}" || isEscaped2(source, cursor)) continue;
+      const markdown2 = source.slice(linkTo + 2, cursor);
+      if (!hasVisibleMarkdownContent(markdown2)) return null;
+      return {
+        from: linkTo,
+        to: cursor + 2,
+        contentFrom: linkTo + 2,
+        contentTo: cursor,
+        markdown: markdown2
+      };
+    }
+    return null;
+  }
+
+  // zotero-field-envelope.ts
+  var citationDestinationPrefix = "scholium-zotero:";
+  var compactCitationPrefix = "cite:";
+  var compactBibliographyPrefix = "<!--cite-bibliography:";
+  var compactBibliographyClose = "<!--/cite-bibliography-->";
+  var bibliographyPrefix = "<!--scholium-zotero-field:";
+  var bibliographyClose = "<!--/scholium-zotero-field-->";
+  var documentPrefix = "<!--scholium-zotero-document:";
+  var maximumEnvelopeLength = 256 * 1024;
+  var maximumFallbackLength = 64 * 1024;
+  var maximumFields = 1024;
+  function encodeOpaque(value) {
+    if (/[\ud800-\udfff]/u.test(value)) throw new Error("Opaque state contains a lone surrogate.");
+    const bytes = new TextEncoder().encode(value);
+    const payload = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+    if (payload.length > maximumEnvelopeLength) throw new Error("The citation state exceeds the supported source envelope size.");
+    return payload;
+  }
+  function decodeOpaque(value) {
+    if (value.length > maximumEnvelopeLength || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error("Invalid bounded base64 payload.");
+    }
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
+    if (encodeOpaque(decoded) !== value) throw new Error("Noncanonical encoded payload.");
+    return decoded;
+  }
+  function validFieldID(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function decodeFieldPayload(payload, kind) {
+    const field = JSON.parse(decodeOpaque(payload));
+    if (!field || !validFieldID(field.id) || field.kind !== kind || typeof field.code !== "string" || typeof field.text !== "string" || Object.keys(field).some((key) => !["id", "kind", "code", "text"].includes(key))) {
+      throw new Error("Invalid or unsupported host field identity or payload.");
+    }
+    return { id: field.id, kind, code: field.code, text: field.text };
+  }
+  function fieldPayload(field) {
+    if (!validFieldID(field.id) || !["citation", "bibliography"].includes(field.kind) || typeof field.code !== "string" || typeof field.text !== "string") throw new Error("Invalid host field identity or payload.");
+    return encodeOpaque(JSON.stringify({ id: field.id, kind: field.kind, code: field.code, text: field.text }));
+  }
+  function isCitationDestination(destination) {
+    return /^(?:scholium-zotero|cite):/i.test(destination);
+  }
+  function citationLinkSource(raw) {
+    const boundary2 = raw.lastIndexOf("](");
+    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
+    const destination = raw.slice(boundary2 + 2, -1);
+    if (!isCitationDestination(destination)) return null;
+    if (!destination.startsWith(`${citationDestinationPrefix}1:`)) throw new Error("Unknown citation source envelope version.");
+    const field = decodeFieldPayload(destination.slice(`${citationDestinationPrefix}1:`.length), "citation");
+    const fallbackRange = { from: 1, to: boundary2 };
+    if (fallbackRange.to - fallbackRange.from > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
+      throw new Error("Citation fallback must be bounded inline Markdown.");
+    }
+    return { field, fallbackRange };
+  }
+  function compactCitationLinkSource(raw) {
+    const boundary2 = raw.lastIndexOf("](");
+    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
+    const destination = raw.slice(boundary2 + 2, -1);
+    if (!destination.startsWith(compactCitationPrefix)) return null;
+    const id2 = destination.slice(compactCitationPrefix.length);
+    if (!validFieldID(id2) || boundary2 - 1 > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
+      throw new Error("Invalid compact citation carrier.");
+    }
+    return { id: id2, fallbackRange: { from: 1, to: boundary2 } };
+  }
+  function validBibliographyStyle(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const style = value;
+    return Object.keys(style).sort().join(",") === "entrySpacing,firstLineIndent,indent,lineSpacing,tabStops" && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5) && style.lineSpacing > 0 && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 64 && style.tabStops.every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5);
+  }
+  function validSignatures(value) {
+    return Array.isArray(value) && value.length <= maximumFields && value.every((field) => field && validFieldID(field.id) && typeof field.code === "string" && Object.keys(field).sort().join(",") === "code,id") && new Set(value.map((field) => field.id)).size === value.length;
+  }
+  function decodeDocumentPayload(payload) {
+    const value = JSON.parse(decodeOpaque(payload));
+    if (!value || typeof value.data !== "string" || Object.keys(value).some((key) => !["data", "bibliographyStyle", "acceptedFields"].includes(key)) || value.bibliographyStyle !== void 0 && !validBibliographyStyle(value.bibliographyStyle) || value.acceptedFields !== void 0 && !validSignatures(value.acceptedFields)) throw new Error("Invalid document source envelope.");
+    return value;
+  }
+  function encodeDocumentData(data2, bibliographyStyle = null, acceptedFields = null) {
+    if (typeof data2 !== "string" || bibliographyStyle !== null && !validBibliographyStyle(bibliographyStyle) || acceptedFields !== null && !validSignatures(acceptedFields)) throw new Error("Invalid document source envelope.");
+    return `${documentPrefix}1:${encodeOpaque(JSON.stringify({
+      data: data2,
+      ...bibliographyStyle ? { bibliographyStyle } : {},
+      ...acceptedFields ? { acceptedFields } : {}
+    }))}-->`;
+  }
+  function isCompletedFieldCode(field) {
+    const prefix = field.kind === "citation" ? "ITEM CSL_CITATION " : "BIBL ";
+    if (!field.code.startsWith(prefix)) return false;
+    try {
+      const body = field.code.slice(prefix.length);
+      if (field.kind === "bibliography" && !body.endsWith(" CSL_BIBLIOGRAPHY")) return false;
+      const json = field.kind === "bibliography" ? body.slice(0, -" CSL_BIBLIOGRAPHY".length) : body;
+      const value = JSON.parse(json);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      if (field.kind === "bibliography") return true;
+      return Array.isArray(value.citationItems) && value.citationItems.length > 0 && value.citationItems.every((item) => item && typeof item === "object" && !Array.isArray(item) && (typeof item.id === "string" && item.id.length > 0 || typeof item.id === "number" && Number.isSafeInteger(item.id) && item.id > 0));
+    } catch {
+      return false;
+    }
+  }
+
+  // semantic-projection.ts
+  function mapSemanticProjectionRanges(previous, mapPosition) {
+    const mapRange2 = (range) => ({
+      from: mapPosition(range.from),
+      to: mapPosition(range.to)
+    });
+    const blocks = previous.blocks.map((block) => ({
+      ...block,
+      from: mapPosition(block.from),
+      to: mapPosition(block.to),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        from: mapPosition(block.parent.from),
+        to: mapPosition(block.parent.to)
+      } : null,
+      markerRanges: block.markerRanges.map(mapRange2),
+      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
+    }));
+    const inlines = previous.inlines.map((inline) => ({
+      ...inline,
+      from: mapPosition(inline.from),
+      to: mapPosition(inline.to),
+      markerRanges: inline.markerRanges.map(mapRange2),
+      visibleRanges: inline.visibleRanges.map(mapRange2),
+      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
+      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
+      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
+      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
+      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
+    }));
+    const literals2 = previous.literals.map((literal2) => ({
+      ...literal2,
+      from: mapPosition(literal2.from),
+      to: mapPosition(literal2.to)
+    }));
+    return { blocks, inlines, literals: literals2 };
+  }
+  var blockKinds = /* @__PURE__ */ new Map([
+    ["Paragraph", "paragraph"],
+    ["Blockquote", "blockQuote"],
+    ["FencedCode", "code"],
+    ["CodeBlock", "code"],
+    ["BulletList", "unorderedList"],
+    ["OrderedList", "orderedList"],
+    ["ListItem", "listItem"],
+    ["Table", "table"],
+    ["HorizontalRule", "thematicBreak"],
+    ["HTMLBlock", "html"],
+    // CommonMark exposes a block HTML comment as CommentBlock while Swift
+    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+    // on one raw-HTML presentation path so Review and Edit cannot drift.
+    ["CommentBlock", "html"],
+    ["Callout", "callout"],
+    ["FootnoteDefinition", "footnoteDefinition"],
+    ["BlockMath", "displayMath"],
+    ["ObsidianCommentBlock", "comment"],
+    ["UnclosedObsidianCommentBlock", "comment"]
+  ]);
+  var inlineKinds = /* @__PURE__ */ new Map([
+    ["StrongEmphasis", "strong"],
+    ["Emphasis", "emphasis"],
+    ["Strikethrough", "strikethrough"],
+    ["InlineCode", "code"],
+    ["Link", "link"],
+    ["Autolink", "link"],
+    ["Image", "image"],
+    ["Highlight", "highlight"],
+    ["WikiLink", "wikilink"],
+    ["InlineMath", "inlineMath"],
+    ["FootnoteReference", "footnoteReference"],
+    ["InlineFootnote", "inlineFootnote"],
+    ["ObsidianComment", "comment"]
+  ]);
+  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
+    const ranges = [];
+    const visit = (node) => {
+      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
+      if (node !== root && stopAt.has(node.name)) return;
+      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+    };
+    visit(root);
+    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  }
+  function directChildRanges(root, names) {
+    const ranges = [];
+    for (let child = root.firstChild; child; child = child.nextSibling) {
+      if (typeof names === "string" ? child.name === names : names.has(child.name)) {
+        ranges.push({ from: child.from, to: child.to });
+      }
+    }
+    return ranges;
+  }
+  function referenceLabel(source) {
+    const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
+    return label.replace(/[^\u0131]+/g, (part) => part.toLowerCase().toUpperCase());
+  }
+  function imageReferenceTargets(tree, source) {
+    const targets = /* @__PURE__ */ new Map();
+    tree.iterate({
+      enter(reference) {
+        if (reference.name !== "LinkReference") return;
+        const node = reference.node;
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const target = directChildRanges(node, "URL")[0];
+        if (!label || !target) return false;
+        const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
+        if (key && !targets.has(key)) targets.set(key, target);
+        return false;
+      }
+    });
+    return targets;
+  }
+  function complementRanges(from, to, excluded) {
+    const visible = [];
+    let position = from;
+    for (const range of excluded) {
+      if (range.from > position) visible.push({ from: position, to: range.from });
+      position = Math.max(position, range.to);
+    }
+    if (position < to) visible.push({ from: position, to });
+    return visible;
+  }
+  function presentationBlockMarkerRanges(state, node, kind, markerNames2, stopAt) {
+    const ranges = childRanges(node, markerNames2, stopAt);
+    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
+    return ranges.map((range) => {
+      if (range.from !== node.from) return range;
+      let to = range.to;
+      while (to < node.to) {
+        const character = state.doc.sliceString(to, to + 1);
+        if (character !== " " && character !== "	") break;
+        to += 1;
+      }
+      return { from: range.from, to };
+    });
+  }
+  function inlinePresentation(node, kind, source, referenceTargets) {
+    const markerNames2 = /* @__PURE__ */ new Set();
+    switch (kind) {
+      case "strong":
+      case "emphasis":
+        markerNames2.add("EmphasisMark");
+        break;
+      case "strikethrough":
+        markerNames2.add("StrikethroughMark");
+        break;
+      case "code":
+        markerNames2.add("CodeMark");
+        break;
+      case "link":
+      case "image":
+        markerNames2.add("LinkMark");
+        break;
+      case "highlight":
+        markerNames2.add("HighlightMark");
+        break;
+      case "wikilink":
+        markerNames2.add("WikiLinkOpenMark");
+        markerNames2.add("WikiEmbedMark");
+        markerNames2.add("WikiLinkAliasMark");
+        markerNames2.add("WikiLinkCloseMark");
+        break;
+      case "inlineMath":
+        markerNames2.add("MathMark");
+        break;
+      case "footnoteReference":
+        markerNames2.add("FootnoteOpenMark");
+        markerNames2.add("FootnoteCloseMark");
+        break;
+      case "inlineFootnote":
+        markerNames2.add("InlineFootnoteOpenMark");
+        markerNames2.add("FootnoteCloseMark");
+        break;
+      case "comment":
+        break;
+    }
+    const markerRanges = directChildRanges(node, markerNames2);
+    let targetRange = null;
+    let aliasRange = null;
+    let linkRange = null;
+    let annotationRange = null;
+    let annotationContentRange = null;
+    let projectionTo = node.to;
+    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
+    if (kind === "image") {
+      if (markerRanges.length < 2) return null;
+      const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
+      targetRange = directChildRanges(node, "URL")[0] ?? null;
+      if (!targetRange) {
+        const label = directChildRanges(node, "LinkLabel")[0];
+        const next = source.slice(node.to, node.to + 1);
+        if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
+          return null;
+        }
+        const key = referenceLabel(label && label.to - label.from > 2 ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
+        targetRange = referenceTargets().get(key) ?? null;
+        if (!targetRange) return null;
+      }
+      visibleRanges = [alt];
+    } else if (kind === "link") {
+      const explicitVisible = directChildRanges(node, "URL");
+      if (explicitVisible.length === 0) return null;
+      targetRange = explicitVisible[0];
+      if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
+        if (node.name !== "Link") return null;
+        try {
+          const raw = source.slice(node.from, node.to);
+          const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
+          if (!citation) return null;
+          return {
+            kind: "citation",
+            nodeName: node.name,
+            from: node.from,
+            to: node.to,
+            markerRanges,
+            visibleRanges: [{ from: node.from + citation.fallbackRange.from, to: node.from + citation.fallbackRange.to }],
+            targetRange: null,
+            aliasRange: null,
+            linkRange: null,
+            annotationRange: null,
+            annotationContentRange: null
+          };
+        } catch {
+          return null;
+        }
+      }
+      if (node.name === "Autolink") {
+        visibleRanges = explicitVisible;
+      } else {
+        const linkMarks = markerRanges;
+        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
+      }
+    } else if (kind === "wikilink") {
+      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
+      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
+      targetRange = target[0] ?? null;
+      aliasRange = alias[0] ?? null;
+      visibleRanges = alias.length > 0 ? alias : target;
+      linkRange = { from: node.from, to: node.to };
+      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+      if (annotation) {
+        annotationRange = { from: annotation.from, to: annotation.to };
+        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
+        projectionTo = annotation.to;
+      }
+    } else if (kind === "inlineMath") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
+    } else if (kind === "footnoteReference") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
+    } else if (kind === "inlineFootnote") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
+    } else if (kind === "comment") {
+      visibleRanges = [];
+    }
+    return {
+      kind,
+      nodeName: node.name,
+      from: node.from,
+      to: projectionTo,
+      markerRanges,
+      visibleRanges,
+      targetRange,
+      aliasRange,
+      linkRange,
+      annotationRange,
+      annotationContentRange
+    };
+  }
+  function rangeKey(from, to) {
+    return `${from}:${to}`;
+  }
+  function boundedLinePrefix(doc2, position, limit = 512) {
+    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
+    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
+  }
+  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
+    const expanded = visibleRanges.map((range) => ({
+      from: Math.max(0, range.from - margin),
+      to: Math.min(documentLength, range.to + margin)
+    })).sort((left, right) => left.from - right.from || left.to - right.to);
+    const merged = [];
+    for (const range of expanded) {
+      const previous = merged.at(-1);
+      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+      else merged.push({ ...range });
+    }
+    return merged;
+  }
+  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
+    const result = {
+      blocks: [],
+      inlines: [],
+      literals: []
+    };
+    if (visibleRanges.length === 0) return result;
+    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
+    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
+    const blockStack = [];
+    const source = state.doc.toString();
+    let referenceTargets;
+    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
+    tree.iterate({
+      from,
+      to,
+      enter(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
+        const kind = heading2 ? "heading" : blockKinds.get(node.name);
+        if (kind) {
+          const parent = blockStack.at(-1) ?? null;
+          const markerNames2 = /* @__PURE__ */ new Set();
+          if (kind === "heading") markerNames2.add("HeaderMark");
+          if (kind === "blockQuote") markerNames2.add("QuoteMark");
+          if (kind === "listItem") {
+            markerNames2.add("ListMark");
+            markerNames2.add("TaskMarker");
+          }
+          if (kind === "code") markerNames2.add("CodeMark");
+          if (kind === "callout") {
+            markerNames2.add("CalloutQuoteMark");
+            markerNames2.add("CalloutRoleMark");
+          }
+          if (kind === "displayMath") markerNames2.add("MathMark");
+          const markerRanges = presentationBlockMarkerRanges(
+            state,
+            node,
+            kind,
+            markerNames2,
+            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
+          );
+          const block = {
+            kind,
+            nodeName: node.name,
+            from: node.from,
+            to: node.to,
+            depth: blockStack.length,
+            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+            headingLevel: heading2 ? Number(heading2[1]) : null,
+            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
+            markerRanges,
+            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
+          };
+          result.blocks.push(block);
+          blockStack.push(block);
+        }
+        if (node.name === "Task") {
+          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
+          if (taskMarker) {
+            let contentFrom = taskMarker.to;
+            while (contentFrom < node.to) {
+              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
+              if (character !== " " && character !== "	") break;
+              contentFrom += 1;
+            }
+            if (contentFrom < node.to) {
+              const parent = blockStack.at(-1) ?? null;
+              const paragraph = {
+                kind: "paragraph",
+                nodeName: "TaskContent",
+                from: contentFrom,
+                to: node.to,
+                depth: blockStack.length,
+                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+                headingLevel: null,
+                listDepth: null,
+                markerRanges: [],
+                taskMarkerRange: null
+              };
+              result.blocks.push(paragraph);
+            }
+          }
+        }
+        const inlineKind = inlineKinds.get(node.name);
+        if (inlineKind) {
+          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
+          if (inline) result.inlines.push(inline);
+        }
+        if ([
+          "HTMLTag",
+          "CommentBlock",
+          "Comment",
+          "ObsidianComment",
+          "UnclosedObsidianComment"
+        ].includes(node.name)) {
+          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
+          return false;
+        }
+      },
+      leave(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
+        if (!heading2 && !blockKinds.has(node.name)) return;
+        const current = blockStack.at(-1);
+        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
+          blockStack.pop();
+        }
+      }
+    });
+    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    for (const block of result.blocks) {
+      if (block.kind !== "paragraph") continue;
+      const paragraph = source.slice(block.from, block.to);
+      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
+      if (!match || paragraphIsProtected(block)) continue;
+      const markerFrom = block.from + match.index + match[0].indexOf("^");
+      const markerTo = markerFrom + match[1].length + 1;
+      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
+        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+      }
+      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
+      result.inlines.push({
+        kind: "blockAnchor",
+        nodeName: "ParagraphAnchor",
+        from: markerFrom,
+        to: markerTo,
+        markerRanges: [{ from: markerFrom, to: markerTo }],
+        visibleRanges: [],
+        targetRange: null,
+        aliasRange: null,
+        linkRange: null,
+        annotationRange: null,
+        annotationContentRange: null
+      });
+    }
+    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
+    return result;
+  }
+
+  // projection-update.ts
+  function selectionActivatesSyntax(selection, projection) {
+    return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
+  }
+  function selectionIntersectsPhysicalLine(selection, lineFrom, lineTo, queryTo) {
+    return selection.empty ? selection.head >= lineFrom && selection.head <= lineTo : selection.from < queryTo && selection.to > lineFrom;
+  }
+  function activeProjectionSignature(selections, projections) {
+    const active = /* @__PURE__ */ new Map();
+    for (const selection of selections) {
+      const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
+      const to = selection.empty ? selection.head + 1 : selection.to;
+      for (const projection of projectionRangesIntersecting(projections, from, to)) {
+        if (!selectionActivatesSyntax(selection, projection)) continue;
+        active.set(`${projection.from}:${projection.to}`, projection);
+      }
+    }
+    return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
+  }
+  function selectionProjectionSignature(doc2, selections, inlineProjections, listPrefixProjections = []) {
+    const activeLines = selections.map((selection) => {
+      const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
+      const endPosition = selection.empty ? selection.to : Math.max(selection.from, selection.to - 1);
+      const toLine = doc2.lineAt(Math.max(0, Math.min(endPosition, doc2.length))).from;
+      return `${fromLine}:${toLine}`;
+    }).join("|");
+    return [
+      activeLines,
+      activeProjectionSignature(selections, inlineProjections),
+      activeProjectionSignature(selections, listPrefixProjections)
+    ].join("#");
+  }
+  function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
+    return immutableProjectionRanges(boundedProjectionRanges(
+      documentLength,
+      [...previousSelections, ...nextSelections].map((selection) => ({
+        from: selection.from,
+        to: selection.to
+      })),
+      margin
+    ));
+  }
+  function selectionProjectionRefreshRanges(doc2, previousSelections, nextSelections, constructs, coveredRanges) {
+    const candidates = /* @__PURE__ */ new Set();
+    for (const selection of [...previousSelections, ...nextSelections]) {
+      for (const construct of projectionRangesIntersecting(
+        constructs,
+        selection.empty ? Math.max(0, selection.head - 1) : selection.from,
+        selection.empty ? selection.head + 1 : selection.to
+      )) {
+        candidates.add(construct);
+      }
+    }
+    const changed = [...candidates].filter((construct) => previousSelections.some((selection) => selectionActivatesSyntax(selection, construct)) !== nextSelections.some((selection) => selectionActivatesSyntax(selection, construct)));
+    const affected = boundedProjectionRanges(doc2.length, [
+      ...selectionAffectedProjectionRanges(doc2.length, previousSelections, nextSelections),
+      ...changed
+    ].map((range) => ({
+      // Inline decorations and prefix activation are emitted per physical line.
+      // Replacing a fragment would remove a whole intersecting old mark and lose
+      // its tails, or leave a distant heading/quote prefix in its old state.
+      from: doc2.lineAt(range.from).from,
+      to: doc2.lineAt(range.to).to
+    })), 0);
+    return immutableProjectionRanges(boundedProjectionRanges(
+      doc2.length,
+      coveredRanges.flatMap((covered) => affected.flatMap((range) => {
+        const from = Math.max(covered.from, range.from);
+        const to = Math.min(covered.to, range.to);
+        return to > from ? [{ from, to }] : [];
+      })),
+      0
+    ));
+  }
+  function transactionChangedSyntaxTree(transaction) {
+    return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
+  }
+  function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
+    if (transaction.docChanged) return true;
+    if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
+      return true;
+    }
+    return signature !== previousSignature;
+  }
+  function changedContextContainsMarker(transaction, from, to, marker) {
+    const doc2 = transaction.state.doc;
+    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
+    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
+    const firstLine = doc2.lineAt(boundedFrom);
+    const lastLine = doc2.lineAt(boundedTo);
+    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
+    const contextTo = Math.min(lastLine.to, boundedTo + 256);
+    marker.lastIndex = 0;
+    return marker.test(doc2.sliceString(contextFrom, contextTo));
+  }
+  function transactionMayCreateProjection(transaction, marker) {
+    let mayCreate = false;
+    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+      if (mayCreate) return;
+      if (toA > fromA || inserted.length > 8192) {
+        mayCreate = true;
+        return;
+      }
+      marker.lastIndex = 0;
+      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
+    });
+    return mayCreate;
+  }
+  function rangesOverlap(left, right) {
+    return left.from < right.to && left.to > right.from;
+  }
+  function physicalLineNeighborhood(doc2, from, to) {
+    const startLine = doc2.lineAt(Math.max(0, Math.min(from, doc2.length)));
+    const endLine = doc2.lineAt(Math.max(0, Math.min(to, doc2.length)));
+    return {
+      from: doc2.line(Math.max(1, startLine.number - 1)).from,
+      to: doc2.line(Math.min(doc2.lines, endLine.number + 1)).to
+    };
+  }
+  function mappedRange(range, transaction) {
+    return {
+      from: transaction.changes.mapPos(range.from),
+      to: transaction.changes.mapPos(range.to)
+    };
+  }
+  function mappedBlock(block, transaction) {
+    return {
+      ...block,
+      ...mappedRange(block, transaction),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        ...mappedRange(block.parent, transaction)
+      } : null,
+      markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
+      taskMarkerRange: block.taskMarkerRange ? mappedRange(block.taskMarkerRange, transaction) : null
+    };
+  }
+  function mappedInline(inline, transaction) {
+    return {
+      ...inline,
+      ...mappedRange(inline, transaction),
+      markerRanges: inline.markerRanges.map((range) => mappedRange(range, transaction)),
+      visibleRanges: inline.visibleRanges.map((range) => mappedRange(range, transaction)),
+      targetRange: inline.targetRange ? mappedRange(inline.targetRange, transaction) : null,
+      aliasRange: inline.aliasRange ? mappedRange(inline.aliasRange, transaction) : null
+    };
+  }
+  function rangeSignature(range) {
+    return range ? `${range.from}:${range.to}` : "-";
+  }
+  function projectionTopologySignature(projection) {
+    const blocks = projection.blocks.map((block) => [
+      "b",
+      block.kind,
+      block.nodeName,
+      block.from,
+      block.to,
+      block.depth,
+      block.parent?.kind ?? "-",
+      rangeSignature(block.parent),
+      block.headingLevel ?? "-",
+      block.listDepth ?? "-",
+      block.markerRanges.map(rangeSignature).join(","),
+      rangeSignature(block.taskMarkerRange)
+    ].join("|"));
+    const inlines = projection.inlines.map((inline) => [
+      "i",
+      inline.kind,
+      inline.nodeName,
+      inline.from,
+      inline.to,
+      inline.markerRanges.map(rangeSignature).join(","),
+      inline.visibleRanges.map(rangeSignature).join(","),
+      rangeSignature(inline.targetRange),
+      rangeSignature(inline.aliasRange)
+    ].join("|"));
+    const literals2 = projection.literals.map((literal2) => ["l", literal2.nodeName, literal2.from, literal2.to].join("|"));
+    return [...blocks, ...inlines, ...literals2].sort().join("\n");
+  }
+  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax) {
+    if (!transaction.docChanged) return false;
+    const changes = [];
+    transaction.changes.iterChanges((fromA2, toA2, fromB2, toB2, inserted) => {
+      changes.push({ fromA: fromA2, toA: toA2, fromB: fromB2, toB: toB2, insert: inserted.toString() });
+    });
+    if (changes.length !== 1) return false;
+    const { fromA, toA, fromB, toB, insert: insert2 } = changes[0];
+    marker.lastIndex = 0;
+    if (insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
+      return false;
+    }
+    if (toA > fromA) {
+      const line = transaction.startState.doc.lineAt(fromA);
+      const touchesDeletion = (range) => range.from <= toA && range.to >= fromA;
+      if (insert2.length !== 0 || toA - fromA > 8192 || fromA <= line.from || toA > line.to || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA)) || mutationSensitiveRanges.some(touchesDeletion) || previousSyntax.inlines.some(touchesDeletion) || previousSyntax.blocks.some((block) => block.markerRanges.some(touchesDeletion))) {
+        return false;
+      }
+    }
+    const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
+    const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+    const previousLocal = {
+      ...previousSyntax,
+      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mappedBlock(block, transaction)),
+      inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
+      literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
+    };
+    const nextLocal = semanticProjectionRanges(
+      transaction.state,
+      [newNeighborhood],
+      0
+    );
+    return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
+  }
+
+  // state.ts
+  function normalizedDocumentText(text) {
+    return text.replace(/\r\n/g, "\n");
+  }
+  function replacementChange(currentText, requestedText) {
+    const targetText = normalizedDocumentText(requestedText);
+    let prefix = 0;
+    const sharedLength = Math.min(currentText.length, targetText.length);
+    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
+    let currentSuffix = currentText.length;
+    let targetSuffix = targetText.length;
+    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
+      currentSuffix -= 1;
+      targetSuffix -= 1;
+    }
+    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
+  }
+  function rope(source) {
+    return Text.of(source.split("\n"));
+  }
+  function crlfCount(source) {
+    let count2 = 0;
+    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
+    return count2;
+  }
+  function exactOffset(exact, normalized2, requestedOffset) {
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
+    const normalizedLine = normalized2.lineAt(requestedOffset);
+    const exactLine = exact.line(normalizedLine.number);
+    const column = requestedOffset - normalizedLine.from;
+    return exactLine.from + column;
+  }
+  function exactOffsetForNormalizedOffset(exactSource, requestedOffset) {
+    return exactOffset(
+      rope(exactSource),
+      rope(normalizedDocumentText(exactSource)),
+      requestedOffset
+    );
+  }
+  var ExactSourceMirror = class _ExactSourceMirror {
+    exact;
+    normalized;
+    crlfLineBreakCount;
+    byteCount;
+    constructor(source = "") {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    /**
+     * Materializing the complete String is intentionally an explicit snapshot
+     * boundary. Ordinary input only edits the persistent Text ropes below.
+     */
+    get text() {
+      return this.exact.toString();
+    }
+    get utf8ByteCount() {
+      return this.byteCount;
+    }
+    get usesCRLF() {
+      return this.crlfLineBreakCount > 0;
+    }
+    copy() {
+      const result = new _ExactSourceMirror();
+      result.exact = this.exact;
+      result.normalized = this.normalized;
+      result.crlfLineBreakCount = this.crlfLineBreakCount;
+      result.byteCount = this.byteCount;
+      return result;
+    }
+    slice(from, to) {
+      const exactFrom = exactOffset(this.exact, this.normalized, from);
+      const exactTo = exactOffset(this.exact, this.normalized, to);
+      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
+      return this.exact.sliceString(exactFrom, exactTo);
+    }
+    replace(source) {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    apply(changes) {
+      if (changes.length === 0) return true;
+      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
+      let previousTo = -1;
+      for (const change of ordered) {
+        if (change.from < previousTo || change.to < change.from) return false;
+        previousTo = change.to;
+      }
+      const usesCRLF = this.crlfLineBreakCount > 0;
+      const exactChanges = ordered.map((change) => {
+        const from = exactOffset(this.exact, this.normalized, change.from);
+        const to = exactOffset(this.exact, this.normalized, change.to);
+        if (from === null || to === null || to < from) return null;
+        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
+        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
+        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
+        return {
+          ...change,
+          exactFrom: from,
+          exactTo: to,
+          exactInsert,
+          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
+          insertedCRLFCount: crlfCount(exactInsert)
+        };
+      });
+      if (exactChanges.some((change) => change === null)) return false;
+      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
+        const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
+        const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
+        const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
+        const encoder = new TextEncoder();
+        this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength - encoder.encode(before + removed + after).byteLength;
+        this.exact = this.exact.replace(
+          change.exactFrom,
+          change.exactTo,
+          rope(change.exactInsert)
+        );
+        this.normalized = this.normalized.replace(
+          change.from,
+          change.to,
+          rope(change.insert)
+        );
+        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
+      }
+      return true;
+    }
+  };
+  function isFrontmatterOpening(text) {
+    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
+  }
+  function frontmatterBoundary(doc2) {
+    if (!isFrontmatterOpening(doc2.line(1).text)) {
+      return { endLine: 0, unclosed: false };
+    }
+    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
+    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
+      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
+        return { endLine: number2, unclosed: false };
+      }
+    }
+    return { endLine: 0, unclosed: true };
+  }
+
   // node_modules/@codemirror/commands/dist/index.js
   var toggleComment = (target) => {
     let { state } = target, line = state.doc.lineAt(state.selection.main.from), config2 = getConfig(target.state, line.from);
@@ -19380,110 +20484,6 @@
     { key: "Ctrl-m", mac: "Shift-Alt-m", run: toggleTabFocusMode }
   ].concat(standardKeymap);
 
-  // zotero-field-envelope.ts
-  var citationDestinationPrefix = "scholium-zotero:";
-  var compactCitationPrefix = "cite:";
-  var compactBibliographyPrefix = "<!--cite-bibliography:";
-  var compactBibliographyClose = "<!--/cite-bibliography-->";
-  var bibliographyPrefix = "<!--scholium-zotero-field:";
-  var bibliographyClose = "<!--/scholium-zotero-field-->";
-  var documentPrefix = "<!--scholium-zotero-document:";
-  var maximumEnvelopeLength = 256 * 1024;
-  var maximumFallbackLength = 64 * 1024;
-  var maximumFields = 1024;
-  function encodeOpaque(value) {
-    if (/[\ud800-\udfff]/u.test(value)) throw new Error("Opaque state contains a lone surrogate.");
-    const bytes = new TextEncoder().encode(value);
-    const payload = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
-    if (payload.length > maximumEnvelopeLength) throw new Error("The citation state exceeds the supported source envelope size.");
-    return payload;
-  }
-  function decodeOpaque(value) {
-    if (value.length > maximumEnvelopeLength || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-      throw new Error("Invalid bounded base64 payload.");
-    }
-    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
-    if (encodeOpaque(decoded) !== value) throw new Error("Noncanonical encoded payload.");
-    return decoded;
-  }
-  function validFieldID(value) {
-    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
-  }
-  function decodeFieldPayload(payload, kind) {
-    const field = JSON.parse(decodeOpaque(payload));
-    if (!field || !validFieldID(field.id) || field.kind !== kind || typeof field.code !== "string" || typeof field.text !== "string" || Object.keys(field).some((key) => !["id", "kind", "code", "text"].includes(key))) {
-      throw new Error("Invalid or unsupported host field identity or payload.");
-    }
-    return { id: field.id, kind, code: field.code, text: field.text };
-  }
-  function fieldPayload(field) {
-    if (!validFieldID(field.id) || !["citation", "bibliography"].includes(field.kind) || typeof field.code !== "string" || typeof field.text !== "string") throw new Error("Invalid host field identity or payload.");
-    return encodeOpaque(JSON.stringify({ id: field.id, kind: field.kind, code: field.code, text: field.text }));
-  }
-  function isCitationDestination(destination) {
-    return /^(?:scholium-zotero|cite):/i.test(destination);
-  }
-  function citationLinkSource(raw) {
-    const boundary2 = raw.lastIndexOf("](");
-    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
-    const destination = raw.slice(boundary2 + 2, -1);
-    if (!isCitationDestination(destination)) return null;
-    if (!destination.startsWith(`${citationDestinationPrefix}1:`)) throw new Error("Unknown citation source envelope version.");
-    const field = decodeFieldPayload(destination.slice(`${citationDestinationPrefix}1:`.length), "citation");
-    const fallbackRange = { from: 1, to: boundary2 };
-    if (fallbackRange.to - fallbackRange.from > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
-      throw new Error("Citation fallback must be bounded inline Markdown.");
-    }
-    return { field, fallbackRange };
-  }
-  function compactCitationLinkSource(raw) {
-    const boundary2 = raw.lastIndexOf("](");
-    if (!raw.startsWith("[") || boundary2 < 1 || !raw.endsWith(")")) return null;
-    const destination = raw.slice(boundary2 + 2, -1);
-    if (!destination.startsWith(compactCitationPrefix)) return null;
-    const id2 = destination.slice(compactCitationPrefix.length);
-    if (!validFieldID(id2) || boundary2 - 1 > maximumFallbackLength || /[\r\n]/.test(raw.slice(1, boundary2))) {
-      throw new Error("Invalid compact citation carrier.");
-    }
-    return { id: id2, fallbackRange: { from: 1, to: boundary2 } };
-  }
-  function validBibliographyStyle(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const style = value;
-    return Object.keys(style).sort().join(",") === "entrySpacing,firstLineIndent,indent,lineSpacing,tabStops" && [style.firstLineIndent, style.indent, style.lineSpacing, style.entrySpacing].every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5) && style.lineSpacing > 0 && style.entrySpacing >= 0 && Array.isArray(style.tabStops) && style.tabStops.length <= 64 && style.tabStops.every((value2) => typeof value2 === "number" && Number.isFinite(value2) && Math.abs(value2) <= 1e5);
-  }
-  function validSignatures(value) {
-    return Array.isArray(value) && value.length <= maximumFields && value.every((field) => field && validFieldID(field.id) && typeof field.code === "string" && Object.keys(field).sort().join(",") === "code,id") && new Set(value.map((field) => field.id)).size === value.length;
-  }
-  function decodeDocumentPayload(payload) {
-    const value = JSON.parse(decodeOpaque(payload));
-    if (!value || typeof value.data !== "string" || Object.keys(value).some((key) => !["data", "bibliographyStyle", "acceptedFields"].includes(key)) || value.bibliographyStyle !== void 0 && !validBibliographyStyle(value.bibliographyStyle) || value.acceptedFields !== void 0 && !validSignatures(value.acceptedFields)) throw new Error("Invalid document source envelope.");
-    return value;
-  }
-  function encodeDocumentData(data2, bibliographyStyle = null, acceptedFields = null) {
-    if (typeof data2 !== "string" || bibliographyStyle !== null && !validBibliographyStyle(bibliographyStyle) || acceptedFields !== null && !validSignatures(acceptedFields)) throw new Error("Invalid document source envelope.");
-    return `${documentPrefix}1:${encodeOpaque(JSON.stringify({
-      data: data2,
-      ...bibliographyStyle ? { bibliographyStyle } : {},
-      ...acceptedFields ? { acceptedFields } : {}
-    }))}-->`;
-  }
-  function isCompletedFieldCode(field) {
-    const prefix = field.kind === "citation" ? "ITEM CSL_CITATION " : "BIBL ";
-    if (!field.code.startsWith(prefix)) return false;
-    try {
-      const body = field.code.slice(prefix.length);
-      if (field.kind === "bibliography" && !body.endsWith(" CSL_BIBLIOGRAPHY")) return false;
-      const json = field.kind === "bibliography" ? body.slice(0, -" CSL_BIBLIOGRAPHY".length) : body;
-      const value = JSON.parse(json);
-      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-      if (field.kind === "bibliography") return true;
-      return Array.isArray(value.citationItems) && value.citationItems.length > 0 && value.citationItems.every((item) => item && typeof item === "object" && !Array.isArray(item) && (typeof item.id === "string" && item.id.length > 0 || typeof item.id === "number" && Number.isSafeInteger(item.id) && item.id > 0));
-    } catch {
-      return false;
-    }
-  }
-
   // zotero-citation-state.ts
   var maximumCitationDataBytes = 8 * 1024 * 1024;
   var maximumOpaqueLength = 256 * 1024;
@@ -19558,152 +20558,6 @@
   });
   var citationHistory = [citationState, invertedEffects.of((transaction) => transaction.effects.some((effect) => effect.is(setCitationData)) ? [setCitationData.of(transaction.startState.field(citationState)?.data)] : [])];
 
-  // state.ts
-  function normalizedDocumentText(text) {
-    return text.replace(/\r\n/g, "\n");
-  }
-  function replacementChange(currentText, requestedText) {
-    const targetText = normalizedDocumentText(requestedText);
-    let prefix = 0;
-    const sharedLength = Math.min(currentText.length, targetText.length);
-    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
-    let currentSuffix = currentText.length;
-    let targetSuffix = targetText.length;
-    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
-      currentSuffix -= 1;
-      targetSuffix -= 1;
-    }
-    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
-  }
-  function rope(source) {
-    return Text.of(source.split("\n"));
-  }
-  function crlfCount(source) {
-    let count2 = 0;
-    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
-    return count2;
-  }
-  function exactOffset(exact, normalized2, requestedOffset) {
-    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
-    const normalizedLine = normalized2.lineAt(requestedOffset);
-    const exactLine = exact.line(normalizedLine.number);
-    const column = requestedOffset - normalizedLine.from;
-    return exactLine.from + column;
-  }
-  function exactOffsetForNormalizedOffset(exactSource, requestedOffset) {
-    return exactOffset(
-      rope(exactSource),
-      rope(normalizedDocumentText(exactSource)),
-      requestedOffset
-    );
-  }
-  var ExactSourceMirror = class _ExactSourceMirror {
-    exact;
-    normalized;
-    crlfLineBreakCount;
-    byteCount;
-    constructor(source = "") {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-      this.byteCount = new TextEncoder().encode(source).byteLength;
-    }
-    /**
-     * Materializing the complete String is intentionally an explicit snapshot
-     * boundary. Ordinary input only edits the persistent Text ropes below.
-     */
-    get text() {
-      return this.exact.toString();
-    }
-    get utf8ByteCount() {
-      return this.byteCount;
-    }
-    get usesCRLF() {
-      return this.crlfLineBreakCount > 0;
-    }
-    copy() {
-      const result = new _ExactSourceMirror();
-      result.exact = this.exact;
-      result.normalized = this.normalized;
-      result.crlfLineBreakCount = this.crlfLineBreakCount;
-      result.byteCount = this.byteCount;
-      return result;
-    }
-    slice(from, to) {
-      const exactFrom = exactOffset(this.exact, this.normalized, from);
-      const exactTo = exactOffset(this.exact, this.normalized, to);
-      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
-      return this.exact.sliceString(exactFrom, exactTo);
-    }
-    replace(source) {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-      this.byteCount = new TextEncoder().encode(source).byteLength;
-    }
-    apply(changes) {
-      if (changes.length === 0) return true;
-      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
-      let previousTo = -1;
-      for (const change of ordered) {
-        if (change.from < previousTo || change.to < change.from) return false;
-        previousTo = change.to;
-      }
-      const usesCRLF = this.crlfLineBreakCount > 0;
-      const exactChanges = ordered.map((change) => {
-        const from = exactOffset(this.exact, this.normalized, change.from);
-        const to = exactOffset(this.exact, this.normalized, change.to);
-        if (from === null || to === null || to < from) return null;
-        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
-        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
-        return {
-          ...change,
-          exactFrom: from,
-          exactTo: to,
-          exactInsert,
-          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
-          insertedCRLFCount: crlfCount(exactInsert)
-        };
-      });
-      if (exactChanges.some((change) => change === null)) return false;
-      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
-        const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
-        const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
-        const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
-        const encoder = new TextEncoder();
-        this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength - encoder.encode(before + removed + after).byteLength;
-        this.exact = this.exact.replace(
-          change.exactFrom,
-          change.exactTo,
-          rope(change.exactInsert)
-        );
-        this.normalized = this.normalized.replace(
-          change.from,
-          change.to,
-          rope(change.insert)
-        );
-        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
-      }
-      return true;
-    }
-  };
-  function isFrontmatterOpening(text) {
-    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
-  }
-  function frontmatterBoundary(doc2) {
-    if (!isFrontmatterOpening(doc2.line(1).text)) {
-      return { endLine: 0, unclosed: false };
-    }
-    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
-    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
-      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
-        return { endLine: number2, unclosed: false };
-      }
-    }
-    return { endLine: 0, unclosed: true };
-  }
-
   // image-resources.ts
   var MAX_IMAGE_BYTES = 10 * 1024 * 1024;
   var MAX_IMAGE_CATALOG_BYTES = 80 * 1024 * 1024;
@@ -19725,581 +20579,6 @@
       if (totalBytes > MAX_IMAGE_CATALOG_BYTES) return false;
     }
     return true;
-  }
-
-  // source-capacity.ts
-  var MAX_SOURCE_UTF8_BYTES = 8e6;
-  var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
-  function exactSourceFits(source) {
-    return new TextEncoder().encode(source).byteLength <= MAX_SOURCE_UTF8_BYTES;
-  }
-
-  // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 50;
-  var MAX_INBOUND_BYTES = 25e5;
-  var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
-  var MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12e6 + MAX_INBOUND_BYTES + 512e3;
-  function admitPresentationSources(value, generation, previous) {
-    return {
-      ...value,
-      linkPreviews: value.linkPreviewGeneration === generation ? value.linkPreviews : previous?.linkPreviews ?? [],
-      linkPreviewGeneration: value.linkPreviewGeneration === generation ? value.linkPreviewGeneration : previous?.linkPreviewGeneration ?? -1,
-      imageResources: value.imageResourceGeneration === generation ? value.imageResources : previous?.imageResources ?? {},
-      imageResourceGeneration: value.imageResourceGeneration === generation ? value.imageResourceGeneration : previous?.imageResourceGeneration ?? -1
-    };
-  }
-  var operationTypes = /* @__PURE__ */ new Set([
-    "setPresentation",
-    "completePreparation",
-    "releasePreparation",
-    "suspendForDetachment",
-    "resumeAfterDetachment",
-    "initialize",
-    "setMode",
-    "showPreview",
-    "showSelectionActions",
-    "measureVisibleProjection",
-    "announceStatus",
-    "goToLine",
-    "revealSourceRange",
-    "selectAll",
-    "setScrollFraction",
-    "setScrollAnchor",
-    "queryText",
-    "querySelection",
-    "queryContext",
-    "queryScrollAnchor",
-    "queryPerformance",
-    "captureRecovery",
-    "restoreRecovery",
-    "acknowledgeCommittedSnapshot",
-    "replacePassage",
-    "insertReference",
-    "beginCitation",
-    "citationCallback",
-    "finishCitation",
-    "cancelCitation",
-    "command",
-    "pasteClipboard",
-    "documentFind",
-    "clearDocumentFind",
-    "markClean",
-    "focus",
-    "focusTitle",
-    "blur"
-  ]);
-  var commandTypes = /* @__PURE__ */ new Set([
-    "bold",
-    "emphasis",
-    "strikethrough",
-    "highlight",
-    "inlineCode",
-    "markdownComment",
-    "standardLink",
-    "wikilink",
-    "annotatedWikilink",
-    "paragraph",
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "blockQuotation",
-    "bulletList",
-    "numberedList",
-    "taskList",
-    "fencedCode",
-    "thematicBreak",
-    "calloutOrient",
-    "calloutCite",
-    "calloutConnect",
-    "calloutState",
-    "calloutIllustrate",
-    "calloutQuote",
-    "calloutFlag",
-    "insertFootnote",
-    "insertInlineFootnote",
-    "insertTable",
-    "insertImage",
-    "insertAttachment",
-    "toggleTask",
-    "tableInsertRowBefore",
-    "tableInsertRowAfter",
-    "tableDeleteRow",
-    "tableInsertColumnBefore",
-    "tableInsertColumnAfter",
-    "tableDeleteColumn",
-    "tableAlignLeft",
-    "tableAlignCenter",
-    "tableAlignRight",
-    "pastePlain",
-    "pasteMarkdown",
-    "linkSelectedText",
-    "insertCitation",
-    "insertBibliography",
-    "refreshCitations",
-    "citationStyle",
-    "cancelCitation",
-    "previewAtSelection"
-  ]);
-  function validMode(value) {
-    return value === "livePreview" || value === "source";
-  }
-  function validInitialSelection(value, normalizedLength) {
-    if (value === void 0) return true;
-    if (!value || typeof value !== "object") return false;
-    const selection = value;
-    return Number.isSafeInteger(selection.anchor) && Number(selection.anchor) >= 0 && Number(selection.anchor) <= normalizedLength && Number.isSafeInteger(selection.head) && Number(selection.head) >= 0 && Number(selection.head) <= normalizedLength;
-  }
-  function validRecoverySnapshot(value) {
-    if (!value || typeof value !== "object") return false;
-    const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
-    const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
-    return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
-  }
-  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
-    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
-  }
-  var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
-    "setPresentation",
-    "queryText",
-    "querySelection",
-    "queryContext",
-    "queryScrollAnchor",
-    "queryPerformance",
-    "captureRecovery",
-    "suspendForDetachment",
-    "resumeAfterDetachment",
-    "acknowledgeCommittedSnapshot",
-    "announceStatus",
-    "focus",
-    "focusTitle",
-    "blur"
-  ]);
-  function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
-    if (!Number.isSafeInteger(knownGeneration) || !Number.isSafeInteger(currentGeneration) || knownGeneration < 0 || currentGeneration < 0 || knownGeneration > currentGeneration) return false;
-    return knownGeneration === currentGeneration || forwardReadableOperationTypes.has(operationType);
-  }
-  function validDialect(value) {
-    if (!value || typeof value !== "object") return false;
-    const dialect = value;
-    const callouts = dialect.callouts;
-    const annotation = dialect.linkAnnotation;
-    const footnotes = dialect.footnotes;
-    const mathematics = dialect.mathematics;
-    return dialect.version === 6 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && Object.keys(callout).length === 3 && typeof callout.identifier === "string" && callout.identifier.length <= 64 && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
-  }
-  function validCitationIdentifier(value) {
-    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
-  }
-  function validCitationReference(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const intent = value;
-    const keys2 = ["actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision"];
-    return Object.keys(intent).length === keys2.length && Object.keys(intent).every((key) => keys2.includes(key)) && intent.actionID === "insertCitation" && typeof intent.requestID === "string" && intent.requestID.length <= 128 && typeof intent.query === "string" && intent.query.length <= 512 && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every((n) => Number.isSafeInteger(n) && Number(n) >= 0) && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
-  }
-  function validPresentation(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const configuration = value;
-    return typeof configuration.documentTitle === "string" && configuration.documentTitle.length <= 1024 && typeof configuration.presentationCSS === "string" && configuration.presentationCSS.length <= 1e6 && typeof configuration.userCSS === "string" && configuration.userCSS.length <= 1e6 && Object.keys(configuration).length === 10 && Array.isArray(configuration.linkPreviews) && encodedByteLength(configuration.linkPreviews) <= MAX_INBOUND_BYTES && Number.isSafeInteger(configuration.linkPreviewGeneration) && Number(configuration.linkPreviewGeneration) >= 0 && validImageResources(configuration.imageResources) && Number.isSafeInteger(configuration.imageResourceGeneration) && Number(configuration.imageResourceGeneration) >= 0 && typeof configuration.writingContinuationEnabled === "boolean" && typeof configuration.writingContinuationContextKey === "string" && configuration.writingContinuationContextKey.length <= 256 && typeof configuration.writingIndexContextKey === "string" && configuration.writingIndexContextKey.length <= 256;
-  }
-  function validOperation(operation) {
-    switch (operation.type) {
-      case "initialize":
-        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validPresentation(operation.presentation) && validInitialSelection(
-          operation.initialSelection,
-          operation.text.replaceAll("\r\n", "\n").length
-        );
-      case "setPresentation":
-        return validPresentation(operation.value);
-      case "completePreparation":
-        return (operation.fraction === void 0 || typeof operation.fraction === "number" && Number.isFinite(operation.fraction) && operation.fraction >= 0 && operation.fraction <= 1) && (operation.anchor === void 0 || validOperation({ type: "setScrollAnchor", anchor: operation.anchor }));
-      case "releasePreparation":
-        return operation.focusTarget === void 0 || operation.focusTarget === "editor" || operation.focusTarget === "title";
-      case "setMode":
-        return validMode(operation.mode);
-      case "announceStatus":
-        return typeof operation.value === "string" && operation.value.length <= 500;
-      case "goToLine":
-        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
-      case "revealSourceRange":
-        return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
-      case "setScrollFraction":
-        return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
-      case "setScrollAnchor": {
-        const anchor = operation.anchor;
-        return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
-      }
-      case "restoreRecovery":
-        return validRecoverySnapshot(operation.snapshot);
-      case "acknowledgeCommittedSnapshot":
-        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string" && (operation.expectedCitationData === void 0 || validCitationData(operation.expectedCitationData)) && (operation.committedCitationSnapshot === void 0 || validCitationSnapshot(operation.committedCitationSnapshot));
-      case "insertReference": {
-        const selection = operation.selection;
-        return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
-      }
-      case "replacePassage":
-        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
-      case "suspendForDetachment":
-      case "resumeAfterDetachment":
-        return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
-      case "beginCitation":
-        return validCitationIdentifier(operation.transactionID) && ["addEditCitation", "addEditBibliography", "refresh", "setDocPrefs"].includes(String(operation.command)) && (operation.reference === void 0 || validCitationReference(operation.reference)) && Object.keys(operation).every((key) => ["type", "transactionID", "command", "reference"].includes(key));
-      case "citationCallback":
-        return validCitationIdentifier(operation.transactionID) && validZoteroCallback(operation.value) && Object.keys(operation).length === 3;
-      case "finishCitation":
-      case "cancelCitation":
-        return validCitationIdentifier(operation.transactionID) && Object.keys(operation).length === 2;
-      case "command":
-        return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
-      case "pasteClipboard":
-        return typeof operation.plainText === "string" && exactSourceFits(operation.plainText) && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128 && operation.selections.every((range) => Boolean(range) && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
-      case "documentFind": {
-        const value = operation.value;
-        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
-      }
-      case "queryText":
-      case "querySelection":
-      case "queryContext":
-      case "queryScrollAnchor":
-      case "queryPerformance":
-      case "captureRecovery":
-      case "showPreview":
-      case "measureVisibleProjection":
-      case "selectAll":
-      case "clearDocumentFind":
-      case "markClean":
-      case "focus":
-      case "focusTitle":
-      case "blur":
-        return true;
-      case "showSelectionActions":
-        return Object.keys(operation).length === 1;
-      default:
-        return false;
-    }
-  }
-  function encodedByteLength(value) {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-  }
-  function isEditorRequest(value) {
-    if (!value || typeof value !== "object") return false;
-    const request = value;
-    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.expiresAt) || request.expiresAt <= 0 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
-    const type = request.operation.type;
-    if (typeof type !== "string" || !operationTypes.has(type)) return false;
-    if (!validOperation(request.operation)) return false;
-    try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
-      return encodedByteLength(value) <= maximum;
-    } catch {
-      return false;
-    }
-  }
-  function rejected(requestID, generation, error, interactionRevision) {
-    return { requestID, resultingGeneration: generation, interactionRevision, sourceChanged: false, selections: [], accepted: false, error };
-  }
-
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    requestFrame(() => {
-      scheduleTask(callback);
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
-  }
-  function clearEditorPerformanceSamples() {
-    samples.length = 0;
-    sampleStart = 0;
-    sampleCount = 0;
-  }
-
-  // exact-source-history.ts
-  var setExactSource = StateEffect.define();
-  var sourceCapacityExceeded = StateEffect.define();
-  function admittedMirror(source) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    return new ExactSourceMirror(source);
-  }
-  var eventInverses = /* @__PURE__ */ new WeakMap();
-  var detachedHistoryDepth = 0;
-  function detachedHistory(operation) {
-    detachedHistoryDepth++;
-    try {
-      return operation();
-    } finally {
-      detachedHistoryDepth--;
-    }
-  }
-  var restoreLineEnding = StateEffect.define({
-    map(value, mapping) {
-      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
-      const inverse = eventInverses.get(value);
-      if (!inverse) throw new Error("Exact history mapping is unavailable");
-      const outputMapping = mapping.mapDesc(inverse, true);
-      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
-      eventInverses.set(result, inverse.mapDesc(mapping));
-      return result;
-    }
-  });
-  function exactInsertionEffects(source, at) {
-    const effects = [];
-    let position = at;
-    for (let offset = 0; offset < source.length; offset++, position++) {
-      const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
-      if (crlf || source[offset] === "\n") {
-        effects.push(restoreLineEnding.of({ at: position, ending: crlf ? "\r\n" : "\n" }));
-        if (crlf) offset++;
-      }
-    }
-    return effects;
-  }
-  function transactionChanges(transaction, mirror) {
-    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
-    const changes = [];
-    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
-      const insert2 = inserted.toString();
-      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
-      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
-    });
-    return changes;
-  }
-  var exactSourceState = StateField.define({
-    create: (state) => admittedMirror(state.doc.toString()),
-    update(mirror, transaction) {
-      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
-      if (replacement) {
-        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
-          throw new Error("Exact source does not match the editor document");
-        }
-        return admittedMirror(replacement.value);
-      }
-      if (!transaction.docChanged) return mirror;
-      const startedAt = performance.now();
-      const changes = transactionChanges(transaction, mirror);
-      const next = mirror.copy();
-      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
-      if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
-      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
-        changeCount: changes.length,
-        documentLength: transaction.newDoc.length
-      });
-      return next;
-    }
-  });
-  var exactSourceHistory = [
-    exactSourceState,
-    EditorState.transactionFilter.of((transaction) => {
-      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
-      const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
-        transaction.startState,
-        transactionChanges(transaction, transaction.startState.field(exactSourceState))
-      );
-      return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
-    }),
-    EditorState.transactionExtender.of((transaction) => {
-      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
-        for (const command2 of [undo, redo]) {
-          let detached = transaction.startState;
-          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
-            for (const effect of historical.effects) {
-              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
-            }
-            detached = historical.state;
-          } }))) {
-          }
-        }
-      }
-      return null;
-    }),
-    invertedEffects.of((transaction) => {
-      if (!transaction.docChanged) return [];
-      const mirror = transaction.startState.field(exactSourceState);
-      const effects = [];
-      transaction.changes.iterChanges((from, to) => {
-        const removed = mirror.slice(from, to);
-        let normalizedOffset = from;
-        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
-          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
-          if (crlf || removed[offset] === "\n") {
-            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
-            if (crlf) offset++;
-          }
-        }
-      });
-      return effects;
-    })
-  ];
-  function exactSourceFitsChanges(state, changes) {
-    const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
-    if (changes.length <= 1) {
-      const next = source.copy();
-      return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
-    }
-    const encoder = new TextEncoder();
-    let bytes = 0, previous = 0, pendingHigh = "";
-    const append = (piece) => {
-      const text = pendingHigh + piece;
-      const last = text.charCodeAt(text.length - 1);
-      pendingHigh = last >= 55296 && last <= 56319 ? text.slice(-1) : "";
-      bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
-      return bytes <= MAX_SOURCE_UTF8_BYTES;
-    };
-    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
-      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
-      const normalized2 = normalizedDocumentText(change.insert);
-      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
-      if (normalizedDocumentText(insertion) !== normalized2) return false;
-      if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
-      previous = change.to;
-    }
-    return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
-  }
-  function lineEndings(source) {
-    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
-  }
-  function sourceWithEndings(source, endings) {
-    let index = 0;
-    const exact = source.replace(/\n/g, () => {
-      const ending = endings[index++];
-      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
-      return ending === "c" ? "\r\n" : "\n";
-    });
-    if (index !== endings.length) throw new Error("Invalid history line ending count");
-    return exact;
-  }
-  var maximumRecoveryEvents = 512;
-  function captureExactHistory(state) {
-    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
-    const capture = (command2) => {
-      let detached = state;
-      const endings = [];
-      const citations = [];
-      for (let index = 0; ; index++) {
-        let changed = false;
-        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
-          changed = transaction.docChanged || transaction.effects.some((effect) => effect.is(setCitationData));
-          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
-            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
-          });
-          if (remainingBytes < 0) throw new Error("History is too large");
-          detached = transaction.state;
-        } }))) break;
-        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
-        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
-        remainingBytes -= value?.length ?? 0;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        endings.push(value);
-        const companion = detached.field(citationState, false)?.data ?? null;
-        remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        citations.push(companion);
-      }
-      return { endings, citations };
-    };
-    try {
-      if (remainingBytes < 0) return void 0;
-      const undo2 = capture(undoSelection);
-      const redo2 = capture(redoSelection);
-      const serialized = JSON.stringify({
-        state: state.toJSON(state.field(citationState, false) ? { history: historyField, citations: citationState } : { history: historyField }),
-        undoLineEndings: undo2.endings,
-        redoLineEndings: redo2.endings,
-        undoCitations: undo2.citations,
-        redoCitations: redo2.citations
-      });
-      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
-    } catch {
-      return void 0;
-    }
-  }
-  function restoreExactHistory(serialized, source, extensions) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
-    const payload = JSON.parse(serialized);
-    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
-    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
-      throw new Error("Invalid history line endings");
-    }
-    const validCitations = (value, count2) => Array.isArray(value) && value.length === count2 && value.every((snapshot) => snapshot === null || validCitationData(snapshot));
-    if (!validCitations(payload.undoCitations, payload.undoLineEndings.length) || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
-    let state = EditorState.fromJSON(payload.state, { extensions }, payload.state.citations ? { history: historyField, citations: citationState } : { history: historyField });
-    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
-      throw new Error("History does not match the recovered source");
-    }
-    const recovery = new Compartment();
-    let targetEndings;
-    let targetCitation;
-    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 && targetCitation === void 0 ? null : {
-        effects: [
-          ...targetEndings === void 0 ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))],
-          ...targetCitation === void 0 || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation) ? [] : [setCitationData.of(targetCitation ?? void 0)]
-        ]
-      })
-    ))], annotations: Transaction.addToHistory.of(false) }).state;
-    function replay(command2, endings, citation) {
-      targetEndings = endings ?? void 0;
-      targetCitation = citation;
-      try {
-        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
-          state = transaction.state;
-        } }))) throw new Error("History could not be restored");
-      } finally {
-        targetEndings = void 0;
-        targetCitation = void 0;
-      }
-    }
-    payload.redoLineEndings.forEach((endings, index) => replay(redoSelection, endings, payload.redoCitations[index]));
-    for (const _ of payload.redoLineEndings) replay(undoSelection);
-    payload.undoLineEndings.forEach((endings, index) => replay(undoSelection, endings, payload.undoCitations[index]));
-    for (const _ of payload.undoLineEndings) replay(redoSelection);
-    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
-    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
-    return state;
   }
 
   // uuid.ts
@@ -29470,7 +29749,7 @@
   function isHorizontalWhitespace(character) {
     return character === SPACE || character === TAB;
   }
-  function isEscaped(cx, position) {
+  function isEscaped3(cx, position) {
     let backslashes = 0;
     for (let cursor = position - 1; cursor >= cx.offset && cx.char(cursor) === 92; cursor -= 1) {
       backslashes += 1;
@@ -29551,7 +29830,7 @@
     for (let cursor = position + 2; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 93 || isEscaped(cx, cursor)) continue;
+      if (character !== 93 || isEscaped3(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("InlineFootnote", position, cursor + 1, [
         cx.elt("InlineFootnoteOpenMark", position, position + 2),
@@ -29569,7 +29848,7 @@
     for (let cursor = openingTo; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 36 || isEscaped(cx, cursor)) continue;
+      if (character !== 36 || isEscaped3(cx, cursor)) continue;
       let closingTo = cursor + 1;
       while (cx.char(closingTo) === 36) closingTo += 1;
       if (closingTo - cursor !== delimiterLength) {
@@ -29590,7 +29869,7 @@
     for (let cursor = position + 2; cursor < cx.end - 1; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped(cx, cursor)) continue;
+      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped3(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("Highlight", position, cursor + 2, [
         cx.elt("HighlightMark", position, position + 2),
@@ -29855,7 +30134,7 @@
       while (cursor < source.length && source.charCodeAt(cursor) === 36) cursor += 1;
       const delimiterLength = cursor - openingStart;
       const opening = { from: openingStart, to: cursor };
-      if (isEscaped2(source, openingStart) || intersects(opening, inlineExcluded)) continue;
+      if (isEscaped4(source, openingStart) || intersects(opening, inlineExcluded)) continue;
       let closingStart = -1;
       for (let search2 = cursor; search2 < source.length; ) {
         if (source.charCodeAt(search2) !== 36) {
@@ -29864,7 +30143,7 @@
         }
         const runStart = search2;
         while (search2 < source.length && source.charCodeAt(search2) === 36) search2 += 1;
-        if (search2 - runStart === delimiterLength && !isEscaped2(source, runStart)) {
+        if (search2 - runStart === delimiterLength && !isEscaped4(source, runStart)) {
           closingStart = runStart;
           break;
         }
@@ -29894,7 +30173,7 @@
       position += 1;
       indentation2 += 1;
     }
-    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped2(source, position)) {
+    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped4(source, position)) {
       return null;
     }
     const start = position;
@@ -29987,7 +30266,7 @@
       const from = cursor;
       while (cursor < source.length && source.charCodeAt(cursor) === 96) cursor += 1;
       const length = cursor - from;
-      if (isEscaped2(source, from)) continue;
+      if (isEscaped4(source, from)) continue;
       for (let search2 = cursor; search2 < source.length; ) {
         if (source.charCodeAt(search2) !== 96) {
           search2 += 1;
@@ -30007,7 +30286,7 @@
   function intersects(range, candidates) {
     return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
   }
-  function isEscaped2(source, position) {
+  function isEscaped4(source, position) {
     let count2 = 0;
     for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) count2 += 1;
     return count2 % 2 === 1;
@@ -30254,6 +30533,8 @@ ${blankRow(table.position.columnCount)}`;
     "Accept AI continuation: {text} (Tab)",
     "Accept index suggestion: {text} (Tab)",
     "AI continuation timed out.",
+    "Retry AI",
+    "Retry AI continuation (Option-Return)",
     "AI continuation is preparing.",
     "AI continuation is retrieving related context.",
     "AI continuation is composing.",
@@ -30460,38 +30741,6 @@ ${blankRow(table.position.columnCount)}`;
     if (activePayload.languageTag !== "zh-Hans") return fallback;
     const keys2 = calloutLocalizationKeys[identifier5];
     return keys2 ? { label: localized(keys2[0]), meaning: localized(keys2[1]) } : fallback;
-  }
-
-  // link-annotation.ts
-  function isEscaped3(source, position) {
-    let backslashes = 0;
-    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function hasVisibleMarkdownContent(markdown2) {
-    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
-    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
-    return remaining.trim().length > 0;
-  }
-  function linkAnnotationAfter(source, linkTo) {
-    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
-    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
-      const pair2 = source.slice(cursor, cursor + 2);
-      if (pair2 === "{{" && !isEscaped3(source, cursor)) return null;
-      if (pair2 !== "}}" || isEscaped3(source, cursor)) continue;
-      const markdown2 = source.slice(linkTo + 2, cursor);
-      if (!hasVisibleMarkdownContent(markdown2)) return null;
-      return {
-        from: linkTo,
-        to: cursor + 2,
-        contentFrom: linkTo + 2,
-        contentTo: cursor,
-        markdown: markdown2
-      };
-    }
-    return null;
   }
 
   // text-language.ts
@@ -31327,6 +31576,13 @@ ${blankRow(table.position.columnCount)}`;
     const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
     const cursor = tree.cursor();
     appendBlockChildren(cursor, source, parent, options);
+  }
+
+  // source-capacity.ts
+  var MAX_SOURCE_UTF8_BYTES = 8e6;
+  var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
+  function exactSourceFits(source) {
+    return new TextEncoder().encode(source).byteLength <= MAX_SOURCE_UTF8_BYTES;
   }
 
   // zotero-fields.ts
@@ -32293,6 +32549,1247 @@ ${blankRow(table.position.columnCount)}`;
     }
   };
 
+  // protocol.ts
+  var EDITOR_PROTOCOL_VERSION = 51;
+  var MAX_INBOUND_BYTES = 25e5;
+  var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
+  var MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12e6 + MAX_INBOUND_BYTES + 512e3;
+  function admitPresentationSources(value, generation, previous) {
+    return {
+      ...value,
+      linkPreviews: value.linkPreviewGeneration === generation ? value.linkPreviews : previous?.linkPreviews ?? [],
+      linkPreviewGeneration: value.linkPreviewGeneration === generation ? value.linkPreviewGeneration : previous?.linkPreviewGeneration ?? -1,
+      imageResources: value.imageResourceGeneration === generation ? value.imageResources : previous?.imageResources ?? {},
+      imageResourceGeneration: value.imageResourceGeneration === generation ? value.imageResourceGeneration : previous?.imageResourceGeneration ?? -1
+    };
+  }
+  var operationTypes = /* @__PURE__ */ new Set([
+    "setPresentation",
+    "completePreparation",
+    "releasePreparation",
+    "suspendForDetachment",
+    "resumeAfterDetachment",
+    "initialize",
+    "setMode",
+    "showPreview",
+    "showSelectionActions",
+    "measureVisibleProjection",
+    "announceStatus",
+    "goToLine",
+    "revealSourceRange",
+    "selectAll",
+    "setScrollFraction",
+    "setScrollAnchor",
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "restoreRecovery",
+    "acknowledgeCommittedSnapshot",
+    "replacePassage",
+    "insertReference",
+    "beginCitation",
+    "citationCallback",
+    "finishCitation",
+    "cancelCitation",
+    "command",
+    "pasteClipboard",
+    "documentFind",
+    "clearDocumentFind",
+    "markClean",
+    "focus",
+    "focusTitle",
+    "blur"
+  ]);
+  var commandTypes = /* @__PURE__ */ new Set([
+    "bold",
+    "emphasis",
+    "strikethrough",
+    "highlight",
+    "inlineCode",
+    "markdownComment",
+    "standardLink",
+    "wikilink",
+    "annotatedWikilink",
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+    "blockQuotation",
+    "bulletList",
+    "numberedList",
+    "taskList",
+    "fencedCode",
+    "thematicBreak",
+    "calloutOrient",
+    "calloutCite",
+    "calloutConnect",
+    "calloutState",
+    "calloutIllustrate",
+    "calloutQuote",
+    "calloutFlag",
+    "insertFootnote",
+    "insertInlineFootnote",
+    "insertTable",
+    "insertImage",
+    "insertAttachment",
+    "toggleTask",
+    "tableInsertRowBefore",
+    "tableInsertRowAfter",
+    "tableDeleteRow",
+    "tableInsertColumnBefore",
+    "tableInsertColumnAfter",
+    "tableDeleteColumn",
+    "tableAlignLeft",
+    "tableAlignCenter",
+    "tableAlignRight",
+    "pastePlain",
+    "pasteMarkdown",
+    "linkSelectedText",
+    "insertCitation",
+    "insertBibliography",
+    "refreshCitations",
+    "citationStyle",
+    "cancelCitation",
+    "previewAtSelection"
+  ]);
+  function validMode(value) {
+    return value === "livePreview" || value === "source";
+  }
+  function validInitialSelection(value, normalizedLength) {
+    if (value === void 0) return true;
+    if (!value || typeof value !== "object") return false;
+    const selection = value;
+    return Number.isSafeInteger(selection.anchor) && Number(selection.anchor) >= 0 && Number(selection.anchor) <= normalizedLength && Number.isSafeInteger(selection.head) && Number(selection.head) >= 0 && Number(selection.head) <= normalizedLength;
+  }
+  function validRecoverySnapshot(value) {
+    if (!value || typeof value !== "object") return false;
+    const snapshot = value;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
+    const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
+    return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
+  }
+  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
+    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
+  }
+  var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
+    "setPresentation",
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "suspendForDetachment",
+    "resumeAfterDetachment",
+    "acknowledgeCommittedSnapshot",
+    "announceStatus",
+    "focus",
+    "focusTitle",
+    "blur"
+  ]);
+  function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
+    if (!Number.isSafeInteger(knownGeneration) || !Number.isSafeInteger(currentGeneration) || knownGeneration < 0 || currentGeneration < 0 || knownGeneration > currentGeneration) return false;
+    return knownGeneration === currentGeneration || forwardReadableOperationTypes.has(operationType);
+  }
+  function validDialect(value) {
+    if (!value || typeof value !== "object") return false;
+    const dialect = value;
+    const callouts = dialect.callouts;
+    const annotation = dialect.linkAnnotation;
+    const footnotes = dialect.footnotes;
+    const mathematics = dialect.mathematics;
+    return dialect.version === 6 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && Object.keys(callout).length === 3 && typeof callout.identifier === "string" && callout.identifier.length <= 64 && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+  }
+  function validCitationIdentifier(value) {
+    return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(value);
+  }
+  function validCitationReference(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const intent = value;
+    const keys2 = ["actionID", "requestID", "query", "fromUTF16", "toUTF16", "caretUTF16Offset", "editorCaretUTF16Offset", "interactionRevision"];
+    return Object.keys(intent).length === keys2.length && Object.keys(intent).every((key) => keys2.includes(key)) && intent.actionID === "insertCitation" && typeof intent.requestID === "string" && intent.requestID.length <= 128 && typeof intent.query === "string" && intent.query.length <= 512 && [intent.fromUTF16, intent.toUTF16, intent.caretUTF16Offset, intent.editorCaretUTF16Offset, intent.interactionRevision].every((n) => Number.isSafeInteger(n) && Number(n) >= 0) && intent.toUTF16 === intent.caretUTF16Offset && Number(intent.toUTF16) - Number(intent.fromUTF16) === intent.query.length + 1;
+  }
+  function validPresentation(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const configuration = value;
+    return typeof configuration.documentTitle === "string" && configuration.documentTitle.length <= 1024 && typeof configuration.presentationCSS === "string" && configuration.presentationCSS.length <= 1e6 && typeof configuration.userCSS === "string" && configuration.userCSS.length <= 1e6 && Object.keys(configuration).length === 10 && Array.isArray(configuration.linkPreviews) && encodedByteLength(configuration.linkPreviews) <= MAX_INBOUND_BYTES && Number.isSafeInteger(configuration.linkPreviewGeneration) && Number(configuration.linkPreviewGeneration) >= 0 && validImageResources(configuration.imageResources) && Number.isSafeInteger(configuration.imageResourceGeneration) && Number(configuration.imageResourceGeneration) >= 0 && typeof configuration.writingContinuationEnabled === "boolean" && typeof configuration.writingContinuationContextKey === "string" && configuration.writingContinuationContextKey.length <= 256 && typeof configuration.writingIndexContextKey === "string" && configuration.writingIndexContextKey.length <= 256;
+  }
+  function validOperation(operation) {
+    switch (operation.type) {
+      case "initialize":
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validPresentation(operation.presentation) && validInitialSelection(
+          operation.initialSelection,
+          operation.text.replaceAll("\r\n", "\n").length
+        );
+      case "setPresentation":
+        return validPresentation(operation.value);
+      case "completePreparation":
+        return (operation.fraction === void 0 || typeof operation.fraction === "number" && Number.isFinite(operation.fraction) && operation.fraction >= 0 && operation.fraction <= 1) && (operation.anchor === void 0 || validOperation({ type: "setScrollAnchor", anchor: operation.anchor }));
+      case "releasePreparation":
+        return operation.focusTarget === void 0 || operation.focusTarget === "editor" || operation.focusTarget === "title";
+      case "setMode":
+        return validMode(operation.mode);
+      case "announceStatus":
+        return typeof operation.value === "string" && operation.value.length <= 500;
+      case "goToLine":
+        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
+      case "revealSourceRange":
+        return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+      case "setScrollFraction":
+        return typeof operation.fraction === "number" && Number.isFinite(operation.fraction);
+      case "setScrollAnchor": {
+        const anchor = operation.anchor;
+        return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
+      }
+      case "restoreRecovery":
+        return validRecoverySnapshot(operation.snapshot);
+      case "acknowledgeCommittedSnapshot":
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string" && (operation.expectedCitationData === void 0 || validCitationData(operation.expectedCitationData)) && (operation.committedCitationSnapshot === void 0 || validCitationSnapshot(operation.committedCitationSnapshot));
+      case "insertReference": {
+        const selection = operation.selection;
+        return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
+      }
+      case "replacePassage":
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+      case "suspendForDetachment":
+      case "resumeAfterDetachment":
+        return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
+      case "beginCitation":
+        return validCitationIdentifier(operation.transactionID) && ["addEditCitation", "addEditBibliography", "refresh", "setDocPrefs"].includes(String(operation.command)) && (operation.reference === void 0 || validCitationReference(operation.reference)) && Object.keys(operation).every((key) => ["type", "transactionID", "command", "reference"].includes(key));
+      case "citationCallback":
+        return validCitationIdentifier(operation.transactionID) && validZoteroCallback(operation.value) && Object.keys(operation).length === 3;
+      case "finishCitation":
+      case "cancelCitation":
+        return validCitationIdentifier(operation.transactionID) && Object.keys(operation).length === 2;
+      case "command":
+        return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
+      case "pasteClipboard":
+        return typeof operation.plainText === "string" && exactSourceFits(operation.plainText) && Array.isArray(operation.selections) && operation.selections.length > 0 && operation.selections.length <= 128 && operation.selections.every((range) => Boolean(range) && Number.isSafeInteger(range?.anchor) && Number(range?.anchor) >= 0 && Number(range?.anchor) <= MAX_SOURCE_UTF8_BYTES && Number.isSafeInteger(range?.head) && Number(range?.head) >= 0 && Number(range?.head) <= MAX_SOURCE_UTF8_BYTES);
+      case "documentFind": {
+        const value = operation.value;
+        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
+      }
+      case "queryText":
+      case "querySelection":
+      case "queryContext":
+      case "queryScrollAnchor":
+      case "queryPerformance":
+      case "captureRecovery":
+      case "showPreview":
+      case "measureVisibleProjection":
+      case "selectAll":
+      case "clearDocumentFind":
+      case "markClean":
+      case "focus":
+      case "focusTitle":
+      case "blur":
+        return true;
+      case "showSelectionActions":
+        return Object.keys(operation).length === 1;
+      default:
+        return false;
+    }
+  }
+  function encodedByteLength(value) {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  }
+  function isEditorRequest(value) {
+    if (!value || typeof value !== "object") return false;
+    const request = value;
+    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.expiresAt) || request.expiresAt <= 0 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
+    const type = request.operation.type;
+    if (typeof type !== "string" || !operationTypes.has(type)) return false;
+    if (!validOperation(request.operation)) return false;
+    try {
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
+      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      return encodedByteLength(value) <= maximum;
+    } catch {
+      return false;
+    }
+  }
+  function rejected(requestID, generation, error, interactionRevision) {
+    return { requestID, resultingGeneration: generation, interactionRevision, sourceChanged: false, selections: [], accepted: false, error };
+  }
+
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}) {
+    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    requestFrame(() => {
+      scheduleTask(callback);
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
+  }
+
+  // exact-source-history.ts
+  var setExactSource = StateEffect.define();
+  var sourceCapacityExceeded = StateEffect.define();
+  function admittedMirror(source) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    return new ExactSourceMirror(source);
+  }
+  var eventInverses = /* @__PURE__ */ new WeakMap();
+  var detachedHistoryDepth = 0;
+  function detachedHistory(operation) {
+    detachedHistoryDepth++;
+    try {
+      return operation();
+    } finally {
+      detachedHistoryDepth--;
+    }
+  }
+  var restoreLineEnding = StateEffect.define({
+    map(value, mapping) {
+      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
+      const inverse = eventInverses.get(value);
+      if (!inverse) throw new Error("Exact history mapping is unavailable");
+      const outputMapping = mapping.mapDesc(inverse, true);
+      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
+      eventInverses.set(result, inverse.mapDesc(mapping));
+      return result;
+    }
+  });
+  function exactInsertionEffects(source, at) {
+    const effects = [];
+    let position = at;
+    for (let offset = 0; offset < source.length; offset++, position++) {
+      const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
+      if (crlf || source[offset] === "\n") {
+        effects.push(restoreLineEnding.of({ at: position, ending: crlf ? "\r\n" : "\n" }));
+        if (crlf) offset++;
+      }
+    }
+    return effects;
+  }
+  function transactionChanges(transaction, mirror) {
+    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
+    const changes = [];
+    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
+      const insert2 = inserted.toString();
+      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
+      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
+    });
+    return changes;
+  }
+  var exactSourceState = StateField.define({
+    create: (state) => admittedMirror(state.doc.toString()),
+    update(mirror, transaction) {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      if (replacement) {
+        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
+          throw new Error("Exact source does not match the editor document");
+        }
+        return admittedMirror(replacement.value);
+      }
+      if (!transaction.docChanged) return mirror;
+      const startedAt = performance.now();
+      const changes = transactionChanges(transaction, mirror);
+      const next = mirror.copy();
+      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+      if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
+      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
+        changeCount: changes.length,
+        documentLength: transaction.newDoc.length
+      });
+      return next;
+    }
+  });
+  var exactSourceHistory = [
+    exactSourceState,
+    EditorState.transactionFilter.of((transaction) => {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
+        transaction.startState,
+        transactionChanges(transaction, transaction.startState.field(exactSourceState))
+      );
+      return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
+    }),
+    EditorState.transactionExtender.of((transaction) => {
+      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
+        for (const command2 of [undo, redo]) {
+          let detached = transaction.startState;
+          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
+            for (const effect of historical.effects) {
+              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
+            }
+            detached = historical.state;
+          } }))) {
+          }
+        }
+      }
+      return null;
+    }),
+    invertedEffects.of((transaction) => {
+      if (!transaction.docChanged) return [];
+      const mirror = transaction.startState.field(exactSourceState);
+      const effects = [];
+      transaction.changes.iterChanges((from, to) => {
+        const removed = mirror.slice(from, to);
+        let normalizedOffset = from;
+        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
+          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
+          if (crlf || removed[offset] === "\n") {
+            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
+            if (crlf) offset++;
+          }
+        }
+      });
+      return effects;
+    })
+  ];
+  function exactSourceFitsChanges(state, changes) {
+    const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
+    if (changes.length <= 1) {
+      const next = source.copy();
+      return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
+    }
+    const encoder = new TextEncoder();
+    let bytes = 0, previous = 0, pendingHigh = "";
+    const append = (piece) => {
+      const text = pendingHigh + piece;
+      const last = text.charCodeAt(text.length - 1);
+      pendingHigh = last >= 55296 && last <= 56319 ? text.slice(-1) : "";
+      bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
+      return bytes <= MAX_SOURCE_UTF8_BYTES;
+    };
+    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
+      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
+      const normalized2 = normalizedDocumentText(change.insert);
+      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
+      if (normalizedDocumentText(insertion) !== normalized2) return false;
+      if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
+      previous = change.to;
+    }
+    return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+  function lineEndings(source) {
+    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
+  }
+  function sourceWithEndings(source, endings) {
+    let index = 0;
+    const exact = source.replace(/\n/g, () => {
+      const ending = endings[index++];
+      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
+      return ending === "c" ? "\r\n" : "\n";
+    });
+    if (index !== endings.length) throw new Error("Invalid history line ending count");
+    return exact;
+  }
+  var maximumRecoveryEvents = 512;
+  function captureExactHistory(state) {
+    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
+    const capture = (command2) => {
+      let detached = state;
+      const endings = [];
+      const citations = [];
+      for (let index = 0; ; index++) {
+        let changed = false;
+        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
+          changed = transaction.docChanged || transaction.effects.some((effect) => effect.is(setCitationData));
+          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
+            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
+          });
+          if (remainingBytes < 0) throw new Error("History is too large");
+          detached = transaction.state;
+        } }))) break;
+        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
+        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
+        remainingBytes -= value?.length ?? 0;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        endings.push(value);
+        const companion = detached.field(citationState, false)?.data ?? null;
+        remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        citations.push(companion);
+      }
+      return { endings, citations };
+    };
+    try {
+      if (remainingBytes < 0) return void 0;
+      const undo2 = capture(undoSelection);
+      const redo2 = capture(redoSelection);
+      const serialized = JSON.stringify({
+        state: state.toJSON(state.field(citationState, false) ? { history: historyField, citations: citationState } : { history: historyField }),
+        undoLineEndings: undo2.endings,
+        redoLineEndings: redo2.endings,
+        undoCitations: undo2.citations,
+        redoCitations: redo2.citations
+      });
+      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function restoreExactHistory(serialized, source, extensions) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+    const payload = JSON.parse(serialized);
+    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
+    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
+      throw new Error("Invalid history line endings");
+    }
+    const validCitations = (value, count2) => Array.isArray(value) && value.length === count2 && value.every((snapshot) => snapshot === null || validCitationData(snapshot));
+    if (!validCitations(payload.undoCitations, payload.undoLineEndings.length) || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
+    let state = EditorState.fromJSON(payload.state, { extensions }, payload.state.citations ? { history: historyField, citations: citationState } : { history: historyField });
+    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
+      throw new Error("History does not match the recovered source");
+    }
+    const recovery = new Compartment();
+    let targetEndings;
+    let targetCitation;
+    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
+      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 && targetCitation === void 0 ? null : {
+        effects: [
+          ...targetEndings === void 0 ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))],
+          ...targetCitation === void 0 || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation) ? [] : [setCitationData.of(targetCitation ?? void 0)]
+        ]
+      })
+    ))], annotations: Transaction.addToHistory.of(false) }).state;
+    function replay(command2, endings, citation) {
+      targetEndings = endings ?? void 0;
+      targetCitation = citation;
+      try {
+        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
+          state = transaction.state;
+        } }))) throw new Error("History could not be restored");
+      } finally {
+        targetEndings = void 0;
+        targetCitation = void 0;
+      }
+    }
+    payload.redoLineEndings.forEach((endings, index) => replay(redoSelection, endings, payload.redoCitations[index]));
+    for (const _ of payload.redoLineEndings) replay(undoSelection);
+    payload.undoLineEndings.forEach((endings, index) => replay(undoSelection, endings, payload.undoCitations[index]));
+    for (const _ of payload.undoLineEndings) replay(redoSelection);
+    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
+    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+    return state;
+  }
+
+  // live-projection-index.ts
+  function codeBlockActivationRange(doc2, block) {
+    if (block.fenced) return { from: block.from, to: block.to };
+    const line = doc2.lineAt(block.from);
+    const prefix = doc2.sliceString(line.from, block.from);
+    return /^[ \t]*$/.test(prefix) ? { from: line.from, to: block.to } : { from: block.from, to: block.to };
+  }
+  function codeBlockSourceIndentation(doc2, block) {
+    if (block.fenced) return 0;
+    const line = doc2.lineAt(block.from);
+    const prefix = doc2.sliceString(line.from, block.from);
+    return /^[ \t]*$/.test(prefix) ? prefix.length : 0;
+  }
+  function indexedListPrefixRanges(doc2, syntax) {
+    const contentStarts = /* @__PURE__ */ new Map();
+    for (const block of syntax.blocks) {
+      if (block.kind !== "paragraph" || block.parent?.kind !== "listItem") continue;
+      const key = rangeKey(block.parent.from, block.parent.to);
+      contentStarts.set(key, Math.min(contentStarts.get(key) ?? block.from, block.from));
+    }
+    return syntax.blocks.filter((block) => block.kind === "listItem" && block.markerRanges.length > 0).map((block) => {
+      const line = doc2.lineAt(block.from);
+      const markerFrom = block.markerRanges.reduce(
+        (minimum, marker) => Math.min(minimum, marker.from),
+        line.to
+      );
+      const markerTo = block.markerRanges.reduce(
+        (maximum, marker) => Math.max(maximum, marker.to),
+        block.from
+      );
+      let from = markerFrom;
+      while (from > line.from) {
+        const character = doc2.sliceString(from - 1, from);
+        if (character !== " " && character !== "	") break;
+        from -= 1;
+      }
+      const contentStart = contentStarts.get(rangeKey(block.from, block.to));
+      let to = contentStart !== void 0 && contentStart >= line.from && contentStart <= line.to ? contentStart : markerTo;
+      while (to < line.to) {
+        const character = doc2.sliceString(to, to + 1);
+        if (character !== " " && character !== "	") break;
+        to += 1;
+      }
+      return {
+        from,
+        to
+      };
+    }).filter((range) => range.to > range.from);
+  }
+  function indexedTaskItemRanges(syntax) {
+    return syntax.blocks.flatMap((block) => {
+      if (block.kind !== "listItem" || block.taskMarkerRange === null) return [];
+      return [{
+        from: block.from,
+        to: block.to,
+        markerFrom: block.taskMarkerRange.from,
+        markerTo: block.taskMarkerRange.to
+      }];
+    });
+  }
+  function indexedQuoteRanges(syntax) {
+    const blocksByRange = new Map(
+      syntax.blocks.map((block) => [rangeKey(block.from, block.to), block])
+    );
+    return syntax.blocks.filter((block) => block.kind === "blockQuote").map((block) => {
+      let depth2 = 1;
+      let parent = block.parent;
+      while (parent) {
+        if (parent.kind === "blockQuote") depth2 += 1;
+        parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
+      }
+      return { from: block.from, to: block.to, depth: depth2 };
+    });
+  }
+  function indexedTablePositionRanges(doc2, tables) {
+    const ranges = [];
+    for (const table of tables) {
+      const rows = [table.header, ...table.body];
+      const rowCount = rows.length;
+      const columnCount = table.header.length;
+      rows.forEach((cells, row) => {
+        const first = cells[0];
+        if (!first) return;
+        const line = doc2.lineAt(first.sourceOffset);
+        cells.forEach((cell, column) => {
+          const next = cells[column + 1];
+          ranges.push({
+            from: column === 0 ? line.from : cell.sourceOffset,
+            to: next?.sourceOffset ?? line.to + 1,
+            position: { row, column, rowCount, columnCount }
+          });
+        });
+      });
+    }
+    return immutableProjectionRanges(ranges);
+  }
+  function calloutRangeIncludingPendingQuoteLines(doc2, range) {
+    let line = doc2.lineAt(range.to);
+    let to = range.to;
+    if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
+      to = line.to;
+    }
+    while (line.number < doc2.lines) {
+      const next = doc2.line(line.number + 1);
+      if (!/^\s*>[ \t]*$/.test(next.text)) break;
+      to = next.to;
+      line = next;
+    }
+    return { from: range.from, to };
+  }
+  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
+    const doc2 = state.doc;
+    if (syntax.inlines.some((inline) => inline.kind === "citation")) {
+      const catalog = projectFieldsForState(state);
+      const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields.filter((field) => field.kind === "citation").map((field) => rangeKey(
+        normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
+        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length
+      )));
+      syntax = { ...syntax, inlines: syntax.inlines.filter((inline) => inline.kind !== "citation" || admitted.has(rangeKey(inline.from, inline.to))) };
+    }
+    const immutableExcluded = immutableProjectionRanges(excluded);
+    const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+    const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
+    const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
+    const immutableTables = Object.freeze([...tables]);
+    const immutableCallouts = Object.freeze([...callouts]);
+    const immutableMathExpressions = Object.freeze([...mathExpressions]);
+    const footnoteRanges = immutableProjectionRanges(
+      footnotes.references.map(({ from, to }) => ({ from, to }))
+    );
+    const immutableCommandProtectedRanges = commandProtectionRanges(
+      immutableExcluded,
+      immutableFrontmatter ?? void 0
+    );
+    const immutableStructuralRanges = immutableProjectionRanges([
+      ...immutableTables,
+      ...immutableCallouts,
+      ...footnotes.definitions,
+      ...footnotes.references,
+      // Both inline and display mathematics cache source content for KaTeX.
+      // Editing inside either expression must rebuild that presentation even
+      // when the surrounding Markdown topology is otherwise unchanged.
+      ...immutableMathExpressions
+    ].map(({ from, to }) => ({ from, to })));
+    return Object.freeze({
+      get zoteroFields() {
+        return projectFieldsForState(state);
+      },
+      topologyIdentity,
+      syntax,
+      quoteRanges: immutableQuoteRanges,
+      literals: Object.freeze({
+        excluded: immutableExcluded,
+        codeBlocks: immutableCodeBlocks
+      }),
+      inlineRanges: immutableProjectionRanges(inlineRanges),
+      listPrefixRanges: immutableProjectionRanges(listPrefixRanges),
+      taskItemRanges: immutableProjectionRanges(taskItemRanges),
+      footnotes,
+      tables: immutableTables,
+      callouts: immutableCallouts,
+      mathExpressions: immutableMathExpressions,
+      frontmatterRange: immutableFrontmatter,
+      commandProtectedRanges: immutableCommandProtectedRanges,
+      structuralRanges: immutableStructuralRanges,
+      mutationSensitiveRanges: immutableProjectionRanges([
+        ...immutableCommandProtectedRanges,
+        ...immutableStructuralRanges,
+        // Definition text can rebind an image outside the edited neighborhood
+        // without changing either node's local Markdown topology.
+        ...referenceDefinitionRanges
+      ]),
+      referenceDefinitionRanges: immutableProjectionRanges(referenceDefinitionRanges),
+      blockRanges: immutableProjectionRanges([
+        // Headings are source-visible syntax projections rather than widgets,
+        // but vertical traversal still needs their exact block boundary so a
+        // caret can enter the heading from the blank line below it.
+        ...syntax.blocks.filter(({ kind }) => kind === "heading").map(({ from, to }) => ({ from, to, kind: "heading" })),
+        ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
+        ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
+        ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
+      ]),
+      footnoteRanges,
+      tablePositionRanges: indexedTablePositionRanges(doc2, immutableTables),
+      hasUnclosedFrontmatter
+    });
+  }
+  function mathExpressionsFromCatalog(state, syntax) {
+    const expressions = [];
+    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineMath")) {
+      const contentRange = inline.visibleRanges[0];
+      const opening = inline.markerRanges[0];
+      if (!contentRange || !opening) continue;
+      const sourceContent = state.doc.sliceString(contentRange.from, contentRange.to);
+      const content2 = sourceContent.length > 2 && /^\s/.test(sourceContent) && /\s$/.test(sourceContent) && /\S/.test(sourceContent) ? sourceContent.slice(1, -1) : sourceContent;
+      expressions.push({
+        kind: "inline",
+        content: content2,
+        delimiterLength: opening.to - opening.from,
+        from: inline.from,
+        to: inline.to,
+        contentFrom: contentRange.from,
+        contentTo: contentRange.to
+      });
+    }
+    for (const block of syntax.blocks.filter((candidate) => candidate.kind === "displayMath")) {
+      const opening = block.markerRanges[0];
+      const closing2 = block.markerRanges.at(-1);
+      if (!opening || !closing2 || opening === closing2) continue;
+      const openingLine = state.doc.lineAt(opening.from);
+      const closingLine = state.doc.lineAt(closing2.from);
+      const contentFrom = openingLine.number < state.doc.lines ? state.doc.line(openingLine.number + 1).from : openingLine.to;
+      const contentTo = closingLine.from;
+      expressions.push({
+        kind: "display",
+        content: state.doc.sliceString(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
+        delimiterLength: opening.to - opening.from,
+        from: block.from,
+        to: block.to,
+        contentFrom,
+        contentTo
+      });
+    }
+    return expressions.sort((left, right) => left.from - right.from || left.to - right.to);
+  }
+  function buildLiveProjectionIndex(state, dialect, recordMetric) {
+    const startedAt = performance.now();
+    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+    const syntax = semanticProjectionRanges(
+      state,
+      [{ from: 0, to: state.doc.length }],
+      0,
+      tree
+    );
+    const referenceDefinitionRanges = [];
+    tree.iterate({ enter(node) {
+      if (node.name !== "LinkReference") return;
+      referenceDefinitionRanges.push({ from: node.from, to: node.to });
+      return false;
+    } });
+    const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
+      from: block.from,
+      to: block.to,
+      fenced: block.nodeName === "FencedCode",
+      markerRanges: block.markerRanges
+    }));
+    const excluded = [
+      ...codeBlocks,
+      ...syntax.blocks.filter((block) => block.kind === "html" || block.kind === "comment").map(({ from, to }) => ({ from, to })),
+      ...syntax.inlines.filter((inline) => inline.kind === "code").map(({ from, to }) => ({ from, to })),
+      ...syntax.literals.map(({ from, to }) => ({ from, to }))
+    ];
+    const inlineRanges = syntax.inlines.map(({ from, to }) => ({ from, to }));
+    const namedDefinitionStarts = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => block.from));
+    const inlineDefinitionRanges = /* @__PURE__ */ new Set();
+    const referenceRanges = new Set(syntax.inlines.filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote").map((inline) => rangeKey(inline.from, inline.to)));
+    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
+      inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
+    }
+    const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
+    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => calloutRangeIncludingPendingQuoteLines(state.doc, { from, to }));
+    const yamlBoundary = frontmatterBoundary(state.doc);
+    const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
+    const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
+    const footnoteExcluded = [...excluded];
+    if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
+    let completeSource = null;
+    const source = () => completeSource ??= state.doc.toString();
+    let footnotes = { definitions: [], references: [] };
+    if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
+      const projectedFootnotes = footnotePresentation(
+        source(),
+        footnoteExcluded,
+        dialect?.footnotes
+      );
+      footnotes = {
+        definitions: projectedFootnotes.definitions.filter((definition) => definition.isInline ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to)) : namedDefinitionStarts.has(definition.from)),
+        references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
+      };
+    }
+    const tables = tableRanges.flatMap((range) => {
+      const presentation = tablePresentation(source(), range.from, range.to);
+      return presentation ? [presentation] : [];
+    });
+    const callouts = calloutRanges.map((range) => ({
+      ...range,
+      source: state.doc.sliceString(range.from, range.to)
+    }));
+    const mathExpressions = mathExpressionsFromCatalog(state, syntax);
+    const index = finalizedLiveProjectionIndex(
+      state,
+      Object.freeze({}),
+      syntax,
+      excluded,
+      codeBlocks,
+      inlineRanges,
+      indexedListPrefixRanges(state.doc, syntax),
+      indexedTaskItemRanges(syntax),
+      footnotes,
+      tables,
+      callouts,
+      mathExpressions,
+      frontmatterRange,
+      yamlBoundary.unclosed,
+      referenceDefinitionRanges
+    );
+    recordMetric("projection-index", startedAt, {
+      documentLength: state.doc.length,
+      literalCount: excluded.length,
+      tableCount: tables.length,
+      calloutCount: callouts.length,
+      footnoteCount: footnotes.definitions.length + footnotes.references.length
+    });
+    return index;
+  }
+  function mapLiveProjectionIndex(index, transaction) {
+    const map = (position) => transaction.changes.mapPos(position);
+    const syntax = mapSemanticProjectionRanges(index.syntax, map);
+    const footnotes = {
+      definitions: index.footnotes.definitions.map((definition) => ({
+        ...definition,
+        from: map(definition.from),
+        to: map(definition.to),
+        contentFrom: map(definition.contentFrom)
+      })),
+      references: index.footnotes.references.map((reference) => ({
+        ...reference,
+        from: map(reference.from),
+        to: map(reference.to),
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
+      }))
+    };
+    const tables = index.tables.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to),
+      header: presentation.header.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })),
+      body: presentation.body.map((row) => row.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })))
+    }));
+    const callouts = index.callouts.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to)
+    }));
+    const mathExpressions = index.mathExpressions.map((expression) => ({
+      ...expression,
+      from: map(expression.from),
+      to: map(expression.to),
+      contentFrom: map(expression.contentFrom),
+      contentTo: map(expression.contentTo)
+    }));
+    const frontmatterRange = index.frontmatterRange === null ? null : {
+      from: map(index.frontmatterRange.from),
+      to: map(index.frontmatterRange.to)
+    };
+    return finalizedLiveProjectionIndex(
+      transaction.state,
+      index.topologyIdentity,
+      syntax,
+      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.literals.codeBlocks.map((range) => ({
+        from: map(range.from),
+        to: map(range.to),
+        fenced: range.fenced,
+        markerRanges: range.markerRanges.map((marker) => ({
+          from: map(marker.from),
+          to: map(marker.to)
+        }))
+      })),
+      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.taskItemRanges.map((range) => ({
+        from: map(range.from),
+        to: map(range.to),
+        markerFrom: map(range.markerFrom),
+        markerTo: map(range.markerTo)
+      })),
+      footnotes,
+      tables,
+      callouts,
+      mathExpressions,
+      frontmatterRange,
+      index.hasUnclosedFrontmatter,
+      index.referenceDefinitionRanges.map((range) => ({ from: map(range.from), to: map(range.to) }))
+    );
+  }
+  function createLiveProjectionIndexController(options) {
+    const build = (state) => buildLiveProjectionIndex(
+      state,
+      options.editingDialect(),
+      options.recordMetric
+    );
+    const field = StateField.define({
+      create: build,
+      update(previous, transaction) {
+        if (!transaction.docChanged) {
+          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData)) ? build(transaction.state) : previous;
+        }
+        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
+        if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
+          return mapLiveProjectionIndex(previous, transaction);
+        }
+        return transactionCanMapProjectionTopology(
+          transaction,
+          structuralMarker,
+          previous.mutationSensitiveRanges,
+          previous.syntax
+        ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
+      }
+    });
+    const index = (state) => state.field(field);
+    return {
+      extension: field,
+      index,
+      topologyWasMapped(transaction) {
+        return index(transaction.startState).topologyIdentity === index(transaction.state).topologyIdentity;
+      },
+      visibleInlineMathExpressions(state, coveredRanges, currentIndex) {
+        if (!options.editingDialect() || coveredRanges.length === 0) return [];
+        return currentIndex.mathExpressions.filter((expression) => expression.kind === "inline" && coveredRanges.some((range) => range.from <= expression.from && range.to >= expression.to) && (!currentIndex.frontmatterRange || expression.from >= currentIndex.frontmatterRange.to) && expression.to <= state.doc.length);
+      }
+    };
+  }
+
+  // writing-readable-context.ts
+  var markerNames = /* @__PURE__ */ new Set([
+    "HeaderMark",
+    "QuoteMark",
+    "ListMark",
+    "TaskMarker",
+    "TableDelimiter",
+    "CalloutQuoteMark",
+    "CalloutRoleMark",
+    "FootnoteOpenMark",
+    "FootnoteCloseMark",
+    "FootnoteIdentifier",
+    "FootnoteDefinitionMark",
+    "InlineFootnoteOpenMark",
+    "LinkMark",
+    "LinkLabel",
+    "URL",
+    "LinkTitle",
+    "WikiLinkOpenMark",
+    "WikiEmbedMark",
+    "WikiLinkAliasMark",
+    "WikiLinkCloseMark",
+    "WikiLinkTarget",
+    "EmphasisMark",
+    "StrikethroughMark",
+    "HighlightMark",
+    "CodeMark",
+    "MathMark"
+  ]);
+  var literalNames = /* @__PURE__ */ new Set([
+    "FencedCode",
+    "CodeBlock",
+    "InlineCode",
+    "BlockMath",
+    "UnclosedBlockMath",
+    "InlineMath",
+    "HTMLBlock",
+    "HTMLTag",
+    "CommentBlock",
+    "Comment",
+    "ObsidianComment",
+    "UnclosedObsidianComment",
+    "ObsidianCommentBlock",
+    "UnclosedObsidianCommentBlock",
+    "LinkReference",
+    "Autolink"
+  ]);
+  function contains2(range, position) {
+    return position >= range.from && position < range.to;
+  }
+  function readableBoundary(range, position) {
+    return range.to > range.from && position >= range.from && position <= range.to;
+  }
+  function completeLinkLabel(node) {
+    const marks2 = [];
+    let reference = null;
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (child.name === "LinkMark") marks2.push({ from: child.from, to: child.to });
+      if (child.name === "LinkLabel") reference = child;
+    }
+    if (marks2.length < 4 && (!reference || reference.to !== node.to)) return null;
+    return marks2.length >= 2 ? { from: marks2[0].to, to: marks2[1].from } : null;
+  }
+  function writingCaretIsReadable(state, index, position) {
+    if (!Number.isSafeInteger(position) || position < 0 || position > state.doc.length || index.hasUnclosedFrontmatter || index.frontmatterRange && contains2(index.frontmatterRange, position) || !syntaxTreeAvailable(state, Math.min(state.doc.length, position + 1))) return false;
+    if (position > 0 && position < state.doc.length) {
+      const adjacent = state.doc.sliceString(position - 1, position + 1);
+      if (/^[\uD800-\uDBFF][\uDC00-\uDFFF]$/.test(adjacent)) return false;
+    }
+    if (index.literals.excluded.some((range) => contains2(range, position)) || index.mathExpressions.some((range) => contains2(range, position)) || index.referenceDefinitionRanges.some((range) => readableBoundary(range, position)) || index.literals.codeBlocks.some((block) => contains2(codeBlockActivationRange(state.doc, block), position))) return false;
+    const tree = ensureSyntaxTree(state, Math.min(state.doc.length, position + 1), 0);
+    if (!tree) return false;
+    const line = state.doc.lineAt(position);
+    if (/^[ \t]{0,3}\[(?!\^)(?:\\.|[^\]\\\r\n])+\]:/.test(boundedLinePrefix(state.doc, position))) return false;
+    const markers = [];
+    const classified = [];
+    const linkLabels = [];
+    const cells = [];
+    let forbidden = false;
+    let tableWhitespaceBoundary = false;
+    tree.iterate({
+      from: line.from,
+      to: line.to,
+      enter(reference) {
+        const node = reference.node;
+        if (literalNames.has(node.name)) {
+          if (contains2(node, position)) forbidden = true;
+          if (node.to <= position) classified.push({ from: node.from, to: node.to });
+        }
+        if (markerNames.has(node.name)) {
+          let to = node.to;
+          if (["QuoteMark", "CalloutQuoteMark", "CalloutRoleMark"].includes(node.name)) {
+            while (to < line.to && /[ \t]/.test(state.doc.sliceString(to, to + 1))) to++;
+          }
+          markers.push({ from: node.from, to });
+          classified.push({ from: node.from, to });
+        }
+        if (node.name === "Escape") classified.push({ from: node.from, to: node.to });
+        if (node.name === "TableCell" || node.name === "FootnoteContent") {
+          let end = node.to;
+          if (node.name === "TableCell") {
+            while (end < line.to && /[ \t]/.test(state.doc.sliceString(end, end + 1))) end++;
+            tableWhitespaceBoundary ||= end > node.to && position > node.to && position <= end;
+          }
+          cells.push({ from: node.from, to: end });
+        }
+        if (node.name === "Link" || node.name === "Image") {
+          const label = completeLinkLabel(node);
+          if (label) {
+            linkLabels.push(label);
+            if (node.to <= position) classified.push({ from: node.from, to: node.to });
+          } else if (contains2(node, position) || node.from < position && /[([:]/.test(state.doc.sliceString(node.to, node.to + 1))) {
+            forbidden = true;
+          }
+        }
+      }
+    });
+    if (forbidden) return false;
+    let inlineEndIsReadable = linkLabels.some((range) => readableBoundary(range, position));
+    for (const inline of index.syntax.inlines) {
+      if (inline.kind === "blockAnchor" && readableBoundary(inline, position)) return false;
+      if (inline.to <= position) classified.push(inline);
+      if (!contains2(inline, position)) continue;
+      if (["code", "inlineMath", "comment", "footnoteReference", "blockAnchor"].includes(inline.kind) || inline.nodeName === "Autolink") return false;
+      const visible = inline.kind === "wikilink" ? [inline.aliasRange, inline.annotationContentRange].filter(
+        (range) => range !== null
+      ) : inline.visibleRanges;
+      if (!visible.some((range) => readableBoundary(range, position))) return false;
+      inlineEndIsReadable ||= visible.some((range) => position === range.to);
+      classified.push(...inline.markerRanges);
+      if (inline.targetRange) classified.push(inline.targetRange);
+    }
+    const cellEndIsReadable = cells.some((range) => position === range.to && range.to > range.from);
+    const structuralMarkers = [
+      ...index.listPrefixRanges,
+      ...index.syntax.blocks.flatMap((block) => block.markerRanges)
+    ];
+    if (structuralMarkers.some((range) => contains2(range, position)) && !tableWhitespaceBoundary) return false;
+    if (markers.some((range) => contains2(range, position)) && !inlineEndIsReadable && !cellEndIsReadable) return false;
+    const readable = inlineEndIsReadable || cells.some((range) => readableBoundary(range, position)) || index.syntax.blocks.some((block) => (block.kind === "paragraph" || block.kind === "heading") && readableBoundary(block, position));
+    if (!readable) return false;
+    classified.sort((left, right) => left.from - right.from || right.to - left.to);
+    let rangeIndex = 0;
+    for (let cursor = line.from; cursor < position; ) {
+      while (rangeIndex < classified.length && classified[rangeIndex].to <= cursor) rangeIndex++;
+      const known = classified[rangeIndex];
+      if (known && known.from <= cursor) {
+        cursor = Math.min(known.to, position);
+        continue;
+      }
+      const character = state.doc.sliceString(cursor, cursor + 1);
+      if (character === "\\") {
+        cursor += 2;
+        continue;
+      }
+      if (character === "[" || character === "`" || character === "$" || character === "<" || character === "%" && state.doc.sliceString(cursor, cursor + 2) === "%%") return false;
+      cursor++;
+    }
+    return true;
+  }
+
+  // document-widget-readiness.ts
+  var pendingWidgets = /* @__PURE__ */ new WeakMap();
+  function beginDocumentWidgetPreparation(node) {
+    const document2 = node.ownerDocument;
+    let pending = pendingWidgets.get(document2);
+    if (!pending) pendingWidgets.set(document2, pending = /* @__PURE__ */ new Map());
+    const widgets = pending;
+    widgets.get(node)?.finish();
+    let resolve;
+    const ready = new Promise((complete) => {
+      resolve = complete;
+    });
+    const entry = {
+      node,
+      ready,
+      finish() {
+        if (widgets.get(node) === entry) widgets.delete(node);
+        resolve();
+      }
+    };
+    widgets.set(node, entry);
+    return entry;
+  }
+  async function awaitVisibleDocumentWidgets(root, viewport, requireCurrent) {
+    requireCurrent();
+    const visible = (entry) => {
+      if (!root.isConnected || !entry.node.isConnected || !root.contains(entry.node)) return false;
+      const bounds = viewport.getBoundingClientRect();
+      const rect = entry.node.getBoundingClientRect();
+      return rect.right >= bounds.left && rect.left <= bounds.right && rect.bottom >= bounds.top && rect.top <= bounds.bottom;
+    };
+    const pending = new Set(Array.from(pendingWidgets.get(root.ownerDocument)?.values() ?? []).filter(visible));
+    if (pending.size === 0) return false;
+    const owner = root.ownerDocument.defaultView;
+    await new Promise((resolve, reject) => {
+      let finished = false;
+      const finish = (error) => {
+        if (finished) return;
+        finished = true;
+        observer.disconnect();
+        viewport.removeEventListener("scroll", check);
+        owner.removeEventListener("resize", check);
+        if (error === void 0) resolve();
+        else reject(error);
+      };
+      const check = () => {
+        try {
+          requireCurrent();
+          for (const entry of pending) if (!visible(entry)) pending.delete(entry);
+          if (pending.size === 0) finish();
+        } catch (error) {
+          finish(error);
+        }
+      };
+      const observer = new owner.MutationObserver(check);
+      observer.observe(root.ownerDocument.documentElement, { childList: true, subtree: true });
+      viewport.addEventListener("scroll", check, { passive: true });
+      owner.addEventListener("resize", check);
+      for (const entry of pending) {
+        void entry.ready.then(() => {
+          pending.delete(entry);
+          check();
+        });
+      }
+      check();
+    });
+    requireCurrent();
+    return true;
+  }
+  var mathRuntimeSettledEvent = "scholium-math-runtime-settled";
+  async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
+    requireCurrent();
+    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
+      if (!image.isConnected || decoded.has(image)) return false;
+      const imageRect = image.getBoundingClientRect();
+      const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
+      return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
+    });
+    if (pending.length === 0) return false;
+    pending.forEach((image) => decoded.add(image));
+    await Promise.all(pending.map((image) => image.decode().catch(() => {
+    })));
+    requireCurrent();
+    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+    return true;
+  }
+
   // committed-snapshot-receipt.ts
   var CommittedSnapshotReceipt = class {
     receipt = null;
@@ -33225,11 +34722,11 @@ ${blankRow(table.position.columnCount)}`;
   function normalized(range) {
     return { from: Math.min(range.anchor, range.head), to: Math.max(range.anchor, range.head) };
   }
-  function overlaps(left, right) {
+  function overlaps2(left, right) {
     if (left.from === left.to) return left.from >= right.from && left.from <= right.to;
     return left.from < right.to && left.to > right.from;
   }
-  function isEscaped4(source, offset) {
+  function isEscaped5(source, offset) {
     let backslashes = 0;
     for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) backslashes += 1;
     return backslashes % 2 === 1;
@@ -33279,13 +34776,13 @@ ${blankRow(table.position.columnCount)}`;
   }
   function inlineChange(source, range, opening, closing2) {
     const selected = source.slice(range.from, range.to);
-    const escapedOpening = isEscaped4(source, range.from);
+    const escapedOpening = isEscaped5(source, range.from);
     if (!escapedOpening && selected.startsWith(opening) && selected.endsWith(closing2) && selected.length >= opening.length + closing2.length) {
       const insert3 = selected.slice(opening.length, selected.length - closing2.length);
       return { change: { ...range, insert: insert3 }, selection: { anchor: range.from, head: range.from + insert3.length } };
     }
     const enclosingFrom = range.from - opening.length;
-    const escapedEnclosing = isEscaped4(source, enclosingFrom);
+    const escapedEnclosing = isEscaped5(source, enclosingFrom);
     if (!escapedEnclosing && source.slice(enclosingFrom, range.from) === opening && source.slice(range.to, range.to + closing2.length) === closing2) {
       return {
         change: { from: range.from - opening.length, to: range.to + closing2.length, insert: selected },
@@ -33309,7 +34806,7 @@ ${blankRow(table.position.columnCount)}`;
     if (command2 === "inlineCode") {
       const selected = source.slice(range.from, range.to);
       const existing = /^`+/.exec(selected)?.[0];
-      if (existing && !isEscaped4(source, range.from) && selected.length >= existing.length * 2 && selected.endsWith(existing) && selected[selected.length - existing.length - 1] !== "`") {
+      if (existing && !isEscaped5(source, range.from) && selected.length >= existing.length * 2 && selected.endsWith(existing) && selected[selected.length - existing.length - 1] !== "`") {
         const content2 = selected.slice(existing.length, -existing.length);
         if (![...content2.matchAll(/`+/g)].some((match) => match[0].length === existing.length)) {
           const padded = content2.startsWith(" ") && content2.endsWith(" ") && /[^ ]/.test(content2);
@@ -33442,7 +34939,7 @@ ${fence}`;
     if (new TextEncoder().encode(source).byteLength > 8e6 || selections.length === 0) return null;
     const ranges = selections.map(normalized).sort((left, right) => left.from - right.from || left.to - right.to);
     if (ranges.some((range, index) => index > 0 && range.from < ranges[index - 1].to)) return null;
-    if (ranges.some((range) => options.protectedRanges?.some((protectedRange) => overlaps(range, protectedRange)))) return null;
+    if (ranges.some((range) => options.protectedRanges?.some((protectedRange) => overlaps2(range, protectedRange)))) return null;
     const tableTransformation = transformTableCommand(source, selections, command2);
     if (tableTransformation) return tableTransformation;
     if (command2 === "insertFootnote") {
@@ -33538,7 +35035,7 @@ ${fence}`;
     if (transformed.some((value) => value === null)) return null;
     const values2 = transformed;
     const changes = values2.map((value) => value.change);
-    if (changes.some((change) => options.protectedRanges?.some((range) => overlaps(change, range)))) return null;
+    if (changes.some((change) => options.protectedRanges?.some((range) => overlaps2(change, range)))) return null;
     const orderedChanges = [...changes].sort((left, right) => left.from - right.from || left.to - right.to);
     if (orderedChanges.some((change, index) => index > 0 && change.from < orderedChanges[index - 1].to)) return null;
     let shift2 = 0;
@@ -33890,438 +35387,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function isSingleSafeURL(value) {
     const trimmed = value.trim();
     return /^(https?:\/\/|mailto:)[^\s]+$/i.test(trimmed) ? trimmed : null;
-  }
-
-  // semantic-projection.ts
-  function mapSemanticProjectionRanges(previous, mapPosition) {
-    const mapRange2 = (range) => ({
-      from: mapPosition(range.from),
-      to: mapPosition(range.to)
-    });
-    const blocks = previous.blocks.map((block) => ({
-      ...block,
-      from: mapPosition(block.from),
-      to: mapPosition(block.to),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        from: mapPosition(block.parent.from),
-        to: mapPosition(block.parent.to)
-      } : null,
-      markerRanges: block.markerRanges.map(mapRange2),
-      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
-    }));
-    const inlines = previous.inlines.map((inline) => ({
-      ...inline,
-      from: mapPosition(inline.from),
-      to: mapPosition(inline.to),
-      markerRanges: inline.markerRanges.map(mapRange2),
-      visibleRanges: inline.visibleRanges.map(mapRange2),
-      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
-      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
-      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
-      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
-      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
-    }));
-    const literals2 = previous.literals.map((literal2) => ({
-      ...literal2,
-      from: mapPosition(literal2.from),
-      to: mapPosition(literal2.to)
-    }));
-    return { blocks, inlines, literals: literals2 };
-  }
-  var blockKinds = /* @__PURE__ */ new Map([
-    ["Paragraph", "paragraph"],
-    ["Blockquote", "blockQuote"],
-    ["FencedCode", "code"],
-    ["CodeBlock", "code"],
-    ["BulletList", "unorderedList"],
-    ["OrderedList", "orderedList"],
-    ["ListItem", "listItem"],
-    ["Table", "table"],
-    ["HorizontalRule", "thematicBreak"],
-    ["HTMLBlock", "html"],
-    // CommonMark exposes a block HTML comment as CommentBlock while Swift
-    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
-    // on one raw-HTML presentation path so Review and Edit cannot drift.
-    ["CommentBlock", "html"],
-    ["Callout", "callout"],
-    ["FootnoteDefinition", "footnoteDefinition"],
-    ["BlockMath", "displayMath"],
-    ["ObsidianCommentBlock", "comment"],
-    ["UnclosedObsidianCommentBlock", "comment"]
-  ]);
-  var inlineKinds = /* @__PURE__ */ new Map([
-    ["StrongEmphasis", "strong"],
-    ["Emphasis", "emphasis"],
-    ["Strikethrough", "strikethrough"],
-    ["InlineCode", "code"],
-    ["Link", "link"],
-    ["Autolink", "link"],
-    ["Image", "image"],
-    ["Highlight", "highlight"],
-    ["WikiLink", "wikilink"],
-    ["InlineMath", "inlineMath"],
-    ["FootnoteReference", "footnoteReference"],
-    ["InlineFootnote", "inlineFootnote"],
-    ["ObsidianComment", "comment"]
-  ]);
-  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
-    const ranges = [];
-    const visit = (node) => {
-      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
-      if (node !== root && stopAt.has(node.name)) return;
-      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
-    };
-    visit(root);
-    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function directChildRanges(root, names) {
-    const ranges = [];
-    for (let child = root.firstChild; child; child = child.nextSibling) {
-      if (typeof names === "string" ? child.name === names : names.has(child.name)) {
-        ranges.push({ from: child.from, to: child.to });
-      }
-    }
-    return ranges;
-  }
-  function referenceLabel(source) {
-    const label = source.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[ \t\r\n]+/g, " ");
-    return label.replace(/[^\u0131]+/g, (part) => part.toLowerCase().toUpperCase());
-  }
-  function imageReferenceTargets(tree, source) {
-    const targets = /* @__PURE__ */ new Map();
-    tree.iterate({
-      enter(reference) {
-        if (reference.name !== "LinkReference") return;
-        const node = reference.node;
-        const label = directChildRanges(node, "LinkLabel")[0];
-        const target = directChildRanges(node, "URL")[0];
-        if (!label || !target) return false;
-        const key = referenceLabel(source.slice(label.from + 1, label.to - 1));
-        if (key && !targets.has(key)) targets.set(key, target);
-        return false;
-      }
-    });
-    return targets;
-  }
-  function complementRanges(from, to, excluded) {
-    const visible = [];
-    let position = from;
-    for (const range of excluded) {
-      if (range.from > position) visible.push({ from: position, to: range.from });
-      position = Math.max(position, range.to);
-    }
-    if (position < to) visible.push({ from: position, to });
-    return visible;
-  }
-  function presentationBlockMarkerRanges(state, node, kind, markerNames, stopAt) {
-    const ranges = childRanges(node, markerNames, stopAt);
-    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
-    return ranges.map((range) => {
-      if (range.from !== node.from) return range;
-      let to = range.to;
-      while (to < node.to) {
-        const character = state.doc.sliceString(to, to + 1);
-        if (character !== " " && character !== "	") break;
-        to += 1;
-      }
-      return { from: range.from, to };
-    });
-  }
-  function inlinePresentation(node, kind, source, referenceTargets) {
-    const markerNames = /* @__PURE__ */ new Set();
-    switch (kind) {
-      case "strong":
-      case "emphasis":
-        markerNames.add("EmphasisMark");
-        break;
-      case "strikethrough":
-        markerNames.add("StrikethroughMark");
-        break;
-      case "code":
-        markerNames.add("CodeMark");
-        break;
-      case "link":
-      case "image":
-        markerNames.add("LinkMark");
-        break;
-      case "highlight":
-        markerNames.add("HighlightMark");
-        break;
-      case "wikilink":
-        markerNames.add("WikiLinkOpenMark");
-        markerNames.add("WikiEmbedMark");
-        markerNames.add("WikiLinkAliasMark");
-        markerNames.add("WikiLinkCloseMark");
-        break;
-      case "inlineMath":
-        markerNames.add("MathMark");
-        break;
-      case "footnoteReference":
-        markerNames.add("FootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "inlineFootnote":
-        markerNames.add("InlineFootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "comment":
-        break;
-    }
-    const markerRanges = directChildRanges(node, markerNames);
-    let targetRange = null;
-    let aliasRange = null;
-    let linkRange = null;
-    let annotationRange = null;
-    let annotationContentRange = null;
-    let projectionTo = node.to;
-    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
-    if (kind === "image") {
-      if (markerRanges.length < 2) return null;
-      const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
-      targetRange = directChildRanges(node, "URL")[0] ?? null;
-      if (!targetRange) {
-        const label = directChildRanges(node, "LinkLabel")[0];
-        const next = source.slice(node.to, node.to + 1);
-        if (!label && (markerRanges.length !== 2 || next === "(" || next === "[")) {
-          return null;
-        }
-        const key = referenceLabel(label && label.to - label.from > 2 ? source.slice(label.from + 1, label.to - 1) : source.slice(alt.from, alt.to));
-        targetRange = referenceTargets().get(key) ?? null;
-        if (!targetRange) return null;
-      }
-      visibleRanges = [alt];
-    } else if (kind === "link") {
-      const explicitVisible = directChildRanges(node, "URL");
-      if (explicitVisible.length === 0) return null;
-      targetRange = explicitVisible[0];
-      if (isCitationDestination(source.slice(targetRange.from, targetRange.to).replace(/^<|>$/g, ""))) {
-        if (node.name !== "Link") return null;
-        try {
-          const raw = source.slice(node.from, node.to);
-          const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
-          if (!citation) return null;
-          return {
-            kind: "citation",
-            nodeName: node.name,
-            from: node.from,
-            to: node.to,
-            markerRanges,
-            visibleRanges: [{ from: node.from + citation.fallbackRange.from, to: node.from + citation.fallbackRange.to }],
-            targetRange: null,
-            aliasRange: null,
-            linkRange: null,
-            annotationRange: null,
-            annotationContentRange: null
-          };
-        } catch {
-          return null;
-        }
-      }
-      if (node.name === "Autolink") {
-        visibleRanges = explicitVisible;
-      } else {
-        const linkMarks = markerRanges;
-        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
-      }
-    } else if (kind === "wikilink") {
-      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
-      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
-      targetRange = target[0] ?? null;
-      aliasRange = alias[0] ?? null;
-      visibleRanges = alias.length > 0 ? alias : target;
-      linkRange = { from: node.from, to: node.to };
-      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
-      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
-      if (annotation) {
-        annotationRange = { from: annotation.from, to: annotation.to };
-        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
-        projectionTo = annotation.to;
-      }
-    } else if (kind === "inlineMath") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
-    } else if (kind === "footnoteReference") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
-    } else if (kind === "inlineFootnote") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
-    } else if (kind === "comment") {
-      visibleRanges = [];
-    }
-    return {
-      kind,
-      nodeName: node.name,
-      from: node.from,
-      to: projectionTo,
-      markerRanges,
-      visibleRanges,
-      targetRange,
-      aliasRange,
-      linkRange,
-      annotationRange,
-      annotationContentRange
-    };
-  }
-  function rangeKey(from, to) {
-    return `${from}:${to}`;
-  }
-  function boundedLinePrefix(doc2, position, limit = 512) {
-    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
-    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
-  }
-  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
-    const expanded = visibleRanges.map((range) => ({
-      from: Math.max(0, range.from - margin),
-      to: Math.min(documentLength, range.to + margin)
-    })).sort((left, right) => left.from - right.from || left.to - right.to);
-    const merged = [];
-    for (const range of expanded) {
-      const previous = merged.at(-1);
-      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
-      else merged.push({ ...range });
-    }
-    return merged;
-  }
-  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
-    const result = {
-      blocks: [],
-      inlines: [],
-      literals: []
-    };
-    if (visibleRanges.length === 0) return result;
-    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
-    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
-    const blockStack = [];
-    const source = state.doc.toString();
-    let referenceTargets;
-    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
-    tree.iterate({
-      from,
-      to,
-      enter(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
-        const kind = heading2 ? "heading" : blockKinds.get(node.name);
-        if (kind) {
-          const parent = blockStack.at(-1) ?? null;
-          const markerNames = /* @__PURE__ */ new Set();
-          if (kind === "heading") markerNames.add("HeaderMark");
-          if (kind === "blockQuote") markerNames.add("QuoteMark");
-          if (kind === "listItem") {
-            markerNames.add("ListMark");
-            markerNames.add("TaskMarker");
-          }
-          if (kind === "code") markerNames.add("CodeMark");
-          if (kind === "callout") {
-            markerNames.add("CalloutQuoteMark");
-            markerNames.add("CalloutRoleMark");
-          }
-          if (kind === "displayMath") markerNames.add("MathMark");
-          const markerRanges = presentationBlockMarkerRanges(
-            state,
-            node,
-            kind,
-            markerNames,
-            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
-          );
-          const block = {
-            kind,
-            nodeName: node.name,
-            from: node.from,
-            to: node.to,
-            depth: blockStack.length,
-            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-            headingLevel: heading2 ? Number(heading2[1]) : null,
-            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
-            markerRanges,
-            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
-          };
-          result.blocks.push(block);
-          blockStack.push(block);
-        }
-        if (node.name === "Task") {
-          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
-          if (taskMarker) {
-            let contentFrom = taskMarker.to;
-            while (contentFrom < node.to) {
-              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
-              if (character !== " " && character !== "	") break;
-              contentFrom += 1;
-            }
-            if (contentFrom < node.to) {
-              const parent = blockStack.at(-1) ?? null;
-              const paragraph = {
-                kind: "paragraph",
-                nodeName: "TaskContent",
-                from: contentFrom,
-                to: node.to,
-                depth: blockStack.length,
-                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-                headingLevel: null,
-                listDepth: null,
-                markerRanges: [],
-                taskMarkerRange: null
-              };
-              result.blocks.push(paragraph);
-            }
-          }
-        }
-        const inlineKind = inlineKinds.get(node.name);
-        if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
-          if (inline) result.inlines.push(inline);
-        }
-        if ([
-          "HTMLTag",
-          "CommentBlock",
-          "Comment",
-          "ObsidianComment",
-          "UnclosedObsidianComment"
-        ].includes(node.name)) {
-          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
-          return false;
-        }
-      },
-      leave(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
-        if (!heading2 && !blockKinds.has(node.name)) return;
-        const current = blockStack.at(-1);
-        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
-          blockStack.pop();
-        }
-      }
-    });
-    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
-    for (const block of result.blocks) {
-      if (block.kind !== "paragraph") continue;
-      const paragraph = source.slice(block.from, block.to);
-      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
-      if (!match || paragraphIsProtected(block)) continue;
-      const markerFrom = block.from + match.index + match[0].indexOf("^");
-      const markerTo = markerFrom + match[1].length + 1;
-      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
-        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
-        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
-      }
-      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
-      result.inlines.push({
-        kind: "blockAnchor",
-        nodeName: "ParagraphAnchor",
-        from: markerFrom,
-        to: markerTo,
-        markerRanges: [{ from: markerFrom, to: markerTo }],
-        visibleRanges: [],
-        targetRange: null,
-        aliasRange: null,
-        linkRange: null,
-        annotationRange: null,
-        annotationContentRange: null
-      });
-    }
-    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
-    return result;
   }
 
   // text-transfer-ranges.ts
@@ -34692,313 +35757,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const trimmed = lineText.trim();
     if (isDelimiterLine || hasTokenClass || trimmed === "" || trimmed.startsWith("#")) return void 0;
     return "cm-live-yaml-value";
-  }
-
-  // projection-index.ts
-  function compareRanges(left, right) {
-    return left.from - right.from || left.to - right.to;
-  }
-  var prefixMaximumEnds = /* @__PURE__ */ new WeakMap();
-  function maximumEndsFor(ranges) {
-    const cached = prefixMaximumEnds.get(ranges);
-    if (cached) return cached;
-    let maximum = -1;
-    const values2 = Object.freeze(ranges.map((range) => {
-      maximum = Math.max(maximum, range.to);
-      return maximum;
-    }));
-    prefixMaximumEnds.set(ranges, values2);
-    return values2;
-  }
-  function immutableProjectionRanges(ranges) {
-    const immutable = Object.freeze(ranges.map((range) => Object.freeze({ ...range })).sort(compareRanges));
-    maximumEndsFor(immutable);
-    return immutable;
-  }
-  function projectionRangeDifference(requested, covered) {
-    const missing = [];
-    let coveredIndex = 0;
-    for (const target of requested) {
-      if (target.to <= target.from) continue;
-      while (coveredIndex < covered.length && covered[coveredIndex].to <= target.from) {
-        coveredIndex += 1;
-      }
-      let cursor = target.from;
-      let index = coveredIndex;
-      while (index < covered.length && covered[index].from < target.to) {
-        const existing = covered[index];
-        if (existing.from > cursor) {
-          missing.push({ from: cursor, to: Math.min(existing.from, target.to) });
-        }
-        cursor = Math.max(cursor, existing.to);
-        if (cursor >= target.to) break;
-        index += 1;
-      }
-      if (cursor < target.to) missing.push({ from: cursor, to: target.to });
-      coveredIndex = index;
-    }
-    return immutableProjectionRanges(missing);
-  }
-  function commandProtectionRanges(literalRanges, frontmatterRange) {
-    return immutableProjectionRanges(frontmatterRange ? [...literalRanges, frontmatterRange] : literalRanges);
-  }
-  function projectionRangesIntersecting(ranges, from, to) {
-    let low = 0;
-    let high = ranges.length;
-    while (low < high) {
-      const middle = low + high >>> 1;
-      if (ranges[middle].from < to) low = middle + 1;
-      else high = middle;
-    }
-    const maximumEnds = maximumEndsFor(ranges);
-    const matches = [];
-    for (let index = low - 1; index >= 0 && maximumEnds[index] > from; index -= 1) {
-      if (ranges[index].to > from) matches.push(ranges[index]);
-    }
-    matches.reverse();
-    return matches;
-  }
-  function projectionRangeContaining(ranges, offset) {
-    const candidates = projectionRangesIntersecting(ranges, offset, offset + 1);
-    return candidates[0] ?? null;
-  }
-  function projectionRangeAtBoundary(ranges, offset, boundary2) {
-    const candidates = projectionRangesIntersecting(
-      ranges,
-      Math.max(0, offset - 1),
-      offset + 1
-    );
-    return candidates.find(
-      (range) => boundary2 === "start" ? range.from === offset : range.to === offset
-    ) ?? null;
-  }
-  function projectionSelectionOverlaps(ranges, selection) {
-    if (selection.from === selection.to) {
-      return projectionRangeContaining(ranges, selection.from) !== null;
-    }
-    return projectionRangesIntersecting(ranges, selection.from, selection.to).length > 0;
-  }
-  function projectionBoundaryTouches(ranges, offset) {
-    const candidates = projectionRangesIntersecting(
-      ranges,
-      Math.max(0, offset - 1),
-      offset + 1
-    );
-    return candidates.some((range) => offset >= range.from && offset <= range.to);
-  }
-
-  // projection-update.ts
-  function selectionActivatesSyntax(selection, projection) {
-    return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
-  }
-  function selectionIntersectsPhysicalLine(selection, lineFrom, lineTo, queryTo) {
-    return selection.empty ? selection.head >= lineFrom && selection.head <= lineTo : selection.from < queryTo && selection.to > lineFrom;
-  }
-  function activeProjectionSignature(selections, projections) {
-    const active = /* @__PURE__ */ new Map();
-    for (const selection of selections) {
-      const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
-      const to = selection.empty ? selection.head + 1 : selection.to;
-      for (const projection of projectionRangesIntersecting(projections, from, to)) {
-        if (!selectionActivatesSyntax(selection, projection)) continue;
-        active.set(`${projection.from}:${projection.to}`, projection);
-      }
-    }
-    return [...active.values()].sort((left, right) => left.from - right.from || left.to - right.to).map((projection) => `${projection.from}:${projection.to}`).join("|");
-  }
-  function selectionProjectionSignature(doc2, selections, inlineProjections, listPrefixProjections = []) {
-    const activeLines = selections.map((selection) => {
-      const fromLine = doc2.lineAt(Math.max(0, Math.min(selection.from, doc2.length))).from;
-      const endPosition = selection.empty ? selection.to : Math.max(selection.from, selection.to - 1);
-      const toLine = doc2.lineAt(Math.max(0, Math.min(endPosition, doc2.length))).from;
-      return `${fromLine}:${toLine}`;
-    }).join("|");
-    return [
-      activeLines,
-      activeProjectionSignature(selections, inlineProjections),
-      activeProjectionSignature(selections, listPrefixProjections)
-    ].join("#");
-  }
-  function selectionAffectedProjectionRanges(documentLength, previousSelections, nextSelections, margin = 2e3) {
-    return immutableProjectionRanges(boundedProjectionRanges(
-      documentLength,
-      [...previousSelections, ...nextSelections].map((selection) => ({
-        from: selection.from,
-        to: selection.to
-      })),
-      margin
-    ));
-  }
-  function selectionProjectionRefreshRanges(doc2, previousSelections, nextSelections, constructs, coveredRanges) {
-    const candidates = /* @__PURE__ */ new Set();
-    for (const selection of [...previousSelections, ...nextSelections]) {
-      for (const construct of projectionRangesIntersecting(
-        constructs,
-        selection.empty ? Math.max(0, selection.head - 1) : selection.from,
-        selection.empty ? selection.head + 1 : selection.to
-      )) {
-        candidates.add(construct);
-      }
-    }
-    const changed = [...candidates].filter((construct) => previousSelections.some((selection) => selectionActivatesSyntax(selection, construct)) !== nextSelections.some((selection) => selectionActivatesSyntax(selection, construct)));
-    const affected = boundedProjectionRanges(doc2.length, [
-      ...selectionAffectedProjectionRanges(doc2.length, previousSelections, nextSelections),
-      ...changed
-    ].map((range) => ({
-      // Inline decorations and prefix activation are emitted per physical line.
-      // Replacing a fragment would remove a whole intersecting old mark and lose
-      // its tails, or leave a distant heading/quote prefix in its old state.
-      from: doc2.lineAt(range.from).from,
-      to: doc2.lineAt(range.to).to
-    })), 0);
-    return immutableProjectionRanges(boundedProjectionRanges(
-      doc2.length,
-      coveredRanges.flatMap((covered) => affected.flatMap((range) => {
-        const from = Math.max(covered.from, range.from);
-        const to = Math.min(covered.to, range.to);
-        return to > from ? [{ from, to }] : [];
-      })),
-      0
-    ));
-  }
-  function transactionChangedSyntaxTree(transaction) {
-    return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
-  }
-  function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
-    if (transaction.docChanged) return true;
-    if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
-      return true;
-    }
-    return signature !== previousSignature;
-  }
-  function changedContextContainsMarker(transaction, from, to, marker) {
-    const doc2 = transaction.state.doc;
-    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
-    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
-    const firstLine = doc2.lineAt(boundedFrom);
-    const lastLine = doc2.lineAt(boundedTo);
-    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
-    const contextTo = Math.min(lastLine.to, boundedTo + 256);
-    marker.lastIndex = 0;
-    return marker.test(doc2.sliceString(contextFrom, contextTo));
-  }
-  function transactionMayCreateProjection(transaction, marker) {
-    let mayCreate = false;
-    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-      if (mayCreate) return;
-      if (toA > fromA || inserted.length > 8192) {
-        mayCreate = true;
-        return;
-      }
-      marker.lastIndex = 0;
-      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
-    });
-    return mayCreate;
-  }
-  function rangesOverlap(left, right) {
-    return left.from < right.to && left.to > right.from;
-  }
-  function physicalLineNeighborhood(doc2, from, to) {
-    const startLine = doc2.lineAt(Math.max(0, Math.min(from, doc2.length)));
-    const endLine = doc2.lineAt(Math.max(0, Math.min(to, doc2.length)));
-    return {
-      from: doc2.line(Math.max(1, startLine.number - 1)).from,
-      to: doc2.line(Math.min(doc2.lines, endLine.number + 1)).to
-    };
-  }
-  function mappedRange(range, transaction) {
-    return {
-      from: transaction.changes.mapPos(range.from),
-      to: transaction.changes.mapPos(range.to)
-    };
-  }
-  function mappedBlock(block, transaction) {
-    return {
-      ...block,
-      ...mappedRange(block, transaction),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        ...mappedRange(block.parent, transaction)
-      } : null,
-      markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
-      taskMarkerRange: block.taskMarkerRange ? mappedRange(block.taskMarkerRange, transaction) : null
-    };
-  }
-  function mappedInline(inline, transaction) {
-    return {
-      ...inline,
-      ...mappedRange(inline, transaction),
-      markerRanges: inline.markerRanges.map((range) => mappedRange(range, transaction)),
-      visibleRanges: inline.visibleRanges.map((range) => mappedRange(range, transaction)),
-      targetRange: inline.targetRange ? mappedRange(inline.targetRange, transaction) : null,
-      aliasRange: inline.aliasRange ? mappedRange(inline.aliasRange, transaction) : null
-    };
-  }
-  function rangeSignature(range) {
-    return range ? `${range.from}:${range.to}` : "-";
-  }
-  function projectionTopologySignature(projection) {
-    const blocks = projection.blocks.map((block) => [
-      "b",
-      block.kind,
-      block.nodeName,
-      block.from,
-      block.to,
-      block.depth,
-      block.parent?.kind ?? "-",
-      rangeSignature(block.parent),
-      block.headingLevel ?? "-",
-      block.listDepth ?? "-",
-      block.markerRanges.map(rangeSignature).join(","),
-      rangeSignature(block.taskMarkerRange)
-    ].join("|"));
-    const inlines = projection.inlines.map((inline) => [
-      "i",
-      inline.kind,
-      inline.nodeName,
-      inline.from,
-      inline.to,
-      inline.markerRanges.map(rangeSignature).join(","),
-      inline.visibleRanges.map(rangeSignature).join(","),
-      rangeSignature(inline.targetRange),
-      rangeSignature(inline.aliasRange)
-    ].join("|"));
-    const literals2 = projection.literals.map((literal2) => ["l", literal2.nodeName, literal2.from, literal2.to].join("|"));
-    return [...blocks, ...inlines, ...literals2].sort().join("\n");
-  }
-  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax) {
-    if (!transaction.docChanged) return false;
-    const changes = [];
-    transaction.changes.iterChanges((fromA2, toA2, fromB2, toB2, inserted) => {
-      changes.push({ fromA: fromA2, toA: toA2, fromB: fromB2, toB: toB2, insert: inserted.toString() });
-    });
-    if (changes.length !== 1) return false;
-    const { fromA, toA, fromB, toB, insert: insert2 } = changes[0];
-    marker.lastIndex = 0;
-    if (insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
-      return false;
-    }
-    if (toA > fromA) {
-      const line = transaction.startState.doc.lineAt(fromA);
-      const touchesDeletion = (range) => range.from <= toA && range.to >= fromA;
-      if (insert2.length !== 0 || toA - fromA > 8192 || fromA <= line.from || toA > line.to || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA)) || mutationSensitiveRanges.some(touchesDeletion) || previousSyntax.inlines.some(touchesDeletion) || previousSyntax.blocks.some((block) => block.markerRanges.some(touchesDeletion))) {
-        return false;
-      }
-    }
-    const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
-    const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
-    const previousLocal = {
-      ...previousSyntax,
-      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mappedBlock(block, transaction)),
-      inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
-      literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
-    };
-    const nextLocal = semanticProjectionRanges(
-      transaction.state,
-      [newNeighborhood],
-      0
-    );
-    return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
 
   // accessibility.ts
@@ -36205,7 +36963,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return options.protectedRanges(state).some((range) => from < range.to && to > range.from);
   }
   function caretHasInputTrigger(before) {
-    return /\[\[[^\]\n]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
+    return /\[\[[^\]\n|]*$|(?:^|[\s([{])@[^\n@|\]]*$|(?:^|\s)\/[\p{L}\p{N}-]*$/u.test(before);
   }
   function completionIsUnavailable(completion) {
     return completion?.unavailable === true;
@@ -36241,7 +36999,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return suffix && !/[\\`*_{}[\]<>!|#+.]/u.test(suffix) ? suffix : null;
   }
   function safeContinuationSuffix(value) {
-    if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069\\`*_{}[\]<>|]/u.test(value)) return null;
+    if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\\`*_{}[\]<>|]/u.test(value)) return null;
     for (let index = 0; index < value.length; index++) {
       const code2 = value.charCodeAt(index);
       if (code2 >= 55296 && code2 <= 56319) {
@@ -36268,18 +37026,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const cjkTerminator = /[。！？]/u.test(value[index] ?? "");
     return cjkTerminator || end === value.length || /\s/u.test(value[end] ?? "") ? end : null;
   }
-  function sentenceIsUnfinished(before) {
-    const withoutTrailingSpace = before.replace(/\s+$/u, "");
-    const withoutClosers = withoutTrailingSpace.replace(
-      new RegExp(`${sentenceClosingCharacters.source}+$`, "u"),
-      ""
-    ).replace(/\s+$/u, "");
-    return !/[.!?。！？…]$/u.test(withoutClosers);
-  }
   function continuationContextAllowed(options, state, position) {
-    if (!isWritingSuggestionContext(options, state) || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
+    if (!isWritingSuggestionContext(options, state) || options.canContinueWriting?.(state, position) === false || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return false;
     const before = state.sliceDoc(Math.max(0, position - 512), position);
-    return /[\p{L}\p{N}]/u.test(before) && sentenceIsUnfinished(before) && !caretHasInputTrigger(before) && !/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1));
+    return /[\p{L}\p{N}]/u.test(before) && !caretHasInputTrigger(before);
   }
   function localISODate(date = /* @__PURE__ */ new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
@@ -36457,14 +37207,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     let linkCatalogEpoch = 0;
     let refreshLinkChoices;
     let clearInlineWriting;
-    let clearAIWriting;
-    let clearIndexWriting;
+    let resumeInlineWriting;
+    let reconfigureWriting;
+    let refreshIndexWriting;
     let showInlineContinuationStatus;
+    const continuationWatchdogMilliseconds = 35e3;
     const pendingContinuations = /* @__PURE__ */ new Map();
-    function cancelContinuations() {
+    function cancelContinuations(reason) {
       for (const [requestID, pending] of pendingContinuations) {
         clearTimeout(pending.timeout);
-        options.cancelWritingContinuation?.(requestID);
+        options.cancelWritingContinuation?.(requestID, reason);
         pending.resolve({ text: null, reason: null });
       }
       pendingContinuations.clear();
@@ -36472,27 +37224,35 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function requestContinuation(state, position) {
       const requestID = boundedUUID();
       const promise = new Promise((resolve) => {
-        const timeout = setTimeout(() => {
+        const expire = () => {
           pendingContinuations.delete(requestID);
-          options.cancelWritingContinuation?.(requestID);
+          options.cancelWritingContinuation?.(requestID, "watchdog");
           resolve({ text: null, reason: localized("AI continuation timed out.") });
-        }, 8e3);
-        pendingContinuations.set(requestID, { resolve, timeout });
+        };
+        const timeout = setTimeout(expire, continuationWatchdogMilliseconds);
+        pendingContinuations.set(requestID, { resolve, timeout, generationStarted: false, expire });
         if (options.requestWritingContinuation) options.requestWritingContinuation(requestID, state, position);
         else resolveContinuation(requestID, { text: null, reason: null });
       });
       return { requestID, promise };
     }
     function setContinuationStatus(requestID, value) {
-      if (!pendingContinuations.has(requestID)) return;
+      const pending = pendingContinuations.get(requestID);
+      if (!pending) return;
       const payload = value && typeof value === "object" ? value : {};
       const phase = payload.phase;
       if (phase !== "preparing" && phase !== "retrieving" && phase !== "generating") return;
+      if (pending.generationStarted && phase !== "generating") return;
+      if (phase === "generating" && !pending.generationStarted) {
+        pending.generationStarted = true;
+        clearTimeout(pending.timeout);
+        pending.timeout = setTimeout(pending.expire, continuationWatchdogMilliseconds);
+      }
       showInlineContinuationStatus?.(requestID, phase);
     }
     function resolveContinuation(requestID, value) {
       const pending = pendingContinuations.get(requestID);
-      if (!pending) return;
+      if (!pending) return false;
       pendingContinuations.delete(requestID);
       clearTimeout(pending.timeout);
       const payload = value && typeof value === "object" ? value : {};
@@ -36500,327 +37260,676 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         text: safeContinuationSuffix(payload.text),
         reason: typeof payload.reason === "string" && payload.reason.trim() ? payload.reason.slice(0, 512) : null
       });
+      return true;
     }
     const pendingLinkQueries = /* @__PURE__ */ new Map();
     function candidateContextIsCurrent(context, epoch) {
       return (view) => epoch === linkCatalogEpoch && !context.aborted && !view.composing && isLiveSuggestionContext(options, view.state) && view.state.doc === context.state.doc && view.state.selection.eq(context.state.selection);
     }
+    function cancelLinkQuery(requestID) {
+      const pending = pendingLinkQueries.get(requestID);
+      if (!pending) return;
+      pendingLinkQueries.delete(requestID);
+      globalThis.clearTimeout(pending.timeout);
+      if (pending.writingTerm) options.cancelWritingTermQuery?.(requestID);
+      if (pending.writingTerm) pending.unavailable?.();
+      else pending.resolve([]);
+    }
     function cancelWritingTermQueries() {
       for (const [requestID, pending] of pendingLinkQueries) {
-        if (!pending.writingTerm) continue;
-        pendingLinkQueries.delete(requestID);
-        globalThis.clearTimeout(pending.timeout);
-        pending.resolve([]);
+        if (pending.writingTerm) cancelLinkQuery(requestID);
       }
     }
     function cancelLinkQueries() {
-      for (const pending of pendingLinkQueries.values()) {
-        globalThis.clearTimeout(pending.timeout);
-        pending.resolve([]);
-      }
-      pendingLinkQueries.clear();
+      for (const requestID of pendingLinkQueries.keys()) cancelLinkQuery(requestID);
+    }
+    function retryButton(message, retry, doc2 = document) {
+      const button = doc2.createElement("button");
+      button.className = "scholium-writing-retry";
+      button.type = "button";
+      button.tabIndex = -1;
+      button.textContent = localized("Retry AI");
+      button.title = message;
+      button.setAttribute("aria-label", `${message} ${localized("Retry AI continuation (Option-Return)")}`);
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        retry();
+      });
+      return button;
     }
     class Ghost extends WidgetType {
-      constructor(text, accept, source, reason = null) {
+      constructor(text, accept, source, hold) {
         super();
         this.text = text;
         this.accept = accept;
         this.source = source;
-        this.reason = reason;
+        this.hold = hold;
       }
       text;
       accept;
       source;
-      reason;
+      hold;
+      eq(other) {
+        return this.text === other.text && this.source === other.source && this.accept === other.accept && this.hold === other.hold;
+      }
       toDOM() {
         const node = document.createElement("span");
         node.className = "scholium-writing-ghost";
+        node.setAttribute("role", "button");
         const suffix = document.createElement("span");
         suffix.className = "scholium-writing-ghost-text";
-        suffix.textContent = this.text;
         const hint = document.createElement("span");
         hint.className = "scholium-writing-ghost-key";
-        hint.textContent = `${localized(this.source === "ai" ? "AI" : "Index")} \u21E5`;
         hint.setAttribute("aria-hidden", "true");
-        node.append(suffix);
-        if (this.reason) {
-          const badge = document.createElement("span");
-          badge.className = "scholium-writing-ghost-error-badge";
-          badge.textContent = "!";
-          badge.setAttribute("aria-hidden", "true");
-          node.append(badge);
-        }
-        node.append(hint);
-        node.setAttribute("role", "button");
-        node.setAttribute("aria-label", localizedTemplate(this.source === "ai" ? "Accept AI continuation: {text} (Tab)" : "Accept index suggestion: {text} (Tab)", { text: this.text }));
-        if (this.reason) {
-          node.title = this.reason;
-          node.setAttribute("aria-description", this.reason);
-        }
+        node.append(suffix, hint);
+        this.updateDOM(node);
+        let pointerIntent = null;
         node.addEventListener("mousedown", (event) => {
           event.preventDefault();
+          pointerIntent = { text: suffix.textContent ?? "", source: node.dataset.source };
+          this.hold(pointerIntent.text, pointerIntent.source);
         });
-        node.addEventListener("click", () => this.accept());
+        node.addEventListener("click", () => {
+          const intent = pointerIntent ?? { text: suffix.textContent ?? "", source: node.dataset.source };
+          pointerIntent = null;
+          if (node.isConnected) this.accept(intent.text, intent.source);
+        });
         return node;
+      }
+      updateDOM(node) {
+        node.querySelector(".scholium-writing-ghost-text").textContent = this.text;
+        node.querySelector(".scholium-writing-ghost-key").textContent = `${localized(this.source === "ai" ? "AI" : "Index")} \u21E5`;
+        node.dataset.source = this.source;
+        node.setAttribute("aria-label", localizedTemplate(this.source === "ai" ? "Accept AI continuation: {text} (Tab)" : "Accept index suggestion: {text} (Tab)", { text: this.text }));
+        return true;
       }
       ignoreEvent() {
         return true;
       }
     }
-    class ContinuationStatus extends WidgetType {
-      constructor(message, active) {
-        super();
-        this.message = message;
-        this.active = active;
-      }
-      message;
-      active;
-      toDOM() {
-        const node = document.createElement("span");
-        node.className = `scholium-writing-status${this.active ? " scholium-writing-status-active" : " scholium-writing-status-error"}`;
-        if (this.active) {
-          const orb = document.createElement("span");
-          orb.className = "scholium-writing-orb";
-          orb.setAttribute("aria-hidden", "true");
-          for (let index = 0; index < 3; index++) {
-            const dot2 = document.createElement("span");
-            dot2.className = "scholium-writing-orb-dot";
-            dot2.setAttribute("aria-hidden", "true");
-            orb.append(dot2);
-          }
-          node.append(orb);
-        }
-        if (this.active) {
-          const label = document.createElement("span");
-          label.textContent = this.message;
-          node.append(label);
-        } else {
-          const badge = document.createElement("span");
-          badge.className = "scholium-writing-status-badge";
-          badge.textContent = "!";
-          badge.setAttribute("aria-hidden", "true");
-          node.append(badge);
-        }
-        node.setAttribute("role", "status");
-        node.setAttribute("aria-live", "polite");
-        node.setAttribute("aria-atomic", "true");
-        node.setAttribute("aria-label", this.message);
-        node.title = this.message;
-        return node;
-      }
-      ignoreEvent() {
-        return true;
-      }
-    }
-    function requestTerms(query, context) {
+    function requestTerms(query) {
       const requestID = boundedUUID();
       return new Promise((resolve) => {
-        const cancel = () => {
-          const pending = pendingLinkQueries.get(requestID);
-          if (!pending) return;
-          pendingLinkQueries.delete(requestID);
-          globalThis.clearTimeout(pending.timeout);
-          resolve([]);
-        };
-        context.addEventListener("abort", cancel, { onDocChange: true });
+        const cancel = () => cancelLinkQuery(requestID);
         const timeout = globalThis.setTimeout(cancel, 5e3);
-        pendingLinkQueries.set(requestID, { resolve, timeout, writingTerm: true });
+        pendingLinkQueries.set(requestID, {
+          resolve: (candidates) => resolve({ current: true, candidates }),
+          unavailable: () => resolve({ current: false, candidates: [] }),
+          timeout,
+          writingTerm: true
+        });
         options.requestLinkCompletions(requestID, "term", query);
       });
     }
-    const writingCompletionSource = (context) => {
-      if (!isWritingSuggestionContext(options, context.state) || positionIsProtected(options, context.state, context.pos) || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
-      const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
+    const localWritingCandidates = (state, position) => {
+      if (!isWritingSuggestionContext(options, state) || options.canContinueWriting?.(state, position) === false || positionIsProtected(options, state, position) || positionIsProtected(options, state, Math.max(0, position - 1))) return null;
+      const before = state.sliceDoc(Math.max(0, position - 512), position);
       const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
-      if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1)) || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || caretHasInputTrigger(before)) return null;
-      return requestTerms(prefix, context).then((candidates) => {
-        if (context.aborted) return null;
-        return {
-          from: context.pos,
-          filter: false,
-          options: candidates.filter((c) => c.availability === "available" && termSuffix(context.state, context.pos, c) !== null).map((candidate) => ({
-            label: candidate.label,
-            ghostText: termSuffix(context.state, context.pos, candidate),
-            apply: (view) => {
-              if (view.composing || !isWritingSuggestionContext(options, view.state) || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)) return false;
-              const text = termSuffix(context.state, context.pos, candidate);
-              if (!exactSourceFitsChanges(view.state, [{ from: context.pos, to: context.pos, insert: text }])) return false;
-              view.dispatch({
-                changes: { from: context.pos, insert: text },
-                selection: { anchor: context.pos + text.length },
-                annotations: Transaction.userEvent.of("input.complete.scholium.writing")
-              });
-              options.didApply("Complete Term");
-              return true;
-            }
-          }))
-        };
+      if (/[\p{L}\p{N}\p{M}]/u.test(state.sliceDoc(position, position + 1)) || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || caretHasInputTrigger(before)) return null;
+      return requestTerms(prefix).then(({ current, candidates }) => {
+        return { indexCurrent: current, texts: candidates.flatMap((candidate) => {
+          const suffix = candidate.availability === "available" ? termSuffix(state, position, candidate) : null;
+          return suffix ? [suffix] : [];
+        }) };
       });
     };
     const inlineWriting = ViewPlugin.fromClass(class {
       constructor(view) {
         this.view = view;
-        clearInlineWriting = () => {
-          this.clear();
+        this.mode = options.mode(view.state);
+        clearInlineWriting = (reason = "dismissed") => {
+          this.clear(reason);
           this.view.dispatch({});
         };
-        clearAIWriting = () => {
-          if (this.source === "ai") {
-            this.clear();
+        resumeInlineWriting = () => {
+          this.schedule();
+        };
+        reconfigureWriting = (enabledChanged) => {
+          const pendingFocus = this.resumeOnFocus;
+          this.resumeOnFocus = null;
+          this.suspendedAI = null;
+          if (this.round || this.preview || this.waitingForContext) {
+            this.schedule("configuration");
             this.view.dispatch({});
+          } else if (continuationEnabled && (enabledChanged || pendingFocus && this.samePoint(pendingFocus))) {
+            if (this.view.hasFocus) {
+              this.schedule();
+              this.view.dispatch({});
+            } else this.resumeOnFocus = this.view.state;
           }
         };
-        clearIndexWriting = () => {
-          if (this.source === "index") {
-            this.clear();
-            this.view.dispatch({});
-          }
+        refreshIndexWriting = () => {
+          if (this.preview?.source === "ai") return;
+          if (this.preview) this.preview = { ...this.preview, confirmed: false };
+          if (this.cachedLocal) this.cachedLocal = { ...this.cachedLocal, confirmed: false };
+          if (this.round || this.preview) this.refreshLocal(0);
         };
         showInlineContinuationStatus = (requestID, phase) => {
-          if (this.continuationRequestID !== requestID || !this.isValidContext()) return;
-          this.showStatus(writingContinuationPhaseLabel(phase), true);
+          if (this.continuationRequestID === requestID && this.isValidContext() && this.phase !== phase) {
+            this.phase = phase;
+            this.renderGenerationActivity();
+            this.view.dispatch({ effects: EditorView.announce.of(localized(writingContinuationPhaseLabel(phase))) });
+          }
         };
       }
       view;
       decorations = Decoration.none;
       generation = 0;
-      timer;
-      acceptChoice = null;
+      localSerial = 0;
+      localTimer;
+      aiTimer;
+      acceptanceTimer;
+      round = null;
+      preview = null;
+      cachedLocal = null;
+      awaitingAI = false;
+      rendered = null;
       continuationRequestID = null;
-      source = null;
-      clear() {
-        this.generation++;
-        clearTimeout(this.timer);
-        cancelContinuations();
-        cancelWritingTermQueries();
-        this.acceptChoice = null;
-        this.continuationRequestID = null;
-        this.source = null;
-        this.decorations = Decoration.none;
-      }
+      localPending = false;
+      queuedAcceptance = null;
+      pointerHeld = false;
+      waitingForContext = null;
+      deferredAI = null;
+      failure = null;
+      phase = null;
+      aiNeedsContext = false;
+      resumeOnFocus = null;
+      suspendedAI = null;
+      feedbackDOM = null;
+      activityDOM = null;
+      mode;
+      acceptGhost = (text, source) => {
+        this.accept(text, source);
+      };
+      holdGhost = (text, source) => {
+        if (this.preview?.text === text && this.preview.source === source) {
+          this.pointerHeld = true;
+        }
+      };
+      retryAI = () => {
+        this.retry();
+      };
       isValidContext() {
         return this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
       }
-      showStatus(message, active) {
-        if (!this.isValidContext()) return;
-        this.decorations = Decoration.set([Decoration.widget({
-          widget: new ContinuationStatus(message, active),
-          side: 1
-        }).range(this.view.state.selection.main.head)]);
-        this.view.dispatch({});
+      samePoint(proof) {
+        return this.view.state.doc === proof.doc && this.view.state.selection.eq(proof.selection) && this.view.state.field(exactSourceState, false)?.text === proof.field(exactSourceState, false)?.text;
       }
-      accept() {
-        if (!this.acceptChoice || this.view.composing || !isWritingSuggestionContext(options, this.view.state)) return false;
-        return this.acceptChoice();
+      current(proof) {
+        return this.isValidContext() && this.samePoint(proof);
       }
-      update(update) {
-        if (!isWritingSuggestionContext(options, update.state)) {
+      contextReady() {
+        return options.writingContextReady?.(this.view.state, this.view.state.selection.main.head) !== false;
+      }
+      readable() {
+        return this.contextReady() && options.canContinueWriting?.(this.view.state, this.view.state.selection.main.head) !== false;
+      }
+      invalidateRequests(reason = "superseded") {
+        this.generation++;
+        this.localSerial++;
+        clearTimeout(this.localTimer);
+        clearTimeout(this.aiTimer);
+        clearTimeout(this.acceptanceTimer);
+        cancelContinuations(reason);
+        cancelWritingTermQueries();
+        this.continuationRequestID = null;
+        this.localPending = false;
+        this.phase = null;
+        this.removeGenerationActivity();
+        this.deferredAI = null;
+        this.round = null;
+        this.aiNeedsContext = false;
+        this.cachedLocal = null;
+        this.awaitingAI = false;
+      }
+      clear(reason = "context") {
+        this.invalidateRequests(reason);
+        this.preview = null;
+        this.failure = null;
+        this.queuedAcceptance = null;
+        this.pointerHeld = false;
+        this.waitingForContext = null;
+        this.resumeOnFocus = null;
+        this.suspendedAI = null;
+        this.decorations = Decoration.none;
+        this.rendered = null;
+        this.feedbackDOM?.remove();
+        this.feedbackDOM = null;
+      }
+      suspend() {
+        const point = this.round ?? this.preview?.proof ?? this.waitingForContext ?? this.resumeOnFocus;
+        const retained = point && !this.view.composing && isWritingSuggestionContext(options, this.view.state) && this.samePoint(point) ? point : null;
+        const candidate = this.preview?.source === "ai" ? this.preview : this.suspendedAI;
+        const reusable = retained && continuationEnabled && candidate?.confirmed && candidate.indexEpoch === linkCatalogEpoch && this.samePoint(candidate.proof) ? candidate : null;
+        this.clear("focus");
+        this.resumeOnFocus = retained;
+        this.suspendedAI = reusable;
+      }
+      render(dispatch = true) {
+        const preview = this.preview;
+        const position = this.view.state.selection.main.head;
+        if (!preview) {
+          this.decorations = Decoration.none;
+          this.rendered = null;
+        } else if (!this.rendered || this.rendered.text !== preview.text || this.rendered.source !== preview.source || this.rendered.position !== position) {
+          this.decorations = Decoration.set([Decoration.widget({
+            widget: new Ghost(preview.text, this.acceptGhost, preview.source, this.holdGhost),
+            side: 1
+          }).range(position)]);
+          this.rendered = { text: preview.text, source: preview.source, position };
+        }
+        this.renderFeedback();
+        this.renderGenerationActivity();
+        if (dispatch) this.view.dispatch({});
+      }
+      removeGenerationActivity() {
+        this.activityDOM?.remove();
+        this.activityDOM = null;
+      }
+      renderGenerationActivity() {
+        if (this.phase !== "generating" || !this.continuationRequestID || this.preview || !this.round || !this.current(this.round)) {
+          this.removeGenerationActivity();
+          return;
+        }
+        if (!this.activityDOM) {
+          const node = this.view.dom.ownerDocument.createElement("span");
+          node.className = "scholium-writing-activity";
+          node.setAttribute("aria-hidden", "true");
+          node.style.visibility = "hidden";
+          const orb = node.ownerDocument.createElement("span");
+          orb.className = "scholium-writing-orb";
+          for (let index = 0; index < 3; index++) {
+            const dot2 = node.ownerDocument.createElement("span");
+            dot2.className = "scholium-writing-orb-dot";
+            orb.append(dot2);
+          }
+          node.append(orb);
+          this.view.dom.append(node);
+          this.activityDOM = node;
+        }
+        this.placeGenerationActivity();
+      }
+      placeGenerationActivity() {
+        const activity = this.activityDOM, requestID = this.continuationRequestID, proof = this.round;
+        if (!activity || !requestID || !proof) return;
+        this.view.requestMeasure({ key: activity, read: () => {
+          const selection = this.view.state.selection.main;
+          const point = this.view.coordsAtPos(selection.head, selection.assoc || 1);
+          const root = this.view.dom.getBoundingClientRect();
+          const viewport = this.view.scrollDOM.getBoundingClientRect();
+          return { point, root, viewport, sx: this.view.scaleX || 1, sy: this.view.scaleY || 1 };
+        }, write: ({ point, root, viewport, sx, sy }) => {
+          if (this.activityDOM !== activity || this.continuationRequestID !== requestID || this.phase !== "generating" || !this.current(proof)) return;
+          if (!point || point.bottom <= Math.max(root.top, viewport.top) || point.top >= Math.min(root.bottom, viewport.bottom) || point.left < Math.max(root.left, viewport.left) || point.left >= Math.min(root.right, viewport.right)) {
+            activity.style.visibility = "hidden";
+            return;
+          }
+          const height = point.bottom - point.top;
+          const space4 = Math.min(root.right, viewport.right) - point.left;
+          const gap = Math.min(height * 0.18, space4 * 0.15);
+          const fontSize = Math.min(height * 0.6 / sy, (space4 - gap - 2 * sx) / (1.2 * sx));
+          if (fontSize < 8) {
+            activity.style.visibility = "hidden";
+            return;
+          }
+          activity.style.fontSize = `${fontSize}px`;
+          activity.style.left = `${(point.left + gap - root.left) / sx}px`;
+          activity.style.top = `${(point.top + height / 2 - fontSize * sy / 2 - root.top) / sy}px`;
+          activity.style.visibility = "visible";
+        } });
+      }
+      renderFeedback() {
+        if (!this.failure) {
+          this.feedbackDOM?.remove();
+          this.feedbackDOM = null;
+          return;
+        }
+        const root = this.view.dom;
+        if (!root) return;
+        if (!this.feedbackDOM) {
+          const node = root.ownerDocument.createElement("div");
+          node.className = "scholium-writing-feedback";
+          node.setAttribute("role", "status");
+          node.setAttribute("aria-live", "polite");
+          const message = root.ownerDocument.createElement("span");
+          message.className = "scholium-writing-feedback-message";
+          node.append(message, retryButton(this.failure, this.retryAI, root.ownerDocument));
+          node.addEventListener("mousedown", (event) => event.preventDefault());
+          root.append(node);
+          this.feedbackDOM = node;
+        }
+        this.feedbackDOM.querySelector(".scholium-writing-feedback-message").textContent = this.failure;
+        this.feedbackDOM.querySelector("button").title = this.failure;
+        this.placeFeedback();
+      }
+      placeFeedback() {
+        const feedback = this.feedbackDOM;
+        if (!feedback) return;
+        this.view.requestMeasure?.({ key: this, read: () => {
+          const point = this.view.coordsAtPos(this.view.state.selection.main.head, -1);
+          const root = this.view.dom.getBoundingClientRect();
+          const panel = feedback.getBoundingClientRect();
+          return { point, root, panel, sx: this.view.scaleX || 1, sy: this.view.scaleY || 1 };
+        }, write: ({ point, root, panel, sx, sy }) => {
+          if (this.feedbackDOM !== feedback || !point) return;
+          const maxRight = Math.min(root.right, window.innerWidth) - 8;
+          const x = Math.max(root.left + 8, Math.min(point.left, maxRight - panel.width));
+          const below = point.bottom + 8;
+          const y = below + panel.height <= window.innerHeight - 8 ? below : Math.max(8, point.top - panel.height - 8);
+          feedback.style.left = `${(x - root.left) / sx}px`;
+          feedback.style.top = `${(y - root.top) / sy}px`;
+        } });
+      }
+      hasFeedback() {
+        return this.failure !== null;
+      }
+      confirmedLocal() {
+        const candidate = this.cachedLocal;
+        return candidate && candidate.confirmed && candidate.indexEpoch === linkCatalogEpoch && this.current(candidate.proof) ? candidate : null;
+      }
+      publishAI(text, proof, generation) {
+        if (generation !== this.generation || !this.current(proof)) return;
+        if (!this.contextReady()) {
+          this.deferredAI = { text, proof, generation };
+          this.waitingForContext = proof;
+          return;
+        }
+        if (!this.readable()) {
+          this.clear();
+          this.view.dispatch({});
+          return;
+        }
+        if (this.pointerHeld || this.queuedAcceptance) return;
+        this.awaitingAI = false;
+        this.preview = { text, source: "ai", proof, indexEpoch: linkCatalogEpoch, confirmed: true };
+        this.failure = null;
+        this.render();
+      }
+      startAI(delay) {
+        clearTimeout(this.aiTimer);
+        this.aiNeedsContext = false;
+        const proof = this.round, generation = this.generation;
+        if (!proof || !continuationEnabled || !continuationContextAllowed(options, proof, proof.selection.main.head)) {
+          this.awaitingAI = false;
+          this.preview = this.confirmedLocal();
+          return;
+        }
+        this.awaitingAI = true;
+        this.aiTimer = setTimeout(async () => {
+          if (generation !== this.generation || !this.current(proof)) return;
+          if (!this.contextReady()) {
+            this.waitingForContext = proof;
+            this.aiNeedsContext = true;
+            return;
+          }
+          if (!this.readable()) {
+            this.clear();
+            this.view.dispatch({});
+            return;
+          }
+          const request = requestContinuation(proof, proof.selection.main.head);
+          this.continuationRequestID = request.requestID;
+          this.phase = "preparing";
+          this.view.dispatch({ effects: EditorView.announce.of(localized(writingContinuationPhaseLabel("preparing"))) });
+          const result = await request.promise;
+          if (generation !== this.generation || !this.current(proof)) return;
+          this.continuationRequestID = null;
+          this.phase = null;
+          this.removeGenerationActivity();
+          if (result.text) this.publishAI(result.text, proof, generation);
+          else {
+            this.awaitingAI = false;
+            this.failure = result.reason;
+            this.preview = this.confirmedLocal();
+            this.render();
+          }
+        }, delay);
+      }
+      refreshLocal(delay) {
+        clearTimeout(this.localTimer);
+        this.localSerial++;
+        cancelWritingTermQueries();
+        const proof = this.round ?? this.preview?.proof, generation = this.generation, serial = this.localSerial;
+        if (!proof || !this.current(proof)) return;
+        if (!this.contextReady()) {
+          this.waitingForContext = proof;
+          return;
+        }
+        if (!this.readable()) {
           this.clear();
           return;
         }
-        if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
-        this.clear();
-        if (!update.docChanged || !this.view.hasFocus || !update.transactions.some((t2) => t2.isUserEvent("input.type"))) return;
-        this.schedule();
-      }
-      schedule() {
-        this.clear();
-        if (!isWritingSuggestionContext(options, this.view.state)) return;
-        const generation = this.generation;
-        const state = this.view.state;
-        const valid = () => this.generation === generation && this.view.state.doc === state.doc && this.view.state.selection.eq(state.selection) && this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
-        const position = state.selection.main.head;
-        const aiEligible = continuationEnabled && continuationContextAllowed(options, state, position);
-        this.source = aiEligible ? "ai" : "index";
-        this.timer = setTimeout(async () => {
-          if (!valid()) return;
-          let fallbackReason = null;
-          if (aiEligible) {
-            const request = requestContinuation(state, position);
-            this.continuationRequestID = request.requestID;
-            this.showStatus(writingContinuationPhaseLabel("preparing"), true);
-            const result2 = await request.promise;
-            if (!valid()) return;
-            this.continuationRequestID = null;
-            if (result2.text) {
-              const text = result2.text;
-              this.acceptChoice = () => {
-                if (!valid() || !exactSourceFitsChanges(this.view.state, [{ from: position, to: position, insert: text }])) {
-                  this.clear();
-                  this.view.dispatch({});
-                  return false;
-                }
-                this.clear();
-                this.view.dispatch({
-                  changes: { from: position, insert: text },
-                  selection: { anchor: position + text.length },
-                  annotations: Transaction.userEvent.of("input.complete.scholium.continuation")
-                });
-                options.didApply("Accept AI Continuation");
-                return true;
-              };
-              this.decorations = Decoration.set([Decoration.widget({ widget: new Ghost(text, () => this.accept(), "ai"), side: 1 }).range(position)]);
-              this.view.dispatch({});
-              return;
-            }
-            fallbackReason = result2.reason;
-          }
-          this.source = "index";
-          this.decorations = Decoration.none;
-          this.view.dispatch({});
-          const context = new CompletionContext(state, state.selection.main.head, false, this.view);
-          let result = null;
+        this.localPending = true;
+        this.localTimer = setTimeout(async () => {
+          if (generation !== this.generation || serial !== this.localSerial || !this.current(proof)) return;
+          let result;
           try {
-            result = await writingCompletionSource(context);
+            result = await localWritingCandidates(proof, proof.selection.main.head);
           } catch {
+            result = { texts: [], indexCurrent: false };
           }
-          if (!valid()) return;
-          const choice = result?.options[0];
-          if (!choice?.ghostText || typeof choice.apply !== "function") {
-            if (fallbackReason) this.showStatus(fallbackReason, false);
+          if (generation !== this.generation || serial !== this.localSerial || !this.current(proof)) return;
+          this.localPending = false;
+          if (this.preview?.source === "ai") return;
+          if (!this.contextReady()) {
+            this.waitingForContext = proof;
             return;
           }
-          const apply = choice.apply;
-          this.acceptChoice = () => {
-            if (!valid()) {
-              this.clear();
-              this.view.dispatch({});
-              return false;
-            }
-            const accepted = apply(this.view);
-            if (!accepted) {
-              this.clear();
-              this.view.dispatch({});
-            }
-            return accepted;
-          };
-          this.decorations = Decoration.set([Decoration.widget({
-            widget: new Ghost(choice.ghostText, () => this.accept(), "index", fallbackReason),
-            side: 1
-          }).range(state.selection.main.head)]);
+          if (!this.readable()) {
+            this.clear();
+            this.view.dispatch({});
+            return;
+          }
+          if (result?.indexCurrent === false) {
+            if (this.cachedLocal) this.cachedLocal = { ...this.cachedLocal, confirmed: false };
+            if (!this.awaitingAI && this.preview) this.preview = { ...this.preview, confirmed: false };
+            this.queuedAcceptance = null;
+            this.render();
+            return;
+          }
+          const choices = result?.texts ?? [];
+          const text = choices.find((text2) => text2 === (this.preview ?? this.cachedLocal)?.text) ?? choices[0];
+          this.cachedLocal = text ? { text, source: "index", proof, indexEpoch: linkCatalogEpoch, confirmed: true } : null;
+          if (this.awaitingAI) return;
+          this.preview = this.cachedLocal;
+          const queued = this.queuedAcceptance;
+          this.queuedAcceptance = null;
+          this.render();
+          if (text && queued === text) this.accept();
+        }, delay);
+      }
+      schedule(reason = "superseded") {
+        const candidate = this.preview?.source === "index" ? this.preview : this.cachedLocal;
+        const retained = candidate && this.current(candidate.proof) ? candidate : null;
+        this.invalidateRequests(reason);
+        this.pointerHeld = false;
+        this.cachedLocal = retained;
+        this.resumeOnFocus = null;
+        this.suspendedAI = null;
+        this.awaitingAI = continuationEnabled;
+        this.preview = this.awaitingAI ? null : this.confirmedLocal();
+        this.failure = null;
+        this.queuedAcceptance = null;
+        this.waitingForContext = null;
+        if (!this.isValidContext()) {
+          this.clear();
+          return;
+        }
+        this.round = this.view.state;
+        if (!this.contextReady()) {
+          this.waitingForContext = this.round;
+          this.aiNeedsContext = continuationEnabled;
+          this.render(false);
+          return;
+        }
+        if (!this.readable()) {
+          this.clear();
+          return;
+        }
+        if (this.preview?.source !== "ai") this.refreshLocal(100);
+        this.startAI(400);
+        this.render(false);
+      }
+      retry() {
+        if (!continuationEnabled || !this.failure || !this.isValidContext() || !this.readable()) return false;
+        this.schedule();
+        this.view.dispatch({});
+        return true;
+      }
+      consumeMatchingInput(update) {
+        const preview = this.preview;
+        if (!preview || !this.isValidContext() || update.focusChanged || !update.docChanged || !update.transactions.every((t2) => t2.isUserEvent("input.type"))) return false;
+        const previous = update.startState.selection.main;
+        let inserted = "", count2 = 0, appendOnly = true;
+        update.changes.iterChanges((from, to, _newFrom, _newTo, text2) => {
+          count2++;
+          if (from !== previous.head || to !== previous.head) appendOnly = false;
+          inserted = text2.toString();
+        });
+        if (!previous.empty || count2 !== 1 || !appendOnly || !inserted || !preview.text.startsWith(inserted) || update.state.selection.main.head !== previous.head + inserted.length) return false;
+        const text = preview.text.slice(inserted.length);
+        this.invalidateRequests("typing");
+        this.pointerHeld = false;
+        this.failure = null;
+        this.queuedAcceptance = null;
+        this.waitingForContext = null;
+        this.round = update.state;
+        this.preview = text ? {
+          ...preview,
+          text,
+          proof: update.state,
+          confirmed: preview.source === "ai" || preview.confirmed && preview.indexEpoch === linkCatalogEpoch
+        } : null;
+        if (preview.source === "index") {
+          this.cachedLocal = this.preview;
+          this.awaitingAI = continuationEnabled;
+          if (this.awaitingAI) this.preview = null;
+        }
+        if (!this.contextReady()) {
+          this.waitingForContext = update.state;
+          this.aiNeedsContext = preview.source === "index";
+        } else if (!this.readable()) {
+          this.clear();
+          return true;
+        } else if (!text) this.schedule();
+        else if (preview.source === "index") {
+          if (!this.cachedLocal?.confirmed) this.refreshLocal(0);
+          this.startAI(400);
+        }
+        this.render(false);
+        return true;
+      }
+      accept(expectedText, expectedSource) {
+        const preview = this.preview;
+        if (!preview || !this.current(preview.proof) || expectedText !== void 0 && expectedText !== preview.text || expectedSource !== void 0 && expectedSource !== preview.source) return false;
+        if (!this.contextReady()) {
+          this.queuedAcceptance = preview.text;
+          this.waitingForContext = preview.proof;
+          return true;
+        }
+        if (!this.readable()) {
+          this.clear();
           this.view.dispatch({});
-        }, aiEligible ? 1200 : 300);
+          return false;
+        }
+        if (preview.source === "index" && (!preview.confirmed || preview.indexEpoch !== linkCatalogEpoch)) {
+          this.queuedAcceptance = preview.text;
+          if (!this.localPending) this.refreshLocal(0);
+          return true;
+        }
+        const caret = this.view.state.selection.main.head, text = preview.text;
+        if (!exactSourceFitsChanges(this.view.state, [{ from: caret, to: caret, insert: text }])) return false;
+        this.clear("accepted");
+        this.view.dispatch({
+          changes: { from: caret, insert: text },
+          selection: { anchor: caret + text.length },
+          annotations: Transaction.userEvent.of(preview.source === "ai" ? "input.complete.scholium.continuation" : "input.complete.scholium.writing")
+        });
+        options.didApply(preview.source === "ai" ? "Accept AI Continuation" : "Complete Term");
+        return true;
+      }
+      update(update) {
+        const mode = options.mode(update.state), modeChanged = mode !== this.mode;
+        this.mode = mode;
+        if (modeChanged || !isWritingSuggestionContext(options, update.state)) {
+          this.clear(modeChanged ? "mode" : options.isComposing() ? "composition" : "context");
+          return;
+        }
+        const selectionChanged = update.selectionSet && !update.state.selection.eq(update.startState.selection);
+        const sourceChanged = update.state.field(exactSourceState, false)?.text !== update.startState.field(exactSourceState, false)?.text;
+        if (update.focusChanged && !this.view.hasFocus && !update.docChanged && !selectionChanged && !sourceChanged) {
+          this.suspend();
+          return;
+        }
+        if (!update.docChanged && !selectionChanged && !update.focusChanged && !sourceChanged) {
+          if ((this.preview || this.round) && this.contextReady() && !this.readable()) {
+            this.clear();
+            return;
+          }
+          const waiting = this.waitingForContext;
+          if (waiting && this.current(waiting) && this.contextReady()) {
+            this.waitingForContext = null;
+            if (this.aiNeedsContext) this.startAI(400);
+            if (this.deferredAI) {
+              const result = this.deferredAI;
+              this.deferredAI = null;
+              this.acceptanceTimer = setTimeout(() => {
+                this.publishAI(result.text, result.proof, result.generation);
+                if (this.preview?.source === "index" && !this.preview.confirmed) this.refreshLocal(0);
+                else if (this.preview && this.queuedAcceptance === this.preview.text) this.accept();
+              }, 0);
+            } else if (this.preview) {
+              if (this.preview.source === "index" && !this.preview.confirmed) this.refreshLocal(0);
+              else {
+                const queued = this.queuedAcceptance, target = this.preview;
+                if (queued === target.text) this.acceptanceTimer = setTimeout(() => {
+                  if (this.preview === target && this.queuedAcceptance === queued) this.accept(target.text, target.source);
+                }, 0);
+              }
+            } else if (this.round) this.refreshLocal(100);
+            else this.schedule();
+          }
+          if (update.viewportChanged || update.geometryChanged) {
+            this.placeFeedback();
+            this.placeGenerationActivity();
+          }
+          return;
+        }
+        if (this.consumeMatchingInput(update)) return;
+        const resume = update.focusChanged && this.resumeOnFocus && this.current(this.resumeOnFocus);
+        const candidate = this.suspendedAI;
+        const reusable = resume && continuationEnabled && candidate?.confirmed && candidate.indexEpoch === linkCatalogEpoch && this.current(candidate.proof) && this.readable() ? candidate : null;
+        const reason = update.docChanged ? update.transactions.some((t2) => t2.isUserEvent("delete")) ? "deletion" : update.transactions.some((t2) => t2.isUserEvent("input.type")) ? "typing" : "source" : update.focusChanged ? "focus" : selectionChanged ? "caret" : "source";
+        this.clear(reason);
+        if (reusable) {
+          this.round = update.state;
+          this.preview = { ...reusable, proof: update.state };
+          this.render(false);
+        } else if (resume || update.docChanged && this.view.hasFocus && update.transactions.some((t2) => t2.isUserEvent("input.type") || t2.isUserEvent("delete"))) this.schedule();
       }
       destroy() {
-        this.clear();
+        this.clear("lifecycle");
         clearInlineWriting = void 0;
-        clearAIWriting = void 0;
-        clearIndexWriting = void 0;
+        resumeInlineWriting = void 0;
+        reconfigureWriting = void 0;
+        refreshIndexWriting = void 0;
         showInlineContinuationStatus = void 0;
       }
     }, {
       decorations: (value) => value.decorations,
       eventHandlers: {
         compositionstart() {
-          this.clear();
+          this.clear("composition");
           this.view.dispatch({});
-        },
-        compositionend() {
-          this.schedule();
         },
         blur() {
-          this.clear();
+          this.suspend();
           this.view.dispatch({});
+        },
+        scroll() {
+          this.placeFeedback();
+          this.placeGenerationActivity();
         }
       }
     });
@@ -37097,28 +38206,31 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       resetDocument() {
         citationDocumentEpoch++;
         linkCatalogEpoch++;
-        clearInlineWriting?.();
-        cancelContinuations();
+        clearInlineWriting?.("lifecycle");
+        cancelContinuations("lifecycle");
         cancelLinkQueries();
       },
       configureWritingContinuation(enabled, contextKey) {
         if (continuationEnabled === enabled && continuationContextKey === contextKey) return;
+        const enabledChanged = continuationEnabled !== enabled;
         continuationEnabled = enabled;
         continuationContextKey = contextKey;
-        clearAIWriting?.();
-        cancelContinuations();
+        reconfigureWriting?.(enabledChanged);
       },
       configureWritingIndexContext(contextKey) {
         if (indexContextKey === contextKey) return;
         indexContextKey = contextKey;
         linkCatalogEpoch++;
-        clearIndexWriting?.();
+        refreshIndexWriting?.();
         cancelLinkQueries();
         refreshLinkChoices?.();
       },
+      // The shared body/title composition gate owns final-input timing.
+      resumeWritingAfterComposition() {
+        resumeInlineWriting?.();
+      },
       setWritingContinuationStatus: setContinuationStatus,
       resolveWritingContinuation: resolveContinuation,
-      writingCompletionSource,
       extension: [
         autocompletion({
           override: [
@@ -37143,11 +38255,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             return selected !== null && completionIsUnavailable(currentCompletions(view.state)[selected]);
           } },
           { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
+          { key: "Alt-Enter", run: (view) => view.plugin(inlineWriting)?.retry() ?? false },
           { key: "Escape", run: (view) => {
             const plugin = view.plugin(inlineWriting);
             if (!plugin) return false;
-            const visible = plugin.decorations.size > 0 || pendingContinuations.size > 0;
-            plugin.clear();
+            const visible = plugin.decorations.size > 0 || plugin.hasFeedback() || pendingContinuations.size > 0;
+            plugin.clear("dismissed");
             view.dispatch({});
             return visible;
           } }
@@ -37160,7 +38273,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none", font: "inherit", marginInlineStart: "2px" },
           ".scholium-writing-ghost-text": { textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em" },
           ".scholium-writing-ghost-key": { display: "inline-flex", alignItems: "center", border: "1px solid currentColor", borderRadius: "0.35em", paddingInline: "0.3em", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
-          ".scholium-writing-ghost-error-badge": { fontSize: "0.65em", marginInlineStart: "0.4em" },
           // Keep CodeMirror's single accessible list and aria-activedescendant relation.
           // Native rows are a pointer/visual projection and do not duplicate that AX tree.
           ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
@@ -37179,7 +38291,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         if (!pending) return;
         pendingLinkQueries.delete(requestID);
         globalThis.clearTimeout(pending.timeout);
-        pending.resolve(Array.isArray(value) ? value.slice(0, 100).filter(validLinkCandidate) : []);
+        if (pending.writingTerm) {
+          const response = value && typeof value === "object" ? value : {};
+          if (response.state === "current" && Array.isArray(response.candidates)) {
+            pending.resolve(response.candidates.slice(0, 100).filter(validLinkCandidate));
+          } else pending.unavailable?.();
+        } else pending.resolve(Array.isArray(value) ? value.slice(0, 100).filter(validLinkCandidate) : []);
       }
     };
   }
@@ -37369,597 +38486,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       selection,
       changed(startState, state) {
         return !selection(startState).eq(selection(state));
-      }
-    };
-  }
-
-  // footnote-presentation.ts
-  var scholiumFootnoteDialect = {
-    namedReferenceOpening: "[^",
-    namedReferenceClosing: "]",
-    definitionSeparator: ":",
-    inlineOpening: "^[",
-    continuationIndentSpaces: 2,
-    allowsTabContinuation: true,
-    caseSensitiveIdentifiers: true,
-    ordinalByFirstReference: true
-  };
-  function supportsFootnoteDialect(dialect) {
-    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
-  }
-  function sourceLines(source) {
-    if (source.length === 0) return [];
-    const lines = [];
-    let from = 0;
-    while (from < source.length) {
-      const newline3 = source.indexOf("\n", from);
-      const contentTo = newline3 < 0 ? source.length : newline3;
-      const to = newline3 < 0 ? source.length : newline3 + 1;
-      const raw = source.slice(from, contentTo);
-      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-      lines.push({ from, contentTo: from + text.length, to, text });
-      from = to;
-    }
-    return lines;
-  }
-  function overlaps2(ranges, from, to) {
-    return ranges.some((range) => range.from < to && range.to > from);
-  }
-  function isEscaped5(source, offset) {
-    let backslashes = 0;
-    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
-    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
-    const lines = sourceLines(source);
-    const rawDefinitions = [];
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (overlaps2(excluded, line.from, line.contentTo)) continue;
-      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
-      if (!match) continue;
-      const parts = [match[2]];
-      const firstLineContentFrom = line.contentTo - match[2].length;
-      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
-      let foundContentStart = /\S/.test(match[2]);
-      let to = line.to;
-      let continuation = index + 1;
-      while (continuation < lines.length) {
-        const candidate = lines[continuation];
-        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
-        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
-        if (!foundContentStart && /\S/.test(continuationText)) {
-          const removedIndent = candidate.text.length - continuationText.length;
-          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
-          contentFrom = candidate.from + removedIndent + leadingWhitespace;
-          foundContentStart = true;
-        }
-        parts.push(continuationText);
-        to = candidate.to;
-        continuation += 1;
-      }
-      rawDefinitions.push({
-        identifier: match[1],
-        content: parts.join("\n").trim(),
-        contentFrom,
-        from: line.from,
-        to,
-        isInline: false,
-        marker: { from: line.from, to: line.contentTo }
-      });
-      index = continuation - 1;
-    }
-    const rawReferences = [];
-    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
-      const from = match.index;
-      const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped5(source, from)) continue;
-      rawReferences.push({
-        identifier: match[1],
-        from,
-        to,
-        isInline: false,
-        inlineContent: null
-      });
-    }
-    let inlineCounter = 0;
-    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
-      const from = match.index;
-      const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || isEscaped5(source, from)) continue;
-      inlineCounter += 1;
-      const identifier5 = `inline-${inlineCounter}`;
-      rawReferences.push({
-        identifier: identifier5,
-        from,
-        to,
-        isInline: true,
-        inlineContent: match[1]
-      });
-      rawDefinitions.push({
-        identifier: identifier5,
-        content: match[1],
-        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
-        from,
-        to,
-        isInline: true,
-        marker: { from, to }
-      });
-    }
-    rawReferences.sort((left, right) => left.from - right.from);
-    const ordinalByIdentifier = /* @__PURE__ */ new Map();
-    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
-    for (const reference of rawReferences) {
-      if (!ordinalByIdentifier.has(reference.identifier)) {
-        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
-      }
-      occurrenceByIdentifier.set(
-        reference.identifier,
-        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
-      );
-    }
-    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
-    for (const definition of rawDefinitions) {
-      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
-        firstDefinitionByIdentifier.set(definition.identifier, definition);
-      }
-    }
-    occurrenceByIdentifier.clear();
-    const references = rawReferences.map((reference) => {
-      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
-      occurrenceByIdentifier.set(reference.identifier, occurrence);
-      const definition = firstDefinitionByIdentifier.get(reference.identifier);
-      return {
-        identifier: reference.identifier,
-        ordinal: ordinalByIdentifier.get(reference.identifier),
-        occurrence,
-        isInline: reference.isInline,
-        definitionFrom: definition?.from ?? null,
-        definitionContentFrom: definition?.contentFrom ?? null,
-        from: reference.from,
-        to: reference.to
-      };
-    });
-    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
-      identifier: definition.identifier,
-      content: definition.content,
-      contentFrom: definition.contentFrom,
-      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
-      isInline: definition.isInline,
-      from: definition.from,
-      to: definition.to
-    })).sort((left, right) => {
-      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
-      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
-      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
-    });
-    return { definitions, references };
-  }
-
-  // live-projection-index.ts
-  function codeBlockActivationRange(doc2, block) {
-    if (block.fenced) return { from: block.from, to: block.to };
-    const line = doc2.lineAt(block.from);
-    const prefix = doc2.sliceString(line.from, block.from);
-    return /^[ \t]*$/.test(prefix) ? { from: line.from, to: block.to } : { from: block.from, to: block.to };
-  }
-  function codeBlockSourceIndentation(doc2, block) {
-    if (block.fenced) return 0;
-    const line = doc2.lineAt(block.from);
-    const prefix = doc2.sliceString(line.from, block.from);
-    return /^[ \t]*$/.test(prefix) ? prefix.length : 0;
-  }
-  function indexedListPrefixRanges(doc2, syntax) {
-    const contentStarts = /* @__PURE__ */ new Map();
-    for (const block of syntax.blocks) {
-      if (block.kind !== "paragraph" || block.parent?.kind !== "listItem") continue;
-      const key = rangeKey(block.parent.from, block.parent.to);
-      contentStarts.set(key, Math.min(contentStarts.get(key) ?? block.from, block.from));
-    }
-    return syntax.blocks.filter((block) => block.kind === "listItem" && block.markerRanges.length > 0).map((block) => {
-      const line = doc2.lineAt(block.from);
-      const markerFrom = block.markerRanges.reduce(
-        (minimum, marker) => Math.min(minimum, marker.from),
-        line.to
-      );
-      const markerTo = block.markerRanges.reduce(
-        (maximum, marker) => Math.max(maximum, marker.to),
-        block.from
-      );
-      let from = markerFrom;
-      while (from > line.from) {
-        const character = doc2.sliceString(from - 1, from);
-        if (character !== " " && character !== "	") break;
-        from -= 1;
-      }
-      const contentStart = contentStarts.get(rangeKey(block.from, block.to));
-      let to = contentStart !== void 0 && contentStart >= line.from && contentStart <= line.to ? contentStart : markerTo;
-      while (to < line.to) {
-        const character = doc2.sliceString(to, to + 1);
-        if (character !== " " && character !== "	") break;
-        to += 1;
-      }
-      return {
-        from,
-        to
-      };
-    }).filter((range) => range.to > range.from);
-  }
-  function indexedTaskItemRanges(syntax) {
-    return syntax.blocks.flatMap((block) => {
-      if (block.kind !== "listItem" || block.taskMarkerRange === null) return [];
-      return [{
-        from: block.from,
-        to: block.to,
-        markerFrom: block.taskMarkerRange.from,
-        markerTo: block.taskMarkerRange.to
-      }];
-    });
-  }
-  function indexedQuoteRanges(syntax) {
-    const blocksByRange = new Map(
-      syntax.blocks.map((block) => [rangeKey(block.from, block.to), block])
-    );
-    return syntax.blocks.filter((block) => block.kind === "blockQuote").map((block) => {
-      let depth2 = 1;
-      let parent = block.parent;
-      while (parent) {
-        if (parent.kind === "blockQuote") depth2 += 1;
-        parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
-      }
-      return { from: block.from, to: block.to, depth: depth2 };
-    });
-  }
-  function indexedTablePositionRanges(doc2, tables) {
-    const ranges = [];
-    for (const table of tables) {
-      const rows = [table.header, ...table.body];
-      const rowCount = rows.length;
-      const columnCount = table.header.length;
-      rows.forEach((cells, row) => {
-        const first = cells[0];
-        if (!first) return;
-        const line = doc2.lineAt(first.sourceOffset);
-        cells.forEach((cell, column) => {
-          const next = cells[column + 1];
-          ranges.push({
-            from: column === 0 ? line.from : cell.sourceOffset,
-            to: next?.sourceOffset ?? line.to + 1,
-            position: { row, column, rowCount, columnCount }
-          });
-        });
-      });
-    }
-    return immutableProjectionRanges(ranges);
-  }
-  function calloutRangeIncludingPendingQuoteLines(doc2, range) {
-    let line = doc2.lineAt(range.to);
-    let to = range.to;
-    if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
-      to = line.to;
-    }
-    while (line.number < doc2.lines) {
-      const next = doc2.line(line.number + 1);
-      if (!/^\s*>[ \t]*$/.test(next.text)) break;
-      to = next.to;
-      line = next;
-    }
-    return { from: range.from, to };
-  }
-  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
-    const doc2 = state.doc;
-    if (syntax.inlines.some((inline) => inline.kind === "citation")) {
-      const catalog = projectFieldsForState(state);
-      const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields.filter((field) => field.kind === "citation").map((field) => rangeKey(
-        normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
-        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length
-      )));
-      syntax = { ...syntax, inlines: syntax.inlines.filter((inline) => inline.kind !== "citation" || admitted.has(rangeKey(inline.from, inline.to))) };
-    }
-    const immutableExcluded = immutableProjectionRanges(excluded);
-    const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
-    const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
-    const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
-    const immutableTables = Object.freeze([...tables]);
-    const immutableCallouts = Object.freeze([...callouts]);
-    const immutableMathExpressions = Object.freeze([...mathExpressions]);
-    const footnoteRanges = immutableProjectionRanges(
-      footnotes.references.map(({ from, to }) => ({ from, to }))
-    );
-    const immutableCommandProtectedRanges = commandProtectionRanges(
-      immutableExcluded,
-      immutableFrontmatter ?? void 0
-    );
-    const immutableStructuralRanges = immutableProjectionRanges([
-      ...immutableTables,
-      ...immutableCallouts,
-      ...footnotes.definitions,
-      ...footnotes.references,
-      // Both inline and display mathematics cache source content for KaTeX.
-      // Editing inside either expression must rebuild that presentation even
-      // when the surrounding Markdown topology is otherwise unchanged.
-      ...immutableMathExpressions
-    ].map(({ from, to }) => ({ from, to })));
-    return Object.freeze({
-      get zoteroFields() {
-        return projectFieldsForState(state);
-      },
-      topologyIdentity,
-      syntax,
-      quoteRanges: immutableQuoteRanges,
-      literals: Object.freeze({
-        excluded: immutableExcluded,
-        codeBlocks: immutableCodeBlocks
-      }),
-      inlineRanges: immutableProjectionRanges(inlineRanges),
-      listPrefixRanges: immutableProjectionRanges(listPrefixRanges),
-      taskItemRanges: immutableProjectionRanges(taskItemRanges),
-      footnotes,
-      tables: immutableTables,
-      callouts: immutableCallouts,
-      mathExpressions: immutableMathExpressions,
-      frontmatterRange: immutableFrontmatter,
-      commandProtectedRanges: immutableCommandProtectedRanges,
-      structuralRanges: immutableStructuralRanges,
-      mutationSensitiveRanges: immutableProjectionRanges([
-        ...immutableCommandProtectedRanges,
-        ...immutableStructuralRanges,
-        // Definition text can rebind an image outside the edited neighborhood
-        // without changing either node's local Markdown topology.
-        ...referenceDefinitionRanges
-      ]),
-      referenceDefinitionRanges: immutableProjectionRanges(referenceDefinitionRanges),
-      blockRanges: immutableProjectionRanges([
-        // Headings are source-visible syntax projections rather than widgets,
-        // but vertical traversal still needs their exact block boundary so a
-        // caret can enter the heading from the blank line below it.
-        ...syntax.blocks.filter(({ kind }) => kind === "heading").map(({ from, to }) => ({ from, to, kind: "heading" })),
-        ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
-        ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
-        ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
-      ]),
-      footnoteRanges,
-      tablePositionRanges: indexedTablePositionRanges(doc2, immutableTables),
-      hasUnclosedFrontmatter
-    });
-  }
-  function mathExpressionsFromCatalog(state, syntax) {
-    const expressions = [];
-    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineMath")) {
-      const contentRange = inline.visibleRanges[0];
-      const opening = inline.markerRanges[0];
-      if (!contentRange || !opening) continue;
-      const sourceContent = state.doc.sliceString(contentRange.from, contentRange.to);
-      const content2 = sourceContent.length > 2 && /^\s/.test(sourceContent) && /\s$/.test(sourceContent) && /\S/.test(sourceContent) ? sourceContent.slice(1, -1) : sourceContent;
-      expressions.push({
-        kind: "inline",
-        content: content2,
-        delimiterLength: opening.to - opening.from,
-        from: inline.from,
-        to: inline.to,
-        contentFrom: contentRange.from,
-        contentTo: contentRange.to
-      });
-    }
-    for (const block of syntax.blocks.filter((candidate) => candidate.kind === "displayMath")) {
-      const opening = block.markerRanges[0];
-      const closing2 = block.markerRanges.at(-1);
-      if (!opening || !closing2 || opening === closing2) continue;
-      const openingLine = state.doc.lineAt(opening.from);
-      const closingLine = state.doc.lineAt(closing2.from);
-      const contentFrom = openingLine.number < state.doc.lines ? state.doc.line(openingLine.number + 1).from : openingLine.to;
-      const contentTo = closingLine.from;
-      expressions.push({
-        kind: "display",
-        content: state.doc.sliceString(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
-        delimiterLength: opening.to - opening.from,
-        from: block.from,
-        to: block.to,
-        contentFrom,
-        contentTo
-      });
-    }
-    return expressions.sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function buildLiveProjectionIndex(state, dialect, recordMetric) {
-    const startedAt = performance.now();
-    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
-    const syntax = semanticProjectionRanges(
-      state,
-      [{ from: 0, to: state.doc.length }],
-      0,
-      tree
-    );
-    const referenceDefinitionRanges = [];
-    tree.iterate({ enter(node) {
-      if (node.name !== "LinkReference") return;
-      referenceDefinitionRanges.push({ from: node.from, to: node.to });
-      return false;
-    } });
-    const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
-      from: block.from,
-      to: block.to,
-      fenced: block.nodeName === "FencedCode",
-      markerRanges: block.markerRanges
-    }));
-    const excluded = [
-      ...codeBlocks,
-      ...syntax.blocks.filter((block) => block.kind === "html" || block.kind === "comment").map(({ from, to }) => ({ from, to })),
-      ...syntax.inlines.filter((inline) => inline.kind === "code").map(({ from, to }) => ({ from, to })),
-      ...syntax.literals.map(({ from, to }) => ({ from, to }))
-    ];
-    const inlineRanges = syntax.inlines.map(({ from, to }) => ({ from, to }));
-    const namedDefinitionStarts = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => block.from));
-    const inlineDefinitionRanges = /* @__PURE__ */ new Set();
-    const referenceRanges = new Set(syntax.inlines.filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote").map((inline) => rangeKey(inline.from, inline.to)));
-    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
-      inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
-    }
-    const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
-    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => calloutRangeIncludingPendingQuoteLines(state.doc, { from, to }));
-    const yamlBoundary = frontmatterBoundary(state.doc);
-    const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
-    const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
-    const footnoteExcluded = [...excluded];
-    if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
-    let completeSource = null;
-    const source = () => completeSource ??= state.doc.toString();
-    let footnotes = { definitions: [], references: [] };
-    if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
-      const projectedFootnotes = footnotePresentation(
-        source(),
-        footnoteExcluded,
-        dialect?.footnotes
-      );
-      footnotes = {
-        definitions: projectedFootnotes.definitions.filter((definition) => definition.isInline ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to)) : namedDefinitionStarts.has(definition.from)),
-        references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
-      };
-    }
-    const tables = tableRanges.flatMap((range) => {
-      const presentation = tablePresentation(source(), range.from, range.to);
-      return presentation ? [presentation] : [];
-    });
-    const callouts = calloutRanges.map((range) => ({
-      ...range,
-      source: state.doc.sliceString(range.from, range.to)
-    }));
-    const mathExpressions = mathExpressionsFromCatalog(state, syntax);
-    const index = finalizedLiveProjectionIndex(
-      state,
-      Object.freeze({}),
-      syntax,
-      excluded,
-      codeBlocks,
-      inlineRanges,
-      indexedListPrefixRanges(state.doc, syntax),
-      indexedTaskItemRanges(syntax),
-      footnotes,
-      tables,
-      callouts,
-      mathExpressions,
-      frontmatterRange,
-      yamlBoundary.unclosed,
-      referenceDefinitionRanges
-    );
-    recordMetric("projection-index", startedAt, {
-      documentLength: state.doc.length,
-      literalCount: excluded.length,
-      tableCount: tables.length,
-      calloutCount: callouts.length,
-      footnoteCount: footnotes.definitions.length + footnotes.references.length
-    });
-    return index;
-  }
-  function mapLiveProjectionIndex(index, transaction) {
-    const map = (position) => transaction.changes.mapPos(position);
-    const syntax = mapSemanticProjectionRanges(index.syntax, map);
-    const footnotes = {
-      definitions: index.footnotes.definitions.map((definition) => ({
-        ...definition,
-        from: map(definition.from),
-        to: map(definition.to),
-        contentFrom: map(definition.contentFrom)
-      })),
-      references: index.footnotes.references.map((reference) => ({
-        ...reference,
-        from: map(reference.from),
-        to: map(reference.to),
-        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
-        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
-      }))
-    };
-    const tables = index.tables.map((presentation) => ({
-      ...presentation,
-      from: map(presentation.from),
-      to: map(presentation.to),
-      header: presentation.header.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })),
-      body: presentation.body.map((row) => row.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })))
-    }));
-    const callouts = index.callouts.map((presentation) => ({
-      ...presentation,
-      from: map(presentation.from),
-      to: map(presentation.to)
-    }));
-    const mathExpressions = index.mathExpressions.map((expression) => ({
-      ...expression,
-      from: map(expression.from),
-      to: map(expression.to),
-      contentFrom: map(expression.contentFrom),
-      contentTo: map(expression.contentTo)
-    }));
-    const frontmatterRange = index.frontmatterRange === null ? null : {
-      from: map(index.frontmatterRange.from),
-      to: map(index.frontmatterRange.to)
-    };
-    return finalizedLiveProjectionIndex(
-      transaction.state,
-      index.topologyIdentity,
-      syntax,
-      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.literals.codeBlocks.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        fenced: range.fenced,
-        markerRanges: range.markerRanges.map((marker) => ({
-          from: map(marker.from),
-          to: map(marker.to)
-        }))
-      })),
-      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.taskItemRanges.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        markerFrom: map(range.markerFrom),
-        markerTo: map(range.markerTo)
-      })),
-      footnotes,
-      tables,
-      callouts,
-      mathExpressions,
-      frontmatterRange,
-      index.hasUnclosedFrontmatter,
-      index.referenceDefinitionRanges.map((range) => ({ from: map(range.from), to: map(range.to) }))
-    );
-  }
-  function createLiveProjectionIndexController(options) {
-    const build = (state) => buildLiveProjectionIndex(
-      state,
-      options.editingDialect(),
-      options.recordMetric
-    );
-    const field = StateField.define({
-      create: build,
-      update(previous, transaction) {
-        if (!transaction.docChanged) {
-          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData)) ? build(transaction.state) : previous;
-        }
-        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
-        if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
-          return mapLiveProjectionIndex(previous, transaction);
-        }
-        return transactionCanMapProjectionTopology(
-          transaction,
-          structuralMarker,
-          previous.mutationSensitiveRanges,
-          previous.syntax
-        ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
-      }
-    });
-    const index = (state) => state.field(field);
-    return {
-      extension: field,
-      index,
-      topologyWasMapped(transaction) {
-        return index(transaction.startState).topologyIdentity === index(transaction.state).topologyIdentity;
-      },
-      visibleInlineMathExpressions(state, coveredRanges, currentIndex) {
-        if (!options.editingDialect() || coveredRanges.length === 0) return [];
-        return currentIndex.mathExpressions.filter((expression) => expression.kind === "inline" && coveredRanges.some((range) => range.from <= expression.from && range.to >= expression.to) && (!currentIndex.frontmatterRange || expression.from >= currentIndex.frontmatterRange.to) && expression.to <= state.doc.length);
       }
     };
   }
@@ -42508,6 +43034,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     dialect: () => editingDialect,
     isComposing: () => editor.compositionStarted || compositionGate.active,
     protectedRanges: protectedCommandRanges,
+    canContinueWriting: (state, position) => writingCaretIsReadable(state, liveProjectionIndex.index(state), position),
+    writingContextReady: (state, position) => syntaxTreeAvailable(state, Math.min(state.doc.length, position + 1)),
     requestLinkCompletions: (requestID, completionKind, query) => {
       post({ type: "linkCompletionQuery", requestID, completionKind, query });
     },
@@ -42519,7 +43047,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       post({ type: "writingContinuationQuery", requestID, caretUTF16Offset, editorCaretUTF16Offset: position });
     },
-    cancelWritingContinuation: (requestID) => post({ type: "cancelWritingContinuation", requestID }),
+    cancelWritingContinuation: (requestID, reason) => post({ type: "cancelWritingContinuation", requestID, reason }),
+    cancelWritingTermQuery: (requestID) => post({ type: "cancelWritingTermQuery", requestID }),
     didApply: (undoLabel) => {
       lastUndoLabel = undoLabel;
       lastRedoLabel = undoLabel;
@@ -43478,10 +44007,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const revision = compositionGate.revision(owner);
     const attachment = documentAttachment;
     window.setTimeout(() => {
-      if (attachment !== documentAttachment) return;
+      if (attachment !== documentAttachment || revision === void 0 || revision !== compositionGate.revision(owner)) return;
       const pending = compositionGate.finish(owner, revision);
       for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
       publishEditorContext();
+      if (owner === "editor" && !compositionGate.active) inputSuggestions.resumeWritingAfterComposition();
     }, 0);
   }
   editor.contentDOM.addEventListener("compositionend", (event) => {

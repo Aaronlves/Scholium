@@ -920,7 +920,7 @@ struct ZoteroCitationEditorIntegrationTests {
                 session: session, documentID: session.bridgeDocumentID, documentTitle: "Synthetic",
                 performanceDocumentID: "synthetic-citation-test", source: source, mode: .livePreview,
                 presentationCSS: "", userCSS: "", requiresMathRuntime: false,
-                linkCompletionQuery: { _, _ in [] }, linkPreviews: [], initialScrollFraction: 0, initialScrollAnchor: nil,
+                linkCompletionQuery: { _, _ in .current([]) }, linkPreviews: [], initialScrollFraction: 0, initialScrollAnchor: nil,
                 onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
                 onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },
                 onLinkActivation: { _ in }, onImagePreview: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in },

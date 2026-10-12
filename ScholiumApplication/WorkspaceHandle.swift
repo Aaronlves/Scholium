@@ -40,6 +40,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     // extensions. They remain one actor-isolated state owner, not secondary
     // runtime or transaction owners.
     var lastRelatedContentMeasurement: RelatedContentRetrievalMeasurement?
+    var writingCompletionMemo = WritingCompletionProjectionMemo()
+    var lastWritingCompletionMeasurement: WritingCompletionLookupMeasurement?
+    var writingCompletionPostSourceReadBarrierForTesting: (@Sendable () async -> Void)?
+
+    func setWritingCompletionPostSourceReadBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+        writingCompletionPostSourceReadBarrierForTesting = barrier
+    }
     nonisolated static let refreshLogger = Logger(
         subsystem: "com.scholium.app",
         category: "WorkspaceRefresh"
@@ -524,6 +531,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        writingCompletionMemo.clear()
+        lastWritingCompletionMeasurement = nil
+        writingCompletionPostSourceReadBarrierForTesting = nil
         let sourceCommitRefresh = sourceCommitRefreshTask
         sourceCommitRefreshTask = nil
         pendingSourceCommitRefreshes.removeAll()

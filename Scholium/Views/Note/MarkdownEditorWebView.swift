@@ -39,7 +39,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         @MainActor (
             EditorLinkCompletionKind,
             String
-        ) async -> [EditorLinkCompletion]
+        ) async -> EditorLinkCompletionResponse
     let linkPreviews: [DocumentLinkPreview]
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
@@ -350,7 +350,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if context.coordinator.writingContinuationEnabled != writingContinuationEnabled
             || context.coordinator.writingContinuationContextKey != writingContinuationContextKey
         {
-            context.coordinator.writingContinuation.cancel()
+            context.coordinator.writingContinuation.cancel(reason: .configuration)
             context.coordinator.writingContinuationEnabled = writingContinuationEnabled
             context.coordinator.writingContinuationContextKey = writingContinuationContextKey
             session.setWritingContinuation(enabled: writingContinuationEnabled, contextKey: writingContinuationContextKey)
@@ -386,7 +386,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         }
         if context.coordinator.documentID != documentID {
-            context.coordinator.writingContinuation.cancel()
+            context.coordinator.writingContinuation.cancel(reason: .document)
             context.coordinator.cancelLinkCompletionQuery()
             context.coordinator.cancelDocumentTitleRename()
             context.coordinator.documentID = documentID
@@ -396,7 +396,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setLinkPreviews(linkPreviews, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.lastModeInput != mode {
-            context.coordinator.writingContinuation.cancel()
+            context.coordinator.writingContinuation.cancel(reason: .mode)
             context.coordinator.cancelLinkCompletionQuery()
             context.coordinator.lastModeInput = mode
             session.setMode(mode)
@@ -426,7 +426,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.cancelMermaidRuntimeLoad()
         coordinator.cancelMathRuntimeLoad()
         coordinator.cancelLinkCompletionQuery()
-        coordinator.writingContinuation.cancel()
+        coordinator.writingContinuation.cancel(reason: .detached)
         coordinator.cancelDocumentTitleRename()
         guard let webView else { return }
         coordinator.session.detach(webView)
@@ -494,7 +494,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             @MainActor (
                 EditorLinkCompletionKind,
                 String
-            ) async -> [EditorLinkCompletion]
+            ) async -> EditorLinkCompletionResponse
         var writingContinuationEnabled = false
         var writingContinuationContextKey = ""
         var writingIndexContextKey = ""
@@ -503,7 +503,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onImagePreview: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
-        var surfaceVisibility: DocumentSurfaceVisibility = .active
+        var surfaceVisibility: DocumentSurfaceVisibility = .active {
+            didSet {
+                if !surfaceVisibility.isActive {
+                    writingContinuation.cancel(reason: .inactive)
+                    cancelWritingTermQuery()
+                }
+            }
+        }
         var documentID = ""
         var documentTitle = ""
         var performanceDocumentID: String
@@ -530,7 +537,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var linkCompletionQueryTask: Task<Void, Never>?
         private var linkCompletionQueryTaskID: UUID?
         private var linkCompletionQueryKind: EditorLinkCompletionKind?
-        fileprivate let writingContinuation = EditorWritingContinuationController()
+        private var linkCompletionQueryRequestID: String?
+        let writingContinuation = EditorWritingContinuationController()
         private var documentTitleRenameTask: Task<Void, Never>?
         private var documentTitleRenameRequestID: String?
 
@@ -549,7 +557,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 @escaping @MainActor (
                     EditorLinkCompletionKind,
                     String
-                ) async -> [EditorLinkCompletion],
+                ) async -> EditorLinkCompletionResponse,
             onLinkActivation: @escaping (String) -> Void,
             onImagePreview: @escaping (String) -> Void,
             onScrollFractionChange: @escaping (Double) -> Void,
@@ -636,14 +644,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard surfaceVisibility.isActive,
                     validEnvelope(interaction.envelope)
                 else { return }
-                if interaction.context?.composing == true || interaction.focusTarget == .title
-                    || (writingContinuation.editorCaret.map { caret in
-                        interaction.selections != [.init(anchor: caret, head: caret)]
-                    } ?? false)
-                {
-                    writingContinuation.cancel()
-                }
-                session.updateInteraction(
+                // An old interaction may be queued behind a current snapshot.
+                // Only the session's admitted interaction can cancel this round.
+                let admitted = session.updateInteraction(
                     selections: interaction.selections,
                     line: interaction.line,
                     column: interaction.column,
@@ -653,17 +656,32 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     focusTarget: interaction.focusTarget,
                     context: interaction.context
                 )
+                guard admitted else {
+                    if writingContinuation.requestID != nil {
+                        EditorWritingContinuationController.trace(
+                            "ignoredEditorMessage", requestID: writingContinuation.requestID, detail: "interactionAdmission")
+                    }
+                    return
+                }
+                if interaction.context?.composing == true || interaction.focusTarget == .title
+                    || (writingContinuation.editorCaret.map { caret in
+                        interaction.selections != [.init(anchor: caret, head: caret)]
+                    } ?? false)
+                {
+                    writingContinuation.cancel(reason: .interaction)
+                }
             case .documentChanged(let change):
                 guard surfaceVisibility.isActive,
                     validEnvelope(change.envelope, allowingFutureGeneration: true)
                 else {
                     return
                 }
-                writingContinuation.cancel()
-                applyEditorChanges(
-                    change,
-                    in: message.webView ?? activeWebView
-                )
+                // queryText can absorb a full snapshot before its queued delta.
+                // A rejected duplicate has no authority over a current request.
+                if applyEditorChanges(change, in: message.webView ?? activeWebView) {
+                    writingContinuation.cancel(reason: .source)
+                    cancelWritingTermQuery()
+                }
             case .performanceSample(let performance):
                 guard validEnvelope(performance.envelope),
                     performance.durationMilliseconds > 0
@@ -743,14 +761,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     activeWebView === webView
                 else { return }
                 requestMathRuntime(in: webView)
+            case .cancelWritingTermQuery(let request):
+                // An abort may arrive after the same document advanced its version.
+                guard request.envelope.sessionID == session.sessionID.uuidString,
+                    request.envelope.documentID == documentID
+                else { return }
+                cancelWritingTermQuery(requestID: request.requestID)
             case .cancelWritingContinuation(let request):
                 // Cancellation remains valid after the same session has advanced a generation.
-                guard surfaceVisibility.isActive,
-                    request.envelope.sessionID == session.sessionID.uuidString,
+                guard request.envelope.sessionID == session.sessionID.uuidString,
                     request.envelope.documentID == documentID,
                     request.requestID == writingContinuation.requestID
                 else { return }
-                writingContinuation.cancel()
+                EditorWritingContinuationController.trace("pageCancelled", requestID: request.requestID, detail: request.reason.rawValue)
+                writingContinuation.cancel(reason: .bridge)
             case .writingContinuationQuery(let request):
                 guard surfaceVisibility.isActive,
                     validEnvelope(request.envelope), writingContinuationEnabled,
@@ -758,9 +782,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     session.acceptsInteractionRanges(
                         [.init(anchor: request.editorCaretUTF16Offset, head: request.editorCaretUTF16Offset)],
                         documentVersion: request.envelope.documentVersion)
-                else { return }
+                else {
+                    EditorWritingContinuationController.trace("queryRejected", requestID: request.requestID, detail: "editorAdmission")
+                    return
+                }
                 let contextKey = writingContinuationContextKey
                 let page = pageGeneration
+                let writingSource = session.checkedSource
                 writingContinuation.start(
                     requestID: request.requestID,
                     sourceCaret: request.caretUTF16Offset,
@@ -768,10 +796,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     query: writingContinuationQuery,
                     isCurrent: { [weak self, weak webView] in
                         guard let self, let webView else { return false }
-                        return self.writingContinuationEnabled
+                        return self.surfaceVisibility.isActive && self.writingContinuationEnabled
                             && contextKey == self.writingContinuationContextKey
                             && page == self.pageGeneration
-                            && self.validEnvelope(request.envelope)
+                            && self.admitsWritingContinuationPublication(
+                                request.envelope, source: writingSource, editorCaret: request.editorCaretUTF16Offset)
                             && self.activeWebView === webView
                     },
                     publish: { [weak webView] publication in
@@ -783,7 +812,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 )
             case .requestCitationInsertion(let request):
                 guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
-                writingContinuation.cancel()
+                writingContinuation.cancel(reason: .citation)
                 Task { @MainActor [weak self, weak session] in
                     guard let self, let session, self.surfaceVisibility.isActive, self.validEnvelope(request.envelope) else { return }
                     do { try await session.performCitation(.addEditCitation, reference: request.reference) } catch {
@@ -796,57 +825,51 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 let requestedDocumentID = documentID
                 let requestedFingerprint = startingFingerprint
                 let requestedVersion = session.generation
-                let taskID = UUID()
-                cancelLinkCompletionQuery()
-                linkCompletionQueryTaskID = taskID
-                linkCompletionQueryKind = request.completionKind
-                linkCompletionQueryTask = Task { @MainActor [weak self, weak webView = message.webView] in
-                    guard let self, let webView else { return }
-                    defer {
-                        if self.linkCompletionQueryTaskID == taskID {
-                            self.linkCompletionQueryTask = nil
-                            self.linkCompletionQueryTaskID = nil
-                            self.linkCompletionQueryKind = nil
+                startLinkCompletionQuery(
+                    requestID: requestID, kind: request.completionKind, query: request.query,
+                    isCurrent: { [weak self, weak webView = message.webView] in
+                        guard let self, let webView else { return false }
+                        return self.surfaceVisibility.isActive
+                            && requestedDocumentID == self.documentID
+                            && requestedFingerprint == self.startingFingerprint
+                            && requestedVersion == self.session.generation
+                            && webView.navigationDelegate === self
+                    },
+                    publish: { [weak webView = message.webView] response in
+                        guard let webView else { return }
+                        let payload = response.candidates.prefix(100).map { candidate in
+                            var value =
+                                [
+                                    "label": candidate.label,
+                                    "insertion": candidate.insertion,
+                                    "detail": candidate.detail,
+                                    "availability": candidate.availability.rawValue,
+                                ] as [String: Any]
+                            if let action = candidate.writingAction { value["writingAction"] = action }
+                            if let count = candidate.replacementUTF16Count { value["replacementUTF16Count"] = count }
+                            if let displayText = candidate.displayText {
+                                value["displayText"] = displayText
+                            }
+                            if let reason = candidate.unavailableReason {
+                                value["unavailableReason"] = reason
+                            }
+                            return value
                         }
+                        let completionPayload: Any =
+                            request.completionKind == .term
+                            ? ["state": response.isCurrent ? "current" : "unavailable", "candidates": payload] as [String: Any]
+                            : payload
+                        _ = try? await webView.callAsyncJavaScript(
+                            "window.scholiumEditor.resolveLinkCompletionQuery(requestID, candidates)",
+                            arguments: [
+                                "requestID": requestID,
+                                "candidates": completionPayload,
+                            ],
+                            in: nil,
+                            contentWorld: .page
+                        )
                     }
-                    let candidates = await linkCompletionQuery(
-                        request.completionKind,
-                        request.query
-                    )
-                    guard !Task.isCancelled,
-                        requestedDocumentID == documentID,
-                        requestedFingerprint == startingFingerprint,
-                        requestedVersion == session.generation,
-                        webView.navigationDelegate === self
-                    else { return }
-                    let payload = candidates.prefix(100).map { candidate in
-                        var value =
-                            [
-                                "label": candidate.label,
-                                "insertion": candidate.insertion,
-                                "detail": candidate.detail,
-                                "availability": candidate.availability.rawValue,
-                            ] as [String: Any]
-                        if let action = candidate.writingAction { value["writingAction"] = action }
-                        if let count = candidate.replacementUTF16Count { value["replacementUTF16Count"] = count }
-                        if let displayText = candidate.displayText {
-                            value["displayText"] = displayText
-                        }
-                        if let reason = candidate.unavailableReason {
-                            value["unavailableReason"] = reason
-                        }
-                        return value
-                    }
-                    _ = try? await webView.callAsyncJavaScript(
-                        "window.scholiumEditor.resolveLinkCompletionQuery(requestID, candidates)",
-                        arguments: [
-                            "requestID": requestID,
-                            "candidates": payload,
-                        ],
-                        in: nil,
-                        contentWorld: .page
-                    )
-                }
+                )
             case .linkActivated(let activation):
                 guard surfaceVisibility.isActive, validEnvelope(activation.envelope) else { return }
                 onLinkActivation(activation.target)
@@ -909,7 +932,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             cancelMermaidRuntimeLoad()
             cancelMathRuntimeLoad()
             cancelLinkCompletionQuery()
-            writingContinuation.cancel()
+            writingContinuation.cancel(reason: .renderer)
             cancelDocumentTitleRename()
             hasSignaledReady = false
             awaitingEditorLoad = true
@@ -974,15 +997,50 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             mathRuntimeLoadTask = nil
         }
 
+        @discardableResult
+        func startLinkCompletionQuery(
+            requestID: String, kind: EditorLinkCompletionKind, query: String,
+            isCurrent: @escaping @MainActor () -> Bool,
+            publish: @escaping @MainActor (EditorLinkCompletionResponse) async -> Void
+        ) -> Task<Void, Never> {
+            cancelLinkCompletionQuery()
+            let taskID = UUID()
+            linkCompletionQueryTaskID = taskID
+            linkCompletionQueryKind = kind
+            linkCompletionQueryRequestID = requestID
+            let task = Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    if self.linkCompletionQueryTaskID == taskID {
+                        self.linkCompletionQueryTask = nil
+                        self.linkCompletionQueryTaskID = nil
+                        self.linkCompletionQueryKind = nil
+                        self.linkCompletionQueryRequestID = nil
+                    }
+                }
+                let candidates = await self.linkCompletionQuery(kind, query)
+                guard !Task.isCancelled, self.linkCompletionQueryTaskID == taskID,
+                    isCurrent()
+                else { return }
+                await publish(candidates)
+            }
+            linkCompletionQueryTask = task
+            return task
+        }
+
         func cancelLinkCompletionQuery() {
             linkCompletionQueryTask?.cancel()
             linkCompletionQueryTask = nil
             linkCompletionQueryTaskID = nil
             linkCompletionQueryKind = nil
+            linkCompletionQueryRequestID = nil
         }
 
-        func cancelWritingTermQuery() {
-            if linkCompletionQueryKind == .term { cancelLinkCompletionQuery() }
+        func cancelWritingTermQuery(requestID: String? = nil) {
+            guard linkCompletionQueryKind == .term,
+                requestID == nil || requestID == linkCompletionQueryRequestID
+            else { return }
+            cancelLinkCompletionQuery()
         }
 
         private static func publishWritingContinuation(
@@ -997,7 +1055,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 script = "window.scholiumEditor.setWritingContinuationStatus(requestID, value)"
                 value = ["phase": status.rawValue]
             case .result(let result):
-                script = "window.scholiumEditor.resolveWritingContinuation(requestID, value)"
+                script = "return window.scholiumEditor.resolveWritingContinuation(requestID, value)"
                 switch result {
                 case .suggestion(let suffix):
                     value = suffix.utf16.count <= 512 ? ["text": suffix] : [:]
@@ -1010,11 +1068,18 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     }
                 }
             }
-            _ = try? await webView.callAsyncJavaScript(
-                script,
-                arguments: ["requestID": requestID, "value": value],
-                in: nil, contentWorld: .page
-            )
+            do {
+                let accepted = try await webView.callAsyncJavaScript(
+                    script, arguments: ["requestID": requestID, "value": value],
+                    in: nil, contentWorld: .page)
+                if case .result = publication {
+                    EditorWritingContinuationController.trace(
+                        "bridgeResult", requestID: requestID,
+                        detail: accepted as? Bool == true ? "acceptedPendingRequest" : "noPendingRequest")
+                }
+            } catch {
+                EditorWritingContinuationController.trace("bridgeFailed", requestID: requestID)
+            }
         }
 
         func cancelDocumentTitleRename() {
@@ -1159,6 +1224,23 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             )
         }
 
+        /// Persistence rebases the saved preimage without changing the live
+        /// proposal. Publication must retain the exact source/caret proof.
+        func admitsWritingContinuationPublication(
+            _ envelope: EditorBridgeEnvelope, source: String, editorCaret: Int
+        ) -> Bool {
+            envelope.protocolVersion == markdownEditorProtocolVersion
+                && envelope.sessionID == session.sessionID.uuidString
+                && envelope.documentID == documentID
+                && envelope.documentID == session.documentID
+                && session.checkedSource.utf8.elementsEqual(source.utf8)
+                && session.acceptsInsertionPoint(
+                    .init(
+                        sessionID: session.sessionID, documentID: envelope.documentID,
+                        generation: envelope.documentVersion,
+                        selection: .init(anchor: editorCaret, head: editorCaret)))
+        }
+
         private func validEnvelope(
             _ envelope: EditorBridgeEnvelope,
             allowingFutureGeneration: Bool = false
@@ -1176,7 +1258,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private func applyEditorChanges(
             _ change: EditorDocumentChangeMessage,
             in webView: WKWebView?
-        ) {
+        ) -> Bool {
             guard
                 session.acceptEditorChanges(
                     change.changes,
@@ -1193,8 +1275,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         in: webView
                     )
                 }
-                return
+                if writingContinuation.requestID != nil {
+                    EditorWritingContinuationController.trace("ignoredEditorMessage", requestID: writingContinuation.requestID, detail: "deltaAdmission")
+                }
+                return false
             }
+            return true
         }
     }
 }

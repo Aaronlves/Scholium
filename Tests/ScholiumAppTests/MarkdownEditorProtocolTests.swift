@@ -56,14 +56,33 @@ struct MarkdownEditorProtocolTests {
         body["extra"] = "unauthorized"
         #expect(EditorBridgeMessageDecoder.decode(body) == nil)
         body.removeValue(forKey: "extra")
-        body["type"] = "cancelWritingContinuation"
         body.removeValue(forKey: "caretUTF16Offset")
         body.removeValue(forKey: "editorCaretUTF16Offset")
+        body["type"] = "cancelWritingTermQuery"
+        guard case .cancelWritingTermQuery(let termCancelled) = EditorBridgeMessageDecoder.decode(body) else {
+            Issue.record("Expected a local term cancellation envelope")
+            return
+        }
+        #expect(termCancelled.requestID == query.requestID)
+        body["query"] = "unexpected"
+        #expect(EditorBridgeMessageDecoder.decode(body) == nil)
+        body.removeValue(forKey: "query")
+        body["type"] = "cancelWritingContinuation"
+        #expect(EditorBridgeMessageDecoder.decode(body) == nil)
+        body["reason"] = "typing"
         guard case .cancelWritingContinuation(let cancelled) = EditorBridgeMessageDecoder.decode(body) else {
             Issue.record("Expected typed cancellation")
             return
         }
-        #expect(cancelled.requestID == query.requestID)
+        #expect(cancelled.requestID == query.requestID && cancelled.reason == .typing)
+        for reason in EditorWritingContinuationCancellationReason.allCases {
+            body["reason"] = reason.rawValue
+            #expect(EditorBridgeMessageDecoder.decode(body) != nil)
+        }
+        for reason in ["note text", String(repeating: "x", count: 33), "", 42] as [Any] {
+            body["reason"] = reason
+            #expect(EditorBridgeMessageDecoder.decode(body) == nil)
+        }
     }
 
     @Test("Passage replacement requires an explicit selection policy")

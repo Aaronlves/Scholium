@@ -53,6 +53,30 @@ enum ScholiumL10n {
         static var model: LocalizedStringResource {
             LocalizedStringResource("Writing Assistance Model", table: "Interface", bundle: .module)
         }
+        static var effort: LocalizedStringResource {
+            LocalizedStringResource("Thinking Effort", table: "Interface", bundle: .module)
+        }
+        static func automaticEffort(_ effective: String) -> LocalizedStringResource {
+            LocalizedStringResource(
+                "writing.continuation.effort.automatic",
+                defaultValue: "Automatic (Fastest) — \(effective)", table: "Interface", bundle: .module
+            )
+        }
+        static var effortExplanation: LocalizedStringResource {
+            LocalizedStringResource(
+                "Automatic uses the lowest thinking effort supported by the selected model. Applies only to AI Continuation; Chat, Explain and Polish are unchanged.",
+                table: "Interface", bundle: .module
+            )
+        }
+        static var unavailableEffort: LocalizedStringResource {
+            LocalizedStringResource(
+                "The saved thinking effort is unavailable for this model. Choose Automatic or a supported effort; Scholium will not substitute an effort automatically.",
+                table: "Interface", bundle: .module
+            )
+        }
+        static var invalidEffort: LocalizedStringResource {
+            LocalizedStringResource("Unavailable Saved Value", table: "Interface", bundle: .module)
+        }
         static var openTriptych: LocalizedStringResource {
             LocalizedStringResource(
                 "Open a Triptych and connect Codex in Agents & Chat to choose a writing assistance model.",

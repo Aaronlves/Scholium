@@ -117,6 +117,7 @@ struct DocumentFeatureActions {
     var passageAction: @MainActor (DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void = { _, _ in }
     var askAgent: AgentSelectionInquiryHandler = { _, _ in nil }
     var writingContinuation: EditorWritingContinuationQuery = { _, _ in .unavailable(nil) }
+    var writingTerms: @MainActor (String) async -> [String]? = { _ in nil }
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void
@@ -902,7 +903,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 onPreviewFailure: { actions.notify($0.message, .error) },
                 onPassageAction: { actions.passageAction($0, nil) },
                 writingContinuationEnabled: writingContinuationPreferences.continuationEnabled,
-                writingContinuationContextKey: writingContinuationPreferences.model,
+                writingContinuationContextKey: writingContinuationPreferences.continuationContextKey,
                 writingIndexContextKey: state.workspaceCatalog.map {
                     "\(state.currentVaultID?.uuidString ?? ""):\($0.generatedAt.timeIntervalSinceReferenceDate.bitPattern)"
                 } ?? "",
@@ -1336,25 +1337,30 @@ struct NoteContentView<ShellNotices: View>: View {
     private func queryEditorLinkCompletions(
         _ kind: EditorLinkCompletionKind,
         _ query: String
-    ) async -> [EditorLinkCompletion] {
+    ) async -> EditorLinkCompletionResponse {
         guard let currentVaultID = state.currentVaultID,
             let catalogNotes = state.workspaceCatalog?.notes
         else {
-            return []
+            return .unavailable
         }
         if kind == .term {
-            return controller.editorWritingTermCompletions(
-                matching: query, catalogNotes: catalogNotes)
+            guard let bodyTerms = await actions.writingTerms(query),
+                !Task.isCancelled, state.workspaceCatalog?.notes == catalogNotes
+            else { return .unavailable }
+            return .current(
+                controller.editorWritingTermCompletions(
+                    matching: query, catalogNotes: catalogNotes, bodyTerms: bodyTerms))
         }
-        guard let generation = state.workspaceCatalog?.graph?.generation else { return [] }
-        return await controller.editorLinkCompletions(
-            kind: kind,
-            matching: query,
-            sourcePath: note.id.relativePath,
-            currentVaultID: currentVaultID,
-            catalogNotes: catalogNotes,
-            graphGeneration: generation
-        )
+        guard let generation = state.workspaceCatalog?.graph?.generation else { return .unavailable }
+        return .current(
+            await controller.editorLinkCompletions(
+                kind: kind,
+                matching: query,
+                sourcePath: note.id.relativePath,
+                currentVaultID: currentVaultID,
+                catalogNotes: catalogNotes,
+                graphGeneration: generation
+            ))
     }
 
     private var editorIsComposing: Bool {

@@ -37,6 +37,7 @@ struct SettingsSection: Hashable, Identifiable {
 
     static let writingContinuation = Self("writing.continuation", .writing)
     static let writingModel = Self("writing.model", .writing)
+    static let writingEffort = Self("writing.effort", .writing)
     static let writingSelection = Self("writing.selection", .writing)
 
     static let agentChatSidebar = Self("agents.chatSidebar", .agents, agentCategory: .connection)

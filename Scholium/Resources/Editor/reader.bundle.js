@@ -4659,6 +4659,8 @@
     "Accept AI continuation: {text} (Tab)",
     "Accept index suggestion: {text} (Tab)",
     "AI continuation timed out.",
+    "Retry AI",
+    "Retry AI continuation (Option-Return)",
     "AI continuation is preparing.",
     "AI continuation is retrieving related context.",
     "AI continuation is composing.",

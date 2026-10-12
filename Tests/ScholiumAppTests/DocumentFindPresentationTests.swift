@@ -126,6 +126,47 @@ struct DocumentFindPresentationTests {
         #expect(model.result.replacement == .init(replaced: 1, skipped: 1))
     }
 
+    @Test(
+        "An invalidated Find consumes only a queued summary refresh; real failures and obsolete workers stay distinct",
+        arguments: ["stale", "cancel", "real", "noRefresh", "obsolete"])
+    func invalidatedFindRefresh(boundary: String) throws {
+        let model = DocumentFindPresentationModel()
+        model.presentReplacement()
+        model.setQuery("f")
+        model.accept(.init(current: 1, total: 2, replaceable: 2, canReplaceCurrent: true), for: try #require(model.request?.id))
+        model.replaceAll()
+        let old = try #require(model.request)
+        if boundary != "noRefresh" { model.refresh() }
+        if boundary == "obsolete" { model.setQuery("new") }
+        let current = try #require(model.request)
+        let failure: any Error
+        if boundary == "cancel" {
+            failure = CancellationError()
+        } else if boundary == "real" {
+            failure = NSError(domain: "SyntheticFind", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic bridge failure"])
+        } else {
+            failure = MarkdownEditorSession.SessionError.staleRequest
+        }
+        model.fail(failure, for: old.id)
+        if boundary == "stale" || boundary == "cancel" {
+            #expect(model.errorMessage == nil)
+            let refreshed = try #require(model.request)
+            #expect(refreshed.id != old.id)
+            #expect(refreshed.operation == .execute(.present))
+            #expect(model.hasPendingRequest)
+        } else if boundary == "obsolete" {
+            #expect(model.request == current)
+            #expect(model.hasPendingRequest)
+            #expect(model.errorMessage == nil)
+        } else {
+            #expect(model.request == old)
+            #expect(!model.hasPendingRequest)
+            #expect(model.errorMessage == failure.localizedDescription)
+        }
+        #expect(model.query == (boundary == "obsolete" ? "new" : "f"))
+        #expect(model.replacement.isEmpty)
+    }
+
     @Test("Narrow layout retains native query identity and presents a readable failure")
     func nativeFieldSurvivesReflow() async throws {
         _ = NSApplication.shared

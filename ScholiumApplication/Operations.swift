@@ -432,6 +432,11 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.searchCompletions(request)
     }
 
+    public func writingCompletions(matching query: String) async throws -> [String] {
+        let handle = try await reference.requireHandle()
+        return try await handle.writingCompletions(matching: query)
+    }
+
     public func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         let handle = try await reference.requireHandle()
         return try await handle.relatedContent(request)

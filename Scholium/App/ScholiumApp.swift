@@ -1214,6 +1214,7 @@ extension ScholiumErrorLocalization {
             case .busy: ScholiumL10n.string("Another writing request is still running or stopping.", locale: locale)
             case .invalidContext: ScholiumL10n.string("Select a shorter passage or a valid writing context.", locale: locale)
             case .invalidOutput: ScholiumL10n.string("AI returned no usable writing suggestion.", locale: locale)
+            case .generationFailed: ScholiumL10n.string("The provider could not complete writing assistance.", locale: locale)
             case .unsafeRuntime: ScholiumL10n.string("The runtime could not provide isolated, tool-free writing assistance.", locale: locale)
             case .timedOut: ScholiumL10n.string("Writing assistance took too long.", locale: locale)
             }

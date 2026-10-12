@@ -424,9 +424,10 @@ final class DocumentController: ObservableObject {
 
     func editorWritingTermCompletions(
         matching query: String,
-        catalogNotes: [WorkspaceCatalogNote]
+        catalogNotes: [WorkspaceCatalogNote],
+        bodyTerms: [String] = []
     ) -> [EditorLinkCompletion] {
-        writingSuggestions.terms(query, notes: catalogNotes)
+        writingSuggestions.terms(query, notes: catalogNotes, bodyTerms: bodyTerms)
     }
 
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {

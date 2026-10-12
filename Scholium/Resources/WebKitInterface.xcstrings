@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Retry AI" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry AI"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试 AI"}}}},
+    "Retry AI continuation (Option-Return)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry AI continuation (Option-Return)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试 AI 续写（Option-Return）"}}}},
     "Preview image {name}" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Preview image {name}"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "预览图片 {name}"}}}},
     "Footnote and endnote citation styles are unavailable. Your text was preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Footnote and endnote citation styles are unavailable. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "脚注和尾注引用样式不可用。您的文本已保留。"}}}},
     "The citation operation could not finish. Your text was preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The citation operation could not finish. Your text was preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "引用操作未能完成。您的文本已保留。"}}}},

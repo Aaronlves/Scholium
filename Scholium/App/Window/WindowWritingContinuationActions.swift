@@ -16,15 +16,19 @@ extension WindowModel {
             let chat = chatController
         else { return .unavailable(.notConnected) }
         let model = preferences.model
+        let effort = preferences.continuationEffort
         guard chat.connectionState == .ready, chat.account != nil else {
             return .unavailable(.notConnected)
         }
         guard !chat.isRenewingSettings, !chat.capabilities.isChanging else {
             return .unavailable(.notReady)
         }
-        guard chat.writingAssistanceModels.contains(where: { $0.model == model }) else {
+        guard let selectedModel = chat.writingAssistanceModels.first(where: { $0.model == model }) else {
             return .unavailable(.modelUnavailable)
         }
+        guard preferences.continuationEffortIsValid,
+            effort.map({ chat.continuationEfforts(for: selectedModel).contains($0) }) ?? true
+        else { return .unavailable(.notReady) }
         guard chat.canRequestWritingAssistance(model: model) else {
             return .unavailable(.notReady)
         }
@@ -43,6 +47,7 @@ extension WindowModel {
             else { return .unavailable(.invalidContext) }
             func remainsCurrent() -> Bool {
                 !Task.isCancelled && preferences.continuationEnabled && preferences.model == model
+                    && preferences.continuationEffortIsValid && preferences.continuationEffort == effort
                     && canEditCurrentNote
                     && currentDocumentDescriptor == descriptor
                     && windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
@@ -92,14 +97,15 @@ extension WindowModel {
                 before: context.before,
                 after: context.after,
                 background: background,
-                model: model
+                model: model,
+                effort: effort
             )
+            guard remainsCurrent() else { return .unavailable(.cancelled) }
             let suffix: String
             switch writingResult {
             case .success(let result): suffix = result
             case .failure(let reason): return .unavailable(Self.editorUnavailableReason(for: reason))
             }
-            guard remainsCurrent() else { return .unavailable(.cancelled) }
             if !background.isEmpty, let backgroundResponse {
                 guard WritingContinuationContext.background(backgroundResponse, catalog: workspaceCatalog?.notes ?? []) == background
                 else { return .unavailable(.cancelled) }
@@ -109,6 +115,7 @@ extension WindowModel {
             return .unavailable(.cancelled)
         } catch {
             guard !Task.isCancelled, preferences.continuationEnabled, preferences.model == model,
+                preferences.continuationEffortIsValid, preferences.continuationEffort == effort,
                 currentDocumentDescriptor == descriptor
             else { return .unavailable(.cancelled) }
             return .unavailable(.serviceError)
