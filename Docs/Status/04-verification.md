@@ -14,20 +14,20 @@ reports the complete performance gate, 13/13 affected UI journeys, and mounted/
 copied clean-account save/readback smoke; VoiceOver, input, adaptation, icon,
 and Finder-restoration human acceptance remain open.
 
-**2026-09-28 — `v0.3.2-beta` packaged candidate:** Exact clean tag at
-`e225a72e5320f195adf154815f9c468e43e6d93a` produced
-`Scholium-v0.3.2-beta-macos-arm64.dmg` (version `0.3.2`, build `13`, minimum
-macOS `26.0`, SDK `27.0`, arm64, ad-hoc). `verify.sh` passed WebEditor (491),
-Core (581), Core performance (3), Contracts (105), Application (236),
-architecture measurement (1), and App (1,197); Release build and helper
-isolation passed. Package checks passed for provenance, resources, licenses,
-icon, private paths, entitlements, signatures, architecture, read-only DMG
-mount/copy and SHA-256 `590023c506635c6dc2f539281a744d40d4fded11857307b2bb12ba3be28b48d8`.
-Per researcher direction, XCUITest journeys and the mounted/copied clean-account
-smoke were not run; affected UI journeys, human icon inspection, and G6/G9
-evidence remain incomplete.
-Logs: `.build/verification/` and `.build/verification-release/`; local candidate:
-`~/Applications/Scholium Builds/v0.3.2-beta/`.
+**2026-10-13 — `v0.4.0-beta` published:** Exact clean tag
+`7a6fee4aaeba85dea1b94e570bc9902481e97d74` produced arm64 ad-hoc DMG
+(version `0.4.0`/build `18`; macOS `26.0`, SDK `27.0`), SHA-256
+`1c3d7a1a8725adb18d299935ef51cc01d0a08dafe6b0745e5deaf7813d5a1245`; the
+[public release](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.0-beta)
+includes the DMG and checksum. Local `verify.sh` passed WebEditor (1,228), Core
+(690), Contracts (173), Application (345), App Swift Testing (1,876), and
+Release/helper checks; display-gated checks and the fresh-query microbenchmark
+were skipped. Full-profile [GitHub Verify](https://github.com/Aaronlves/Scholium/actions/runs/38292093172)
+failed with three issues across two App tests: Chat toolbar retained-resize
+timed out with its window not key; External Markdown had `canSave == false`,
+leaving `save()` unevaluated. CI was not rerun at researcher direction.
+Package integrity passed; XCTest/XCUITest, mounted/copied first-launch smoke and
+packaged performance campaign were omitted. G6/G7/G9 remain incomplete.
 
 ## Current feature coverage
 

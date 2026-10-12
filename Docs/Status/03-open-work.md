@@ -89,11 +89,11 @@
 
 ## Gate and release boundary
 
-- For `v0.3.2-beta` on 2026-09-28, the exact-tag repository gate and package
-  checks passed. Per researcher direction, XCUITest journeys and the required
-  mounted/copied clean-account smoke were not run; affected UI journeys, human
-  icon inspection, and G6/G9 evidence remain incomplete. See [Verification
-  Evidence](04-verification.md).
+- `v0.4.0-beta` was published after its exact-tag local gate and package checks
+  passed, although full-profile GitHub Verify failed with three App-test issues.
+  Per researcher direction, CI was not rerun; XCTest/XCUITest, first-launch
+  smoke and packaged performance proof were omitted. G6/G7/G9 remain incomplete.
+  See [Verification Evidence](04-verification.md).
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
 - Run affected packaged performance series when §21.3's change-trigger rule
