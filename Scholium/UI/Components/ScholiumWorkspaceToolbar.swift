@@ -176,7 +176,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.apparatusDivider,
             Item.inspectorModes,
             .flexibleSpace,
-            .space,
             Item.inspector,
         ]
     }

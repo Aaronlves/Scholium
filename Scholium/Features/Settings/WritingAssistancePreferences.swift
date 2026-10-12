@@ -91,7 +91,6 @@ final class WritingAssistancePreferences: ObservableObject {
         continuationEffort = nil
         defaults.removeObject(forKey: Self.enabledKey)
         defaults.removeObject(forKey: Self.modelKey)
-        defaults.removeObject(forKey: Self.effortKey)
         invalidStoredKeys = []
     }
 }
