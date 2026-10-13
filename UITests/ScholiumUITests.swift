@@ -195,6 +195,14 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     override func setUp() async throws {
         continueAfterFailure = false
+        if name.contains("testRuntimeReadinessDiagnostic") || name.contains("testFreshIndexReadinessDiagnostic") {
+            let environment = ProcessInfo.processInfo.environment
+            guard environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_OUTPUT"] != nil else {
+                throw XCTSkip("The opt-in runtime diagnostic is not configured.")
+            }
+            _ = try XCTUnwrap(environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"],
+                              "Runtime measurements require the exact isolated QA bundle path.")
+        }
         try requireQAPreferencePreservation()
         sessionID = UUID()
         try createIsolatedTriptych()
@@ -233,6 +241,7 @@ final class ScholiumUITests: XCTestCase {
         // journey asks SwiftUI to create its one default scene.
         terminateRunningQAApplications()
         app.launch()
+        try verifyRuntimeDiagnosticApplicationIdentity()
         XCTAssertTrue(
             app.windows.firstMatch.waitForExistence(timeout: 15),
             "The isolated QA window did not appear"

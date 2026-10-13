@@ -188,7 +188,16 @@ extension ScholiumUITests {
         appearance: QAAppearance? = nil,
         openNote: String? = "QA Autosave A.md"
     ) -> XCUIApplication {
-        let application = XCUIApplication(bundleIdentifier: "com.scholium.qa")
+        let application: XCUIApplication
+        if let path = ProcessInfo.processInfo.environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"] {
+            let url = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            precondition(url.path.hasPrefix(repository.appendingPathComponent(".build/qa-runtime").path + "/"))
+            precondition(Bundle(url: url)?.bundleIdentifier == "com.scholium.qa")
+            application = XCUIApplication(url: url)
+        } else {
+            application = XCUIApplication(bundleIdentifier: "com.scholium.qa")
+        }
         // Keep macOS scene restoration from reopening windows left by an
         // earlier isolated run. Scholium's own WindowSession snapshot tests
         // still verify application-level restoration explicitly below.
@@ -229,6 +238,20 @@ extension ScholiumUITests {
             application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = String(initialWorkspaceWidth)
         }
         return application
+    }
+
+    @MainActor
+    func verifyRuntimeDiagnosticApplicationIdentity() throws {
+        guard let path = ProcessInfo.processInfo.environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"] else { return }
+        XCTAssertTrue(waitUntil(timeout: 15) {
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").count == 1
+        }, "Wait for Launch Services registration before checking the exact executable.")
+        let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+        XCTAssertEqual(processes.count, 1)
+        let process = try XCTUnwrap(processes.first)
+        let expected = URL(fileURLWithPath: path).appendingPathComponent("Contents/MacOS/Scholium").resolvingSymlinksInPath().path
+        XCTAssertEqual(process.executableURL?.resolvingSymlinksInPath().path, expected,
+                       "Reject measurements from another QA bundle with the same identifier.")
     }
 
     @MainActor

@@ -1474,3 +1474,116 @@ extension ScholiumUITests {
     }
 
 }
+
+extension ScholiumUITests {
+    /// Opt-in observations on fresh disposable state. XCTest endpoints include
+    /// transport/polling overhead; only the existing key probe is app-internal.
+    @MainActor
+    func testFreshIndexReadinessDiagnostic() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_OUTPUT"] else {
+            throw XCTSkip("The bounded runtime diagnostic is not configured.")
+        }
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let output = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+        let build = repository.appendingPathComponent(".build").resolvingSymlinksInPath()
+        guard output.path.hasPrefix(build.path + "/"), output.pathExtension == "json",
+            !FileManager.default.fileExists(atPath: output.path)
+        else { throw XCTSkip("Diagnostic output must be a new JSON file under repository .build.") }
+        let seed = URL(fileURLWithPath: try XCTUnwrap(environment["SCHOLIUM_QA_FIXTURES"]))
+        let peer = try String(contentsOf: seed.appendingPathComponent("03-works/QA Work.md"), encoding: .utf8)
+        XCTAssertEqual(peer.components(separatedBy: "runtimefreshuniqueneedle").count, 2,
+                       "The disposable driver fixture must contain its unique peer-vault query oracle.")
+        let ownerDirectory = try XCTUnwrap(testDirectory)
+        let raw = repository.appendingPathComponent(".build/performance-runtime/app-state/raw")
+        try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
+        let run = UUID().uuidString.lowercased()
+        var samples: [[String: Any]] = []
+        app.terminate()
+        for sample in 0..<3 {
+            let directory = ownerDirectory.appendingPathComponent("fresh-\(sample)")
+            homeDirectory = directory.appendingPathComponent("home")
+            triptychDirectory = directory.appendingPathComponent("Triptych")
+            try FileManager.default.createDirectory(at: homeDirectory, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: seed, to: triptychDirectory)
+            let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+            let original = try Data(contentsOf: sourceURL)
+            let probe = raw.appendingPathComponent("\(run)-fresh-\(sample).jsonl")
+            sessionID = UUID()
+            app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = probe.path
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] = "editor_key_to_paint"
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = "runtime"
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE"] = String(sample)
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"] = "1"
+            app.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "QA Autosave A.md"
+            let started = DispatchTime.now().uptimeNanoseconds
+            app.launch()
+            try verifyRuntimeDiagnosticApplicationIdentity()
+            XCTAssertTrue(waitUntil(timeout: 120) { self.documentSurfaceIsUsable(for: "QA Autosave A.md") })
+            let readable = DispatchTime.now().uptimeNanoseconds
+            let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+            XCTAssertEqual(processes.count, 1)
+            let process = try XCTUnwrap(processes.first)
+            let status = app.descendants(matching: .any)["scholium.refreshStatus"]
+            let refreshObservedWhileReadable = status.exists
+            let editor = enterLivePreview()
+            app.typeKey(.end, modifierFlags: [.command])
+            let priorValue = try XCTUnwrap(editor.value as? String)
+            let keyDispatch = DispatchTime.now().uptimeNanoseconds
+            app.typeKey("x", modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 10) { (editor.value as? String).map { $0 != priorValue && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false })
+            let accepted = DispatchTime.now().uptimeNanoseconds
+            XCTAssertTrue(waitUntil(timeout: 10) {
+                guard let text = try? String(contentsOf: probe, encoding: .utf8),
+                    let line = text.split(separator: "\n").first
+                else { return false }
+                return (try? JSONSerialization.jsonObject(with: Data(line.utf8))) is [String: Any]
+            })
+            let probeText = try String(contentsOf: probe, encoding: .utf8)
+            let probeLines = probeText.split(separator: "\n")
+            XCTAssertEqual(probeLines.count, 1)
+            let keyRecord = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(probeLines[0].utf8)) as? [String: Any])
+            XCTAssertEqual(keyRecord["metric"] as? String, "editor_key_to_paint")
+            XCTAssertEqual(keyRecord["sample"] as? Int, sample)
+            let keyDuration = try XCTUnwrap(keyRecord["duration_ms"] as? Double)
+            XCTAssertTrue(keyDuration.isFinite && keyDuration >= 0)
+            let keyCompleted = try XCTUnwrap(keyRecord["completed_uptime_ns"] as? NSNumber).uint64Value
+            XCTAssertGreaterThanOrEqual(keyCompleted, keyDispatch)
+            // Undo before the long autosave deadline keeps the initial on-disk
+            // source/index workload unchanged while proving editing is live.
+            app.typeKey("z", modifierFlags: [.command])
+            XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String == priorValue })
+            XCTAssertEqual(try Data(contentsOf: sourceURL), original)
+            let refreshObservedAfterEdit = status.exists
+            // A real cross-vault query confirms availability; disappearance of
+            // a status alone is never used as a query correctness oracle.
+            let field = app.searchFields["scholium.searchField"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            field.click()
+            typeCommittedText("runtimefreshuniqueneedle", into: field, in: app)
+            selectResearchSearchScope("Triptych", in: app)
+            let results = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.searchResult."))
+            XCTAssertTrue(waitUntil(timeout: 180) {
+                results.count == 1 && self.searchResult(named: "QA Work", in: self.app.windows.firstMatch).exists
+                    && !status.exists && !self.app.descendants(matching: .any)["scholium.searchLoading"].exists
+                    && !self.app.descendants(matching: .any)["scholium.searchUnavailable"].exists
+            }, "A current Triptych query must return exactly the expected peer-vault note.")
+            let searchVerified = DispatchTime.now().uptimeNanoseconds
+            let elapsed: (UInt64) -> Double = { Double($0 - started) / 1_000_000 }
+            samples.append([
+                "sample": sample, "pid": process.processIdentifier, "launch_origin_uptime_ns": started,
+                "readable_observed_ms": elapsed(readable), "first_edit_observed_ms": elapsed(accepted),
+                "key_dispatch_to_observed_ms": Double(accepted - keyDispatch) / 1_000_000,
+                "complete_search_observed_ms": elapsed(searchVerified),
+                "refresh_seen_while_readable": refreshObservedWhileReadable, "refresh_seen_after_edit": refreshObservedAfterEdit,
+                "key_probe_path": probe.path, "key_to_paint_ms": keyDuration,
+                "key_record_since_launch_ms": elapsed(keyCompleted), "source_oracle": "unchanged exact bytes after accepted edit and undo"
+            ])
+            try JSONSerialization.data(withJSONObject: ["schema": "scholium-fresh-readiness-diagnostic-v1", "samples": samples], options: [.prettyPrinted, .sortedKeys]).write(to: output, options: .atomic)
+            app.terminate()
+            XCTAssertEqual(try Data(contentsOf: sourceURL), original)
+            try FileManager.default.removeItem(at: directory)
+        }
+    }
+}
