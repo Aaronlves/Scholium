@@ -13,6 +13,7 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchS
 QA_RUN_LOCK="${ROOT}/.build/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
+QA_PREFERENCES_CAPTURED=0
 
 require_qa_free_space() {
   local available_kb minimum_kb
@@ -74,8 +75,27 @@ terminate_qa_instances() {
 }
 
 cleanup() {
+  local exit_code=$?
+  if (( ! QA_PREFERENCES_CAPTURED )); then
+    if [[ "$(<"${QA_RUN_LOCK}/pid" 2>/dev/null || true)" == "$$" ]]; then
+      rm -rf "${QA_RUN_LOCK}"
+    fi
+    return "${exit_code}"
+  fi
   local result_staging="${ROOT}/.build/qa-xcresult-staging-$$"
   local result_bundles=("${UI_TEST_DERIVED}/Logs/Test/"*.xcresult(N))
+
+
+  terminate_qa_instances
+  "${LSREGISTER}" -u "${REGISTERED_QA}" 2>/dev/null || true
+  if ! python3 "${ROOT}/Tools/Scripts/preserve-qa-preferences.py" restore --owner-pid "$$"; then
+    print -u2 "QA preferences were not verified; original snapshot and QA artifacts retained."
+    if [[ "$(<"${QA_RUN_LOCK}/pid" 2>/dev/null || true)" == "$$" ]]; then
+      rm -rf "${QA_RUN_LOCK}"
+    fi
+    trap - EXIT
+    exit 1
+  fi
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]] && (( ${#result_bundles[@]} > 0 )); then
     mkdir -p "${result_staging}"
     # Each invocation needs its own newest result as evidence. Carrying every
@@ -83,10 +103,6 @@ cleanup() {
     # bound and can outlive the test itself.
     cp -R "${result_bundles[-1]}" "${result_staging}/"
   fi
-
-  terminate_qa_instances
-  "${LSREGISTER}" -u "${REGISTERED_QA}" 2>/dev/null || true
-  defaults delete com.scholium.qa 2>/dev/null || true
   rm -rf "${REGISTERED_QA}"
   if [[ "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != "1" ]]; then
     rm -rf \
@@ -104,6 +120,8 @@ cleanup() {
   if [[ "$(<"${QA_RUN_LOCK}/pid" 2>/dev/null || true)" == "$$" ]]; then
     rm -rf "${QA_RUN_LOCK}"
   fi
+  trap - EXIT
+  exit "${exit_code}"
 }
 
 acquire_qa_run_lock
@@ -111,6 +129,9 @@ trap cleanup EXIT
 
 "${ROOT}/Tools/Scripts/require-unlocked-ui-host.sh"
 require_qa_free_space
+
+python3 "${ROOT}/Tools/Scripts/preserve-qa-preferences.py" capture --owner-pid "$$"
+QA_PREFERENCES_CAPTURED=1
 
 DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 [[ -d "${QA_APP}" && -d "${FIXTURES}" ]] || {

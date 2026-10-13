@@ -18,18 +18,8 @@ struct RelatedContentTextIndex: Codable, Sendable {
         let utf8: Data
 
         init?(_ counts: [String: Int]) {
-            guard UInt32(exactly: counts.count) != nil else { return nil }
+            guard let byteCount = RelatedContentTextIndex.validatedByteCount(counts) else { return nil }
             let sorted = counts.keys.sorted()
-            var byteCount = 0
-            for word in sorted {
-                guard RelatedContentTextIndex.isASCIIWord(word),
-                    let count = counts[word], count > 0,
-                    UInt32(exactly: count) != nil
-                else { return nil }
-                let (sum, overflow) = byteCount.addingReportingOverflow(word.utf8.count)
-                guard !overflow, UInt32(exactly: sum) != nil else { return nil }
-                byteCount = sum
-            }
 
             var entries: [WordEntry] = []
             entries.reserveCapacity(sorted.count)
@@ -95,7 +85,32 @@ struct RelatedContentTextIndex: Codable, Sendable {
     private let preparedWords: PreparedWords?
     let containsCJK: Bool
 
-    private enum CodingKeys: String, CodingKey { case words, containsCJK }
+    /// The persisted value has the same admission rules as the packed query
+    /// index. Opening validation needs these rules, not sorted query storage.
+    struct Stored: Codable, Sendable {
+        let words: [String: Int]?
+        let containsCJK: Bool
+
+        func validate() throws {
+            if let words, RelatedContentTextIndex.validatedByteCount(words) == nil {
+                throw SearchIndexError.corruptDatabase
+            }
+        }
+    }
+
+    private static func validatedByteCount(_ counts: [String: Int]) -> Int? {
+        guard UInt32(exactly: counts.count) != nil else { return nil }
+        var byteCount = 0
+        for (word, count) in counts {
+            guard isASCIIWord(word), count > 0, UInt32(exactly: count) != nil else { return nil }
+            let (sum, overflow) = byteCount.addingReportingOverflow(word.utf8.count)
+            guard !overflow, UInt32(exactly: sum) != nil else { return nil }
+            byteCount = sum
+        }
+        return byteCount
+    }
+
+    var stored: Stored { .init(words: preparedWords?.dictionary(), containsCJK: containsCJK) }
 
     init(_ text: String) {
         var counts: [String: Int] = [:]
@@ -122,13 +137,21 @@ struct RelatedContentTextIndex: Codable, Sendable {
     }
 
     init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        containsCJK = try container.decode(Bool.self, forKey: .containsCJK)
-        if let words = try container.decodeIfPresent([String: Int].self, forKey: .words) {
-            guard let prepared = PreparedWords(words) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .words, in: container, debugDescription: "Invalid prepared ASCII word counts")
-            }
+        let stored = try Stored(from: decoder)
+        do {
+            try self.init(stored: stored)
+        } catch {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Invalid prepared ASCII word counts"))
+        }
+    }
+
+    init(stored: Stored) throws {
+        containsCJK = stored.containsCJK
+        if let words = stored.words {
+            guard let prepared = PreparedWords(words) else { throw SearchIndexError.corruptDatabase }
             preparedWords = prepared
         } else {
             preparedWords = nil
@@ -136,9 +159,7 @@ struct RelatedContentTextIndex: Codable, Sendable {
     }
 
     func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(preparedWords?.dictionary(), forKey: .words)
-        try container.encode(containsCJK, forKey: .containsCJK)
+        try stored.encode(to: encoder)
     }
 
     static func isASCIIWord<S: StringProtocol>(_ text: S) -> Bool {

@@ -749,6 +749,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             status = incomingStatus
         }
         invalidateCatalogLoad()
+        let hadSnapshot = state.snapshotPhase != nil
         let previousSearchGeneration = state.searchGeneration
         var next = state
         next.catalog = snapshot.discovery.catalog
@@ -787,9 +788,11 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             installVisibleNotes(notes, in: &next)
         }
         state = next
+        // Initial activation has no prior query projection to refresh. A live
+        // opening projection does: its nil generation must advance when the
+        // first complete index arrives so pending Search can run again.
         let noteSearchGenerationChanged =
-            previousSearchGeneration != nil
-            && previousSearchGeneration != snapshot.discovery.searchGeneration
+            hadSnapshot && previousSearchGeneration != snapshot.discovery.searchGeneration
         return WindowWorkspaceProjectionCommit(
             searchGenerationChanged: noteSearchGenerationChanged,
             retainedDeletedDocumentPath: retainedDeletedDocumentPath,

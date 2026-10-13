@@ -2567,9 +2567,9 @@ public actor TriptychSearchIndex {
                 from: row.text(at: 0)
             )
             let sourceUTF16Count = row.int(at: 1)
-            _ = try RelatedContentSourceProjection.decode(
+            try RelatedContentSourceProjection.validate(
                 row.data(at: 4), checksum: row.text(at: 5), sourceUTF16Count: sourceUTF16Count)
-            _ = try RelatedContentLexicalProjection.decode(row.data(at: 6), checksum: row.text(at: 7))
+            try RelatedContentLexicalProjection.validate(row.data(at: 6), checksum: row.text(at: 7))
             let paragraphs = try decodeGeneratedJSON([StoredParagraph].self, from: row.text(at: 2))
             for paragraph in paragraphs { try paragraph.validate(sourceUTF16Count: sourceUTF16Count) }
             guard [0, 1].contains(row.int(at: 3)) else { throw SearchIndexError.corruptDatabase }

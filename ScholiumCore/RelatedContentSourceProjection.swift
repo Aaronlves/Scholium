@@ -31,13 +31,22 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             self.scoringDocument = scoringDocument
         }
 
+        struct Stored: Decodable {
+            let range: SearchSourceRange
+            let displayText: String?
+            let matchingText: RelatedContentBM25F.Document.StoredText
+            let scoringDocument: RelatedContentBM25F.Document.Stored
+        }
+
         init(from decoder: any Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            scoringDocument = try container.decode(RelatedContentBM25F.Document.self, forKey: .scoringDocument)
-            let matching = try container.decode(RelatedContentBM25F.Document.StoredText.self, forKey: .matchingText)
-                .resolve(in: scoringDocument)
-            range = try container.decode(SearchSourceRange.self, forKey: .range)
-            displayText = try container.decodeIfPresent(String.self, forKey: .displayText) ?? matching.text
+            try self.init(stored: Stored(from: decoder))
+        }
+
+        init(stored: Stored) throws {
+            scoringDocument = try .init(stored: stored.scoringDocument)
+            let matching = try stored.matchingText.resolve(in: scoringDocument)
+            range = stored.range
+            displayText = stored.displayText ?? matching.text
             let exact = RelatedContentRecommendationPolicy.TextSignature.exact(in: displayText)
             exactReadableText = exact.utf8.elementsEqual(displayText.utf8) ? displayText : exact
             normalizedDisplayText = matching.text
@@ -57,6 +66,21 @@ struct RelatedContentSourceProjection: Codable, Sendable {
 
     let noteScoringDocument: RelatedContentBM25F.Document
     let paragraphs: [Paragraph]
+
+    private struct Stored: Decodable {
+        let noteScoringDocument: RelatedContentBM25F.Document.Stored
+        let paragraphs: [Paragraph.Stored]
+    }
+
+    private enum CodingKeys: String, CodingKey { case noteScoringDocument, paragraphs }
+
+    init(from decoder: any Decoder) throws {
+        // Materialize one passage at a time for queries, releasing each
+        // decoded word dictionary before moving to the next passage.
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        noteScoringDocument = try container.decode(RelatedContentBM25F.Document.self, forKey: .noteScoringDocument)
+        paragraphs = try container.decode([Paragraph].self, forKey: .paragraphs)
+    }
 
     init(document: NoteDocument) throws {
         try Task.checkCancellation()
@@ -87,10 +111,12 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             else { continue }
             let exact = String(document.rawContent[sourceRange])
             let snippet = NoteDocument(relativePath: document.relativePath, rawContent: exact)
-            let displayText = ResearchExcerptPresentation.readableText(exact, includingAnnotations: true)
+            let snippetSemantic = MarkdownSemanticDocument(parsing: snippet)
+            let displayText = ResearchExcerptPresentation.readableText(
+                document: snippet, semantic: snippetSemantic, includingAnnotations: true)
             let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
-            let segments = SearchDocumentProjection(document: snippet).segments.filter {
+            let segments = SearchDocumentProjection(document: snippet, semantic: snippetSemantic).segments.filter {
                 $0.sourceRange != nil && $0.field != .title && $0.field != .alias
             }
             paragraphs.append(
@@ -120,18 +146,39 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     }
 
     static func decode(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws -> Self {
-        guard let data, let checksum, checksum == Self.checksum(data) else {
-            throw SearchIndexError.corruptDatabase
-        }
-        let value: Self
-        do { value = try JSONDecoder().decode(Self.self, from: data) } catch { throw SearchIndexError.corruptDatabase }
+        let value: Self = try decodedStorage(Self.self, data: data, checksum: checksum)
+        // Packed words have already been admitted by the query decoder.
         guard value.noteScoringDocument.isValid,
-            value.paragraphs.allSatisfy({ paragraph in
-                SearchProjectionValidation.valid(paragraphRange: paragraph.range, sourceUTF16Count: sourceUTF16Count)
-                    && paragraph.range.utf16UpperBound - paragraph.range.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count
-                    && paragraph.scoringDocument.isValid
-            })
+            value.paragraphs.allSatisfy({ validRange($0.range, sourceUTF16Count: sourceUTF16Count) && $0.scoringDocument.isValid })
         else { throw SearchIndexError.corruptDatabase }
+        return value
+    }
+
+    private static func validRange(_ range: SearchSourceRange, sourceUTF16Count: Int) -> Bool {
+        SearchProjectionValidation.valid(paragraphRange: range, sourceUTF16Count: sourceUTF16Count)
+            && range.utf16UpperBound - range.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count
+    }
+
+    private static func decodedStorage<Value: Decodable>(_ type: Value.Type, data: Data?, checksum: String?) throws -> Value {
+        guard let data, let checksum, checksum == Self.checksum(data) else { throw SearchIndexError.corruptDatabase }
+        do { return try JSONDecoder().decode(type, from: data) } catch { throw SearchIndexError.corruptDatabase }
+    }
+
+    /// Opening checks every persisted field without constructing passage
+    /// signatures or packed word tables that only a retrieval query consumes.
+    static func validate(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws {
+        _ = try validatedStorage(data, checksum: checksum, sourceUTF16Count: sourceUTF16Count)
+    }
+
+    private static func validatedStorage(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws -> Stored {
+        let value = try decodedStorage(Stored.self, data: data, checksum: checksum)
+        try value.noteScoringDocument.validate()
+        for paragraph in value.paragraphs {
+            guard validRange(paragraph.range, sourceUTF16Count: sourceUTF16Count)
+            else { throw SearchIndexError.corruptDatabase }
+            try paragraph.scoringDocument.validate()
+            try paragraph.matchingText.validate(in: paragraph.scoringDocument)
+        }
         return value
     }
 
