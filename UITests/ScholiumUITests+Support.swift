@@ -825,7 +825,7 @@ extension ScholiumUITests {
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
         authorizeButton.click()
 
-        let panel = app.descendants(matching: .any)["open-panel"]
+        let panel = owner?.sheets["open-panel"] ?? app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         if let owner {
             XCTAssertTrue(owner.exists)
@@ -852,27 +852,16 @@ extension ScholiumUITests {
             app.typeKey("g", modifierFlags: [.command, .shift])
             let goToFolderSheet = app.sheets.matching(
                 NSPredicate(format: "identifier != %@", "open-panel")
-            ).firstMatch
+            ).containing(.textField, identifier: "PathTextField").firstMatch
             XCTAssertTrue(goToFolderSheet.waitForExistence(timeout: 5))
-            let pathField = goToFolderSheet.textFields.firstMatch
+            let pathField = goToFolderSheet.textFields["PathTextField"]
             XCTAssertTrue(pathField.waitForExistence(timeout: 5))
             pathField.click()
             pathField.typeKey("a", modifierFlags: .command)
             pathField.typeText(folder.path)
-            let confirmFolder = goToFolderSheet.buttons.allElementsBoundByIndex
-                .reversed()
-                .first(where: {
-                    $0.isEnabled
-                        && $0.label != "Cancel"
-                        && $0.label != "Close"
-                        && $0.identifier != "CancelButton"
-                        && $0.identifier != "CloseButton"
-                })
-            if let confirmFolder {
-                confirmFolder.click()
-            } else {
-                pathField.typeKey(.return, modifierFlags: [])
-            }
+            // Confirm the exact native path field. Completion can change the
+            // sheet's button collection between AX queries, invalidating indices.
+            pathField.typeKey(.return, modifierFlags: [])
             // The system Go to Folder field can first accept its path
             // completion without dismissing the sheet. Confirm that resolved
             // folder in a second step when the sheet remains visible.
