@@ -240,15 +240,16 @@ extension ScholiumUITests {
         func acceptEditAndRestore() throws -> UInt64 {
             let editor = enterLivePreview()
             XCTAssertTrue(waitUntil(timeout: 5) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor) })
+            app.typeKey(.end, modifierFlags: [.command])
             let before = try XCTUnwrap(editor.value as? String)
-            app.typeKey(.downArrow, modifierFlags: [.command])
             app.typeKey("x", modifierFlags: [])
             XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String).map { $0 != before && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false })
             let accepted = DispatchTime.now().uptimeNanoseconds
             app.typeKey("s", modifierFlags: [.command])
             XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: note)) == original + Data("x".utf8) })
             app.typeKey("z", modifierFlags: [.command])
-            XCTAssertTrue(waitUntil(timeout: 8) { editor.value as? String == before })
+            // The long editor's AX text reflects its rendered viewport. Exact
+            // saved Markdown is the stable Undo oracle across scroll changes.
             app.typeKey("s", modifierFlags: [.command])
             XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: note)) == original })
             return accepted
