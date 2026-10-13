@@ -969,16 +969,46 @@ struct ExternalMarkdownWindowLifecycleTests {
             let reference = VaultNoteReference(
                 vaultID: UUID(), vaultName: "Topics", vaultRole: .topicKnowledge,
                 relativePath: "Outside 2.md")
-            fixture.model.pendingImport = ExternalMarkdownImportResult(
+            let pending = ExternalMarkdownImportResult(
                 reference: reference, triptychID: UUID(), message: "Synthetic recovery",
                 requiresRecovery: true)
+            fixture.model.pendingImport = pending
+            let originalBytes = try Data(contentsOf: fixture.url)
             #expect(!fixture.model.canImport)
             #expect(fixture.model.canPresentImport)
             await #expect(throws: (any Error).self) { try await fixture.model.captureImport() }
             try fixture.insertNative("\r\nOriginal editing remains available")
+            let editedBytes = Data(fixture.editor.checkedSource.utf8)
+            #expect(fixture.model.canSave)
+            #expect(try Data(contentsOf: fixture.url) == originalBytes)
+            let pause = PausedBridgeRequest()
+            fixture.bridge.nextTextQueryPause = pause
+            let refresh = Task { await fixture.model.refreshFromDisk() }
+            do {
+                try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
+                    await pause.waitForArrival()
+                }
+                #expect(fixture.model.isRefreshing)
+                #expect(!fixture.model.canSave)
+                #expect(await fixture.model.save() == false)
+                #expect(try Data(contentsOf: fixture.url) == originalBytes)
+                #expect(Data(fixture.editor.checkedSource.utf8) == editedBytes)
+                pause.release()
+                await refresh.value
+            } catch {
+                pause.release()
+                await refresh.value
+                throw error
+            }
             #expect(fixture.model.canSave)
             #expect(await fixture.model.save())
+            #expect(try Data(contentsOf: fixture.url) == editedBytes)
             #expect(fixture.model.pendingImport?.reference == reference)
+            #expect(fixture.model.pendingImport?.triptychID == pending.triptychID)
+            #expect(fixture.model.pendingImport?.message == pending.message)
+            #expect(fixture.model.pendingImport?.requiresRecovery == true)
+            #expect(fixture.model.pendingImport?.recoveryRecord == nil)
+            #expect(fixture.model.pendingImport?.persistenceFailure == nil)
             #expect(!fixture.model.canImport)
         }
     }
@@ -1108,7 +1138,23 @@ struct ExternalMarkdownWindowLifecycleTests {
             let editor = MarkdownEditorSession(bridgeDispatcher: bridge)
             let model = ExternalMarkdownWindowModel(url: url, editorSession: editor)
             defer { model.close() }
+            let refreshes = AsyncStream<Bool>.makeStream()
+            let refreshObservation = model.$isRefreshing.sink { refreshes.continuation.yield($0) }
+            defer {
+                refreshObservation.cancel()
+                refreshes.continuation.finish()
+            }
             await model.open()
+            // Join the initial checked read scheduled by startObservation before
+            // allocating the editor, as the native focus fixture does below.
+            try await withScholiumLifecycleDeadline(phase: .routeReadiness, timeout: .seconds(3)) {
+                var started = false
+                for await refreshing in refreshes.stream {
+                    try Task.checkCancellation()
+                    if refreshing { started = true }
+                    if started && !refreshing { break }
+                }
+            }
             let opened = try #require(model.snapshot)
             model.selectMode(.source)
             let webView = WKWebView()
