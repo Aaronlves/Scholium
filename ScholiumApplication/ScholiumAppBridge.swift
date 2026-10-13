@@ -436,38 +436,15 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
         var operationAdmitted = false
         do {
             try AppBridgeIO.configure(peer, timeout: timeout)
-            let clientNonce = try AppBridgeIO.readFrame(from: peer, deadline: authenticationDeadline)
-            guard clientNonce.count == 32 else {
-                throw ScholiumAppBridgeError.permissionDenied
-            }
-            let serverNonce = try AppBridgeAuthentication.randomData(count: 32)
-            let serverTag = AppBridgeAuthentication.tag(
-                role: "server",
-                secret: secret,
-                clientNonce: clientNonce,
-                serverNonce: serverNonce
-            )
-            try AppBridgeIO.writeFrame(serverNonce + serverTag, to: peer, deadline: authenticationDeadline)
-            let authenticated = try AppBridgeIO.readFrame(from: peer, deadline: authenticationDeadline)
-            guard authenticated.count > 32 else {
-                throw ScholiumAppBridgeError.permissionDenied
-            }
-            let clientTag = Data(authenticated.prefix(32))
-            guard
-                AppBridgeAuthentication.verify(
-                    tag: clientTag,
-                    role: "client",
-                    secret: secret,
-                    clientNonce: clientNonce,
-                    serverNonce: serverNonce
-                )
-            else { throw ScholiumAppBridgeError.permissionDenied }
-            try authenticationDeadline.check()
+            let body = try AppBridgeAuthentication.authenticate(
+                secret: secret, deadline: authenticationDeadline,
+                readFrame: { try AppBridgeIO.readFrame(from: peer, deadline: $0) },
+                writeFrame: { try AppBridgeIO.writeFrame($0, to: peer, deadline: $1) })
             let promoted = lock.withLock { !stopping && peerAdmission.authenticate(peer) }
             guard promoted else { throw ScholiumAppBridgeError.permissionDenied }
             let request = try AppBridgeCoding.decode(
                 ScholiumAppBridgeRequest.self,
-                from: Data(authenticated.dropFirst(32))
+                from: body
             )
             correlationID = request.correlationID
             let box = AppBridgeResultBox()
@@ -585,7 +562,7 @@ struct AppBridgePeerAdmission {
 
 /// ContinuousClock is monotonic. The same instant covers all partial I/O and
 /// all authentication frames, so byte progress never renews the budget.
-struct AppBridgeDeadline: Sendable {
+struct AppBridgeDeadline: Sendable, Equatable {
     private let instant: ContinuousClock.Instant
 
     init(timeout: TimeInterval) {
@@ -659,7 +636,43 @@ private enum AppBridgeCoding {
     }
 }
 
-private enum AppBridgeAuthentication {
+enum AppBridgeAuthentication {
+    static func authenticate(
+        secret: Data,
+        deadline: AppBridgeDeadline,
+        readFrame: (AppBridgeDeadline) throws -> Data,
+        writeFrame: (Data, AppBridgeDeadline) throws -> Void
+    ) throws -> Data {
+        let clientNonce = try readFrame(deadline)
+        guard clientNonce.count == 32 else {
+            throw ScholiumAppBridgeError.permissionDenied
+        }
+        let serverNonce = try AppBridgeAuthentication.randomData(count: 32)
+        let serverTag = AppBridgeAuthentication.tag(
+            role: "server",
+            secret: secret,
+            clientNonce: clientNonce,
+            serverNonce: serverNonce
+        )
+        try writeFrame(serverNonce + serverTag, deadline)
+        let authenticated = try readFrame(deadline)
+        guard authenticated.count > 32 else {
+            throw ScholiumAppBridgeError.permissionDenied
+        }
+        let clientTag = Data(authenticated.prefix(32))
+        guard
+            AppBridgeAuthentication.verify(
+                tag: clientTag,
+                role: "client",
+                secret: secret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            )
+        else { throw ScholiumAppBridgeError.permissionDenied }
+        try deadline.check()
+        return Data(authenticated.dropFirst(32))
+    }
+
     static func randomData(count: Int) throws -> Data {
         var data = Data(count: count)
         let status = data.withUnsafeMutableBytes {
