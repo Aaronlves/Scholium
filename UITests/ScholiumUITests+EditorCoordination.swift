@@ -1492,8 +1492,9 @@ extension ScholiumUITests {
         else { throw XCTSkip("Diagnostic output must be a new JSON file under repository .build.") }
         let seed = URL(fileURLWithPath: try XCTUnwrap(environment["SCHOLIUM_QA_FIXTURES"]))
         let peer = try String(contentsOf: seed.appendingPathComponent("03-works/QA Work.md"), encoding: .utf8)
-        XCTAssertEqual(peer.components(separatedBy: "runtimefreshuniqueneedle").count, 2,
-                       "The disposable driver fixture must contain its unique peer-vault query oracle.")
+        XCTAssertEqual(
+            peer.components(separatedBy: "runtimefreshuniqueneedle").count, 2,
+            "The disposable driver fixture must contain its unique peer-vault query oracle.")
         let ownerDirectory = try XCTUnwrap(testDirectory)
         let raw = repository.appendingPathComponent(".build/performance-runtime/app-state/raw")
         try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
@@ -1532,14 +1533,18 @@ extension ScholiumUITests {
             let priorValue = try XCTUnwrap(editor.value as? String)
             let keyDispatch = DispatchTime.now().uptimeNanoseconds
             app.typeKey("x", modifierFlags: [])
-            XCTAssertTrue(waitUntil(timeout: 10) { (editor.value as? String).map { $0 != priorValue && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false })
+            XCTAssertTrue(
+                waitUntil(timeout: 10) {
+                    (editor.value as? String).map { $0 != priorValue && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false
+                })
             let accepted = DispatchTime.now().uptimeNanoseconds
-            XCTAssertTrue(waitUntil(timeout: 10) {
-                guard let text = try? String(contentsOf: probe, encoding: .utf8),
-                    let line = text.split(separator: "\n").first
-                else { return false }
-                return (try? JSONSerialization.jsonObject(with: Data(line.utf8))) is [String: Any]
-            })
+            XCTAssertTrue(
+                waitUntil(timeout: 10) {
+                    guard let text = try? String(contentsOf: probe, encoding: .utf8),
+                        let line = text.split(separator: "\n").first
+                    else { return false }
+                    return (try? JSONSerialization.jsonObject(with: Data(line.utf8))) is [String: Any]
+                })
             let probeText = try String(contentsOf: probe, encoding: .utf8)
             let probeLines = probeText.split(separator: "\n")
             XCTAssertEqual(probeLines.count, 1)
@@ -1564,11 +1569,12 @@ extension ScholiumUITests {
             typeCommittedText("runtimefreshuniqueneedle", into: field, in: app)
             selectResearchSearchScope("Triptych", in: app)
             let results = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.searchResult."))
-            XCTAssertTrue(waitUntil(timeout: 180) {
-                results.count == 1 && self.searchResult(named: "QA Work", in: self.app.windows.firstMatch).exists
-                    && !status.exists && !self.app.descendants(matching: .any)["scholium.searchLoading"].exists
-                    && !self.app.descendants(matching: .any)["scholium.searchUnavailable"].exists
-            }, "A current Triptych query must return exactly the expected peer-vault note.")
+            XCTAssertTrue(
+                waitUntil(timeout: 180) {
+                    results.count == 1 && self.searchResult(named: "QA Work", in: self.app.windows.firstMatch).exists
+                        && !status.exists && !self.app.descendants(matching: .any)["scholium.searchLoading"].exists
+                        && !self.app.descendants(matching: .any)["scholium.searchUnavailable"].exists
+                }, "A current Triptych query must return exactly the expected peer-vault note.")
             let searchVerified = DispatchTime.now().uptimeNanoseconds
             let elapsed: (UInt64) -> Double = { Double($0 - started) / 1_000_000 }
             samples.append([
@@ -1578,9 +1584,11 @@ extension ScholiumUITests {
                 "complete_search_observed_ms": elapsed(searchVerified),
                 "refresh_seen_while_readable": refreshObservedWhileReadable, "refresh_seen_after_edit": refreshObservedAfterEdit,
                 "key_probe_path": probe.path, "key_to_paint_ms": keyDuration,
-                "key_record_since_launch_ms": elapsed(keyCompleted), "source_oracle": "unchanged exact bytes after accepted edit and undo"
+                "key_record_since_launch_ms": elapsed(keyCompleted), "source_oracle": "unchanged exact bytes after accepted edit and undo",
             ])
-            try JSONSerialization.data(withJSONObject: ["schema": "scholium-fresh-readiness-diagnostic-v1", "samples": samples], options: [.prettyPrinted, .sortedKeys]).write(to: output, options: .atomic)
+            try JSONSerialization.data(
+                withJSONObject: ["schema": "scholium-fresh-readiness-diagnostic-v1", "samples": samples], options: [.prettyPrinted, .sortedKeys]
+            ).write(to: output, options: .atomic)
             app.terminate()
             XCTAssertEqual(try Data(contentsOf: sourceURL), original)
             try FileManager.default.removeItem(at: directory)

@@ -141,9 +141,10 @@ struct RelatedContentTextIndex: Codable, Sendable {
         do {
             try self.init(stored: stored)
         } catch {
-            throw DecodingError.dataCorrupted(.init(
-                codingPath: decoder.codingPath,
-                debugDescription: "Invalid prepared ASCII word counts"))
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Invalid prepared ASCII word counts"))
         }
     }
 

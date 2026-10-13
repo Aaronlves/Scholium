@@ -11,92 +11,92 @@ struct WorkspaceLiveRefreshRaceTests {
     }
 
     #if DEBUG
-    // This deterministic barrier is compiled only into the Debug runtime.
-    @Test(
-        "A delayed live preflight skips an already published commit and retains later content, folder, identity, and metadata changes",
-        arguments: ExternalChange.allCases)
-    func publishedCommitOvertakesLivePreflight(externalChange: ExternalChange) async throws {
-        try await withWorkspace { runtime, handle, id, sourceURL in
-            let original = try await handle.documents.load(id)
-            let target = try await capturedSaveTarget(handle, id, revision: original.fingerprint)
-            let barrier = LiveInventoryPreflightBarrier()
-            await handle.setLiveInventoryPreflightBarrierForTesting { await barrier.holdOnce() }
-            do {
-                try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 100), vaultID: id.vaultID)
-                await barrier.waitUntilArrived()
-                let liveTask = try #require(await handle.liveIndexRefreshTask?.task)
-                let committedText = "# Committed\r\n\r\nExact source B. 😀\r\n"
-                let save = try await handle.documents.save(target, changeSet: .source(committedText))
-                let committed = try await handle.snapshot()
-                #expect(committed.phase.isComplete)
-                #expect(committed.document(id: id)?.fingerprint == save.committedValue.document.fingerprint)
-                let evidence = WorkspaceDerivedRefreshEvidence(snapshot: committed)
-                let catalog = try #require(await handle.services.sourceCatalogs[id.vaultID])
-                let sourceGeneration = try await catalog.snapshot(refreshFolders: false).generation
-                let externalText = "# External\n\nA later external source C.\n"
-                let committedNote = try #require(committed.document(id: id))
-                let committedGraph = try #require(committed.discovery.catalog.graph)
-                let laterIdentity = UUID()
-                switch externalChange {
-                case .none:
-                    break
-                case .source:
-                    try Data(externalText.utf8).write(to: sourceURL)
-                    try await runtime.deliverPooledVaultEventForTesting(
-                        .init(added: [], modified: [id.relativePath], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false),
-                        vaultID: id.vaultID)
-                case .folder:
-                    try FileManager.default.createDirectory(
-                        at: sourceURL.deletingLastPathComponent().appendingPathComponent("Later folder"), withIntermediateDirectories: true)
-                    try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 101), vaultID: id.vaultID)
-                case .identity:
-                    let noteID = try #require(committedNote.stableIdentity.resolvedID)
-                    _ = try await handle.services.controlStore.purgeIdentity(id: noteID, vaultID: id.vaultID, relativePath: id.relativePath)
-                    _ = try await handle.services.controlStore.identity(
-                        forVaultID: id.vaultID, relativePath: id.relativePath, fingerprint: committedNote.fingerprint, preferredID: laterIdentity)
-                    try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 101), vaultID: id.vaultID)
-                case .fileMetadata:
-                    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: sourceURL.path)
-                    try await runtime.deliverPooledVaultEventForTesting(
-                        .init(added: [], modified: [id.relativePath], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false),
-                        vaultID: id.vaultID)
+        // This deterministic barrier is compiled only into the Debug runtime.
+        @Test(
+            "A delayed live preflight skips an already published commit and retains later content, folder, identity, and metadata changes",
+            arguments: ExternalChange.allCases)
+        func publishedCommitOvertakesLivePreflight(externalChange: ExternalChange) async throws {
+            try await withWorkspace { runtime, handle, id, sourceURL in
+                let original = try await handle.documents.load(id)
+                let target = try await capturedSaveTarget(handle, id, revision: original.fingerprint)
+                let barrier = LiveInventoryPreflightBarrier()
+                await handle.setLiveInventoryPreflightBarrierForTesting { await barrier.holdOnce() }
+                do {
+                    try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 100), vaultID: id.vaultID)
+                    await barrier.waitUntilArrived()
+                    let liveTask = try #require(await handle.liveIndexRefreshTask?.task)
+                    let committedText = "# Committed\r\n\r\nExact source B. 😀\r\n"
+                    let save = try await handle.documents.save(target, changeSet: .source(committedText))
+                    let committed = try await handle.snapshot()
+                    #expect(committed.phase.isComplete)
+                    #expect(committed.document(id: id)?.fingerprint == save.committedValue.document.fingerprint)
+                    let evidence = WorkspaceDerivedRefreshEvidence(snapshot: committed)
+                    let catalog = try #require(await handle.services.sourceCatalogs[id.vaultID])
+                    let sourceGeneration = try await catalog.snapshot(refreshFolders: false).generation
+                    let externalText = "# External\n\nA later external source C.\n"
+                    let committedNote = try #require(committed.document(id: id))
+                    let committedGraph = try #require(committed.discovery.catalog.graph)
+                    let laterIdentity = UUID()
+                    switch externalChange {
+                    case .none:
+                        break
+                    case .source:
+                        try Data(externalText.utf8).write(to: sourceURL)
+                        try await runtime.deliverPooledVaultEventForTesting(
+                            .init(added: [], modified: [id.relativePath], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false),
+                            vaultID: id.vaultID)
+                    case .folder:
+                        try FileManager.default.createDirectory(
+                            at: sourceURL.deletingLastPathComponent().appendingPathComponent("Later folder"), withIntermediateDirectories: true)
+                        try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 101), vaultID: id.vaultID)
+                    case .identity:
+                        let noteID = try #require(committedNote.stableIdentity.resolvedID)
+                        _ = try await handle.services.controlStore.purgeIdentity(id: noteID, vaultID: id.vaultID, relativePath: id.relativePath)
+                        _ = try await handle.services.controlStore.identity(
+                            forVaultID: id.vaultID, relativePath: id.relativePath, fingerprint: committedNote.fingerprint, preferredID: laterIdentity)
+                        try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 101), vaultID: id.vaultID)
+                    case .fileMetadata:
+                        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: sourceURL.path)
+                        try await runtime.deliverPooledVaultEventForTesting(
+                            .init(added: [], modified: [id.relativePath], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false),
+                            vaultID: id.vaultID)
+                    }
+                    await barrier.release()
+                    await liveTask.value
+                    let final = try await handle.snapshot()
+                    #expect(final.phase.isComplete)
+                    let finalGraph = try #require(final.discovery.catalog.graph)
+                    switch externalChange {
+                    case .source:
+                        #expect(final.document(id: id)?.fingerprint == DocumentFingerprint(content: externalText))
+                        #expect(finalGraph.generation > committedGraph.generation)
+                        #expect(final.discovery.searchGeneration != committed.discovery.searchGeneration)
+                        #expect(try Data(contentsOf: sourceURL) == Data(externalText.utf8))
+                    case .folder:
+                        #expect(final.vault(id: id.vaultID)?.folders.contains(where: { $0.rawValue == "Later folder" }) == true)
+                        #expect(finalGraph.generation > committedGraph.generation)
+                        #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
+                    case .identity:
+                        #expect(final.document(id: id)?.stableIdentity.resolvedID == laterIdentity)
+                        #expect(finalGraph.generation > committedGraph.generation)
+                        #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
+                    case .fileMetadata:
+                        #expect(final.document(id: id)?.fileMetadata != committedNote.fileMetadata)
+                        #expect(finalGraph.generation > committedGraph.generation)
+                        #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
+                    case .none:
+                        #expect(WorkspaceDerivedRefreshEvidence(snapshot: final) == evidence)
+                        #expect(try await catalog.snapshot(refreshFolders: false).generation == sourceGeneration)
+                        #expect(try Data(contentsOf: sourceURL) == Data(committedText.utf8))
+                    }
+                    await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                } catch {
+                    await barrier.release()
+                    await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                    throw error
                 }
-                await barrier.release()
-                await liveTask.value
-                let final = try await handle.snapshot()
-                #expect(final.phase.isComplete)
-                let finalGraph = try #require(final.discovery.catalog.graph)
-                switch externalChange {
-                case .source:
-                    #expect(final.document(id: id)?.fingerprint == DocumentFingerprint(content: externalText))
-                    #expect(finalGraph.generation > committedGraph.generation)
-                    #expect(final.discovery.searchGeneration != committed.discovery.searchGeneration)
-                    #expect(try Data(contentsOf: sourceURL) == Data(externalText.utf8))
-                case .folder:
-                    #expect(final.vault(id: id.vaultID)?.folders.contains(where: { $0.rawValue == "Later folder" }) == true)
-                    #expect(finalGraph.generation > committedGraph.generation)
-                    #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
-                case .identity:
-                    #expect(final.document(id: id)?.stableIdentity.resolvedID == laterIdentity)
-                    #expect(finalGraph.generation > committedGraph.generation)
-                    #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
-                case .fileMetadata:
-                    #expect(final.document(id: id)?.fileMetadata != committedNote.fileMetadata)
-                    #expect(finalGraph.generation > committedGraph.generation)
-                    #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
-                case .none:
-                    #expect(WorkspaceDerivedRefreshEvidence(snapshot: final) == evidence)
-                    #expect(try await catalog.snapshot(refreshFolders: false).generation == sourceGeneration)
-                    #expect(try Data(contentsOf: sourceURL) == Data(committedText.utf8))
-                }
-                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
-            } catch {
-                await barrier.release()
-                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
-                throw error
             }
         }
-    }
 
     #endif
 

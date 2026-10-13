@@ -35,9 +35,11 @@ func requireQAPreferencePreservation() throws {
         pid > 1, process.terminationStatus == 0, !started.isEmpty,
         owner["ownerStarted"] as? String == started
     else {
-        throw NSError(domain: "ScholiumUITests.Preservation", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Run through the QA preservation owner; do not reuse a stale preference snapshot."
-        ])
+        throw NSError(
+            domain: "ScholiumUITests.Preservation", code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Run through the QA preservation owner; do not reuse a stale preference snapshot."
+            ])
     }
     if present {
         let snapshot = try Data(contentsOf: state.appendingPathComponent("original.plist"))
@@ -200,8 +202,9 @@ final class ScholiumUITests: XCTestCase {
             guard environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_OUTPUT"] != nil else {
                 throw XCTSkip("The opt-in runtime diagnostic is not configured.")
             }
-            _ = try XCTUnwrap(environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"],
-                              "Runtime measurements require the exact isolated QA bundle path.")
+            _ = try XCTUnwrap(
+                environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"],
+                "Runtime measurements require the exact isolated QA bundle path.")
         }
         try requireQAPreferencePreservation()
         sessionID = UUID()

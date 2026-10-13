@@ -15,7 +15,8 @@ public enum ResearchExcerptPresentation {
     package static func readableText(
         document: NoteDocument, semantic: MarkdownSemanticDocument, includingAnnotations: Bool = false
     ) -> String {
-        let boundSemantic = semantic.fingerprint == document.fingerprint
+        let boundSemantic =
+            semantic.fingerprint == document.fingerprint
             ? semantic : MarkdownSemanticDocument(parsing: document)
         let links = boundSemantic.links
         // Links presents annotations separately; related excerpts retain their wording.

@@ -243,7 +243,10 @@ extension ScholiumUITests {
             app.typeKey(.end, modifierFlags: [.command])
             let before = try XCTUnwrap(editor.value as? String)
             app.typeKey("x", modifierFlags: [])
-            XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String).map { $0 != before && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false })
+            XCTAssertTrue(
+                waitUntil(timeout: 8) {
+                    (editor.value as? String).map { $0 != before && $0.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("x") } ?? false
+                })
             let accepted = DispatchTime.now().uptimeNanoseconds
             app.typeKey("s", modifierFlags: [.command])
             XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: note)) == original + Data("x".utf8) })
@@ -259,12 +262,17 @@ extension ScholiumUITests {
                 "schema": "scholium-runtime-readiness-diagnostic-v1", "run_id": runID,
                 "fixture_note_count": notesBefore.count, "session_id": sessionID.uuidString,
                 "raw_directory": raw.path,
-                "conditions": "Isolated QA build; setup already opened the 500-note fixture. Fixture-selected restoration of the genuinely persisted A selection with openNote nil; ordinary product launch intentionally restores no selected document. Same retained home, session, indexes and OS caches. Three new app processes; no cache purge. Not installed-release cold launch.",
+                "conditions":
+                    "Isolated QA build; setup already opened the 500-note fixture. Fixture-selected restoration of the genuinely persisted A selection with openNote nil; ordinary product launch intentionally restores no selected document. Same retained home, session, indexes and OS caches. Three new app processes; no cache purge. Not installed-release cold launch.",
                 "origins": [
-                    "launch_to_read_ready_ms": "Driver DispatchTime immediately before XCUIApplication.launch through native first_read_activation completed_uptime_ns; includes XCTest launch transport, excludes later AX observation.",
-                    "launch_to_accepted_edit_observed_ms": "Same launch origin through XCTest observing accepted x after a native key; exact saved bytes are verified afterward; includes read checks, Review-to-Edit transition, focus/caret transport and polling. Conservative driver bound, not app-only latency.",
-                    "note_switch_read_ready_ms": "Native opening action through existing warm_read_activation rendered-document readiness. Actual native edit/save/undo verified separately.",
-                    "vault_selection_observed_ms": "Driver DispatchTime before one native segment click through XCTest observing selected destination and expected Library row; includes click/idle/polling overhead.",
+                    "launch_to_read_ready_ms":
+                        "Driver DispatchTime immediately before XCUIApplication.launch through native first_read_activation completed_uptime_ns; includes XCTest launch transport, excludes later AX observation.",
+                    "launch_to_accepted_edit_observed_ms":
+                        "Same launch origin through XCTest observing accepted x after a native key; exact saved bytes are verified afterward; includes read checks, Review-to-Edit transition, focus/caret transport and polling. Conservative driver bound, not app-only latency.",
+                    "note_switch_read_ready_ms":
+                        "Native opening action through existing warm_read_activation rendered-document readiness. Actual native edit/save/undo verified separately.",
+                    "vault_selection_observed_ms":
+                        "Driver DispatchTime before one native segment click through XCTest observing selected destination and expected Library row; includes click/idle/polling overhead.",
                 ],
                 "unmeasured": ["first frame", "Search/index readiness", "installed-release cold launch"],
                 "launches": launches, "note_switches": switches, "vault_switches": vaults,
@@ -278,11 +286,12 @@ extension ScholiumUITests {
         setupField.click()
         typeCommittedText("runtimefreshuniqueneedle", into: setupField, in: app)
         selectResearchSearchScope("Triptych", in: app)
-        XCTAssertTrue(waitUntil(timeout: 180) {
-            self.searchResult(named: "QA Work", in: self.app.windows.firstMatch).exists
-                && !self.app.descendants(matching: .any)["scholium.searchLoading"].exists
-                && !self.app.descendants(matching: .any)["scholium.refreshStatus"].exists
-        }, "The untimed setup must finish initial indexing before warm measurements.")
+        XCTAssertTrue(
+            waitUntil(timeout: 180) {
+                self.searchResult(named: "QA Work", in: self.app.windows.firstMatch).exists
+                    && !self.app.descendants(matching: .any)["scholium.searchLoading"].exists
+                    && !self.app.descendants(matching: .any)["scholium.refreshStatus"].exists
+            }, "The untimed setup must finish initial indexing before warm measurements.")
         setupField.click()
         app.typeKey("a", modifierFlags: [.command])
         app.typeKey(.delete, modifierFlags: [])
@@ -358,9 +367,10 @@ extension ScholiumUITests {
                 XCTAssertTrue(control.waitForExistence(timeout: 5))
                 let started = DispatchTime.now().uptimeNanoseconds
                 control.click()
-                XCTAssertTrue(waitUntil(timeout: 15) {
-                    row.exists && (control.isSelected || self.selectionControlIsSelected(control))
-                })
+                XCTAssertTrue(
+                    waitUntil(timeout: 15) {
+                        row.exists && (control.isSelected || self.selectionControlIsSelected(control))
+                    })
                 let completed = DispatchTime.now().uptimeNanoseconds
                 XCTAssertEqual(documentTitle(), "QA Autosave A", "Vault browsing must retain the selected document.")
                 vaults.append([

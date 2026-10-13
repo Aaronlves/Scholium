@@ -243,15 +243,17 @@ extension ScholiumUITests {
     @MainActor
     func verifyRuntimeDiagnosticApplicationIdentity() throws {
         guard let path = ProcessInfo.processInfo.environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_APP_PATH"] else { return }
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").count == 1
-        }, "Wait for Launch Services registration before checking the exact executable.")
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").count == 1
+            }, "Wait for Launch Services registration before checking the exact executable.")
         let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
         XCTAssertEqual(processes.count, 1)
         let process = try XCTUnwrap(processes.first)
         let expected = URL(fileURLWithPath: path).appendingPathComponent("Contents/MacOS/Scholium").resolvingSymlinksInPath().path
-        XCTAssertEqual(process.executableURL?.resolvingSymlinksInPath().path, expected,
-                       "Reject measurements from another QA bundle with the same identifier.")
+        XCTAssertEqual(
+            process.executableURL?.resolvingSymlinksInPath().path, expected,
+            "Reject measurements from another QA bundle with the same identifier.")
     }
 
     @MainActor
