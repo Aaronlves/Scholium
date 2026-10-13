@@ -88,6 +88,8 @@ cleanup() {
   if [[ "$(state_signature "${PRODUCTION_STATE}")" != "${BEFORE_SIGNATURE}" ]]; then
     print -u2 "The packaged Core smoke mutated production machine state."
     exit_code=1
+  else
+    print "Production State-v1 files: unchanged (preferences require a clean test account)"
   fi
   local isolated_home
   for isolated_home in "${ISOLATED_HOMES[@]}"; do
@@ -208,4 +210,3 @@ run_smoke() {
 
 if ! run_smoke mounted "${MOUNTED_APP}"; then exit 1; fi
 if ! run_smoke copied "${COPIED_APP}"; then exit 1; fi
-print "Production State-v1 files: unchanged (preferences require a clean test account)"
