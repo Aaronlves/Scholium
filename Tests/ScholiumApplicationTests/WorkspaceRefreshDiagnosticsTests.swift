@@ -155,11 +155,16 @@ struct WorkspaceRefreshDiagnosticsTests {
         }
         let label = ProcessInfo.processInfo.environment["SCHOLIUM_REFRESH_DIAGNOSTIC_LABEL"] ?? "sample"
         let safeLabel = label.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        #if DEBUG
+            let buildConfiguration = "SwiftPM Debug"
+        #else
+            let buildConfiguration = "SwiftPM Release"
+        #endif
         let report: [String: Any] = [
             "fixture": "standard-500-expanded-mixed-script",
             "fixture_sha256": fixtureHash(sourceOracle, fixtureRoot: fixtureRoot),
             "source_bytes": sourceOracle.values.reduce(0) { $0 + $1.count },
-            "configuration": "SwiftPM Debug; presentation wait excluded",
+            "configuration": "\(buildConfiguration); presentation wait excluded",
             "cold_configuration_ms": milliseconds(coldElapsed),
             "cold_search_ms": milliseconds(coldMeasurement.searchDuration),
             "cold_cache_read_work_ms": milliseconds(coldMeasurement.cacheReadDuration),

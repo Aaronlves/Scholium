@@ -10,6 +10,8 @@ struct WorkspaceLiveRefreshRaceTests {
         case none, source, folder, identity, fileMetadata
     }
 
+    #if DEBUG
+    // This deterministic barrier is compiled only into the Debug runtime.
     @Test(
         "A delayed live preflight skips an already published commit and retains later content, folder, identity, and metadata changes",
         arguments: ExternalChange.allCases)
@@ -95,6 +97,8 @@ struct WorkspaceLiveRefreshRaceTests {
             }
         }
     }
+
+    #endif
 
     @Test("A queued live-only refresh revalidates its complete inputs under the source lease")
     func queuedLiveRefreshRevalidatesPublishedInputs() async throws {
