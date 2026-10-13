@@ -208,7 +208,9 @@ struct AgentChatToolbarUnderlapTests {
         try await settle(
             split.view, stage: "retained_resize",
             diagnostic: {
-                readingDiagnostic() + " offset=\(offset()) expected_offset=\(retainedOffset) original_height=\(originalViewportHeight) requested_height=\(resizedContentHeight)"
+                readingDiagnostic()
+                    + " offset=\(offset()) expected_offset=\(retainedOffset)"
+                    + " original_height=\(originalViewportHeight) requested_height=\(resizedContentHeight)"
                     + " before_frame=\(originalWindowFrame) before_content=\(originalContentBounds)"
                     + " frame=\(window.frame) content=\(String(describing: window.contentView?.bounds))"
                     + " layout=\(window.contentLayoutRect) screen=\(String(describing: window.screen?.visibleFrame))"
@@ -219,7 +221,8 @@ struct AgentChatToolbarUnderlapTests {
                 && earlier.enclosingScrollView === scroll
         }
         print(
-            "CHAT_TOOLBAR_RESIZE original_viewport_height=\(originalViewportHeight) viewport_height=\(scroll.contentView.bounds.height) requested_height=\(resizedContentHeight)"
+            "CHAT_TOOLBAR_RESIZE original_viewport_height=\(originalViewportHeight) viewport_height=\(scroll.contentView.bounds.height)"
+                + " requested_height=\(resizedContentHeight)"
                 + " before_frame=\(originalWindowFrame) before_content=\(originalContentBounds)"
                 + " frame=\(window.frame) content=\(String(describing: window.contentView?.bounds))"
                 + " layout=\(window.contentLayoutRect) screen=\(String(describing: window.screen?.visibleFrame))")
