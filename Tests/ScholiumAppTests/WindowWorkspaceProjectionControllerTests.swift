@@ -95,6 +95,8 @@ struct WindowWorkspaceProjectionControllerTests {
                     availableVault: .paperAnalysis
                 ))
         #expect(controller.snapshotPhase == openingCommit.snapshotPhase)
+        #expect(controller.searchGeneration == nil)
+        #expect(!openingCommit.searchGenerationChanged)
         #expect(
             Set(controller.notes.map(\.relativePath)) == [
                 "Active.md", "Archive/Aside.md", "Old/Removed.md",
@@ -114,7 +116,16 @@ struct WindowWorkspaceProjectionControllerTests {
             context: fixture.context(sourceScope: .library)
         )
         #expect(completeCommit?.snapshotPhase == .complete)
+        #expect(completeCommit?.searchGenerationChanged == true)
+        #expect(controller.searchGeneration == complete.discovery.searchGeneration)
         #expect(controller.snapshotPhase == .complete)
+        let repeatedCommit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(generation: 2, snapshot: complete)),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+        #expect(repeatedCommit != nil)
+        #expect(repeatedCommit?.searchGenerationChanged == false)
         guard case .current? = controller.derivedRefreshStatus else {
             Issue.record("The complete projection did not clear opening state.")
             return

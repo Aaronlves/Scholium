@@ -8,6 +8,7 @@ import Testing
 @MainActor
 private final class WindowSearchPresentationProbe {
     var hasCurrentNote = false
+    var workspaceIsAvailable = false
     var informationMessages: [String] = []
     var availabilityStatuses: [String?] = []
     var catalogFailureMessages: [String] = []
@@ -200,6 +201,67 @@ struct WindowSearchControllerTests {
         #expect(discovery.search == expectedProjection)
         #expect(availability == expectedAvailability)
         #expect(controller.presentation == (dismissed ? .inactive : .sidebar))
+    }
+
+    @Test("The first ready generation retries an early unavailable query and clears its status")
+    func firstReadyGenerationRetriesUnavailableSearch() async {
+        let discovery = DiscoveryController()
+        let generation = SearchGenerationID(triptychID: UUID(), sequence: 1, sourceManifestHash: "first-ready")
+        let hit = NoteSearchResult(
+            vaultID: UUID(), vaultName: "Analyses", vaultRole: .sourceCorpus,
+            relativePath: "Ready.md", stableNoteID: nil, title: "Ready", matchedField: .body,
+            context: nil, sourceLine: 1, snippet: "needle", highlights: [],
+            freshnessToken: .triptych(generation), fingerprint: DocumentFingerprint(content: "needle"),
+            evidentialLayer: .paperAnalysis, classification: .retrievalLead)
+        discovery.bind(to: FirstReadySearchOperations(generation: generation, hit: hit))
+        let probe = WindowSearchPresentationProbe()
+        var requestedStates: [SearchWorkspaceState] = []
+        var availability: [String?] = []
+        let completed = AsyncStream<Void>.makeStream()
+        let controller = WindowSearchController(
+            discoveryController: discovery,
+            dependencies: dependencies(
+                executionContext: { state in
+                    requestedStates.append(state)
+                    return .init(workspaceIsAvailable: probe.workspaceIsAvailable, currentNoteSnapshot: nil, currentVaultID: nil)
+                },
+                setAvailabilityStatus: { status in
+                    availability.append(status)
+                    if status == nil { completed.continuation.yield(()) }
+                }))
+        defer {
+            controller.dismiss()
+            completed.continuation.finish()
+        }
+        controller.begin(.general)
+        controller.replaceQuery("needle")
+        await controller.refresh()
+        #expect(discovery.search.executionIssue == DiscoverySearchExecutionError.workspaceUnavailable.searchIssue)
+        #expect(availability == ["Search unavailable"])
+        #expect(discovery.search.results.isEmpty)
+        let originalCriteria = controller.criteria
+
+        probe.workspaceIsAvailable = true
+        controller.searchGenerationDidChange()
+        // The timeout only bounds a missing retry; the status callback is the
+        // completion evidence. No manual refresh can conceal a missed signal.
+        let deadline = Task {
+            try? await Task.sleep(for: .seconds(2))
+            completed.continuation.finish()
+        }
+        defer { deadline.cancel() }
+        for await _ in completed.stream { break }
+        await controller.waitForPendingWorkForTesting()
+
+        #expect(requestedStates == [originalCriteria, originalCriteria])
+        #expect(controller.criteria == originalCriteria)
+        #expect(controller.presentation == .sidebar)
+        #expect(discovery.search.results == [.note(hit)])
+        #expect(discovery.search.freshnessToken == .triptych(generation))
+        #expect(discovery.search.availability == .current(generation))
+        #expect(discovery.search.executionIssue == nil)
+        #expect(!discovery.search.isRunning)
+        #expect(availability == ["Search unavailable", nil])
     }
 
     @Test("Search request and response publish only changed coherent projections")
@@ -611,6 +673,31 @@ struct WindowSearchControllerTests {
                 for: "kind:unsupported part",
                 scope: .triptych
             ).isEmpty)
+    }
+
+    /// Fixed response at the existing provider boundary: this test owns retry
+    /// and presentation behavior, not index construction or ranking.
+    private struct FirstReadySearchOperations: DiscoveryUseCases {
+        let generation: SearchGenerationID
+        let hit: NoteSearchResult
+
+        func search(_ request: SearchRequest) async throws -> SearchResponse {
+            #expect(request.query == "needle")
+            #expect(request.presentationScope == .triptych)
+            return .init(
+                requestID: request.id, scope: .triptych,
+                explanation: .init(provider: .note, providerWasExplicit: false, scope: .triptych, expression: .and([])),
+                freshnessToken: .triptych(generation), availability: .current(generation),
+                results: [.note(hit)], hasMore: false)
+        }
+        func snapshot() async throws -> WorkspaceDiscoverySnapshot { throw CancellationError() }
+        func refresh() async throws -> WorkspaceSnapshot { throw CancellationError() }
+        func searchCompletions(_ request: SearchCompletionRequest) async throws -> SearchCompletionResponse { throw CancellationError() }
+        func writingCompletions(matching query: String) async throws -> [String] { throw CancellationError() }
+        func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse { throw CancellationError() }
+        func prepareRelatedContent(_ request: RelatedContentRequest) async throws { throw CancellationError() }
+        func links(for note: VaultQualifiedNoteID, direction: WorkspaceLinkDirection) async throws -> [LinkGraphEdge] { throw CancellationError() }
+        func linkDiagnostics() async throws -> [LinkGraphDiagnostic] { throw CancellationError() }
     }
 
     private func dependencies(
