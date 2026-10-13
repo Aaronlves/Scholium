@@ -47,6 +47,79 @@ func requireQAPreferencePreservation() throws {
     }
 }
 
+/// Retains clipboard representations in memory only. A later external write
+/// becomes the next baseline; it must never be replaced by an older snapshot.
+@MainActor
+final class QAClipboardPreservation {
+    private typealias Item = [(type: NSPasteboard.PasteboardType, data: Data)]
+    private let pasteboard: NSPasteboard
+    private var originalItems: [Item]?
+    private var ownedChangeCount: Int?
+
+    init(pasteboard: NSPasteboard) {
+        self.pasteboard = pasteboard
+    }
+
+    func setText(_ text: String) throws {
+        let changeCount = pasteboard.changeCount
+        let items = try snapshot()
+        guard pasteboard.changeCount == changeCount else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        if ownedChangeCount != changeCount {
+            originalItems = items
+        }
+        let writeChangeCount = pasteboard.clearContents()
+        ownedChangeCount = writeChangeCount
+        guard pasteboard.setString(text, forType: .string),
+            pasteboard.changeCount == writeChangeCount
+        else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
+    func restoreIfOwned() throws {
+        defer {
+            originalItems = nil
+            ownedChangeCount = nil
+        }
+        guard let originalItems, let ownedChangeCount,
+            pasteboard.changeCount == ownedChangeCount
+        else { return }
+        let items = try originalItems.map { representations in
+            let item = NSPasteboardItem()
+            for representation in representations {
+                guard item.setData(representation.data, forType: representation.type) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            }
+            return item
+        }
+        guard pasteboard.changeCount == ownedChangeCount else { return }
+        pasteboard.clearContents()
+        if !items.isEmpty, !pasteboard.writeObjects(items) {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
+    private func snapshot() throws -> [Item] {
+        guard let items = pasteboard.pasteboardItems else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        guard !items.isEmpty || pasteboard.types?.isEmpty != false else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return try items.map { item in
+            try item.types.map { type in
+                guard let data = item.data(forType: type) else {
+                    throw CocoaError(.fileReadUnknown)
+                }
+                return (type, data)
+            }
+        }
+    }
+}
+
 /// Enters exact text through XCTest's native keyboard transport in one isolated
 /// QA input. A trailing space and ordinary Delete commit through AppKit;
 /// the system clipboard and input-source settings are never accessed.
@@ -169,6 +242,7 @@ final class ScholiumUITests: XCTestCase {
     var testDirectory: URL!
     var homeDirectory: URL!
     var triptychDirectory: URL!
+    var clipboardPreservation: QAClipboardPreservation?
     /// `defaultSize` is a first-presentation input. Tests that need a specific
     /// starting width must request it before their first scene appears; a
     /// relaunch is intentionally not a frame-reset API.
@@ -312,6 +386,92 @@ final class ScholiumUITests: XCTestCase {
         testDirectory = nil
         homeDirectory = nil
         triptychDirectory = nil
+        let clipboard = clipboardPreservation
+        clipboardPreservation = nil
+        // App and fixture cleanup must finish even if clipboard restoration fails.
+        try clipboard?.restoreIfOwned()
     }
 
+}
+
+/// Uses only unique named pasteboards; no app, filesystem, or general clipboard.
+final class QAClipboardPreservationTests: XCTestCase {
+    @MainActor
+    func testAllItemRepresentationsSurviveRoundTrip() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let binaryType = NSPasteboard.PasteboardType("com.scholium.qa.binary")
+        let first = NSPasteboardItem()
+        let second = NSPasteboardItem()
+        XCTAssertTrue(first.setString("Synthetic original", forType: .string))
+        XCTAssertTrue(first.setData(Data([0, 1, 127, 255]), forType: binaryType))
+        XCTAssertTrue(second.setData(Data("<b>Synthetic second item</b>".utf8), forType: .html))
+        XCTAssertTrue(pasteboard.writeObjects([first, second]))
+        let originalItems = try XCTUnwrap(pasteboard.pasteboardItems)
+        let originalTypes = originalItems.map(\.types)
+        let originalText = try XCTUnwrap(originalItems[0].data(forType: .string))
+        let originalHTML = try XCTUnwrap(originalItems[1].data(forType: .html))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        try clipboard.setText("Temporary QA text")
+        try clipboard.restoreIfOwned()
+        let restored = try XCTUnwrap(pasteboard.pasteboardItems)
+        XCTAssertEqual(restored.count, 2)
+        XCTAssertEqual(restored.map(\.types), originalTypes)
+        XCTAssertEqual(restored[0].data(forType: .string), originalText)
+        XCTAssertEqual(restored[0].data(forType: binaryType), Data([0, 1, 127, 255]))
+        XCTAssertEqual(restored[1].data(forType: .html), originalHTML)
+    }
+
+    @MainActor
+    func testEmptyClipboardIsRestored() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        try clipboard.setText("Temporary QA text")
+        try clipboard.restoreIfOwned()
+        XCTAssertTrue(pasteboard.pasteboardItems?.isEmpty != false)
+        XCTAssertTrue(pasteboard.types?.isEmpty != false)
+    }
+
+    @MainActor
+    func testRepeatedOwnedWritesRestoreOriginalContents() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        try clipboard.setText("First QA text")
+        try clipboard.setText("Second QA text")
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.string(forType: .string), "Original")
+    }
+
+    @MainActor
+    func testExternalChangeIsNotOverwrittenOnRestore() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        try clipboard.setText("Temporary QA text")
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Later external text", forType: .string))
+        let externalChangeCount = pasteboard.changeCount
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.changeCount, externalChangeCount)
+        XCTAssertEqual(pasteboard.string(forType: .string), "Later external text")
+    }
+
+    @MainActor
+    func testExternalChangeBetweenWritesBecomesRestorationBaseline() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        try clipboard.setText("First QA text")
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Later external text", forType: .string))
+        try clipboard.setText("Second QA text")
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.string(forType: .string), "Later external text")
+    }
 }

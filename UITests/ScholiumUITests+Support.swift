@@ -898,11 +898,10 @@ extension ScholiumUITests {
 
     @MainActor
     func setPasteboardText(_ text: String) throws {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else {
-            throw CocoaError(.fileWriteUnknown)
+        if clipboardPreservation == nil {
+            clipboardPreservation = QAClipboardPreservation(pasteboard: .general)
         }
+        try clipboardPreservation?.setText(text)
     }
 
     @MainActor

@@ -182,6 +182,7 @@ critical_ui_tests=(
   "-only-testing:ScholiumUITests/ScholiumUITests/testRenameFolderFailureRetainsDraftAndAllowsRetry"
   "-only-testing:ScholiumUITests/ScholiumUITests/testMoveFolderFailureRetainsDraftAndAllowsRetry"
   "-only-testing:ScholiumUITests/FreshIndexDiagnosticOutputTests"
+  "-only-testing:ScholiumUITests/QAClipboardPreservationTests"
   "-only-testing:ScholiumUITests/ScholiumUITests/testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys"
 )
 common_arguments=(
