@@ -35,13 +35,44 @@ struct RelatedContentBM25F {
                 + textIndexes.values.reduce(0) { $0 + $1.estimatedByteCount }
         }
 
-        var isValid: Bool {
-            // RelatedContentTextIndex validates its immutable packed words
-            // while constructing or decoding them.
+        struct Stored: Codable, Sendable {
+            let fields: [String: String]
+            let fieldLengths: [String: Double]
+            let textIndexes: [String: RelatedContentTextIndex.Stored]
+
+            func validate() throws {
+                guard Document.validFields(fields, lengths: fieldLengths, indexKeys: Set(textIndexes.keys)) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+                for index in textIndexes.values { try index.validate() }
+            }
+        }
+
+        private static func validFields(_ fields: [String: String], lengths: [String: Double], indexKeys: Set<String>) -> Bool {
             Set(fields.keys).isSubset(of: Set(RelatedContentRankingField.allCases.map(\.rawValue)))
-                && Set(fields.keys) == Set(fieldLengths.keys)
-                && Set(textIndexes.keys) == Set(fields.keys)
-                && fieldLengths.values.allSatisfy { $0.isFinite && $0 >= 0 }
+                && Set(fields.keys) == Set(lengths.keys)
+                && indexKeys == Set(fields.keys)
+                && lengths.values.allSatisfy { $0.isFinite && $0 >= 0 }
+        }
+
+        var isValid: Bool {
+            Self.validFields(fields, lengths: fieldLengths, indexKeys: Set(textIndexes.keys))
+        }
+
+        init(from decoder: any Decoder) throws {
+            try self.init(stored: Stored(from: decoder))
+        }
+
+        init(stored: Stored) throws {
+            // Word admission is performed while packing below. Root projection
+            // validation checks the scoring-field shape before use.
+            fields = stored.fields
+            fieldLengths = stored.fieldLengths
+            textIndexes = try stored.textIndexes.mapValues { try .init(stored: $0) }
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            try Stored(fields: fields, fieldLengths: fieldLengths, textIndexes: textIndexes.mapValues(\.stored)).encode(to: encoder)
         }
 
         /// Matching and scoring often retain the same normalized prose and word
@@ -58,7 +89,18 @@ struct RelatedContentBM25F {
         /// strings and frequency dictionaries only to discard them afterward.
         enum StoredText: Codable {
             case scoringField(String)
-            case independent(text: String, index: RelatedContentTextIndex)
+            case independent(text: String, index: RelatedContentTextIndex.Stored)
+
+            func validate(in document: Stored) throws {
+                switch self {
+                case .scoringField(let field):
+                    guard document.fields[field] != nil, document.textIndexes[field] != nil else {
+                        throw SearchIndexError.corruptDatabase
+                    }
+                case .independent(_, let index):
+                    try index.validate()
+                }
+            }
 
             func resolve(in document: Document) throws -> (text: String, index: RelatedContentTextIndex) {
                 switch self {
@@ -68,14 +110,14 @@ struct RelatedContentBM25F {
                     }
                     return (text, index)
                 case .independent(let text, let index):
-                    return (text, index)
+                    return (text, try .init(stored: index))
                 }
             }
         }
 
         func storedText(_ text: String, index: RelatedContentTextIndex) -> StoredText {
             if let field = matchingPreparedField(text, index: index) { return .scoringField(field) }
-            return .independent(text: text, index: index)
+            return .independent(text: text, index: index.stored)
         }
 
         private func matchingPreparedField(_ text: String, index: RelatedContentTextIndex) -> String? {

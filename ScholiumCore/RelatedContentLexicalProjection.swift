@@ -21,6 +21,11 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey { case scoringDocument, segments }
 
+    private struct Stored: Decodable {
+        let scoringDocument: RelatedContentBM25F.Document.Stored
+        let segments: [StoredSegment]
+    }
+
     init(projection: SearchDocumentProjection) {
         let scoring = RelatedContentBM25F.Document(segments: projection.segments)
         scoringDocument = scoring
@@ -60,14 +65,24 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
     }
 
     static func decode(_ data: Data?, checksum: String?) throws -> Self {
-        guard let data, checksum == RelatedContentSourceProjection.checksum(data) else {
-            throw SearchIndexError.corruptDatabase
-        }
-        let result: Self
-        do { result = try JSONDecoder().decode(Self.self, from: data) } catch { throw SearchIndexError.corruptDatabase }
-        guard result.scoringDocument.isValid else {
-            throw SearchIndexError.corruptDatabase
-        }
+        let value: Self = try decodedStorage(Self.self, data: data, checksum: checksum)
+        guard value.scoringDocument.isValid else { throw SearchIndexError.corruptDatabase }
+        return value
+    }
+
+    private static func decodedStorage<Value: Decodable>(_ type: Value.Type, data: Data?, checksum: String?) throws -> Value {
+        guard let data, checksum == RelatedContentSourceProjection.checksum(data) else { throw SearchIndexError.corruptDatabase }
+        do { return try JSONDecoder().decode(type, from: data) } catch { throw SearchIndexError.corruptDatabase }
+    }
+
+    static func validate(_ data: Data?, checksum: String?) throws {
+        _ = try validatedStorage(data, checksum: checksum)
+    }
+
+    private static func validatedStorage(_ data: Data?, checksum: String?) throws -> Stored {
+        let result = try decodedStorage(Stored.self, data: data, checksum: checksum)
+        try result.scoringDocument.validate()
+        for segment in result.segments { try segment.material.validate(in: result.scoringDocument) }
         return result
     }
 }
