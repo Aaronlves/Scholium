@@ -197,18 +197,32 @@ struct AgentChatToolbarUnderlapTests {
         }
         let retainedOffset = offset()
         let originalViewportHeight = scroll.contentView.bounds.height
-        window.setContentSize(.init(width: 1000, height: 600))
+        let originalWindowFrame = window.frame
+        let originalContentBounds = try #require(window.contentView).bounds
+        // Native presentation can constrain the requested starting size. Apply
+        // the original 160-point reduction to the realized content geometry.
+        let resizedContentHeight = originalContentBounds.height - 160
+        try #require(resizedContentHeight > 0)
+        window.setContentSize(.init(width: 1000, height: resizedContentHeight))
         split.splitView.setPosition(280, ofDividerAt: 0)
         try await settle(
             split.view, stage: "retained_resize",
             diagnostic: {
-                readingDiagnostic() + " offset=\(offset()) expected_offset=\(retainedOffset) original_height=\(originalViewportHeight)"
+                readingDiagnostic() + " offset=\(offset()) expected_offset=\(retainedOffset) original_height=\(originalViewportHeight) requested_height=\(resizedContentHeight)"
+                    + " before_frame=\(originalWindowFrame) before_content=\(originalContentBounds)"
+                    + " frame=\(window.frame) content=\(String(describing: window.contentView?.bounds))"
+                    + " layout=\(window.contentLayoutRect) screen=\(String(describing: window.screen?.visibleFrame))"
             }
         ) {
             scroll.contentView.bounds.height < originalViewportHeight - 100
                 && abs(offset() - retainedOffset) < 2 && session.isRetainingPosition
                 && earlier.enclosingScrollView === scroll
         }
+        print(
+            "CHAT_TOOLBAR_RESIZE original_viewport_height=\(originalViewportHeight) viewport_height=\(scroll.contentView.bounds.height) requested_height=\(resizedContentHeight)"
+                + " before_frame=\(originalWindowFrame) before_content=\(originalContentBounds)"
+                + " frame=\(window.frame) content=\(String(describing: window.contentView?.bounds))"
+                + " layout=\(window.contentLayoutRect) screen=\(String(describing: window.screen?.visibleFrame))")
         expectNativeBoundaries()
         controller.update {
             $0.messages.append(.init(id: "arrival-retaining", role: .user, text: "Synthetic arrival while reading earlier."))
