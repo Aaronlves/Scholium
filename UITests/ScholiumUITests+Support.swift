@@ -243,6 +243,41 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func stageNativeRestorationQABundle() throws -> URL {
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = sourceRoot.appendingPathComponent(".build/qa-runtime/Scholium-QA.app", isDirectory: true)
+        XCTAssertEqual(Bundle(url: source)?.bundleIdentifier, "com.scholium.qa")
+        XCTAssertTrue(testDirectory.standardizedFileURL.path.hasPrefix(sourceRoot.appendingPathComponent(".build/qa-runtime/journeys/").path))
+        let staged = testDirectory.appendingPathComponent("Scholium-Restoration-QA.app", isDirectory: true)
+        try FileManager.default.copyItem(at: source, to: staged)
+        let plistURL = staged.appendingPathComponent("Contents/Info.plist")
+        var plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
+        plist["CFBundleIdentifier"] = "com.scholium.qa.restoration." + UUID().uuidString.lowercased()
+        plist["CFBundleName"] = "Scholium Restoration QA"
+        // This test app must never be selected as a default Markdown handler.
+        var documentTypes = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+        for index in documentTypes.indices { documentTypes[index]["LSHandlerRank"] = "None" }
+        plist["CFBundleDocumentTypes"] = documentTypes
+        plist["LSEnvironment"] = [
+            "SCHOLIUM_HOME": homeDirectory.path,
+            "CFFIXED_USER_HOME": homeDirectory.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "",
+            "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1",
+        ]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: plistURL)
+        XCTAssertEqual(
+            try Data(contentsOf: staged.appendingPathComponent("Contents/MacOS/Scholium")),
+            try Data(contentsOf: source.appendingPathComponent("Contents/MacOS/Scholium")))
+        let signing = Process()
+        signing.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        signing.arguments = ["--force", "--deep", "--sign", "-", staged.path]
+        try signing.run()
+        signing.waitUntilExit()
+        XCTAssertEqual(signing.terminationStatus, 0)
+        return staged
+    }
+
+    @MainActor
 
     func configuredApplication(
         sessionID: UUID,

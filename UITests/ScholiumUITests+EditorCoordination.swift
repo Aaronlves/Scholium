@@ -546,6 +546,15 @@ extension ScholiumUITests {
         XCTAssertTrue(query.exists, "Document interaction must not dismiss the floating panel.")
         app.typeKey("f", modifierFlags: [.command])
         typeCommittedText("findprobe", into: query, in: app)
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                ["Match 1 of 2", "Match 2 of 2"].contains(count.value as? String ?? "")
+            })
+        // Committing the query can retain either matching occurrence. Establish
+        // the first occurrence through native navigation before testing Next.
+        if (count.value as? String) == "Match 2 of 2" {
+            app.typeKey(.return, modifierFlags: [.shift])
+        }
         XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 2" })
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 2 of 2" })

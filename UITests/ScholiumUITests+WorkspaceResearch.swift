@@ -297,6 +297,14 @@ extension ScholiumUITests {
             XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Source")
             XCTAssertEqual(editor.value as? String, firstSource)
             XCTAssertEqual(inspectorMode.value as? String, "Related Material")
+            // The Library row and native Inspector resolve through separate
+            // accessibility queries. Await the retained cards without refreshing
+            // the research context or changing the current selection.
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    let cards = relatedCards.allElementsBoundByIndex
+                    return cards.map(\.identifier) == retainedCardIDs && cards.allSatisfy(\.isEnabled)
+                })
             XCTAssertEqual(relatedCards.allElementsBoundByIndex.map(\.identifier), retainedCardIDs)
             XCTAssertTrue(relatedCards.allElementsBoundByIndex.allSatisfy(\.isEnabled))
             XCTAssertEqual(context.value as? String, "Expanded")

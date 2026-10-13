@@ -25,7 +25,7 @@ extension ScholiumUITests {
         external.buttons["_XCUI:CloseWindow"].click()
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
         XCTAssertNotEqual(app.state, .notRunning)
-        try externalQALaunchServicesOpen(nil)
+        try externalQALaunchServicesOpen(nil, homeOverride: emptyHome)
         XCTAssertTrue(app.buttons["scholium.bootstrap.connectExisting"].waitForExistence(timeout: 15))
         XCTAssertEqual(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").map(\.processIdentifier), [pid])
         XCTAssertEqual(try Data(contentsOf: externalURL), bytes)
@@ -99,7 +99,7 @@ extension ScholiumUITests {
         app.terminate()
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
         homeDirectory = testDirectory.appendingPathComponent("restoration-home", isDirectory: true)
-        let restorationBundle = try externalQAStageRestorationBundle()
+        let restorationBundle = try stageNativeRestorationQABundle()
         let configuration = configuredApplication(
             sessionID: sessionID, ignoresSystemWindowRestoration: false)
         app = XCUIApplication(url: restorationBundle)
@@ -172,40 +172,6 @@ extension ScholiumUITests {
             }
         }
         return result
-    }
-
-    private func externalQAStageRestorationBundle() throws -> URL {
-        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        let source = sourceRoot.appendingPathComponent(".build/qa-runtime/Scholium-QA.app", isDirectory: true)
-        XCTAssertEqual(Bundle(url: source)?.bundleIdentifier, "com.scholium.qa")
-        XCTAssertTrue(testDirectory.standardizedFileURL.path.hasPrefix(sourceRoot.appendingPathComponent(".build/qa-runtime/journeys/").path))
-        let staged = testDirectory.appendingPathComponent("Scholium-Restoration-QA.app", isDirectory: true)
-        try FileManager.default.copyItem(at: source, to: staged)
-        let plistURL = staged.appendingPathComponent("Contents/Info.plist")
-        var plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
-        plist["CFBundleIdentifier"] = "com.scholium.qa.restoration." + UUID().uuidString.lowercased()
-        plist["CFBundleName"] = "Scholium Restoration QA"
-        // This test app must never be selected as a default Markdown handler.
-        var documentTypes = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
-        for index in documentTypes.indices { documentTypes[index]["LSHandlerRank"] = "None" }
-        plist["CFBundleDocumentTypes"] = documentTypes
-        plist["LSEnvironment"] = [
-            "SCHOLIUM_HOME": homeDirectory.path,
-            "CFFIXED_USER_HOME": homeDirectory.path,
-            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "",
-            "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1",
-        ]
-        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: plistURL)
-        XCTAssertEqual(
-            try Data(contentsOf: staged.appendingPathComponent("Contents/MacOS/Scholium")),
-            try Data(contentsOf: source.appendingPathComponent("Contents/MacOS/Scholium")))
-        let signing = Process()
-        signing.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        signing.arguments = ["--force", "--deep", "--sign", "-", staged.path]
-        try signing.run()
-        signing.waitUntilExit()
-        XCTAssertEqual(signing.terminationStatus, 0)
-        return staged
     }
 
     @MainActor
@@ -410,10 +376,11 @@ extension ScholiumUITests {
         XCTAssertEqual(try Data(contentsOf: externalURL), importedBytes + Data(quitToken.utf8))
         XCTAssertEqual(try Data(contentsOf: importedURL), importedBytes, "Later original-file edits must leave the imported Note unchanged.")
 
-        // Launch Services now starts a fresh process with the QA bundle's empty
-        // isolated home, rather than XCTest's already configured test home.
         // Opening an outside file must work before any Triptych is registered.
-        try externalQALaunchServicesOpen(externalURL, withoutFixtureStartup: true)
+        // This phase owns a fresh empty home independently of other QA journeys.
+        let emptyHome = testDirectory.appendingPathComponent("lifecycle-unconfigured-home", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyHome, withIntermediateDirectories: true)
+        try externalQALaunchServicesOpen(externalURL, homeOverride: emptyHome)
         let coldExternal = externalQAWindow(filename)
         XCTAssertTrue(coldExternal.waitForExistence(timeout: 15))
         XCTAssertTrue(coldExternal.toolbars.buttons["Import to Triptych…"].waitForExistence(timeout: 10))
@@ -429,7 +396,7 @@ extension ScholiumUITests {
         externalQAFocus(coldExternal)
         app.typeKey("w", modifierFlags: [.command])
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 0 })
-        try externalQALaunchServicesOpen(nil)
+        try externalQALaunchServicesOpen(nil, homeOverride: emptyHome)
         XCTAssertTrue(
             app.buttons["scholium.bootstrap.connectExisting"].waitForExistence(timeout: 15),
             "A normal reopen after an external cold launch must offer Triptych setup.")
@@ -635,7 +602,7 @@ extension ScholiumUITests {
     }
 
     private func externalQALaunchServicesOpen(
-        _ url: URL?, withoutFixtureStartup: Bool = false, homeOverride: URL? = nil
+        _ url: URL?, homeOverride: URL? = nil
     ) throws {
         let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let bundle = try XCTUnwrap(NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.scholium.qa"))
@@ -647,17 +614,17 @@ extension ScholiumUITests {
         XCTAssertEqual(Bundle(url: bundle)?.bundleIdentifier, "com.scholium.qa", "Open With verification must target the existing disposable QA registration.")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        var arguments = ["-a", bundle.path]
-        if withoutFixtureStartup || homeOverride != nil {
-            arguments += ["--env", "SCHOLIUM_UI_TEST_WORKSPACE_ROOT="]
-        }
-        if let homeOverride {
-            arguments += [
-                "--env", "SCHOLIUM_HOME=" + homeOverride.path,
-                "--env", "CFFIXED_USER_HOME=" + homeOverride.path,
-            ]
-        }
+        let effectiveHome = try XCTUnwrap(homeOverride ?? homeDirectory)
+        var arguments = [
+            "-a", bundle.path,
+            "--env", "SCHOLIUM_HOME=" + effectiveHome.path,
+            "--env", "CFFIXED_USER_HOME=" + effectiveHome.path,
+            "--env", "SCHOLIUM_UI_TEST_WORKSPACE_ROOT=" + (homeOverride == nil ? triptychDirectory.path : ""),
+        ]
         if let url { arguments.append(url.path) }
+        // Match ordinary XCTest launches: native scenes from a different QA
+        // home must not restore here. The dedicated restoration helper opts in.
+        arguments += ["--args", "-ApplePersistenceIgnoreState", "YES"]
         process.arguments = arguments
         try process.run()
         process.waitUntilExit()
