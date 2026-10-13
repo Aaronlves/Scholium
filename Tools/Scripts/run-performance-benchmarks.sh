@@ -16,6 +16,7 @@ MEMORY_WATCH_PID=""
 ONLY_METRIC=""
 PREPARED_DRIVER=""
 DRIVER_RUN_FILES=()
+QA_PREFERENCES_CAPTURED=0
 usage() {
   cat <<'EOF'
 Usage:
@@ -283,11 +284,19 @@ cleanup() {
     wait "${MEMORY_WATCH_PID}" 2>/dev/null || true
   fi
   for run_file in "${DRIVER_RUN_FILES[@]}"; do
-    rm -f -- "${run_file}"
+    rm -f -- "${run_file}" || exit_code=1
   done
-  for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
-    kill "${pid}" 2>/dev/null || true
-  done
+  if [[ "${BUNDLE_ID}" != com.scholium.qa ]] || (( QA_PREFERENCES_CAPTURED )); then
+    for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
+      kill "${pid}" 2>/dev/null || true
+    done
+  fi
+  if (( QA_PREFERENCES_CAPTURED )); then
+    if ! python3 "${ROOT}/Tools/Scripts/preserve-qa-preferences.py" restore --owner-pid "$$"; then
+      print -u2 "QA preference snapshot retained; this performance run is incomplete."
+      exit_code=1
+    fi
+  fi
   if [[ -n "${PRODUCTION_STATE}" ]] \
       && [[ "$(state_signature "${PRODUCTION_STATE}")" != "${PRODUCTION_STATE_SIGNATURE}" ]]; then
     print -u2 "The performance driver mutated production machine state."
@@ -310,6 +319,11 @@ cleanup() {
   exit "${exit_code}"
 }
 trap cleanup EXIT
+
+if [[ "${BUNDLE_ID}" == com.scholium.qa ]]; then
+  python3 "${ROOT}/Tools/Scripts/preserve-qa-preferences.py" capture --owner-pid "$$"
+  QA_PREFERENCES_CAPTURED=1
+fi
 
 mkdir -p "${SCRATCH}" "${RAW}" "${OUTPUT}" "${APP_RESULT_ROOT}"
 ditto --norsrc --noextattr --noqtn --noacl "${FIXTURE}" "${FIXTURE_COPY}"

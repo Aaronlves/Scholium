@@ -8,6 +8,14 @@ import notify
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
+    override func setUpWithError() throws {
+        if let path = ProcessInfo.processInfo.environment["SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH"],
+            Bundle(path: path)?.bundleIdentifier == "com.scholium.qa"
+        {
+            try requireQAPreferencePreservation()
+        }
+    }
+
     private let packagedIsolationArgument =
         "--scholium-performance-driver-isolation"
 

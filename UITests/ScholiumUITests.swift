@@ -11,6 +11,40 @@ private func reportXCTestInputTransport() {
     )
 }
 
+/// The outer owner survives an XCTest runner restart and preserves the exact
+/// shared QA domain before even fixture-preparation launches. An unresolved
+/// snapshot or direct unguarded driver run must not authorize a native launch.
+func requireQAPreferencePreservation() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let state = root.appendingPathComponent(".build/qa-preferences-preservation")
+    let data = try Data(contentsOf: state.appendingPathComponent("owner.json"))
+    let owner = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let pid = try XCTUnwrap(owner["ownerPID"] as? Int32)
+    let present = try XCTUnwrap(owner["present"] as? Bool)
+    let process = Process()
+    let output = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/bin/ps")
+    process.arguments = ["-p", String(pid), "-o", "lstart="]
+    process.environment = ProcessInfo.processInfo.environment.merging(["LC_ALL": "C"]) { _, new in new }
+    process.standardOutput = output
+    try process.run()
+    process.waitUntilExit()
+    let started = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard owner["schema"] as? Int == 1, owner["domain"] as? String == "com.scholium.qa",
+        pid > 1, process.terminationStatus == 0, !started.isEmpty,
+        owner["ownerStarted"] as? String == started
+    else {
+        throw NSError(domain: "ScholiumUITests.Preservation", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Run through the QA preservation owner; do not reuse a stale preference snapshot."
+        ])
+    }
+    if present {
+        let snapshot = try Data(contentsOf: state.appendingPathComponent("original.plist"))
+        _ = try XCTUnwrap(PropertyListSerialization.propertyList(from: snapshot, format: nil) as? [String: Any])
+    }
+}
+
 /// Enters exact text through XCTest's native keyboard transport in one isolated
 /// QA input. A trailing space and ordinary Delete commit through AppKit;
 /// the system clipboard and input-source settings are never accessed.
@@ -161,6 +195,7 @@ final class ScholiumUITests: XCTestCase {
     @MainActor
     override func setUp() async throws {
         continueAfterFailure = false
+        try requireQAPreferencePreservation()
         sessionID = UUID()
         try createIsolatedTriptych()
         try prepareIdentityBoundFixturesIfNeeded(
