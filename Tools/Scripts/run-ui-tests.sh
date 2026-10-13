@@ -177,6 +177,11 @@ critical_ui_tests=(
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyEditorBufferSurvivesTheQAFaultRoute"
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyExternalRenameRebindsAndPreservesTheUncommittedEditorBuffer"
   "-only-testing:ScholiumUITests/ScholiumUITests/testNativeCommandButtonsPreserveDefaultDisabledAndCancelActions"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testMoveNoteFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDuplicateNoteFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testRenameFolderFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testMoveFolderFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/FreshIndexDiagnosticOutputTests"
   "-only-testing:ScholiumUITests/ScholiumUITests/testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys"
 )
 common_arguments=(
