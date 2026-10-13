@@ -34,6 +34,50 @@ extension ScholiumUITests {
         )
     }
 
+    /// Establishes absent-key defaults while the outer owner retains the
+    /// original QA domain. Callers name only their own preference keys.
+    @MainActor
+    func prepareAbsentQAPreferences(_ keys: [String]) throws {
+        app.terminate()
+        guard
+            waitUntil(
+                timeout: 10,
+                condition: {
+                    self.app.state == .notRunning
+                        && NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").isEmpty
+                })
+        else {
+            throw NSError(
+                domain: "ScholiumUITests.Configuration", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "QA preferences require the QA app to be stopped."])
+        }
+        try requireQAPreferencePreservation()
+        let domain = "com.scholium.qa"
+        for key in keys {
+            let reset = Process()
+            let diagnostic = Pipe()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            reset.arguments = ["delete", domain, key]
+            reset.environment = ProcessInfo.processInfo.environment.merging(["LC_ALL": "C"]) { _, new in new }
+            reset.standardOutput = diagnostic
+            reset.standardError = diagnostic
+            try reset.run()
+            let message = String(decoding: diagnostic.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            reset.waitUntilExit()
+            let absent =
+                (message.contains("Error: Domain '\(domain)' not found.")
+                    || message.contains("Error: Could not find key '\(key)' in domain '\(domain)'."))
+                && message.contains("Defaults have not been changed.")
+            guard reset.terminationReason == .exit,
+                reset.terminationStatus == 0 || (reset.terminationStatus == 1 && absent)
+            else {
+                throw NSError(
+                    domain: "ScholiumUITests.Configuration", code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not prepare the absent QA key \(key); launch was not attempted."])
+            }
+        }
+    }
+
     @MainActor
     func accessibilityText(of element: XCUIElement) -> String {
         if let value = element.value as? String, !value.isEmpty {
@@ -106,6 +150,28 @@ extension ScholiumUITests {
             object: nil
         )
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    /// Native resize gestures can stop short of the declared Settings minimum.
+    /// Re-read the frame once and let the native minimum clamp a second drag.
+    @MainActor
+    func resizeSettingsToMinimumWidth(_ window: XCUIElement) {
+        let minimumWidth: CGFloat = 780
+        for attempt in 0..<2 {
+            let currentWidth = window.frame.width
+            guard abs(currentWidth - minimumWidth) >= 2, currentWidth > minimumWidth else { break }
+            let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+                .withOffset(CGVector(dx: -1, dy: 0))
+            let overdrag: CGFloat = attempt == 0 ? 0 : 24
+            rightEdge.click(
+                forDuration: 0.15,
+                thenDragTo: rightEdge.withOffset(CGVector(dx: minimumWidth - currentWidth - overdrag, dy: 0))
+            )
+            if waitUntil(timeout: 2, condition: { abs(window.frame.width - minimumWidth) < 2 }) { break }
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { abs(window.frame.width - minimumWidth) < 2 },
+            "Settings must reach its declared 780-point minimum through native resizing.")
     }
 
     @MainActor

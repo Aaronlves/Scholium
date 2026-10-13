@@ -93,7 +93,9 @@ extension ScholiumUITests {
         app.menuItems["Settings…"].click()
         let settings = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        selectSettingsCategory("agents", in: settings)
+        let settingsSearch = settings.searchFields["scholium.settings.search"]
+        typeCommittedText("Chat", into: settingsSearch, in: app)
+        selectSettingsSearchResult("agents.chatSidebar", in: settings)
         let chatEnabled = settings.checkBoxes["scholium.settings.chatSidebarEnabled"].firstMatch
         XCTAssertTrue(chatEnabled.waitForExistence(timeout: 5))
         if !selectionControlIsSelected(chatEnabled) { chatEnabled.click() }
@@ -609,7 +611,12 @@ extension ScholiumUITests {
     /// bundled helper while the research window remains behind Settings.
     @MainActor
     func testAgentContextAccessSettingsControlObservationWithoutChangingNotes() throws {
-        app.terminate()
+        try prepareAbsentQAPreferences([
+            "scholium.agentContext.chat.allowState",
+            "scholium.agentContext.chat.allowWorkingText",
+            "scholium.agentContext.external.allowState",
+            "scholium.agentContext.external.allowWorkingText",
+        ])
         app = configuredApplication(sessionID: sessionID, appearance: .light)
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
@@ -1623,7 +1630,12 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["scholium.settings.root"]
                 .waitForExistence(timeout: 10)
         )
-        let nameField = app.descendants(matching: .any)["scholium.triptychName"]
+        let settingsWindow = app.windows.matching(
+            identifier: "com_apple_SwiftUI_Settings_window"
+        ).firstMatch
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+        selectSettingsCategory("workspace", in: settingsWindow)
+        let nameField = settingsWindow.descendants(matching: .any)["scholium.triptychName"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         try paste("QA Renamed Triptych", into: nameField)
         let saveTriptych = app.buttons["Save Triptych"]

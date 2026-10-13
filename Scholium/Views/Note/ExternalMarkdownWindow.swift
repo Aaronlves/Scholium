@@ -283,6 +283,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var nextReadScrollRestoreID: UInt64 = 0
     private weak var window: NSWindow?
     private weak var previousDelegate: (any NSWindowDelegate)?
+    private var nativeToolbar: ExternalMarkdownWindowToolbar?
 
     init(
         url: URL, needsOwnershipResolution: Bool = false,
@@ -400,6 +401,29 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             && pendingImport == nil && inputResumeError == nil
     }
     var canPresentImport: Bool { permitsSourceActions && !isClosed && (canImport || pendingImport != nil && !isBusy) }
+
+    func canPerformToolbarCommand(_ command: ExternalMarkdownToolbarCommand) -> Bool {
+        guard !isClosed else { return false }
+        switch command {
+        case .save: return canSave
+        case .find: return snapshot != nil
+        case .reveal: return true
+        case .close: return canRequestClose
+        case .importToTriptych: return canPresentImport
+        }
+    }
+
+    func performToolbarCommand(_ command: ExternalMarkdownToolbarCommand) {
+        guard canPerformToolbarCommand(command) else { return }
+        switch command {
+        case .save: Task { await save() }
+        case .find: performFind(.present)
+        case .reveal: NSWorkspace.shared.activateFileViewerSelecting([originalURL])
+        case .close: closeWindow()
+        case .importToTriptych: showsImport = true
+        }
+    }
+
     var retainsEditor: Bool { didAllocateEditor }
     var editorReady: Bool {
         editorSession.isLoaded && editorSession.presentedMode == mode.editorMode
@@ -474,7 +498,12 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             window.close()
             return
         }
-        guard self.window !== window else { return }
+        guard !isClosed else { return }
+        guard self.window !== window else {
+            nativeToolbar?.refreshPresentation()
+            return
+        }
+        nativeToolbar?.invalidate()
         if let current = self.window, current.delegate === self {
             current.delegate = previousDelegate
         }
@@ -483,6 +512,9 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         window.delegate = self
         window.representedURL = originalURL
         window.isDocumentEdited = isDirty
+        let toolbar = ExternalMarkdownWindowToolbar(model: self)
+        nativeToolbar = toolbar
+        toolbar.install(in: window)
     }
 
     func open(using selectedURL: URL? = nil) async {
@@ -1014,6 +1046,8 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        nativeToolbar?.invalidate()
+        nativeToolbar = nil
         editorFocusIntent = nil
         readSelection = nil
         modeTransitionTask?.cancel()

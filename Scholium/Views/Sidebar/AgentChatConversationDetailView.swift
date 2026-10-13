@@ -32,7 +32,6 @@ struct AgentChatConversationDetailView: View {
     @State private var topBarHeight: CGFloat = 0
     @State private var accessoryHeight: CGFloat = 0
     @State private var entryMeasurementID: UUID?
-    @State private var entryReadersAreHydrated = false
 
     @Bindable var presentation: AgentChatDetailPresentation
     let readingSession: AgentChatReadingSession
@@ -399,6 +398,7 @@ struct AgentChatConversationDetailView: View {
             }
         )
         .environment(\.chatReadingInteraction, { readingSession.pause() })
+        .environment(\.chatReadingSession, readingSession)
         .simultaneousGesture(TapGesture().onEnded { presentation.completion.dismiss() })
         .scrollEdgeEffectStyle(.soft, for: .top)
         .scrollEdgeEffectHidden(true, for: .bottom)
@@ -414,8 +414,8 @@ struct AgentChatConversationDetailView: View {
         }
         .frame(maxHeight: .infinity)
         .opacity(readingSession.isInitialTranscriptReady ? 1 : 0)
-        .allowsHitTesting(readingSession.isInitialTranscriptReady)
-        .accessibilityHidden(!readingSession.isInitialTranscriptReady)
+        .allowsHitTesting(isVisible && isCurrentConversation && readingSession.isInitialTranscriptReady)
+        .accessibilityHidden(!isVisible || !isCurrentConversation || !readingSession.isInitialTranscriptReady)
         .overlay(alignment: .topLeading) {
             if !readingSession.isInitialTranscriptReady, !visibleReplyReaderIDs.isEmpty {
                 ScholiumContentStateView(
@@ -428,12 +428,8 @@ struct AgentChatConversationDetailView: View {
                 .accessibilityIdentifier("scholium.chat.transcript.hydrating")
             }
         }
-        .onPreferenceChange(AgentChatReplyHydrationPreference.self) { states in
-            readingSession.observeReplyHydration(states)
-            if PerformanceProbe.shared.measuresChatEntry {
-                entryReadersAreHydrated = visibleReplyReaderIDs.allSatisfy { states[$0] == true }
-                recordEntryHydrationIfReady()
-            }
+        .onChange(of: readingSession.areReadersHydrated(visibleReplyReaderIDs)) { _, _ in
+            recordEntryHydrationIfReady()
         }
         .task(id: replyNavigation) {
             guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
@@ -515,12 +511,11 @@ struct AgentChatConversationDetailView: View {
         else { return }
         entryMeasurementID = id
         PerformanceProbe.shared.markChatDetailMounted(id, readerCount: visibleReplyReaderIDs.count)
-        if visibleReplyReaderIDs.isEmpty { entryReadersAreHydrated = true }
         recordEntryHydrationIfReady()
     }
 
     private func recordEntryHydrationIfReady() {
-        guard entryReadersAreHydrated, let entryMeasurementID else { return }
+        guard readingSession.areReadersHydrated(visibleReplyReaderIDs), let entryMeasurementID else { return }
         let conversationID = nativeSession.conversationID
         PerformanceProbe.shared.markChatReadersHydrated(entryMeasurementID) { [weak readingSession, weak controller] in
             guard let readingSession else { return false }

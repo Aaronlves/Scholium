@@ -335,7 +335,7 @@ extension ScholiumUITests {
 
         let importToken = "-IMPORT-\(UUID().uuidString)"
         try externalQAAppend(importToken, to: editor)
-        let importButton = external.buttons["scholium.externalMarkdown.import"]
+        let importButton = external.toolbars.buttons["Import to Triptych…"]
         XCTAssertTrue(waitUntil(timeout: 8) { importButton.isEnabled })
         importButton.click()
         let triptychPicker = app.popUpButtons["scholium.externalMarkdown.import.triptych"].firstMatch
@@ -416,13 +416,13 @@ extension ScholiumUITests {
         try externalQALaunchServicesOpen(externalURL, withoutFixtureStartup: true)
         let coldExternal = externalQAWindow(filename)
         XCTAssertTrue(coldExternal.waitForExistence(timeout: 15))
-        XCTAssertTrue(coldExternal.buttons["scholium.externalMarkdown.import"].waitForExistence(timeout: 10))
+        XCTAssertTrue(coldExternal.toolbars.buttons["Import to Triptych…"].waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.windows.count == 1 })
         XCTAssertEqual(app.windows.matching(NSPredicate(format: "identifier BEGINSWITH 'scholium-main-' ")).count, 0)
         app.menuBars.menuBarItems["File"].click()
         XCTAssertTrue(app.menuItems["New Triptych…"].isEnabled)
         app.typeKey(.escape, modifierFlags: [])
-        coldExternal.buttons["scholium.externalMarkdown.import"].click()
+        coldExternal.toolbars.buttons["Import to Triptych…"].click()
         XCTAssertTrue(app.staticTexts["No Triptych Available"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["New Triptych…"].isEnabled)
         app.buttons["Cancel"].firstMatch.click()
@@ -447,7 +447,13 @@ extension ScholiumUITests {
         let mode = external.descendants(matching: .any)["scholium.externalMarkdown.mode"].firstMatch
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         XCTAssertEqual(mode.value as? String, "Review")
-        external.buttons["scholium.externalMarkdown.find"].click()
+        let more = external.toolbars.menuButtons["More"].firstMatch
+        XCTAssertTrue(more.exists)
+        more.click()
+        XCTAssertFalse(external.menuItems["Save"].isEnabled, "A clean Review document has no saveable edit.")
+        XCTAssertTrue(external.menuItems["Find"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        external.toolbars.buttons["Find"].click()
         let query = external.searchFields["scholium.documentFind.query"].firstMatch
         XCTAssertTrue(query.waitForExistence(timeout: 5))
         typeCommittedText("Synthetic", into: query, in: app)
@@ -460,13 +466,22 @@ extension ScholiumUITests {
         let editor = externalQASourceEditor(in: external)
         XCTAssertEqual(mode.value as? String, "Source")
         XCTAssertGreaterThan(mode.frame.width, 50, "The current mode label needs room beyond the native disclosure arrow.")
+        XCTAssertEqual(query.value as? String, "Synthetic")
+        // Changing mode preserves the caret; a retained result need not already
+        // be selected. Exercise explicit navigation before asserting its index.
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                ["Match 0 of 1", "Match 1 of 1"].contains(matches.value as? String ?? "")
+            })
+        let nextMatch = external.buttons["scholium.documentFind.next"]
+        XCTAssertTrue(nextMatch.isEnabled)
+        nextMatch.click()
         XCTAssertTrue(waitUntil(timeout: 5) { matches.value as? String == "Match 1 of 1" })
         external.buttons["scholium.documentFind.close"].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !query.exists })
         let token = "CONTROLS-\(UUID().uuidString)"
         try externalQAAppend(token, to: editor)
         XCTAssertFalse(external.buttons["Save"].exists, "Save belongs in More and File, without a second ambiguous toolbar icon.")
-        let more = external.descendants(matching: .any)["scholium.externalMarkdown.more"].firstMatch
         XCTAssertTrue(more.exists)
         more.click()
         XCTAssertTrue(external.menuItems["Save"].isEnabled)
@@ -494,6 +509,27 @@ extension ScholiumUITests {
         narrow.name = "External Markdown — compact native controls"
         narrow.lifetime = .keepAlways
         add(narrow)
+        let narrowToolbar = XCTAttachment(string: external.toolbars.firstMatch.debugDescription)
+        narrowToolbar.name = "External Markdown — compact toolbar accessibility"
+        narrowToolbar.lifetime = .keepAlways
+        add(narrowToolbar)
+        if more.exists, more.isHittable {
+            more.click()
+        } else {
+            let overflow = external.toolbars.popUpButtons["more toolbar items"].firstMatch
+            XCTAssertTrue(overflow.exists)
+            overflow.click()
+            let overflowMore = external.menuItems["More"].firstMatch
+            XCTAssertTrue(overflowMore.exists)
+            XCTAssertTrue(overflowMore.isEnabled)
+            overflowMore.hover()
+        }
+        XCTAssertTrue(external.menuItems["Save"].isEnabled, "The retained Source editor remains saveable through native overflow.")
+        for name in ["Find", "Reveal Original in Finder", "Close Window"] { XCTAssertTrue(external.menuItems[name].isEnabled) }
+        external.menuItems["Find"].click()
+        XCTAssertTrue(query.waitForExistence(timeout: 5), "More must preserve its commands at minimum window width.")
+        external.buttons["scholium.documentFind.close"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !query.exists })
         app.menuBars.menuBarItems["File"].click()
         XCTAssertTrue(app.menuItems["Import to Triptych…"].isEnabled)
         app.typeKey(.escape, modifierFlags: [])
@@ -501,7 +537,7 @@ extension ScholiumUITests {
         app.menuBars.menuBarItems["View"].click()
         app.menuItems["Appearance"].firstMatch.hover()
         app.menuItems["Light"].firstMatch.click()
-        external.buttons["scholium.externalMarkdown.import"].click()
+        external.toolbars.buttons["Import to Triptych…"].click()
         let sheet = external.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 10))
         let workspace = sheet.popUpButtons["scholium.externalMarkdown.import.workspace"].firstMatch
@@ -534,6 +570,10 @@ extension ScholiumUITests {
         try externalBytes.write(to: originalURL, options: .atomic)
         let issue = external.descendants(matching: .any)["scholium.externalMarkdown.issue"].firstMatch
         XCTAssertTrue(issue.waitForExistence(timeout: 10))
+        more.click()
+        XCTAssertFalse(external.menuItems["Save"].isEnabled, "The current conflict must revoke native menu Save.")
+        XCTAssertTrue(external.menuItems["Find"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
         XCTAssertEqual(viewport.frame, frameBeforeConflict, "Conflict feedback must overlay the retained document, preserving its viewport.")
         mode.click()
         XCTAssertFalse(external.menuItems["Review"].isEnabled)

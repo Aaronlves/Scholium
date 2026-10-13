@@ -960,7 +960,7 @@ extension WorkspaceHandle {
                     // A rejected opening may have captured catalog versions
                     // before this invalidation. Reconcile all roles before
                     // attempting the first complete publication again.
-                    sourceCatalogPreparation: completesOpening ? .fullReconcile : .none
+                    sourceCatalogPreparation: completesOpening ? .fullReconcile : SourceCatalogPreparation.none
                 )
             } catch {
                 // `refresh` already published one failed generation using the

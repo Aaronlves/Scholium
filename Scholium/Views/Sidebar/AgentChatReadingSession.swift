@@ -42,7 +42,11 @@ final class AgentChatReadingSession {
     @ObservationIgnored private var nextViewportRequestID: UInt64 = 0
     @ObservationIgnored private(set) var viewportRequest: ViewportRequest?
     @ObservationIgnored private var expectedReaderIDs: Set<String> = []
-    @ObservationIgnored private var readerHydration: [String: Bool] = [:]
+    private struct MountedReader {
+        let instance: UUID
+        var hydrated: Bool
+    }
+    private var mountedReaders: [String: MountedReader] = [:]
 
     var isInitialTranscriptReady: Bool {
         initialTranscriptPhase == .unmounted || initialTranscriptPhase == .visible
@@ -123,9 +127,26 @@ final class AgentChatReadingSession {
         }
         reconcileInitialReaders(in: ids, readerIDs: readerIDs)
     }
-    func observeReplyHydration(_ states: [String: Bool]) {
-        readerHydration = states
-        advanceInitialHydrationIfReady()
+    func areReadersHydrated(_ ids: Set<String>) -> Bool {
+        ids.allSatisfy { mountedReaders[$0]?.hydrated == true }
+    }
+
+    func mountReplyReader(_ id: String, instance: UUID, hydrated: Bool) {
+        mountedReaders[id] = MountedReader(instance: instance, hydrated: hydrated)
+        reconcileReaderHydration()
+    }
+
+    func updateReplyHydration(_ id: String, instance: UUID, hydrated: Bool) {
+        // A replaced or departed reader cannot overwrite its current successor.
+        guard mountedReaders[id]?.instance == instance else { return }
+        mountedReaders[id]?.hydrated = hydrated
+        reconcileReaderHydration()
+    }
+
+    func unmountReplyReader(_ id: String, instance: UUID) {
+        guard mountedReaders[id]?.instance == instance else { return }
+        mountedReaders.removeValue(forKey: id)
+        reconcileReaderHydration()
     }
     func page(earlier: Bool, in ids: [String]) {
         pause()
@@ -152,9 +173,17 @@ final class AgentChatReadingSession {
 
     private func advanceInitialHydrationIfReady() {
         guard initialTranscriptPhase == .hydrating else { return }
-        guard expectedReaderIDs.allSatisfy({ readerHydration[$0] == true }) else { return }
+        guard areReadersHydrated(expectedReaderIDs) else { return }
         initialTranscriptPhase = .positioning
         viewport?.scheduleLayout()
+    }
+
+    private func reconcileReaderHydration() {
+        guard initialTranscriptPhase == .hydrating || initialTranscriptPhase == .positioning else { return }
+        if !areReadersHydrated(expectedReaderIDs) {
+            initialTranscriptPhase = .hydrating
+        }
+        advanceInitialHydrationIfReady()
     }
 
     private func reconcileInitialReaders(in ids: [String], readerIDs: Set<String>) {
@@ -162,10 +191,18 @@ final class AgentChatReadingSession {
         // The history window can move while readers are loading. Wait only for
         // readers in its resulting range, never an already unmounted prefix.
         expectedReaderIDs = readerIDs.intersection(ids[history.range(in: ids)])
-        if !expectedReaderIDs.allSatisfy({ readerHydration[$0] == true }) {
-            initialTranscriptPhase = .hydrating
-        }
-        advanceInitialHydrationIfReady()
+        reconcileReaderHydration()
+    }
+}
+
+private struct AgentChatReadingSessionKey: EnvironmentKey {
+    static let defaultValue: AgentChatReadingSession? = nil
+}
+
+extension EnvironmentValues {
+    var chatReadingSession: AgentChatReadingSession? {
+        get { self[AgentChatReadingSessionKey.self] }
+        set { self[AgentChatReadingSessionKey.self] = newValue }
     }
 }
 

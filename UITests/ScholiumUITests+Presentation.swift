@@ -63,7 +63,8 @@ extension ScholiumUITests {
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         let send = app.buttons["scholium.chat.primaryAction"].firstMatch
         XCTAssertFalse(send.isEnabled)
-        let controlFrames = ["scholium.chat.addMaterial", "scholium.chat.contextMeter", "scholium.chat.configuration", "scholium.chat.primaryAction"].map {
+        XCTAssertFalse(app.buttons["scholium.chat.contextMeter"].exists, "Unreported context capacity has no composer button.")
+        let controlFrames = ["scholium.chat.addMaterial", "scholium.chat.permission", "scholium.chat.configuration", "scholium.chat.primaryAction"].map {
             app.descendants(matching: .any)[$0].firstMatch.frame
         }.sorted { $0.minX < $1.minX }
         for frame in controlFrames { XCTAssertTrue(frame.width >= 28 && frame.height >= 28) }
@@ -71,20 +72,25 @@ extension ScholiumUITests {
         composer.typeKey(.return, modifierFlags: .command)
         XCTAssertEqual(composer.value as? String, "")
         let draft = "Unsent question with a long English label — 尚未发送的长中文研究问题"
-        typeCommittedText(draft, into: composer, in: app)
-        let context = app.buttons["scholium.chat.contextMeter"].firstMatch
-        let contextFrame = context.frame
+        typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
+        let options = window.descendants(matching: .any)["scholium.chat.options"].firstMatch
+        let optionsFrame = options.frame
         for _ in 0..<2 {
-            context.hover()
+            options.hover()
+            options.click()
+            let context = app.menuItems["Context Window"].firstMatch
+            XCTAssertTrue(context.waitForExistence(timeout: 5))
+            XCTAssertTrue(context.isEnabled)
             context.click()
-            XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 5))
+            let details = app.descendants(matching: .any)["scholium.chat.contextDetails"].firstMatch
+            XCTAssertTrue(details.waitForExistence(timeout: 5))
+            XCTAssertTrue(app.popovers.firstMatch.staticTexts["Context size unavailable"].exists)
             app.typeKey(.escape, modifierFlags: [])
             XCTAssertTrue(waitUntil(timeout: 5) { !self.app.popovers.firstMatch.exists })
-            XCTAssertEqual(context.frame, contextFrame)
-            XCTAssertFalse(context.isSelected)
+            XCTAssertEqual(options.frame, optionsFrame)
+            XCTAssertFalse(options.isSelected)
             XCTAssertEqual(composer.value as? String, draft)
         }
-        let options = app.descendants(matching: .any)["scholium.chat.options"].firstMatch
         options.click()
         app.typeKey(.escape, modifierFlags: [])
         app.buttons["scholium.chat.back"].click()
@@ -92,7 +98,8 @@ extension ScholiumUITests {
         XCTAssertTrue(conversation.waitForExistence(timeout: 5))
         conversation.click()
         XCTAssertEqual(composer.value as? String, draft)
-        composer.click()
+        composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: composer) })
         options.click()
         app.menuItems["Find in Conversation"].hover()
         app.typeKey(.return, modifierFlags: [])
@@ -630,12 +637,7 @@ extension ScholiumUITests {
         XCTAssertTrue(name.waitForExistence(timeout: 5), "Clearing search must restore its original browsing category")
 
         select("document")
-        // Resize from the straight edge; the rounded corner falls outside the
-        // Settings window's pointer region on this macOS version.
-        let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: -1, dy: 0))
-        rightEdge.click(forDuration: 0.15, thenDragTo: rightEdge.withOffset(CGVector(dx: 780 - window.frame.width, dy: 0)))
-        XCTAssertTrue(waitUntil(timeout: 5) { abs(window.frame.width - 780) < 2 })
+        resizeSettingsToMinimumWidth(window)
         for label in ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero"] {
             XCTAssertTrue(window.toolbars.buttons[label].isHittable, "Every category must remain visible at minimum width")
         }
@@ -660,10 +662,7 @@ extension ScholiumUITests {
         app.menuItems["设置…"].click()
         let localizedWindow = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(localizedWindow.waitForExistence(timeout: 5))
-        let localizedRightEdge = localizedWindow.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: -1, dy: 0))
-        localizedRightEdge.click(forDuration: 0.15, thenDragTo: localizedRightEdge.withOffset(CGVector(dx: 780 - localizedWindow.frame.width, dy: 0)))
-        XCTAssertTrue(waitUntil(timeout: 5) { abs(localizedWindow.frame.width - 780) < 2 })
+        resizeSettingsToMinimumWidth(localizedWindow)
         for label in ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero"] {
             XCTAssertTrue(localizedWindow.toolbars.buttons[label].isHittable)
         }
@@ -892,6 +891,10 @@ extension ScholiumUITests {
     @MainActor
     func testLibraryOrganizationPreservesDocumentAndCancelsMove() throws {
         waitForCurrentDocumentSurface()
+        let refreshing = app.descendants(matching: .any)["scholium.refreshStatus"]
+        XCTAssertTrue(
+            waitUntil(timeout: 90) { !refreshing.exists },
+            "Organization requires the initial derived projection to be current.")
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let originalBytes = try Data(contentsOf: noteURL)
         let organize = app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch

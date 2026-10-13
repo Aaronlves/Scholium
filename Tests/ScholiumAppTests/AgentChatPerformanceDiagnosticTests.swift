@@ -347,10 +347,8 @@ private final class OffscreenTranscript {
         let oracleWall: Double
         let oracleAttempts: Int
     }
-    private final class HydrationReceipt { var states: [String: Bool] = [:] }
     private let constructionStart: ContinuousClock.Instant
     private var constructionEnd: ContinuousClock.Instant
-    private let receipt = HydrationReceipt()
     private let session = AgentChatReadingSession()
     private let expectedIDs: Set<String>
     private let fingerprints: [String: String]
@@ -379,8 +377,7 @@ private final class OffscreenTranscript {
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
-        let receipt = receipt
-        let host = NSHostingView(rootView: AnyView(detail.onPreferenceChange(AgentChatReplyHydrationPreference.self) { receipt.states = $0 }))
+        let host = NSHostingView(rootView: AnyView(detail))
         host.sizingOptions = []
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 680),
@@ -431,7 +428,7 @@ private final class OffscreenTranscript {
             }
             if mounted.count == expectedIDs.count, session.initialTranscriptPhase == .visible,
                 session.viewport?.window === window, session.viewportRequest == nil,
-                Set(receipt.states.keys) == expectedIDs, receipt.states.values.allSatisfy({ $0 })
+                session.areReadersHydrated(expectedIDs)
             {
                 if measuringPhases, nativePositioned == nil {
                     nativePositioned = Self.milliseconds(from: constructionStart, to: .now)

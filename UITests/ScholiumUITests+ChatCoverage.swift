@@ -34,12 +34,16 @@ extension ScholiumUITests {
         ensureChatSidebarIsVisible()
         sidebarModeControl("Chat").click()
         let composer = app.textViews["scholium.chat.message"].firstMatch
+        let transcript = app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch
+        let hydrating = app.descendants(matching: .any)["scholium.chat.transcript.hydrating"].firstMatch
         for item in [fixture.short, fixture.long, fixture.short] {
             chatDeletionRow(item.id).click()
             XCTAssertTrue(composer.waitForExistence(timeout: 10))
+            XCTAssertTrue(transcript.waitForExistence(timeout: 15), "Every current reader must hydrate before the transcript becomes accessible.")
+            XCTAssertFalse(hydrating.exists)
             XCTAssertEqual(composer.value as? String, item.draft)
             returnToChatDeletionList()
-            XCTAssertTrue(waitUntil(timeout: 3) { !composer.exists })
+            XCTAssertTrue(waitUntil(timeout: 3) { !composer.exists && !transcript.exists })
             XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.conversations"].firstMatch.exists)
         }
         chatDeletionRow(fixture.short.id).click()
@@ -135,9 +139,8 @@ extension ScholiumUITests {
         returnToChatDeletionList()
         chatDeletionRow(fixture.long.id).click()
         try awaitEntry(fixture.long)
-        composer.click()
         let editedDraft = fixture.long.draft + " — retained native edit"
-        typeCommittedText(editedDraft, into: composer, in: app)
+        typeCommittedText(editedDraft, into: composer, in: app, clickWithinVisibleFrame: true)
         app.typeKey("z", modifierFlags: [.command])
         XCTAssertTrue(waitUntil(timeout: 5) { composer.value as? String == fixture.long.draft })
         app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
@@ -363,10 +366,33 @@ extension ScholiumUITests {
         chatDeletionRow(fixture.branchID).click()
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         XCTAssertEqual(composer.value as? String, fixture.branchDraft)
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        focusWorkspaceWindow(window)
+        let materials = window.scrollViews["scholium.chat.preparedMaterials"].firstMatch
+        XCTAssertTrue(materials.waitForExistence(timeout: 5))
+        let preview = materials.buttons["Preview material: source-4.txt"].firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertTrue(preview.isEnabled)
         XCTAssertTrue(
-            app.buttons["Preview material: source-4.txt"].firstMatch.waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(app.buttons["Preview material: source-4.txt"].firstMatch.isHittable)
+            waitUntil(timeout: 5) {
+                let frame = preview.frame
+                return !frame.isEmpty && !frame.isInfinite
+                    && window.frame.intersection(materials.frame).contains(frame)
+            }, "The shared material action must be fully visible inside this window's prepared-material region.")
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+        // Prove the visible control's native action by inspecting its resulting details.
+        preview.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let details = app.popovers.firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+        let materialText = try XCTUnwrap(String(data: fixture.originalBytes[4], encoding: .utf8))
+        for expected in [fixture.originals[4].lastPathComponent, fixture.originals[4].path, materialText] {
+            let value = details.staticTexts.matching(
+                NSPredicate(format: "value == %@ OR label == %@", expected, expected)
+            ).firstMatch
+            XCTAssertTrue(value.waitForExistence(timeout: 5), "Material details must expose the exact synthetic title, original path and retained text.")
+        }
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !details.exists })
         returnToChatDeletionList()
         performChatDeletionAction("Archive Chat", on: fixture.branchID)
         showChatDeletionList(archived: true)

@@ -6,6 +6,9 @@ extension ScholiumUITests {
     /// native draft, repeated hiding, and both durable values across relaunch.
     @MainActor
     func testChatSidebarPreferenceStartsOffAndPreservesDraftThroughRelaunch() throws {
+        try prepareAbsentQAPreferences(["scholium.chat.sidebarEnabled"])
+        app = configuredApplication(sessionID: sessionID)
+        app.launch()
         waitForCurrentDocumentSurface()
         let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let original = try Data(contentsOf: note)
@@ -46,10 +49,7 @@ extension ScholiumUITests {
         typeCommittedText(draft, into: composer, in: app, clickWithinVisibleFrame: true)
 
         for iteration in 0..<3 {
-            let settings = openSettingsForTransactionTest()
-            selectSettingsCategory("agents", in: settings)
-            let toggle = settings.checkBoxes["scholium.settings.chatSidebarEnabled"]
-            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            let (settings, toggle) = openVisibilitySettings()
             XCTAssertTrue(selectionControlIsSelected(toggle))
             toggle.click()
             if iteration == 0 {
@@ -87,9 +87,9 @@ extension ScholiumUITests {
             XCTAssertEqual(documentModeState(documentModeControl()), "Edit")
         }
 
-        let settings = openSettingsForTransactionTest()
-        selectSettingsCategory("agents", in: settings)
-        settings.checkBoxes["scholium.settings.chatSidebarEnabled"].click()
+        let (settings, enabled) = openVisibilitySettings()
+        XCTAssertTrue(selectionControlIsSelected(enabled))
+        enabled.click()
         closeSettings(settings)
         relaunchSettingsTransactionApplication()
         XCTAssertFalse(sidebarModeControl("Chat").exists, "OFF must survive graceful relaunch")
@@ -115,6 +115,12 @@ extension ScholiumUITests {
     /// connection, and disabling it retains the selection for later use.
     @MainActor
     func testWritingContinuationSettingsSearchAndDisconnectedPreferences() throws {
+        try prepareAbsentQAPreferences([
+            "scholium.writingContinuation.enabled", "scholium.writingContinuation.model", "scholium.writingContinuation.effort",
+        ])
+        app = configuredApplication(sessionID: sessionID)
+        app.launch()
+        waitForCurrentDocumentSurface()
         let window = openSettingsForTransactionTest()
         selectSettingsCategory("workspace", in: window)
         let search = window.searchFields["scholium.settings.search"]
@@ -234,10 +240,7 @@ extension ScholiumUITests {
         click(pageSave)
         XCTAssertTrue(waitUntil(timeout: 3) { !pageSave.isEnabled })
         XCTAssertFalse(name.exists)
-        let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-            .withOffset(CGVector(dx: -1, dy: 0))
-        rightEdge.click(forDuration: 0.15, thenDragTo: rightEdge.withOffset(CGVector(dx: 780 - window.frame.width, dy: 0)))
-        XCTAssertTrue(waitUntil(timeout: 5) { abs(window.frame.width - 780) < 2 })
+        resizeSettingsToMinimumWidth(window)
         let savedActionEdit = actionRows.allElementsBoundByIndex.last!.buttons["scholium.selectionActions.edit"]
         scrollUntilHittable(savedActionEdit, in: form)
         captureSettingsTransaction(window, named: "settings-selection-actions-minimum-width")

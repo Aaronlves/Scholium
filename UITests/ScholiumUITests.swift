@@ -121,7 +121,7 @@ final class QAClipboardPreservation {
 }
 
 /// Enters exact text through XCTest's native keyboard transport in one isolated
-/// QA input. A trailing space and ordinary Delete commit through AppKit;
+/// QA input. A trailing commit character and ordinary Delete commit through AppKit;
 /// the system clipboard and input-source settings are never accessed.
 @MainActor
 func typeCommittedText(
@@ -196,18 +196,25 @@ func typeCommittedText(
         return
     }
     input.typeKey("a", modifierFlags: .command)
+    // A native search field can consume a trailing space while committing
+    // input. Keep a visible sentinel so Delete cannot remove the query itself.
+    let sentinel = inputType == .searchField ? "." : " "
     if input.identifier == "scholium.chat.message" {
         // Return submits this native composer. XCTest's typeText discards
         // contextual modifiers, so insert draft newlines explicitly.
-        let lines = (text + " ").components(separatedBy: "\n")
+        let lines = (text + sentinel).components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
             if index > 0 { input.typeKey(.return, modifierFlags: .shift) }
             if !line.isEmpty { input.typeText(line) }
         }
     } else {
-        input.typeText(text + " ")
+        input.typeText(text + sentinel)
     }
     input.typeKey(input.elementType == .textView ? .downArrow : .rightArrow, modifierFlags: .command)
+    if inputType == .searchField, input.value as? String != text + sentinel {
+        XCTFail("The QA search input did not retain its commit character; Delete was not attempted.")
+        return
+    }
     input.typeKey(.delete, modifierFlags: [])
     XCTAssertEqual(field.value as? String, text, "The QA input did not commit its exact setup text.")
 }
