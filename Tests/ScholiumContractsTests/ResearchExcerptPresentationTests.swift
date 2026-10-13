@@ -27,4 +27,18 @@ struct ResearchExcerptPresentationTests {
             ResearchExcerptPresentation.readableText("`[[A]]{{literal}}` and {{ordinary}} [[B]]{{unfinished")
                 == "[[A]]{{literal}} and {{ordinary}} B{{unfinished")
     }
+
+    @Test("Prepared snippet rendering binds link spans to the exact current source")
+    func preparedSnippetSourceBinding() {
+        let document = NoteDocument(relativePath: "研究.md", rawContent: "😀 [[Hidden|依据]]{{See [[Other|材料]] and *reason*.}}。\r\n")
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let stale = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Old.md", rawContent: "[[Old|wrong]]"))
+        for candidate in [semantic, stale] {
+            #expect(ResearchExcerptPresentation.readableText(document: document, semantic: candidate) == "😀 依据。")
+            #expect(
+                ResearchExcerptPresentation.readableText(document: document, semantic: candidate, includingAnnotations: true)
+                    == "😀 依据 (See 材料 and reason.)。")
+        }
+    }
+
 }
