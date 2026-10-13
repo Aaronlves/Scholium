@@ -283,6 +283,16 @@ struct AgentChatMessageStyleTests {
             window.setContentSize(NSSize(width: width, height: 700))
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             var result: [String: Any]?
+            var lastObservation = "No reader measurement"
+            var readerFrame = NSRect.zero
+            func observe(_ value: [String: Any], reader: WKWebView) -> [String: Any] {
+                readerFrame = reader.frame
+                lastObservation =
+                    "reader=\(readerFrame) host=\(host.frame) window=\(window.frame) loading=\(reader.isLoading)"
+                    + " viewport=\(String(describing: value["viewportWidth"])) height=\(String(describing: value["height"]))"
+                    + " text_matches=\((value["text"] as? String)?.contains(source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true)"
+                return value
+            }
             while ContinuousClock.now < deadline {
                 window.layoutIfNeeded()
                 host.layoutSubtreeIfNeeded()
@@ -308,12 +318,16 @@ struct AgentChatMessageStyleTests {
                             blockLineHeight: root.querySelector('pre') ? getComputedStyle(root.querySelector('pre')).lineHeight : null,
                             overflow: root.scrollWidth > window.innerWidth + 1};
                         })()
-                        """) as? [String: Any], let height = value["height"] as? Double,
-                    abs(reader.frame.height - height) <= 1,
+                        """) as? [String: Any], let height = observe(value, reader: reader)["height"] as? Double,
+                    abs(readerFrame.height - height) <= 1,
+                    // WebKit's viewport can still describe the previous native
+                    // width after the source or window changes. Height alone
+                    // cannot establish that this sample has finished reflowing.
+                    abs((value["viewportWidth"] as? Double ?? 0) - readerFrame.width) <= 1,
                     (value["text"] as? String)?.contains(
                         source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
-                    source != "好的。" || reader.frame.width < 60,
-                    source != long || width != 480 || (height < narrowHeight && reader.frame.width > 300),
+                    source != "好的。" || readerFrame.width < 60,
+                    source != long || width != 480 || (height < narrowHeight && readerFrame.width > 300),
                     // An Agent paragraph fills the pane, so only a sample taken
                     // after the page has reflowed to the new width says anything
                     // about the rhythm; a slower machine needs more than a frame.
@@ -323,15 +337,19 @@ struct AgentChatMessageStyleTests {
                                 - (width - 2 * ScholiumSidebarLayout.textInset)) <= 1
                 {
                     result = value
-                    if source == "好的。" { #expect(reader.frame.width > 20 && reader.frame.width < 60) }
+                    if source == "好的。" { #expect(readerFrame.width > 20 && readerFrame.width < 60) }
                     if source == long && width == 240 { narrowHeight = height }
                     if source == long && width == 480 {
-                        #expect(height < narrowHeight && reader.frame.width > 300)
+                        #expect(height < narrowHeight && readerFrame.width > 300)
                     }
                     break
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
+            print(
+                "CHAT_TYPOGRAPHY user=\(user) width=\(width) narrow_height=\(narrowHeight)"
+                    + " source=\(source == rich ? "rich" : source == long ? "long" : "short") result=\(result != nil) \(lastObservation)"
+            )
             let actual = try #require(result)
             #expect(actual["paragraphPadding"] as? String == "0px")
             #expect(actual["overflow"] as? Bool == false)
