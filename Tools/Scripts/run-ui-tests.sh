@@ -55,7 +55,7 @@ terminate_qa_instances() {
 
   # Also catch this checkout's QA image when its command was launched with a
   # relative path and therefore does not contain QA_APP in `ps` output.
-  local qa_pid executable
+  local qa_pid executable journey_suffix journey_id bundle_path bundle_id restoration_id
   local qa_pids=("${(@f)$(pgrep -x Scholium 2>/dev/null || true)}")
   for qa_pid in "${qa_pids[@]}"; do
     [[ -n "${qa_pid}" ]] || continue
@@ -68,6 +68,20 @@ terminate_qa_instances() {
       "${QA_APP}/Contents/MacOS/Scholium"|\
       "/private${QA_APP}/Contents/MacOS/Scholium"|\
       "${REGISTERED_QA}/Contents/MacOS/Scholium")
+        kill "${qa_pid}" 2>/dev/null || true
+        ;;
+      "${QA_ROOT}/journeys/"*/Scholium-Restoration-QA.app/Contents/MacOS/Scholium)
+        # Interrupted native restoration can outlive XCTest tearDown. Admit
+        # only this checkout's exact generated journey and bundle identities.
+        journey_suffix="${executable#${QA_ROOT}/journeys/}"
+        journey_id="${journey_suffix%%/*}"
+        [[ "${journey_id}" =~ '^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$' ]] || continue
+        [[ "${journey_suffix}" == "${journey_id}/Scholium-Restoration-QA.app/Contents/MacOS/Scholium" ]] || continue
+        bundle_path="${QA_ROOT}/journeys/${journey_id}/Scholium-Restoration-QA.app"
+        bundle_id="$(plutil -extract CFBundleIdentifier raw "${bundle_path}/Contents/Info.plist" 2>/dev/null || true)"
+        restoration_id="${bundle_id#com.scholium.qa.restoration.}"
+        [[ "${restoration_id}" =~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' ]] || continue
+        [[ "${bundle_id}" == "com.scholium.qa.restoration.${restoration_id}" ]] || continue
         kill "${qa_pid}" 2>/dev/null || true
         ;;
     esac
@@ -177,6 +191,12 @@ critical_ui_tests=(
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyEditorBufferSurvivesTheQAFaultRoute"
   "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyExternalRenameRebindsAndPreservesTheUncommittedEditorBuffer"
   "-only-testing:ScholiumUITests/ScholiumUITests/testNativeCommandButtonsPreserveDefaultDisabledAndCancelActions"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testMoveNoteFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDuplicateNoteFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testRenameFolderFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testMoveFolderFailureRetainsDraftAndAllowsRetry"
+  "-only-testing:ScholiumUITests/FreshIndexDiagnosticOutputTests"
+  "-only-testing:ScholiumUITests/QAClipboardPreservationTests"
   "-only-testing:ScholiumUITests/ScholiumUITests/testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys"
 )
 common_arguments=(

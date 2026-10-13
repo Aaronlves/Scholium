@@ -175,7 +175,13 @@ struct AgentChatReadingTests {
         let session = AgentChatReadingSession()
         let initialIDs = ["a", "b", "c", "d"]
         session.mount(in: initialIDs, readerIDs: Set(initialIDs))
-        session.observeReplyHydration(["a": initiallyReady, "b": true, "c": true, "d": true])
+        let readers = initialIDs.map { id in
+            let reader = AgentChatReadReply.Readiness()
+            reader.mount(in: session, readerID: id)
+            reader.ready = id != "a" || initiallyReady
+            reader.hasMeasuredLayout = true
+            return reader
+        }
         #expect(session.initialTranscriptPhase == (initiallyReady ? .positioning : .hydrating))
 
         let updatedIDs = initialIDs + ["e"]
@@ -185,9 +191,12 @@ struct AgentChatReadingTests {
 
         // The evicted reader never reports readiness again. The newly mounted
         // reader still has to finish before the transcript can become visible.
-        session.observeReplyHydration(["b": true, "c": true, "d": true, "e": false])
+        readers[0].unmount()
+        let latest = AgentChatReadReply.Readiness()
+        latest.mount(in: session, readerID: "e")
+        latest.ready = true
         #expect(session.initialTranscriptPhase == .hydrating)
-        session.observeReplyHydration(["b": true, "c": true, "d": true, "e": true])
+        latest.hasMeasuredLayout = true
         #expect(session.initialTranscriptPhase == .positioning)
         session.acknowledge(try #require(session.viewportRequest))
         #expect(session.isInitialTranscriptReady)

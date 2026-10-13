@@ -9,10 +9,6 @@ import Testing
 @Suite("Chat toolbar underlap in the native workspace", .serialized)
 @MainActor
 struct AgentChatToolbarUnderlapTests {
-    private final class Hydration {
-        var states: [String: Bool] = [:]
-    }
-
     @Test("Chat keeps native chrome input and reading ownership while its viewport extends under the toolbar")
     func nativeWorkspaceUnderlapPreservesReading() async throws {
         _ = NSApplication.shared
@@ -52,17 +48,12 @@ struct AgentChatToolbarUnderlapTests {
             addSelection: { _ in false }, noteChoices: [], prepareNotes: { _ in { _ in } },
             openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
             showChanges: { _ in }, showConversationChanges: { _ in })
-        let hydration = Hydration()
-        let probedChat = AnyView(
-            chat.onPreferenceChange(AgentChatReplyHydrationPreference.self) {
-                hydration.states = $0
-            })
         let split = ScholiumWorkspaceSplitView<EmptyView, AnyView, Color, EmptyView>.Controller(
             initialLibraryVisible: true, initialApparatusVisible: false,
             documentTabs: [], selectedDocumentTabID: nil, selectDocumentTab: { _ in },
             libraryVisibilityDidChange: { _ in }, researchInspectorVisibilityDidChange: { _ in },
             splitControllerDidAttach: { _ in }, splitControllerDidDetach: { _ in },
-            library: EmptyView(), chat: probedChat, sidebarContent: .chat,
+            library: EmptyView(), chat: AnyView(chat), sidebarContent: .chat,
             document: Color.blue, apparatus: EmptyView())
         let window = NSWindow(
             contentRect: .init(x: 0, y: 0, width: 1200, height: 760),
@@ -126,8 +117,8 @@ struct AgentChatToolbarUnderlapTests {
         }
         func readingDiagnostic() -> String {
             let markerIDs = session.markers.keys.sorted()
-            let readyIDs = hydration.states.filter { $0.value }.keys.sorted()
             let currentIDs = AgentChatTimelineProjection(controller.selected?.messages ?? []).ids
+            let readyIDs = currentIDs.filter { session.areReadersHydrated([$0]) }.sorted()
             let responder = window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
             return "phase=\(session.initialTranscriptPhase) request=\(String(describing: session.viewportRequest)) position=\(session.position) "
                 + "markers=\(markerIDs.count):\(markerIDs.prefix(12).joined(separator: ",")) hydrated=\(readyIDs.prefix(12).joined(separator: ",")) projected=\(ids.joined(separator: ",")) history=\(session.history.range(in: currentIDs)) "
@@ -138,7 +129,7 @@ struct AgentChatToolbarUnderlapTests {
         // Notification presentation explicitly requests composer focus in the
         // retained Chat shell; geometry readiness and focus are separate stages.
         try await settle(split.view, stage: "initial_read_hydration", diagnostic: readingDiagnostic) {
-            atLatest() && hydration.states[initialLatestID] == true
+            atLatest() && session.areReadersHydrated([initialLatestID])
                 && session.markers[initialLatestID]?.view?.window === window
                 && session.markers[initialLatestID]?.view?.enclosingScrollView === scroll
         }
@@ -164,7 +155,7 @@ struct AgentChatToolbarUnderlapTests {
         session.navigate(to: "reply-0", in: ids)
         try await settle(split.view, stage: "earlier_marker_hydration", diagnostic: readingDiagnostic) {
             session.viewportRequest == nil && session.isRetainingPosition
-                && hydration.states["reply-0"] == true
+                && session.areReadersHydrated(["reply-0"])
                 && session.markers["reply-0"]?.view?.window === window
                 && session.markers["reply-0"]?.view?.enclosingScrollView === scroll
         }
@@ -234,7 +225,7 @@ struct AgentChatToolbarUnderlapTests {
             split.view, stage: "retained_arrival_hydration",
             diagnostic: {
                 readingDiagnostic()
-                    + " arrival_hydrated=\(String(describing: hydration.states["arrival-retaining"])) offset=\(offset()) expected_offset=\(retainedOffset)"
+                    + " arrival_hydrated=\(session.areReadersHydrated(["arrival-retaining"])) offset=\(offset()) expected_offset=\(retainedOffset)"
             }, stablePasses: 3
         ) {
             let updatedIDs = AgentChatTimelineProjection(controller.selected?.messages ?? []).ids
@@ -242,9 +233,9 @@ struct AgentChatToolbarUnderlapTests {
             let arrivalIsMounted = session.history.range(in: updatedIDs).contains(arrivalIndex)
             let arrivalIsReady =
                 !arrivalIsMounted
-                || hydration.states["arrival-retaining"] == true
+                || session.areReadersHydrated(["arrival-retaining"])
                     && session.markers["arrival-retaining"]?.view?.enclosingScrollView === scroll
-            return arrivalIsReady && hydration.states["reply-0"] == true
+            return arrivalIsReady && session.areReadersHydrated(["reply-0"])
                 && earlier.enclosingScrollView === scroll && session.viewportRequest == nil
                 && abs(offset() - retainedOffset) < 2 && session.isRetainingPosition
         }
@@ -262,10 +253,10 @@ struct AgentChatToolbarUnderlapTests {
         try await settle(
             split.view, stage: "following_arrival_hydration",
             diagnostic: {
-                readingDiagnostic() + " arrival_hydrated=\(String(describing: hydration.states["arrival-following"]))"
+                readingDiagnostic() + " arrival_hydrated=\(session.areReadersHydrated(["arrival-following"]))"
             }
         ) {
-            hydration.states["arrival-following"] == true
+            session.areReadersHydrated(["arrival-following"])
                 && session.markers["arrival-following"]?.view != nil && atLatest() && !session.isRetainingPosition
         }
         #expect(sidebar.chatHost.view === chatHost)

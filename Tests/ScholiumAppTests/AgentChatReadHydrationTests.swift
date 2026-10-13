@@ -12,9 +12,9 @@ struct AgentChatReadHydrationTests {
     @Observable @MainActor final class Appearance {
         var scheme: ColorScheme = .light
     }
-    @Observable @MainActor final class Hydration {
-        var states: [String: Bool] = [:]
-        var complete: Bool { states.count == 4 && states.values.allSatisfy { $0 } }
+    @MainActor final class Hydration {
+        let session = AgentChatReadingSession()
+        var complete: Bool { session.areReadersHydrated(["0", "1", "2", "3"]) }
     }
     private struct Transcript: View {
         let appearance: Appearance
@@ -33,7 +33,7 @@ struct AgentChatReadHydrationTests {
                     }
                 }
             }
-            .onPreferenceChange(AgentChatReplyHydrationPreference.self) { hydration.states = $0 }
+            .environment(\.chatReadingSession, hydration.session)
             .opacity(hydration.complete ? 1 : 0)
             .allowsHitTesting(hydration.complete)
             .preferredColorScheme(appearance.scheme)
@@ -72,7 +72,8 @@ struct AgentChatReadHydrationTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
             if !hydration.complete {
-                print("CHAT_HYDRATION attempt=\(attempt) incomplete=\(hydration.states) readers=\(readers(host).count)")
+                let ready = (0..<4).filter { hydration.session.areReadersHydrated([String($0)]) }
+                print("CHAT_HYDRATION attempt=\(attempt) ready=\(ready) readers=\(readers(host).count)")
                 for web in readers(host) {
                     let state = try? await web.evaluateJavaScript(
                         "({state:document.readyState,height:document.querySelector('#scholium-document')?.getBoundingClientRect().height})")

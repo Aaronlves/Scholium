@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import ScholiumContracts
 import SwiftUI
 
@@ -12,6 +13,7 @@ struct AgentChatReadReply: View {
     var fitsContent = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.chatReadingInteraction) private var readingInteraction
+    @Environment(\.chatReadingSession) private var readingSession
     @Environment(\.openChatNoteInNewTab) private var openNewTab
     @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
@@ -19,25 +21,21 @@ struct AgentChatReadReply: View {
     @StateObject private var renderer = AgentChatReplyProjection()
     @State private var readerProjection: AgentChatReplyProjection.Snapshot?
     @State private var hasHydratedReader = false
-    @State private var ready = false
-    @State private var hasMeasuredLayout = false
+    @State private var readiness = Readiness()
     @State private var height = ScholiumChatAppearance.messageLoadingHeight
     @State private var intrinsicWidth: CGFloat?
     @State private var objects: [ReadReplyObject] = []
     @State private var objectsSource: String?
-    @State private var failure: String?
     @State private var preview = ScholiumContentPreview()
 
     var body: some View {
         Group {
-            if let failure {
+            if let failure = readiness.failure {
                 VStack(alignment: .leading) {
                     Text(failure).foregroundStyle(.secondary)
                     Text(verbatim: source).textSelection(.enabled)
                     Button("Retry") {
-                        self.failure = nil
-                        ready = false
-                        hasMeasuredLayout = false
+                        readiness.reset()
                         hasHydratedReader = false
                     }
                 }
@@ -52,17 +50,16 @@ struct AgentChatReadReply: View {
                         documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
                         source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
                         onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
-                        renderingReadinessIsAcknowledged: ready,
+                        renderingReadinessIsAcknowledged: readiness.ready,
                         onRenderingFailure: {
-                            failure = $0
+                            readiness.failure = $0
                             hasHydratedReader = false
                         },
                         onRenderingLoading: {
-                            ready = false
-                            hasMeasuredLayout = false
+                            readiness.reset()
                             hasHydratedReader = false
                         },
-                        onRenderingReady: { ready = true },
+                        onRenderingReady: { readiness.ready = true },
                         onEvent: { receive($0, expectedSource: projection.document.rawContent) }
                     )
                     .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
@@ -110,13 +107,15 @@ struct AgentChatReadReply: View {
         // a retained reader must stay mounted while its source streams forward.
         .preference(
             key: AgentChatReplyReadyPreference.self,
-            value: ready || failure != nil || readerProjection == nil
+            value: readiness.ready || readiness.failure != nil || readerProjection == nil
         )
-        .preference(
-            key: AgentChatReplyHydrationPreference.self,
-            value: readerID.map { [$0: readerIsVisible || failure != nil] } ?? [:]
-        )
+        .onAppear { readiness.mount(in: readingSession, readerID: readerID) }
+        .onChange(of: readerID) { _, _ in readiness.updateOwner(readingSession, readerID: readerID) }
+        .onChange(of: readingSession.map(ObjectIdentifier.init)) { _, _ in
+            readiness.updateOwner(readingSession, readerID: readerID)
+        }
         .onDisappear {
+            readiness.unmount()
             preview.close()
             renderer.cancel()
             hasHydratedReader = false
@@ -130,7 +129,7 @@ struct AgentChatReadReply: View {
                 readerProjection = renderer.snapshot
             }
         }
-        .onChange(of: ready && hasMeasuredLayout) { _, hydrated in
+        .onChange(of: readiness.ready && readiness.hasMeasuredLayout) { _, hydrated in
             if hydrated {
                 hasHydratedReader = true
                 readerProjection = renderer.snapshot
@@ -139,15 +138,14 @@ struct AgentChatReadReply: View {
         .onChange(of: isEnabled) { _, enabled in if !enabled { preview.close() } }
         .task(id: source) {
             preview.close()
-            failure = nil
+            readiness.failure = nil
             // Source revisions reconcile inside the retained page. Its measured
             // prefix stays readable while the next projection is prepared;
             // navigation or a replacement (not an append) invalidates readiness.
             // A queued replacement must not discard the first page's layout
             // proof while its rendering-ready acknowledgement is still pending.
             if hasHydratedReader, let displayed = readerProjection?.document.rawContent, !source.hasPrefix(displayed) {
-                ready = false
-                hasMeasuredLayout = false
+                readiness.reset()
             }
             renderer.submit(source)
         }
@@ -157,7 +155,7 @@ struct AgentChatReadReply: View {
         // Standalone readers are not part of transcript hydration and retain
         // their direct interaction path. Only transcript-owned readers wait
         // for the page's measured geometry before replacing the native preview.
-        readerID == nil || ready && hasMeasuredLayout
+        readerID == nil || readiness.ready && readiness.hasMeasuredLayout
     }
 
     @ViewBuilder
@@ -183,7 +181,7 @@ struct AgentChatReadReply: View {
         case .interaction: readingInteraction()
         case .layout(let value, let width, let objects):
             height = value
-            hasMeasuredLayout = true
+            readiness.hasMeasuredLayout = true
             intrinsicWidth = width
             self.objects = objects.filter { readerProjection?.objects[$0.id] != nil }
             objectsSource = expectedSource
@@ -332,11 +330,66 @@ private struct AgentChatRichObjectActions: View {
     }
 }
 
-/// Visible transcript readers report stable layout readiness independently of
-/// the animation preference used by a single arriving message.
-struct AgentChatReplyHydrationPreference: PreferenceKey {
-    static let defaultValue: [String: Bool] = [:]
-    static func reduce(value: inout [String: Bool], nextValue: () -> [String: Bool]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+extension AgentChatReadReply {
+    /// The reader's actual presentation state also supplies its hydration
+    /// receipt. Native callbacks publish directly, independently of SwiftUI's
+    /// aggregate preferences and the separate arrival-animation preference.
+    @MainActor @Observable
+    final class Readiness {
+        var ready = false { didSet { publish() } }
+        var hasMeasuredLayout = false { didSet { publish() } }
+        var failure: String? { didSet { publish() } }
+
+        @ObservationIgnored private weak var session: AgentChatReadingSession?
+        @ObservationIgnored private var readerID: String?
+        @ObservationIgnored private var instance: UUID?
+        @ObservationIgnored private var isMounted = false
+
+        var isHydrated: Bool { (ready && hasMeasuredLayout) || failure != nil }
+
+        func reset() {
+            ready = false
+            hasMeasuredLayout = false
+            failure = nil
+        }
+
+        func mount(in session: AgentChatReadingSession?, readerID: String?) {
+            isMounted = true
+            updateOwner(session, readerID: readerID)
+        }
+
+        func updateOwner(_ session: AgentChatReadingSession?, readerID: String?) {
+            guard isMounted else { return }
+            if self.session === session, self.readerID == readerID, instance != nil {
+                publish()
+                return
+            }
+            detach()
+            guard let session, let readerID else { return }
+            let instance = UUID()
+            self.session = session
+            self.readerID = readerID
+            self.instance = instance
+            session.mountReplyReader(readerID, instance: instance, hydrated: isHydrated)
+        }
+
+        func unmount() {
+            isMounted = false
+            detach()
+        }
+
+        private func detach() {
+            if let session, let readerID, let instance {
+                session.unmountReplyReader(readerID, instance: instance)
+            }
+            session = nil
+            readerID = nil
+            instance = nil
+        }
+
+        private func publish() {
+            guard let session, let readerID, let instance else { return }
+            session.updateReplyHydration(readerID, instance: instance, hydrated: isHydrated)
+        }
     }
 }

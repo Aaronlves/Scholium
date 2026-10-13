@@ -328,10 +328,16 @@ extension WorkspaceHandle {
             let graphGeneration = nextGraphGeneration
             nextGraphGeneration += 1
             let buildStart = clock.now
+            #if DEBUG
+                var dependencies = services.snapshotBuilderDependencies
+                dependencies.capturedSearchManifestBarrierForTesting = capturedSearchManifestBarrierForTesting
+            #else
+                let dependencies = services.snapshotBuilderDependencies
+            #endif
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
-                dependencies: services.snapshotBuilderDependencies,
+                dependencies: dependencies,
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration,
             )
@@ -667,7 +673,10 @@ extension WorkspaceHandle {
     }
 
     private func completeLiveOpening() async {
-        defer { openingCompletionTask = nil }
+        defer {
+            openingCompletionTask = nil
+            if !Task.isCancelled { startLiveIndexRefreshIfNeeded() }
+        }
         guard !isShutDown, !Task.isCancelled else { return }
         do {
             if !currentSnapshot.phase.isComplete {
@@ -679,10 +688,10 @@ extension WorkspaceHandle {
                     sourceCatalogPreparation: .fullReconcile
                 )
             }
-            startLiveIndexRefreshIfNeeded()
         } catch {
-            // `refresh` already published a typed failure while retaining the
-            // usable opening vault. Explicit Retry performs a full reconcile.
+            // Retain the usable opening vault and its typed failure. Buffered
+            // or later native invalidations can reconcile current source once
+            // this worker releases ownership; without one, Retry remains explicit.
         }
     }
 
@@ -811,7 +820,8 @@ extension WorkspaceHandle {
 
     private func startLiveIndexRefreshIfNeeded() {
         guard !isShutDown,
-            currentSnapshot.phase.isComplete,
+            currentSnapshot.phase.isComplete
+                || (didCompleteActivationReconciliation && openingCompletionTask == nil),
             !sourceOperationGate.sourceMutationIsActive,
             !pendingLiveEvents.isEmpty,
             sourceCommitRefreshTask == nil,
@@ -940,15 +950,21 @@ extension WorkspaceHandle {
                     }
                     break
                 }
+                let completesOpening = !currentSnapshot.phase.isComplete
                 _ = try await refresh(
                     publication: .liveInventory,
                     failureDisposition: .failed(
-                        affectedVaultIDs: changedVaultIDs
-                    )
+                        affectedVaultIDs: completesOpening
+                            ? Set(assignment.vaults.values.map(\.id)) : changedVaultIDs
+                    ),
+                    // A rejected opening may have captured catalog versions
+                    // before this invalidation. Reconcile all roles before
+                    // attempting the first complete publication again.
+                    sourceCatalogPreparation: completesOpening ? .fullReconcile : SourceCatalogPreparation.none
                 )
             } catch {
                 // `refresh` already published one failed generation using the
-                // complete last known good snapshot. Retain it for the next
+                // last known good snapshot. Retain it for the next
                 // native event or explicit refresh; never masquerade an
                 // unchanged index as a successful rebuild.
             }

@@ -112,6 +112,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
     #if DEBUG
         var liveInventoryPreflightBarrierForTesting: (@Sendable () async -> Void)?
+        var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setCapturedSearchManifestBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            capturedSearchManifestBarrierForTesting = barrier
+        }
 
         func setLiveInventoryPreflightBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
             liveInventoryPreflightBarrierForTesting = barrier

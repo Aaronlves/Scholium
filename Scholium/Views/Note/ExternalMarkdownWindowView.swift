@@ -177,61 +177,6 @@ struct ExternalMarkdownWindowView: View {
         .navigationTitle(model.title)
         .navigationSubtitle(ScholiumL10n.string("Outside Triptych"))
         .preferredColorScheme(model.colorScheme.swiftUIColorScheme)
-        .toolbar {
-            ToolbarItem(id: "external-mode", placement: .primaryAction) {
-                Menu {
-                    ForEach(NotePresentationMode.allCases) { mode in
-                        Toggle(
-                            ScholiumL10n.dynamicString(mode.title),
-                            isOn: Binding(
-                                get: { model.mode == mode },
-                                set: { if $0 { model.selectMode(mode) } }
-                            )
-                        )
-                        .disabled(!model.canSelectMode(mode))
-                    }
-                } label: {
-                    Label(ScholiumL10n.dynamicString(model.mode.title), systemImage: "doc.text")
-                }
-                .labelStyle(.titleOnly)
-                .disabled(model.isBusy || model.snapshot == nil || model.editorSession.isComposing)
-                .help("Document Mode")
-                .accessibilityLabel("Document Mode")
-                .accessibilityValue(Text(ScholiumL10n.dynamicString(model.mode.title)))
-                .accessibilityIdentifier("scholium.externalMarkdown.mode")
-            }
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button("Find", systemImage: "magnifyingglass") { documentFind.present() }
-                    .disabled(model.snapshot == nil)
-                    .accessibilityIdentifier("scholium.externalMarkdown.find")
-                Menu {
-                    Button("Save") { Task { await model.save() } }
-                        .disabled(!model.canSave)
-                    Button("Find") { documentFind.present() }
-                        .disabled(model.snapshot == nil)
-                    Divider()
-                    Button("Reveal Original in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([model.originalURL])
-                    }
-                    Button("Close Window") { model.closeWindow() }
-                        .disabled(!model.canRequestClose)
-                } label: {
-                    Label("More", systemImage: "ellipsis")
-                }
-                .menuIndicator(.hidden)
-                .help("More")
-                .accessibilityIdentifier("scholium.externalMarkdown.more")
-            }
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-            ToolbarItem(id: "external-import", placement: .primaryAction) {
-                Button("Import to Triptych…") { model.showsImport = true }
-                    .buttonStyle(.borderedProminent)
-                    .tint(ScholiumNativeColorRole.controlAccent.color)
-                    .disabled(!model.canPresentImport)
-                    .accessibilityIdentifier("scholium.externalMarkdown.import")
-            }
-        }
         .focusedSceneObject(model)
         .focusedSceneValue(\.scholiumApplicationBootstrapStatus, ScholiumApplicationBootstrapStatus(isReady: bootstrap.isReady))
         .confirmationDialog("Discard changes and reload the original file?", isPresented: $confirmsReload) {
@@ -394,7 +339,7 @@ struct ExternalMarkdownWindowView: View {
 }
 
 private struct ExternalMarkdownWindowAttachment: NSViewRepresentable {
-    let model: ExternalMarkdownWindowModel
+    @ObservedObject var model: ExternalMarkdownWindowModel
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()

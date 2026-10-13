@@ -130,16 +130,35 @@ extension ScholiumUITests {
     @MainActor
     func testNativeWindowRestorationDoesNotAddBootstrapOrWorkspace() throws {
         terminateBootstrapLifecycleApplication()
-        let registryURL = bootstrapLifecycleRegistryURL
-        let registryBefore = try Data(contentsOf: registryURL)
         let notesBefore = try bootstrapLifecycleNoteHashes()
         XCTAssertEqual(notesBefore.count, 500)
-        app = configuredApplication(
+        // Native scenes and security-scoped bookmarks belong to the app
+        // identity. Seed registrations in this bundle's own fresh home before
+        // exercising ordinary launch and native restoration without fixtures.
+        homeDirectory = testDirectory.appendingPathComponent("native-restoration-home", isDirectory: true)
+        let restorationBundle = try stageNativeRestorationQABundle()
+        let seedConfiguration = configuredApplication(
+            sessionID: sessionID,
+            ignoresSystemWindowRestoration: false,
+            openNote: nil
+        )
+        app = XCUIApplication(url: restorationBundle)
+        app.launchArguments = seedConfiguration.launchArguments
+        app.launchEnvironment = seedConfiguration.launchEnvironment
+        app.launch()
+        assertBootstrapLifecycleLibraryReady(mainWindowCount: 1)
+        let registryURL = bootstrapLifecycleRegistryURL
+        let registryBefore = try Data(contentsOf: registryURL)
+        terminateBootstrapLifecycleApplication()
+
+        let configuration = configuredApplication(
             sessionID: sessionID,
             usesFixtureWorkspace: false,
             ignoresSystemWindowRestoration: false,
             openNote: nil
         )
+        app.launchArguments = configuration.launchArguments
+        app.launchEnvironment = configuration.launchEnvironment
         app.launch()
         assertBootstrapLifecycleLibraryReady(mainWindowCount: 1)
         app.menuBars.menuBarItems["File"].click()

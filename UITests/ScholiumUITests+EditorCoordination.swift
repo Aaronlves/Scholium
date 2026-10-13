@@ -546,6 +546,15 @@ extension ScholiumUITests {
         XCTAssertTrue(query.exists, "Document interaction must not dismiss the floating panel.")
         app.typeKey("f", modifierFlags: [.command])
         typeCommittedText("findprobe", into: query, in: app)
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                ["Match 1 of 2", "Match 2 of 2"].contains(count.value as? String ?? "")
+            })
+        // Committing the query can retain either matching occurrence. Establish
+        // the first occurrence through native navigation before testing Next.
+        if (count.value as? String) == "Match 2 of 2" {
+            app.typeKey(.return, modifierFlags: [.shift])
+        }
         XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 2" })
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 2 of 2" })
@@ -1485,11 +1494,7 @@ extension ScholiumUITests {
             throw XCTSkip("The bounded runtime diagnostic is not configured.")
         }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        let output = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
-        let build = repository.appendingPathComponent(".build").resolvingSymlinksInPath()
-        guard output.path.hasPrefix(build.path + "/"), output.pathExtension == "json",
-            !FileManager.default.fileExists(atPath: output.path)
-        else { throw XCTSkip("Diagnostic output must be a new JSON file under repository .build.") }
+        let output = try prepareFreshIndexDiagnosticOutput(path: path, repository: repository)
         let seed = URL(fileURLWithPath: try XCTUnwrap(environment["SCHOLIUM_QA_FIXTURES"]))
         let peer = try String(contentsOf: seed.appendingPathComponent("03-works/QA Work.md"), encoding: .utf8)
         XCTAssertEqual(
@@ -1592,6 +1597,72 @@ extension ScholiumUITests {
             app.terminate()
             XCTAssertEqual(try Data(contentsOf: sourceURL), original)
             try FileManager.default.removeItem(at: directory)
+        }
+    }
+}
+
+private func prepareFreshIndexDiagnosticOutput(path: String, repository: URL) throws -> URL {
+    let output = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+    let build = repository.appendingPathComponent(".build").resolvingSymlinksInPath()
+    guard output.path.hasPrefix(build.path + "/"), output.pathExtension == "json",
+        !FileManager.default.fileExists(atPath: output.path)
+    else { throw XCTSkip("Diagnostic output must be a new JSON file under repository .build.") }
+    try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+    return output
+}
+
+/// Filesystem-only coverage; this class does not launch the QA app.
+final class FreshIndexDiagnosticOutputTests: XCTestCase {
+    func testMissingParentsAllowAtomicSampleWrites() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directory = repository.appendingPathComponent(
+            ".build/fresh-output-test-\(UUID().uuidString)")
+        defer {
+            if FileManager.default.fileExists(atPath: directory.path) {
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
+        let output = try prepareFreshIndexDiagnosticOutput(
+            path: directory.appendingPathComponent("new/nested/samples.json").path, repository: repository
+        )
+        for count in 1...3 {
+            let data = try JSONSerialization.data(withJSONObject: ["samples": Array(0..<count)])
+            try data.write(to: output, options: .atomic)
+            let saved = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [String: [Int]])
+            XCTAssertEqual(saved["samples"], Array(0..<count))
+        }
+    }
+
+    func testExistingOutputIsRejectedWithoutChangingBytes() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directory = repository.appendingPathComponent(
+            ".build/fresh-output-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("samples.json")
+        let original = Data("existing diagnostic".utf8)
+        try original.write(to: output)
+        XCTAssertThrowsError(
+            try prepareFreshIndexDiagnosticOutput(path: output.path, repository: repository))
+        XCTAssertEqual(try Data(contentsOf: output), original)
+    }
+
+    func testInvalidPathsAreRejectedBeforeCreatingDirectories() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let name = "fresh-output-test-\(UUID().uuidString)"
+        let paths = [
+            repository.appendingPathComponent(".build/\(name)/samples.txt"),
+            repository.appendingPathComponent("\(name)/samples.json"),
+        ]
+        for output in paths {
+            XCTAssertThrowsError(
+                try prepareFreshIndexDiagnosticOutput(path: output.path, repository: repository))
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: output.deletingLastPathComponent().path))
         }
     }
 }

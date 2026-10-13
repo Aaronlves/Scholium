@@ -40,8 +40,6 @@
 
 ## Agent collaboration and integrations
 
-- Diagnose one isolated cold Chat entry stuck loading until reentry; subsequent
-  cold launches and dark-reader fixtures passed. Root cause remains unconfirmed.
 - Complete real-runtime Writing Assistance latency, quota and researcher-judged
   continuation, explanation and polish quality. Mock generation does not establish provider
   execution, installed IME or VoiceOver; retain shared-model and continuation opt-in policy.

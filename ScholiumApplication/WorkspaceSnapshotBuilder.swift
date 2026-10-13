@@ -49,6 +49,9 @@ struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
+    #if DEBUG
+        var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
+    #endif
 }
 
 extension WorkspaceServices {
@@ -536,6 +539,9 @@ enum WorkspaceSnapshotBuilder {
                 ($0.vault.id, $0.sourceVersions)
             })
         let capturedManifest = searchManifest
+        #if DEBUG
+            await dependencies.capturedSearchManifestBarrierForTesting?()
+        #endif
         let searchPublication = try await dependencies.searchIndex.synchronizeManifest(
             searchManifest,
             sourceProjectionCaches: Dictionary(

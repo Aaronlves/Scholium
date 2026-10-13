@@ -224,6 +224,127 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testMoveNoteFailureRetainsDraftAndAllowsRetry() throws {
+        try assertFileOperationRetainsDraftAndRetry(.moveNote)
+    }
+
+    @MainActor
+    func testDuplicateNoteFailureRetainsDraftAndAllowsRetry() throws {
+        try assertFileOperationRetainsDraftAndRetry(.duplicateNote)
+    }
+
+    @MainActor
+    func testRenameFolderFailureRetainsDraftAndAllowsRetry() throws {
+        try assertFileOperationRetainsDraftAndRetry(.renameFolder)
+    }
+
+    @MainActor
+    func testMoveFolderFailureRetainsDraftAndAllowsRetry() throws {
+        try assertFileOperationRetainsDraftAndRetry(.moveFolder)
+    }
+
+    /// These foreground cases run in the real App event loop. The SwiftPM
+    /// presentation fixture cannot discover SwiftUI's virtual AX controls in
+    /// its async command-line host. Real collisions preserve the same refusal,
+    /// retained-draft and retry contract without an App-only failure hook.
+    @MainActor
+    private func assertFileOperationRetainsDraftAndRetry(_ operation: NativeFileOperationRetryCase) throws {
+        app.terminate()
+        let vault = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let sourcePath = operation.isFolder ? "QA Retry Origin" : "QA Retry Origin.md"
+        let sourceFile = operation.isFolder ? sourcePath + "/Evidence.md" : sourcePath
+        let drafts = operation.isFolder ? ["QA Retry First", "QA Retry Second"] : ["QA Retry First.md", "QA Retry Second.md"]
+        let destinations = drafts.map { operation == .moveFolder ? $0 + "/" + sourcePath : $0 }
+        var originalFiles: [URL: Data] = [:]
+        for (index, path) in ([sourceFile] + destinations.map { operation.isFolder ? $0 + "/Evidence.md" : $0 }).enumerated() {
+            let url = vault.appendingPathComponent(path)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "The retry fixture must own a fresh path.")
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let bytes = Data("\u{FEFF}---\r\ncustom: 'retained \(index)'\r\n---\r\n# Synthetic 论证 \(index)\r\nKeep exact source.\r\n".utf8)
+            try bytes.write(to: url, options: .withoutOverwriting)
+            originalFiles[url] = bytes
+        }
+        let activeNote = vault.appendingPathComponent("QA Autosave A.md")
+        originalFiles[activeNote] = try Data(contentsOf: activeNote)
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        let windowID = window.identifier
+        organizationContextAction(operation.command, for: sourcePath, folder: operation.isFolder)
+        let sheet = window.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let form = sheet.descendants(matching: .any)["scholium.\(operation.prefix)Operation"].firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let control = sheet.descendants(matching: .any)[operation.controlIdentifier].firstMatch
+        let commit = sheet.buttons["scholium.\(operation.prefix).commit"].firstMatch
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertTrue(commit.waitForExistence(timeout: 5))
+        var firstError = ""
+
+        for index in drafts.indices {
+            if operation == .moveFolder {
+                control.click()
+                let destination = app.menuItems[drafts[index]].firstMatch
+                XCTAssertTrue(destination.waitForExistence(timeout: 5))
+                destination.click()
+                XCTAssertTrue(
+                    control.value as? String == drafts[index] || control.label == drafts[index],
+                    "The native destination picker must retain the exact selected parent.")
+            } else {
+                typeCommittedText(drafts[index], into: control, in: app)
+                XCTAssertEqual(control.value as? String, drafts[index])
+            }
+            XCTAssertTrue(control.isEnabled)
+            XCTAssertTrue(waitUntil(timeout: 5) { commit.isEnabled })
+            if index > 0 {
+                XCTAssertEqual(
+                    fileOperationInlineError(in: sheet, prefix: operation.prefix), firstError,
+                    "Editing must retain the complete first failure until an explicit retry.")
+            }
+            commit.click()
+            let reason = "A note already exists at: " + destinations[index]
+            XCTAssertTrue(
+                waitUntil(timeout: 8) {
+                    self.fileOperationInlineError(in: sheet, prefix: operation.prefix).contains(reason) && commit.isEnabled
+                },
+                "The submitted destination must produce its exact collision reason beside the draft.")
+            let error = fileOperationInlineError(in: sheet, prefix: operation.prefix)
+            if index == 0 {
+                firstError = error
+            } else {
+                XCTAssertFalse(error.contains("A note already exists at: " + destinations[0]), "Retry must replace the obsolete failure.")
+                XCTAssertNotEqual(error, firstError)
+            }
+            XCTAssertEqual(window.identifier, windowID)
+            XCTAssertTrue(form.exists && sheet.exists)
+            XCTAssertEqual(window.sheets.count, 1)
+            XCTAssertEqual(sheet.sheets.count, 0, "Failure must not cover editable input with another sheet.")
+            XCTAssertEqual(app.alerts.count, 0)
+            XCTAssertTrue(control.isEnabled && commit.isEnabled)
+            if operation == .moveFolder {
+                XCTAssertTrue(control.value as? String == drafts[index] || control.label == drafts[index])
+            } else {
+                XCTAssertEqual(control.value as? String, drafts[index])
+            }
+            for (url, bytes) in originalFiles {
+                XCTAssertEqual(try Data(contentsOf: url), bytes, "A refused operation must preserve \(url.lastPathComponent) exactly.")
+            }
+        }
+        sheet.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+        for (url, bytes) in originalFiles { XCTAssertEqual(try Data(contentsOf: url), bytes) }
+    }
+
+    @MainActor
+    private func fileOperationInlineError(in sheet: XCUIElement, prefix: String) -> String {
+        let error = sheet.descendants(matching: .any)["scholium.\(prefix).error"].firstMatch
+        guard error.exists else { return "" }
+        return ([error] + error.descendants(matching: .staticText).allElementsBoundByIndex)
+            .flatMap { [$0.label, $0.value as? String ?? ""] }
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    @MainActor
     func testCommittedOrganizationPreservesSourceAndRecoversFromCollision() throws {
         waitForCurrentDocumentSurface()
         let vault = triptychDirectory.appendingPathComponent("01-analyses")
@@ -248,12 +369,17 @@ extension ScholiumUITests {
         XCTAssertTrue(sheet.waitForExistence(timeout: 5))
         typeCommittedText("QA Autosave B.md", into: sheet.textFields.firstMatch, in: app)
         app.typeKey(.return, modifierFlags: [])
-        let dismiss = sheet.sheets.firstMatch.buttons["Dismiss"].firstMatch
-        XCTAssertTrue(dismiss.waitForExistence(timeout: 8), "A collision must report failure without replacing its destination.")
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { self.fileOperationInlineError(in: sheet, prefix: "noteFile").contains("A note already exists at: QA Autosave B.md") },
+            "A collision must report its exact inline reason without replacing its destination.")
+        let collisionError = fileOperationInlineError(in: sheet, prefix: "noteFile")
+        XCTAssertEqual(sheet.sheets.count, 0, "The inline failure must leave the destination editable.")
+        XCTAssertTrue(sheet.textFields.firstMatch.isEnabled)
+        XCTAssertEqual(sheet.textFields.firstMatch.value as? String, "QA Autosave B.md")
         XCTAssertEqual(try Data(contentsOf: duplicate), bytes)
         XCTAssertEqual(try Data(contentsOf: collision), collisionBytes)
-        dismiss.click()
         typeCommittedText("格式与检索/" + uniqueName + ".md", into: sheet.textFields.firstMatch, in: app)
+        XCTAssertEqual(fileOperationInlineError(in: sheet, prefix: "noteFile"), collisionError)
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 12) { !sheet.exists && FileManager.default.fileExists(atPath: moved.path) })
         XCTAssertEqual(try Data(contentsOf: moved), bytes)
@@ -314,10 +440,11 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func organizationContextAction(_ title: String, for path: String) {
+    private func organizationContextAction(_ title: String, for path: String, folder: Bool = false) {
         let window = stableWorkspaceWindow(app.windows.firstMatch)
         let outline = window.outlines["scholium.noteList"].firstMatch
-        let row = outline.descendants(matching: .outlineRow).containing(.any, identifier: "scholium.noteRow." + path).firstMatch
+        let rowIdentifier = (folder ? "scholium.folderRow." : "scholium.noteRow.") + path
+        let row = outline.descendants(matching: .outlineRow).containing(.any, identifier: rowIdentifier).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         func rowIsVisible() -> Bool {
             let viewport = outline.frame.intersection(window.frame)
@@ -332,8 +459,13 @@ extension ScholiumUITests {
                 .scroll(byDeltaX: 0, deltaY: distance > 0 ? -min(distance, 1200) : min(-distance, 1200))
         }
         XCTAssertTrue(rowIsVisible(), "Scroll the actual Library row into view before its pointer context menu.")
-        _ = clickLibraryRow(path, rightMouseButton: true)
-        let contextMenu = app.menus["scholium.noteRow." + path].firstMatch
+        if folder {
+            focusWorkspaceWindow(window)
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
+        } else {
+            _ = clickLibraryRow(path, rightMouseButton: true)
+        }
+        let contextMenu = app.menus[rowIdentifier].firstMatch
         XCTAssertTrue(contextMenu.waitForExistence(timeout: 5))
         let action = contextMenu.menuItems[title].firstMatch
         XCTAssertTrue(action.waitForExistence(timeout: 5))
@@ -477,5 +609,27 @@ extension ScholiumUITests {
         XCTAssertTrue(try source(at: destinationURL).hasPrefix(destinationSource))
         XCTAssertTrue(try source(at: destinationURL).contains("论证"))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave B"))
+    }
+}
+
+private enum NativeFileOperationRetryCase {
+    case moveNote, duplicateNote, renameFolder, moveFolder
+
+    var isFolder: Bool { self == .renameFolder || self == .moveFolder }
+    var prefix: String { isFolder ? "folderFile" : "noteFile" }
+    var controlIdentifier: String {
+        switch self {
+        case .moveNote, .duplicateNote: "scholium.noteFile.destination"
+        case .renameFolder: "scholium.folderName"
+        case .moveFolder: "scholium.folderDestination"
+        }
+    }
+    var command: String {
+        switch self {
+        case .moveNote: "Move Note…"
+        case .duplicateNote: "Duplicate…"
+        case .renameFolder: "Rename Folder…"
+        case .moveFolder: "Move Folder…"
+        }
     }
 }

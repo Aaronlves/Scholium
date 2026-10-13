@@ -335,9 +335,25 @@ struct AgentChatCapabilityToolTests {
                 conversationToken: token, runtimeContext: context))
         #expect(elevated.error?.code == .invalidRequest && controller.selected?.permission == .ask)
         #expect(controller.approvals.isEmpty && controller.queuedMessages.count == 1)
+        let preparationHold = controller.runtimeHome.appendingPathComponent("hold-thread-preparation")
+        let pendingPreparation = controller.runtimeHome.appendingPathComponent("pending-thread-preparation")
+        try Data().write(to: preparationHold)
+        try await wait { !controller.isRefreshingQuota }
         try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
         controller.refreshQuota()
-        try await wait { controller.queuedMessages.isEmpty && controller.selected?.lastRunStatus == .completed }
+        try await wait { FileManager.default.fileExists(atPath: pendingPreparation.path) }
+        #expect(try String(contentsOf: pendingPreparation, encoding: .utf8) == "thread/resume")
+        #expect(controller.isBusy)
+        controller.setPermission(.fullAccess)
+        #expect(controller.selected?.permission == .ask)
+        try FileManager.default.removeItem(at: preparationHold)
+        try await wait { !controller.isRefreshingQuota }
+        try Data("success".utf8).write(to: controller.runtimeHome.appendingPathComponent("release-thread-preparation"))
+        controller.refreshQuota()
+        try await wait {
+            controller.queuedMessages.isEmpty && controller.state == .ready && !controller.isBusy
+                && controller.selected?.pendingMessageID == nil && controller.selected?.lastRunStatus == .completed
+        }
         let inputs = try JSONDecoder().decode(
             MCPJSONValue.self,
             from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("turn-inputs.json")))

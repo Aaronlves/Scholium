@@ -34,6 +34,50 @@ extension ScholiumUITests {
         )
     }
 
+    /// Establishes absent-key defaults while the outer owner retains the
+    /// original QA domain. Callers name only their own preference keys.
+    @MainActor
+    func prepareAbsentQAPreferences(_ keys: [String]) throws {
+        app.terminate()
+        guard
+            waitUntil(
+                timeout: 10,
+                condition: {
+                    self.app.state == .notRunning
+                        && NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa").isEmpty
+                })
+        else {
+            throw NSError(
+                domain: "ScholiumUITests.Configuration", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "QA preferences require the QA app to be stopped."])
+        }
+        try requireQAPreferencePreservation()
+        let domain = "com.scholium.qa"
+        for key in keys {
+            let reset = Process()
+            let diagnostic = Pipe()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            reset.arguments = ["delete", domain, key]
+            reset.environment = ProcessInfo.processInfo.environment.merging(["LC_ALL": "C"]) { _, new in new }
+            reset.standardOutput = diagnostic
+            reset.standardError = diagnostic
+            try reset.run()
+            let message = String(decoding: diagnostic.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            reset.waitUntilExit()
+            let absent =
+                (message.contains("Error: Domain '\(domain)' not found.")
+                    || message.contains("Error: Could not find key '\(key)' in domain '\(domain)'."))
+                && message.contains("Defaults have not been changed.")
+            guard reset.terminationReason == .exit,
+                reset.terminationStatus == 0 || (reset.terminationStatus == 1 && absent)
+            else {
+                throw NSError(
+                    domain: "ScholiumUITests.Configuration", code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not prepare the absent QA key \(key); launch was not attempted."])
+            }
+        }
+    }
+
     @MainActor
     func accessibilityText(of element: XCUIElement) -> String {
         if let value = element.value as? String, !value.isEmpty {
@@ -108,6 +152,28 @@ extension ScholiumUITests {
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
+    /// Native resize gestures can stop short of the declared Settings minimum.
+    /// Re-read the frame once and let the native minimum clamp a second drag.
+    @MainActor
+    func resizeSettingsToMinimumWidth(_ window: XCUIElement) {
+        let minimumWidth: CGFloat = 780
+        for attempt in 0..<2 {
+            let currentWidth = window.frame.width
+            guard abs(currentWidth - minimumWidth) >= 2, currentWidth > minimumWidth else { break }
+            let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+                .withOffset(CGVector(dx: -1, dy: 0))
+            let overdrag: CGFloat = attempt == 0 ? 0 : 24
+            rightEdge.click(
+                forDuration: 0.15,
+                thenDragTo: rightEdge.withOffset(CGVector(dx: minimumWidth - currentWidth - overdrag, dy: 0))
+            )
+            if waitUntil(timeout: 2, condition: { abs(window.frame.width - minimumWidth) < 2 }) { break }
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { abs(window.frame.width - minimumWidth) < 2 },
+            "Settings must reach its declared 780-point minimum through native resizing.")
+    }
+
     @MainActor
     func resizeProofWindow(
         _ window: XCUIElement,
@@ -174,6 +240,41 @@ extension ScholiumUITests {
                     } ?? true)
             })
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+
+    @MainActor
+    func stageNativeRestorationQABundle() throws -> URL {
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = sourceRoot.appendingPathComponent(".build/qa-runtime/Scholium-QA.app", isDirectory: true)
+        XCTAssertEqual(Bundle(url: source)?.bundleIdentifier, "com.scholium.qa")
+        XCTAssertTrue(testDirectory.standardizedFileURL.path.hasPrefix(sourceRoot.appendingPathComponent(".build/qa-runtime/journeys/").path))
+        let staged = testDirectory.appendingPathComponent("Scholium-Restoration-QA.app", isDirectory: true)
+        try FileManager.default.copyItem(at: source, to: staged)
+        let plistURL = staged.appendingPathComponent("Contents/Info.plist")
+        var plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), format: nil) as? [String: Any])
+        plist["CFBundleIdentifier"] = "com.scholium.qa.restoration." + UUID().uuidString.lowercased()
+        plist["CFBundleName"] = "Scholium Restoration QA"
+        // This test app must never be selected as a default Markdown handler.
+        var documentTypes = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+        for index in documentTypes.indices { documentTypes[index]["LSHandlerRank"] = "None" }
+        plist["CFBundleDocumentTypes"] = documentTypes
+        plist["LSEnvironment"] = [
+            "SCHOLIUM_HOME": homeDirectory.path,
+            "CFFIXED_USER_HOME": homeDirectory.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": "",
+            "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION": "1",
+        ]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: plistURL)
+        XCTAssertEqual(
+            try Data(contentsOf: staged.appendingPathComponent("Contents/MacOS/Scholium")),
+            try Data(contentsOf: source.appendingPathComponent("Contents/MacOS/Scholium")))
+        let signing = Process()
+        signing.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        signing.arguments = ["--force", "--deep", "--sign", "-", staged.path]
+        try signing.run()
+        signing.waitUntilExit()
+        XCTAssertEqual(signing.terminationStatus, 0)
+        return staged
     }
 
     @MainActor
@@ -825,7 +926,7 @@ extension ScholiumUITests {
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
         authorizeButton.click()
 
-        let panel = app.descendants(matching: .any)["open-panel"]
+        let panel = owner?.sheets["open-panel"] ?? app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         if let owner {
             XCTAssertTrue(owner.exists)
@@ -852,27 +953,16 @@ extension ScholiumUITests {
             app.typeKey("g", modifierFlags: [.command, .shift])
             let goToFolderSheet = app.sheets.matching(
                 NSPredicate(format: "identifier != %@", "open-panel")
-            ).firstMatch
+            ).containing(.textField, identifier: "PathTextField").firstMatch
             XCTAssertTrue(goToFolderSheet.waitForExistence(timeout: 5))
-            let pathField = goToFolderSheet.textFields.firstMatch
+            let pathField = goToFolderSheet.textFields["PathTextField"]
             XCTAssertTrue(pathField.waitForExistence(timeout: 5))
             pathField.click()
             pathField.typeKey("a", modifierFlags: .command)
             pathField.typeText(folder.path)
-            let confirmFolder = goToFolderSheet.buttons.allElementsBoundByIndex
-                .reversed()
-                .first(where: {
-                    $0.isEnabled
-                        && $0.label != "Cancel"
-                        && $0.label != "Close"
-                        && $0.identifier != "CancelButton"
-                        && $0.identifier != "CloseButton"
-                })
-            if let confirmFolder {
-                confirmFolder.click()
-            } else {
-                pathField.typeKey(.return, modifierFlags: [])
-            }
+            // Confirm the exact native path field. Completion can change the
+            // sheet's button collection between AX queries, invalidating indices.
+            pathField.typeKey(.return, modifierFlags: [])
             // The system Go to Folder field can first accept its path
             // completion without dismissing the sheet. Confirm that resolved
             // folder in a second step when the sheet remains visible.
@@ -898,11 +988,10 @@ extension ScholiumUITests {
 
     @MainActor
     func setPasteboardText(_ text: String) throws {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else {
-            throw CocoaError(.fileWriteUnknown)
+        if clipboardPreservation == nil {
+            clipboardPreservation = QAClipboardPreservation(pasteboard: .general)
         }
+        try clipboardPreservation?.setText(text)
     }
 
     @MainActor

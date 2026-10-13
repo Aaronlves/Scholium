@@ -438,7 +438,9 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 10) { (try? String(contentsOf: noteURL, encoding: .utf8)) == expectedSource })
 
         selectDocumentMode("Review", in: workspace)
-        XCTAssertTrue(workspace.images[imageAlt].waitForExistence(timeout: 10))
+        let imagePreview = workspace.buttons["Preview image \(imageAlt) (\(copiedImage.lastPathComponent))"]
+        XCTAssertTrue(imagePreview.waitForExistence(timeout: 10))
+        XCTAssertTrue(imagePreview.isEnabled, "The decoded Review image exposes its native preview action.")
         coverageCapture(workspace, name: "native-attachment-review-image")
         for name in [copiedInput.lastPathComponent, referencedInput.lastPathComponent] {
             let link = workspace.links[name].firstMatch

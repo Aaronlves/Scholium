@@ -12,12 +12,13 @@ struct AgentChatStreamingPresentationTests {
         var source = "An **existing reply** with 中文 and a retained selection.\n\n"
     }
     @MainActor final class Readiness {
-        var ready = false
+        let session = AgentChatReadingSession()
+        var ready: Bool { session.areReadersHydrated(["reply"]) }
+        private var lastReady = false
         var interruptions = 0
-        func record(_ states: [String: Bool]) {
-            let next = states["reply"] == true
-            if ready && !next { interruptions += 1 }
-            ready = next
+        func record(_ next: Bool) {
+            if lastReady && !next { interruptions += 1 }
+            lastReady = next
         }
     }
     struct Reply: View {
@@ -25,7 +26,8 @@ struct AgentChatStreamingPresentationTests {
         let readiness: Readiness
         var body: some View {
             AgentChatReadReply(source: input.source, readerID: "reply", quote: { _ in }, openLink: { _ in })
-                .onPreferenceChange(AgentChatReplyHydrationPreference.self) { readiness.record($0) }
+                .environment(\.chatReadingSession, readiness.session)
+                .onChange(of: readiness.ready, initial: true) { _, next in readiness.record(next) }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
