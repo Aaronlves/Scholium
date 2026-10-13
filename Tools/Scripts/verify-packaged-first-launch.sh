@@ -4,14 +4,16 @@ set -euo pipefail
 ROOT="${0:A:h:h:h}"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 DMG=""
+KEEP_ARTIFACTS=false
 
 usage() {
-  print -u2 "Usage: verify-packaged-first-launch.sh --dmg DMG"
+  print -u2 "Usage: verify-packaged-first-launch.sh --dmg DMG [--keep-artifacts]"
 }
 
 while (( $# > 0 )); do
   case "$1" in
     --dmg) DMG="$2"; shift 2 ;;
+    --keep-artifacts) KEEP_ARTIFACTS=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) print -u2 "Unknown argument: $1"; usage; exit 64 ;;
   esac
@@ -99,7 +101,7 @@ cleanup() {
         ;;
     esac
   done
-  if (( exit_code == 0 )); then
+  if (( exit_code == 0 )) && [[ "${KEEP_ARTIFACTS}" == false ]]; then
     rm -rf "${SCRATCH}"
   else
     print -u2 "Packaged Core smoke diagnostics retained at ${SCRATCH}"
@@ -206,4 +208,4 @@ run_smoke() {
 
 if ! run_smoke mounted "${MOUNTED_APP}"; then exit 1; fi
 if ! run_smoke copied "${COPIED_APP}"; then exit 1; fi
-print "Production machine state: unchanged"
+print "Production State-v1 files: unchanged (preferences require a clean test account)"
