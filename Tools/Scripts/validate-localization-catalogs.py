@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import tempfile
 
 
 FORMAT = re.compile(
@@ -113,6 +114,22 @@ def validate(catalog, name):
     return errors
 
 
+def current_compiler_sources(build_root, source_root):
+    """Incremental builds can retain supplementary outputs of removed files."""
+    source_root = source_root.resolve()
+    records = []
+    for output in build_root.rglob("*.stringsdata"):
+        if not any(part == "ScholiumApp.build" or
+                   (part.startswith("ScholiumApp-") and part.endswith(".build"))
+                   for part in output.parts):
+            continue
+        data = json.loads(output.read_text(), object_pairs_hook=unique_object)
+        origin = Path(data["source"]).resolve()
+        if origin.is_relative_to(source_root) and origin.is_file() and origin.suffix == ".swift":
+            records.append((output, data))
+    return records
+
+
 def self_test():
     assert arguments("%@ has %lld items") == arguments("%2$lld 项属于 %1$@")
     assert arguments("%@ %lld") != arguments("%@ %ld")
@@ -151,6 +168,21 @@ def self_test():
         pass
     else:
         raise AssertionError("Duplicate catalog keys were accepted")
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        sources = root / "Scholium"
+        sources.mkdir()
+        current = sources / "Current.swift"
+        current.touch()
+        outputs = root / "ScholiumApp-a.build"
+        outputs.mkdir()
+        for name, origin in [("current", current), ("deleted", sources / "Deleted.swift"),
+                             ("other", root / "Generated.swift")]:
+            (outputs / f"{name}.stringsdata").write_text(json.dumps({"source": str(origin), "tables": {}}))
+        records = current_compiler_sources(root, sources)
+        assert [output.name for output, _ in records] == ["current.stringsdata"]
+        current.unlink()
+        assert not current_compiler_sources(root, sources)
     print("Localization catalog validator self-test passed.")
 
 
@@ -159,6 +191,7 @@ def main():
     parser.add_argument("catalogs", nargs="*", type=Path)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--stringsdata-root", type=Path)
+    parser.add_argument("--swift-source-root", type=Path)
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -174,14 +207,12 @@ def main():
         except (ValueError, OSError) as error:
             errors.append(f"{path.name}: {error}")
     if args.stringsdata_root:
-        sources = [path for path in args.stringsdata_root.rglob("*.stringsdata")
-                   if any(part == "ScholiumApp.build" or
-                          (part.startswith("ScholiumApp-") and part.endswith(".build"))
-                          for part in path.parts)]
-        if not sources:
-            errors.append("Compiler emitted no ScholiumApp localization source data")
-        for source in sources:
-            data = json.loads(source.read_text(), object_pairs_hook=unique_object)
+        if not args.swift_source_root:
+            parser.error("--stringsdata-root requires --swift-source-root")
+        records = current_compiler_sources(args.stringsdata_root, args.swift_source_root)
+        if not records:
+            errors.append("Compiler emitted no current ScholiumApp localization source data")
+        for source, data in records:
             for table, entries in data.get("tables", {}).items():
                 for entry in entries:
                     if entry["key"] not in tables.get(table, {}):

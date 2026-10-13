@@ -127,8 +127,30 @@ struct ScholiumAppBridgeSecurityTests {
         #expect(elapsed < .seconds(2))
     }
 
-    @Test("The authentication exchange shares its original deadline after the challenge")
-    func handshakeDoesNotRenewDeadline() async throws {
+    @Test("Authentication frames receive the original deadline at every stage")
+    func authenticationFramesShareOriginalDeadline() throws {
+        let deadline = AppBridgeDeadline(timeout: 1)
+        let exchange = try authenticationExchange(deadline: deadline)
+        #expect(exchange.body == Data([17, 23]))
+        #expect(exchange.deadlines == [deadline, deadline, deadline])
+    }
+
+    @Test("An expired authentication cannot return a verified request body")
+    func expiredAuthenticationCannotReturnBody() {
+        #expect(throws: ScholiumAppBridgeError.timeout) {
+            _ = try authenticationExchange(deadline: AppBridgeDeadline(timeout: 0))
+        }
+    }
+
+    @Test("An invalid authentication tag cannot return a request body")
+    func invalidAuthenticationCannotReturnBody() {
+        #expect(throws: ScholiumAppBridgeError.permissionDenied) {
+            _ = try authenticationExchange(deadline: AppBridgeDeadline(timeout: 1), invalidTag: true)
+        }
+    }
+
+    @Test("An incomplete authentication body expires without admitting an operation")
+    func incompleteAuthenticationExpires() async throws {
         let root = try makeRoot("authentication-deadline")
         defer { try? FileManager.default.removeItem(at: root) }
         let calls = BridgeSecurityCallCounter()
@@ -140,28 +162,31 @@ struct ScholiumAppBridgeSecurityTests {
         let peer = try connect(root)
         defer { Darwin.close(peer) }
         let started = ContinuousClock.now
-        try await Task.sleep(for: .milliseconds(250))
         try AppBridgeIO.writeFrame(Data(repeating: 7, count: 32), to: peer, deadline: AppBridgeDeadline(timeout: 1))
         let challenge = try AppBridgeIO.readFrame(from: peer, deadline: AppBridgeDeadline(timeout: 1))
         #expect(challenge.count == 64)
         // Deliberately incomplete authentication body; every byte arrives faster
         // than the socket timeout, but the complete exchange exceeds its budget.
-        try Self.send(Data([0, 0, 0, 64]), to: peer)
+        try Self.send(Data([0, 0, 0, 64, 7]), to: peer)
         let writer = Task.detached {
-            for _ in 0..<64 {
+            var written = 1
+            for _ in 1..<64 {
                 do {
                     try Task.checkCancellation()
                     try Self.send(Data([7]), to: peer)
+                    written += 1
                     try await Task.sleep(for: .milliseconds(25))
                 } catch { break }
             }
+            return written
         }
         let response = await Task.detached {
             Self.readResult(peer, deadline: AppBridgeDeadline(timeout: 1.5))
         }.value
         let elapsed = started.duration(to: .now)
         writer.cancel()
-        await writer.value
+        let written = await writer.value
+        #expect(written >= 2 && written < 64, "The fixture must make progress without completing authentication.")
         // Closing with unread authentication bytes can reset TCP instead of returning EOF.
         #expect(
             response == .failure(.invalidFrame) || response == .failure(.systemCall("read", ECONNRESET)),
@@ -169,6 +194,7 @@ struct ScholiumAppBridgeSecurityTests {
         #expect(elapsed < .seconds(1))
         #expect(await calls.count == 0)
         #expect(await server.stopAndWait(timeout: 1))
+        print("AUTH_DEADLINE_FIXTURE elapsed=\(elapsed) authentication_bytes=\(written)")
     }
 
     @Test("Pending peers cannot occupy any of the 32 authenticated slots")
@@ -252,6 +278,40 @@ struct ScholiumAppBridgeSecurityTests {
         #expect(await gate.didEnter)
         #expect(await !gate.expired, "The pending-peer fixture must finish before its own safety deadline.")
         #expect(await server.stopAndWait(timeout: 1))
+    }
+
+    private func authenticationExchange(
+        deadline: AppBridgeDeadline,
+        invalidTag: Bool = false
+    ) throws -> (body: Data, deadlines: [AppBridgeDeadline]) {
+        let secret = Data(repeating: 9, count: 32)
+        let nonce = Data(repeating: 7, count: 32)
+        let body = Data([17, 23])
+        var challenge: Data?
+        var deadlines: [AppBridgeDeadline] = []
+        var reads = 0
+        let authenticatedBody = try AppBridgeAuthentication.authenticate(
+            secret: secret, deadline: deadline,
+            readFrame: { suppliedDeadline in
+                deadlines.append(suppliedDeadline)
+                reads += 1
+                if reads == 1 { return nonce }
+                let challenge = try #require(challenge)
+                let clientTag = AppBridgeAuthentication.tag(
+                    role: "client", secret: secret, clientNonce: nonce, serverNonce: Data(challenge.prefix(32)))
+                return (invalidTag ? Data(repeating: 0, count: 32) : clientTag) + body
+            },
+            writeFrame: { frame, suppliedDeadline in
+                deadlines.append(suppliedDeadline)
+                #expect(frame.count == 64)
+                #expect(
+                    AppBridgeAuthentication.verify(
+                        tag: Data(frame.suffix(32)), role: "server", secret: secret,
+                        clientNonce: nonce, serverNonce: Data(frame.prefix(32))))
+                challenge = frame
+            })
+        #expect(reads == 2)
+        return (authenticatedBody, deadlines)
     }
 
     private typealias SocketPair = (reader: Int32, writer: Int32)

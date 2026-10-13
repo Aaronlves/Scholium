@@ -143,7 +143,9 @@ struct AgentChatReadReply: View {
             // Source revisions reconcile inside the retained page. Its measured
             // prefix stays readable while the next projection is prepared;
             // navigation or a replacement (not an append) invalidates readiness.
-            if let displayed = readerProjection?.document.rawContent, !source.hasPrefix(displayed) {
+            // A queued replacement must not discard the first page's layout
+            // proof while its rendering-ready acknowledgement is still pending.
+            if hasHydratedReader, let displayed = readerProjection?.document.rawContent, !source.hasPrefix(displayed) {
                 ready = false
                 hasMeasuredLayout = false
             }

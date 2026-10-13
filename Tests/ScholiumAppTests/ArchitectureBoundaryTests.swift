@@ -216,14 +216,14 @@ struct ArchitectureBoundaryTests {
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
         let verificationScript = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("Tools/Scripts/verify.sh"),
+            contentsOf: repositoryRoot.appendingPathComponent("Tools/Scripts/verify-structure.sh"),
             encoding: .utf8
         )
         for relativePath in allowedFiles {
             let deliveryRelativePath = relativePath.dropFirst("Scholium/".count)
             #expect(
                 verificationScript.contains("--glob '!**/\(deliveryRelativePath)'"),
-                "verify.sh is missing the frontend I/O allowlist entry for \(relativePath)"
+                "verify-structure.sh is missing the frontend I/O allowlist entry for \(relativePath)"
             )
         }
         var violations: [String] = []
