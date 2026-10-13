@@ -1,291 +1,145 @@
 #!/bin/zsh
+# Keep the global EXIT trap on failures inside functions as well as top-level commands.
+setopt POSIX_TRAPS
 set -euo pipefail
+zmodload zsh/datetime
 
-# The default remains the complete pre-distribution gate. Daily CI defers only
-# the two expensive editor WebKit suites and the optimized Release build.
+# Default full remains clean. Daily retains only toolchain-partitioned Swift
+# build/dependency state; every invocation executes current-source tests.
 PROFILE=full
 if (( $# > 0 )); then
-  if (( $# != 1 )) || [[ "$1" != "--ci" ]]; then
-    print -u2 "Usage: ${0:t} [--ci]"
+  if (( $# != 1 )); then
+    print -u2 "Usage: ${0:t} [--ci|--docs]"
     exit 64
   fi
-  PROFILE=daily
+  case "$1" in
+    --ci) PROFILE=daily ;;
+    --docs) PROFILE=docs ;;
+    *) print -u2 "Usage: ${0:t} [--ci|--docs]"; exit 64 ;;
+  esac
 fi
 
 ROOT="${0:A:h:h:h}"
-SCRATCH="${ROOT}/.build/verification"
-RELEASE_SCRATCH="${ROOT}/.build/verification-release"
-TEST_TEMP="${ROOT}/.build/verification-tmp"
+RUN_ROOT="${ROOT}/.build/ci-verification/runs/${PROFILE}-$(date -u +%Y%m%dT%H%M%S)-$$"
+LOG_ROOT="${RUN_ROOT}/logs"
+TEST_TEMP="${RUN_ROOT}/tmp"
+mkdir -p "${LOG_ROOT}" "${TEST_TEMP}"
+export SCHOLIUM_VERIFY_RUN_ROOT="${RUN_ROOT}"
+export PYTHONPYCACHEPREFIX="${RUN_ROOT}/pycache"
+export TMPDIR="${TEST_TEMP}"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export DEVELOPER_DIR
-rm -rf "${SCRATCH}" "${RELEASE_SCRATCH}" "${TEST_TEMP}"
-mkdir -p "${TEST_TEMP}"
-export TMPDIR="${TEST_TEMP}"
+swift() { xcrun swift "$@"; }
 
-python3 "${ROOT}/Tools/Scripts/validate-documentation-authority.py"
-"${ROOT}/Tools/Scripts/validate-interface-localization.sh"
-"${ROOT}/Tools/Scripts/lint.sh" --swift-only
-
-# The Core resource tree is the sole repository authority for release-shipped
-# product Skills. Every shipped SKILL.md must have the local reference files
-# it names before SwiftPM accepts the tree as a bundled Beta resource.
-python3 - "${ROOT}/ScholiumCore/Resources/Skills" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-root = Path(sys.argv[1])
-missing = []
-skill_roots = sorted(path.parent for path in root.rglob("SKILL.md"))
-for skill_root in skill_roots:
-    source = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-    references = sorted(set(re.findall(r"references/[A-Za-z0-9._/-]+", source)))
-    for reference in references:
-        if not (skill_root / reference).is_file():
-            missing.append(f"{skill_root}: {reference}")
-
-if missing:
-    print("Protected Skill reference check failed:", file=sys.stderr)
-    print("\n".join(missing), file=sys.stderr)
-    raise SystemExit(1)
-
-print(f"Shipped Skill references: {len(skill_roots)} SKILL.md roots validated")
-PY
-
-# Agent collaboration has one fixed MCP surface. Legacy action/run/result,
-# discussion, browser, and local bridge owners must not return.
-LEGACY_AGENT_ROOTS=(
-  "${ROOT}/Scholium"
-  "${ROOT}/ScholiumAgentHelper"
-  "${ROOT}/ScholiumApplication"
-  "${ROOT}/ScholiumContracts"
-  "${ROOT}/ScholiumCore"
-)
-if rg -n --glob '*.swift' \
-  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|Settlement[A-Za-z0-9_]*|WorkspaceSettlementRequirement[A-Za-z0-9_]*|DocumentSettlement[A-Za-z0-9_]*|ResearcherJudgmentContext|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection|Critique[A-Za-z0-9_]*|ZoteroBibliographicContext|ZoteroMetadataMatcher|ZoteroSourceIdentity)\b' \
-  "${LEGACY_AGENT_ROOTS[@]}"; then
-  echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
-  exit 1
-fi
-
-for retired_path in \
-  "${ROOT}/ScholiumResearchRecordsFeature" \
-  "${ROOT}/Scholium/Views/ResearchRecord" \
-  "${ROOT}/Scholium/Features/ResearchActions" \
-  "${ROOT}/Scholium/Views/ResearchActions" \
-  "${ROOT}/ScholiumCore/Resources/Skills/Scholium Method Skills"; do
-  if [[ -d "${retired_path}" ]] \
-    && [[ -n "$(find "${retired_path}" -type f -print -quit)" ]]; then
-    echo "Agent collaboration clean-cutover guard failed: retired path remains: ${retired_path}" >&2
-    exit 1
+typeset -F started_at=${EPOCHREALTIME} phase_started=0
+phase_label=""
+phase_begin() {
+  phase_label="$1"
+  phase_started=${EPOCHREALTIME}
+  print "Starting ${phase_label}"
+}
+phase_end() {
+  local result="${1:-0}"
+  local elapsed=$(( EPOCHREALTIME - phase_started ))
+  printf '%s\t%.3f\t%s\n' "${phase_label}" "${elapsed}" "${result}" >> "${RUN_ROOT}/timings.tsv"
+  printf '%s: %.3f seconds (status %s)\n' "${phase_label}" "${elapsed}" "${result}"
+  phase_label=""
+}
+finish_verification() {
+  local result=$?
+  trap - EXIT
+  # A signalled Swift driver may leave helper children alive as well.
+  if (( result == 130 || result == 143 )); then verification_interrupted=1; fi
+  if [[ "${verification_interrupted:-0}" == 1 && -n "${GITHUB_OUTPUT:-}" ]]; then
+    print "interrupted=true" >> "${GITHUB_OUTPUT}"
   fi
-done
+  [[ -z "${phase_label}" ]] || phase_end "${result}"
+  {
+    print "## Repository verification"
+    print ""
+    print "Profile: ${PROFILE}; exit status: ${result}."
+    print ""
+    print "| Phase | Seconds | Status |"
+    print "| --- | ---: | ---: |"
+    while IFS=$'\t' read -r label seconds code; do
+      print "| ${label} | ${seconds} | ${code} |"
+    done < "${RUN_ROOT}/timings.tsv"
+    print ""
+    printf 'Total: %.3f seconds.\n' "$(( EPOCHREALTIME - started_at ))"
+    if [[ -f "${RUN_ROOT}/test-results.txt" ]]; then
+      print ""
+      cat "${RUN_ROOT}/test-results.txt"
+      print ""
+    fi
+    if [[ "${verification_interrupted:-0}" == 1 ]]; then
+      print "Interrupted verification: disposable state retained until children stop; cache saving blocked."
+    fi
+    print "Measurement evidence skipped: ${SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE:-0}. Display evidence skipped: ${SCHOLIUM_SKIP_DISPLAY_EVIDENCE:-0}."
+    print "Daily scope defers MarkdownEditorWebViewIntegrationTests, MarkdownEditorReuseTests and Release; docs scope runs documentation and structural guards."
+  } > "${RUN_ROOT}/summary.md"
+  print "Verification evidence: ${RUN_ROOT}"
+  [[ -z "${GITHUB_STEP_SUMMARY:-}" ]] || cat "${RUN_ROOT}/summary.md" >> "${GITHUB_STEP_SUMMARY}"
+  if [[ "${verification_interrupted:-0}" == 1 ]]; then
+    # A signal to the shell alone need not stop its children. Keep their state
+    # until the cancellation owner has stopped the whole process tree.
+    print "Interrupted verification: retaining disposable state until child processes stop."
+  else
+    rm -rf -- "${TEST_TEMP}" "${RUN_ROOT}/pycache"
+    if [[ "${PROFILE}" == full ]]; then
+      rm -rf -- "${RUN_ROOT}/build" "${RUN_ROOT}/release-build" "${RUN_ROOT}/dependencies" "${RUN_ROOT}/release-dependencies"
+    fi
+  fi
+  return "${result}"
+}
+touch "${RUN_ROOT}/timings.tsv"
+trap finish_verification EXIT
+verification_interrupted=0
+trap 'verification_interrupted=1; exit 130' INT
+trap 'verification_interrupted=1; exit 143' TERM
 
-if rg -n --glob '*.swift' --glob '*.sh' \
-  'scholium[[:space:]]+(agent|research|skills|workflow)|agent[[:space:]]+(connect|start|resume|complete)|research-records' \
-  "${LEGACY_AGENT_ROOTS[@]}" \
-  "${ROOT}/Tools/Scripts/package-app.sh"; then
-  echo "Agent collaboration transport/storage guard failed: a retired route or path returned." >&2
-  exit 1
+phase_begin "Documentation and structural guards"
+if "${ROOT}/Tools/Scripts/verify-structure.sh" > "${LOG_ROOT}/structure.log" 2>&1; then
+  cat "${LOG_ROOT}/structure.log"
+else
+  command_status=$?
+  tail -n 80 "${LOG_ROOT}/structure.log" >&2
+  exit "${command_status}"
+fi
+phase_end
+phase_begin "RDF-1 fixture"
+if "${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh" > "${LOG_ROOT}/rdf1.log" 2>&1; then
+  cat "${LOG_ROOT}/rdf1.log"
+else
+  command_status=$?
+  tail -n 80 "${LOG_ROOT}/rdf1.log" >&2
+  exit "${command_status}"
+fi
+phase_end
+if [[ "${PROFILE}" == docs ]]; then
+  print "Documentation-only repository verification passed."
+  exit 0
 fi
 
-# Retired action journeys and fixtures must not survive outside production roots.
-if rg -n --glob '*.swift' \
-  'scholium\.critique|critique_authorship|critique_target_|testCritiqueFinding|scholium-research-workflow-proofs|scholium-write-set-extension-fixture' \
-  "${ROOT}/UITests"; then
-  echo "Agent cleanup guard failed: retired UI journey or fixture remains." >&2
-  exit 1
+if [[ "${PROFILE}" == daily ]]; then
+  partition="$(python3 "${ROOT}/Tools/Scripts/verification-cache-key.py")"
+  SCRATCH="${ROOT}/.build/ci-verification/daily/${partition}/build"
+  DEPENDENCIES="${ROOT}/.build/ci-verification/daily/${partition}/dependencies"
+else
+  SCRATCH="${RUN_ROOT}/build"
+  DEPENDENCIES="${RUN_ROOT}/dependencies"
 fi
-
-# Pin exact wire identities and Chat-only classification before runtime checks.
-python3 "${ROOT}/Tools/Tests/test-mcp-surface.py"
-python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" --surface-only
-
-# Note and Folder deletion has one clean system-Trash route. Prevent the
-# retired Set Aside/internal-Trash lifecycle, commands, contracts, and routed
-# specification name from becoming reachable again.
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!.build/**' \
-  --glob '!Scholium/Resources/Editor/**' \
-  --glob '!Tools/Scripts/verify.sh' \
-  'Set Aside|Put Back|internal Trash|set-aside|put-back|trash-list|trash-restore|NoteLifecycle|FolderLifecycle|WorkspaceDocumentLifecycle|PermanentDeletionContracts|NotePermanentDeletionCoordinator|02-notes-and-lifecycle' \
-  "${ROOT}/Scholium" \
-  "${ROOT}/ScholiumApplication" \
-  "${ROOT}/ScholiumContracts" \
-  "${ROOT}/ScholiumCore" \
-  "${ROOT}/Docs" \
-  "${ROOT}/Tests" \
-  "${ROOT}/UITests" \
-  "${ROOT}/README.md"; then
-  echo "System Trash clean-cutover guard failed: retired file-lifecycle residue remains." >&2
-  exit 1
+RELEASE_SCRATCH="${RUN_ROOT}/release-build"
+print "Swift build state: ${SCRATCH}"
+phase_begin "Editor bundle and Web tests"
+if "${ROOT}/Tools/Scripts/verify-editor-bundle.sh" > "${LOG_ROOT}/editor.log" 2>&1; then
+  cat "${LOG_ROOT}/editor.log"
+else
+  command_status=$?
+  tail -n 80 "${LOG_ROOT}/editor.log" >&2
+  exit "${command_status}"
 fi
+phase_end
 
-# Delivery targets compile only against Contracts plus Application composition.
-# Core is internal and cannot be imported by App, helper, or their boundary tests.
-DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumAgentHelper")
-python3 "${ROOT}/Tools/Tests/test-contracts-purity.py"
-"${ROOT}/Tools/Scripts/validate-contracts-purity.sh"
-
-if rg -n --glob '*.swift' '^import ScholiumCore$' \
-  "${DELIVERY_ROOTS[@]}" \
-  "${ROOT}/Tests/ScholiumAppTests" \
-  "${ROOT}/Tests/ScholiumApplicationTests"; then
-  echo "Compiler boundary guard failed: a delivery source imports ScholiumCore." >&2
-  exit 1
-fi
-
-# Skill YAML parsing and package-ID routing are backend authorities. Delivery
-# targets may request draft inspection through Application but must never call
-# the parser or catalog YAML loader directly.
-if rg -n --glob '*.swift' \
-  '\bResearchSkillInspector\b|\bResearchSkillCatalog[[:space:]]*\.[[:space:]]*parse[[:space:]]*\(' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "Skill authority guard failed: a delivery target parses Skill YAML directly." >&2
-  exit 1
-fi
-
-# The document leaf receives narrow values and closures, never a complete
-# window or Research feature root.
-if rg -n '\b(ResearchController|WindowModel)\b' \
-  "${ROOT}/Scholium/Views/Note/NoteContentView.swift"; then
-  echo "Document ownership guard failed: NoteContentView received a window or Research feature root." >&2
-  exit 1
-fi
-
-APPLICATION_IMPORTS=$(rg -l --glob '*.swift' '^import ScholiumApplication$' \
-  "${DELIVERY_ROOTS[@]}" || true)
-while IFS= read -r file; do
-  [[ -z "${file}" ]] && continue
-  case "${file}" in
-    "${ROOT}/Scholium/App/ScholiumApp.swift"|\
-    "${ROOT}/Scholium/App/ScholiumWindowScenes.swift"|\
-    "${ROOT}/Scholium/Views/Note/ExternalMarkdownWindow.swift"|\
-    "${ROOT}/Scholium/App/ApplicationBootstrapController.swift"|\
-    "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
-    "${ROOT}/Scholium/Services/MCPAppBridgeRequestRouter.swift"|\
-    "${ROOT}/Scholium/Services/ScholiumAppBridgeRequestRouter.swift"|\
-    "${ROOT}/Scholium/Services/WindowSession.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController+Bridge.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController+Connection.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController+Conversation.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController+Execution.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatController+Materials.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatExecutionState.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
-    "${ROOT}/Scholium/Services/AgentChatRegistry.swift"|\
-    "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
-    "${ROOT}/ScholiumAgentHelper/ScholiumAgentHelper.swift") ;;
-    *)
-      echo "Compiler boundary guard failed: ScholiumApplication import outside a composition root: ${file}" >&2
-      exit 1
-      ;;
-  esac
-done <<< "${APPLICATION_IMPORTS}"
-
-if rg -n --glob '*.swift' '\b(URLSession|SQLiteSearchIndex|FSEventStreamCreate)\b' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "I/O wall guard failed: a delivery target owns network, SQLite, or watcher I/O." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' \
-  --glob '!**/Services/WindowSession.swift' \
-  --glob '!**/Services/PerformanceProbe.swift' \
-  --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
-  --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
-  --glob '!**/Views/Note/ScholiumDocumentWebResources.swift' \
-  --glob '!**/Views/Sidebar/AgentChatWebsiteIcon.swift' \
-  --glob '!**/Styling/ScholiumWebFonts.swift' \
-  --glob '!**/Styling/ScholiumWebFontResources.swift' \
-  --glob '!**/Styling/ScholiumCalloutStyles.swift' \
-  --glob '!**/Styling/ScholiumTableStyles.swift' \
-  --glob '!**/Styling/ScholiumFootnoteStyles.swift' \
-  --glob '!**/Styling/ScholiumMathAssets.swift' \
-  --glob '!**/Styling/ScholiumMermaidAssets.swift' \
-  --glob '!**/Styling/ScholiumPreviewStyles.swift' \
-  --glob '!**/Styling/CSSSnippetStore.swift' \
-  '\bFileManager\b|Data\(contentsOf:|String\(contentsOf:' \
-  "${ROOT}/Scholium"; then
-  echo "I/O wall guard failed: frontend filesystem I/O is outside its delivery allowlist." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|TriptychControlStore|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NoteSystemTrashDeletionCoordinator)[[:space:]]*\(' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "Application ownership guard failed: a delivery target constructs an Application-owned authority." >&2
-  exit 1
-fi
-
-# SQLite indexes use a factory rather than an initializer, so guard that
-# construction spelling separately.
-if rg -n --glob '*.swift' '\bSQLiteSearchIndex[[:space:]]*\.[[:space:]]*openRecovering[[:space:]]*\(' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "Application ownership guard failed: a delivery target opens a SQLite index." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' '\bFSEventStreamCreate[[:space:]]*\(' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "Application ownership guard failed: a delivery target constructs a vault watcher." >&2
-  exit 1
-fi
-
-# Graph construction and publication belong behind ScholiumApplication. App
-# and helper consume immutable snapshots and must not rebuild a competing graph.
-if rg -n --glob '*.swift' 'LinkGraphBuilder\.(build|resolve)' \
-  "${DELIVERY_ROOTS[@]}"; then
-  echo "Application ownership guard failed: a delivery target constructs or resolves a graph." >&2
-  exit 1
-fi
-
-# The complete per-window model belongs only at the SwiftUI composition root.
-# Feature roots receive their controller plus narrow immutable/action contexts;
-# descendants must not reacquire the window through the environment.
-if rg -n --glob '*.swift' --glob '!ContentView.swift' '\bWindowModel\b' \
-  "${ROOT}/Scholium/Views"; then
-  echo "Window ownership guard failed: a descendant view references WindowModel." >&2
-  exit 1
-fi
-
-# App views consume Core/Application documents and YAML values directly. A
-# second mutable Note or frontmatter value model would recreate a competing
-# source authority.
-if rg -n --glob '*.swift' '\b(struct[[:space:]]+Note|enum[[:space:]]+FrontmatterValue)\b' \
-  "${ROOT}/Scholium"; then
-  echo "Source projection guard failed: the App declares a mutable Note or YAML authority." >&2
-  exit 1
-fi
-
-for shell_script in \
-  "${ROOT}/Tools/Scripts/build-qa-app.sh" \
-  "${ROOT}/Tools/Scripts/inspect-window-size.sh" \
-  "${ROOT}/Tools/Scripts/manage-development-storage.sh" \
-  "${ROOT}/Tools/Scripts/package-app.sh" \
-  "${ROOT}/Tools/Scripts/run-debug-app.sh" \
-  "${ROOT}/Tools/Scripts/run-editor-toolchain.sh" \
-  "${ROOT}/Tools/Scripts/lint.sh" \
-  "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh" \
-  "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
-  "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
-  "${ROOT}/Tools/Scripts/validate-interface-localization.sh"; do
-  zsh -n "${shell_script}"
-done
-zsh -n "${ROOT}/Manage Scholium Development Storage.command"
-PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
-  "${ROOT}/Tools/Scripts/generate-rdf1.py" \
-  "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
-  "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
-  "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
-  "${ROOT}/Tools/Scripts/validate-entitlements.py"
-python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" --self-test
-python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
-python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
-"${ROOT}/Tools/Scripts/verify-editor-bundle.sh"
-"${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh"
 # Xcode beta's Swift Testing helper can crash while multiple test products
 # tear down their event graphs (and AppKit/WebKit resources) in one invocation.
 # Run the complete product set serially; no suite or test is excluded.
@@ -307,6 +161,11 @@ report_swift_test_success() {
   local log="$2"
   local summary="$3"
   print "${label}: ${summary}"
+  local skipped="$(rg -c 'Test .* skipped\.' "${log}" || true)"
+  print "${label}: ${skipped:-0} declared test skips."
+  if [[ -n "${RUN_ROOT:-}" ]]; then
+    print "${label}: ${summary} Declared test skips: ${skipped:-0}." >> "${RUN_ROOT}/test-results.txt"
+  fi
 
   if rg -q 'SEARCH_V9_PERFORMANCE_REPORT' "${log}"; then
     rg 'SEARCH_V9_PERFORMANCE_REPORT|"(cold_rebuild_ms|warm_query_p95_ms|incremental_publication_p95_ms|database_bytes|process_peak_rss_bytes)"' \
@@ -329,14 +188,14 @@ run_swift_test_once() {
   local label="$1"
   local log_name="$2"
   shift 2
-  local log="${SCRATCH}/${log_name}.log"
+  local log="${LOG_ROOT}/${log_name}.log"
   local command_status summary
 
   mkdir -p "${SCRATCH}"
   set +e
   swift test \
     --package-path "${ROOT}" \
-    --scratch-path "${SCRATCH}" \
+    --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" --manifest-cache local --force-resolved-versions \
     "$@" > "${log}" 2>&1
   command_status=$?
   set -e
@@ -396,11 +255,11 @@ run_swift_test_product() {
   fi
   mkdir -p "${SCRATCH}"
   for attempt in 1 2 3; do
-    log="${SCRATCH}/${test_product}-attempt-${attempt}.log"
+    log="${LOG_ROOT}/${test_product}-attempt-${attempt}.log"
     set +e
     swift test \
       --package-path "${ROOT}" \
-      --scratch-path "${SCRATCH}" \
+      --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" --manifest-cache local --force-resolved-versions \
       "${parallelism_arguments[@]}" \
       "${selection_arguments[@]}" > "${log}" 2>&1
     command_status=$?
@@ -425,7 +284,42 @@ run_swift_test_product() {
   done
 }
 
-python3 "${ROOT}/Tools/Tests/test-verify-swift-results.py"
+
+prepare_swift_tests() {
+  local reused=0 command_status
+  [[ "${PROFILE}" != daily || ! -d "${SCRATCH}" ]] || reused=1
+  local log="${LOG_ROOT}/debug-test-build.log"
+  set +e
+  swift build --build-tests --package-path "${ROOT}" \
+    --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" \
+    --manifest-cache local --force-resolved-versions > "${log}" 2>&1
+  command_status=$?
+  set -e
+  if (( command_status != 0 && reused == 1 )); then
+    print -u2 "Reused Swift state failed to build; retaining its log and trying one clean build."
+    # These are this toolchain partition's disposable build/dependency products.
+    rm -rf -- "${SCRATCH}" "${DEPENDENCIES}"
+    log="${LOG_ROOT}/debug-test-build-clean-fallback.log"
+    set +e
+    swift build --build-tests --package-path "${ROOT}" \
+      --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" \
+      --manifest-cache local --force-resolved-versions > "${log}" 2>&1
+    command_status=$?
+    set -e
+  fi
+  if (( command_status != 0 )); then
+    print -u2 "Debug test build failed. Last 80 log lines:"
+    tail -n 80 "${log}" >&2
+    print -u2 "Complete log: ${log}"
+    return "${command_status}"
+  fi
+  [[ -z "${GITHUB_OUTPUT:-}" ]] || print "build-ready=true" >> "${GITHUB_OUTPUT}"
+  print "Debug test build: $(rg 'Build complete!' "${log}" | tail -n 1 || true)"
+}
+
+phase_begin "Current-source Debug test build"
+prepare_swift_tests
+phase_end
 
 for test_product in \
   ScholiumCoreTests \
@@ -433,6 +327,7 @@ for test_product in \
   ScholiumContractsTests \
   ScholiumApplicationTests \
   ScholiumAppTests; do
+  phase_begin "${test_product}"
   if [[ "${test_product}" == "ScholiumPerformanceTests" ]]; then
     run_measurement_test \
       "ScholiumPerformanceTests performance" \
@@ -442,29 +337,37 @@ for test_product in \
   else
     run_swift_test_product "${test_product}"
   fi
+  phase_end
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
+    phase_begin "Application bridge lifecycle"
     run_swift_test_once \
       "ScholiumApplicationTests bridge lifecycle" \
       "ScholiumApplicationTests-bridge" \
       --no-parallel \
       --filter 'ScholiumApplicationTests.ScholiumAppBridgeTests'
+    phase_end
+    phase_begin "Application architecture measurement"
     run_measurement_test \
       "ScholiumApplicationTests architecture measurement" \
       "ScholiumApplicationTests-architecture" \
       --no-parallel \
       --filter 'ScholiumApplicationTests.ArchitectureStabilityMeasurementTests'
+    phase_end
   fi
 done
 
+phase_begin "Compiled localization catalogs"
 python3 "${ROOT}/Tools/Scripts/validate-localization-catalogs.py" \
-  --stringsdata-root "${SCRATCH}" \
+  --stringsdata-root "${SCRATCH}" --swift-source-root "${ROOT}/Scholium" \
   "${ROOT}/Scholium/Resources/Interface.xcstrings" \
   "${ROOT}/Scholium/Resources/Localizable.xcstrings" \
   "${ROOT}/Scholium/Resources/WebKitInterface.xcstrings"
 
+phase_end
+phase_begin "Public Application symbol boundary"
 # Public Application signatures must be expressible entirely in Contracts and
 # Foundation. A leaked Core nominal would defeat the package dependency wall.
-swift package --package-path "${ROOT}" --scratch-path "${SCRATCH}" \
+swift package --package-path "${ROOT}" --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" --manifest-cache local --force-resolved-versions \
   dump-symbol-graph --minimum-access-level public
 if rg -n 'ScholiumCore' \
   "${SCRATCH}/out/symbolgraph/ScholiumApplication.symbols.json"; then
@@ -472,24 +375,28 @@ if rg -n 'ScholiumCore' \
   exit 1
 fi
 
+phase_end
 if [[ "${PROFILE}" == daily ]]; then
-  helper_log="${SCRATCH}/debug-helper-build.log"
-  if ! swift build --package-path "${ROOT}" --scratch-path "${SCRATCH}" \
+  phase_begin "Debug Agent helper"
+  helper_log="${LOG_ROOT}/debug-helper-build.log"
+  if ! swift build --package-path "${ROOT}" --scratch-path "${SCRATCH}" --cache-path "${DEPENDENCIES}" --manifest-cache local --force-resolved-versions \
     --product ScholiumAgentHelper > "${helper_log}" 2>&1; then
     print -u2 "Debug helper build failed. Last 80 log lines:"
     tail -n 80 "${helper_log}" >&2
     exit 1
   fi
   python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${SCRATCH}/debug/ScholiumAgentHelper"
+  phase_end
   print "Daily CI passed; the optimized Release build and Release helper remain required in the default full gate."
   exit 0
 fi
 
+phase_begin "Clean Release build"
 mkdir -p "${RELEASE_SCRATCH}"
-release_log="${RELEASE_SCRATCH}/release-build.log"
+release_log="${LOG_ROOT}/release-build.log"
 set +e
 swift build --package-path "${ROOT}" -c release \
-  --scratch-path "${RELEASE_SCRATCH}" > "${release_log}" 2>&1
+  --scratch-path "${RELEASE_SCRATCH}" --cache-path "${RUN_ROOT}/release-dependencies" --manifest-cache local --force-resolved-versions > "${release_log}" 2>&1
 release_status=$?
 set -e
 if (( release_status != 0 )); then
@@ -503,3 +410,6 @@ print "Release build: ${release_summary:-passed}"
 
 
 python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${RELEASE_SCRATCH}/release/ScholiumAgentHelper"
+
+phase_end
+print "Full repository verification passed."

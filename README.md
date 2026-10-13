@@ -81,12 +81,25 @@ developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 ```
 
-Daily push and pull-request CI runs `verify.sh --ci`. It retains the repository
-and reproducible-editor guards, Core/Contracts/Application and bridge tests,
-and all App tests except the two expensive `MarkdownEditorWebViewIntegrationTests`
-and `MarkdownEditorReuseTests` suites. It validates the Debug helper; the default
-full gate also runs those suites, builds Release and validates the Release helper.
-Editor typecheck and tests run once within the reproducible-bundle check.
+Push and pull-request CI always reports `Repository verification`. Verified
+edits to a closed list of existing Markdown documents run the documentation,
+structural and RDF-1 fixture guards (`verify.sh --docs`). Unknown paths, missing
+history, renames, mode changes, code, scripts and build configuration use the
+daily gate (`verify.sh --ci`); manual runs retain their selected daily/full scope.
+
+Daily verification retains the reproducible-editor guards, Core/Contracts/
+Application and bridge tests, and all App tests except
+`MarkdownEditorWebViewIntegrationTests` and `MarkdownEditorReuseTests`. It
+validates the Debug helper; the default full gate also runs those suites, builds
+Release and validates the Release helper. Editor typecheck and tests run once
+within the reproducible-bundle check.
+
+Daily Swift build/dependency state is partitioned by the actual toolchain, SDK,
+architecture, host, checkout path and locked package graph. PRs only restore
+trusted main caches; tests rebuild/check current source and execute every run.
+A failed reused build gets one clean fallback. Full builds remain clean.
+Per-run logs, phase timings, test summaries and declared skips stay under
+`.build/ci-verification/runs/` and are collected on success and failure.
 
 Before publishing a beta, select **full** in the `Verify` workflow's manual run
 for the exact candidate ref, and run the default full gate locally. Then complete

@@ -1,9 +1,6 @@
 name: Verify
 
-# Daily checks retain the repository guards and correctness suites. Full
-# verification is explicitly selected before a beta, followed by the owning
-# local/package gates. Tagging an already verified commit starts no duplicate run.
-
+# No path filters: the existing required check reports for every event.
 on:
   push:
     branches: [main]
@@ -18,8 +15,6 @@ on:
         default: full
         required: true
 
-# Superseded daily pushes stop consuming runners. Explicit full verification
-# has a separate group and is allowed to finish even while development advances.
 concurrency:
   group: verify-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'daily' }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.profile == 'daily' }}
@@ -30,62 +25,111 @@ permissions:
 jobs:
   verify:
     name: Repository verification
-    # Scholium is built for the machine it is written on, and reaches for macOS
-    # 27 controls where they exist. #available guards those calls at runtime but
-    # the symbols still have to be in the SDK to compile, so the runner needs
-    # Xcode 27's. This label is a public preview image; if it is withdrawn the
-    # gate has to follow the toolchain rather than retreat to an older SDK.
-    # Pinned rather than macos-latest either way, so the image cannot change
-    # underneath a byte-comparison of the committed editor bundles.
+    # Symbols require Xcode 27's SDK; retain the audited runner and check name.
     runs-on: xcode-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select verification scope
+        id: route
+        run: python3 Tools/Scripts/classify-verification.py
 
       - uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      # run-editor-toolchain.sh installs lockfile-pinned npm dependencies in
-      # isolated .build staging and excludes the worktree's node_modules.
       - name: Install ripgrep
         run: command -v rg >/dev/null 2>&1 || brew install ripgrep
 
-      # Core count is part of the toolchain here: Swift's cooperative pool is
-      # sized to it, and several suites coordinate across concurrent tasks.
       - name: Report the toolchain
         run: |
-          echo "DEVELOPER_DIR=$(Tools/Scripts/resolve-xcode-developer-dir.sh)"
+          developer_dir="$(Tools/Scripts/resolve-xcode-developer-dir.sh)"
+          echo "DEVELOPER_DIR=$developer_dir" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR="$developer_dir"
+          echo "DEVELOPER_DIR=$developer_dir"
           echo "cores=$(sysctl -n hw.ncpu) memory=$(sysctl -n hw.memsize)"
           sw_vers
-          swift --version
+          xcodebuild -version
+          xcrun swift --version
+          uname -m
+          xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk macosx --show-sdk-build-version
           node --version
           python3 --version
 
+      - name: Partition the daily Swift cache
+        id: swift-cache
+        if: steps.route.outputs.profile == 'daily'
+        run: python3 Tools/Scripts/verification-cache-key.py
+
+      # PRs only read caches maintained by main pushes. No broader fallback can
+      # cross compiler/SDK/architecture/checkout/Package.resolved partitions.
+      - name: Restore daily Swift build and dependencies
+        id: restore-swift
+        if: steps.route.outputs.profile == 'daily'
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ steps.swift-cache.outputs.build-path }}
+            ${{ steps.swift-cache.outputs.dependency-path }}
+          key: swift-daily-v1-${{ steps.swift-cache.outputs.partition }}-${{ github.sha }}
+          restore-keys: swift-daily-v1-${{ steps.swift-cache.outputs.partition }}-
+
+      - name: Discard an incomplete cache restore
+        if: steps.restore-swift.outcome == 'failure'
+        env:
+          BUILD_PATH: ${{ steps.swift-cache.outputs.build-path }}
+          DEPENDENCY_PATH: ${{ steps.swift-cache.outputs.dependency-path }}
+        run: rm -rf -- "$BUILD_PATH" "$DEPENDENCY_PATH"
+
       - name: Verify
-        # Shared CI cannot witness calibrated local timing or the required
-        # display/font/input setup. Those declarations remain reported skips;
-        # the full gate must also run on a suitable development Mac before release.
+        id: verification
         env:
           SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE: "1"
           SCHOLIUM_SKIP_DISPLAY_EVIDENCE: "1"
-          SCHOLIUM_VERIFY_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'daily' }}
+          SCHOLIUM_VERIFY_PROFILE: ${{ steps.route.outputs.profile }}
         run: |
           case "$SCHOLIUM_VERIFY_PROFILE" in
+            docs) Tools/Scripts/verify.sh --docs ;;
             daily) Tools/Scripts/verify.sh --ci ;;
             full) Tools/Scripts/verify.sh ;;
             *) echo "Unknown verification profile" >&2; exit 64 ;;
           esac
 
-      # verify.sh writes each failing step's full log under .build; the console
-      # only carries the tail of it.
-      - name: Collect verification logs
-        if: failure()
+      # A successful current-source build is reusable even when an assertion
+      # fails later. No test result or log is cached; failure still fails the job.
+      - name: Save trusted daily Swift state
+        if: always() && !cancelled() && steps.verification.outputs.interrupted != 'true' && steps.verification.outputs.build-ready == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.route.outputs.profile == 'daily' && steps.restore-swift.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ steps.swift-cache.outputs.build-path }}
+            ${{ steps.swift-cache.outputs.dependency-path }}
+          key: swift-daily-v1-${{ steps.swift-cache.outputs.partition }}-${{ github.sha }}
+
+      - name: Report Repository verification result
+        if: always()
+        env:
+          PROFILE: ${{ steps.route.outputs.profile }}
+          RESULT: ${{ steps.verification.outcome }}
+          CACHE_RESULT: ${{ steps.restore-swift.outcome }}
+          CACHE_HIT: ${{ steps.restore-swift.outputs.cache-hit }}
+        run: |
+          printf 'Repository verification: profile=%s result=%s cache=%s hit=%s\n' "${PROFILE:-unresolved}" "${RESULT:-not-run}" "${CACHE_RESULT:-not-used}" "${CACHE_HIT:-false}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect verification evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: verification-logs
+          name: verification-evidence
           path: |
-            .build/verification/**/*.log
-            .build/verification-release/**/*.log
+            .build/ci-verification/runs/**/logs/*.log
+            .build/ci-verification/runs/**/timings.tsv
+            .build/ci-verification/runs/**/summary.md
           if-no-files-found: ignore
           retention-days: 14

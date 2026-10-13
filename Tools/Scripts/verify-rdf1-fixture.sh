@@ -2,8 +2,9 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h:h}"
-FIRST="${ROOT}/.build/rdf1-verification-a"
-SECOND="${ROOT}/.build/rdf1-verification-b"
+TEMP_ROOT="${SCHOLIUM_VERIFY_RUN_ROOT:-${ROOT}/.build/rdf1-verification-$$}"
+FIRST="${TEMP_ROOT}/rdf1-a"
+SECOND="${TEMP_ROOT}/rdf1-b"
 
 cleanup() {
   rm -rf "${FIRST}" "${SECOND}"
