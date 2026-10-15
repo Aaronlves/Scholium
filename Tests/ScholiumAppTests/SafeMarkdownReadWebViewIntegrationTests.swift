@@ -7,6 +7,97 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test(
+        "Opt-in exact Format Matrix reader mount and mode-return diagnostic",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_FORMAT_READER_DIAGNOSTIC"] == "1"))
+    func exactFormatMatrixReaderModeReturnDiagnostic() async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let buildRoot = repository.appendingPathComponent(".build", isDirectory: true).resolvingSymlinksInPath().path + "/"
+        let fixture = URL(
+            fileURLWithPath: ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_FIXTURE"]
+                ?? repository.appendingPathComponent(".build/stress-audit/fixture-complex-508").path
+        ).standardizedFileURL.resolvingSymlinksInPath()
+        try #require(fixture.path.hasPrefix(buildRoot))
+        let manifest = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))) as? [String: Any])
+        let scenarios = try #require(manifest["scenarios"] as? [String: String])
+        let path = try #require(scenarios["format_matrix"])
+        let inventory = try #require((manifest["files"] as? [String: [String: Any]])?[path])
+        let file = fixture.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
+        try #require(file.path.hasPrefix(fixture.path + "/"))
+        let bytes = try Data(contentsOf: file)
+        let fingerprint = DocumentFingerprint(data: bytes)
+        let expectedSHA256 = try #require(inventory["sha256"] as? String)
+        let expectedByteCount = try #require(inventory["bytes"] as? Int)
+        try #require(fingerprint.sha256 == expectedSHA256 && bytes.count == expectedByteCount)
+        let source = try #require(NoteDocument.decodeUTF8PreservingBOM(bytes))
+        try #require(source.components(separatedBy: "```mermaid\n").count - 1 == 120)
+        let relativePath = path.split(separator: "/").dropFirst().joined(separator: "/")
+        let document = NoteDocument(relativePath: relativePath, rawContent: source)
+        try #require(document.sourceBytes == bytes)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0, documentTitle: "Stress Format Matrix",
+            presentsDocumentPreparation: true, laysOutForNativePreview: true,
+            modelsSourceReviewMounting: true, relativePath: relativePath)
+        defer {
+            harness.close()
+            #expect((try? Data(contentsOf: file)) == bytes)
+        }
+        harness.beginFormatDiagnostic(phase: "initial_review")
+        harness.emitFormatDiagnostic(
+            event: "fixture",
+            extra: [
+                "source_bytes": bytes.count, "source_sha256": fingerprint.sha256, "mermaid_source_blocks": 120,
+                "boundary":
+                    "Exact source and production reader/coordinator/DocumentEditorHost; synthetic Source placeholder models reader teardown only. No CodeMirror, editor save, catalog, previews or full app mode handoff.",
+                "failure_boundary":
+                    "onRenderingFailure exposes its original String only; no underlying NSError domain, code or userInfo is available through that production callback.",
+            ])
+        try await harness.waitUntilReadPreparationAvailable()
+        try await harness.installFormatWorkMetrics()
+        try await harness.waitForFormatDiagnosticReady()
+        try await harness.emitFormatWorkMetrics()
+        let originalCoordinator = try harness.formatDiagnosticCoordinator()
+        try await harness.scroll(toFraction: 0.06128792086696526)
+        _ = try await harness.callBridgeJavaScript("window.dispatchEvent(new Event('scroll'));")
+        let anchorDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while harness.latestObservedScrollPosition.anchor == nil || harness.latestObservedScrollPosition.fraction <= 0 {
+            try #require(ContinuousClock.now < anchorDeadline, "Initial Review must publish an actual nonzero reading position and anchor")
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        let position = harness.latestObservedScrollPosition
+        let anchor = try #require(position.anchor)
+        harness.emitFormatDiagnostic(
+            event: "reading_position",
+            extra: [
+                "fraction": position.fraction, "source_utf16_offset": anchor.sourceUTF16Offset,
+                "block_utf16_start": anchor.blockUTF16LowerBound, "block_utf16_end": anchor.blockUTF16UpperBound,
+            ])
+        try await harness.unmountReviewForFormatDiagnostic()
+        #expect(originalCoordinator.activeWebView == nil)
+        harness.remountReviewForFormatDiagnostic(position: position)
+        try await harness.waitUntilReadPreparationAvailable()
+        try await harness.installFormatWorkMetrics()
+        try await harness.waitForFormatDiagnosticReady()
+        try await harness.emitFormatWorkMetrics()
+        #expect(try harness.formatDiagnosticCoordinator() !== originalCoordinator)
+        #expect(!harness.hasPendingRestoreRequest)
+        let restored = try await harness.waitUntilCapturedAnchor(stage: "Format Matrix return-to-Review restoration") {
+            $0.blockUTF16LowerBound == anchor.blockUTF16LowerBound && $0.blockUTF16UpperBound == anchor.blockUTF16UpperBound
+        }
+        #expect(restored.sourceFingerprint == fingerprint.sha256)
+        #expect(restored.blockUTF16LowerBound == anchor.blockUTF16LowerBound)
+        #expect(restored.blockUTF16UpperBound == anchor.blockUTF16UpperBound)
+        harness.emitFormatDiagnostic(
+            event: "restoration_verified",
+            extra: [
+                "fraction": restored.fallbackFraction, "source_utf16_offset": restored.sourceUTF16Offset,
+            ])
+        await harness.closeAndDrain()
+    }
+
     @Test("Review original-image activation preserves reading context and authored linked-image navigation")
     func reviewOriginalImageActivation() async throws {
         let target = "Attachments/图%23%2525.png"
@@ -577,6 +668,125 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
     }
 
+    @Test("Review Mermaid passes keep distinct source locations, isolated references and current themes")
+    func reviewMermaidPassSourceAndThemeIsolation() async throws {
+        let names = ["Alpha", "Beta", "Alpha", "Alpha", "Beta", "Gamma"]
+        let diagrams = names.map { name in
+            "flowchart LR\naccTitle: \(name) illustration\naccDescr: Synthetic \(name) description.\n  A[Start \(name)] --> B[Finish]\n"
+        }
+        let source =
+            "# Diagrams\n\nSynthetic context stays source owned.\n\n"
+            + diagrams.map { "```mermaid\n\($0)```\n\n" }.joined()
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
+        defer { harness.close() }
+        try await harness.waitUntilReadPreparationAvailable()
+        try await harness.installFormatWorkMetrics()
+        try await harness.waitUntilReady()
+        let identity = try harness.webViewIdentity()
+        let initialCounts = try #require(
+            try await harness.callBridgeJavaScript(
+                "const stats=window.__scholiumFormatWorkMetrics;return {renders:stats.render_calls,mounts:stats.mount_calls,sources:stats.sources.size};")
+                as? [String: Int])
+        #expect(initialCounts["renders"] == 3)
+        #expect(initialCounts["mounts"] == 6)
+        #expect(initialCounts["sources"] == 3)
+        let snapshotScript = """
+            const wrappers=[...document.querySelectorAll('.scholium-mermaid')];
+            const roots=wrappers.map(wrapper=>wrapper.querySelector('.scholium-mermaid-output')?.shadowRoot);
+            return {isolated:new Set(roots).size===wrappers.length && roots.every(Boolean),
+              diagrams:wrappers.map((wrapper,index)=>{
+                const root=roots[index], svg=root?.querySelector('svg');
+                const elements=svg?[svg,...svg.querySelectorAll('*')]:[];
+                const ids=elements.map(element=>element.id).filter(Boolean);
+                const references=elements.flatMap(element=>['aria-labelledby','aria-describedby']
+                  .flatMap(name=>(element.getAttribute(name)||'').split(/\\s+/).filter(Boolean)));
+                const fragments=elements.flatMap(element=>[...element.attributes]
+                  .flatMap(attribute=>[...attribute.value.matchAll(/url\\(#([^)]+)\\)/g)].map(match=>match[1])));
+                return {source:wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || '',
+                  lower:Number(wrapper.dataset.sourceUtf16Start),upper:Number(wrapper.dataset.sourceUtf16End),
+                  title:svg?.querySelector('title')?.textContent || '',description:svg?.querySelector('desc')?.textContent || '',
+                  references_local:references.length>0 && references.concat(fragments).every(id=>!!root.getElementById(id)),
+                  ids_unique:new Set(ids).size===ids.length,
+                  role:svg?.getAttribute('role'),theme:!surface || !!svg?.outerHTML.includes(surface)};
+              })};
+            """
+        let initial = try #require(try await harness.callBridgeJavaScript(snapshotScript, arguments: ["surface": ""]) as? [String: Any])
+        #expect(initial["isolated"] as? Bool == true)
+        let initialDiagrams = try #require(initial["diagrams"] as? [[String: Any]])
+        #expect(initialDiagrams.count == diagrams.count)
+        var locations: [[Int]] = []
+        for (index, item) in initialDiagrams.enumerated() {
+            #expect(item["source"] as? String == diagrams[index])
+            #expect(item["references_local"] as? Bool == true)
+            #expect(item["ids_unique"] as? Bool == true)
+            #expect(item["role"] as? String == "img")
+            #expect(item["title"] as? String == "\(names[index]) illustration")
+            #expect(item["description"] as? String == "Synthetic \(names[index]) description.")
+            let lower = try #require(item["lower"] as? Int)
+            let upper = try #require(item["upper"] as? Int)
+            locations.append([lower, upper])
+            #expect((source as NSString).substring(with: NSRange(location: lower, length: upper - lower)).contains(diagrams[index]))
+        }
+        #expect(Set(locations.map { $0[0] }).count == diagrams.count)
+        try await harness.scroll(toFraction: 0.25)
+        let beforeAnchor = try await harness.waitUntilCapturedAnchor(stage: "diagram theme update starting position") { $0.fallbackFraction > 0.1 }
+        let beforeY = try #require(try await harness.callBridgeJavaScript("return scrollY;") as? Double)
+        for (background, surface, ink, accent, separator) in [
+            ("#111111", "#222222", "#eeeeee", "#aaccff", "#777777"),
+            ("#fafafa", "#eeeeee", "#111111", "#3355aa", "#888888"),
+        ] {
+            let css =
+                ":root {--scholium-color-document-background:\(background);--scholium-color-surface-background:\(surface);--scholium-color-primary-text:\(ink);--scholium-color-accent:\(accent);--scholium-color-separator:\(separator);}"
+            let result = try await harness.callBridgeJavaScript(
+                """
+                const stats=window.__scholiumFormatWorkMetrics;
+                stats.render_calls=0;stats.mount_calls=0;stats.sources.clear();
+                // Match the native DocumentWebEnvironment projection, whose
+                // inline semantic colors take precedence over :root rules.
+                for (const [name,value] of Object.entries(palette)) document.documentElement.style.setProperty(name,value);
+                return await window.scholiumSetPresentationCSS(css,'');
+                """,
+                arguments: [
+                    "css": css,
+                    "palette": [
+                        "--scholium-color-document-background": background,
+                        "--scholium-color-surface-background": surface,
+                        "--scholium-color-primary-text": ink,
+                        "--scholium-color-accent": accent,
+                        "--scholium-color-separator": separator,
+                    ],
+                ])
+            #expect(result as? Bool == true)
+            let counts = try #require(
+                try await harness.callBridgeJavaScript(
+                    "return {renders:window.__scholiumFormatWorkMetrics.render_calls,mounts:window.__scholiumFormatWorkMetrics.mount_calls};") as? [String: Int]
+            )
+            #expect(counts["renders"] == 3)
+            #expect(counts["mounts"] == 6)
+            let updated = try #require(try await harness.callBridgeJavaScript(snapshotScript, arguments: ["surface": surface]) as? [String: Any])
+            #expect(updated["isolated"] as? Bool == true)
+            let updatedDiagrams = try #require(updated["diagrams"] as? [[String: Any]])
+            #expect(updatedDiagrams.count == diagrams.count)
+            for (index, item) in updatedDiagrams.enumerated() {
+                #expect(item["source"] as? String == diagrams[index])
+                #expect(item["lower"] as? Int == locations[index][0])
+                #expect(item["upper"] as? Int == locations[index][1])
+                #expect(item["title"] as? String == initialDiagrams[index]["title"] as? String)
+                #expect(item["description"] as? String == initialDiagrams[index]["description"] as? String)
+                for key in ["references_local", "ids_unique", "theme"] { #expect(item[key] as? Bool == true, "Diagram \(index): \(key)") }
+            }
+            #expect(try harness.webViewIdentity() == identity)
+            let afterY = try #require(try await harness.callBridgeJavaScript("return scrollY;") as? Double)
+            #expect(abs(afterY - beforeY) <= 1)
+        }
+        #expect(harness.latestObservedScrollPosition.anchor?.sourceFingerprint == beforeAnchor.sourceFingerprint)
+        #expect(try await harness.callBridgeJavaScript("return configuration.fingerprint;") as? String == document.fingerprint.sha256)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review renders inert Mermaid and keeps unsupported source visible")
     func reviewMermaidProjectionFailsClosed() async throws {
         let source = """
@@ -657,7 +867,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 };
                 """
             ) as? [String: Any])
-        #expect(result["runtime"] as? Int == 2)
+        #expect(result["runtime"] as? Int == 3)
         #expect(result["staticFamilyCount"] as? Int == 5)
         #expect(result["architectureSecuritySettled"] as? Bool == true)
         #expect(result["prototypePolluted"] as? Bool == false)
@@ -1405,6 +1615,119 @@ extension MarkdownEditorWebViewIntegrationTests {
         for key in ["navigated", "returned", "definitionFocused", "referenceFocused"] {
             #expect(navigation[key] as? Bool == true)
         }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review link previews converge when graph revisions arrive before the reader API is installed")
+    func reviewLinkPreviewsConvergeDuringInitialPreparation() async throws {
+        var source = ""
+        var anchorLowerBound = 0
+        for index in 0..<24 {
+            if index == 12 {
+                anchorLowerBound = source.utf16.count
+                source += "[[Target]]\n\n"
+            }
+            source += "Synthetic surrounding paragraph \(index) preserves its exact source position.\n\n"
+        }
+        for index in 0..<10 {
+            source += "```mermaid\nflowchart LR\n  A\(index)[Start] --> B\(index)[Finish]\n```\n\n"
+        }
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let target = try #require(rendered.semanticDocument.links.first { $0.syntax == .wikilink })
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: document.fingerprint.sha256,
+            sourceUTF16Offset: anchorLowerBound,
+            blockUTF16LowerBound: anchorLowerBound,
+            blockUTF16UpperBound: anchorLowerBound + "[[Target]]".utf16.count,
+            relativeBlockPosition: 0, fallbackFraction: 0.3)
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
+            initialAnchor: anchor, initialScrollFraction: 0,
+            presentsDocumentPreparation: true, laysOutForNativePreview: true)
+        defer { harness.close() }
+        try await harness.waitUntilReadPreparationAvailable()
+        #expect(!harness.isReady)
+
+        // Hold a real pending Mermaid render at its async runtime boundary.
+        // This test-local event gate keeps API installation pending while
+        // SwiftUI delivers both revisions; it changes no product test hook.
+        try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                if (typeof window.scholiumSetLinkPreviews !== 'undefined') return false;
+                const state = window.__scholiumPreviewPreparationGate = {entered:false, released:false};
+                let release;
+                const gate = new Promise(resolve => {release=resolve;});
+                state.release=()=>{state.released=true; release();};
+                const wrap=runtime=>!runtime || runtime.version!==3 ? runtime : {
+                  ...runtime,
+                  async render(request) {
+                    state.entered=true;
+                    await gate;
+                    return await runtime.render(request);
+                  }
+                };
+                let runtime=wrap(window.scholiumMermaid);
+                Object.defineProperty(window,'scholiumMermaid',{
+                  configurable:true, get:()=>runtime, set:value=>{runtime=wrap(value);}
+                });
+                return true;
+                """) as? Bool == true)
+        let pageIdentity = try #require(
+            try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`;") as? String)
+        let webViewIdentity = try harness.webViewIdentity()
+
+        @MainActor
+        func waitForPendingRevision(_ revision: String) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while true {
+                let coordinator = try harness.formatDiagnosticCoordinator()
+                let fields = Dictionary(
+                    uniqueKeysWithValues: Mirror(reflecting: coordinator).children.compactMap { child in
+                        child.label.map { ($0, child.value) }
+                    })
+                if fields["pageIsReady"] as? Bool == true,
+                    fields["desiredLinkPreviewRevision"] as? String == revision,
+                    try await harness.callBridgeJavaScript("return window.__scholiumPreviewPreparationGate.entered === true;") as? Bool == true
+                {
+                    #expect(fields["appliedLinkPreviewRevision"] as? String == "no-previews")
+                    #expect(!harness.isReady)
+                    #expect(try await harness.callBridgeJavaScript("return typeof window.scholiumSetLinkPreviews === 'undefined';") as? Bool == true)
+                    return
+                }
+                try #require(
+                    ContinuousClock.now < deadline, "The current native reader did not receive the graph revision while Mermaid preparation was pending")
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        harness.updateLinkPreviews([Self.linkPreview(at: target.span, title: "First target note")], revision: "graph-1")
+        try await waitForPendingRevision("graph-1")
+        harness.updateLinkPreviews(
+            [Self.linkPreview(at: target.span, title: "Latest target note", htmlBody: "<p>Latest target preview body</p>")], revision: "graph-2")
+        try await waitForPendingRevision("graph-2")
+        _ = try await harness.callBridgeJavaScript("window.__scholiumPreviewPreparationGate.release();")
+        try await harness.waitUntilReady()
+        #expect(!harness.hasPendingRestoreRequest)
+        let restored = try await harness.waitUntilCapturedAnchor(stage: "preview revision during initial reader preparation") {
+            $0.blockUTF16LowerBound == anchor.blockUTF16LowerBound && $0.blockUTF16UpperBound == anchor.blockUTF16UpperBound
+        }
+        #expect(restored.sourceFingerprint == document.fingerprint.sha256)
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+        #expect(try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity;") as? String == pageIdentity)
+        #expect(try await harness.callBridgeJavaScript("return configuration.fingerprint;") as? String == document.fingerprint.sha256)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-mermaid-rendered').length;") as? Int == 10)
+        // Rendering acknowledgement precedes SwiftUI's native input admission.
+        // Synthetic DOM events must observe the same usable boundary as a pointer.
+        try await harness.waitUntilNativeInputIsEnabled()
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('a.wiki-link')?.dispatchEvent(new PointerEvent('pointerover', {bubbles:true}));")
+        try await harness.waitForNativePreview(title: "Latest target note")
+        #expect(
+            try await harness.callNativePreview("return document.querySelector('.scholium-preview-body')?.textContent || '';") as? String
+                == "Latest target preview body")
+        #expect(try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity;") as? String == pageIdentity)
         await harness.closeAndDrain()
     }
 
@@ -2453,6 +2776,10 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         @Published var isReady = false
         var presentsDocumentPreparation = false
+        var modelsSourceReviewMounting = false
+        @Published var presentsDiagnosticSource = false
+        var diagnosticRestorationReason = ScrollRestoreReason.explicitNavigation
+        var diagnosticEvent: ((String, String?) -> Void)?
         var diagramSize: CGSize?
         var replyEvents: [ReadReplyEvent] = []
         var imagePreviewTargets: [String] = []
@@ -2566,10 +2893,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         private let htmlBody: String
         private let fingerprint: String
         private let documentTitle: String
+        private let sourceRelativePath: String
         private let sourceBox: SourceBox
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var isClosed = false
+        private var formatDiagnosticPhase = ""
+        private var formatProbeTask: Task<Void, Never>?
+        private var formatProbeID: UUID?
 
         init(
             source: String,
@@ -2585,13 +2916,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             laysOutForNativePreview: Bool = false,
             replyProjection: Bool = false,
             imagePreviewsEnabled: Bool = false,
-            onAskAgent: AgentSelectionInquiryHandler? = nil
+            onAskAgent: AgentSelectionInquiryHandler? = nil,
+            modelsSourceReviewMounting: Bool = false,
+            relativePath: String = "ReadFixture.md"
         ) {
             _ = NSApplication.shared
             self.source = source
             self.htmlBody = htmlBody
             self.fingerprint = fingerprint
             self.documentTitle = documentTitle
+            sourceRelativePath = relativePath
             sourceBox = SourceBox(
                 initialAnchor: initialAnchor,
                 initialScrollFraction: initialScrollFraction,
@@ -2601,6 +2935,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             )
             sourceBox.imagePreviewsEnabled = imagePreviewsEnabled
             sourceBox.presentsDocumentPreparation = presentsDocumentPreparation
+            sourceBox.modelsSourceReviewMounting = modelsSourceReviewMounting
             if replyProjection {
                 let box = sourceBox
                 sourceBox.chatPageExtension = AgentChatReadPageExtension {
@@ -2617,7 +2952,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             // close-release behavior from invalidating the Swift property
             // before ReadHarness itself is released.
             window.isReleasedWhenClosed = false
-            let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+            let document = NoteDocument(relativePath: relativePath, rawContent: source)
             #expect(document.fingerprint.sha256 == fingerprint)
             let root = ReadHarnessRoot(
                 document: document,
@@ -2661,6 +2996,205 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(25))
             }
+        }
+
+        func beginFormatDiagnostic(phase: String) {
+            formatProbeTask?.cancel()
+            formatProbeTask = nil
+            formatProbeID = nil
+            formatDiagnosticPhase = phase
+            sourceBox.diagnosticEvent = { [weak self] event, error in
+                self?.emitFormatDiagnostic(event: event, error: error)
+            }
+            emitFormatDiagnostic(event: "phase_begin")
+        }
+
+        func installFormatWorkMetrics() async throws {
+            _ = try await callBridgeJavaScript(
+                """
+                const stats = window.__scholiumFormatWorkMetrics = {
+                  initial_outputs:document.querySelectorAll('.scholium-mermaid-output').length,
+                  render_calls:0,render_ms:0,mount_calls:0,mount_ms:0,presentation_calls:[],sources:new Set()
+                };
+                const wrap=runtime=>!runtime || runtime.version!==3 ? runtime : {
+                  ...runtime,
+                  async render(request) {
+                    stats.render_calls++; stats.sources.add(request.source);
+                    const start=performance.now();
+                    try {return await runtime.render(request);} finally {stats.render_ms+=performance.now()-start;}
+                  },
+                  mount(host,svg) {
+                    stats.mount_calls++; const start=performance.now();
+                    try {return runtime.mount(host,svg);} finally {stats.mount_ms+=performance.now()-start;}
+                  }
+                };
+                let runtime=wrap(window.scholiumMermaid);
+                Object.defineProperty(window,'scholiumMermaid',{
+                  configurable:true,get:()=>runtime,set:value=>{runtime=wrap(value);}
+                });
+                const setCSS=window.scholiumSetPresentationCSS;
+                window.scholiumSetPresentationCSS=async(...args)=>{
+                  const entry={unchanged:document.getElementById('scholium-presentation-css').textContent===args[0]
+                    &&document.getElementById('scholium-user-css').textContent===args[1],ms:0};
+                  stats.presentation_calls.push(entry); const start=performance.now();
+                  try {return await setCSS(...args);} finally {entry.ms=performance.now()-start;}
+                };
+                """)
+        }
+
+        func emitFormatWorkMetrics() async throws {
+            let metrics = try await callBridgeJavaScript(
+                """
+                const {sources,...stats}=window.__scholiumFormatWorkMetrics;
+                return {...stats,distinct_sources:sources.size,
+                  final_outputs:document.querySelectorAll('.scholium-mermaid-output').length};
+                """)
+            emitFormatDiagnostic(event: "reader_work", extra: ["work": metrics ?? NSNull()])
+        }
+
+        func formatDiagnosticCoordinator() throws -> SafeMarkdownReadWebView.Coordinator {
+            let root = try #require(window.contentViewController?.view)
+            return try #require(findWebView(in: root)?.navigationDelegate as? SafeMarkdownReadWebView.Coordinator)
+        }
+
+        func emitFormatDiagnostic(event: String, error: String? = nil, extra: [String: Any] = [:]) {
+            var record: [String: Any] = [
+                "phase": formatDiagnosticPhase, "event": event, "uptime_ns": DispatchTime.now().uptimeNanoseconds,
+                "caller_ready": sourceBox.isReady, "restore_pending": sourceBox.restoration != nil,
+            ]
+            if let error { record["error"] = error }
+            if let failure = sourceBox.failure { record["rendering_failure"] = failure }
+            if let root = window.contentViewController?.view, let webView = findWebView(in: root) {
+                record["webview_present"] = true
+                record["webview_loading"] = webView.isLoading
+                record["webview_ax_identifier"] = webView.accessibilityIdentifier()
+                if let coordinator = webView.navigationDelegate as? SafeMarkdownReadWebView.Coordinator {
+                    record["coordinator_identity"] = String(describing: ObjectIdentifier(coordinator))
+                    // Read-only diagnostic reflection avoids adding product APIs
+                    // or replacing the production navigation delegate.
+                    let scalars: Set<String> = [
+                        "loadGeneration", "hasLoadedPage", "pageIsReady", "renderingReadinessIsAcknowledged",
+                        "loadedSignature", "activeLoadSignature", "finalizedSignature",
+                    ]
+                    let tasks: Set<String> = ["activeNavigation", "loadFinalizationTask", "deferredLoadTask", "presentationStyleTask", "linkPreviewUpdateTask"]
+                    for child in Mirror(reflecting: coordinator).children {
+                        guard let name = child.label else { continue }
+                        let reflected = Mirror(reflecting: child.value)
+                        if tasks.contains(name) {
+                            record[name + "_present"] = reflected.displayStyle != .optional || !reflected.children.isEmpty
+                        } else if scalars.contains(name) {
+                            let value: Any? = reflected.displayStyle == .optional ? reflected.children.first?.value : child.value
+                            if let value = value as? String {
+                                record[name] = value
+                            } else if let value = value as? Bool {
+                                record[name] = value
+                            } else if let value = value as? UInt64 {
+                                record[name] = value
+                            } else {
+                                record[name] = NSNull()
+                            }
+                        }
+                    }
+                }
+            } else {
+                record["webview_present"] = false
+            }
+            record.merge(extra) { _, new in new }
+            if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]) {
+                FileHandle.standardOutput.write(Data("FORMAT_READER_DIAGNOSTIC ".utf8) + data + Data("\n".utf8))
+            }
+        }
+
+        private func startFormatBridgeProbe() {
+            guard formatProbeTask == nil else { return }
+            let requestID = UUID()
+            let phase = formatDiagnosticPhase
+            formatProbeID = requestID
+            formatProbeTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    if self.formatProbeID == requestID {
+                        self.formatProbeTask = nil
+                        self.formatProbeID = nil
+                    }
+                }
+                do {
+                    let snapshot = try await self.callBridgeJavaScript(
+                        """
+                        const state = window.__scholiumFormatReaderDiagnostic ??= {promises:{}, values:{}};
+                        for (const [name,promise] of [['reader',window.scholiumReadReady],['mermaid',window.scholiumMermaidReady]]) {
+                          if (!promise) { state.values[name]='not_installed'; continue; }
+                          if (state.promises[name] === promise) continue;
+                          state.promises[name]=promise; state.values[name]='pending';
+                          Promise.resolve(promise).then(
+                            ()=>{if(state.promises[name]===promise)state.values[name]='resolved';},
+                            error=>{if(state.promises[name]===promise)state.values[name]='rejected: '+String(error);});
+                        }
+                        return {document_state:document.readyState, fonts:document.fonts?.status || 'unavailable',
+                          reader_promise:state.values.reader, mermaid_promise:state.values.mermaid,
+                          diagram_wrappers:document.querySelectorAll('.scholium-mermaid').length,
+                          diagram_outputs:document.querySelectorAll('.scholium-mermaid-output').length,
+                          diagram_errors:document.querySelectorAll('.scholium-mermaid-error').length,
+                          viewport_width:innerWidth, viewport_height:innerHeight, scroll_y:scrollY};
+                        """)
+                    guard !Task.isCancelled, self.formatDiagnosticPhase == phase, self.formatProbeID == requestID else { return }
+                    self.emitFormatDiagnostic(event: "bridge_probe", extra: ["bridge": snapshot ?? NSNull()])
+                } catch {
+                    guard !Task.isCancelled, self.formatDiagnosticPhase == phase, self.formatProbeID == requestID else { return }
+                    let probeError = error as NSError
+                    self.emitFormatDiagnostic(
+                        event: "bridge_probe_error", error: String(describing: error),
+                        extra: [
+                            "probe_error_domain": probeError.domain, "probe_error_code": probeError.code,
+                            "error_boundary": "NSError belongs to the test-only callAsyncJavaScript probe, not onRenderingFailure.",
+                        ])
+                }
+            }
+        }
+
+        func waitForFormatDiagnosticReady() async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(60))
+            var nextObservation = ContinuousClock.now
+            // Caller readiness survives unmount, just as the session's exact
+            // ready fingerprint does. Require the new coordinator's actual AX
+            // identity too; the stale acknowledgement alone cannot pass.
+            while !sourceBox.isReady || (try? webViewAccessibilityIdentifier()) != "scholium.renderedDocument.\(sourceRelativePath)" {
+                if ContinuousClock.now >= nextObservation {
+                    emitFormatDiagnostic(event: "waiting")
+                    startFormatBridgeProbe()
+                    nextObservation = ContinuousClock.now.advanced(by: .seconds(1))
+                }
+                if sourceBox.failure != nil {
+                    emitFormatDiagnostic(event: "phase_failed")
+                    Issue.record(Comment(rawValue: sourceBox.failure ?? "Unknown reader failure"))
+                    throw ReadHarnessError.renderingFailed
+                }
+                if ContinuousClock.now >= deadline {
+                    emitFormatDiagnostic(event: "phase_timeout")
+                    throw ReadHarnessError.timedOut
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            emitFormatDiagnostic(event: "phase_ready")
+        }
+
+        func unmountReviewForFormatDiagnostic() async throws {
+            beginFormatDiagnostic(phase: "source_placeholder_unmount")
+            sourceBox.presentsDiagnosticSource = true
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while (window.contentViewController?.view).flatMap({ findWebView(in: $0) }) != nil {
+                try #require(ContinuousClock.now < deadline, "Production DocumentEditorHost did not dismantle the reader")
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            emitFormatDiagnostic(event: "reader_unmounted")
+        }
+
+        func remountReviewForFormatDiagnostic(position: ObservedScrollPosition) {
+            beginFormatDiagnostic(phase: "return_review")
+            sourceBox.diagnosticRestorationReason = .modeHandoff
+            sourceBox.capturedAnchor = nil
+            sourceBox.requestRestore(anchor: position.anchor, fraction: position.fraction)
+            sourceBox.presentsDiagnosticSource = false
         }
 
         func nativeSelectionActionBar() -> SelectionActionBar? {
@@ -2990,12 +3524,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 let installed = try? await callBridgeJavaScript(
                     """
                     return typeof configuration !== 'undefined'
-                      && configuration.documentID === 'ReadFixture.md'
+                      && configuration.documentID === expectedDocumentID
                       && configuration.fingerprint === expectedFingerprint
                       && Number.isSafeInteger(configuration.loadGeneration)
                       && typeof window.scholiumReadPreparation?.settle === 'function'
                       && document.getElementById('scholium-document') !== null;
-                    """, arguments: ["expectedFingerprint": fingerprint])
+                    """, arguments: ["expectedFingerprint": fingerprint, "expectedDocumentID": sourceRelativePath])
                 if installed as? Bool == true { return }
                 if clock.now >= deadline { throw ReadHarnessError.timedOut }
                 try await Task.sleep(for: .milliseconds(10))
@@ -3607,6 +4141,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         func close() {
             guard !isClosed else { return }
             isClosed = true
+            formatProbeTask?.cancel()
+            formatProbeTask = nil
+            formatProbeID = nil
+            sourceBox.diagnosticEvent = nil
             window.orderOut(nil)
             window.contentViewController = nil
             hostingController = nil
@@ -3653,7 +4191,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         var body: some View {
             var surface = SafeMarkdownReadWebView(
-                documentID: "ReadFixture.md",
+                documentID: document.relativePath,
                 documentTitle: documentTitle,
                 document: document,
                 htmlBody: htmlBody,
@@ -3670,9 +4208,18 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
                 renderingReadinessIsAcknowledged: sourceBox.isReady,
-                onRenderingFailure: { sourceBox.failure = $0 },
-                onRenderingLoading: { sourceBox.isReady = false },
-                onRenderingReady: { sourceBox.isReady = true },
+                onRenderingFailure: {
+                    sourceBox.failure = $0
+                    sourceBox.diagnosticEvent?("onRenderingFailure", $0)
+                },
+                onRenderingLoading: {
+                    sourceBox.isReady = false
+                    sourceBox.diagnosticEvent?("onRenderingLoading", nil)
+                },
+                onRenderingReady: {
+                    sourceBox.isReady = true
+                    sourceBox.diagnosticEvent?("onRenderingReady", nil)
+                },
                 pageExtension: pageExtension,
                 onRenderedDiagramSize: { sourceBox.diagramSize = $0 },
                 observedScrollPosition: sourceBox.observedScrollPosition,
@@ -3684,7 +4231,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                             fraction: restoration.fraction,
                             anchor: restoration.anchor
                         ),
-                        reason: .explicitNavigation
+                        reason: sourceBox.diagnosticRestorationReason
                     )
                 },
                 onScrollRestoreConsumed: sourceBox.acknowledgeRestoreRequest,
@@ -3714,7 +4261,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 surface.testingForcesFinalizationFailure = sourceBox.testingForcesFinalizationFailure
                 surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
             #endif
-            return ZStack {
+            let reader = ZStack {
                 surface.id(sourceBox.surfaceIdentity)
                     .environment(
                         \.scholiumDocumentSurfaceVisibility,
@@ -3722,6 +4269,20 @@ extension MarkdownEditorWebViewIntegrationTests {
                     )
                 if sourceBox.presentsDocumentPreparation && !sourceBox.isReady {
                     DocumentPreparationStatus(title: documentTitle)
+                }
+            }
+            return Group {
+                if sourceBox.modelsSourceReviewMounting {
+                    DocumentEditorHost(
+                        documentID: "format-reader-diagnostic", presentsEditor: sourceBox.presentsDiagnosticSource,
+                        retainsEditor: true, editorIsLoaded: true, editorIsReady: true
+                    ) {
+                        reader
+                    } editor: {
+                        Color.clear.accessibilityLabel("Synthetic Source placeholder; no editor")
+                    }
+                } else {
+                    reader
                 }
             }
             .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)

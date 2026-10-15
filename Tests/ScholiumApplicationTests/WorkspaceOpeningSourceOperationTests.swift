@@ -33,7 +33,7 @@ struct WorkspaceOpeningSourceOperationTests {
                 try #require(await barrier.waitUntilArrived())
                 #expect(await handle.sourceOperationGate.refreshCycleIsActive)
                 #expect(!(await handle.sourceOperationGate.sourceMutationIsActive))
-                #expect(try await handle.snapshot().phase == .opening(availableVault: .paperAnalysis))
+                #expect(try await handle.snapshot().phase == .opening)
 
                 let original = try await handle.documents.load(fixture.analysisNoteID)
                 let target = try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint)

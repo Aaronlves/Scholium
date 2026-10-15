@@ -523,8 +523,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                             webView.setAccessibilityIdentifier("scholium.renderedDocument.\(expectedDocumentID)")
                             self.onRenderingReady?()
                         },
-                        didFail: { [weak self] error in
+                        didFail: { [weak self, weak webView] error in
                             guard let self, self.loadedSignature == signature else { return }
+                            #if DEBUG
+                                if let webView, !Task.isCancelled,
+                                    self.activeWebView === webView, self.loadGeneration == generation
+                                {
+                                    PerformanceProbe.shared.recordQAReaderFailure(
+                                        phase: .presentationUpdate, generation: generation, error: error)
+                                }
+                            #endif
                             self.onRenderingFailure?(error.localizedDescription)
                         }
                     ) == true
@@ -691,25 +699,52 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
             guard pageIsReady,
                 desiredLinkPreviewRevision != appliedLinkPreviewRevision,
-                activeWebView === webView
+                activeWebView === webView,
+                let signature = activeLoadSignature,
+                linkPreviewUpdateTask == nil
             else { return }
-            let revision = desiredLinkPreviewRevision
-            let previews = Self.linkPreviewArguments(desiredLinkPreviews)
-            linkPreviewUpdateTask?.cancel()
+            let generation = loadGeneration
             linkPreviewUpdateTask = Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView, self.activeWebView === webView else { return }
-                let result = try? await webView.callAsyncJavaScript(
-                    "return window.scholiumSetLinkPreviews?.(previews) === true",
-                    arguments: ["previews": previews],
+                guard let self, let webView else { return }
+                defer {
+                    if self.isCurrentLoad(generation: generation, signature: signature, in: webView) {
+                        self.linkPreviewUpdateTask = nil
+                    }
+                }
+                guard !Task.isCancelled,
+                    self.isCurrentLoad(generation: generation, signature: signature, in: webView)
+                else { return }
+                // Navigation completion precedes asynchronous reader setup.
+                // One load-owned task waits for the API, then converges on the
+                // latest catalog instead of cancelling/restarting pending work.
+                let ready = try? await webView.callAsyncJavaScript(
+                    """
+                    if (window.scholiumReadReady) await window.scholiumReadReady;
+                    return typeof window.scholiumSetLinkPreviews === 'function';
+                    """,
+                    arguments: [:],
                     in: nil,
                     contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
-                guard !Task.isCancelled,
-                    result as? Bool == true,
-                    self.activeWebView === webView,
-                    self.desiredLinkPreviewRevision == revision
-                else { return }
-                self.appliedLinkPreviewRevision = revision
+                guard ready as? Bool == true else { return }
+                while !Task.isCancelled,
+                    self.isCurrentLoad(generation: generation, signature: signature, in: webView),
+                    self.desiredLinkPreviewRevision != self.appliedLinkPreviewRevision
+                {
+                    let revision = self.desiredLinkPreviewRevision
+                    let previews = Self.linkPreviewArguments(self.desiredLinkPreviews)
+                    let result = try? await webView.callAsyncJavaScript(
+                        "return window.scholiumSetLinkPreviews?.(previews) === true",
+                        arguments: ["previews": previews],
+                        in: nil,
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    )
+                    guard !Task.isCancelled,
+                        result as? Bool == true,
+                        self.isCurrentLoad(generation: generation, signature: signature, in: webView)
+                    else { return }
+                    self.appliedLinkPreviewRevision = revision
+                }
             }
         }
 
@@ -729,17 +764,31 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard presentationCSS != appliedPresentationCSS || userCSS != appliedUserCSS else {
                 return true
             }
-            let result = try? await webView.callAsyncJavaScript(
-                """
-                return await window.scholiumSetPresentationCSS?.(presentationCSS, userCSS) === true;
-                """,
-                arguments: [
-                    "presentationCSS": presentationCSS,
-                    "userCSS": userCSS,
-                ],
-                in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-            )
+            let result: Any?
+            do {
+                result = try await webView.callAsyncJavaScript(
+                    """
+                    return await window.scholiumSetPresentationCSS?.(presentationCSS, userCSS) === true;
+                    """,
+                    arguments: [
+                        "presentationCSS": presentationCSS,
+                        "userCSS": userCSS,
+                    ],
+                    in: nil,
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                )
+            } catch {
+                #if DEBUG
+                    if !Task.isCancelled,
+                        isCurrentLoad(generation: generation, signature: signature, in: webView),
+                        desiredPresentationCSS == presentationCSS, desiredUserCSS == userCSS
+                    {
+                        PerformanceProbe.shared.recordQAReaderFailure(
+                            phase: .presentationUpdate, generation: generation, error: error)
+                    }
+                #endif
+                result = nil
+            }
             guard !Task.isCancelled,
                 result as? Bool == true,
                 activeWebView === webView,
@@ -1246,6 +1295,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: webView
                 )
             else { return }
+            #if DEBUG
+                if !Task.isCancelled {
+                    PerformanceProbe.shared.recordQAReaderFailure(
+                        phase: .finalization, generation: generation, error: error)
+                }
+            #endif
             sourceLineNavigationTask?.cancel()
             sourceLineNavigationTask = nil
             scrollRestoration.cancelClaim()
@@ -1265,6 +1320,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            #if DEBUG
+                if activeWebView === webView {
+                    PerformanceProbe.shared.recordQAReaderFailure(phase: .processTerminated, generation: loadGeneration)
+                }
+            #endif
             pageIsReady = false
             loadedSignature = nil
             finalizedSignature = nil
@@ -1694,6 +1754,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             withError error: any Error
         ) {
             guard activeNavigation === navigation else { return }
+            #if DEBUG
+                if activeWebView === webView, activeNavigation != nil {
+                    PerformanceProbe.shared.recordQAReaderFailure(phase: .navigation, generation: loadGeneration, error: error)
+                }
+            #endif
             cancelPendingPageWork()
             onRenderingFailure?(error.localizedDescription)
         }
@@ -1704,6 +1769,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             withError error: any Error
         ) {
             guard activeNavigation === navigation else { return }
+            #if DEBUG
+                if activeWebView === webView, activeNavigation != nil {
+                    PerformanceProbe.shared.recordQAReaderFailure(phase: .provisionalNavigation, generation: loadGeneration, error: error)
+                }
+            #endif
             cancelPendingPageWork()
             onRenderingFailure?(error.localizedDescription)
         }

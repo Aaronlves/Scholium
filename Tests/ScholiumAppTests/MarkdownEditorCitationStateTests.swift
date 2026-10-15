@@ -166,8 +166,8 @@ struct MarkdownEditorCitationStateTests {
         session.loadDocument(source, documentID: "synthetic-citation-note", mode: .source, citationSnapshot: base)
         #expect(session.citationFields(forDocumentID: session.documentID)?.fields.first?.code == base.data?.fields.first?.code)
         var changes = 0
-        session.installSourceChangeHandler { changes += 1 }
-        defer { session.removeSourceChangeHandler() }
+        session.installSourceChangeHandler(owner: session) { changes += 1 }
+        defer { session.removeSourceChangeHandler(owner: session) }
 
         #expect(
             session.acceptEditorChanges(
@@ -290,13 +290,6 @@ struct MarkdownEditorCitationStateTests {
         #expect(Data(composed.documentData!.utf8) != Data(decomposed.documentData!.utf8))
         let session = MarkdownEditorSession()
         let identity = session.bridgeDocumentID
-        var synchronizedSources: [Data] = []
-        var synchronizedFingerprints: [String] = []
-        session.installCommittedTextSynchronizer { source, fingerprint in
-            synchronizedSources.append(Data(source.utf8))
-            synchronizedFingerprints.append(fingerprint)
-        }
-        defer { session.removeCommittedTextSynchronizer() }
         session.loadDocument(source, documentID: identity, mode: .livePreview, citationSnapshot: baseline)
         let first = try #require(session.citationFields(forDocumentID: identity)?.documentState?.data)
         #expect(Data(first.utf8) == Data(composed.documentData!.utf8))
@@ -307,8 +300,7 @@ struct MarkdownEditorCitationStateTests {
 
         session.prepareForViewAttachment(source, documentID: identity, mode: .source, citationSnapshot: replacement)
 
-        #expect(synchronizedSources == [Data(source.utf8)])
-        #expect(synchronizedFingerprints == [DocumentFingerprint(content: source).sha256])
+        #expect(session.startingFingerprint == DocumentFingerprint(content: source).sha256)
         #expect(session.documentID == identity)
         #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
         #expect(!session.canAttemptPreview)
@@ -327,15 +319,12 @@ struct MarkdownEditorCitationStateTests {
     @MainActor
     func attachmentAdmissionRejectsDifferentIdentityAndBytes() throws {
         let session = MarkdownEditorSession()
-        var synchronizedSources: [Data] = []
-        session.installCommittedTextSynchronizer { source, _ in synchronizedSources.append(Data(source.utf8)) }
-        defer { session.removeCommittedTextSynchronizer() }
         session.loadDocument(source, documentID: session.bridgeDocumentID, mode: .livePreview, citationSnapshot: snapshot())
         let foreignIdentity = UUID().uuidString
 
         session.prepareForViewAttachment(source, documentID: foreignIdentity, mode: .source, citationSnapshot: snapshot())
 
-        #expect(synchronizedSources == [Data(source.utf8), Data(source.utf8)])
+        #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
         #expect(session.documentID == foreignIdentity)
         #expect(session.citationFields(forDocumentID: session.bridgeDocumentID) == nil)
         let replacementSource = source.replacingOccurrences(of: "e\u{301}", with: "é")
@@ -347,7 +336,6 @@ struct MarkdownEditorCitationStateTests {
 
         session.prepareForViewAttachment(replacementSource, documentID: foreignIdentity, mode: .livePreview, citationSnapshot: replacementSnapshot)
 
-        #expect(synchronizedSources == [Data(source.utf8), Data(source.utf8), Data(replacementSource.utf8)])
         #expect(Data(session.checkedSource.utf8) == Data(replacementSource.utf8))
         #expect(session.startingFingerprint == DocumentFingerprint(content: replacementSource).sha256)
         #expect(session.currentCitationSnapshot?.sourceFingerprint == DocumentFingerprint(content: replacementSource))

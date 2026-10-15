@@ -56,6 +56,9 @@ done
 for fixture_support in README.md fixture-manifest.json attachment-samples; do
   cp -R "${FIXTURE_SOURCE}/${fixture_support}" "${FIXTURE_COPY}/${fixture_support}"
 done
+if [[ -f "${FIXTURE_SOURCE}/stress-manifest.json" ]]; then
+  cp "${FIXTURE_SOURCE}/stress-manifest.json" "${FIXTURE_COPY}/stress-manifest.json"
+fi
 if [[ -d "${FIXTURE_SOURCE}/.scholium" ]]; then
   cp -R "${FIXTURE_SOURCE}/.scholium" "${FIXTURE_COPY}/.scholium"
 fi

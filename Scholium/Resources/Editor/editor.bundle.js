@@ -35962,7 +35962,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     let pending = null;
     return {
       ensure() {
-        if (host.scholiumMermaid?.version === 2) return Promise.resolve(host.scholiumMermaid);
+        if (host.scholiumMermaid?.version === 3) return Promise.resolve(host.scholiumMermaid);
         if (pending) return pending.promise;
         let resolve;
         const promise = new Promise((complete2) => {
@@ -35977,7 +35977,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           if (pending === load) pending = null;
           resolve(runtime);
         };
-        const finish = () => complete(host.scholiumMermaid?.version === 2 ? host.scholiumMermaid : null);
+        const finish = () => complete(host.scholiumMermaid?.version === 3 ? host.scholiumMermaid : null);
         const timeout = host.setTimeout(finish, 8e3);
         const load = { promise, cancel: () => complete(null) };
         pending = load;
@@ -41789,7 +41789,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   function ensureMermaidRuntime() {
     const current = window.scholiumMermaid;
-    if (current?.version === 2) return Promise.resolve(current);
+    if (current?.version === 3) return Promise.resolve(current);
     if (!nativeHandler()) return Promise.resolve(null);
     return mermaidRuntimeLoader.ensure();
   }

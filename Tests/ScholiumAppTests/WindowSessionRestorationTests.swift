@@ -68,7 +68,7 @@ struct WindowSessionRestorationTests {
 
             await window.restoreWindowSession(id: saved.id)
 
-            #expect(initialPhase == .opening(availableVault: role))
+            #expect(initialPhase == .opening)
             assertRestoredPresentation(window, saved: saved)
             #expect(window.notes.map(\.relativePath) == [fixture.noteName(for: role)])
             #expect(window.vaultError == nil)
@@ -177,11 +177,11 @@ struct WindowSessionRestorationTests {
 
             assertRestoredPresentation(window, saved: saved)
             #expect(window.notes.map(\.relativePath) == [fixture.noteName(for: .paperAnalysis)])
-            #expect(window.workspaceProjectionController.snapshotPhase == .opening(availableVault: .paperAnalysis))
+            #expect(window.workspaceProjectionController.snapshotPhase == .opening)
             #expect(window.researchController.pendingChanges == nil)
             #expect(window.researchController.pendingChangesError == nil)
             let opening = try #require(store.workspaceSnapshots[triptychID])
-            #expect(opening.phase == .opening(availableVault: .paperAnalysis))
+            #expect(opening.phase == .opening)
 
             // Release the existing presentation boundary. The unseen Works
             // change must be discovered by complete projection, then loaded

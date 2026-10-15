@@ -176,7 +176,7 @@ public enum SafeMarkdownRenderer {
             guard let relative = relativeRange(field.span, bodyStart: bodyStart, bodyLength: bodyLength) else { continue }
             let attributes = "\(sourceAttributes(field.span)) data-scholium-protected=\"zotero-field\""
             if field.kind == .citation {
-                let key = "SCHOLIUMINLINETOKEN\(nonce)Z\(index)"
+                let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "Z\(index)")
                 inlineHTML[key] =
                     "<span class=\"scholium-zotero-citation\" \(attributes)>\(renderInlineMarkdown(field.fallbackMarkdown, embeddedImages: embeddedImages))</span>"
                 replacements.append(Replacement(range: relative, text: key))
@@ -241,7 +241,7 @@ public enum SafeMarkdownRenderer {
             let rawSource = (document.body as NSString).substring(with: relative)
             switch expression.kind {
             case .inline:
-                let key = "SCHOLIUMINLINETOKEN\(nonce)M\(index)"
+                let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "M\(index)")
                 inlineHTML[key] = renderMath(expression, rawSource: rawSource)
                 replacements.append(Replacement(range: relative, text: key))
             case .display:
@@ -262,7 +262,7 @@ public enum SafeMarkdownRenderer {
             guard let relative = relativeRange(reference.span, bodyStart: bodyStart, bodyLength: bodyLength),
                 !overlaps(relative, replacements.map(\.range))
             else { continue }
-            let key = "SCHOLIUMINLINETOKEN\(nonce)F\(reference.ordinal)R\(reference.occurrence)"
+            let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "F\(reference.ordinal)R\(reference.occurrence)")
             let definitionExists = definitionsByIdentifier[reference.identifier] != nil
             let punctuation = trailingPunctuation(in: document.body, after: relative)
             inlineHTML[key] = renderFootnoteReference(
@@ -296,7 +296,7 @@ public enum SafeMarkdownRenderer {
             guard let relative = relativeRange(link.span, bodyStart: bodyStart, bodyLength: bodyLength),
                 !overlaps(relative, replacements.map(\.range))
             else { continue }
-            let key = "SCHOLIUMINLINETOKEN\(nonce)L\(index)"
+            let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "L\(index)")
             inlineHTML[key] = renderWikilink(
                 link,
                 locatedSpan: locatedSpan(
@@ -329,7 +329,7 @@ public enum SafeMarkdownRenderer {
                 !overlaps(relative, literalRanges),
                 !overlaps(relative, replacements.map(\.range))
             else { continue }
-            let key = "SCHOLIUMINLINETOKEN\(nonce)H\(index)"
+            let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "H\(index)")
             let contentRange = NSRange(location: relative.location + 2, length: relative.length - 4)
             inlineHTML[key] = "<mark class=\"scholium-highlight\">\(escapeHTML(body.substring(with: contentRange)))</mark>"
             replacements.append(Replacement(range: relative, text: key))
@@ -360,7 +360,7 @@ public enum SafeMarkdownRenderer {
         )
         var visitor = SafeHTMLVisitor(
             blockHTML: blockHTML,
-            inlineHTML: inlineHTML,
+            inlineTokens: SafeMarkdownInlineTokens(replacements: inlineHTML),
             blockSourceSpans: blockSourceSpans,
             quoteDepths: quoteDepths,
             embeddedImages: embeddedImages,
@@ -485,7 +485,7 @@ public enum SafeMarkdownRenderer {
         let parsed = Document(parsing: source)
         var visitor = SafeHTMLVisitor(
             blockHTML: [:],
-            inlineHTML: [:],
+            inlineTokens: SafeMarkdownInlineTokens(replacements: [:]),
             blockSourceSpans: [:],
             quoteDepths: [:],
             embeddedImages: embeddedImages
@@ -996,13 +996,82 @@ fileprivate struct SafeHTMLQuoteFrame {
     var node: SafeHTMLQuoteNode
 }
 
+/// Render-local inert markers. The terminal makes decimal indices prefix-free
+/// (L1 must never replace the beginning of L10). Only this render's dictionary
+/// admits HTML; well-formed but unknown markers remain escaped source text.
+struct SafeMarkdownInlineTokens {
+    private static let prefix = "SCHOLIUMINLINETOKEN"
+    private static let terminal = "END"
+    let replacements: [String: String]
+
+    static func key(nonce: String, component: String) -> String {
+        prefix + nonce + component + terminal
+    }
+
+    func appendEscapedText(_ value: String, to output: inout String) {
+        guard !replacements.isEmpty else {
+            output += SafeMarkdownRenderer.escapeHTML(value)
+            return
+        }
+        let source = value as NSString
+        var cursor = 0
+        var literalStart = 0
+        while cursor < source.length {
+            let start = source.range(
+                of: Self.prefix, options: .literal,
+                range: NSRange(location: cursor, length: source.length - cursor))
+            guard start.location != NSNotFound else { break }
+            cursor = NSMaxRange(start)
+            guard let end = tokenEnd(in: source, afterPrefix: cursor),
+                let html = replacements[source.substring(with: NSRange(location: start.location, length: end - start.location))]
+            else { continue }
+            output += SafeMarkdownRenderer.escapeHTML(source.substring(with: NSRange(location: literalStart, length: start.location - literalStart)))
+            output += html
+            literalStart = end
+            cursor = end
+        }
+        output += SafeMarkdownRenderer.escapeHTML(source.substring(from: literalStart))
+    }
+
+    private func tokenEnd(in source: NSString, afterPrefix start: Int) -> Int? {
+        var cursor = start
+        // UUID().uuidString without hyphens is exactly 32 uppercase hex units.
+        for _ in 0..<32 {
+            guard cursor < source.length else { return nil }
+            let unit = source.character(at: cursor)
+            guard (48...57).contains(unit) || (65...70).contains(unit) else { return nil }
+            cursor += 1
+        }
+        guard cursor < source.length else { return nil }
+        let kind = source.character(at: cursor)
+        guard [UInt16(90), 77, 70, 76, 72].contains(kind) else { return nil }  // Z, M, F, L, H
+        cursor += 1
+        func digits() -> Bool {
+            let start = cursor
+            while cursor < source.length, (48...57).contains(source.character(at: cursor)) { cursor += 1 }
+            return cursor > start
+        }
+        guard digits() else { return nil }
+        if kind == 70 {
+            guard cursor < source.length, source.character(at: cursor) == 82 else { return nil }  // R
+            cursor += 1
+            guard digits() else { return nil }
+        }
+        let terminalLength = Self.terminal.utf16.count
+        guard source.length - cursor >= terminalLength,
+            source.substring(with: NSRange(location: cursor, length: terminalLength)) == Self.terminal
+        else { return nil }
+        return cursor + terminalLength
+    }
+}
+
 private struct SafeHTMLVisitor: MarkupWalker {
     private static let quoteTokenStart = "\u{E000}scholium-quote-"
     private static let quoteTokenEnd = "\u{E001}"
 
     var result = ""
     let blockHTML: [String: String]
-    let inlineHTML: [String: String]
+    let inlineTokens: SafeMarkdownInlineTokens
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
     let quoteDepths: [SourceSpan: Int]
     var embeddedImages: [String: RenderedMarkdownImage] = [:]
@@ -1238,20 +1307,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
     }
 
     private mutating func appendTextReplacingTokens(_ value: String) {
-        var remaining = value[...]
-        while !remaining.isEmpty {
-            let candidate = inlineHTML.compactMap { key, html -> (String.Index, String, String)? in
-                guard let range = remaining.range(of: key) else { return nil }
-                return (range.lowerBound, key, html)
-            }.min { $0.0 < $1.0 }
-            guard let candidate, let range = remaining.range(of: candidate.1) else {
-                result += SafeMarkdownRenderer.escapeHTML(String(remaining))
-                break
-            }
-            result += SafeMarkdownRenderer.escapeHTML(String(remaining[..<range.lowerBound]))
-            result += candidate.2
-            remaining = remaining[range.upperBound...]
-        }
+        inlineTokens.appendEscapedText(value, to: &result)
     }
 
     private mutating func sourceAttributes(for kind: MarkdownBlockKind) -> String {

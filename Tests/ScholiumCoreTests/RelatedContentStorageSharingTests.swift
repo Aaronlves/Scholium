@@ -58,7 +58,9 @@ struct RelatedContentStorageSharingTests {
     func projectionRoundTrip() throws {
         let source = "\u{FEFF}# Émotion 😀\r\n\r\nCAFÉ cafe\u{301} needle needle 自由自由.\r\n\r\n[[Target|行动]]{{needle reasons}}.\r\n"
         let note = NoteDocument(relativePath: "Fixture.md", rawContent: source)
-        let lexical = RelatedContentLexicalProjection(projection: SearchDocumentProjection(document: note))
+        let projection = SearchDocumentProjection(document: note)
+        let lexical = RelatedContentLexicalProjection(
+            projection: projection, scoringDocument: .init(segments: projection.segments))
         let bytes = try lexical.encoded()
         let decoded = try RelatedContentLexicalProjection.decode(bytes, checksum: RelatedContentSourceProjection.checksum(bytes))
         #expect(decoded.segments.count == lexical.segments.count)

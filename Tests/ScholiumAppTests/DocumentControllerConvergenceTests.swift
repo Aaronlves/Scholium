@@ -348,16 +348,13 @@ struct DocumentControllerConvergenceTests {
             acknowledgement.continuation.finish()
             session.cancelScheduledWork()
         }
-        // Existing save-task admission supplies the deterministic suspension:
-        // source capture is complete, but the caller has not yet received its receipt.
-        session.activeSaveTask = Task { @MainActor in
-            captured.continuation.yield(())
-            for await _ in acknowledgement.stream { break }
-            return .clean
-        }
         let handoff = Task { @MainActor in
             try await controller.flushForExternalOperation(session: session, target: target)
-            session.activeSaveTask = nil
+            // The real save owns and releases its admission token. Pause the
+            // subsequent Review completion so newer input cannot be mistaken
+            // for the bytes that the completed flush proved clean.
+            captured.continuation.yield(())
+            for await _ in acknowledgement.stream { break }
             try controller.finishEditing(session: session, target: target)
         }
         for await _ in captured.stream { break }

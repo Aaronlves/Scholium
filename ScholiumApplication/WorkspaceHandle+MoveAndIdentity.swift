@@ -653,11 +653,16 @@ extension WorkspaceHandle {
         else {
             throw ScholiumApplicationError.vaultNotInWorkspace(ambiguity.vaultID)
         }
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer { if ownsMutation { endSourceMutation(mutationLease) } }
         let record = try await services.identityRecoveryCoordinator.resolve(
             ambiguity,
             candidateID: candidateID,
             repository: repository
         )
+        endSourceMutation(mutationLease)
+        ownsMutation = false
         let derivedRefreshWarning: String?
         do {
             _ = try await refresh(

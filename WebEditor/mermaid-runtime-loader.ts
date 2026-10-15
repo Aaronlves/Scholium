@@ -8,7 +8,7 @@ export function createMermaidRuntimeLoader(host: RuntimeHost, requestRuntime: ()
   let pending: {promise: Promise<ScholiumMermaidRuntime | null>; cancel(): void} | null = null;
   return {
     ensure(): Promise<ScholiumMermaidRuntime | null> {
-      if (host.scholiumMermaid?.version === 2) return Promise.resolve(host.scholiumMermaid);
+      if (host.scholiumMermaid?.version === 3) return Promise.resolve(host.scholiumMermaid);
       if (pending) return pending.promise;
       let resolve!: (runtime: ScholiumMermaidRuntime | null) => void;
       const promise = new Promise<ScholiumMermaidRuntime | null>(complete => { resolve = complete; });
@@ -21,7 +21,7 @@ export function createMermaidRuntimeLoader(host: RuntimeHost, requestRuntime: ()
         if (pending === load) pending = null;
         resolve(runtime);
       };
-      const finish = () => complete(host.scholiumMermaid?.version === 2 ? host.scholiumMermaid : null);
+      const finish = () => complete(host.scholiumMermaid?.version === 3 ? host.scholiumMermaid : null);
       const timeout = host.setTimeout(finish, 8_000);
       const load = {promise, cancel: () => complete(null)};
       pending = load;

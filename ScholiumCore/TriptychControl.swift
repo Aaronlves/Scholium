@@ -16,6 +16,16 @@ public struct ManagedCreationIdentityReconciliation: Hashable, Sendable {
     }
 }
 
+/// Operation-local identity lookup. Its records are admitted together from one
+/// complete portable revision; a consumer rechecks that revision before each
+/// independent admission. It is never retained as a control cache.
+package struct TriptychIdentityInventorySnapshot: Sendable {
+    package let recordsByID: [UUID: NoteIdentityRecord]
+    fileprivate let controlURL: URL
+    fileprivate let rootIdentity: VaultDescriptorAccess.FileIdentity
+    fileprivate let version: SourceVersion
+}
+
 /// Owns the small, portable `.scholium` directory beside the Works vault.
 public actor TriptychControlStore {
     private struct StoredIdentityAmbiguity: Codable {
@@ -226,6 +236,16 @@ public actor TriptychControlStore {
     private let controlPostSwapHook: (@Sendable (URL) throws -> Void)?
     private let controlCreateHook: (@Sendable (URL) throws -> Void)?
     private let portableControlLock: AdvisoryFileLock?
+    #if DEBUG
+        package private(set) var identitySnapshotDecodeCountForTesting = 0
+        package private(set) var identityInventoryValidationCountForTesting = 0
+        package private(set) var identityInventorySourceReadCountForTesting = 0
+        private var identityInventoryReadHookForTesting: (@Sendable () throws -> Void)?
+
+        package func setIdentityInventoryReadHookForTesting(_ hook: (@Sendable () throws -> Void)?) {
+            identityInventoryReadHookForTesting = hook
+        }
+    #endif
 
     private var legacyAttachmentCatalogURL: URL {
         controlURL
@@ -771,6 +791,71 @@ public actor TriptychControlStore {
     /// consequential operation.
     public func identityRecord(id: UUID) throws -> NoteIdentityRecord? {
         try identityPayload().records.first { $0.id == id }
+    }
+
+    package func identityInventorySnapshot() throws -> TriptychIdentityInventorySnapshot {
+        let access: VaultDescriptorAccess
+        let path = try AttachmentRelativePath("identities.json")
+        do {
+            access = try VaultDescriptorAccess(rootURL: controlURL)
+        } catch {
+            throw TriptychControlError.invalidIdentities
+        }
+        #if DEBUG
+            let afterRead = identityInventoryReadHookForTesting
+            var didReadSource = false
+            defer { if didReadSource { identityInventorySourceReadCountForTesting += 1 } }
+        #endif
+        let loaded = try access.withOpenRegularFile(path) { descriptor, parent, name, initialStatus in
+            guard initialStatus.st_size >= 0 else { throw TriptychControlError.invalidIdentities }
+            #if DEBUG
+                didReadSource = true
+            #endif
+            // The captured extent bounds this read without imposing a Note-size
+            // limit on portable identities. Concurrent growth is a changed
+            // revision, never an invitation to keep allocating or retry reading.
+            let data = try VaultDescriptorAccess.readAll(from: descriptor, maximumByteCount: Int(initialStatus.st_size))
+            #if DEBUG
+                try afterRead?()
+            #endif
+            let version = SourceVersion(fileStatus: initialStatus, fingerprint: DocumentFingerprint(data: data))
+            var finalStatus = stat()
+            guard fstat(descriptor, &finalStatus) == 0,
+                version.matches(fileStatus: finalStatus),
+                data.count == version.byteCount,
+                try VaultDescriptorAccess.identity(name: name, parentDescriptor: parent) == VaultDescriptorAccess.FileIdentity(initialStatus)
+            else { throw TriptychControlError.identitiesRevisionConflict }
+            try access.verifyCurrentParent(path, retainedDescriptor: parent)
+            return (data: data, version: version)
+        }
+        let snapshot = try decodeIdentitySnapshot(loaded.data)
+        return TriptychIdentityInventorySnapshot(
+            recordsByID: Dictionary(uniqueKeysWithValues: snapshot.payload.records.map { ($0.id, $0) }),
+            controlURL: controlURL,
+            rootIdentity: access.rootIdentity,
+            version: loaded.version)
+    }
+
+    /// Apply the same optimistic opened-file version check used by Note source
+    /// catalogs. No full read, hash or JSON decode occurs during admission.
+    package func validateIdentityInventory(_ snapshot: TriptychIdentityInventorySnapshot) throws {
+        #if DEBUG
+            identityInventoryValidationCountForTesting += 1
+        #endif
+        do {
+            guard snapshot.controlURL == controlURL else { throw TriptychControlError.identitiesRevisionConflict }
+            let access = try VaultDescriptorAccess(rootURL: controlURL)
+            guard access.rootIdentity == snapshot.rootIdentity else { throw TriptychControlError.identitiesRevisionConflict }
+            let path = try AttachmentRelativePath("identities.json")
+            try access.withOpenRegularFile(path) { _, parent, name, status in
+                guard snapshot.version.matches(fileStatus: status),
+                    try VaultDescriptorAccess.identity(name: name, parentDescriptor: parent) == VaultDescriptorAccess.FileIdentity(status)
+                else { throw TriptychControlError.identitiesRevisionConflict }
+                try access.verifyCurrentParent(path, retainedDescriptor: parent)
+            }
+        } catch {
+            throw TriptychControlError.identitiesRevisionConflict
+        }
     }
 
     /// Compares the identities of currently published source paths with one
@@ -1672,7 +1757,16 @@ public actor TriptychControlStore {
         guard fileManager.fileExists(atPath: identitiesURL.path) else {
             throw TriptychControlError.invalidIdentities
         }
-        let data = try Data(contentsOf: identitiesURL, options: [.mappedIfSafe])
+        // Keep the decoded records and their revision bound to owned bytes;
+        // a later in-place edit must not mutate an operation-local snapshot.
+        let data = try Data(contentsOf: identitiesURL)
+        return try decodeIdentitySnapshot(data)
+    }
+
+    private func decodeIdentitySnapshot(_ data: Data) throws -> IdentityFileSnapshot {
+        #if DEBUG
+            identitySnapshotDecodeCountForTesting += 1
+        #endif
         guard let payload = try? decoder().decode(IdentityFile.self, from: data),
             Self.hasUniqueIdentityRecords(payload.records)
         else {

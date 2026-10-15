@@ -112,6 +112,15 @@ private struct ScholiumFileDocumentCommandContent: View {
             Divider()
         } else {
             Button("Save") {
+                #if DEBUG
+                    PerformanceProbe.shared.recordQASaveStage(
+                        .nativeMenuEntry,
+                        flags: [
+                            .actionsPresent: appState?.currentEditorActions != nil,
+                            .composing: appState?.currentEditorActions?.isComposing == true,
+                            .selectedDocument: appState?.documentController.selectedDocument != nil,
+                        ])
+                #endif
                 guard let appState, let document = appState.documentController.selectedDocument else { return }
                 let session = appState.documentController.session(for: document.editingTarget)
                 Task { await appState.documentController.persistEditingSource(session: session, target: document.editingTarget) }

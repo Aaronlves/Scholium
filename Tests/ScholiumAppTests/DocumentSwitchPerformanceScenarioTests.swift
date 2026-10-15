@@ -233,7 +233,7 @@ import WebKit
                 model.editingSource = source
                 model.originalEditingSource = source
                 model.editingRevision = DocumentFingerprint(content: source)
-                editor.installSourceChangeHandler { [weak model] in
+                editor.installSourceChangeHandler(owner: model) { [weak model] in
                     guard let model else { return }
                     model.editingSource = model.editorSession.checkedSource
                 }

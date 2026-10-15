@@ -78,7 +78,7 @@ struct WindowWorkspaceProjectionControllerTests {
         let opening = fixture.snapshot(
             activeSource: "# Available\n",
             searchSequence: 1,
-            phase: .opening(availableVault: .paperAnalysis)
+            phase: .opening
         )
         let controller = WindowWorkspaceProjectionController {
             opening.discovery.catalog
@@ -91,9 +91,7 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         #expect(
             openingCommit.snapshotPhase
-                == .opening(
-                    availableVault: .paperAnalysis
-                ))
+                == .opening)
         #expect(controller.snapshotPhase == openingCommit.snapshotPhase)
         #expect(controller.searchGeneration == nil)
         #expect(!openingCommit.searchGenerationChanged)
@@ -106,12 +104,49 @@ struct WindowWorkspaceProjectionControllerTests {
             return
         }
 
-        let complete = fixture.snapshot(
+        let topics = WorkspaceVaultSnapshot(
+            slot: .topicKnowledge,
+            vault: RegisteredVault(
+                id: fixture.triptych.topicKnowledgeVaultID,
+                name: "Topics", role: .topicKnowledge, canonicalPath: "/fixtures/Topics"
+            ),
+            pathComparisonPolicy: fixture.pathComparisonPolicy,
+            documents: [],
+            identityRecovery: NoteIdentityRecoveryState(
+                identities: [:], ambiguities: [], pendingRebindings: [], failures: []
+            )
+        )
+        let prepared = WorkspaceSnapshot(
+            triptych: opening.triptych, mode: opening.mode, phase: .opening,
+            generatedAt: Date(), vaults: opening.vaults + [topics],
+            discovery: opening.discovery, research: opening.research,
+            sourceInventoryRevision: opening.sourceInventoryRevision + 1
+        )
+        let priorVisibleNotes = controller.notes.map(\.summary)
+        let preparedCommit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(generation: 1, snapshot: prepared)),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library, selectedDocumentPath: "Active.md")
+        )
+        #expect(preparedCommit?.snapshotPhase == .opening)
+        #expect(preparedCommit?.searchGenerationChanged == false)
+        #expect(controller.vaultSnapshotsByID[topics.vault.id]?.documents.isEmpty == true)
+        #expect(controller.notes.map(\.summary) == priorVisibleNotes)
+        #expect(controller.searchGeneration == nil)
+        #expect(controller.linkGraph == nil)
+
+        let derived = fixture.snapshot(
             activeSource: "# Available\n",
-            searchSequence: 2
+            searchSequence: 3
+        )
+        let complete = WorkspaceSnapshot(
+            triptych: derived.triptych, mode: derived.mode, phase: .complete,
+            generatedAt: Date(), vaults: derived.vaults + [topics],
+            discovery: derived.discovery, research: derived.research,
+            sourceInventoryRevision: derived.sourceInventoryRevision
         )
         let completeCommit = controller.receive(
-            .snapshot(WorkspaceSnapshotEvent(generation: 1, snapshot: complete)),
+            .snapshot(WorkspaceSnapshotEvent(generation: 2, snapshot: complete)),
             runtimeIdentity: fixture.runtimeIdentity,
             context: fixture.context(sourceScope: .library)
         )
@@ -120,7 +155,7 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(controller.searchGeneration == complete.discovery.searchGeneration)
         #expect(controller.snapshotPhase == .complete)
         let repeatedCommit = controller.receive(
-            .snapshot(WorkspaceSnapshotEvent(generation: 2, snapshot: complete)),
+            .snapshot(WorkspaceSnapshotEvent(generation: 3, snapshot: complete)),
             runtimeIdentity: fixture.runtimeIdentity,
             context: fixture.context(sourceScope: .library)
         )

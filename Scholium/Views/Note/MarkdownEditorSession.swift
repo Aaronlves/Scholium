@@ -294,8 +294,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingRejectedChangeGeneration: Int?
     private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
     private let lifecyclePolicy: ScholiumLifecyclePolicy
-    private var committedTextSynchronizer: ((String, String) -> Void)?
     private var sourceChangeHandler: (() -> Void)?
+    private var sourceChangeHandlerOwner: ObjectIdentifier?
     private let checkedSourceBuffer = EditorExactSourceBuffer()
     private struct CitationFieldsKey: Equatable {
         let documentID: String
@@ -529,8 +529,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         automaticFocusIsAuthorized = false
         pendingFocusIntentRevision = nil
         automaticFocusTarget = .editor
-        committedTextSynchronizer = nil
         sourceChangeHandler = nil
+        sourceChangeHandlerOwner = nil
         pendingSource = nil
         pendingSourceRange = nil
         pendingSourceRangeIsDefault = false
@@ -824,7 +824,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             pendingSourceRangeIsDefault = true
             pendingSourceRangeRevision = 0
         }
-        committedTextSynchronizer?(source, startingFingerprint)
         cancelModeTransition()
         if publishesLoadingState {
             updatePresentation {
@@ -1738,7 +1737,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             generation: generation, ranges: recovered.ranges
         )
         updatePublished(\.isDirty, to: superseded)
-        committedTextSynchronizer?(recovered.source, fingerprint.sha256)
         return superseded ? .superseded : .clean
     }
 
@@ -1941,25 +1939,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             citationData: checkedCitationData
         )
         updatePublished(\.isDirty, to: commitSuperseded)
-        committedTextSynchronizer?(checkedSource, fingerprint.sha256)
         return commitSuperseded ? .superseded : .clean
     }
 
-    func installCommittedTextSynchronizer(
-        _ synchronizer: @escaping (String, String) -> Void
-    ) {
-        committedTextSynchronizer = synchronizer
-    }
-
-    func removeCommittedTextSynchronizer() {
-        committedTextSynchronizer = nil
-    }
-
-    func installSourceChangeHandler(_ handler: @escaping () -> Void) {
+    func installSourceChangeHandler(owner: AnyObject, _ handler: @escaping () -> Void) {
+        sourceChangeHandlerOwner = ObjectIdentifier(owner)
         sourceChangeHandler = handler
     }
 
-    func removeSourceChangeHandler() {
+    func removeSourceChangeHandler(owner: AnyObject) {
+        guard sourceChangeHandlerOwner == ObjectIdentifier(owner) else { return }
+        sourceChangeHandlerOwner = nil
         sourceChangeHandler = nil
     }
 

@@ -34,10 +34,10 @@ struct ParagraphSearchTests {
             sqlite3_prepare_v2(database, "SELECT paragraphs FROM search_documents;", -1, &statement, nil)
                 == SQLITE_OK)
         #expect(sqlite3_step(statement) == SQLITE_ROW)
-        let stored = String(cString: try #require(sqlite3_column_text(statement, 0)))
+        let stored = Data(bytes: try #require(sqlite3_column_blob(statement, 0)), count: Int(sqlite3_column_bytes(statement, 0)))
         sqlite3_finalize(statement)
         var paragraphs = try #require(
-            JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [[String: Any]])
+            JSONSerialization.jsonObject(with: SearchProjectionBlobCodec.decode(stored)) as? [[String: Any]])
         var first = try #require(paragraphs.first)
         var segments = try #require(first["segments"] as? [[String: Any]])
         _ = try #require(segments.first?["offsetMap"] as? String)
@@ -54,13 +54,13 @@ struct ParagraphSearchTests {
         segments[0]["offsetMap"] = malformed.base64EncodedString()
         first["segments"] = segments
         paragraphs[0] = first
-        let damaged = String(
-            decoding: try JSONSerialization.data(withJSONObject: paragraphs), as: UTF8.self)
-        let escaped = damaged.replacingOccurrences(of: "'", with: "''")
-        #expect(
-            sqlite3_exec(
-                database, "UPDATE search_documents SET paragraphs = '\(escaped)';", nil, nil, nil)
-                == SQLITE_OK)
+        let damaged = try SearchProjectionBlobCodec.encode(JSONSerialization.data(withJSONObject: paragraphs))
+        #expect(sqlite3_prepare_v2(database, "UPDATE search_documents SET paragraphs = ?;", -1, &statement, nil) == SQLITE_OK)
+        damaged.withUnsafeBytes { bytes in
+            #expect(sqlite3_bind_blob(statement, 1, bytes.baseAddress, Int32(bytes.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self)) == SQLITE_OK)
+            #expect(sqlite3_step(statement) == SQLITE_DONE)
+        }
+        sqlite3_finalize(statement)
         sqlite3_close(database)
         let reopened = try TriptychSearchIndex.openRecovering(
             databaseURL: url, triptychID: triptychID, vaults: [vault])

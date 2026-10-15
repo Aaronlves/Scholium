@@ -22,6 +22,7 @@ import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 import {installReviewImageActivation} from "./review-image-activation";
 import {awaitVisibleDocumentImages} from "./document-widget-readiness";
+import {createReaderMermaidPass, type ReaderMermaidPass} from "./reader-mermaid-pass";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -129,6 +130,7 @@ async function initializeReader(value: unknown): Promise<void> {
   };
   readerWindow.scholiumReadPreparation = readPreparation;
   let presentationUpdateSequence = 0;
+  let mermaidThemeRevision = 0;
   const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
   decorateAttachmentLinks(documentRoot);
   if (config.replyProjection) decorateChatReplyLinks(documentRoot);
@@ -264,7 +266,7 @@ async function initializeReader(value: unknown): Promise<void> {
   let mermaidRuntimePromise: Promise<NonNullable<typeof window.scholiumMermaid> | null> | null = null;
   function ensureMermaidRuntime() {
     const current = readerWindow.scholiumMermaid;
-    if (current?.version === 2) return Promise.resolve(current);
+    if (current?.version === 3) return Promise.resolve(current);
     if (!handler) return Promise.resolve(null);
     if (mermaidRuntimePromise) return mermaidRuntimePromise;
     mermaidRuntimePromise = new Promise<NonNullable<typeof window.scholiumMermaid> | null>((resolve) => {
@@ -275,8 +277,8 @@ async function initializeReader(value: unknown): Promise<void> {
         clearTimeout(timeout);
         readerWindow.scholiumMermaidRuntimeDidLoad = undefined;
         const loaded = readerWindow.scholiumMermaid;
-        if (loaded?.version !== 2) mermaidRuntimePromise = null;
-        resolve(loaded?.version === 2 ? loaded : null);
+        if (loaded?.version !== 3) mermaidRuntimePromise = null;
+        resolve(loaded?.version === 3 ? loaded : null);
       };
       const timeout = setTimeout(finish, 8000);
       readerWindow.scholiumMermaidRuntimeDidLoad = finish;
@@ -285,7 +287,7 @@ async function initializeReader(value: unknown): Promise<void> {
     return mermaidRuntimePromise;
   }
 
-  async function renderMermaidWrapper(wrapper: HTMLElement, source: string) {
+  async function renderMermaidWrapper(wrapper: HTMLElement, source: string, render: ReaderMermaidPass) {
     for (const child of [...wrapper.children]) {
       if (child.classList.contains('scholium-mermaid-output')
           || child.classList.contains('scholium-mermaid-diagnostic')
@@ -304,7 +306,7 @@ async function initializeReader(value: unknown): Promise<void> {
       return;
     }
     try {
-      const result = await runtime.render({source, themeRoot: document.documentElement});
+      const result = await render(runtime, source);
       if (!result.ok) {
         wrapper.classList.add('scholium-mermaid-error');
         mermaidDiagnostic(
@@ -347,6 +349,8 @@ async function initializeReader(value: unknown): Promise<void> {
   async function renderMermaidNodes() {
     const nodes = [...document.querySelectorAll('pre > code')]
       .filter(code => isMermaidCode(code) && !code.closest('.scholium-mermaid'));
+    const render = createReaderMermaidPass(
+      nodes.map(code => code.textContent || ''), document.documentElement, () => mermaidThemeRevision);
     for (const code of nodes) {
       const original = code.parentElement;
       if (!original) continue;
@@ -362,18 +366,23 @@ async function initializeReader(value: unknown): Promise<void> {
       fallback.classList.add('scholium-mermaid-source');
       wrapper.append(fallback);
       original.replaceWith(wrapper);
-      await renderMermaidWrapper(wrapper, source);
+      await renderMermaidWrapper(wrapper, source, render);
     }
   }
 
   async function refreshMermaidNodes() {
-    for (const wrapper of document.querySelectorAll<HTMLElement>('.scholium-mermaid')) {
+    const wrappers = [...document.querySelectorAll<HTMLElement>('.scholium-mermaid')];
+    const render = createReaderMermaidPass(
+      wrappers.map(wrapper => wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || ''),
+      document.documentElement, () => mermaidThemeRevision);
+    for (const wrapper of wrappers) {
       const source = wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || '';
-      await renderMermaidWrapper(wrapper, source);
+      await renderMermaidWrapper(wrapper, source, render);
     }
   }
 
   function scheduleMermaidRefresh() {
+    mermaidThemeRevision++;
     const current = readerWindow.scholiumMermaidReady || Promise.resolve();
     readerWindow.scholiumMermaidReady = current.catch(() => {}).then(refreshMermaidNodes);
   }

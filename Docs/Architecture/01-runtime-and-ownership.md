@@ -57,37 +57,37 @@ windows need them. Snapshot runtimes load once without watchers and shut down
 after the isolated operation. Root replacement latches a pooled vault unavailable
 until explicit access restoration replaces its authorization.
 
-An opening workspace may publish only the selected vault's authoritative catalog
+An opening workspace publishes each prepared vault's authoritative catalog
 and portable identities. Document load and exact current-buffer Search are usable;
 lexical Search may use its last complete compatible index after filtering by
 current fingerprints and stable identities. It reports Limited. Triptych-wide
 structured, property and direct-link queries fail closed while their complete
 projections are absent. No partial index becomes a complete generation.
 
-One owned completion task converges to a complete snapshot after observation
-reconciliation. Initial document visible-layout readiness delays competing full
+One completion task converges after observation reconciliation.
+Initial document visible-layout readiness delays competing full
 reconcile, with a bounded fallback for Library-only or failed-renderer cases.
 Shutdown cancels and awaits completion; it never creates a second source runtime.
 
 Application derives Search manifests from source-free catalogs:
 metadata, links, descriptor facts and versions. Watchers precede
 reconciliation; precise events update entries; event loss requires full
-reconciliation. Search compares manifests, loads changed Notes individually,
-and releases source after insertion. One writer transaction validates source
+reconciliation. Search compares manifests, prepares changed Notes in a bounded
+ordered window, and releases inserted source. One writer transaction validates source
 versions before publication; readers retain committed generations. Cached projections
 require fresh changed-row reads and fingerprints. Vault preparation overlaps;
 Graph, Search synchronization and publication remain ordered.
 
-One refresh coordinator serializes prepare → Search synchronize → snapshot
-publish. Requests arriving after a cycle captures its cohort belong to the next
-cycle; cancellation of one waiter cannot cancel another's work. Merged cycles
-retain all requested source paths. One cancellation-aware source-operation gate
-excludes refresh while filesystem, identity and path-bound transaction state
-disagree. Cancellation before acquisition removes the waiter; after acquisition
-it cannot revoke a transaction that must finish or recover. Index deltas persist
-monotonic workspace generations transactionally and reject stale publication,
-including after reopen or from another connection. Failure retains the last
-complete snapshot/index.
+One refresh coordinator serializes derived generations. One source-operation gate
+protects source/identity capture and publication; immutable Graph/Search
+preparation holds no source lease. Source transactions advance a Handle-owned
+authority token. Final admission reacquires the gate and validates the token before
+SourceVersion checks and SQL commit, retaining it through App publication.
+Superseded work recaptures current inputs after rollback. Cohorts retain
+publication kind and requested paths; one waiter's cancellation cannot cancel
+another. Cancellation before gate acquisition removes the waiter; afterwards a
+source transaction must finish or recover. Monotonic index generations reject stale
+publication across reopen and connections. Failure retains the last complete snapshot/index.
 
 Authoritative source completion is distinct from derived publication. Autosave
 commit and direct creation return proven source/identity before background

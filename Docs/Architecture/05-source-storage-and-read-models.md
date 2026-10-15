@@ -41,12 +41,12 @@ unsupported records remain unchanged and nonauthorizing.
 
 Core `DocumentReviewStore` keeps source baselines, captures, batches and
 receipt-version coverage outside vaults. Application `DocumentChangeOperations`
-compares identity-checked saved source and increments snapshot generation;
+prepares bounded baselines against one revision-bound identity inventory;
 `DocumentChangeArchiveOperations` accesses Triptych metadata for Settings
 without vault activation. MCP receipts and Undo remain with
 [Agent Collaboration](02-agent-collaboration.md#note-mutation-authority-and-evidence).
 
-Bounded JSON stores share Core's contained atomic secure-record primitive and
+Bounded record stores share Core's contained atomic secure-record primitive and
 advisory locking. Stores own schema/transactions; the primitive interprets no
 research. Portable settings and machine-local style manifests use exact-byte
 coordinated replacement, exclusive recovery copies and checked absence. Application

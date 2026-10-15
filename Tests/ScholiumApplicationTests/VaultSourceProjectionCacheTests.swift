@@ -200,7 +200,7 @@ struct VaultSourceProjectionCacheTests {
             let directory = supportURL.appendingPathComponent(
                 "Vaults/\(vaultID.uuidString)/source-projections-v1", isDirectory: true)
             return (try? FileManager.default.contentsOfDirectory(atPath: directory.path))?
-                .contains { $0.hasSuffix(".projection.json") } == true
+                .contains { $0.hasSuffix(".projection.plist") } == true
         }
 
         init() async throws {

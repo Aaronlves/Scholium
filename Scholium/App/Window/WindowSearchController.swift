@@ -418,7 +418,7 @@ final class WindowSearchController: ObservableObject {
             return .unavailable(
                 String(
                     localized:
-                        "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes.",
+                        "This Note and available libraries support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes.",
                     table: "Localizable",
                     bundle: .module
                 ))

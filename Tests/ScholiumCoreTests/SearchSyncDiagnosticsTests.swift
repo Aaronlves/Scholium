@@ -30,7 +30,7 @@ struct SearchSyncDiagnosticsTests {
             let verboseDecodeMS = milliseconds(verboseDecodeStart.duration(to: .now))
             let compactDecodeStart = ContinuousClock.now
             let decoded = try TriptychSearchIndex.decodedStoredParagraphs(
-                from: String(decoding: compact, as: UTF8.self))
+                from: compact)
             let compactDecodeMS = milliseconds(compactDecodeStart.duration(to: .now))
             #expect(original == projection.paragraphs)
             #expect(decoded == projection.paragraphs)
@@ -185,13 +185,14 @@ struct SearchSyncDiagnosticsTests {
                 let prepared = PreparedSearchIndexDocument(source: source, cache: nil)
                 let preparedMS = milliseconds(preparedStart.duration(to: .now))
                 let relatedStart = ContinuousClock.now
-                let related = try RelatedContentSourceProjection(source: source)
+                let related = try RelatedContentSourceProjection(prepared: prepared)
                 let relatedMS = milliseconds(relatedStart.duration(to: .now))
                 let relatedEncodeStart = ContinuousClock.now
                 let relatedBytes = try related.encoded()
                 let relatedEncodeMS = milliseconds(relatedEncodeStart.duration(to: .now))
                 let lexicalStart = ContinuousClock.now
-                let lexical = RelatedContentLexicalProjection(projection: prepared.projection)
+                let lexical = RelatedContentLexicalProjection(
+                    projection: prepared.projection, scoringDocument: related.noteScoringDocument)
                 let lexicalMS = milliseconds(lexicalStart.duration(to: .now))
                 let lexicalEncodeStart = ContinuousClock.now
                 let lexicalBytes = try lexical.encoded()
@@ -219,7 +220,7 @@ struct SearchSyncDiagnosticsTests {
                 #expect(try encoder.encode(decodedLexical) == encoder.encode(lexical))
                 #expect(decodedRelated.paragraphs.map(\.exactReadableText) == related.paragraphs.map(\.exactReadableText))
                 let decodedParagraphs = try TriptychSearchIndex.decodedStoredParagraphs(
-                    from: String(decoding: paragraphBytes, as: UTF8.self))
+                    from: paragraphBytes)
                 #expect(decodedParagraphs == prepared.projection.paragraphs)
                 for (index, value) in related.paragraphs.enumerated() {
                     let exact = try validateCoordinate(value.range)

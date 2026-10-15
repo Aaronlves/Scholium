@@ -303,9 +303,7 @@ struct AgentChatDocumentObservationTests {
         defer { fixture.close() }
         fixture.select([.init(anchor: 14, head: 5)], focusTarget: .editor)
         var sourceChanges = 0
-        var commits = 0
-        fixture.editor.installSourceChangeHandler { sourceChanges += 1 }
-        fixture.editor.installCommittedTextSynchronizer { _, _ in commits += 1 }
+        fixture.editor.installSourceChangeHandler(owner: fixture.editor) { sourceChanges += 1 }
         let context = fixture.editor.context
         let selection = fixture.editor.windowPresentationSnapshot(scrollFraction: 0.4)
         let generation = fixture.editor.generation
@@ -324,7 +322,7 @@ struct AgentChatDocumentObservationTests {
         #expect(fixture.editor.context == context)
         #expect(fixture.editor.windowPresentationSnapshot(scrollFraction: 0.4) == selection)
         #expect(fixture.editor.preferredDocumentFocusTarget == .editor)
-        #expect(sourceChanges == 0 && commits == 0)
+        #expect(sourceChanges == 0)
 
         fixture.dispatcher.queryMutation = nil
         fixture.select([.init(anchor: 0, head: 0), .init(anchor: 5, head: 14)])
@@ -369,8 +367,7 @@ struct AgentChatDocumentObservationTests {
         defer { fixture.close() }
         fixture.select([.init(anchor: 5, head: 14)], focusTarget: .editor)
         var callbacks = 0
-        fixture.editor.installSourceChangeHandler { callbacks += 1 }
-        fixture.editor.installCommittedTextSynchronizer { _, _ in callbacks += 1 }
+        fixture.editor.installSourceChangeHandler(owner: fixture.editor) { callbacks += 1 }
         let presentation = fixture.editor.windowPresentationSnapshot(scrollFraction: 0.25)
         let context = fixture.editor.context
         let snapshot = try await fixture.editor.currentAgentSourceSnapshot()
@@ -413,7 +410,7 @@ struct AgentChatDocumentObservationTests {
         defer { fixture.close() }
         fixture.select([.init(anchor: 5, head: 14)])
         var callbacks = 0
-        fixture.editor.installSourceChangeHandler { callbacks += 1 }
+        fixture.editor.installSourceChangeHandler(owner: fixture.editor) { callbacks += 1 }
         let context = fixture.editor.context
         fixture.dispatcher.queryMutation = { result in
             switch kind {
@@ -906,8 +903,7 @@ struct AgentChatDocumentObservationTests {
             dispatcher.releaseQuery()
             dispatcher.releaseFind()
             dispatcher.commitResponseWillReturn = nil
-            editor.removeSourceChangeHandler()
-            editor.removeCommittedTextSynchronizer()
+            editor.removeSourceChangeHandler(owner: editor)
             editor.detach(webView)
         }
     }

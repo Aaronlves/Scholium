@@ -5,6 +5,34 @@ import Testing
 
 @Suite("Secure record directory")
 struct SecureRecordDirectoryTests {
+    @Test("Binary record extensions require explicit ownership and retain contained bounded writes")
+    func explicitlyOwnedBinaryRecords() throws {
+        let root = fixtureRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let jsonOnly = SecureRecordDirectory(
+            trustedRootURL: root, components: ["json-only"], directoryMode: 0o700,
+            fileMode: 0o600, maximumByteCount: 1_024)
+        #expect(throws: SecureRecordDirectoryError.self) {
+            try jsonOnly.replace(Data(), directory: nil, fileName: "state.plist")
+        }
+        let binary = SecureRecordDirectory(
+            trustedRootURL: root, components: ["binary"], directoryMode: 0o700,
+            fileMode: 0o600, maximumByteCount: 1_024, fileExtensions: [.plist])
+        let bytes = Data([0, 0xff, 0, 1, 2])
+        #expect(try binary.replace(bytes, directory: nil, fileName: "state.plist") == bytes)
+        #expect(try binary.read(directory: nil, fileName: "state.plist") == bytes)
+        for name in ["../outside.plist", "/outside.plist", "state.json", "state.md"] {
+            #expect(throws: SecureRecordDirectoryError.self) {
+                try binary.replace(bytes, directory: nil, fileName: name)
+            }
+        }
+        #expect(throws: SecureRecordDirectoryError.self) {
+            try binary.replace(Data(repeating: 0, count: 1_025), directory: nil, fileName: "oversize.plist")
+        }
+        #expect(try binary.read(directory: nil, fileName: "state.plist") == bytes)
+    }
+
     @Test("A post-rename failure leaves exact committed bytes observable")
     func secureReplacementReportsPostRenameUncertainty() throws {
         enum InjectedFailure: Error { case afterRename }

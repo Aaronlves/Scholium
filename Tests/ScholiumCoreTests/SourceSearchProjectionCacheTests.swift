@@ -54,7 +54,7 @@ struct SourceSearchProjectionCacheTests {
         let original = try Data(contentsOf: fixture.record(document))
         try original.prefix(8).write(to: fixture.record(document))
         #expect(fixture.cache.load(for: document) == nil)
-        var frame = try JSONDecoder().decode(SourceSearchProjectionCache.Frame.self, from: original)
+        var frame = try PropertyListDecoder().decode(SourceSearchProjectionCache.Frame.self, from: original)
         frame = .init(
             policy: frame.policy, vaultID: frame.vaultID, role: frame.role, profile: frame.profile,
             relativePathUTF8: frame.relativePathUTF8, fingerprint: frame.fingerprint,
@@ -73,7 +73,7 @@ struct SourceSearchProjectionCacheTests {
         defer { fixture.remove() }
         let document = NoteDocument(relativePath: "Note.md", rawContent: "Body freedom.")
         fixture.cache.store(SearchDocumentProjection(document: document), for: document)
-        let original = try JSONDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
+        let original = try PropertyListDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
         let policy = SourceSearchProjectionCache.Policy(
             formatVersion: 0, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
@@ -85,7 +85,7 @@ struct SourceSearchProjectionCacheTests {
                 payloadDigest: original.payloadDigest, payload: original.payload), for: document)
         #expect(fixture.cache.load(for: document) == nil)
         let outdatedYAML = SourceSearchProjectionCache.Policy(
-            formatVersion: 1, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
+            formatVersion: 2, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
         try fixture.write(
@@ -94,12 +94,14 @@ struct SourceSearchProjectionCacheTests {
                 relativePathUTF8: original.relativePathUTF8, fingerprint: original.fingerprint,
                 payloadDigest: original.payloadDigest, payload: original.payload), for: document)
         #expect(fixture.cache.load(for: document) == nil)
-        var payload = try #require(PropertyListSerialization.propertyList(from: original.payload, format: nil) as? [String: Any])
+        var payload = try #require(
+            PropertyListSerialization.propertyList(from: SearchProjectionBlobCodec.decode(original.payload), format: nil) as? [String: Any])
         var segments = try #require(payload["segments"] as? [[String: Any]])
         #expect(!segments.isEmpty)
         segments[0]["offsetMap"] = Data([0x53, 0x4f, 0x4d, 0x32, 0, 0, 0, 0, 1])
         payload["segments"] = segments
-        let malformed = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let encodedMaterial = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let malformed = try SearchProjectionBlobCodec.encode(encodedMaterial)
         try fixture.write(
             .init(
                 policy: original.policy, vaultID: original.vaultID, role: original.role, profile: original.profile,
@@ -114,21 +116,23 @@ struct SourceSearchProjectionCacheTests {
         defer { fixture.remove() }
         let document = NoteDocument(relativePath: "Note.md", rawContent: "Body freedom.")
         fixture.cache.store(SearchDocumentProjection(document: document), for: document)
-        let original = try JSONDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
+        let original = try PropertyListDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
         try fixture.write(
             .init(
                 policy: original.policy, vaultID: original.vaultID, role: original.role,
                 profile: .analysis, relativePathUTF8: original.relativePathUTF8,
                 fingerprint: original.fingerprint, payloadDigest: original.payloadDigest, payload: original.payload), for: document)
         #expect(fixture.cache.load(for: document) == nil)
-        var payload = try #require(PropertyListSerialization.propertyList(from: original.payload, format: nil) as? [String: Any])
+        var payload = try #require(
+            PropertyListSerialization.propertyList(from: SearchProjectionBlobCodec.decode(original.payload), format: nil) as? [String: Any])
         var segments = try #require(payload["segments"] as? [[String: Any]])
         let index = try #require(segments.firstIndex { $0["sourceRange"] is [String: Any] })
         var range = try #require(segments[index]["sourceRange"] as? [String: Any])
         range["column"] = Int.max
         segments[index]["sourceRange"] = range
         payload["segments"] = segments
-        let malformed = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let encodedMaterial = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let malformed = try SearchProjectionBlobCodec.encode(encodedMaterial)
         try fixture.write(
             .init(
                 policy: original.policy, vaultID: original.vaultID, role: original.role,
@@ -144,10 +148,11 @@ struct SourceSearchProjectionCacheTests {
         let document = NoteDocument(relativePath: "Note.md", rawContent: "Body freedom.")
         let projection = SearchDocumentProjection(document: document)
         fixture.cache.store(projection, for: document)
-        let original = try JSONDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
+        let original = try PropertyListDecoder().decode(SourceSearchProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
         #expect(projection.segments.count > 1)
         for ordinal in [0, 9] {
-            var payload = try #require(PropertyListSerialization.propertyList(from: original.payload, format: nil) as? [String: Any])
+            var payload = try #require(
+                PropertyListSerialization.propertyList(from: SearchProjectionBlobCodec.decode(original.payload), format: nil) as? [String: Any])
             var segments = try #require(payload["segments"] as? [[String: Any]])
             segments[1]["ordinal"] = ordinal
             payload["segments"] = segments
@@ -159,7 +164,8 @@ struct SourceSearchProjectionCacheTests {
                         }.joined()
                 }.joined(separator: "\u{1E}") + "\u{1D}false"
             payload["projectionHash"] = SourceSearchProjectionCache.digest(Data(material.utf8))
-            let malformed = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+            let encodedMaterial = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+            let malformed = try SearchProjectionBlobCodec.encode(encodedMaterial)
             try fixture.write(
                 .init(
                     policy: original.policy, vaultID: original.vaultID, role: original.role,
@@ -202,9 +208,16 @@ struct SourceSearchProjectionCacheTests {
         #expect(fixture.cache.load(for: first) == nil)
         fixture.cache.store(SearchDocumentProjection(document: first), for: first)
         fixture.cache.store(SearchDocumentProjection(document: second), for: second)
+        let retired = fixture.directory.appendingPathComponent("retired.projection.json")
+        try Data("obsolete derived record".utf8).write(to: retired)
+        let unrelated = fixture.directory.appendingPathComponent("unrelated.txt")
+        let sentinel = Data("unrelated bytes".utf8)
+        try sentinel.write(to: unrelated)
         fixture.cache.prune(currentPaths: [first.relativePath])
         #expect(fixture.cache.load(for: first) != nil)
         #expect(fixture.cache.load(for: second) == nil)
+        #expect(!FileManager.default.fileExists(atPath: retired.path))
+        #expect(try Data(contentsOf: unrelated) == sentinel)
         fixture.cache.invalidate(path: first.relativePath)
         #expect(fixture.cache.load(for: first) == nil)
     }
@@ -227,7 +240,8 @@ struct SourceSearchProjectionCacheTests {
             directory.appendingPathComponent(SourceSearchProjectionCache.fileName(document.relativePath))
         }
         func write(_ frame: SourceSearchProjectionCache.Frame, for document: NoteDocument) throws {
-            let encoder = JSONEncoder()
+            let encoder = PropertyListEncoder()
+            encoder.outputFormat = .binary
             try encoder.encode(frame).write(to: record(document))
         }
         func remove() { try? FileManager.default.removeItem(at: root) }

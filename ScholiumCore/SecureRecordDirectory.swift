@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// Shared descriptor-relative storage for bounded machine-local JSON state.
+/// Shared descriptor-relative storage for bounded machine-local record state.
 ///
 /// This primitive owns containment, no-follow access, byte limits, atomic
 /// replacement, readback, and staging recovery. It does not interpret any
@@ -81,11 +81,14 @@ enum SecureRecordDirectoryError: LocalizedError {
 /// Minimal descriptor-relative file primitive shared by machine-local stores.
 /// It does not interpret caller semantics.
 struct SecureRecordDirectory: Sendable {
+    enum FileExtension: String, Sendable { case json, plist }
+
     let trustedRootURL: URL
     let components: [String]
     let directoryMode: mode_t
     let fileMode: mode_t
     let maximumByteCount: Int
+    let fileExtensions: Set<FileExtension>
     /// Internal deterministic fault seam used to prove behavior after staging
     /// durability but before rename. Production construction always leaves it
     /// nil.
@@ -107,16 +110,19 @@ struct SecureRecordDirectory: Sendable {
         directoryMode: mode_t,
         fileMode: mode_t,
         maximumByteCount: Int,
+        fileExtensions: Set<FileExtension> = [.json],
         preCommitFault: (@Sendable (String) throws -> Void)? = nil,
         postCommitFault: (@Sendable (String) throws -> Void)? = nil
     ) {
         precondition(!components.isEmpty)
         precondition(components.allSatisfy(Self.isSafeComponent))
+        precondition(!fileExtensions.isEmpty)
         self.trustedRootURL = trustedRootURL.standardizedFileURL
         self.components = components
         self.directoryMode = directoryMode
         self.fileMode = fileMode
         self.maximumByteCount = maximumByteCount
+        self.fileExtensions = fileExtensions
         self.preCommitFault = preCommitFault
         self.postCommitFault = postCommitFault
     }
@@ -316,7 +322,7 @@ struct SecureRecordDirectory: Sendable {
             let observed = try read(parent: parent, fileName: deletingName)
             guard observed == expected else {
                 throw SecureRecordDirectoryError.replacementNotCommitted(
-                    "Stored JSON \(fileName) changed before deletion."
+                    "Stored record \(fileName) changed before deletion."
                 )
             }
             let unlinkResult = deletingName.withCString { unlinkat(parent, $0, 0) }
@@ -357,7 +363,7 @@ struct SecureRecordDirectory: Sendable {
             }
             guard rollback == 0, fsync(parent) == 0 else {
                 throw SecureRecordDirectoryError.replacementCommitUncertain(
-                    "The unverified stored JSON was preserved as \(deletingName)."
+                    "The unverified stored record was preserved as \(deletingName)."
                 )
             }
             throw error
@@ -419,7 +425,7 @@ struct SecureRecordDirectory: Sendable {
         exclusive: Bool
     ) throws -> Data {
         guard data.count <= maximumByteCount else {
-            throw SecureRecordDirectoryError.unsafe("Stored JSON exceeds its byte boundary.")
+            throw SecureRecordDirectoryError.unsafe("Stored record exceeds its byte boundary.")
         }
         try validateFileName(fileName)
         let parent = try openTargetDirectory(directory, createIfMissing: true)
@@ -516,7 +522,7 @@ struct SecureRecordDirectory: Sendable {
         }
         guard readback == data else {
             throw SecureRecordDirectoryError.replacementCommitUncertain(
-                "Committed stored JSON \(fileName) did not match readback."
+                "Committed stored record \(fileName) did not match readback."
             )
         }
         return readback
@@ -628,7 +634,7 @@ struct SecureRecordDirectory: Sendable {
             before.st_size <= maximumByteCount
         else {
             throw SecureRecordDirectoryError.unsafe(
-                "Stored JSON \(fileName) is linked, malformed, or too large."
+                "Stored record \(fileName) is linked, malformed, or too large."
             )
         }
         let expected = Int(before.st_size)
@@ -652,15 +658,15 @@ struct SecureRecordDirectory: Sendable {
             Self.sameFile(before, after)
         else {
             throw SecureRecordDirectoryError.unsafe(
-                "Stored JSON \(fileName) changed while it was read."
+                "Stored record \(fileName) changed while it was read."
             )
         }
         return data
     }
 
     private func validateFileName(_ fileName: String) throws {
-        guard Self.isSafeComponent(fileName), fileName.hasSuffix(".json") else {
-            throw SecureRecordDirectoryError.unsafe("Invalid stored JSON file name.")
+        guard Self.isSafeComponent(fileName), fileExtensions.contains(where: { fileName.hasSuffix("." + $0.rawValue) }) else {
+            throw SecureRecordDirectoryError.unsafe("Invalid stored record file name.")
         }
     }
 

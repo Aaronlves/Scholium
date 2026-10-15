@@ -84,7 +84,8 @@ describe("Mermaid pointer source mapping", () => {
     vi.stubGlobal("window", window);
     let finishRender!: (result: ScholiumMermaidRenderResult) => void;
     const runtime: ScholiumMermaidRuntime = {
-      version: 2,
+      version: 3,
+      copy: () => null,
       render: vi.fn(() => new Promise<ScholiumMermaidRenderResult>(resolve => { finishRender = resolve; })),
       mount: (host, svg) => { host.append(svg); return true; },
     };

@@ -710,7 +710,9 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private var citationPresentation: DocumentCitationPresentation {
-        documentSession.citationPresentation(committedDocument: note.document, editingIsAvailable: editingIsAvailable)
+        documentSession.citationPresentation(
+            committedDocument: note.document, committedFields: note.cachedSemanticDocument?.zoteroFields,
+            editingIsAvailable: editingIsAvailable)
     }
 
     @ViewBuilder

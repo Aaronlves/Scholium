@@ -143,6 +143,19 @@ establishes human visual or assistive-technology acceptance. Use AGENTS.md to
 select the scoped checks required for a change; the complete gate is not the
 default for every task.
 
+For opt-in scale diagnostics, the [stress generator](Tools/Scripts/generate-stress-vaults.py)
+creates 5,000 synthetic Notes by default (`--notes` accepts 500–20,000), including
+large source, dense links, nested Callouts and local images. Complete diagnostics
+require at least 508 Notes. Keep the generated source unchanged; both diagnostics make disposable copies. These scenario
+measurements do not establish the release performance gate.
+
+```bash
+python3 Tools/Scripts/generate-stress-vaults.py .build/stress-fixture
+DEVELOPER_DIR="$developer_dir" SCHOLIUM_STRESS_FIXTURE="$PWD/.build/stress-fixture" \
+  swift test --filter LargeVaultStressDiagnosticTests
+SCHOLIUM_TEST_VAULTS="$PWD/.build/stress-fixture" ./Tools/Scripts/run-ui-tests.sh stress
+```
+
 When `WebEditor/` changes, rebuild and verify its checked-in bundle:
 
 ```bash

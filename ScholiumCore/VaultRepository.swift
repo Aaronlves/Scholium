@@ -149,7 +149,7 @@ public actor VaultRepository {
         let document = NoteDocument(relativePath: relativePath, rawContent: content)
         return (
             document,
-            Self.sourceVersion(status: loaded.1, fingerprint: document.fingerprint),
+            SourceVersion(fileStatus: loaded.1, fingerprint: document.fingerprint),
             Self.fileMetadata(status: loaded.1),
             readStart.duration(to: clock.now)
         )
@@ -181,7 +181,7 @@ public actor VaultRepository {
                 path,
                 retainedDescriptor: parentDescriptor
             )
-            return Self.matches(status: status, version: version)
+            return version.matches(fileStatus: status)
         }
     }
 
@@ -1140,20 +1140,6 @@ public actor VaultRepository {
         try descriptorAccess.read(markdownRelativePath(relativePath))
     }
 
-    private static func sourceVersion(
-        status: stat,
-        fingerprint: DocumentFingerprint
-    ) -> SourceVersion {
-        SourceVersion(
-            fingerprint: fingerprint,
-            device: UInt64(status.st_dev),
-            inode: UInt64(status.st_ino),
-            byteCount: Int(status.st_size),
-            modificationNanoseconds: nanoseconds(status.st_mtimespec),
-            statusChangeNanoseconds: nanoseconds(status.st_ctimespec)
-        )
-    }
-
     private static func fileMetadata(status: stat) -> WorkspaceFileMetadata {
         WorkspaceFileMetadata(
             byteCount: Int(status.st_size),
@@ -1170,14 +1156,6 @@ public actor VaultRepository {
         )
     }
 
-    private static func matches(status: stat, version: SourceVersion) -> Bool {
-        UInt64(status.st_dev) == version.device
-            && UInt64(status.st_ino) == version.inode
-            && Int(status.st_size) == version.byteCount
-            && nanoseconds(status.st_mtimespec) == version.modificationNanoseconds
-            && nanoseconds(status.st_ctimespec) == version.statusChangeNanoseconds
-    }
-
     private static func sameFileState(_ lhs: stat, _ rhs: stat) -> Bool {
         lhs.st_dev == rhs.st_dev
             && lhs.st_ino == rhs.st_ino
@@ -1186,10 +1164,6 @@ public actor VaultRepository {
             && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
             && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
             && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
-    }
-
-    private static func nanoseconds(_ time: timespec) -> Int64 {
-        Int64(time.tv_sec) * 1_000_000_000 + Int64(time.tv_nsec)
     }
 
     private func filePresence(relativePath: String) throws -> FilePresence {

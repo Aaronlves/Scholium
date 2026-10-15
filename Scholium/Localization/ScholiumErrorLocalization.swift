@@ -148,7 +148,7 @@ enum ScholiumErrorLocalization {
             case .vaultNotInWorkspace(let id): ScholiumL10n.string("Vault \(id.uuidString) is not part of this Scholium Triptych.", locale: locale)
             case .workspaceStillLoading(let id):
                 ScholiumL10n.string(
-                    "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search and direct links will become available when loading finishes.",
+                    "Scholium is still loading the complete Triptych \(id.uuidString). This Note and available libraries support bounded text Search; Triptych Search and direct links will become available when loading finishes.",
                     locale: locale)
             case .workspaceRegistrationInUse(let id):
                 ScholiumL10n.string(

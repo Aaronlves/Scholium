@@ -174,266 +174,36 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         hasBrokenLink: Bool = false
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
-        let titleValue = ResearchNoteTitleResolver.resolve(document: document)
-        title = titleValue
-        aliases = []
+        let source = SearchSourceTextProjection(document: document, profile: profile, semantic: semantic)
+        title = source.title
+        aliases = source.properties.textValues(forExactKey: "aliases")
         headings = semantic.headings.map(\.text)
-        let propertyProjection = SearchPropertyProjection(
-            document: document,
-            profile: profile
-        )
-        let summaryMember =
-            propertyProjection.entry(forExactKey: "summary")
-            .flatMap { entry in
-                entry.valueKind == .string && entry.stringMembers.count == 1
-                    ? entry.stringMembers.first
-                    : nil
-            }
-        summary = summaryMember?.value
-        authors = []
-        publicationDate = nil
-        let keywordMembers = propertyProjection.stringListMembers(forExactKey: "keywords")
-        tags = keywordMembers.map(\.value)
+        summary = source.summary
+        authors = source.properties.textValues(forExactKey: "authors") + source.properties.textValues(forExactKey: "author")
+        publicationDate = source.properties.textValues(forExactKey: "publication_date").first
+        tags = source.properties.stringListMembers(forExactKey: "keywords").map(\.value)
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
+        sourceLineStartsUTF16 = source.locator.lineStartsUTF16
+        segments = source.segments
+        paragraphs = source.paragraphs(in: document)
+        body = segments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
+        callouts = segments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
+        footnotes = segments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
+        linkAnnotations = segments.filter { $0.field == .linkAnnotation }.map(\.text).joined(separator: "\n")
+        projectionHash = Self.hash(segments: segments, hasBrokenLink: hasBrokenLink)
+    }
 
-        let sourceLocator = SearchSourceLocator(source: document.rawContent)
-        sourceLineStartsUTF16 = sourceLocator.lineStartsUTF16
-        var builtSegments: [SearchTextSegment] = []
-        builtSegments.append(
-            SearchProjectionBuilder.segment(
-                field: .title,
-                ordinal: builtSegments.count,
-                text: title,
-                sourceRange: nil,
-                source: document.rawContent,
-                sourceLocator: sourceLocator
-            ))
-        for member in keywordMembers where !member.value.isEmpty {
-            let range = member.sourceRange.map {
-                $0.utf16LowerBound..<$0.utf16UpperBound
-            }
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .tag,
-                    ordinal: builtSegments.count,
-                    text: member.value,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: range.map {
-                        SearchProjectionBuilder.alignedFragments(
-                            text: member.value,
-                            sourceRange: $0,
-                            source: document.rawContent
-                        )
-                    }
-                ))
-        }
-        builtSegments.append(
-            SearchProjectionBuilder.segment(
-                field: .path,
-                ordinal: builtSegments.count,
-                text: document.relativePath,
-                sourceRange: nil,
-                source: document.rawContent,
-                sourceLocator: sourceLocator
-            ))
-
-        for heading in semantic.headings {
-            let range = heading.span.utf16Range
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .heading,
-                    ordinal: builtSegments.count,
-                    text: heading.text,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: SearchProjectionBuilder.alignedFragments(
-                        text: heading.text,
-                        sourceRange: range,
-                        source: document.rawContent
-                    )
-                ))
-        }
-        if let summaryMember, let summarySourceRange = summaryMember.sourceRange {
-            let range = Range(
-                uncheckedBounds: (
-                    summarySourceRange.utf16LowerBound,
-                    summarySourceRange.utf16UpperBound
-                )
-            )
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .summary,
-                    ordinal: builtSegments.count,
-                    text: summaryMember.value,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: SearchProjectionBuilder.alignedFragments(
-                        text: summaryMember.value,
-                        sourceRange: range,
-                        source: document.rawContent
-                    )
-                ))
-        }
-        for callout in semantic.callouts {
-            let visible = [callout.title, ResearchExcerptPresentation.readableText(callout.bodySource)]
-                .compactMap { $0 }
-                .filter { !$0.isEmpty }
-                .joined(separator: " ")
-            guard !visible.isEmpty else { continue }
-            let range = callout.span.utf16Range
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .callout,
-                    ordinal: builtSegments.count,
-                    text: visible,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: SearchProjectionBuilder.alignedFragments(
-                        text: visible,
-                        sourceRange: range,
-                        source: document.rawContent
-                    )
-                ))
-        }
-        for footnote in semantic.footnoteDefinitions where !footnote.content.isEmpty {
-            let visible = ResearchExcerptPresentation.readableText(footnote.content)
-            guard !visible.isEmpty else { continue }
-            let range = footnote.span.utf16Range
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .footnote,
-                    ordinal: builtSegments.count,
-                    text: visible,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: SearchProjectionBuilder.alignedFragments(
-                        text: visible,
-                        sourceRange: range,
-                        source: document.rawContent
-                    )
-                ))
-        }
-        for annotation in semantic.links.compactMap(\.annotation) {
-            let range = annotation.contentSpan.utf16Range
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .linkAnnotation,
-                    ordinal: builtSegments.count,
-                    text: annotation.text,
-                    sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: SearchProjectionBuilder.alignedFragments(
-                        text: annotation.text,
-                        sourceRange: range,
-                        source: document.rawContent
-                    )
-                ))
-        }
-
-        let anchorRanges = ParagraphAnchorPlanner.anchors(in: document, semantic: semantic).map(\.markerSpan.utf16Range)
-        let excluded =
-            semantic.headings.map(\.span.utf16Range)
-            + semantic.callouts.map(\.span.utf16Range)
-            + semantic.footnoteDefinitions.map(\.span.utf16Range)
-            + semantic.links.compactMap { $0.annotation?.span.utf16Range }
-            + anchorRanges
-        let bodyStart = document.rawContent.utf16.count - document.body.utf16.count
-        var collector = SearchVisibleTextCollector(
-            source: document.body,
-            fullSourceUTF16Offset: bodyStart,
-            excludedFullSourceRanges: excluded,
-            anchorFullSourceRanges: anchorRanges,
-            links: semantic.links
-        )
-        let parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
-        collector.visit(parsedBody)
-        if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            builtSegments.append(
-                SearchProjectionBuilder.segment(
-                    field: .body,
-                    ordinal: builtSegments.count,
-                    text: collector.text,
-                    sourceRange: collector.coveringSourceRange,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator,
-                    explicitMap: collector.fragments
-                ))
-        }
-
-        let fieldKeys: [(SearchMatchedField, [String])] = [
-            (.title, ["title"]), (.alias, ["aliases"]),
-            (.author, ["authors", "author"]), (.publicationDate, ["publication_date"]),
-        ]
-        for (field, keys) in fieldKeys {
-            for key in keys {
-                for member in propertyProjection.entry(forExactKey: key)?.stringMembers ?? [] {
-                    guard let span = member.sourceRange, !member.value.isEmpty else { continue }
-                    let range = span.utf16LowerBound..<span.utf16UpperBound
-                    builtSegments.append(
-                        SearchProjectionBuilder.segment(
-                            field: field, ordinal: builtSegments.count, text: member.value,
-                            sourceRange: range, source: document.rawContent, sourceLocator: sourceLocator,
-                            explicitMap: SearchProjectionBuilder.alignedFragments(
-                                text: member.value, sourceRange: range, source: document.rawContent)))
-                }
-            }
-        }
-        aliases = propertyProjection.textValues(forExactKey: "aliases")
-        authors = propertyProjection.textValues(forExactKey: "authors") + propertyProjection.textValues(forExactKey: "author")
-        publicationDate = propertyProjection.textValues(forExactKey: "publication_date").first
-        builtSegments = builtSegments.map { $0.attributingRelatedContent(in: semantic) }
-        segments = builtSegments
-        let bodyMapper = SearchMarkdownSourceMapper(document.body)
-        let protected =
-            semantic.footnoteDefinitions.map(\.span.utf16Range)
-            + semantic.mathExpressions.filter { $0.kind == .display }.map(\.span.utf16Range)
-        paragraphs =
-            document.hasProvableBodyBoundary
-            ? parsedBody.children.compactMap { child -> SearchParagraphProjection? in
-                guard child is Paragraph, let rawRange = child.range.flatMap(bodyMapper.utf16Range),
-                    let block = semantic.blocks.first(where: { $0.kind == .paragraph && $0.span.utf16LowerBound == bodyStart + rawRange.lowerBound })
-                else { return nil }
-                let range = block.span.utf16Range
-                guard !protected.contains(where: { $0.overlaps(range) }),
-                    !semantic.links.compactMap(\.annotation).contains(where: { $0.span.utf16Range.contains(range.lowerBound) })
-                else { return nil }
-                var local = SearchVisibleTextCollector(
-                    source: document.body, fullSourceUTF16Offset: bodyStart,
-                    excludedFullSourceRanges: excluded, mapper: bodyMapper, anchorFullSourceRanges: anchorRanges, links: semantic.links)
-                local.visit(child)
-                var localSegments = [
-                    SearchProjectionBuilder.segment(
-                        field: .body, ordinal: 0, text: local.text,
-                        sourceRange: range, source: document.rawContent, sourceLocator: sourceLocator, explicitMap: local.fragments)
-                ]
-                let annotations = semantic.links.filter { range.contains($0.linkSpan.utf16LowerBound) }.compactMap(\.annotation)
-                for annotation in annotations {
-                    localSegments.append(
-                        contentsOf: builtSegments.filter {
-                            $0.field == .linkAnnotation && $0.sourceRange?.utf16LowerBound == annotation.contentSpan.utf16LowerBound
-                        })
-                }
-                let upper = max(range.upperBound, annotations.map(\.span.utf16UpperBound).max() ?? range.upperBound)
-                return SearchParagraphProjection(range: sourceLocator.sourceRange(range.lowerBound..<upper), segments: localSegments)
-            } : []
-        body = builtSegments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
-        callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
-        footnotes = builtSegments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
-        linkAnnotations = builtSegments.filter { $0.field == .linkAnnotation }.map(\.text).joined(separator: "\n")
-
-        projectionHash = Self.hash(
-            segments: builtSegments,
-            hasBrokenLink: hasBrokenLink
-        )
+    /// Source-bound segments are shared with passage scoring. That consumer
+    /// has its own complete nested passage set and needs neither Search's
+    /// top-level paragraph corpus nor its aggregate fields and projection hash.
+    package static func sourceSegments(
+        document: NoteDocument,
+        semantic: MarkdownSemanticDocument,
+        profile: SchemaProfileID = .genericMarkdown
+    ) -> [SearchTextSegment] {
+        SearchSourceTextProjection(document: document, profile: profile, semantic: semantic).segments
     }
 
     /// Reuses the source-derived visible-text and exact-offset projection when
@@ -502,6 +272,249 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .path: path
         case .brokenLink: ""
         }
+    }
+}
+
+/// One exact-source preparation shared by Note Search and Research scoring.
+/// Only complete Note Search asks it for the separate top-level paragraph corpus.
+private struct SearchSourceTextProjection {
+    let title: String
+    let summary: String?
+    let properties: SearchPropertyProjection
+    let locator: SearchSourceLocator
+    let sourceContext: SearchSourceProjectionContext
+    let parsedBody: Document
+    let segments: [SearchTextSegment]
+
+    init(document: NoteDocument, profile: SchemaProfileID, semantic: MarkdownSemanticDocument) {
+        title = ResearchNoteTitleResolver.resolve(document: document)
+        properties = SearchPropertyProjection(document: document, profile: profile)
+        let summaryMember =
+            properties.entry(forExactKey: "summary")
+            .flatMap { entry in
+                entry.valueKind == .string && entry.stringMembers.count == 1
+                    ? entry.stringMembers.first
+                    : nil
+            }
+        summary = summaryMember?.value
+        let keywordMembers = properties.stringListMembers(forExactKey: "keywords")
+        locator = SearchSourceLocator(source: document.rawContent)
+        sourceContext = SearchSourceProjectionContext(
+            source: document.body,
+            fullSourceUTF16Offset: document.rawContent.utf16.count - document.body.utf16.count,
+            semantic: semantic,
+            anchorRanges: ParagraphAnchorPlanner.anchors(in: document, semantic: semantic).map(\.markerSpan.utf16Range)
+        )
+        var builtSegments: [SearchTextSegment] = []
+        builtSegments.append(
+            SearchProjectionBuilder.segment(
+                field: .title,
+                ordinal: builtSegments.count,
+                text: title,
+                sourceRange: nil,
+                source: document.rawContent,
+                sourceLocator: locator
+            ))
+        for member in keywordMembers where !member.value.isEmpty {
+            let range = member.sourceRange.map {
+                $0.utf16LowerBound..<$0.utf16UpperBound
+            }
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .tag,
+                    ordinal: builtSegments.count,
+                    text: member.value,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: range.map {
+                        SearchProjectionBuilder.alignedFragments(
+                            text: member.value,
+                            sourceRange: $0,
+                            source: document.rawContent
+                        )
+                    }
+                ))
+        }
+        builtSegments.append(
+            SearchProjectionBuilder.segment(
+                field: .path,
+                ordinal: builtSegments.count,
+                text: document.relativePath,
+                sourceRange: nil,
+                source: document.rawContent,
+                sourceLocator: locator
+            ))
+
+        for heading in semantic.headings {
+            let range = heading.span.utf16Range
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .heading,
+                    ordinal: builtSegments.count,
+                    text: heading.text,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: heading.text,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
+        }
+        if let summaryMember, let summarySourceRange = summaryMember.sourceRange {
+            let range = Range(
+                uncheckedBounds: (
+                    summarySourceRange.utf16LowerBound,
+                    summarySourceRange.utf16UpperBound
+                )
+            )
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .summary,
+                    ordinal: builtSegments.count,
+                    text: summaryMember.value,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: summaryMember.value,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
+        }
+        for callout in semantic.callouts {
+            let visible = [callout.title, ResearchExcerptPresentation.readableText(callout.bodySource)]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            guard !visible.isEmpty else { continue }
+            let range = callout.span.utf16Range
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .callout,
+                    ordinal: builtSegments.count,
+                    text: visible,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: visible,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
+        }
+        for footnote in semantic.footnoteDefinitions where !footnote.content.isEmpty {
+            let visible = ResearchExcerptPresentation.readableText(footnote.content)
+            guard !visible.isEmpty else { continue }
+            let range = footnote.span.utf16Range
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .footnote,
+                    ordinal: builtSegments.count,
+                    text: visible,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: visible,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
+        }
+        for annotation in sourceContext.annotations {
+            let range = annotation.contentSpan.utf16Range
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .linkAnnotation,
+                    ordinal: builtSegments.count,
+                    text: annotation.text,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: annotation.text,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
+        }
+
+        var collector = SearchVisibleTextCollector(context: sourceContext)
+        parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
+        collector.visit(parsedBody)
+        if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .body,
+                    ordinal: builtSegments.count,
+                    text: collector.text,
+                    sourceRange: collector.coveringSourceRange,
+                    source: document.rawContent,
+                    sourceLocator: locator,
+                    explicitMap: collector.fragments
+                ))
+        }
+
+        let fieldKeys: [(SearchMatchedField, [String])] = [
+            (.title, ["title"]), (.alias, ["aliases"]),
+            (.author, ["authors", "author"]), (.publicationDate, ["publication_date"]),
+        ]
+        for (field, keys) in fieldKeys {
+            for key in keys {
+                for member in properties.entry(forExactKey: key)?.stringMembers ?? [] {
+                    guard let span = member.sourceRange, !member.value.isEmpty else { continue }
+                    let range = span.utf16LowerBound..<span.utf16UpperBound
+                    builtSegments.append(
+                        SearchProjectionBuilder.segment(
+                            field: field, ordinal: builtSegments.count, text: member.value,
+                            sourceRange: range, source: document.rawContent, sourceLocator: locator,
+                            explicitMap: SearchProjectionBuilder.alignedFragments(
+                                text: member.value, sourceRange: range, source: document.rawContent)))
+                }
+            }
+        }
+        let sourceAttribution = RelatedContentSourceAttribution(in: semantic)
+        builtSegments = builtSegments.map { $0.attributingRelatedContent(using: sourceAttribution) }
+        segments = builtSegments
+    }
+
+    func paragraphs(in document: NoteDocument) -> [SearchParagraphProjection] {
+        let sourceLocator = locator
+        let builtSegments = segments
+        var annotationSegmentsByStart: [Int: [SearchTextSegment]] = [:]
+        for segment in builtSegments where segment.field == .linkAnnotation {
+            guard let start = segment.sourceRange?.utf16LowerBound else { continue }
+            annotationSegmentsByStart[start, default: []].append(segment)
+        }
+        return
+            document.hasProvableBodyBoundary
+            ? parsedBody.children.compactMap { child -> SearchParagraphProjection? in
+                guard child is Paragraph, let rawRange = child.range.flatMap(sourceContext.utf16Range),
+                    let block = sourceContext.paragraph(startingAt: sourceContext.fullSourceUTF16Offset + rawRange.lowerBound)
+                else { return nil }
+                let range = block.span.utf16Range
+                guard !sourceContext.overlapsProtectedRange(range),
+                    !sourceContext.annotationContains(range.lowerBound)
+                else { return nil }
+                var local = SearchVisibleTextCollector(context: sourceContext)
+                local.visit(child)
+                var localSegments = [
+                    SearchProjectionBuilder.segment(
+                        field: .body, ordinal: 0, text: local.text,
+                        sourceRange: range, source: document.rawContent, sourceLocator: sourceLocator, explicitMap: local.fragments)
+                ]
+                let annotations = sourceContext.annotationsForLinks(startingIn: range)
+                for annotation in annotations {
+                    localSegments.append(contentsOf: annotationSegmentsByStart[annotation.contentSpan.utf16LowerBound] ?? [])
+                }
+                let upper = max(range.upperBound, annotations.map(\.span.utf16UpperBound).max() ?? range.upperBound)
+                return SearchParagraphProjection(range: sourceLocator.sourceRange(range.lowerBound..<upper), segments: localSegments)
+            } : []
     }
 }
 
@@ -817,6 +830,216 @@ private struct SearchVisibleFragment {
     let exact: Bool
 }
 
+/// One note's immutable source topology. Queries restore semantic-array order
+/// before the existing visible-text projection resolves overlaps and ties.
+struct SearchSourceProjectionContext {
+    let source: NSString
+    let fullSourceUTF16Offset: Int
+    let annotations: [LinkAnnotation]
+    private let mapper: SearchMarkdownSourceMapper
+    private let paragraphsByStart: [Int: MarkdownBlock]
+    private let links: [LinkOccurrence]
+    private let linkRanges: SearchSourceProjectionRanges
+    private let excludedRanges: SearchSourceProjectionRanges
+    private let anchorRanges: SearchSourceProjectionRanges
+    private let annotationRanges: SearchSourceProjectionRanges
+    private let protectedRanges: SearchSourceProjectionRanges
+
+    init(
+        source: String,
+        fullSourceUTF16Offset: Int,
+        semantic: MarkdownSemanticDocument,
+        anchorRanges: [Range<Int>]
+    ) {
+        self.source = source as NSString
+        self.fullSourceUTF16Offset = fullSourceUTF16Offset
+        mapper = SearchMarkdownSourceMapper(source)
+        var paragraphs: [Int: MarkdownBlock] = [:]
+        for block in semantic.blocks where block.kind == .paragraph {
+            let start = block.span.utf16LowerBound
+            if paragraphs[start] == nil { paragraphs[start] = block }
+        }
+        paragraphsByStart = paragraphs
+        links = semantic.links
+        linkRanges = SearchSourceProjectionRanges(semantic.links.map(\.linkSpan.utf16Range))
+        let annotations = semantic.links.compactMap(\.annotation)
+        self.annotations = annotations
+        annotationRanges = SearchSourceProjectionRanges(annotations.map(\.span.utf16Range))
+        excludedRanges = SearchSourceProjectionRanges(
+            semantic.headings.map(\.span.utf16Range)
+                + semantic.callouts.map(\.span.utf16Range)
+                + semantic.footnoteDefinitions.map(\.span.utf16Range)
+                + annotations.map(\.span.utf16Range)
+                + anchorRanges
+        )
+        self.anchorRanges = SearchSourceProjectionRanges(anchorRanges)
+        protectedRanges = SearchSourceProjectionRanges(
+            semantic.footnoteDefinitions.map(\.span.utf16Range)
+                + semantic.mathExpressions.filter { $0.kind == .display }.map(\.span.utf16Range)
+        )
+    }
+
+    func utf16Range(_ range: Markdown.SourceRange) -> Range<Int>? {
+        mapper.utf16Range(range)
+    }
+
+    func paragraph(startingAt start: Int) -> MarkdownBlock? { paragraphsByStart[start] }
+
+    func annotationContains(_ point: Int) -> Bool { annotationRanges.contains(point) }
+
+    func overlapsProtectedRange(_ range: Range<Int>) -> Bool {
+        // Swift Range.overlaps excludes empty operands. Collector exclusion
+        // checks below intentionally retain their different endpoint predicate.
+        !range.isEmpty && protectedRanges.hasStrictOverlap(range, excludingEmpty: true)
+    }
+
+    func overlapsExcludedRange(_ range: Range<Int>) -> Bool {
+        excludedRanges.hasStrictOverlap(range, excludingEmpty: false)
+    }
+
+    func clippedExcludedRanges(in range: Range<Int>) -> [Range<Int>] {
+        excludedRanges.strictOverlaps(range).compactMap { excluded in
+            let lower = max(excluded.lowerBound, range.lowerBound)
+            let upper = min(excluded.upperBound, range.upperBound)
+            return lower < upper ? lower..<upper : nil
+        }
+    }
+
+    func containedVisibleLinks(in range: Range<Int>) -> [LinkOccurrence] {
+        linkRanges.containedOrdinals(in: range).compactMap { ordinal in
+            let link = links[ordinal]
+            return link.syntax == .wikilink || link.syntax == .embed ? link : nil
+        }
+    }
+
+    func firstAnchorSuffix(in range: Range<Int>) -> Range<Int>? {
+        // The original first(where:) uses semantic-array order, not the
+        // earliest source position, and excludes an anchor at the node start.
+        anchorRanges.containedOrdinals(in: range, strictlyAfterLowerBound: true).first.map {
+            anchorRanges.range(at: $0)
+        }
+    }
+
+    func annotationsForLinks(startingIn range: Range<Int>) -> [LinkAnnotation] {
+        // A paragraph owns an annotation through the LINK's start. The
+        // annotation itself can extend beyond that paragraph's source range.
+        linkRanges.startingOrdinals(in: range).compactMap { links[$0].annotation }
+    }
+}
+
+/// Source-local range lookup; original ordinals remain authoritative. A
+/// max-upper tree prunes long/nested ranges without scanning every earlier
+/// interval, while start windows answer containment and paragraph ownership.
+private struct SearchSourceProjectionRanges {
+    private let ranges: [Range<Int>]
+    private let order: [Int]
+    private let maximumUpper: [Int]
+
+    init(_ ranges: [Range<Int>]) {
+        self.ranges = ranges
+        let order = ranges.indices.sorted {
+            if ranges[$0].lowerBound != ranges[$1].lowerBound {
+                return ranges[$0].lowerBound < ranges[$1].lowerBound
+            }
+            return $0 < $1
+        }
+        self.order = order
+        var maximumUpper = [Int](repeating: Int.min, count: ranges.count)
+        func populate(_ lower: Int, _ upper: Int) -> Int {
+            guard lower < upper else { return Int.min }
+            let middle = lower + (upper - lower) / 2
+            let maximum = max(
+                ranges[order[middle]].upperBound,
+                max(populate(lower, middle), populate(middle + 1, upper))
+            )
+            maximumUpper[middle] = maximum
+            return maximum
+        }
+        _ = populate(0, ranges.count)
+        self.maximumUpper = maximumUpper
+    }
+
+    func range(at ordinal: Int) -> Range<Int> { ranges[ordinal] }
+
+    func containedOrdinals(in range: Range<Int>, strictlyAfterLowerBound: Bool = false) -> [Int] {
+        let lower = startBound(range.lowerBound, afterEqual: strictlyAfterLowerBound)
+        // Empty links at the node's upper boundary were admitted by the
+        // original fully-contained predicate and must remain candidates.
+        let upper = startBound(range.upperBound, afterEqual: true)
+        return order[lower..<upper].filter { ranges[$0].upperBound <= range.upperBound }.sorted()
+    }
+
+    func startingOrdinals(in range: Range<Int>) -> [Int] {
+        let lower = startBound(range.lowerBound, afterEqual: false)
+        let upper = startBound(range.upperBound, afterEqual: false)
+        return order[lower..<upper].sorted()
+    }
+
+    func contains(_ point: Int) -> Bool {
+        func visit(_ lower: Int, _ upper: Int) -> Bool {
+            guard lower < upper else { return false }
+            let middle = lower + (upper - lower) / 2
+            guard ranges[order[lower]].lowerBound <= point, maximumUpper[middle] > point else { return false }
+            return ranges[order[middle]].contains(point)
+                || visit(lower, middle) || visit(middle + 1, upper)
+        }
+        return visit(0, order.count)
+    }
+
+    func hasStrictOverlap(_ range: Range<Int>, excludingEmpty: Bool) -> Bool {
+        func visit(_ lower: Int, _ upper: Int) -> Bool {
+            guard lower < upper else { return false }
+            let middle = lower + (upper - lower) / 2
+            guard ranges[order[lower]].lowerBound < range.upperBound,
+                maximumUpper[middle] > range.lowerBound
+            else { return false }
+            let candidate = ranges[order[middle]]
+            if !excludingEmpty || !candidate.isEmpty,
+                candidate.lowerBound < range.upperBound, candidate.upperBound > range.lowerBound
+            {
+                return true
+            }
+            return visit(lower, middle) || visit(middle + 1, upper)
+        }
+        return visit(0, order.count)
+    }
+
+    func strictOverlaps(_ range: Range<Int>) -> [Range<Int>] {
+        var ordinals: [Int] = []
+        func visit(_ lower: Int, _ upper: Int) {
+            guard lower < upper else { return }
+            let middle = lower + (upper - lower) / 2
+            guard ranges[order[lower]].lowerBound < range.upperBound,
+                maximumUpper[middle] > range.lowerBound
+            else { return }
+            let ordinal = order[middle]
+            let candidate = ranges[ordinal]
+            if candidate.lowerBound < range.upperBound, candidate.upperBound > range.lowerBound {
+                ordinals.append(ordinal)
+            }
+            visit(lower, middle)
+            visit(middle + 1, upper)
+        }
+        visit(0, order.count)
+        return ordinals.sorted().map { ranges[$0] }
+    }
+
+    private func startBound(_ value: Int, afterEqual: Bool) -> Int {
+        var lower = 0
+        var upper = order.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            let start = ranges[order[middle]].lowerBound
+            if start < value || (afterEqual && start == value) {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return lower
+    }
+}
+
 private struct SearchVisibleTextCollector: MarkupWalker {
     private struct SourceProjection {
         let range: Range<Int>
@@ -824,31 +1047,12 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let replacementSourceRange: Range<Int>?
     }
 
-    private let source: String
-    private let mapper: SearchMarkdownSourceMapper
-    private let fullSourceUTF16Offset: Int
-    private let excludedFullSourceRanges: [Range<Int>]
-    private let anchorFullSourceRanges: [Range<Int>]
-    private let links: [LinkOccurrence]
+    private let context: SearchSourceProjectionContext
     private(set) var text = ""
     private(set) var fragments: [SearchVisibleFragment] = []
     private var textUTF16Count = 0
 
-    init(
-        source: String,
-        fullSourceUTF16Offset: Int,
-        excludedFullSourceRanges: [Range<Int>],
-        mapper suppliedMapper: SearchMarkdownSourceMapper? = nil,
-        anchorFullSourceRanges: [Range<Int>],
-        links: [LinkOccurrence]
-    ) {
-        self.source = source
-        mapper = suppliedMapper ?? SearchMarkdownSourceMapper(source)
-        self.fullSourceUTF16Offset = fullSourceUTF16Offset
-        self.excludedFullSourceRanges = excludedFullSourceRanges
-        self.anchorFullSourceRanges = anchorFullSourceRanges
-        self.links = links
-    }
+    init(context: SearchSourceProjectionContext) { self.context = context }
 
     var coveringSourceRange: Range<Int>? {
         let ranges = fragments.compactMap(\.sourceRange)
@@ -881,13 +1085,13 @@ private struct SearchVisibleTextCollector: MarkupWalker {
 
     private mutating func append(_ value: String, range: Markdown.SourceRange?) {
         guard !value.isEmpty else { return }
-        let relative = range.flatMap(mapper.utf16Range)
+        let relative = range.flatMap(context.utf16Range)
         let fullRange = relative.map {
-            ($0.lowerBound + fullSourceUTF16Offset)..<($0.upperBound + fullSourceUTF16Offset)
+            ($0.lowerBound + context.fullSourceUTF16Offset)..<($0.upperBound + context.fullSourceUTF16Offset)
         }
         let exact =
             relative.map { range in
-                (source as NSString).substring(
+                context.source.substring(
                     with: NSRange(
                         location: range.lowerBound,
                         length: range.count
@@ -897,24 +1101,22 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         // Entity decoding can make a Text node nonexact. Remove the known literal
         // suffix from its visible text while retaining the decoded neighboring prose.
         if !exact, let fullRange,
-            let anchor = anchorFullSourceRanges.first(where: {
-                fullRange.lowerBound < $0.lowerBound && $0.upperBound <= fullRange.upperBound
-            })
+            let anchor = context.firstAnchorSuffix(in: fullRange)
         {
             let suffixRange = NSRange(
-                location: anchor.lowerBound - fullSourceUTF16Offset,
+                location: anchor.lowerBound - context.fullSourceUTF16Offset,
                 length: fullRange.upperBound - anchor.lowerBound
             )
-            let suffix = (source as NSString).substring(with: suffixRange)
+            let suffix = context.source.substring(with: suffixRange)
             let prefixRange = fullRange.lowerBound..<anchor.lowerBound
             if value.hasSuffix(suffix),
-                !excludedFullSourceRanges.contains(where: { overlaps($0, prefixRange) })
+                !context.overlapsExcludedRange(prefixRange)
             {
                 appendFragment(String(value.dropLast(suffix.count)), sourceRange: prefixRange, exact: false)
                 return
             }
         }
-        if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
+        if let fullRange, context.overlapsExcludedRange(fullRange) {
             return
         }
         appendFragment(value, sourceRange: fullRange, exact: exact)
@@ -924,19 +1126,12 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     /// replaces custom Wikilink markup with only its reader-visible label.
     /// Returning false means the original Markdown node needs no custom work.
     private mutating func appendProjectedSource(in fullRange: Range<Int>) -> Bool {
-        var projections = excludedFullSourceRanges.compactMap { excluded -> SourceProjection? in
-            let lower = max(excluded.lowerBound, fullRange.lowerBound)
-            let upper = min(excluded.upperBound, fullRange.upperBound)
-            guard lower < upper else { return nil }
-            return SourceProjection(range: lower..<upper, replacement: nil, replacementSourceRange: nil)
+        var projections = context.clippedExcludedRanges(in: fullRange).map { excluded in
+            SourceProjection(range: excluded, replacement: nil, replacementSourceRange: nil)
         }
         projections.append(
-            contentsOf: links.compactMap { link -> SourceProjection? in
-                guard link.syntax == .wikilink || link.syntax == .embed else { return nil }
+            contentsOf: context.containedVisibleLinks(in: fullRange).map { link in
                 let linkRange = link.linkSpan.utf16Range
-                guard fullRange.lowerBound <= linkRange.lowerBound,
-                    linkRange.upperBound <= fullRange.upperBound
-                else { return nil }
                 return SourceProjection(
                     range: linkRange,
                     replacement: link.alias ?? link.target,
@@ -978,11 +1173,11 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     }
 
     private mutating func appendExactSource(_ fullRange: Range<Int>) {
-        let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
+        let relative = (fullRange.lowerBound - context.fullSourceUTF16Offset)..<(fullRange.upperBound - context.fullSourceUTF16Offset)
         guard relative.lowerBound >= 0,
-            relative.upperBound <= (source as NSString).length
+            relative.upperBound <= context.source.length
         else { return }
-        let value = (source as NSString).substring(
+        let value = context.source.substring(
             with: NSRange(
                 location: relative.lowerBound,
                 length: relative.count
@@ -1009,8 +1204,8 @@ private struct SearchVisibleTextCollector: MarkupWalker {
 
     private func visibleLabelRange(for link: LinkOccurrence) -> Range<Int>? {
         let linkRange = link.linkSpan.utf16Range
-        let relative = (linkRange.lowerBound - fullSourceUTF16Offset)..<(linkRange.upperBound - fullSourceUTF16Offset)
-        let nsSource = source as NSString
+        let relative = (linkRange.lowerBound - context.fullSourceUTF16Offset)..<(linkRange.upperBound - context.fullSourceUTF16Offset)
+        let nsSource = context.source
         guard relative.lowerBound >= 0, relative.upperBound <= nsSource.length else { return nil }
         let raw = nsSource.substring(with: NSRange(location: relative.lowerBound, length: relative.count))
         let visible = link.alias ?? link.target
@@ -1021,8 +1216,8 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     }
 
     private func exactSource(_ value: String, in fullRange: Range<Int>) -> Bool {
-        let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
-        let nsSource = source as NSString
+        let relative = (fullRange.lowerBound - context.fullSourceUTF16Offset)..<(fullRange.upperBound - context.fullSourceUTF16Offset)
+        let nsSource = context.source
         guard relative.lowerBound >= 0, relative.upperBound <= nsSource.length else { return false }
         return nsSource.substring(
             with: NSRange(
@@ -1044,9 +1239,6 @@ private struct SearchVisibleTextCollector: MarkupWalker {
             ))
     }
 
-    private func overlaps(_ lhs: Range<Int>, _ rhs: Range<Int>) -> Bool {
-        lhs.lowerBound < rhs.upperBound && lhs.upperBound > rhs.lowerBound
-    }
 }
 
 private struct SearchMarkdownSourceMapper {

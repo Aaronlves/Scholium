@@ -8,6 +8,22 @@ struct OwnedRefreshTask: Sendable {
     let task: Task<Void, Never>
 }
 
+/// One coordinator attempt owns capture and publication authority. Expensive
+/// immutable preparation between those stages holds no source lease.
+struct WorkspaceRefreshSourceAuthority {
+    let id: UUID
+    let sourceToken: UUID
+    var lease: WorkspaceSourceOperationLease?
+    let captureStarted: ContinuousClock.Instant
+    var captureDuration = Duration.zero
+    var publicationGateWaitDuration = Duration.zero
+    var publicationStarted: ContinuousClock.Instant?
+}
+
+private enum WorkspaceRefreshPreparationError: Error {
+    case superseded
+}
+
 enum RefreshPublication: Sendable {
     case sourceCommitted(VaultQualifiedNoteID, WorkspaceSourceCommitKind)
     case explicit
@@ -259,12 +275,50 @@ extension WorkspaceHandle {
         requestID: RefreshRequestID,
         payloads: [WorkspaceRefreshPayload]
     ) async throws -> WorkspaceSnapshot {
+        var payload = try WorkspaceRefreshPayload.merged(payloads)
+        while true {
+            try Task.checkCancellation()
+            try requireActive()
+            do {
+                return try await performRefreshAttempt(requestID: requestID, payload: payload)
+            } catch WorkspaceRefreshPreparationError.superseded {
+                // A newer admitted source operation invalidated the captured
+                // inputs. Its bytes are already durable; recapture all roles
+                // rather than publishing stale success or failing coherent
+                // callers that are still waiting for this coordinator cycle.
+                payload = WorkspaceRefreshPayload(
+                    publication: payload.publication,
+                    failureDisposition: payload.failureDisposition,
+                    sourceCatalogPreparation: .fullReconcile)
+            }
+        }
+    }
+
+    private func performRefreshAttempt(
+        requestID: RefreshRequestID,
+        payload: WorkspaceRefreshPayload
+    ) async throws -> WorkspaceSnapshot {
         let clock = ContinuousClock()
         let cycleStart = clock.now
+        // Reading the derived writer's watermark can wait behind a large
+        // index operation. It owns no source state and must not stop saves.
+        let indexedWorkspaceGeneration: UInt64
+        do {
+            indexedWorkspaceGeneration = try await services.searchIndex.workspaceGeneration()
+        } catch {
+            await publishRefreshFailure(error, payload: payload)
+            throw error
+        }
+        let indexGenerationWaitDuration = cycleStart.duration(to: clock.now)
+        let gateWaitStart = clock.now
         let refreshLease = try await beginRefreshCycle()
-        let gateWaitDuration = cycleStart.duration(to: clock.now)
-        defer { endRefreshCycle(refreshLease) }
-        let payload = try WorkspaceRefreshPayload.merged(payloads)
+        let gateWaitDuration = gateWaitStart.duration(to: clock.now)
+        precondition(refreshSourceAuthority == nil)
+        let authorityID = UUID()
+        refreshSourceAuthority = WorkspaceRefreshSourceAuthority(
+            id: authorityID, sourceToken: sourceAuthorityToken, lease: refreshLease,
+            captureStarted: clock.now)
+        defer { endRefreshSourceAuthority(id: authorityID) }
         if mode == .live,
             case .liveInventory = payload.publication,
             case .none = payload.sourceCatalogPreparation,
@@ -314,8 +368,6 @@ extension WorkspaceHandle {
             guard nextGraphGeneration < Int.max else {
                 throw WorkspaceRefreshCycleError.graphGenerationExhausted
             }
-            let indexedWorkspaceGeneration = try await services.searchIndex
-                .workspaceGeneration()
             guard indexedWorkspaceGeneration < UInt64(Int.max) else {
                 throw SearchIndexError.invalidDocuments(
                     "Search workspace generation IDs were exhausted."
@@ -328,11 +380,17 @@ extension WorkspaceHandle {
             let graphGeneration = nextGraphGeneration
             nextGraphGeneration += 1
             let buildStart = clock.now
+            var dependencies = services.snapshotBuilderDependencies
+            dependencies.sourceCaptureDidComplete = { [weak self] in
+                guard let self else { throw CancellationError() }
+                try await self.completeRefreshSourceCapture(id: authorityID)
+            }
+            dependencies.beginDerivedPublication = { [weak self] in
+                guard let self else { throw CancellationError() }
+                try await self.beginRefreshDerivedPublication(id: authorityID)
+            }
             #if DEBUG
-                var dependencies = services.snapshotBuilderDependencies
                 dependencies.capturedSearchManifestBarrierForTesting = capturedSearchManifestBarrierForTesting
-            #else
-                let dependencies = services.snapshotBuilderDependencies
             #endif
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
@@ -349,29 +407,41 @@ extension WorkspaceHandle {
             for catalog in services.sourceCatalogs.values {
                 await catalog.discardPendingMeasurement()
             }
-            if !Task.isCancelled, !isShutDown {
-                derivedStateRequiresRefresh = true
-                await events.publishDerivedStateChanged(
-                    snapshot: currentSnapshot,
-                    status: payload.failureDisposition.status(
-                        for: error,
-                        lastKnownGood: currentSnapshot
-                    )
-                )
+            // Fresh row hydration can detect the newer bytes before Core
+            // reaches final publication admission. It is still a superseded
+            // capture, not a derived failure for coherent callers. Departure,
+            // cancellation and unavailable root authority keep their meaning.
+            if !Task.isCancelled, !isShutDown, unavailableRootVaultIDs.isEmpty,
+                let authority = refreshSourceAuthority, authority.id == authorityID,
+                authority.sourceToken != sourceAuthorityToken
+            {
+                throw WorkspaceRefreshPreparationError.superseded
             }
+            await publishRefreshFailure(error, payload: payload)
             throw error
         }
         try requireActive()
+        guard currentSnapshot.sourceInventoryRevision < UInt64.max else {
+            throw WorkspaceRefreshCycleError.sourceInventoryRevisionExhausted
+        }
         let previous = currentSnapshot
+        let reviewInitializationStart = clock.now
         if !previous.phase.isComplete && snapshot.phase.isComplete {
-            // The opening vault was already observable. A Note first seen
-            // there after that snapshot is new, while newly available vaults
-            // establish their first honest observed source baseline now.
+            // Prepared libraries already established their source baselines.
+            // Changes since those stages remain new observations; a complete
+            // projection never turns them into an acknowledged source baseline.
             await initializeNewDocumentReviews(from: previous, to: snapshot)
             await initializeDocumentReviewsFromOpeningSnapshot(snapshot)
         } else if previous.phase.isComplete {
             await initializeNewDocumentReviews(from: previous, to: snapshot)
         }
+        let reviewInitializationDuration = reviewInitializationStart.duration(to: clock.now)
+        #if DEBUG
+            await reviewedSnapshotPublicationBarrierForTesting?()
+        #endif
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
         snapshot = snapshot.withDocumentChangesGeneration(
             currentSnapshot.documentChangesGeneration
         ).withSourceInventoryRevision(
@@ -390,20 +460,71 @@ extension WorkspaceHandle {
             confirmsEarlierFailure: confirmsEarlierFailure
         )
         let publicationDuration = publicationStart.duration(to: clock.now)
+        let authority = refreshSourceAuthority
         let cycleMeasurement = WorkspaceRefreshCycleMeasurement(
             workspaceGeneration: measurement.workspaceGeneration,
+            indexGenerationWaitDuration: indexGenerationWaitDuration,
             gateWaitDuration: gateWaitDuration,
             sourcePreparationDuration: sourcePreparationDuration,
+            sourceCaptureLeaseDuration: authority?.captureDuration ?? .zero,
             buildDuration: buildDuration,
+            publicationGateWaitDuration: authority?.publicationGateWaitDuration ?? .zero,
+            reviewInitializationDuration: reviewInitializationDuration,
+            publicationLeaseDuration: authority?.publicationStarted.map { $0.duration(to: clock.now) } ?? .zero,
             publicationDuration: publicationDuration,
             totalDuration: cycleStart.duration(to: clock.now)
         )
         latestRefreshCycleMeasurement = cycleMeasurement
         Self.logRefresh(measurement, publicationDuration: publicationDuration)
         Self.refreshLogger.info(
-            "cycle generation=\(cycleMeasurement.workspaceGeneration, privacy: .public) gateWait=\(String(describing: cycleMeasurement.gateWaitDuration), privacy: .public) sourcePreparation=\(String(describing: cycleMeasurement.sourcePreparationDuration), privacy: .public) build=\(String(describing: cycleMeasurement.buildDuration), privacy: .public) publish=\(String(describing: cycleMeasurement.publicationDuration), privacy: .public) total=\(String(describing: cycleMeasurement.totalDuration), privacy: .public)"
+            "cycle generation=\(cycleMeasurement.workspaceGeneration, privacy: .public) indexGenerationWait=\(String(describing: cycleMeasurement.indexGenerationWaitDuration), privacy: .public) gateWait=\(String(describing: cycleMeasurement.gateWaitDuration), privacy: .public) sourcePreparation=\(String(describing: cycleMeasurement.sourcePreparationDuration), privacy: .public) captureLease=\(String(describing: cycleMeasurement.sourceCaptureLeaseDuration), privacy: .public) build=\(String(describing: cycleMeasurement.buildDuration), privacy: .public) publicationGateWait=\(String(describing: cycleMeasurement.publicationGateWaitDuration), privacy: .public) reviewInitialization=\(String(describing: cycleMeasurement.reviewInitializationDuration), privacy: .public) publicationLease=\(String(describing: cycleMeasurement.publicationLeaseDuration), privacy: .public) publish=\(String(describing: cycleMeasurement.publicationDuration), privacy: .public) total=\(String(describing: cycleMeasurement.totalDuration), privacy: .public)"
         )
         return snapshot
+    }
+
+    private func publishRefreshFailure(_ error: Error, payload: WorkspaceRefreshPayload) async {
+        guard !(error is WorkspaceRefreshPreparationError), !Task.isCancelled, !isShutDown else { return }
+        derivedStateRequiresRefresh = true
+        await events.publishDerivedStateChanged(
+            snapshot: currentSnapshot,
+            status: payload.failureDisposition.status(for: error, lastKnownGood: currentSnapshot))
+    }
+
+    /// Library readiness belongs to source observation. The capture lease
+    /// owns these source and identity stages before immutable derived work.
+    private func publishOpeningSourceReadiness(_ source: WorkspaceSnapshot) async throws {
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        guard !currentSnapshot.phase.isComplete else { return }
+        guard
+            source.vaults.contains(where: { prepared in
+                guard let prior = currentSnapshot.vault(id: prepared.vault.id) else { return true }
+                return prior.documents != prepared.documents || prior.folders != prepared.folders
+            })
+        else { return }
+        guard currentSnapshot.sourceInventoryRevision < UInt64.max else {
+            throw WorkspaceRefreshCycleError.sourceInventoryRevisionExhausted
+        }
+        let previous = currentSnapshot
+        let prepared = WorkspaceSnapshotBuilder.mergingOpeningSource(source, into: previous)
+        await initializeNewDocumentReviews(from: previous, to: prepared)
+        await initializeDocumentReviewsFromOpeningSnapshot(source)
+        // Review initialization performs authorized I/O. Root replacement or
+        // departure while suspended must never expose the captured libraries.
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        let snapshot = prepared.withDocumentChangesGeneration(
+            currentSnapshot.documentChangesGeneration
+        ).withSourceInventoryRevision(currentSnapshot.sourceInventoryRevision + 1)
+        currentSnapshot = snapshot
+        await publish(
+            .liveInventory,
+            previous: previous,
+            snapshot: snapshot,
+            confirmsEarlierFailure: true
+        )
     }
 
     nonisolated static func logRefresh(
@@ -431,8 +552,24 @@ extension WorkspaceHandle {
         }
         switch preparation {
         case .fullReconcile:
-            for catalog in services.sourceCatalogs.values {
+            for slot in WorkspaceVaultSlot.allCases {
+                guard let vault = assignment.vault(for: slot),
+                    let catalog = services.sourceCatalogs[vault.id]
+                else {
+                    throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+                }
                 try await catalog.reconcile()
+                if !currentSnapshot.phase.isComplete {
+                    let source = try await WorkspaceSnapshotBuilder.buildOpening(
+                        assignment: assignment,
+                        mode: mode,
+                        dependencies: services.snapshotBuilderDependencies,
+                        availableVault: slot,
+                        workspaceGeneration: latestRefreshMeasurement.workspaceGeneration,
+                        consumePendingMeasurement: false
+                    )
+                    try await publishOpeningSourceReadiness(source.snapshot)
+                }
             }
         case .none:
             break
@@ -768,6 +905,7 @@ extension WorkspaceHandle {
                 if let admission { try await admission() }
                 try requireActive()
                 try requireRootAuthoritiesAvailable()
+                sourceAuthorityToken = UUID()
                 return lease
             } catch {
                 releaseWorkspaceSourceOperation(lease)
@@ -814,8 +952,44 @@ extension WorkspaceHandle {
         }
     }
 
-    private func endRefreshCycle(_ lease: WorkspaceSourceOperationLease) {
+    private func completeRefreshSourceCapture(id: UUID) throws {
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        guard var authority = refreshSourceAuthority, authority.id == id,
+            let lease = authority.lease
+        else { throw CancellationError() }
+        authority.captureDuration = authority.captureStarted.duration(to: .now)
+        authority.lease = nil
+        refreshSourceAuthority = authority
         releaseWorkspaceSourceOperation(lease)
+    }
+
+    private func beginRefreshDerivedPublication(id: UUID) async throws {
+        guard let captured = refreshSourceAuthority, captured.id == id,
+            captured.lease == nil
+        else { throw CancellationError() }
+        let waitStart = ContinuousClock.now
+        let lease = try await beginRefreshCycle()
+        guard var authority = refreshSourceAuthority, authority.id == id else {
+            releaseWorkspaceSourceOperation(lease)
+            throw CancellationError()
+        }
+        authority.lease = lease
+        authority.publicationGateWaitDuration = waitStart.duration(to: .now)
+        authority.publicationStarted = .now
+        refreshSourceAuthority = authority
+        guard authority.sourceToken == sourceAuthorityToken else {
+            throw WorkspaceRefreshPreparationError.superseded
+        }
+    }
+
+    private func endRefreshSourceAuthority(id: UUID) {
+        guard let authority = refreshSourceAuthority, authority.id == id else {
+            preconditionFailure("Refresh source authority must end with its owning attempt.")
+        }
+        refreshSourceAuthority = nil
+        if let lease = authority.lease { releaseWorkspaceSourceOperation(lease) }
     }
 
     private func startLiveIndexRefreshIfNeeded() {

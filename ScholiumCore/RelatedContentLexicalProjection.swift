@@ -26,8 +26,9 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
         let segments: [StoredSegment]
     }
 
-    init(projection: SearchDocumentProjection) {
-        let scoring = RelatedContentBM25F.Document(segments: projection.segments)
+    /// Publication shares the Note scorer already built for the same prepared
+    /// source revision; lexical segments retain their separate matching text.
+    init(projection: SearchDocumentProjection, scoringDocument scoring: RelatedContentBM25F.Document) {
         scoringDocument = scoring
         segments = projection.segments.map {
             let shared = scoring.sharingPreparedText($0.normalizedText, index: .init($0.normalizedText))

@@ -27,8 +27,9 @@ export type ScholiumMermaidRenderResult =
   | {readonly ok: false; readonly reason: ScholiumMermaidFailureReason};
 
 export interface ScholiumMermaidRuntime {
-  readonly version: 2;
+  readonly version: 3;
   render(request: ScholiumMermaidRenderRequest): Promise<ScholiumMermaidRenderResult>;
+  copy(svg: SVGSVGElement): SVGSVGElement | null;
   mount(host: HTMLElement, svg: SVGSVGElement): boolean;
 }
 
@@ -146,6 +147,12 @@ export function mountMermaidSVG(host: HTMLElement, svg: SVGSVGElement): boolean 
   style.textContent = isolatedSVGStyle;
   shadow.append(svg, style);
   return true;
+}
+
+/** Only an unconsumed admitted node can yield another independently admitted node. */
+export function copyMermaidSVG(svg: SVGSVGElement, parser: DOMParser = new DOMParser()): SVGSVGElement | null {
+  if (!sanitizedSVGNodes.has(svg)) return null;
+  return sanitizeMermaidSVG(svg.outerHTML, parser);
 }
 
 interface ScholiumMermaidTheme {
@@ -340,8 +347,9 @@ export function renderMermaid(request: ScholiumMermaidRenderRequest): Promise<Sc
 }
 
 export const scholiumMermaidRuntime: ScholiumMermaidRuntime = Object.freeze({
-  version: 2,
+  version: 3,
   render: renderMermaid,
+  copy: copyMermaidSVG,
   mount: mountMermaidSVG,
 });
 

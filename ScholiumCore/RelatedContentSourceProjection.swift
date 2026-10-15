@@ -86,20 +86,22 @@ struct RelatedContentSourceProjection: Codable, Sendable {
         try Task.checkCancellation()
         let semantic = MarkdownSemanticDocument(parsing: document)
         try Task.checkCancellation()
-        try self.init(document: document, semantic: semantic)
+        let segments = SearchDocumentProjection.sourceSegments(document: document, semantic: semantic)
+        try self.init(document: document, semantic: semantic, noteSegments: segments)
     }
 
-    /// The publication source already binds its semantic value to these exact
-    /// canonical bytes. Keep generic Markdown scoring and nested passage
-    /// preparation independent of role-specific or cached Search projections.
-    init(source: SearchIndexDocument) throws {
+    /// Publication already prepared source-bound text and coordinates. Note
+    /// scoring shares those segments; Research's nested passage comparison set
+    /// still comes from the exact source and its complete semantic traversal.
+    init(prepared: PreparedSearchIndexDocument) throws {
         try Task.checkCancellation()
-        try self.init(document: source.document, semantic: source.semantic)
+        try self.init(
+            document: prepared.source.document, semantic: prepared.source.semantic,
+            noteSegments: prepared.projection.segments)
     }
 
-    private init(document: NoteDocument, semantic: MarkdownSemanticDocument) throws {
-        let projection = SearchDocumentProjection(document: document, semantic: semantic)
-        noteScoringDocument = .init(segments: projection.segments)
+    private init(document: NoteDocument, semantic: MarkdownSemanticDocument, noteSegments: [SearchTextSegment]) throws {
+        noteScoringDocument = .init(segments: noteSegments)
         var paragraphs: [Paragraph] = []
         // Deliberately preserve the existing passage comparison set, including
         // nested paragraphs. Search's top-level paragraph query projection has
@@ -116,7 +118,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                 document: snippet, semantic: snippetSemantic, includingAnnotations: true)
             let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
-            let segments = SearchDocumentProjection(document: snippet, semantic: snippetSemantic).segments.filter {
+            let segments = SearchDocumentProjection.sourceSegments(document: snippet, semantic: snippetSemantic).filter {
                 $0.sourceRange != nil && $0.field != .title && $0.field != .alias
             }
             paragraphs.append(

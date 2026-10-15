@@ -278,7 +278,7 @@ const mermaidRuntimeLoader = createMermaidRuntimeLoader(window, () => {
 
 function ensureMermaidRuntime() {
   const current = window.scholiumMermaid;
-  if (current?.version === 2) return Promise.resolve(current);
+  if (current?.version === 3) return Promise.resolve(current);
   if (!nativeHandler()) return Promise.resolve(null);
   return mermaidRuntimeLoader.ensure();
 }

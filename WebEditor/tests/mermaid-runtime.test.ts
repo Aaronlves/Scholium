@@ -4,12 +4,40 @@ import {fileURLToPath} from "node:url";
 import {describe, expect, it} from "vitest";
 import {
   mermaidThemeFromStyle,
+  copyMermaidSVG,
   sanitizeMermaidSVG,
   scholiumMermaidRuntime,
   validateMermaidSource,
 } from "../mermaid-runtime";
 
 describe("shared Mermaid runtime boundary", () => {
+  it("revalidates independent SVG copies and never copies consumed or untrusted nodes", () => {
+    const parser = new LinkedomDOMParser() as unknown as DOMParser;
+    const original = sanitizeMermaidSVG(
+      '<svg xmlns="http://www.w3.org/2000/svg" aria-labelledby="title" aria-describedby="description"><title id="title">Reasons</title><desc id="description">A supports B.</desc><defs><marker id="arrow"><path d="M0 0L1 1"/></marker></defs><path marker-end="url(#arrow)"/></svg>', parser,
+    )!;
+    const copy = copyMermaidSVG(original, parser)!;
+    expect(copy).not.toBeNull();
+    expect(copy).not.toBe(original);
+    expect(copy.outerHTML).toBe(original.outerHTML);
+    const {document} = parseHTML('<div id="one"></div><div id="two"></div><div id="three"></div>');
+    const one = document.getElementById("one") as unknown as HTMLElement;
+    const two = document.getElementById("two") as unknown as HTMLElement;
+    expect(scholiumMermaidRuntime.mount(one, original)).toBe(true);
+    expect(scholiumMermaidRuntime.mount(two, copy)).toBe(true);
+    expect(one.shadowRoot).not.toBe(two.shadowRoot);
+    expect(one.shadowRoot?.querySelector("svg")).toBe(original);
+    expect(two.shadowRoot?.querySelector("svg")).toBe(copy);
+    expect(scholiumMermaidRuntime.mount(document.getElementById("three") as unknown as HTMLElement, copy)).toBe(false);
+    expect(copyMermaidSVG(original, parser)).toBeNull();
+    expect(copyMermaidSVG(copy, parser)).toBeNull();
+    const mutated = sanitizeMermaidSVG('<svg xmlns="http://www.w3.org/2000/svg"/>', parser)!;
+    mutated.setAttribute("onload", "private authored script");
+    expect(copyMermaidSVG(mutated, parser)).toBeNull();
+    const untrusted = parser.parseFromString('<svg xmlns="http://www.w3.org/2000/svg"/>', "image/svg+xml").documentElement as unknown as SVGSVGElement;
+    expect(copyMermaidSVG(untrusted, parser)).toBeNull();
+  });
+
   it("pins the patched runtime and sanitizer for admitted upstream security fixtures", () => {
     const installedVersion = (packageName: string) => {
       const packageDefinition = JSON.parse(readFileSync(fileURLToPath(
@@ -207,7 +235,7 @@ describe("shared Mermaid runtime boundary", () => {
   });
 
   it("publishes one versioned asynchronous mode-neutral contract", async () => {
-    expect(scholiumMermaidRuntime.version).toBe(2);
+    expect(scholiumMermaidRuntime.version).toBe(3);
     await expect(scholiumMermaidRuntime.render({source: ""})).resolves.toEqual({
       ok: false,
       reason: "invalid-source",

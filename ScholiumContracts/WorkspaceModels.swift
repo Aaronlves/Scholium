@@ -408,10 +408,10 @@ public struct WorkspaceResearchSnapshot: Sendable {
 }
 
 /// The completeness boundary carried by every immutable Triptych projection.
-/// An opening snapshot contains one trustworthy, usable vault while the
-/// remaining vaults and cross-vault derived state are still loading.
+/// Opening snapshots expose their trustworthy source catalogs in `vaults`;
+/// Search and cross-vault derived state remain unavailable until complete.
 public enum WorkspaceSnapshotPhase: Equatable, Sendable {
-    case opening(availableVault: WorkspaceVaultSlot)
+    case opening
     case complete
 
     public var isComplete: Bool {
@@ -421,8 +421,8 @@ public enum WorkspaceSnapshotPhase: Equatable, Sendable {
 }
 
 /// A generation-independent projection of one Triptych. `phase` states
-/// whether the projection covers the complete Triptych or only the first
-/// usable vault during live application opening.
+/// whether complete derived state has published. During live opening, `vaults`
+/// alone identifies the authoritative libraries already available for browsing.
 public struct WorkspaceSnapshot: Sendable {
     public let triptych: ScholiumTriptych
     public let mode: WorkspaceConfigurationMode
@@ -601,7 +601,7 @@ public struct WorkspaceDerivedRefreshIssue: Sendable, Equatable {
 /// Delivery-neutral freshness of Search, link graph, diagnostic, and other
 /// derived workspace state.
 ///
-/// - `opening`: one vault is trustworthy and usable, but cross-vault derived
+/// - `opening`: prepared vaults are trustworthy and usable, but cross-vault derived
 ///   state is deliberately unavailable until a complete snapshot publishes.
 /// - `current`: the event's complete snapshot and evidence were rebuilt
 ///   successfully.
@@ -912,7 +912,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
         case .vaultNotInWorkspace(let id):
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .workspaceStillLoading(let id):
-            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search and direct links will become available when loading finishes."
+            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and available libraries support bounded text Search; Triptych Search and direct links will become available when loading finishes."
         case .workspaceRegistrationInUse(let id):
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):

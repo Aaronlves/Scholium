@@ -29022,12 +29022,12 @@
         }
       }
     },
-    "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes." : {
+    "This Note and available libraries support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "脉络打开期间，此笔记和当前打开的研究库支持有界文本搜索。在载入完成前，脉络搜索和直接链接仍不可用。"
+            "value" : "脉络打开期间，此笔记和已可用的研究库支持有界文本搜索。在载入完成前，脉络搜索和直接链接仍不可用。"
           }
         }
       }
@@ -34952,20 +34952,20 @@
       },
       "comment" : "App presentation of DocumentImportError..unsupportedSource"
     },
-    "Only the currently open vault can be searched while this Triptych finishes opening." : {
+    "This vault is not available yet while this Triptych finishes opening." : {
       "comment" : "Unavailable opening-phase vault.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only the currently open vault can be searched while this Triptych finishes opening."
+            "value" : "This vault is not available yet while this Triptych finishes opening."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此脉络打开完成前，只能搜索当前已打开的研究库。"
+            "value" : "此脉络仍在打开，这个研究库尚不可用。"
           }
         }
       }
@@ -35503,18 +35503,18 @@
       },
       "comment" : "Settings availability status when workspace owner is gone."
     },
-    "Scholium is still loading the complete Triptych %@. This Note and the currently open vault support bounded text Search; Triptych Search and direct links will become available when loading finishes." : {
+    "Scholium is still loading the complete Triptych %@. This Note and available libraries support bounded text Search; Triptych Search and direct links will become available when loading finishes." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium is still loading the complete Triptych %@. This Note and the currently open vault support bounded text Search; Triptych Search and direct links will become available when loading finishes."
+            "value" : "Scholium is still loading the complete Triptych %@. This Note and available libraries support bounded text Search; Triptych Search and direct links will become available when loading finishes."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 仍在载入完整脉络 %@。当前笔记和已打开的研究库支持有限范围的文本搜索；载入完成后，脉络搜索和直接连接即可使用。"
+            "value" : "Scholium 仍在载入完整脉络 %@。当前笔记和已可用的研究库支持有限范围的文本搜索；载入完成后，脉络搜索和直接连接即可使用。"
           }
         }
       },

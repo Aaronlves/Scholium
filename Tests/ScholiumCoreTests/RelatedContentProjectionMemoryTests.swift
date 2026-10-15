@@ -17,8 +17,9 @@ struct RelatedContentProjectionMemoryTests {
         }
         let source = "# Synthetic retained projection\n\n" + paragraphs.joined(separator: "\n\n") + "\n"
         let document = NoteDocument(relativePath: "Synthetic.md", rawContent: source)
-        let lexical = RelatedContentLexicalProjection(projection: SearchDocumentProjection(document: document))
         let passages = try RelatedContentSourceProjection(document: document)
+        let lexical = RelatedContentLexicalProjection(
+            projection: SearchDocumentProjection(document: document), scoringDocument: passages.noteScoringDocument)
         let lexicalBytes = try lexical.encoded()
         let passageBytes = try passages.encoded()
         let lexicalChecksum = RelatedContentSourceProjection.checksum(lexicalBytes)

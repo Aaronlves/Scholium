@@ -603,7 +603,6 @@ public actor TriptychSearchIndex {
         validateManifest: @escaping @Sendable () async throws -> Void
     ) async throws -> SearchPublication {
         let preparation = try await database.asyncTransaction {
-            var preparation = SearchProjectionPreparation()
             try Task.checkCancellation()
             try requireNewerWorkspaceGeneration(
                 delta.workspaceGeneration,
@@ -627,38 +626,64 @@ public actor TriptychSearchIndex {
                 documentKey(vaultID: $0.vaultID, path: $0.relativePath).utf8
                     .lexicographicallyPrecedes(documentKey(vaultID: $1.vaultID, path: $1.relativePath).utf8)
             }
-            for (offset, entry) in orderedUpserts.enumerated() {
-                try Task.checkCancellation()
-                let document = try await loadChanged(entry)
-                guard document.vaultID == entry.vaultID,
-                    document.vaultName == entry.vaultName,
-                    document.vaultRole == entry.vaultRole,
-                    document.relativePath.utf8.elementsEqual(entry.relativePath.utf8),
-                    document.stableNoteID == entry.stableNoteID,
-                    document.document.fingerprint == entry.fingerprint,
-                    document.hasBrokenLink == entry.hasBrokenLink,
-                    document.evidentialLayer == entry.evidentialLayer
-                else {
-                    throw SearchIndexError.invalidDocuments(
-                        "Changed Search source no longer matches its captured manifest"
-                    )
+            // Source hydration and pure projection work may overlap; SQLite
+            // remains on this sole writer. The admission window includes both
+            // running children and completed rows waiting for their source
+            // order, so one slow Note cannot accumulate an unbounded queue.
+            let width = min(
+                orderedUpserts.count,
+                max(
+                    1,
+                    min(
+                        ProcessInfo.processInfo.activeProcessorCount,
+                        VaultSourceReadLimits.maximumInFlightSourceByteCount / VaultSourceReadLimits.maximumNoteByteCount)))
+            let preparation = try await withThrowingTaskGroup(of: PreparedPublicationRow.self) { group in
+                var nextToSchedule = 0
+                func schedule(_ ordinal: Int) {
+                    let entry = orderedUpserts[ordinal]
+                    group.addTask {
+                        try Task.checkCancellation()
+                        let document = try await loadChanged(entry)
+                        try Task.checkCancellation()
+                        guard document.vaultID == entry.vaultID,
+                            document.vaultName == entry.vaultName,
+                            document.vaultRole == entry.vaultRole,
+                            document.relativePath.utf8.elementsEqual(entry.relativePath.utf8),
+                            document.stableNoteID == entry.stableNoteID,
+                            document.document.fingerprint == entry.fingerprint,
+                            document.hasBrokenLink == entry.hasBrokenLink,
+                            document.evidentialLayer == entry.evidentialLayer
+                        else {
+                            throw SearchIndexError.invalidDocuments(
+                                "Changed Search source no longer matches its captured manifest")
+                        }
+                        return try PreparedPublicationRow(
+                            ordinal: ordinal, source: document, cache: sourceProjectionCaches[document.vaultID])
+                    }
                 }
-                let key = documentKey(
-                    vaultID: document.vaultID,
-                    path: document.relativePath
-                )
-                // Hydrate only this changed Note on the existing writer task.
-                // Last-good readers remain available and each iteration releases
-                // its complete text/coordinate projection after insertion.
-                let prepared = PreparedSearchIndexDocument(
-                    source: document, cache: sourceProjectionCaches[document.vaultID])
-                preparation.add(prepared.preparation)
-                try deleteDocument(key: key, from: database)
-                try insert(prepared, into: database)
-                let completed = offset + 1
-                if completed == orderedUpserts.count || completed.isMultiple(of: 32) {
-                    progress?(completed)
+                for ordinal in 0..<width { schedule(ordinal) }
+                nextToSchedule = width
+                var nextToWrite = 0
+                var ready: [Int: PreparedPublicationRow] = [:]
+                var preparation = SearchProjectionPreparation()
+                while nextToWrite < orderedUpserts.count {
+                    // End this binding before admitting another row: a completed
+                    // large source must not outlive its bounded window slot.
+                    if let row = try await group.next() { ready[row.ordinal] = row }
+                    while ready[nextToWrite] != nil {
+                        try Task.checkCancellation()
+                        preparation.add(try insertPublicationRow(ready.removeValue(forKey: nextToWrite)!, into: database))
+                        nextToWrite += 1
+                        if nextToWrite == orderedUpserts.count || nextToWrite.isMultiple(of: 32) {
+                            progress?(nextToWrite)
+                        }
+                        if nextToSchedule < orderedUpserts.count {
+                            schedule(nextToSchedule)
+                            nextToSchedule += 1
+                        }
+                    }
                 }
+                return preparation
             }
             try database.execute("DELETE FROM search_vaults;")
             let vaults = configuredVaults.merging(
@@ -1847,7 +1872,7 @@ public actor TriptychSearchIndex {
             roleOrder: row.int(at: 15),
             sourceLineStarts: lineStarts,
             segments: segments,
-            paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.text(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
+            paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.data(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
             paragraphsAreComplete: row.int(at: 20) == 1,
             properties: properties,
             propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [],
@@ -2105,13 +2130,21 @@ public actor TriptychSearchIndex {
     nonisolated static func encodedParagraphs(_ paragraphs: [SearchParagraphProjection]) throws
         -> Data
     {
-        try JSONEncoder.searchIndex.encode(paragraphs.map(StoredParagraph.init))
+        try SearchProjectionBlobCodec.encode(JSONEncoder.searchIndex.encode(paragraphs.map(StoredParagraph.init)))
     }
 
-    nonisolated static func decodedStoredParagraphs(from json: String?) throws
+    nonisolated static func decodedStoredParagraphs(from data: Data?) throws
         -> [SearchParagraphProjection]
     {
-        try decodeGeneratedJSON([StoredParagraph].self, from: json).map { try $0.projection() }
+        try decodeStoredParagraphs(data).map { try $0.projection() }
+    }
+
+    private nonisolated static func decodeStoredParagraphs(_ data: Data?) throws -> [StoredParagraph] {
+        do {
+            return try JSONDecoder().decode([StoredParagraph].self, from: SearchProjectionBlobCodec.decode(data))
+        } catch {
+            throw SearchIndexError.corruptDatabase
+        }
     }
 
     private nonisolated static func indexedProjectionState(
@@ -2173,17 +2206,47 @@ public actor TriptychSearchIndex {
             })
     }
 
+    /// Ephemeral, immutable preparation for one exact changed revision. No
+    /// worker receives a database connection or publishes a generation.
+    private struct PreparedPublicationRow: Sendable {
+        let ordinal: Int
+        let document: PreparedSearchIndexDocument
+        let relatedProjection: Data
+        let relatedLexical: Data
+
+        init(ordinal: Int, source: SearchIndexDocument, cache: SourceSearchProjectionCache?) throws {
+            self.ordinal = ordinal
+            document = PreparedSearchIndexDocument(source: source, cache: cache)
+            try Task.checkCancellation()
+            let related = try RelatedContentSourceProjection(prepared: document)
+            relatedProjection = try related.encoded()
+            relatedLexical = try RelatedContentLexicalProjection(
+                projection: document.projection, scoringDocument: related.noteScoringDocument
+            ).encoded()
+            try Task.checkCancellation()
+        }
+    }
+
+    private static func insertPublicationRow(
+        _ row: PreparedPublicationRow,
+        into database: SearchSQLiteDatabase
+    ) throws -> SearchProjectionPreparation {
+        let source = row.document.source
+        try deleteDocument(key: documentKey(vaultID: source.vaultID, path: source.relativePath), from: database)
+        try insert(row.document, relatedProjection: row.relatedProjection, relatedLexical: row.relatedLexical, into: database)
+        return row.document.preparation
+    }
+
     private static func insert(
         _ prepared: PreparedSearchIndexDocument,
+        relatedProjection: Data,
+        relatedLexical: Data,
         into database: SearchSQLiteDatabase
     ) throws {
         let item = prepared.source
         let projection = prepared.projection
-        // Prepared in the same publication transaction as the exact source
-        // fingerprint. Queries never trigger first-use paragraph parsing for
-        // an indexed revision, including after application restart.
-        let relatedProjection = try RelatedContentSourceProjection(source: item).encoded()
-        let relatedLexical = try RelatedContentLexicalProjection(projection: projection).encoded()
+        // All query-independent material was prepared from this same exact
+        // source before insertion, including after application restart.
         let lineStarts =
             String(
                 data: try JSONEncoder.searchIndex.encode(projection.sourceLineStartsUTF16),
@@ -2219,7 +2282,7 @@ public actor TriptychSearchIndex {
                 .text(lineStarts),
                 .int(item.document.rawContent.utf16.count),
                 .text(String(decoding: try JSONEncoder.searchIndex.encode(prepared.properties.issues), as: UTF8.self)),
-                .text(String(decoding: try encodedParagraphs(projection.paragraphs), as: UTF8.self)),
+                .blob(try encodedParagraphs(projection.paragraphs)),
                 .int(item.document.hasProvableBodyBoundary ? 1 : 0),
                 .blob(relatedProjection),
                 .text(RelatedContentSourceProjection.checksum(relatedProjection)),
@@ -2408,7 +2471,7 @@ public actor TriptychSearchIndex {
                 line_starts TEXT NOT NULL,
                 source_utf16_count INTEGER NOT NULL,
                 property_issues TEXT NOT NULL,
-                paragraphs TEXT NOT NULL,
+                paragraphs BLOB NOT NULL,
                 paragraphs_complete INTEGER NOT NULL,
                 related_projection BLOB NOT NULL,
                 related_projection_hash TEXT NOT NULL,
@@ -2536,8 +2599,8 @@ public actor TriptychSearchIndex {
         }
     }
 
-    private static func decodeParagraphs(_ json: String?, sourceUTF16Count: Int) throws -> [SearchParagraphProjection] {
-        let paragraphs = try decodedStoredParagraphs(from: json)
+    private static func decodeParagraphs(_ data: Data?, sourceUTF16Count: Int) throws -> [SearchParagraphProjection] {
+        let paragraphs = try decodedStoredParagraphs(from: data)
         for paragraph in paragraphs {
             let range = paragraph.range
             guard SearchProjectionValidation.valid(paragraphRange: range, sourceUTF16Count: sourceUTF16Count)
@@ -2570,7 +2633,7 @@ public actor TriptychSearchIndex {
             try RelatedContentSourceProjection.validate(
                 row.data(at: 4), checksum: row.text(at: 5), sourceUTF16Count: sourceUTF16Count)
             try RelatedContentLexicalProjection.validate(row.data(at: 6), checksum: row.text(at: 7))
-            let paragraphs = try decodeGeneratedJSON([StoredParagraph].self, from: row.text(at: 2))
+            let paragraphs = try decodeStoredParagraphs(row.data(at: 2))
             for paragraph in paragraphs { try paragraph.validate(sourceUTF16Count: sourceUTF16Count) }
             guard [0, 1].contains(row.int(at: 3)) else { throw SearchIndexError.corruptDatabase }
             guard sourceUTF16Count >= 0,

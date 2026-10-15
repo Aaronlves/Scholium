@@ -29,7 +29,7 @@ struct DocumentCitationPresentationTests {
         // A retained buffer from another projection must not become Review authority.
         session.editingSource = try self.source(for: .malformed)
 
-        let notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        let notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
 
         #expect(notice.integrity == sourceCase.integrity)
         #expect(notice.isVisible == (sourceCase.integrity != nil))
@@ -42,6 +42,115 @@ struct DocumentCitationPresentationTests {
         #expect(document.rawContent.utf8.elementsEqual(source.utf8))
     }
 
+    @Test("Prepared committed fields preserve every notice state", arguments: SourceCase.allCases)
+    func preparedCommittedFields(_ sourceCase: SourceCase) throws {
+        let document = NoteDocument(relativePath: "Prepared.md", rawContent: try source(for: sourceCase))
+        let fields = MarkdownSemanticDocument(parsing: document).zoteroFields
+        let session = DocumentSessionModel(key: nil)
+        let notice = session.citationPresentation(committedDocument: document, committedFields: fields, editingIsAvailable: true)
+        #expect(notice.integrity == sourceCase.integrity)
+        #expect(notice.isVisible == (sourceCase.integrity != nil))
+        #expect(!session.retainsEditorSurface && !session.editorSession.hasAttachedWebView)
+    }
+
+    @Test("One-entry memo reuses a revision and rejects stale prepared fields and exact-byte source changes")
+    func committedFieldsMemo() throws {
+        let cache = DocumentCitationFieldsCache()
+        let first = NoteDocument(relativePath: "Synthetic.md", rawContent: try source(for: .stale))
+        let next = NoteDocument(relativePath: first.relativePath, rawContent: try source(for: .duplicate))
+        let prepared = MarkdownSemanticDocument(parsing: first).zoteroFields
+        var sourceLoads = 0
+        func fields(_ document: NoteDocument, prepared: ZoteroMarkdownFields?) -> ZoteroMarkdownFields {
+            cache.fields(
+                relativePath: document.relativePath, sourceRevision: .committed(document.fingerprint),
+                citationSnapshot: document.citationSnapshot, prepared: prepared
+            ) {
+                sourceLoads += 1
+                return document
+            }
+        }
+        for _ in 0..<20 { #expect(fields(first, prepared: prepared) == prepared) }
+        #expect(sourceLoads == 1)
+        #expect(!fields(next, prepared: prepared).diagnostics.isEmpty)
+        #expect(sourceLoads == 2)
+
+        let decomposed = NoteDocument(relativePath: next.relativePath, rawContent: next.rawContent.replacingOccurrences(of: "e\u{301}", with: "é"))
+        #expect(decomposed.rawContent == next.rawContent && decomposed.fingerprint != next.fingerprint)
+        #expect(fields(decomposed, prepared: nil).fingerprint == decomposed.fingerprint)
+        #expect(sourceLoads == 3)
+        cache.removeAll()
+        _ = fields(decomposed, prepared: nil)
+        #expect(sourceLoads == 4)
+    }
+
+    @Test("Companion authority participates independently and cannot admit companion-free prepared fields")
+    func companionFieldsMemo() {
+        let cache = DocumentCitationFieldsCache()
+        let plain = NoteDocument(relativePath: "Companion.md", rawContent: "# Synthetic\nOrdinary text.\n")
+        let prepared = MarkdownSemanticDocument(parsing: plain).zoteroFields
+        let noteID = UUID()
+        let vaultID = UUID()
+        let revision = DocumentFingerprint(content: "first companion bytes")
+        let nextRevision = DocumentFingerprint(content: "second companion bytes")
+        let snapshots: [ZoteroCitationSnapshot?] = [
+            nil,
+            .init(noteID: noteID, vaultID: vaultID, revision: revision, status: .unresolved),
+            .init(noteID: noteID, vaultID: vaultID, revision: nextRevision, status: .unresolved),
+            .init(noteID: noteID, vaultID: vaultID, revision: nextRevision, status: .unsupported),
+            .init(noteID: noteID, vaultID: vaultID, revision: nextRevision, sourceFingerprint: plain.fingerprint, status: .unsupported),
+            .init(noteID: noteID, vaultID: vaultID, revision: nextRevision, data: .init(documentData: "synthetic"), status: .unsupported),
+            .init(noteID: UUID(), vaultID: vaultID, revision: nextRevision, status: .unsupported),
+            .init(noteID: noteID, vaultID: UUID(), revision: nextRevision, status: .unsupported),
+            nil,
+        ]
+        var sourceLoads = 0
+        for (index, snapshot) in snapshots.enumerated() {
+            let document = NoteDocument(relativePath: plain.relativePath, rawContent: plain.rawContent, citationSnapshot: snapshot)
+            for _ in 0..<2 {
+                let fields = cache.fields(
+                    relativePath: document.relativePath, sourceRevision: .committed(document.fingerprint),
+                    citationSnapshot: snapshot, prepared: prepared
+                ) {
+                    sourceLoads += 1
+                    return document
+                }
+                #expect(fields == ZoteroMarkdownFields(parsing: document))
+                #expect((!fields.diagnostics.isEmpty) == (snapshot != nil))
+            }
+            #expect(sourceLoads == index + 1)
+        }
+    }
+
+    @Test("Retained mirror assignments invalidate fields even for canonically equivalent text")
+    func retainedMirrorMemo() throws {
+        let session = DocumentSessionModel(key: nil)
+        let first = try source(for: .stale)
+        let next = first.replacingOccurrences(of: "e\u{301}", with: "é")
+        #expect(first == next && Data(first.utf8) != Data(next.utf8))
+        session.editingSource = first
+        let initialRevision = session.retainedCitationSourceRevision
+        let document = NoteDocument(relativePath: "Retained.md", rawContent: try source(for: .fresh))
+        session.beginEditing(in: .livePreview)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .stale)
+        var loads = 0
+        func fields() -> ZoteroMarkdownFields {
+            session.citationFieldsCache.fields(
+                relativePath: document.relativePath, sourceRevision: .retained(session.retainedCitationSourceRevision),
+                citationSnapshot: nil, prepared: nil
+            ) {
+                loads += 1
+                return NoteDocument(relativePath: document.relativePath, rawContent: session.retainedExactSource)
+            }
+        }
+        // The presentation call already populated this exact retained revision.
+        #expect(fields().fingerprint == DocumentFingerprint(content: first))
+        #expect(loads == 0)
+        session.editingSource = next
+        #expect(session.retainedCitationSourceRevision == initialRevision + 1)
+        #expect(fields().fingerprint == DocumentFingerprint(content: next))
+        #expect(loads == 1)
+    }
+
     @Test("Malformed YAML cannot hide known companion repair in cold Review", arguments: [ZoteroCitationSnapshot.Status.unresolved, .unsupported])
     func malformedFrontmatterCompanionNotice(status: ZoteroCitationSnapshot.Status) {
         let source = "\u{FEFF}---\r\nbroken: [\r\n---\r\nReadable 😀 e\u{301} prose."
@@ -51,7 +160,7 @@ struct DocumentCitationPresentationTests {
         let session = DocumentSessionModel(key: nil)
         #expect(document.frontmatterState == .malformed)
 
-        let notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        let notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
 
         #expect(notice.integrity == .unresolved && notice.isVisible)
         #expect(!notice.canRefresh && notice.canOpenSource)
@@ -68,7 +177,7 @@ struct DocumentCitationPresentationTests {
         session.editingSource = committedSource
         editor.loadDocument(committedSource, documentID: editor.bridgeDocumentID, mode: .livePreview)
         session.beginEditing(in: .livePreview)
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == nil)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == nil)
         let replacement = try source(for: .reordered)
         #expect(
             editor.acceptEditorChanges(
@@ -81,14 +190,14 @@ struct DocumentCitationPresentationTests {
 
         #expect(session.editingSource == committedSource)
         #expect(editor.checkedSource.utf8.elementsEqual(replacement.utf8))
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == .stale)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .stale)
         session.finishEditing()
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == nil)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == nil)
 
         // A newer committed revision remains visible even while the retained
         // editor buffer still contains the earlier ordered field sequence.
         let nextDocument = NoteDocument(relativePath: document.relativePath, rawContent: try source(for: .duplicate))
-        #expect(session.citationPresentation(committedDocument: nextDocument, editingIsAvailable: true).integrity == .unresolved)
+        #expect(session.citationPresentation(committedDocument: nextDocument, committedFields: nil, editingIsAvailable: true).integrity == .unresolved)
         #expect(editor.checkedSource.utf8.elementsEqual(replacement.utf8))
         #expect(!editor.hasAttachedWebView)
     }
@@ -101,15 +210,15 @@ struct DocumentCitationPresentationTests {
         session.beginEditing(in: .livePreview)
         let editor = session.editorSession
         #expect(editor.documentID.isEmpty)
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == .stale)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .stale)
 
         let foreignID = UUID().uuidString
         editor.loadDocument(try source(for: .duplicate), documentID: foreignID, mode: .source)
         let foreign = try #require(editor.citationFields(forDocumentID: foreignID))
         #expect(!foreign.diagnostics.isEmpty)
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == .stale)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .stale)
         session.finishEditing()
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).integrity == nil)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == nil)
         #expect(session.editingSource.utf8.elementsEqual(try source(for: .stale).utf8))
     }
 
@@ -122,27 +231,27 @@ struct DocumentCitationPresentationTests {
         editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
         session.beginEditing(in: .livePreview)
         setInteraction(editor, composing: false)
-        var notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        var notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.canRefresh && notice.canOpenSource)
         await editor.announceCitationStatus("Synthetic latest status")
-        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.status == "Synthetic latest status")
         editor.dismissCitationStatus()
-        #expect(session.citationPresentation(committedDocument: document, editingIsAvailable: true).status == nil)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).status == nil)
 
         setInteraction(editor, composing: true)
         #expect(editor.interactionAvailability?.availableCommands.contains(.refreshCitations) == true)
-        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.integrity == .stale && !notice.canRefresh && !notice.canOpenSource)
         setInteraction(editor, composing: false)
         session.returnToReadAfterSave = true
-        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(!notice.canRefresh && !notice.canOpenSource)
         session.returnToReadAfterSave = false
-        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: false)
+        notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: false)
         #expect(!notice.canRefresh && !notice.canOpenSource)
         session.switchEditorMode(to: .source)
-        notice = session.citationPresentation(committedDocument: document, editingIsAvailable: true)
+        notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.canRefresh && !notice.canOpenSource)
         #expect(editor.checkedSource.utf8.elementsEqual(exact.utf8))
     }
@@ -252,7 +361,7 @@ struct DocumentCitationPresentationTests {
         _ = NSApplication.shared
         let document = NoteDocument(relativePath: "Synthetic.md", rawContent: try source(for: unresolvedReadonly ? .duplicate : .stale))
         let presentation = DocumentCitationPresentation(
-            document: document, status: nil, canRefresh: false, canOpenSource: !unresolvedReadonly)
+            fields: ZoteroMarkdownFields(parsing: document), status: nil, canRefresh: false, canOpenSource: !unresolvedReadonly)
         var noticeFrame = CGRect.zero
         let host = NSHostingView(
             rootView:

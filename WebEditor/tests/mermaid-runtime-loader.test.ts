@@ -5,6 +5,27 @@ import type {ScholiumMermaidRuntime} from "../mermaid-runtime";
 afterEach(() => vi.useRealTimers());
 
 describe("Mermaid runtime attachment lifetime", () => {
+  it("rejects an obsolete runtime that cannot provide independently admitted SVG copies", async () => {
+    vi.useFakeTimers();
+    const obsolete = {version: 2, render: vi.fn(), mount: vi.fn()};
+    const host = {
+      setTimeout: setTimeout as unknown as Window["setTimeout"],
+      clearTimeout: clearTimeout as unknown as Window["clearTimeout"],
+      scholiumMermaid: obsolete as unknown as ScholiumMermaidRuntime,
+      scholiumMermaidRuntimeDidLoad: undefined as ((loaded: boolean) => void) | undefined,
+    };
+    const request = vi.fn();
+    const loader = createMermaidRuntimeLoader(host, request);
+    const pending = loader.ensure();
+    expect(request).toHaveBeenCalledTimes(1);
+    host.scholiumMermaidRuntimeDidLoad!(true);
+    expect(await pending).toBeNull();
+    expect(obsolete.render).not.toHaveBeenCalled();
+    expect(obsolete.mount).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(host.scholiumMermaidRuntimeDidLoad).toBeUndefined();
+  });
+
   it("cancels the detached request and requests the next coordinator immediately", async () => {
     vi.useFakeTimers();
     const host = {
@@ -29,7 +50,7 @@ describe("Mermaid runtime attachment lifetime", () => {
     oldFinish(false);
     expect(host.scholiumMermaidRuntimeDidLoad).toBe(newFinish);
     expect(vi.getTimerCount()).toBe(1);
-    const runtime = {version: 2} as ScholiumMermaidRuntime;
+    const runtime = {version: 3} as ScholiumMermaidRuntime;
     host.scholiumMermaid = runtime;
     newFinish(true);
     expect(await second).toBe(runtime);

@@ -89,11 +89,12 @@ struct DocumentOutlineRail: View {
     @State private var scrollEdges = DocumentOutlineScrollEdges()
 
     var body: some View {
+        let interactionRow = self.interactionRow
         GeometryReader { proxy in
             ScrollView(.vertical) {
                 VStack(spacing: 0) {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        markerButton(for: entry, at: index)
+                        markerButton(for: entry, at: index, interactionRow: interactionRow)
                     }
                 }
                 .onContinuousHover { phase in
@@ -166,9 +167,9 @@ struct DocumentOutlineRail: View {
         .accessibilityIdentifier("scholium.documentOutlineRail")
     }
 
-    private func markerButton(for entry: DocumentOutlineEntry, at index: Int) -> some View {
+    private func markerButton(for entry: DocumentOutlineEntry, at index: Int, interactionRow: CGFloat?) -> some View {
         let isActive = activeEntryID == entry.id
-        let influence = interactionInfluence(at: index)
+        let influence = interactionInfluence(at: index, interactionRow: interactionRow)
         let restingWidth =
             entry.level == 1
             ? ScholiumMetrics.Document.outlineMarkerHeadingOneWidth
@@ -284,9 +285,15 @@ struct DocumentOutlineRail: View {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 
-    private func interactionInfluence(at index: Int) -> CGFloat {
-        let interactionRow =
-            pointerRow ?? entries.firstIndex(where: { $0.id == focusedEntryID }).map(CGFloat.init)
+    /// Resolve the shared interaction once per body, rather than searching all
+    /// headings (and reading FocusState) again for every marker.
+    private var interactionRow: CGFloat? {
+        if let pointerRow { return pointerRow }
+        guard let focusedEntryID else { return nil }
+        return entries.firstIndex(where: { $0.id == focusedEntryID }).map(CGFloat.init)
+    }
+
+    private func interactionInfluence(at index: Int, interactionRow: CGFloat?) -> CGFloat {
         guard let interactionRow else { return 0 }
         let distance = abs(CGFloat(index) - interactionRow)
         let radius = ScholiumMetrics.Document.outlineMarkerHoverRadius

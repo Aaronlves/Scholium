@@ -6,6 +6,56 @@ import Testing
 
 @Suite("Document Changes application", .serialized)
 struct DocumentChangeOperationsTests {
+    @Test("Opening review baselines share one identity decode and admit bounded exact-source batches")
+    func openingBaselinePreparation() async throws {
+        let fixture = try await makeFixture()
+        defer { fixture.remove() }
+        for index in 0..<80 {
+            try Data("\u{FEFF}# Cafe\u{301} \(index)\r\n\r\nExact source without final newline".utf8)
+                .write(to: fixture.analysesURL.appendingPathComponent("Baseline \(index).md"))
+        }
+        let runtime = makeRuntime(fixture)
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.snapshot()
+        let services = await handle.services
+        let reviews = try #require(services.documentReviewStore)
+        let control = services.controlStore
+        let notes = snapshot.vaults.flatMap(\.documents)
+        #expect(notes.count == 83)
+        let reviewRoot = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs/\(fixture.assignment.id.uuidString)/document-reviews-v1")
+        for note in notes {
+            let id = try #require(note.stableIdentity.resolvedID)
+            try FileManager.default.removeItem(at: reviewRoot.appendingPathComponent("\(id.uuidString).json"))
+        }
+        #if DEBUG
+            let decodeCount = await control.identitySnapshotDecodeCountForTesting
+            let validationCount = await control.identityInventoryValidationCountForTesting
+            let sourceReadCount = await control.identityInventorySourceReadCountForTesting
+        #endif
+        await handle.initializeDocumentReviewsFromOpeningSnapshot(snapshot)
+        #if DEBUG
+            #expect(await control.identitySnapshotDecodeCountForTesting == decodeCount + 1)
+            #expect(await control.identityInventoryValidationCountForTesting == validationCount + notes.count)
+            #expect(await control.identityInventorySourceReadCountForTesting == sourceReadCount + 1)
+        #endif
+        for note in notes {
+            let id = try #require(note.stableIdentity.resolvedID)
+            let baseline = try #require(try await reviews.baseline(noteID: id, vaultID: note.id.vaultID))
+            #expect(baseline.state == .known)
+            #expect(baseline.fingerprint == note.fingerprint)
+        }
+        #if DEBUG
+            let completedCount = await control.identitySnapshotDecodeCountForTesting
+        #endif
+        await handle.initializeDocumentReviewsFromOpeningSnapshot(snapshot)
+        #if DEBUG
+            #expect(await control.identitySnapshotDecodeCountForTesting == completedCount)
+        #endif
+        #expect(try await handle.changes.pendingChanges().isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("External saved edits accumulate across restart; review captures displayed ending only")
     func externalCumulativeReview() async throws {
         let fixture = try await makeFixture()

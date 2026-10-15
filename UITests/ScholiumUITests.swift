@@ -250,6 +250,11 @@ final class ScholiumUITests: XCTestCase {
     var homeDirectory: URL!
     var triptychDirectory: URL!
     var clipboardPreservation: QAClipboardPreservation?
+    var initialWorkspaceReadinessObservation: [String: Any]?
+
+    var isLargeSyntheticVaultStressTest: Bool {
+        name.contains("testLargeSyntheticVaultDocumentLifecycleStress")
+    }
     /// `defaultSize` is a first-presentation input. Tests that need a specific
     /// starting width must request it before their first scene appears; a
     /// relaunch is intentionally not a frame-reset API.
@@ -273,11 +278,20 @@ final class ScholiumUITests: XCTestCase {
         return "QA Autosave A.md"
     }
 
-    private let initialWorkspaceReadyTimeout: TimeInterval = 45
+    // The large fixture's cold configuration is itself observed diagnostic
+    // work. Its bound must not inherit the ordinary 500-note fixture deadline.
+    private var initialWorkspaceReadyTimeout: TimeInterval {
+        isLargeSyntheticVaultStressTest ? 600 : 45
+    }
 
     @MainActor
     override func setUp() async throws {
         continueAfterFailure = false
+        if isLargeSyntheticVaultStressTest,
+            ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_UI"] != "1"
+        {
+            throw XCTSkip("The opt-in synthetic stress fixture is not configured.")
+        }
         if name.contains("testRuntimeReadinessDiagnostic") || name.contains("testFreshIndexReadinessDiagnostic") {
             let environment = ProcessInfo.processInfo.environment
             guard environment["SCHOLIUM_RUNTIME_DIAGNOSTIC_OUTPUT"] != nil else {
@@ -324,6 +338,7 @@ final class ScholiumUITests: XCTestCase {
         // Reclaim every process with the QA-only bundle identifier before the
         // journey asks SwiftUI to create its one default scene.
         terminateRunningQAApplications()
+        let launchStarted = DispatchTime.now().uptimeNanoseconds
         app.launch()
         try verifyRuntimeDiagnosticApplicationIdentity()
         XCTAssertTrue(
@@ -339,10 +354,30 @@ final class ScholiumUITests: XCTestCase {
             return
         }
         if let initialOpenNote = initialOpenNoteForCurrentTest {
+            let usable = waitUntil(timeout: initialWorkspaceReadyTimeout) {
+                self.documentSurfaceIsUsable(for: initialOpenNote)
+            }
+            if isLargeSyntheticVaultStressTest {
+                let observation: [String: Any] = [
+                    "action": "cold_bootstrap_initial_document_usable",
+                    "source_path": initialOpenNote,
+                    "usable": usable,
+                    "observed_duration_ms": Double(DispatchTime.now().uptimeNanoseconds - launchStarted) / 1_000_000,
+                    "waiting_bound_seconds": initialWorkspaceReadyTimeout,
+                    "timing_boundary":
+                        "Immediately before XCTest app.launch through initial document usability polling. Includes launch transport, XCTest idle waits, window/identity checks and AX polling; not app-only latency or a performance pass threshold.",
+                ]
+                initialWorkspaceReadinessObservation = observation
+                // Keep the setup observation even if readiness fails before
+                // the stress body can write its consolidated JSON report.
+                let data = try JSONSerialization.data(withJSONObject: observation, options: [.prettyPrinted, .sortedKeys])
+                let attachment = XCTAttachment(string: String(decoding: data, as: UTF8.self))
+                attachment.name = "large-fixture-cold-bootstrap-observation"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
             XCTAssertTrue(
-                waitUntil(timeout: initialWorkspaceReadyTimeout) {
-                    self.documentSurfaceIsUsable(for: initialOpenNote)
-                },
+                usable,
                 "The isolated QA window appeared without exposing the initial document in its current mode."
             )
         }
@@ -350,6 +385,16 @@ final class ScholiumUITests: XCTestCase {
 
     @MainActor
     override func tearDown() async throws {
+        if isLargeSyntheticVaultStressTest, let homeDirectory,
+            let failures = try? Data(contentsOf: homeDirectory.appendingPathComponent("qa-reader-failures.jsonl")),
+            failures.count <= 65_536,
+            let metadata = String(data: failures, encoding: .utf8)
+        {
+            let attachment = XCTAttachment(string: metadata)
+            attachment.name = "Scholium QA reader failure metadata"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
         if testRun?.failureCount ?? 0 > 0, let app {
             for window in app.windows.allElementsBoundByIndex
             where window.exists
@@ -393,6 +438,7 @@ final class ScholiumUITests: XCTestCase {
         testDirectory = nil
         homeDirectory = nil
         triptychDirectory = nil
+        initialWorkspaceReadinessObservation = nil
         let clipboard = clipboardPreservation
         clipboardPreservation = nil
         // App and fixture cleanup must finish even if clipboard restoration fails.

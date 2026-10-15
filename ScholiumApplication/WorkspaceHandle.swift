@@ -101,6 +101,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var sourceAheadSourceVersions: [VaultQualifiedNoteID: SourceVersion] = [:]
     var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     var sourceOperationGate = WorkspaceSourceOperationGate()
+    var sourceAuthorityToken = UUID()
+    var refreshSourceAuthority: WorkspaceRefreshSourceAuthority?
     var managedCreationPreLeaseBarrierForTesting: (@Sendable () async -> Void)?
     var managedCreationPostSourceBarrierForTesting: (@Sendable () async -> Void)?
     var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
@@ -113,6 +115,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     #if DEBUG
         var liveInventoryPreflightBarrierForTesting: (@Sendable () async -> Void)?
         var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
+        var reviewedSnapshotPublicationBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setReviewedSnapshotPublicationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            reviewedSnapshotPublicationBarrierForTesting = barrier
+        }
 
         func setCapturedSearchManifestBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
             capturedSearchManifestBarrierForTesting = barrier

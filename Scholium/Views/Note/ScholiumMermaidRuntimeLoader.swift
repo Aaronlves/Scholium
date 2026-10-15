@@ -24,7 +24,7 @@ enum ScholiumMermaidRuntimeLoader {
         contentWorld: WKContentWorld
     ) async -> Bool {
         if let installed = try? await webView.callAsyncJavaScript(
-            "return window.scholiumMermaid?.version === 2",
+            "return window.scholiumMermaid?.version === 3",
             arguments: [:],
             in: nil,
             contentWorld: contentWorld
@@ -41,7 +41,7 @@ enum ScholiumMermaidRuntimeLoader {
                 contentWorld: contentWorld
             )
             let installed = try await webView.callAsyncJavaScript(
-                "return window.scholiumMermaid?.version === 2",
+                "return window.scholiumMermaid?.version === 3",
                 arguments: [:],
                 in: nil,
                 contentWorld: contentWorld

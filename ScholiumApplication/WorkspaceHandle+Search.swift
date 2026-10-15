@@ -584,12 +584,12 @@ extension WorkspaceHandle {
                     utf16UpperBound: 0
                 )
             }
-            if case .opening(let availableSlot) = currentSnapshot.phase,
-                assignment.vault(for: availableSlot)?.id != vaultID
+            if case .opening = currentSnapshot.phase,
+                currentSnapshot.vault(id: vaultID) == nil
             {
                 return SearchQueryDiagnostic(
                     reason: .openingVaultUnavailable,
-                    message: "Only the currently open vault can be searched while this Triptych finishes opening.",
+                    message: "This vault is not available yet while this Triptych finishes opening.",
                     utf16LowerBound: 0,
                     utf16UpperBound: 0
                 )

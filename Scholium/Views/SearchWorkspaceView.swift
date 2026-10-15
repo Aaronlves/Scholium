@@ -1260,7 +1260,7 @@ enum SearchDiagnosticPresentation {
         case .vaultOutsideTriptych:
             ScholiumL10n.string("The selected Search vault is not part of this Triptych.", locale: locale)
         case .openingVaultUnavailable:
-            ScholiumL10n.string("Only the currently open vault can be searched while this Triptych finishes opening.", locale: locale)
+            ScholiumL10n.string("This vault is not available yet while this Triptych finishes opening.", locale: locale)
         case .noteOutsideTriptych:
             ScholiumL10n.string("The selected Search Note is not part of this Triptych.", locale: locale)
         }

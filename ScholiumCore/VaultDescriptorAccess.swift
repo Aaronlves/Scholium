@@ -28,6 +28,8 @@ final class VaultDescriptorAccess {
     private let authorizedRootIdentity: FileIdentity
     private(set) var rootAuthorityIsInvalid = false
 
+    var rootIdentity: FileIdentity { authorizedRootIdentity }
+
     init(rootURL: URL) throws {
         self.rootURL = rootURL.standardizedFileURL
         let descriptor = try Self.openDirectory(rootURL: self.rootURL)
@@ -155,6 +157,14 @@ final class VaultDescriptorAccess {
         try withOpenRegularFile(
             rawValue: path.rawValue, components: path.components.map(String.init), body
         )
+    }
+
+    func withOpenRegularFile<T>(
+        _ path: AttachmentRelativePath,
+        _ body: (Int32, Int32, String, stat) throws -> T
+    ) throws -> T {
+        try withOpenRegularFile(
+            rawValue: path.rawValue, components: path.components.map(String.init), body)
     }
 
     private func withOpenRegularFile<T>(
@@ -393,6 +403,19 @@ final class VaultDescriptorAccess {
                 throw VaultRepositoryError.commitUncertain(
                     "The authorized parent directory changed before commit."
                 )
+            }
+        }
+    }
+
+    func verifyCurrentParent(
+        _ path: AttachmentRelativePath,
+        retainedDescriptor: Int32
+    ) throws {
+        let expected = try Self.identity(descriptor: retainedDescriptor)
+        try withParentDescriptor(rawValue: path.rawValue, components: path.components.map(String.init)) { observedDescriptor, _ in
+            guard try Self.identity(descriptor: observedDescriptor) == expected else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The authorized parent directory changed before commit.")
             }
         }
     }

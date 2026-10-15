@@ -256,8 +256,8 @@ folder disclosure, selection, filtering and refresh do not initiate this transit
 Input remains immediate; another switch interrupts the transition, and Reduce
 Motion replaces content directly. The native navigator retains system feedback.
 
-Live opening may make the selected vault's trustworthy Library usable before
-cross-vault projections are complete. Unavailable workspace rows remain
+Live opening makes each vault's trustworthy Library usable as its source
+preparation completes, independently of Search. Unavailable workspace rows remain
 disabled; one persistent progress status names remaining work. Search follows
 §13's explicit opening grades: current-buffer This Note Search is exact, and
 source-fingerprint-validated This Vault lexical results may remain usable under

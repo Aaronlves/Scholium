@@ -366,7 +366,12 @@ struct FrontendArchitectureTests {
         )
         #expect(webViewSource.contains("var lastModeInput: MarkdownEditorMode"))
         #expect(!webViewSource.contains("var mode: MarkdownEditorMode"))
-        #expect(webViewSource.contains("case .documentChanged(let change):\n                guard surfaceVisibility.isActive"))
+        let changeStart = try #require(webViewSource.range(of: "case .documentChanged(let change):"))
+        let changeSuffix = webViewSource[changeStart.upperBound...]
+        let changeEnd = try #require(changeSuffix.range(of: "case .performanceSample("))
+        let changeBody = changeSuffix[..<changeEnd.lowerBound]
+        #expect(changeBody.contains("surfaceVisibility.isActive"))
+        #expect(changeBody.contains("validEnvelope(change.envelope, allowingFutureGeneration: true)"))
         #expect(webViewSource.contains("case .requestEditorFocus(let envelope):\n                guard surfaceVisibility.isActive"))
         #expect(webViewSource.contains("case .requestImagePaste(let envelope):\n                guard surfaceVisibility.isActive"))
         let readyStart = try #require(webViewSource.range(of: "private func signalReady()"))

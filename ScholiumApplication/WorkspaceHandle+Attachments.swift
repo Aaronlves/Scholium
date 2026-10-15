@@ -578,12 +578,10 @@ extension WorkspaceHandle {
         let repository = try repository(vaultID: target.vaultID)
         let document = try await repository.load(relativePath: target.relativePath)
         guard
-            let identity = try await services.controlStore.identity(
-                forVaultID: target.vaultID,
-                relativePath: target.relativePath,
-                fingerprint: document.fingerprint,
-                createIfMissing: false
-            ), identity.id == target.noteID
+            let identity = try await services.controlStore.identityRecord(
+                vaultID: target.vaultID, relativePath: target.relativePath
+            ), identity.id == target.noteID,
+            identity.fingerprint == document.fingerprint
         else {
             throw DocumentAttachmentError.noteIdentityChanged(target.relativePath)
         }

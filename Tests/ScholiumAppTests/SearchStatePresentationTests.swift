@@ -21,7 +21,7 @@ struct SearchStatePresentationTests {
             Issue.record("Opening scope rejection was presented as a Search failure.")
             return
         }
-        #expect(message.contains("currently open vault"))
+        #expect(message.contains("available libraries"))
         #expect(message.contains("Triptych Search"))
     }
 

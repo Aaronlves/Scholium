@@ -1,6 +1,10 @@
 import Foundation
 import ScholiumContracts
 
+#if DEBUG
+    import WebKit
+#endif
+
 /// Records synthetic-fixture performance boundaries only when an explicit
 /// isolated JSONL destination and one supported metric are supplied. Records
 /// contain timing and count metadata only—never queries, paths, or note text.
@@ -70,6 +74,51 @@ final class PerformanceProbe {
         static let qaMemoryOwnerNotification =
             "com.scholium.qa.performance-memory-owner-snapshot"
         private static let qaMemoryOwnerFilename = "qa-memory-owner-diagnostics.jsonl"
+
+        enum QAReaderFailurePhase: String {
+            case finalization
+            case navigation
+            case provisionalNavigation = "provisional_navigation"
+            case processTerminated = "process_terminated"
+            case presentationUpdate = "presentation_update"
+        }
+
+        enum QASaveStage: String {
+            case nativeKeyMenuResult = "native_key_menu_result"
+            case nativeMenuEntry = "native_menu_entry"
+            case jsSaveAdmission = "js_save_admission"
+            case editorDeltaAdmission = "editor_delta_admission"
+            case controllerRequest = "controller_request"
+            case controllerJoin = "controller_join"
+            case controllerAttempt = "controller_attempt"
+            case controllerSnapshot = "controller_snapshot"
+            case controllerCommitted = "controller_committed"
+            case controllerAcknowledged = "controller_acknowledged"
+            case controllerFailed = "controller_failed"
+        }
+
+        enum QASaveFlag: String {
+            case accepted, composing, dirty, superseded, cancelled, conflict
+            case surfaceActive = "surface_active"
+            case sameTransport = "same_transport"
+            case sameDocument = "same_document"
+            case sameFingerprint = "same_fingerprint"
+            case sameGeneration = "same_generation"
+            case actionsPresent = "actions_present"
+            case selectedDocument = "selected_document"
+            case menuHandled = "menu_handled"
+            case menuEnabled = "menu_enabled"
+            case menuItemFound = "menu_item_found"
+            case activeSave = "active_save"
+            case sourceMatchesCommitted = "source_matches_committed"
+            case externalFlush = "external_flush"
+        }
+
+        enum QASaveCount: String {
+            case generation
+            case messageGeneration = "message_generation"
+            case snapshotGeneration = "snapshot_generation"
+        }
     #endif
 
     private struct Configuration {
@@ -89,6 +138,8 @@ final class PerformanceProbe {
     #if DEBUG
         private let qaMemoryOwnerResultURL: URL?
         private var qaMemoryOwnerSampleCount = 0
+        private var qaReaderFailureCount = 0
+        private var qaSaveStageCount = 0
     #endif
     private var searchStartNanoseconds: UInt64?
     private var searchDispatchNanoseconds: UInt64?
@@ -143,7 +194,8 @@ final class PerformanceProbe {
         var phases: [NoteOpeningPhase: UInt64] = [:]
         var milestones: [NoteOpeningMilestone: UInt64] = [:]
         var work: [NoteOpeningWork: (total: UInt64, maximum: UInt64, count: Int)] = [:]
-        var bridges: [NoteOpeningBridgeOperation: (returned: UInt64, validated: UInt64, count: Int)] = [:]
+        var bridges: [NoteOpeningBridgeOperation: (returned: UInt64, validated: UInt64, count: Int)] =
+            [:]
     }
     private var noteOpening: NoteOpening?
     private var completedNoteOpening: (sample: Int, documentID: String, editorSessionID: UUID)?
@@ -238,7 +290,9 @@ final class PerformanceProbe {
     }
 
     func currentNoteOpeningAttempt(editorSessionID: UUID) -> UUID? {
-        guard measuresNoteOpenToInput, noteOpening?.editorSessionID == editorSessionID else { return nil }
+        guard measuresNoteOpenToInput, noteOpening?.editorSessionID == editorSessionID else {
+            return nil
+        }
         return noteOpening?.id
     }
 
@@ -280,7 +334,9 @@ final class PerformanceProbe {
         let started = now()
         let value = operation()
         let ended = now()
-        if var opening = noteOpening, opening.id == attemptID, started >= opening.started, ended >= started {
+        if var opening = noteOpening, opening.id == attemptID, started >= opening.started,
+            ended >= started
+        {
             let elapsed = ended - started
             let previous = opening.work[work] ?? (total: 0, maximum: 0, count: 0)
             let (total, overflow) = previous.total.addingReportingOverflow(elapsed)
@@ -307,11 +363,14 @@ final class PerformanceProbe {
             if let editorSessionID, opening.editorSessionID != editorSessionID { return }
         }
         let timestamp = now()
-        guard timestamp >= opening.started, timestamp >= (opening.phases.values.max() ?? opening.started) else { return }
+        guard timestamp >= opening.started,
+            timestamp >= (opening.phases.values.max() ?? opening.started)
+        else { return }
         opening.phases[phase] = timestamp
         noteOpening = opening
         guard let visible = opening.phases[.stableVisible], let focused = opening.phases[.focused],
-            let hydrationStarted = opening.phases[.hydrationStarted], let hydrated = opening.phases[.hydrated],
+            let hydrationStarted = opening.phases[.hydrationStarted],
+            let hydrated = opening.phases[.hydrated],
             hydrated >= hydrationStarted, hydrated <= min(visible, focused)
         else { return }
         let completed = max(visible, focused)
@@ -321,12 +380,18 @@ final class PerformanceProbe {
             startNanoseconds: opening.started, observedCount: nil, completedNanoseconds: completed,
             phaseDurations: noteOpeningDurations(opening, completed: completed)
         )
-        if recordedSampleCount > previousCount, let configuration, let sessionID = opening.editorSessionID {
-            completedNoteOpening = (configuration.firstSample + previousCount, opening.documentID, sessionID)
+        if recordedSampleCount > previousCount, let configuration,
+            let sessionID = opening.editorSessionID
+        {
+            completedNoteOpening = (
+                configuration.firstSample + previousCount, opening.documentID, sessionID
+            )
         }
     }
 
-    func markNoteOpeningEditorPhase(_ phase: NoteOpeningPhase, editorSessionID: UUID, attemptID: UUID? = nil) {
+    func markNoteOpeningEditorPhase(
+        _ phase: NoteOpeningPhase, editorSessionID: UUID, attemptID: UUID? = nil
+    ) {
         guard let currentAttempt = currentNoteOpeningAttempt(editorSessionID: editorSessionID),
             attemptID == nil || attemptID == currentAttempt
         else { return }
@@ -342,13 +407,16 @@ final class PerformanceProbe {
         operation: NoteOpeningBridgeOperation, attemptID: UUID, editorSessionID: UUID,
         dispatchNanoseconds: UInt64, returnedNanoseconds: UInt64, validatedNanoseconds: UInt64
     ) {
-        guard var opening = noteOpening, opening.id == attemptID, opening.editorSessionID == editorSessionID,
+        guard var opening = noteOpening, opening.id == attemptID,
+            opening.editorSessionID == editorSessionID,
             dispatchNanoseconds >= opening.started, returnedNanoseconds >= dispatchNanoseconds,
             validatedNanoseconds >= returnedNanoseconds, validatedNanoseconds <= now()
         else { return }
         let existing = opening.bridges[operation] ?? (returned: 0, validated: 0, count: 0)
-        let (returned, returnOverflow) = existing.returned.addingReportingOverflow(returnedNanoseconds - dispatchNanoseconds)
-        let (validated, validationOverflow) = existing.validated.addingReportingOverflow(validatedNanoseconds - returnedNanoseconds)
+        let (returned, returnOverflow) = existing.returned.addingReportingOverflow(
+            returnedNanoseconds - dispatchNanoseconds)
+        let (validated, validationOverflow) = existing.validated.addingReportingOverflow(
+            validatedNanoseconds - returnedNanoseconds)
         guard !returnOverflow, !validationOverflow, returned < 600_000_000_000,
             validated < 600_000_000_000, existing.count < Int.max
         else { return }
@@ -364,22 +432,29 @@ final class PerformanceProbe {
         return completed.sample
     }
 
-    func recordNoteOpeningWebSamples(_ samples: [MarkdownEditorPerformanceSample], documentID: String, sample: Int? = nil) {
+    func recordNoteOpeningWebSamples(
+        _ samples: [MarkdownEditorPerformanceSample], documentID: String, sample: Int? = nil
+    ) {
         guard let configuration, measuresNoteOpenToInput, recordedSampleCount > 0, noteOpening == nil,
             documentID == configuration.expectedDocument, let completed = completedNoteOpening,
             completed.documentID == documentID, sample == nil || sample == completed.sample,
             samples.count <= 256
         else { return }
         let allowedNames: Set<String> = [
-            "startup", "projection", "projection-index", "exact-source-update", "document-load", "bridge-request",
+            "startup", "projection", "projection-index", "exact-source-update", "document-load",
+            "bridge-request",
             "opening-atomic-state", "opening-preparation", "opening-release",
-            "memory-sample", "scroll-session", "mode-toggle", "mode-toggle-work", "cached-preview", "cached-preview-work",
+            "memory-sample", "scroll-session", "mode-toggle", "mode-toggle-work", "cached-preview",
+            "cached-preview-work",
             "input-to-state", "input-to-paint", "key-to-state", "key-to-paint",
         ]
         let allowedObserved: Set<String> = [
-            "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count", "changeCount",
-            "requestBytes", "resultBytes", "styleWorkMilliseconds", "fontsWaitMilliseconds", "projectionWorkMilliseconds",
-            "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount", "widgetWaitMilliseconds",
+            "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count",
+            "changeCount",
+            "requestBytes", "resultBytes", "styleWorkMilliseconds", "fontsWaitMilliseconds",
+            "projectionWorkMilliseconds",
+            "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount",
+            "widgetWaitMilliseconds",
             "widgetWaitCount", "imageWaitMilliseconds", "imageWaitCount", "completed", "expired",
             "selectionScoped", "viewportIncremental", "widgetReuseCount", "usedJSHeapBytes", "frameCount",
             "longestFrameMilliseconds", "droppedFrameCount", "transitionSequence", "composing",
@@ -387,12 +462,17 @@ final class PerformanceProbe {
         ]
         guard
             samples.allSatisfy({ value in
-                allowedNames.contains(value.name) && value.durationMilliseconds.isFinite && value.durationMilliseconds >= 0
-                    && value.observed.allSatisfy { allowedObserved.contains($0.key) && $0.value.isFinite && $0.value >= 0 }
+                allowedNames.contains(value.name) && value.durationMilliseconds.isFinite
+                    && value.durationMilliseconds >= 0
+                    && value.observed.allSatisfy {
+                        allowedObserved.contains($0.key) && $0.value.isFinite && $0.value >= 0
+                    }
             })
         else { return }
-        let destination = configuration.resultURL.deletingPathExtension().appendingPathExtension("web.jsonl")
-        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: destination.path)) == nil else { return }
+        let destination = configuration.resultURL.deletingPathExtension().appendingPathExtension(
+            "web.jsonl")
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: destination.path)) == nil
+        else { return }
         let values: [[String: Any]] = samples.map {
             ["name": $0.name, "duration_ms": $0.durationMilliseconds, "observed": $0.observed]
         }
@@ -408,7 +488,8 @@ final class PerformanceProbe {
     func beginChatEntry(in conversationID: UUID, messageCount: Int) {
         guard measuresChatEntry else { return }
         cancelChatEntry()
-        chatEntry = ChatEntry(conversationID: conversationID, messageCount: messageCount, started: now())
+        chatEntry = ChatEntry(
+            conversationID: conversationID, messageCount: messageCount, started: now())
     }
 
     func chatEntryID(in conversationID: UUID?) -> UUID? {
@@ -489,6 +570,107 @@ final class PerformanceProbe {
                 append(object, to: resultURL)
             else { return }
             qaMemoryOwnerSampleCount += 1
+        }
+
+        /// Reuses the memory-owner probe's verified synthetic QA home. Error
+        /// payloads and document identity never leave their owning renderer.
+        func recordQAReaderFailure(
+            phase: QAReaderFailurePhase, generation: UInt64, error: (any Error)? = nil
+        ) {
+            guard let qaMemoryOwnerResultURL, qaReaderFailureCount < 32,
+                error != nil || phase == .processTerminated
+            else { return }
+            let resultURL = qaMemoryOwnerResultURL.deletingLastPathComponent()
+                .appendingPathComponent("qa-reader-failures.jsonl")
+            var object: [String: Any] = [
+                "schema": "scholium-qa-reader-failures-v1",
+                "sample": qaReaderFailureCount,
+                "completed_uptime_ns": now(),
+                "phase": phase.rawValue,
+                "generation": generation,
+                "category": "process_terminated",
+            ]
+            if let error {
+                let nsError = error as NSError
+                object["error_domain"] = nsError.domain
+                object["error_code"] = nsError.code
+                var category = "error"
+                if error is CancellationError
+                    || nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+                    || nsError.domain == NSCocoaErrorDomain
+                        && nsError.code == CocoaError.Code.userCancelled.rawValue
+                {
+                    category = "cancelled"
+                }
+                if let lifecycleError = error as? ScholiumWindowLifecycleError {
+                    switch lifecycleError {
+                    case .timedOut: category = "deadline"
+                    case .cancelled: category = "cancelled"
+                    default: break
+                    }
+                }
+                object["category"] = category
+                if nsError.domain == WKErrorDomain,
+                    nsError.code == WKError.Code.javaScriptExceptionOccurred.rawValue
+                {
+                    // WebKit's exception message can include authored content.
+                    // Emit only exact app-owned classifications, never text.
+                    let classification: String
+                    switch nsError.userInfo["WKJavaScriptExceptionMessage"] as? String {
+                    case "stale reader preparation", "Error: stale reader preparation":
+                        classification = "stale_reader_preparation"
+                    case "stale presentation update", "Error: stale presentation update":
+                        classification = "stale_presentation_update"
+                    default:
+                        classification = "other"
+                    }
+                    object["javascript_exception"] = classification
+                }
+            }
+            guard
+                (try? FileManager.default.destinationOfSymbolicLink(atPath: resultURL.path)) == nil,
+                append(object, to: resultURL)
+            else { return }
+            qaReaderFailureCount += 1
+        }
+
+        /// Optional, bounded stage evidence inside the existing synthetic QA
+        /// boundary. Closed keys admit no source, paths, titles or error text.
+        func recordQASaveStage(
+            _ stage: QASaveStage, sessionID: UUID? = nil, saveToken: UUID? = nil,
+            flags: @autoclosure () -> [QASaveFlag: Bool] = [:],
+            counts: @autoclosure () -> [QASaveCount: Int] = [:]
+        ) {
+            guard let qaMemoryOwnerResultURL, qaSaveStageCount < 512 else { return }
+            let counts = counts()
+            guard counts.values.allSatisfy({ $0 >= 0 }) else { return }
+            let flags = flags()
+            let resultURL = qaMemoryOwnerResultURL.deletingLastPathComponent()
+                .appendingPathComponent("qa-save-stages.jsonl")
+            var object: [String: Any] = [
+                "schema": "scholium-qa-save-stages-v1",
+                "sample": qaSaveStageCount,
+                "completed_uptime_ns": now(),
+                "stage": stage.rawValue,
+                "flags": Dictionary(uniqueKeysWithValues: flags.map { ($0.key.rawValue, $0.value) }),
+                "counts": Dictionary(uniqueKeysWithValues: counts.map { ($0.key.rawValue, $0.value) }),
+            ]
+            object["session_id"] = sessionID?.uuidString
+            object["save_token"] = saveToken?.uuidString
+            guard (try? FileManager.default.destinationOfSymbolicLink(atPath: resultURL.path)) == nil,
+                let encoded = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+                encoded.count < 2_048
+            else { return }
+            let maximumBytes = 512 * 1_024
+            if FileManager.default.fileExists(atPath: resultURL.path) {
+                guard let attributes = try? FileManager.default.attributesOfItem(atPath: resultURL.path),
+                    attributes[.type] as? FileAttributeType == .typeRegular,
+                    let size = attributes[.size] as? NSNumber,
+                    size.intValue >= 0, size.intValue <= maximumBytes - encoded.count - 1
+                else { return }
+            }
+            guard append(object, to: resultURL) else { return }
+            qaSaveStageCount += 1
         }
     #endif
     var measuresWarmLibraryLaunch: Bool {
@@ -894,7 +1076,8 @@ final class PerformanceProbe {
             let completed = now()
             var phases: [String: Double] = [:]
             if let attached = activation.attachedNanoseconds, attached <= completed {
-                phases["request_to_attached_duration_ms"] = milliseconds(attached - activation.startNanoseconds)
+                phases["request_to_attached_duration_ms"] = milliseconds(
+                    attached - activation.startNanoseconds)
             }
             if let attached = activation.attachedNanoseconds,
                 let ready = activation.rendererReadyNanoseconds, ready <= completed
@@ -1033,7 +1216,8 @@ final class PerformanceProbe {
         for phase in NoteOpeningPhase.allCases.dropLast(2) {
             let timestamp = opening.phases[phase]
             if let previous, let timestamp, timestamp >= previous, timestamp <= completed {
-                durations["\(previousName)_to_\(phase.rawValue)_duration_ms"] = milliseconds(timestamp - previous)
+                durations["\(previousName)_to_\(phase.rawValue)_duration_ms"] = milliseconds(
+                    timestamp - previous)
             }
             previous = timestamp
             previousName = phase.rawValue
@@ -1047,9 +1231,12 @@ final class PerformanceProbe {
             }
         }
         for (operation, bridge) in opening.bridges {
-            durations["\(operation.rawValue)_bridge_dispatch_to_return_duration_ms"] = milliseconds(bridge.returned)
-            durations["\(operation.rawValue)_bridge_return_to_validated_duration_ms"] = milliseconds(bridge.validated)
-            durations["\(operation.rawValue)_bridge_duration_ms"] = milliseconds(bridge.returned) + milliseconds(bridge.validated)
+            durations["\(operation.rawValue)_bridge_dispatch_to_return_duration_ms"] = milliseconds(
+                bridge.returned)
+            durations["\(operation.rawValue)_bridge_return_to_validated_duration_ms"] = milliseconds(
+                bridge.validated)
+            durations["\(operation.rawValue)_bridge_duration_ms"] =
+                milliseconds(bridge.returned) + milliseconds(bridge.validated)
             durations["\(operation.rawValue)_bridge_count"] = Double(bridge.count)
         }
         for (milestone, timestamp) in opening.milestones where timestamp <= completed {

@@ -15,6 +15,29 @@ DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
 QA_PREFERENCES_CAPTURED=0
 
+if [[ "${1:-}" == "stress" ]]; then
+  python3 - "${ROOT}" "${SCHOLIUM_TEST_VAULTS:-}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1]).resolve()
+fixture = Path(sys.argv[2]).resolve()
+if not fixture.is_relative_to(root / '.build'):
+    raise SystemExit('Stress QA requires a generated fixture under repository .build.')
+manifest = json.loads((fixture / 'stress-manifest.json').read_text())
+if manifest.get('synthetic_nonprivate') is not True or manifest.get('counts', {}).get('notes', 0) < 508:
+    raise SystemExit('Stress QA requires the complete synthetic stress scenarios.')
+selection = os.environ.get('SCHOLIUM_STRESS_UI_SCENARIOS')
+if selection is not None:
+    selected = [item.strip() for item in selection.split(',')]
+    supported = {'long_prose', 'dense_links', 'nested_callouts', 'image_gallery', 'format_matrix'}
+    if not selected or len(set(selected)) != len(selected) or not all(item in supported for item in selected):
+        raise SystemExit('SCHOLIUM_STRESS_UI_SCENARIOS requires a nonempty, duplicate-free selection from the five existing stress scenarios.')
+PY
+fi
+
 require_qa_free_space() {
   local available_kb minimum_kb
   available_kb="$(df -Pk "${ROOT}" | awk 'NR == 2 { print $4 }')"
@@ -170,7 +193,7 @@ cp -R "${QA_APP}" "${REGISTERED_QA}"
 # app here would create a second window before launchEnvironment is applied.
 profile="${1:-smoke}"
 case "${profile}" in
-  smoke|complete|focused)
+  smoke|complete|focused|stress)
     shift $(( $# > 0 ? 1 : 0 ))
     ;;
   *)
@@ -208,7 +231,39 @@ common_arguments=(
   -derivedDataPath "${UI_TEST_DERIVED}"
 )
 
-if [[ "${profile}" == "smoke" ]]; then
+if [[ "${profile}" == "stress" ]]; then
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
+  base_run="$(find "${UI_TEST_DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+  [[ -n "${base_run}" ]] || { print -u2 "No stress QA test driver was built."; exit 1; }
+  stress_run="${UI_TEST_DERIVED}/Build/Products/ScholiumStress.xctestrun"
+  python3 - "${base_run}" "${stress_run}" "${SCHOLIUM_STRESS_UI_OUTPUT:-}" <<'PY'
+import os
+import plistlib
+import sys
+from pathlib import Path
+
+source, target, output = sys.argv[1:]
+with open(source, 'rb') as stream:
+    run = plistlib.load(stream)
+environment = run['ScholiumUITests'].setdefault('EnvironmentVariables', {})
+environment['SCHOLIUM_STRESS_UI'] = '1'
+selection = os.environ.get('SCHOLIUM_STRESS_UI_SCENARIOS')
+if selection is None:
+    environment.pop('SCHOLIUM_STRESS_UI_SCENARIOS', None)
+else:
+    environment['SCHOLIUM_STRESS_UI_SCENARIOS'] = selection
+if output:
+    environment['SCHOLIUM_STRESS_UI_OUTPUT'] = output
+with open(target, 'wb') as stream:
+    plistlib.dump(run, stream)
+PY
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+    -xctestrun "${stress_run}" -destination "platform=macOS" \
+    -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+    -derivedDataPath "${UI_TEST_DERIVED}" \
+    -only-testing:ScholiumUITests/ScholiumUITests/testLargeSyntheticVaultDocumentLifecycleStress \
+    "${test_arguments[@]}" test-without-building
+elif [[ "${profile}" == "smoke" ]]; then
   test_arguments=(
     "${critical_ui_tests[1]}"
     "${test_arguments[@]}"

@@ -103,9 +103,10 @@ struct RelatedContentCompactScoringTests {
             document: seed.document, profile: WorkflowProfileResolver.resolve(vaultRole: seed.vaultRole))
         let material = RelatedContentSeedMaterial(projection: seedProjection, focuses: [])
         let projections = candidateItems.map { item in
-            RelatedContentLexicalProjection(
-                projection: .init(
-                    document: item.document, profile: WorkflowProfileResolver.resolve(vaultRole: item.vaultRole)))
+            let search = SearchDocumentProjection(
+                document: item.document, profile: WorkflowProfileResolver.resolve(vaultRole: item.vaultRole))
+            return RelatedContentLexicalProjection(
+                projection: search, scoringDocument: .init(segments: search.segments))
         }
         let evaluation = frozenEvaluation(
             documents: projections.map(\.scoringDocument), terms: material.combinedTerms,

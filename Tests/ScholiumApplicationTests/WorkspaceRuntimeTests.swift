@@ -720,9 +720,7 @@ struct WorkspaceRuntimeTests {
 
         #expect(
             openingEvent.snapshot.phase
-                == .opening(
-                    availableVault: .paperAnalysis
-                ))
+                == .opening)
         // Source work can run concurrently and precede snapshot assembly;
         // aggregate read time is not bounded by the assembly wall clock.
         #expect(openingMeasurement.readFiles > 0)
@@ -842,13 +840,11 @@ struct WorkspaceRuntimeTests {
         try await Task.sleep(for: .milliseconds(500))
         #expect(
             try await handle.snapshot().phase
-                == .opening(
-                    availableVault: .paperAnalysis
-                ))
+                == .opening)
         await handle.openingPresentationDidComplete()
         await activationGate.waitUntilArrived()
         let phaseWhileReconciling = try? await handle.snapshot().phase
-        #expect(phaseWhileReconciling == .opening(availableVault: .paperAnalysis))
+        #expect(phaseWhileReconciling == .opening)
         #expect(await handle.watcherReadinessEvidence == nil)
         await activationGate.release()
         await handle.setProgressiveActivationReconciliationBarrierForTesting(nil)
@@ -916,9 +912,7 @@ struct WorkspaceRuntimeTests {
         )
         #expect(
             try await handle.snapshot().phase
-                == .opening(
-                    availableVault: .paperAnalysis
-                ))
+                == .opening)
 
         var completed = false
         for _ in 0..<150 {

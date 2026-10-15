@@ -386,6 +386,87 @@ struct DocumentDetachedPersistenceTests {
         case ordinary, externalConflict, failedAcknowledgement, failedFrozenAcknowledgement
     }
 
+    @Test("A save joining a completed clean attempt persists the newer exact buffer", arguments: [false, true])
+    func completedSaveDoesNotConsumeNewerSource(flushing: Bool) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/joined-save-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let file = vaults[1].appendingPathComponent("Source.md")
+        let original = "\u{FEFF}Original\r\nResearcher's cafe\u{301} 中文 🦉 without final newline"
+        try Data(original.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Joined save fixture")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let snapshot = try await capabilities.documents.hydrate(summary)
+            let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: try #require(snapshot.stableIdentity.resolvedID))
+            let target = DocumentEditingTarget.workspace(key)
+            let fixture = try await makeEditor(source: original, citationSnapshot: snapshot.document.citationSnapshot)
+            defer { fixture.editor.detach(fixture.webView) }
+            let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
+            let controller = DocumentController()
+            var committed: [NoteDocument] = []
+            controller.bind(to: capabilities.documents, documentDidCommit: { committed.append($0.document) })
+            controller.beginEditing(session: session, target: target, source: original, revision: snapshot.fingerprint, mode: .source)
+            let document = WindowSelectedDocument.workspace(
+                .init(
+                    sessionKey: key,
+                    reference: .init(
+                        vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                        relativePath: "Source.md", stableNoteID: key.noteID.uuidString)))
+            controller.receiveSessionTransfer(
+                .init(document: document, session: session, snapshot: snapshot, mode: .source), selecting: false)
+            defer { session.cancelScheduledWork() }
+            try fixture.insert(" first save")
+            session.suppressAutosave = true
+            try await controller.flushCurrentEditor(session: session, target: target)
+            let first = try #require(committed.last)
+            #expect(try Data(contentsOf: file) == first.sourceBytes)
+
+            // The task has finished, but its owning caller has not yet resumed
+            // to clear this slot. A later Save must not consume that old clean
+            // result as proof that the newer editor generation was persisted.
+            let completed = Task<EditorSaveOutcome, Error> { @MainActor in .clean }
+            _ = try await completed.value
+            let receipt = EditorSaveCommitReceipt()
+            receipt.document = first
+            session.activeSaveTask = completed
+            session.activeSaveToken = UUID()
+            session.activeSaveCommitReceipt = receipt
+            session.isSavingEdit = true
+            try fixture.insert(" later exact input e\u{301} 🦉")
+            session.suppressAutosave = true
+            session.cancelAutosave()
+            let expected = Data(fixture.dispatcher.source.utf8)
+            try #require(session.hasUnsavedChanges)
+            var observedCommits: [NoteDocument] = []
+            if flushing {
+                try await controller.flushForExternalOperation(
+                    session: session, target: target, onCommitted: { observedCommits.append($0) })
+            } else {
+                await controller.persistEditingSource(session: session, target: target)
+            }
+
+            #expect(try Data(contentsOf: file) == expected)
+            #expect(committed.count == 2)
+            #expect(committed.last?.sourceBytes == expected)
+            #expect(!session.hasUnsavedChanges)
+            #expect(session.activeSaveTask == nil && session.activeSaveToken == nil)
+            #expect(session.activeSaveCommitReceipt == nil && !session.isSavingEdit)
+            #expect(session.editError == nil && session.conflict == nil)
+            #expect(observedCommits.map(\.sourceBytes) == (flushing ? [first.sourceBytes, expected] : []))
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
     @Test("A background frozen document saves exact bytes and rebases its reconstruction without a WebView", arguments: SaveScenario.allCases)
     func backgroundSaveAndExternalConflict(scenario: SaveScenario) async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

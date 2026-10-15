@@ -221,8 +221,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         webView.setValue(false, forKey: "drawsBackground")
         coordinator.documentID = documentID
         coordinator.documentTitle = documentTitle
-        coordinator.source = attachmentSource
-        coordinator.startingFingerprint = DocumentFingerprint(content: attachmentSource).sha256
         coordinator.lastModeInput = mode
         coordinator.presentationCSS = presentationCSS
         coordinator.userCSS = userCSS
@@ -254,6 +252,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setWritingIndexContext(writingIndexContextKey)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
+        coordinator.bindSourceActivity(to: webView)
         let openingSessionID = session.sessionID
         PerformanceProbe.shared.bindNoteOpening(
             attemptID: openingMeasurement, documentID: performanceDocumentID, editorSessionID: openingSessionID
@@ -390,10 +389,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.cancelLinkCompletionQuery()
             context.coordinator.cancelDocumentTitleRename()
             context.coordinator.documentID = documentID
-            context.coordinator.source = source
-            context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
             session.loadDocument(source, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
-            session.setLinkPreviews(linkPreviews, in: source)
+            session.setLinkPreviews(linkPreviews, in: session.checkedSource)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         } else if context.coordinator.lastModeInput != mode {
             context.coordinator.writingContinuation.cancel(reason: .mode)
@@ -409,26 +406,29 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         mount.acquisition = nil
         mount.pendingRepresentation = nil
         let webView = mount.container?.webView
-        let canRecycle = coordinator.session.canRecycleWebView
-        if let webView = webView as? WindowAttachedWebView {
+        let ownsWebView = webView?.navigationDelegate === coordinator
+        let ownsSession = ownsWebView && webView != nil && coordinator.session.webView === webView
+        let canRecycle = ownsSession && coordinator.session.canRecycleWebView
+        if ownsWebView, let webView = webView as? WindowAttachedWebView {
             webView.onFirstWindowAttachment = nil
             webView.editorSession = nil
             webView.onPasteImage = nil
             webView.onImagePreview = nil
             webView.onPassageAction = nil
         }
-        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
-        webView?.navigationDelegate = nil
+        if ownsWebView {
+            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
+            webView?.navigationDelegate = nil
+        }
         coordinator.activeWebView = nil
-        coordinator.session.removeCommittedTextSynchronizer()
-        coordinator.session.removeSourceChangeHandler()
-        coordinator.session.removeImageResourceQuery()
+        coordinator.session.removeSourceChangeHandler(owner: coordinator)
+        if ownsSession { coordinator.session.removeImageResourceQuery() }
         coordinator.cancelMermaidRuntimeLoad()
         coordinator.cancelMathRuntimeLoad()
         coordinator.cancelLinkCompletionQuery()
         coordinator.writingContinuation.cancel(reason: .detached)
         coordinator.cancelDocumentTitleRename()
-        guard let webView else { return }
+        guard ownsWebView, let webView else { return }
         coordinator.session.detach(webView)
         if canRecycle {
             coordinator.session.webViewPool?.recycle(webView)
@@ -517,7 +517,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var noteOpeningAttemptID: UUID?
         var noteOpeningSessionID: UUID?
         weak var activeWebView: WKWebView?
-        var source = ""
         /// Diff cache for the last SwiftUI input delivered to the session.
         /// It never supplies initialization or recovery state and never writes
         /// a bridge acknowledgement back into the Document model.
@@ -526,7 +525,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var userCSS = ""
         var linkPreviews: [DocumentLinkPreview] = []
         var awaitingEditorLoad = false
-        var startingFingerprint = ""
         var initialScrollFraction: Double = 0
         var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
@@ -575,13 +573,19 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             super.init()
-            session.installCommittedTextSynchronizer { [weak self] source, fingerprint in
-                guard let self else { return }
-                self.source = source
-                self.startingFingerprint = fingerprint
-            }
-            session.installSourceChangeHandler { [weak self] in
-                guard let self else { return }
+        }
+
+        /// A representable's speculative coordinator owns no session callback.
+        /// Only the page actually attached to this session may report activity.
+        func bindSourceActivity(to webView: WKWebView) {
+            guard session.webView === webView, webView.navigationDelegate === self else { return }
+            activeWebView = webView
+            session.installSourceChangeHandler(owner: self) { [weak self, weak webView] in
+                guard let self, let webView,
+                    self.activeWebView === webView,
+                    self.session.webView === webView,
+                    webView.navigationDelegate === self
+                else { return }
                 self.onDocumentActivity()
             }
         }
@@ -593,7 +597,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "scholium" else { return }
+            guard message.name == "scholium", let webView = message.webView,
+                activeWebView === webView, session.webView === webView,
+                webView.navigationDelegate === self
+            else { return }
             guard let payload = EditorBridgeMessageDecoder.decode(message.body) else { return }
 
             switch payload {
@@ -671,14 +678,31 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     writingContinuation.cancel(reason: .interaction)
                 }
             case .documentChanged(let change):
-                guard surfaceVisibility.isActive,
-                    validEnvelope(change.envelope, allowingFutureGeneration: true)
-                else {
-                    return
-                }
+                #if DEBUG
+                    let baseGeneration = session.generation
+                #endif
                 // queryText can absorb a full snapshot before its queued delta.
                 // A rejected duplicate has no authority over a current request.
-                if applyEditorChanges(change, in: message.webView ?? activeWebView) {
+                let admitted =
+                    surfaceVisibility.isActive
+                    && validEnvelope(change.envelope, allowingFutureGeneration: true)
+                    && applyEditorChanges(change, in: message.webView ?? activeWebView)
+                #if DEBUG
+                    PerformanceProbe.shared.recordQASaveStage(
+                        .editorDeltaAdmission, sessionID: session.sessionID,
+                        flags: [
+                            .accepted: admitted, .surfaceActive: surfaceVisibility.isActive,
+                            .sameTransport: change.envelope.sessionID == session.sessionID.uuidString,
+                            .sameDocument: change.envelope.documentID == session.documentID,
+                            .sameFingerprint: change.envelope.startingFingerprint == session.startingFingerprint,
+                            .sameGeneration: change.baseGeneration == baseGeneration
+                                && change.resultingGeneration == change.envelope.documentVersion,
+                            .dirty: session.isDirty,
+                        ],
+                        counts: [.generation: baseGeneration, .messageGeneration: change.envelope.documentVersion]
+                    )
+                #endif
+                if admitted {
                     writingContinuation.cancel(reason: .source)
                     cancelWritingTermQuery()
                 }
@@ -702,7 +726,22 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     return
                 }
             case .requestSave(let envelope):
-                guard surfaceVisibility.isActive, validEnvelope(envelope) else { return }
+                let admitted = surfaceVisibility.isActive && validEnvelope(envelope)
+                #if DEBUG
+                    PerformanceProbe.shared.recordQASaveStage(
+                        .jsSaveAdmission, sessionID: session.sessionID,
+                        flags: [
+                            .accepted: admitted, .surfaceActive: surfaceVisibility.isActive,
+                            .sameTransport: envelope.sessionID == session.sessionID.uuidString,
+                            .sameDocument: envelope.documentID == session.documentID,
+                            .sameFingerprint: envelope.startingFingerprint == session.startingFingerprint,
+                            .sameGeneration: envelope.documentVersion == session.generation,
+                            .dirty: session.isDirty, .composing: session.isComposing,
+                        ],
+                        counts: [.generation: session.generation, .messageGeneration: envelope.documentVersion]
+                    )
+                #endif
+                guard admitted else { return }
                 onRequestSave()
             case .requestEditorFocus(let envelope):
                 guard surfaceVisibility.isActive,
@@ -823,7 +862,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard surfaceVisibility.isActive, validEnvelope(request.envelope) else { return }
                 let requestID = request.requestID
                 let requestedDocumentID = documentID
-                let requestedFingerprint = startingFingerprint
+                let requestedFingerprint = session.startingFingerprint
                 let requestedVersion = session.generation
                 startLinkCompletionQuery(
                     requestID: requestID, kind: request.completionKind, query: request.query,
@@ -831,7 +870,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         guard let self, let webView else { return false }
                         return self.surfaceVisibility.isActive
                             && requestedDocumentID == self.documentID
-                            && requestedFingerprint == self.startingFingerprint
+                            && requestedFingerprint == self.session.startingFingerprint
                             && requestedVersion == self.session.generation
                             && webView.navigationDelegate === self
                     },
@@ -1215,7 +1254,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.editorBecameReady()
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)
-            session.setLinkPreviews(linkPreviews, in: source)
+            session.setLinkPreviews(linkPreviews, in: session.checkedSource)
             session.setScrollPosition(
                 anchor: session.retainedScrollAnchor ?? initialScrollAnchor,
                 fallbackFraction: session.retainedScrollFraction(
@@ -1247,8 +1286,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         ) -> Bool {
             guard envelope.protocolVersion == markdownEditorProtocolVersion,
                 envelope.sessionID == session.sessionID.uuidString,
-                envelope.documentID == documentID,
-                envelope.startingFingerprint == startingFingerprint
+                envelope.documentID == session.documentID,
+                envelope.startingFingerprint == session.startingFingerprint,
+                activeWebView != nil, activeWebView === session.webView
             else { return false }
             return allowingFutureGeneration
                 ? envelope.documentVersion >= session.generation

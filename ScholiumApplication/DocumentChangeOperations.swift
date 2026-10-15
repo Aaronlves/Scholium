@@ -53,6 +53,13 @@ public actor DocumentChangeOperations: DocumentChangeUseCases {
 }
 
 extension WorkspaceHandle {
+    private struct OpeningReviewBaseline {
+        let noteID: UUID
+        let vaultID: UUID
+        let source: Data?
+        let receiptVersions: [DocumentReviewStore.ReceiptVersion]
+    }
+
     private func documentReviewStore() throws -> DocumentReviewStore {
         try requireActive()
         if let documentReviewIssue {
@@ -79,40 +86,75 @@ extension WorkspaceHandle {
                 openingReviewCandidates[noteID] = note
             }
         }
-        for (noteID, note) in openingReviewCandidates.sorted(by: {
-            $0.key.uuidString < $1.key.uuidString
-        }) {
-            do {
+        do {
+            var inventory: TriptychIdentityInventorySnapshot?
+            var batch: [OpeningReviewBaseline] = []
+            var sourceByteCount = 0
+            for (noteID, note) in openingReviewCandidates.sorted(by: {
+                $0.key.uuidString < $1.key.uuidString
+            }) {
+                try Task.checkCancellation()
                 if try await store.baseline(noteID: noteID, vaultID: note.id.vaultID) != nil {
                     continue
                 }
+                if inventory == nil {
+                    inventory = try await services.controlStore.identityInventorySnapshot()
+                }
+                guard let inventory else { continue }
+                // A source can grow before its descriptor read. Reserve the
+                // complete admitted Note size before loading the next one.
+                if batch.count == 32
+                    || sourceByteCount > VaultSourceReadLimits.maximumInFlightSourceByteCount - VaultSourceReadLimits.maximumNoteByteCount
+                {
+                    try await initializeOpeningReviewBatch(batch, inventory: inventory, store: store)
+                    batch.removeAll(keepingCapacity: true)
+                    sourceByteCount = 0
+                }
                 let source: Data?
-                if let loaded = try? await repository(vaultID: note.id.vaultID)
-                    .load(relativePath: note.id.relativePath),
-                    loaded.fingerprint == note.fingerprint,
-                    let identity = try? await services.controlStore.identityRecord(
-                        vaultID: note.id.vaultID,
-                        relativePath: note.id.relativePath
-                    ), identity.id == noteID,
-                    identity.fingerprint == note.fingerprint
+                if let identity = inventory.recordsByID[noteID],
+                    identity.vaultID == note.id.vaultID,
+                    identity.relativePath == note.id.relativePath,
+                    identity.fingerprint == note.fingerprint,
+                    let loaded = try? await repository(vaultID: note.id.vaultID)
+                        .load(relativePath: note.id.relativePath),
+                    loaded.fingerprint == note.fingerprint
                 {
                     source = loaded.sourceBytes
                 } else {
                     source = nil
                 }
-                try await store.initializeExisting(
-                    noteID: noteID, vaultID: note.id.vaultID, source: source,
-                    receiptVersions: Self.receiptVersions(
-                        for: noteID, in: receipts
-                    )
-                )
-            } catch {
-                documentReviewIssue = error.localizedDescription
-                return
+                sourceByteCount += source?.count ?? 0
+                batch.append(
+                    OpeningReviewBaseline(
+                        noteID: noteID, vaultID: note.id.vaultID, source: source,
+                        receiptVersions: Self.receiptVersions(for: noteID, in: receipts)))
             }
+            if let inventory, !batch.isEmpty {
+                try await initializeOpeningReviewBatch(batch, inventory: inventory, store: store)
+            }
+        } catch {
+            documentReviewIssue = error.localizedDescription
+            return
         }
         documentReviewIssue = nil
         openingReviewCandidates = [:]
+    }
+
+    private func initializeOpeningReviewBatch(
+        _ batch: [OpeningReviewBaseline], inventory: TriptychIdentityInventorySnapshot,
+        store: DocumentReviewStore
+    ) async throws {
+        for baseline in batch {
+            try Task.checkCancellation()
+            // Preserve the original per-Note admission boundary. The source
+            // lease excludes this Workspace's writers; external participants
+            // still require a fresh opened-file revision check before each
+            // independent review-store commit.
+            try await services.controlStore.validateIdentityInventory(inventory)
+            try await store.initializeExisting(
+                noteID: baseline.noteID, vaultID: baseline.vaultID, source: baseline.source,
+                receiptVersions: baseline.receiptVersions)
+        }
     }
 
     private nonisolated static func receiptVersions(

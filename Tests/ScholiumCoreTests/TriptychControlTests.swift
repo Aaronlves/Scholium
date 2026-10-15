@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 import Testing
@@ -6,6 +7,176 @@ import Testing
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
+
+    @Test("An operation-local identity inventory shares one decode and rejects a changed portable revision")
+    func boundedIdentityInventory() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        let fingerprint = DocumentFingerprint(content: "\u{FEFF}# Cafe\u{301}\r\nExact source")
+        let expected = try await store.reconcileIdentityInventory(
+            vaultID: vaultID,
+            documents: (0..<96).map { ("Source \($0).md", fingerprint) })
+        #if DEBUG
+            let before = await store.identitySnapshotDecodeCountForTesting
+        #endif
+        let inventory = try await store.identityInventorySnapshot()
+        for record in expected.identities.values {
+            #expect(inventory.recordsByID[record.id] == record)
+            try await store.validateIdentityInventory(inventory)
+        }
+        #if DEBUG
+            #expect(await store.identitySnapshotDecodeCountForTesting == before + 1)
+            #expect(await store.identityInventoryValidationCountForTesting == expected.identities.count)
+            #expect(await store.identityInventorySourceReadCountForTesting == 1)
+        #endif
+
+        let changed = try #require(expected.identities["Source 0.md"])
+        _ = try await store.identity(
+            forVaultID: vaultID, relativePath: changed.relativePath,
+            fingerprint: DocumentFingerprint(content: "Different exact bytes"))
+        await #expect {
+            try await store.validateIdentityInventory(inventory)
+        } throws: { error in
+            guard case TriptychControlError.identitiesRevisionConflict = error else { return false }
+            return true
+        }
+        #expect(inventory.recordsByID[changed.id] == changed)
+        let current = try await store.identityInventorySnapshot()
+        #expect(current.recordsByID[changed.id]?.fingerprint != changed.fingerprint)
+
+        let identitiesURL = fixture.root.appendingPathComponent(".scholium/identities.json")
+        try Data("{malformed".utf8).write(to: identitiesURL, options: .atomic)
+        await #expect {
+            try await store.validateIdentityInventory(current)
+        } throws: { error in
+            guard case TriptychControlError.identitiesRevisionConflict = error else { return false }
+            return true
+        }
+        await #expect {
+            _ = try await store.identityInventorySnapshot()
+        } throws: { error in
+            guard case TriptychControlError.invalidIdentities = error else { return false }
+            return true
+        }
+    }
+
+    @Test(
+        "An identity inventory rejects changed file versions, substituted roots and linked leaves",
+        arguments: ["atomic_same_bytes", "same_length_restored_mtime", "truncated", "missing", "directory", "leaf_symlink", "root_symlink", "root_replaced"])
+    func identityInventoryFileVersionRejection(change: String) async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.bootstrap(vaultIDs: Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }))
+        let controlURL = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+        let identitiesURL = controlURL.appendingPathComponent("identities.json")
+        let original = try Data(contentsOf: identitiesURL)
+        let inventory = try await store.identityInventorySnapshot()
+        try await store.validateIdentityInventory(inventory)
+        switch change {
+        case "atomic_same_bytes":
+            try original.write(to: identitiesURL, options: .atomic)
+        case "same_length_restored_mtime":
+            try Self.overwriteInPlaceRestoringModificationTime(identitiesURL)
+        case "truncated":
+            let file = try FileHandle(forWritingTo: identitiesURL)
+            defer { try? file.close() }
+            try file.truncate(atOffset: 0)
+        case "missing":
+            try FileManager.default.moveItem(at: identitiesURL, to: controlURL.appendingPathComponent("identities-moved.json"))
+        case "directory":
+            try FileManager.default.removeItem(at: identitiesURL)
+            try FileManager.default.createDirectory(at: identitiesURL, withIntermediateDirectories: false)
+        case "leaf_symlink":
+            let outside = fixture.root.appendingPathComponent("outside-identities.json")
+            try original.write(to: outside)
+            try FileManager.default.removeItem(at: identitiesURL)
+            try FileManager.default.createSymbolicLink(at: identitiesURL, withDestinationURL: outside)
+        case "root_symlink", "root_replaced":
+            let moved = fixture.root.appendingPathComponent("Original Control", isDirectory: true)
+            try FileManager.default.moveItem(at: controlURL, to: moved)
+            if change == "root_symlink" {
+                try FileManager.default.createSymbolicLink(at: controlURL, withDestinationURL: moved)
+            } else {
+                try FileManager.default.copyItem(at: moved, to: controlURL)
+            }
+        default: Issue.record("Unknown identity file change")
+        }
+        await #expect {
+            try await store.validateIdentityInventory(inventory)
+        } throws: { error in
+            guard case TriptychControlError.identitiesRevisionConflict = error else { return false }
+            return true
+        }
+        #if DEBUG
+            #expect(await store.identityInventorySourceReadCountForTesting == 1)
+        #endif
+        if change == "atomic_same_bytes" || change == "root_replaced" {
+            let current = try await store.identityInventorySnapshot()
+            try await store.validateIdentityInventory(current)
+            #expect(try Data(contentsOf: identitiesURL) == original)
+        }
+        if change == "leaf_symlink" {
+            #expect(try Data(contentsOf: fixture.root.appendingPathComponent("outside-identities.json")) == original)
+        }
+        if change == "root_symlink" || change == "root_replaced" {
+            #expect(try Data(contentsOf: fixture.root.appendingPathComponent("Original Control/identities.json")) == original)
+        }
+    }
+
+    #if DEBUG
+        @Test(
+            "Identity inventory capture rejects modification between its exact read and version admission",
+            arguments: ["same_length_restored_mtime", "leaf_replaced", "root_replaced"])
+        func identityInventoryCaptureRace(change: String) async throws {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            let store = TriptychControlStore(worksVaultURL: fixture.works)
+            _ = try await store.bootstrap(vaultIDs: Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }))
+            let identitiesURL = fixture.root.appendingPathComponent(".scholium/identities.json")
+            let controlURL = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+            let movedURL = fixture.root.appendingPathComponent("Original Control", isDirectory: true)
+            let original = try Data(contentsOf: identitiesURL)
+            let decodesBeforeRead = await store.identitySnapshotDecodeCountForTesting
+            await store.setIdentityInventoryReadHookForTesting {
+                if change == "same_length_restored_mtime" {
+                    try Self.overwriteInPlaceRestoringModificationTime(identitiesURL)
+                } else if change == "leaf_replaced" {
+                    try original.write(to: identitiesURL, options: .atomic)
+                } else {
+                    try FileManager.default.moveItem(at: controlURL, to: movedURL)
+                    try FileManager.default.copyItem(at: movedURL, to: controlURL)
+                }
+            }
+            await #expect(throws: (any Error).self) {
+                _ = try await store.identityInventorySnapshot()
+            }
+            #expect(await store.identitySnapshotDecodeCountForTesting == decodesBeforeRead)
+            await store.setIdentityInventoryReadHookForTesting(nil)
+        }
+    #endif
+
+    private static func overwriteInPlaceRestoringModificationTime(_ url: URL) throws {
+        let descriptor = open(url.path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC)
+        try #require(descriptor >= 0)
+        defer { close(descriptor) }
+        var before = stat()
+        try #require(fstat(descriptor, &before) == 0)
+        var byte: UInt8 = 0x5B
+        try #require(pwrite(descriptor, &byte, 1, 0) == 1)
+        try #require(fsync(descriptor) == 0)
+        let times = [before.st_atimespec, before.st_mtimespec]
+        try #require(times.withUnsafeBufferPointer { futimens(descriptor, $0.baseAddress) } == 0)
+        var after = stat()
+        try #require(fstat(descriptor, &after) == 0)
+        #expect(after.st_ino == before.st_ino && after.st_size == before.st_size)
+        #expect(after.st_mtimespec.tv_sec == before.st_mtimespec.tv_sec && after.st_mtimespec.tv_nsec == before.st_mtimespec.tv_nsec)
+        #expect(after.st_ctimespec.tv_sec != before.st_ctimespec.tv_sec || after.st_ctimespec.tv_nsec != before.st_ctimespec.tv_nsec)
+    }
 
     @Test("Identity reconciliation returns the exact committed records for creation and revision changes")
     func reconciliationReturnsCommittedIdentities() async throws {

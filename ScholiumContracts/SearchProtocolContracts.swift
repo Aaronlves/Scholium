@@ -6,7 +6,7 @@ import Foundation
 public enum SearchContract {
     public static let maximumNoteResults = 500
     public static let currentVersion = 20
-    public static let schemaVersion = 25
+    public static let schemaVersion = 26
     public static let tokenizerPolicyVersion = 3
     public static let rankingPolicyVersion = 6
     public static let maximumInterfaceResults = 100

@@ -10,6 +10,86 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("An unmounted coordinator cannot steal a mounted editor's commit, Undo or Save callbacks", arguments: [false, true])
+    func speculativeCoordinatorPreservesMountedSaveOwnership(dismantlesSpeculative: Bool) async throws {
+        let source = "\u{FEFF}# Synthetic\r\n\r\nOriginal e\u{301} 中文 🦉 without final newline"
+        let replacement = source.replacingOccurrences(of: "Original", with: "Replacement")
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let mountedWebView = try #require(harness.session.webView)
+        let mounted = try #require(mountedWebView.navigationDelegate as? MarkdownEditorWebView.Coordinator)
+        let originalFingerprint = harness.session.startingFingerprint
+        var speculativeActivity = 0
+        let speculative = MarkdownEditorWebView.Coordinator(
+            session: harness.session, performanceDocumentID: harness.documentID,
+            onDocumentActivity: { speculativeActivity += 1 }, onRequestSave: {}, onRequestFind: { _ in },
+            onRequestDocumentTitleRename: { _, requested in requested },
+            linkCompletionQuery: { _, _ in .current([]) }, onLinkActivation: { _ in },
+            onImagePreview: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in }
+        )
+        speculative.bindSourceActivity(to: mountedWebView)
+        if dismantlesSpeculative {
+            MarkdownEditorWebView.dismantleNSView(MarkdownEditorMountView(), coordinator: speculative)
+        }
+        _ = try await harness.session.performDocumentFind(
+            DocumentFindQuery(
+                query: "Original", replacement: "Replacement", caseSensitive: true,
+                wholeWord: false, action: .replaceAll))
+        #expect(harness.session.checkedSource.utf8.elementsEqual(replacement.utf8))
+        let acknowledgement = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: replacement, committedText: replacement,
+            fingerprint: DocumentFingerprint(content: replacement), documentID: harness.documentID)
+        #expect(acknowledgement == .clean)
+        #expect(harness.session.startingFingerprint != originalFingerprint)
+        #expect(mountedWebView.navigationDelegate === mounted)
+        let activitiesBeforeUndo = harness.documentActivityCount
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 's', code: 'KeyS', metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while harness.requestSaveCount == 0 || !harness.session.checkedSource.utf8.elementsEqual(source.utf8),
+            ContinuousClock.now < deadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        // No full-buffer query may repair the checked mirror before these
+        // assertions: they prove real delta and Save message admission.
+        #expect(harness.session.checkedSource.utf8.elementsEqual(source.utf8))
+        #expect(harness.session.isDirty)
+        #expect(harness.documentActivityCount > activitiesBeforeUndo)
+        #expect(harness.requestSaveCount == 1)
+        #expect(speculativeActivity == 0)
+        #expect(harness.session.webView === mountedWebView)
+        // Advancing the authoritative fingerprint must not weaken rejection of
+        // the old preimage, another transport, or a future Save generation.
+        let envelope: [String: Any] = [
+            "type": "requestSave", "protocolVersion": markdownEditorProtocolVersion,
+            "sessionID": harness.session.sessionID.uuidString, "documentID": harness.documentID,
+            "startingFingerprint": harness.session.startingFingerprint,
+            "documentVersion": harness.session.generation,
+        ]
+        var stalePreimage = envelope
+        stalePreimage["startingFingerprint"] = originalFingerprint
+        var foreignSession = envelope
+        foreignSession["sessionID"] = UUID().uuidString
+        var futureGeneration = envelope
+        futureGeneration["documentVersion"] = harness.session.generation + 1
+        _ = try await harness.callPageJavaScript(
+            "for (const message of messages) window.webkit.messageHandlers.scholium.postMessage(message);",
+            arguments: ["messages": [stalePreimage, foreignSession, futureGeneration, envelope]])
+        let messageDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while harness.requestSaveCount < 2, ContinuousClock.now < messageDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(harness.requestSaveCount == 2)
+        #expect(harness.session.checkedSource.utf8.elementsEqual(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Inline Code can unwrap a complete parsed span while partial literal selections remain protected")
     func inlineCodeCommandRespectsParsedSelection() async throws {
         let source = "Lead `` a`b `` after.\r\n"
@@ -3675,7 +3755,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(25))
             inactive = try await snapshot()
         }
-        #expect(inactive["runtime"] as? Int == 2)
+        #expect(inactive["runtime"] as? Int == 3)
         #expect(inactive["widgets"] as? Int == 1)
         #expect(inactive["sourceLines"] as? Int == 0)
 
@@ -9659,6 +9739,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         var latestScrollAnchor: EditorScrollAnchor? { sourceBox.scrollAnchor }
         var activatedLinks: [String] { sourceBox.activatedLinks }
         var previewedImages: [String] { sourceBox.previewedImages }
+        var documentActivityCount: Int { sourceBox.documentActivityCount }
+        var requestSaveCount: Int { sourceBox.requestSaveCount }
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var isClosed = false
@@ -10695,6 +10777,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
         var activatedLinks: [String] = []
         var previewedImages: [String] = []
+        var documentActivityCount = 0
+        var requestSaveCount = 0
         let mode: MarkdownEditorMode
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
             self.source = source
@@ -10784,8 +10868,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 linkPreviews: linkPreviews,
                 initialScrollFraction: 0,
                 initialScrollAnchor: sourceBox.scrollAnchor,
-                onDocumentActivity: {},
-                onRequestSave: {},
+                onDocumentActivity: { sourceBox.documentActivityCount += 1 },
+                onRequestSave: { sourceBox.requestSaveCount += 1 },
                 onRequestFind: { _ in },
                 onRequestDocumentTitleRename: onTitleRename,
                 onPasteImage: { _ in false },

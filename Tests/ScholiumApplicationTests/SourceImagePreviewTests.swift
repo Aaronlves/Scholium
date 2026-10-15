@@ -7,8 +7,37 @@ import Testing
 @Suite("Source image Quick Look preparation")
 struct SourceImagePreviewTests {
     private static let png = Data(
-        base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )!
+
+    @Test(
+        "Source image preview rejects an unobserved source revision without rewriting portable identity"
+    )
+    func attachmentReadsPreserveIdentityAuthority() async throws {
+        try await withFixture { fixture, handle, target in
+            let lease = try await handle.beginSourceMutation()
+            do {
+                let identitiesURL = fixture.rootURL.appendingPathComponent(".scholium/identities.json")
+                let originalIdentityBytes = try Data(contentsOf: identitiesURL)
+                let sourceURL = fixture.analysesURL.appendingPathComponent(target.relativePath)
+                let changed = Data(
+                    "\u{FEFF}# External revision\r\n\r\n中文 e\u{301} 🧭 without final newline".utf8)
+                try changed.write(to: sourceURL)
+                try Self.png.write(to: fixture.analysesURL.appendingPathComponent("Figure.png"))
+                await #expect(throws: DocumentAttachmentError.self) {
+                    _ = try await handle.documents.prepareSourceImagePreview(
+                        destination: "Figure.png", source: "![Figure](Figure.png)", for: target)
+                }
+                #expect(try Data(contentsOf: identitiesURL) == originalIdentityBytes)
+                #expect(try Data(contentsOf: sourceURL) == changed)
+            } catch {
+                await handle.endSourceMutation(lease)
+                throw error
+            }
+            await handle.endSourceMutation(lease)
+        }
+    }
 
     @Test("Unsaved images retain exact source, extensionless paths and one-pass destination decoding")
     func unsavedSourceImages() async throws {
@@ -41,7 +70,8 @@ struct SourceImagePreviewTests {
     func rejectsUnauthoredAndUnavailableImages() async throws {
         try await withFixture { fixture, handle, target in
             try Self.png.write(to: fixture.analysesURL.appendingPathComponent("Figure.png"))
-            try Data("not an image".utf8).write(to: fixture.analysesURL.appendingPathComponent("Invalid.png"))
+            try Data("not an image".utf8).write(
+                to: fixture.analysesURL.appendingPathComponent("Invalid.png"))
             let outside = fixture.rootURL.appendingPathComponent("Outside.png")
             try Self.png.write(to: outside)
             try FileManager.default.createSymbolicLink(
@@ -72,25 +102,29 @@ struct SourceImagePreviewTests {
             await #expect(throws: (any Error).self) {
                 _ = try await handle.documents.prepareSourceImagePreview(
                     destination: "Figure.png",
-                    source: "![Figure](Figure.png)" + String(repeating: "x", count: VaultSourceReadLimits.maximumNoteByteCount),
+                    source: "![Figure](Figure.png)"
+                        + String(repeating: "x", count: VaultSourceReadLimits.maximumNoteByteCount),
                     for: target
                 )
             }
             await #expect(throws: DocumentAttachmentError.self) {
                 _ = try await handle.documents.prepareSourceImagePreview(
                     destination: "Figure.png", source: "![Figure](Figure.png)",
-                    for: SourceAttachmentTarget(noteID: UUID(), vaultID: target.vaultID, relativePath: target.relativePath)
+                    for: SourceAttachmentTarget(
+                        noteID: UUID(), vaultID: target.vaultID, relativePath: target.relativePath)
                 )
             }
         }
     }
 
-    @Test("Indexed originals use releasable leases and cancelled or invalid preparation cannot succeed")
+    @Test(
+        "Indexed originals use releasable leases and cancelled or invalid preparation cannot succeed")
     func indexedImageLease() async throws {
         try await withFixture { fixture, handle, target in
             let original = fixture.rootURL.appendingPathComponent("Indexed.png")
             try Self.png.write(to: original)
-            let prepared = try await handle.documents.indexImageAttachment(at: original, for: fixture.analysisNoteID)
+            let prepared = try await handle.documents.indexImageAttachment(
+                at: original, for: fixture.analysisNoteID)
             let destination = prepared.markdownDestination
             let source = "![Indexed](\(destination))"
             let first = try await handle.documents.prepareSourceImagePreview(
@@ -126,7 +160,8 @@ struct SourceImagePreviewTests {
                 destination: destination, source: source, for: target
             )
             await handle.documents.releaseDocumentAttachmentPreview(accessToken: restored.accessToken)
-            try FileManager.default.moveItem(at: original, to: original.deletingLastPathComponent().appendingPathComponent("Moved.png"))
+            try FileManager.default.moveItem(
+                at: original, to: original.deletingLastPathComponent().appendingPathComponent("Moved.png"))
             await #expect(throws: (any Error).self) {
                 _ = try await handle.documents.prepareSourceImagePreview(
                     destination: destination, source: source, for: target
@@ -141,7 +176,8 @@ struct SourceImagePreviewTests {
         let repositoryRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let fixture = try await ApplicationFixture.make(
-            rootURL: repositoryRoot.appendingPathComponent(".build/source-image-preview-tests/\(UUID().uuidString)")
+            rootURL: repositoryRoot.appendingPathComponent(
+                ".build/source-image-preview-tests/\(UUID().uuidString)")
         )
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(

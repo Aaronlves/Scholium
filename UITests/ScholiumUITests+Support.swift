@@ -320,6 +320,11 @@ extension ScholiumUITests {
         // fixture registration when a journey needs a clean account.
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] =
             usesFixtureWorkspace ? triptychDirectory.path : ""
+        if isLargeSyntheticVaultStressTest {
+            // Enable the existing bounded owner probe on the first cold
+            // launch, without cancelling indexing to relaunch in the body.
+            application.launchEnvironment["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = "1"
+        }
         if name.contains("testRestoreAccess") {
             application.launchEnvironment[
                 "SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"
@@ -722,22 +727,23 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func selectDocumentMode(_ title: String, in root: XCUIElement? = nil) {
+    func selectDocumentMode(
+        _ title: String, in root: XCUIElement? = nil, timeout: TimeInterval = 10
+    ) {
         let stableRoot = root.map(stableWorkspaceWindow)
         if let stableRoot { focusWorkspaceWindow(stableRoot) }
-        let mode = documentModeControl(in: stableRoot)
-        XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        if documentModeState(mode) == title { return }
+        XCTAssertTrue(documentModeControl(in: stableRoot).waitForExistence(timeout: timeout))
+        if documentModeState(documentModeControl(in: stableRoot)) == title { return }
 
         switch title {
         case "Review":
             app.typeKey("r", modifierFlags: [.command])
         case "Edit":
-            if documentModeState(mode) == "Source" {
+            if documentModeState(documentModeControl(in: stableRoot)) == "Source" {
                 app.typeKey("r", modifierFlags: [.command])
                 XCTAssertTrue(
-                    waitUntil(timeout: 8) {
-                        self.documentModeState(mode) == "Review"
+                    waitUntil(timeout: timeout) {
+                        self.documentModeState(self.documentModeControl(in: stableRoot)) == "Review"
                     })
             }
             app.typeKey("r", modifierFlags: [.command])
@@ -755,8 +761,13 @@ extension ScholiumUITests {
             return
         }
 
+        // Mode transitions can replace their toolbar accessibility element.
+        // Resolve the current control for every observation, not a button
+        // already bound while the previous mode was still installed.
         XCTAssertTrue(
-            waitUntil(timeout: 10) { self.documentModeState(mode) == title },
+            waitUntil(timeout: timeout) {
+                self.documentModeState(self.documentModeControl(in: stableRoot)) == title
+            },
             "The Document mode did not become \(title)."
         )
     }

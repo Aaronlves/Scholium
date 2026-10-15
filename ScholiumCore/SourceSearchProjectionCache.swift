@@ -5,7 +5,7 @@ import ScholiumContracts
 /// Disposable machine-local Search text and coordinates. A caller must load
 /// the source afresh; this store neither loads Notes nor authorizes their use.
 public struct SourceSearchProjectionCache: Sendable {
-    // Bounded per Note, including binary offset maps. Oversize records are misses.
+    // Both the stored record and decoded payload are bounded per Note.
     static let maximumRecordByteCount = 32 * 1_024 * 1_024
 
     struct Policy: Codable, Equatable {
@@ -19,7 +19,7 @@ public struct SourceSearchProjectionCache: Sendable {
         let rankingVersion: Int
 
         static let current = Policy(
-            formatVersion: 1, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
+            formatVersion: 2, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
     }
@@ -46,19 +46,20 @@ public struct SourceSearchProjectionCache: Sendable {
             trustedRootURL: applicationSupportURL,
             components: ["Vaults", vaultID.uuidString, "source-projections-v1"],
             directoryMode: 0o700, fileMode: 0o600,
-            maximumByteCount: Self.maximumRecordByteCount)
+            maximumByteCount: Self.maximumRecordByteCount, fileExtensions: [.json, .plist])
     }
 
     public func load(for document: NoteDocument) -> SearchDocumentProjection? {
         do {
             guard let bytes = try storage.readIfPresent(directory: nil, fileName: Self.fileName(document.relativePath)) else { return nil }
-            let frame = try JSONDecoder().decode(Frame.self, from: bytes)
+            let frame = try PropertyListDecoder().decode(Frame.self, from: bytes)
             guard frame.policy == .current, frame.vaultID == vaultID, frame.role == role,
                 frame.profile == WorkflowProfileResolver.resolve(vaultRole: role),
                 frame.relativePathUTF8 == Data(document.relativePath.utf8), frame.fingerprint == document.fingerprint,
                 frame.payloadDigest == Self.digest(frame.payload)
             else { return nil }
-            let stored = try PropertyListDecoder().decode(StoredProjection.self, from: frame.payload)
+            let payload = try SearchProjectionBlobCodec.decode(frame.payload, maximumDecodedByteCount: Self.maximumRecordByteCount)
+            let stored = try PropertyListDecoder().decode(StoredProjection.self, from: payload)
             let projection = try stored.projection()
             guard Self.valid(projection, document: document) else { return nil }
             return projection
@@ -78,12 +79,14 @@ public struct SourceSearchProjectionCache: Sendable {
         do {
             let encoder = PropertyListEncoder()
             encoder.outputFormat = .binary
-            let payload = try encoder.encode(StoredProjection(projection))
+            let material = try encoder.encode(StoredProjection(projection))
+            guard material.count <= Self.maximumRecordByteCount else { return }
+            let payload = try SearchProjectionBlobCodec.encode(material)
             let frame = Frame(
                 policy: .current, vaultID: vaultID, role: role, profile: WorkflowProfileResolver.resolve(vaultRole: role),
                 relativePathUTF8: Data(document.relativePath.utf8), fingerprint: document.fingerprint,
                 payloadDigest: Self.digest(payload), payload: payload)
-            let bytes = try JSONEncoder().encode(frame)
+            let bytes = try encoder.encode(frame)
             guard bytes.count <= Self.maximumRecordByteCount else { return }
             _ = try storage.replace(bytes, directory: nil, fileName: Self.fileName(document.relativePath))
         } catch {
@@ -98,12 +101,12 @@ public struct SourceSearchProjectionCache: Sendable {
     public func prune(currentPaths: Set<String>) {
         let retained = Set(currentPaths.map(Self.fileName))
         guard let names = try? storage.fileNames(in: nil) else { return }
-        for name in names where name.hasSuffix(".projection.json") && !retained.contains(name) {
+        for name in names where (name.hasSuffix(".projection.plist") || name.hasSuffix(".projection.json")) && !retained.contains(name) {
             try? storage.removeIfPresent(directory: nil, fileName: name)
         }
     }
 
-    static func fileName(_ path: String) -> String { digest(Data(path.utf8)) + ".projection.json" }
+    static func fileName(_ path: String) -> String { digest(Data(path.utf8)) + ".projection.plist" }
 
     static func digest(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

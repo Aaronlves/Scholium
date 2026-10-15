@@ -130,6 +130,17 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
     public let attention: [AttentionQueueItem]
     public let graph: GraphSnapshot?
 
+    package init(
+        generatedAt: Date,
+        notes: [WorkspaceCatalogNote],
+        attention: [AttentionQueueItem],
+        graph: GraphSnapshot?
+    ) {
+        self.generatedAt = generatedAt
+        self.notes = notes
+        self.attention = attention
+        self.graph = graph
+    }
 }
 
 /// Exact-revision catalog material produced while one descriptor-authorized

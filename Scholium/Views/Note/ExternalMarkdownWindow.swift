@@ -210,6 +210,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     struct ReadProjection {
         let document: NoteDocument
         let html: String
+        let citationFields: ZoteroMarkdownFields
     }
 
     typealias OpenFile =
@@ -223,6 +224,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private let isApplicationActive: @MainActor () -> Bool
     @Published private(set) var snapshot: ExternalMarkdownFileSnapshot?
     @Published private(set) var readProjection: ReadProjection?
+    let citationFieldsCache = DocumentCitationFieldsCache()
     @Published private(set) var isLoading = true
     @Published private(set) var isSaving = false
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
@@ -617,7 +619,8 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
 
     private func prepareReadProjection(for snapshot: ExternalMarkdownFileSnapshot) {
         let document = NoteDocument(relativePath: title, rawContent: snapshot.source)
-        let projection = ReadProjection(document: document, html: SafeMarkdownRenderer.render(document).htmlBody)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let projection = ReadProjection(document: document, html: rendered.htmlBody, citationFields: rendered.semanticDocument.zoteroFields)
         guard !isClosed, self.snapshot?.fingerprint == document.fingerprint else { return }
         readProjection = projection
     }
@@ -1052,6 +1055,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     func close() {
         guard !isClosed else { return }
         isClosed = true
+        citationFieldsCache.removeAll()
         nativeToolbar?.invalidate()
         nativeToolbar = nil
         editorFocusIntent = nil

@@ -98,7 +98,9 @@ struct RelatedContentBackgroundMemoTests {
     @Test("Decoded projection reuse requires current payload, checksum and exact fingerprint")
     func digestValidation() throws {
         let document = NoteDocument(relativePath: "A.md", rawContent: "orchard geology")
-        let projection = RelatedContentLexicalProjection(projection: .init(document: document))
+        let search = SearchDocumentProjection(document: document)
+        let projection = RelatedContentLexicalProjection(
+            projection: search, scoringDocument: .init(segments: search.segments))
         let data = try projection.encoded()
         let checksum = RelatedContentSourceProjection.checksum(data)
         let prepared = RelatedContentBackgroundPreparation.LexicalDocument(
@@ -122,7 +124,9 @@ struct RelatedContentBackgroundMemoTests {
 
     private func preparedValue() throws -> RelatedContentBackgroundPreparation.Value {
         let document = NoteDocument(relativePath: "Material.md", rawContent: "orchard geology magnetic compass")
-        let projection = RelatedContentLexicalProjection(projection: .init(document: document))
+        let search = SearchDocumentProjection(document: document)
+        let projection = RelatedContentLexicalProjection(
+            projection: search, scoringDocument: .init(segments: search.segments))
         let checksum = RelatedContentSourceProjection.checksum(try projection.encoded())
         var value = RelatedContentBackgroundPreparation.Value()
         for rowID in 0..<4 {

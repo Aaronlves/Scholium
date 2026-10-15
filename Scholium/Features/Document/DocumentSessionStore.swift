@@ -66,9 +66,13 @@ struct ScrollRestoreRequest: Equatable, Sendable {
 final class DocumentSessionModel: ObservableObject {
     let key: DocumentSessionKey?
     let editorSession: MarkdownEditorSession
+    let citationFieldsCache = DocumentCitationFieldsCache()
+    private(set) var retainedCitationSourceRevision: UInt64 = 0
 
     @Published private(set) var presentation = DocumentPresentationState()
-    @Published var editingSource = ""
+    @Published var editingSource = "" {
+        didSet { retainedCitationSourceRevision &+= 1 }
+    }
     @Published var originalEditingSource = ""
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
@@ -480,6 +484,7 @@ final class DocumentSessionModel: ObservableObject {
     /// save/conflict state and recovery buffers remain owned by this session.
     func endClosedPresentation() {
         presentationIsClosed = true
+        citationFieldsCache.removeAll()
         resetScrollPosition()
         readSelection = nil
         findPresentation.resetAfterClose()
