@@ -16,24 +16,6 @@ struct AgentChatActivityRefinementTests {
         #expect(counts.failed == 1 && counts.uncertain == 1)
         #expect(AgentChatActivityIssueCounts([success, final]).failed == 0)
     }
-    @Test("A completed operation keeps its object without a repeated Completed label")
-    func summary() {
-        let locale = Locale(identifier: "zh-Hans")
-        var activity = AgentChatActivity(
-            kind: .read, source: .scholium,
-            files: [.init(path: "Topics/行动理由.md")])
-        #expect(AgentChatActivityProjection.summary(activity, locale: locale) == "正在研读笔记 · 行动理由.md")
-        activity.status = .completed
-        #expect(AgentChatActivityProjection.summary(activity, locale: locale) == "已读取笔记 · 行动理由.md")
-        let search = AgentChatActivity(kind: .search, source: .scholium, subject: "实践理性")
-        #expect(AgentChatActivityProjection.subject(search) == "实践理性")
-        var command = AgentChatActivity(kind: .command, source: .runtime, subject: "cat /private/raw")
-        #expect(AgentChatActivityProjection.subject(command) == nil)
-        command.commandAction = .init(kind: .read, target: "/guidance/SKILL.md")
-        #expect(AgentChatActivityProjection.subject(command) == "SKILL.md")
-
-    }
-
     @Test("Only an exact Scholium Note identity becomes a first-level target")
     func noteTarget() {
         let noteID = UUID()

@@ -19,10 +19,11 @@ struct AgentChatTurnPresentationTests {
             message("running", .running), message("done", .completed),
             message("waiting", .waitingForInput), message("other", .running, turn: "other"),
         ]
-        #expect(AgentChatTimelineItem.activeActivityID(in: values, turnID: "current") == "waiting")
-        #expect(AgentChatTimelineItem.activeActivityID(in: values + [message("latest", .running)], turnID: "current") == "latest")
-        #expect(AgentChatTimelineItem.activeActivityID(in: values, turnID: nil) == nil)
-        #expect(AgentChatTimelineItem.activeActivityID(in: [message("done", .completed)], turnID: "current") == nil)
+        let projection = AgentChatTimelineProjection(values)
+        #expect(projection.activeActivityID(for: "current") == "waiting")
+        #expect(AgentChatTimelineProjection(values + [message("latest", .running)]).activeActivityID(for: "current") == "latest")
+        #expect(projection.activeActivityID(for: nil) == nil)
+        #expect(AgentChatTimelineProjection([message("done", .completed)]).activeActivityID(for: "current") == nil)
     }
 
     @Test("One status belongs to each exact turn, including an empty stopped turn and added user input")
@@ -41,7 +42,8 @@ struct AgentChatTurnPresentationTests {
             ([request], ["request"]), ([request, addition], ["addition"]),
             ([request, reply, addition, next, unknown], ["reply", "next"]),
         ] {
-            #expect(AgentChatTimelineItem.group(history).filter { $0.carriesTurnStatus(in: history) }.map(\.id) == owners)
+            let projection = AgentChatTimelineProjection(history)
+            #expect(projection.items.filter { projection.carriesTurnStatus($0) }.map(\.id) == owners)
         }
     }
 

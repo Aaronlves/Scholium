@@ -17,7 +17,6 @@ struct AgentChatConversationDetailView: View {
     var noteCatalogCache = AgentChatNoteCatalogCache()
     let openReference: (URL) -> Bool
     let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
-    let showInLibrary: (URL) -> Void
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void
     var changes: [AgentChange]? = nil
@@ -570,8 +569,8 @@ struct AgentChatConversationDetailView: View {
                     get: { readingSession.toolGroupExpansions },
                     set: { readingSession.toolGroupExpansions = $0 })
             ) { message in
-                if message.activity != nil {
-                    activityRow(message, activeActivityID: activeActivityID)
+                if let activity = message.activity {
+                    activityRow(message, activity: activity, activeActivityID: activeActivityID)
                 } else if let plan = message.plan {
                     AgentChatPlanView(
                         plan: plan,
@@ -772,57 +771,53 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder
-    private func activityRow(_ message: AgentChatMessage, activeActivityID: String?) -> some View {
-        if let activity = message.activity {
-            let isCurrent = isVisible && activeActivityID == message.id
-            let orbStyle = isCurrent ? AgentChatActivityOrbStyle.style(for: activity) : nil
-            let noteTarget = AgentChatActivityProjection.noteTarget(activity, catalog: noteCatalogCache.catalog(notes: noteChoices))
-            VStack(alignment: .leading, spacing: 4) {
-                if let report = activity.delegation {
-                    AgentChatDelegationView(
-                        report: report, operationStatus: activity.status,
-                        orbStyle: orbStyle,
-                        openAgent: { target in
-                            guard isCurrentConversation, let conversation = nativeSession.conversationID else { return }
-                            presentation.inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
-                        },
-                        expansion: Binding(
-                            get: { inspectedActivityIDs.contains(message.id) },
-                            set: { expanded in
-                                readingSession.pause()
-                                if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
-                            }))
-                } else {
-                    DisclosureGroup(
-                        isExpanded: Binding(
-                            get: { inspectedActivityIDs.contains(message.id) },
-                            set: { expanded in
-                                readingSession.pause()
-                                if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
-                            })
-                    ) {
-                        AgentChatActivityDetails(activity: activity, openNote: { _ = openReference($0) })
-                    } label: {
-                        AgentChatActivitySummary(
-                            activity: activity,
-                            noteTarget: noteTarget,
-                            openNote: { _ = openReference($0) })
-                    }
-                    .disclosureGroupStyle(
-                        AgentChatDisclosureStyle(
-                            animates: isVisible,
-                            symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol,
-                            orbStyle: orbStyle,
-                            allowsLabelInteraction: noteTarget != nil
-                        ))
+    private func activityRow(_ message: AgentChatMessage, activity: AgentChatActivity, activeActivityID: String?) -> some View {
+        let isCurrent = isVisible && activeActivityID == message.id
+        let orbStyle = isCurrent ? AgentChatActivityOrbStyle.style(for: activity) : nil
+        let noteTarget = AgentChatActivityProjection.noteTarget(activity, catalog: noteCatalogCache.catalog(notes: noteChoices))
+        VStack(alignment: .leading, spacing: 4) {
+            if let report = activity.delegation {
+                AgentChatDelegationView(
+                    report: report, operationStatus: activity.status,
+                    orbStyle: orbStyle,
+                    openAgent: { target in
+                        guard isCurrentConversation, let conversation = nativeSession.conversationID else { return }
+                        presentation.inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
+                    },
+                    expansion: Binding(
+                        get: { inspectedActivityIDs.contains(message.id) },
+                        set: { expanded in
+                            readingSession.pause()
+                            if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
+                        }))
+            } else {
+                DisclosureGroup(
+                    isExpanded: Binding(
+                        get: { inspectedActivityIDs.contains(message.id) },
+                        set: { expanded in
+                            readingSession.pause()
+                            if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
+                        })
+                ) {
+                    AgentChatActivityDetails(activity: activity, openNote: { _ = openReference($0) })
+                } label: {
+                    AgentChatActivitySummary(
+                        activity: activity,
+                        noteTarget: noteTarget,
+                        openNote: { _ = openReference($0) })
                 }
+                .disclosureGroupStyle(
+                    AgentChatDisclosureStyle(
+                        animates: isVisible,
+                        symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol,
+                        orbStyle: orbStyle,
+                        allowsLabelInteraction: noteTarget != nil
+                    ))
             }
-            .font(.callout)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("scholium.chat.activity.\(message.id)")
-        } else {
-            Text(message.text).textSelection(.enabled)
         }
+        .font(.callout)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.chat.activity.\(message.id)")
     }
 
     private func turnPresentation(_ turnID: String?, projection: AgentChatTimelineProjection) -> AgentChatTurnPresentation {

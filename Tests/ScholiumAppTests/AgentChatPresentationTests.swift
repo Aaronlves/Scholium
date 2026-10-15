@@ -9,15 +9,15 @@ import Testing
 struct AgentChatPresentationTests {
     @Test("Research progress never promotes raw commands or paths into its primary summary")
     func quietProgress() {
+        let locale = Locale(identifier: "zh-Hans")
         let command = AgentChatActivity(
             kind: .command, status: .failed, source: .runtime,
             subject: "cat /private/path/file", detail: "EACCES raw error")
-        #expect(AgentChatActivityProjection.title(command, locale: Locale(identifier: "zh-Hans")) == "运行命令")
-        #expect(AgentChatActivityProjection.subject(command) == nil)
+        #expect(AgentChatActivityProjection.title(command, locale: locale) == "运行命令")
         let note = AgentChatActivity(
             kind: .read, status: .completed, source: .scholium,
             subject: "internal-id", detail: "raw", files: [.init(path: "Analyses/原文.md")])
-        #expect(AgentChatActivityProjection.subject(note) == "原文.md")
+        #expect(AgentChatActivityProjection.title(note, locale: locale) == "已读取笔记")
         #expect(command.detail == "EACCES raw error")
     }
 

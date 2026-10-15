@@ -1,5 +1,3 @@
-import AppKit
-import Foundation
 import ScholiumContracts
 import SwiftUI
 
@@ -37,18 +35,6 @@ struct AgentChatTimelineItem: Identifiable {
     var messages: [AgentChatMessage]
     var id: String { messages[0].id }
     var isProcess: Bool { Self.isProcess(messages[0]) }
-    static func activeActivityID(in history: [AgentChatMessage], turnID: String?) -> String? {
-        guard let turnID else { return nil }
-        return history.last { $0.turnID == turnID && $0.activity?.status.isActive == true }?.id
-    }
-    func carriesTurnStatus(in history: [AgentChatMessage]) -> Bool {
-        guard let turn = messages.first?.turnID else { return false }
-        // A turn can stop before producing any Agent item; retain its status below the request.
-        let anchor =
-            history.first { $0.turnID == turn && $0.role != .user }
-            ?? history.last { $0.turnID == turn && $0.role == .user }
-        return anchor?.id == id
-    }
     static func isProcess(_ message: AgentChatMessage) -> Bool {
         message.role == .operation || message.phase == .commentary || message.plan != nil
     }

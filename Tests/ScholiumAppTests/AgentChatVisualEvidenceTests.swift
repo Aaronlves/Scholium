@@ -153,7 +153,7 @@ struct AgentChatVisualEvidenceTests {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
                 noteChoices: [], prepareNotes: { _ in { _ in } },
-                openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
+                openReference: { _ in false }, openAttachment: { _, _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
             .frame(width: 340, height: 560)
@@ -488,7 +488,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = AgentChatView(
                 controller: controller, transcriptReaderID: UUID(), isVisible: false, addSelection: { _ in false },
-                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
+                noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false }, openAttachment: { _, _ in },
                 showChanges: { _ in }, showConversationChanges: { _ in }
             )
             .frame(width: 340, height: 700).background(Color(nsColor: .windowBackgroundColor))

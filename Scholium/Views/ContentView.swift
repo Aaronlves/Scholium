@@ -198,13 +198,6 @@ struct ContentView: View {
                         openAttachment: { attachment, disposition in
                             Task { await appState.openChatAttachment(attachment, disposition: disposition) }
                         },
-                        showInLibrary: { url in
-                            if appState.openChatReference(url) {
-                                if !shellState.libraryVisible || shellState.sidebarContent != .library {
-                                    windowCoordinator.actions.activateSidebar(.library)
-                                }
-                            }
-                        },
                         showChanges: {
                             appState.presentationRouter.present(.documentChanges(scope: .note($0)))
                         },

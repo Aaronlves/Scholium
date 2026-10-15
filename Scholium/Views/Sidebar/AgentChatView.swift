@@ -19,7 +19,6 @@ struct AgentChatView: View {
     let prepareNotes: @MainActor (UUID) throws -> (@MainActor (WorkspaceCatalogNote) async throws -> Void)
     let openReference: (URL) -> Bool
     let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
-    let showInLibrary: (URL) -> Void
     let showChanges: (UUID) -> Void
     let showConversationChanges: ([UUID]) -> Void
     var changes: [AgentChange]? = nil
@@ -164,7 +163,7 @@ struct AgentChatView: View {
             addSelection: addSelection, noteChoices: noteChoices, prepareNotes: prepareNotes,
             noteCatalogCache: noteCatalogCache,
             openReference: openReference, openAttachment: openAttachment,
-            showInLibrary: showInLibrary, showChanges: showChanges,
+            showChanges: showChanges,
             showConversationChanges: showConversationChanges,
             changes: changes, pendingDocuments: pendingDocuments,
             changesError: changesError,

@@ -46,7 +46,7 @@ struct AgentChatToolbarUnderlapTests {
         let chat = AgentChatView(
             controller: controller, transcriptReaderID: UUID(), isVisible: true,
             addSelection: { _ in false }, noteChoices: [], prepareNotes: { _ in { _ in } },
-            openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in },
+            openReference: { _ in false }, openAttachment: { _, _ in },
             showChanges: { _ in }, showConversationChanges: { _ in })
         let split = ScholiumWorkspaceSplitView<EmptyView, AnyView, Color, EmptyView>.Controller(
             initialLibraryVisible: true, initialApparatusVisible: false,

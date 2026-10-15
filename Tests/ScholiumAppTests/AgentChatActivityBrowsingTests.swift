@@ -271,7 +271,7 @@ struct AgentChatActivityBrowsingTests {
         let detail = AgentChatConversationDetailView(
             controller: controller, isVisible: true, addSelection: { _ in false },
             noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
-            openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in }, showConversationChanges: { _ in },
+            openAttachment: { _, _ in }, showChanges: { _ in }, showConversationChanges: { _ in },
             presentation: presentation, readingSession: session,
             nativeSession: AgentChatComposerSession(conversationID: conversation.id),
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in },
