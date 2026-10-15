@@ -18,12 +18,16 @@ committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
 committed_mermaid="$repo_root/Scholium/Resources/Editor/mermaid.bundle.js"
 committed_mermaid_css="$repo_root/Scholium/Resources/Editor/mermaid.css"
 committed_mermaid_notices="$repo_root/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
+committed_streaming="$repo_root/Scholium/Resources/Editor/chat-streaming-markdown.bundle.js"
+committed_streaming_notices="$repo_root/Tools/Packaging/Licenses/Remend-NOTICE.txt"
 temporary_root="$repo_root/.build/editor-verification-$$"
 temporary="$temporary_root/editor.bundle.js"
 temporary_reader="$temporary_root/reader.bundle.js"
 temporary_math="$temporary_root/math.bundle.js"
 temporary_mermaid="$temporary_root/mermaid.bundle.js"
 temporary_mermaid_notices="$temporary_root/Mermaid-and-transitive-NOTICES.txt"
+temporary_streaming="$temporary_root/chat-streaming-markdown.bundle.js"
+temporary_streaming_notices="$temporary_root/Remend-NOTICE.txt"
 trap 'rm -rf "$temporary_root"' EXIT INT TERM
 rm -rf "$temporary_root"
 mkdir -p "$temporary_root"
@@ -102,6 +106,8 @@ fi
   --math-output "$temporary_math" \
   --mermaid-output "$temporary_mermaid" \
   --mermaid-notices-output "$temporary_mermaid_notices" \
+  --streaming-output "$temporary_streaming" \
+  --streaming-notices-output "$temporary_streaming_notices" \
   --math-assets "$temporary_root" \
   --test
 
@@ -117,6 +123,12 @@ fi
 
 if ! cmp -s "$temporary_mermaid" "$committed_mermaid"; then
   print -u2 "The committed shared Mermaid bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
+  exit 1
+fi
+
+if ! cmp -s "$temporary_streaming" "$committed_streaming" || \
+   ! cmp -s "$temporary_streaming_notices" "$committed_streaming_notices"; then
+  print -u2 "The committed streaming Markdown runtime or notice is stale. Run Tools/Scripts/build-editor.sh."
   exit 1
 fi
 
@@ -149,4 +161,4 @@ for font in "${temporary_fonts[@]}"; do
   fi
 done
 
-print "CodeMirror, Read, and shared document resources are reproducible and current."
+print "CodeMirror, Read, streaming Markdown, and shared document resources are reproducible and current."

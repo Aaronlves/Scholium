@@ -585,13 +585,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 if self.connectionID == connection { self.executions[sourceID]?.state = .ready }
             }
             do {
+                let historyRead = try self.beginHistoryRead(in: sourceID)
                 let history = try await runtime.request(
                     "thread/read",
                     params: ["threadId": .string(sourceThread), "includeTurns": .bool(true)])
                 guard self.connectionID == connection, !Task.isCancelled else { return }
                 let prefix = try CodexChatBranch.turnIDs(in: history, threadID: sourceThread, through: turnID)
                 let turnIDs = messageID == nil ? prefix : Array(prefix.dropLast())
-                try self.hydrate(history, in: sourceID)
+                try self.hydrate(history, in: sourceID, after: historyRead)
                 guard let hydrated = self.conversation(sourceID) else { return }
                 let editedRequest = messageID.flatMap { id in hydrated.messages.first { $0.id == id } }
                 if let messageID {

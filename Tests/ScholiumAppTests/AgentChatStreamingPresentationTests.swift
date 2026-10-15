@@ -10,6 +10,7 @@ import WebKit
 struct AgentChatStreamingPresentationTests {
     @Observable @MainActor final class Input {
         var source = "An **existing reply** with 中文 and a retained selection.\n\n"
+        var isStreaming = true
     }
     @MainActor final class Readiness {
         let session = AgentChatReadingSession()
@@ -27,16 +28,98 @@ struct AgentChatStreamingPresentationTests {
         let input: Input
         let readiness: Readiness
         var body: some View {
-            AgentChatReadReply(source: input.source, readerID: "reply", quote: { _ in }, openLink: { _ in })
+            AgentChatReadReply(source: input.source, readerID: "reply", isStreaming: input.isStreaming, quote: { _ in }, openLink: { _ in })
                 .environment(\.chatReadingPresentation, .init(id: readiness.presentationID, session: readiness.session))
                 .onChange(of: readiness.ready, initial: true) { _, next in readiness.record(next) }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
+
+    @Test("Pending link completion keeps label geometry, reader nodes and active selection")
+    func pendingLinkDoesNotRewrap() async throws {
+        _ = NSApplication.shared
+        let input = Input()
+        input.source = "Read [source](https://exa"
+        let readiness = Readiness()
+        let host = NSHostingView(rootView: Reply(input: input, readiness: readiness))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 330, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        func reader(_ view: NSView) -> WKWebView? {
+            (view as? WKWebView) ?? view.subviews.lazy.compactMap { reader($0) }.first
+        }
+        func settle(_ condition: () async throws -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while !(try await condition()) {
+                try #require(ContinuousClock.now < deadline)
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try await settle { readiness.ready }
+        let web = try #require(reader(host))
+        let before = try #require(
+            try await web.evaluateJavaScript(
+                """
+                (() => {
+                    const anchor=document.querySelector('a[data-scholium-pending-link]');
+                    if(!anchor) return null;
+                    window.retainedLink=anchor; window.retainedParagraph=anchor.parentElement;
+                    const range=document.createRange(); range.selectNodeContents(anchor);
+                    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+                    const rect=anchor.getBoundingClientRect();
+                    return {x:rect.x,y:rect.y,width:rect.width,height:rect.height,disabled:!anchor.hasAttribute('href')};
+                })()
+                """) as? [String: Any])
+        #expect(before["disabled"] as? Bool == true)
+        input.source = "Read [source](https://example.com) with a continued sentence."
+        try await settle {
+            try await web.evaluateJavaScript(
+                "!!document.querySelector('a[href=\"https://example.com\"]') && document.querySelector('#scholium-document').textContent.includes('continued sentence.')"
+            ) as? Bool == true
+        }
+        let after = try #require(
+            try await web.evaluateJavaScript(
+                """
+                (() => {
+                    const anchor=document.querySelector('a[href="https://example.com"]'),rect=anchor.getBoundingClientRect();
+                    return {x:rect.x,y:rect.y,width:rect.width,height:rect.height,
+                        same:anchor===window.retainedLink && anchor.parentElement===window.retainedParagraph,
+                        selection:window.getSelection().toString()};
+                })()
+                """) as? [String: Any])
+        for coordinate in ["x", "y", "width", "height"] {
+            let initial = try #require(before[coordinate] as? Double)
+            let final = try #require(after[coordinate] as? Double)
+            #expect(abs(initial - final) < 0.5)
+        }
+        #expect(after["same"] as? Bool == true)
+        #expect(after["selection"] as? String == "source")
+        #expect(reader(host) === web)
+        input.source += " **unfinished"
+        try await settle {
+            try await web.evaluateJavaScript("document.querySelector('#scholium-document strong')?.textContent === 'unfinished'") as? Bool == true
+        }
+        let received = input.source
+        input.isStreaming = false
+        try await settle {
+            try await web.evaluateJavaScript(
+                "!document.querySelector('#scholium-document strong') && document.querySelector('#scholium-document').textContent.includes('**unfinished')")
+                as? Bool == true
+        }
+        #expect(input.source.utf8.elementsEqual(received.utf8))
+        #expect(reader(host) === web && readiness.ready)
+        #expect(readiness.interruptions == 0)
+    }
     @Test("Streaming keeps the measured reader visible and preserves selection")
     func streamingKeepsReaderVisible() async throws {
         _ = NSApplication.shared
         let input = Input()
+        input.source = "An **existing reply"
         let readiness = Readiness()
         let host = NSHostingView(rootView: Reply(input: input, readiness: readiness))
         let window = NSWindow(
@@ -70,6 +153,7 @@ struct AgentChatStreamingPresentationTests {
                 window.getSelection().toString();
                 """) as? String
         #expect(selected == "existing reply")
+        input.source += "** with 中文 and a retained selection.\n\n"
         let start = ContinuousClock.now
         for index in 0..<20 {
             input.source += "Stream \(index) 文😀. "

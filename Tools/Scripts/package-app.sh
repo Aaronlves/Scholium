@@ -41,6 +41,10 @@ python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
   print -u2 "Missing bundled Mermaid runtime notices. Run Tools/Scripts/build-editor.sh."
   exit 66
 }
+[[ -s "${LICENSE_SOURCE}/Remend-NOTICE.txt" && -s "${LICENSE_SOURCE}/Remend-Apache-2.0.txt" ]] || {
+  print -u2 "Missing bundled streaming Markdown license or notice. Run Tools/Scripts/build-editor.sh."
+  exit 66
+}
 GIT_COMMIT="$(git -C "${ROOT}" rev-parse HEAD)"
 GIT_EXACT_TAG="$(git -C "${ROOT}" describe --tags --exact-match 2>/dev/null || true)"
 WORKTREE_PATCH_SHA256="$(
@@ -119,7 +123,7 @@ EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js reader.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
+for editor_resource in index.html editor.bundle.js reader.bundle.js chat-streaming-markdown.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66

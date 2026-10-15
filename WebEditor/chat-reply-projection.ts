@@ -16,13 +16,23 @@ export function createReplyProjection(root: HTMLElement) {
       text.replaceData(prefix, text.length - prefix, value.slice(prefix));
       return current;
     }
-    // Only reconcile undecorated markup. Math, diagrams and object controls
-    // are owned by the reader and rebuilt only when their source block changes.
-    if (current.nodeType === 1 && next.nodeType === 1 && current.isEqualNode(previous)
-        && (current as Element).tagName === (next as Element).tagName) {
+    // Decorations may add link attributes without changing source children.
+    // Reconcile those children against the previous *source* tree, and change
+    // only source-owned attributes. Reader-owned math/object subtrees that no
+    // longer match this shape retain their separate replacement boundary.
+    if (current.nodeType === 1 && previous.nodeType === 1 && next.nodeType === 1
+        && (current as Element).tagName === (previous as Element).tagName
+        && (current as Element).tagName === (next as Element).tagName
+        && current.childNodes.length === previous.childNodes.length) {
       const element = current as Element;
-      for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name);
-      for (const attribute of [...(next as Element).attributes]) element.setAttribute(attribute.name, attribute.value);
+      const before = previous as Element;
+      const after = next as Element;
+      for (const attribute of [...before.attributes]) {
+        if (!after.hasAttribute(attribute.name)) element.removeAttribute(attribute.name);
+      }
+      for (const attribute of [...after.attributes]) {
+        if (element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value);
+      }
       const oldChildren = [...previous.childNodes];
       const children = [...current.childNodes];
       [...next.childNodes].forEach((child, index) => {

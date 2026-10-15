@@ -9,6 +9,7 @@ struct AgentChatReadReply: View {
     private let sourceIdentity: ScholiumExactUTF8.SourceIdentity
     private var source: String { sourceIdentity.source }
     var readerID: String? = nil
+    var isStreaming = false
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
@@ -34,12 +35,13 @@ struct AgentChatReadReply: View {
     @State private var preview = ScholiumContentPreview()
 
     init(
-        source: String, readerID: String? = nil,
+        source: String, readerID: String? = nil, isStreaming: Bool = false,
         quote: ((AgentChatReplySelection) -> Void)?, openLink: @escaping (URL) -> Void,
         fitsContent: Bool = false
     ) {
         sourceIdentity = .init(source)
         self.readerID = readerID
+        self.isStreaming = isStreaming
         self.quote = quote
         self.openLink = openLink
         self.fitsContent = fitsContent
@@ -74,6 +76,7 @@ struct AgentChatReadReply: View {
                         AgentChatReadWebViewSurface(
                             documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
                             source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
+                            projectionRevision: projection.presentationRevision,
                             onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
                             renderingReadinessIsAcknowledged: readiness.ready,
                             onRenderingFailure: {
@@ -173,13 +176,19 @@ struct AgentChatReadReply: View {
             hasHydratedReader = false
             hasPresentedReader = false
         }
-        .onChange(of: renderer.snapshot?.document.fingerprint, initial: true) { _, _ in
+        .onChange(of: renderer.snapshot?.presentationRevision, initial: true) { _, _ in
             // Keep the first safe projection stable through navigation, bundled
             // runtime setup and layout measurement. Streamed snapshots continue
             // parsing/coalescing off the UI actor, but cannot restart this page
             // or invalidate its fingerprint-bound initialization messages.
             if readerProjection == nil || hasHydratedReader {
                 readerProjection = renderer.snapshot
+            }
+        }
+        .onChange(of: renderer.failure) { _, failure in
+            if let failure {
+                readiness.failure = failure
+                hasHydratedReader = false
             }
         }
         .onChange(of: isEnabled && surfaceVisibility.isActive, initial: true) { _, interactive in
@@ -189,6 +198,7 @@ struct AgentChatReadReply: View {
         .task(
             id: PreparationIdentity(
                 source: .init(source),
+                isStreaming: isStreaming,
                 isActive: preparationIsActive,
                 presentationID: readingPresentation?.id, attempt: preparationAttempt)
         ) {
@@ -207,7 +217,7 @@ struct AgentChatReadReply: View {
                 readiness.reset()
                 readiness.clearAppliedLayout()
                 readerProjection = renderer.snapshot.flatMap {
-                    ScholiumExactUTF8.equal($0.document.rawContent, source) ? $0 : nil
+                    $0.request == .init(source, isStreaming: isStreaming) ? $0 : nil
                 }
             }
             preview.close()
@@ -220,12 +230,13 @@ struct AgentChatReadReply: View {
             if hasHydratedReader, let displayed = readerProjection?.document.rawContent, !ScholiumExactUTF8.hasPrefix(source, displayed) {
                 readiness.reset()
             }
-            renderer.submit(source)
+            renderer.submit(source, isStreaming: isStreaming)
         }
     }
 
     private struct PreparationIdentity: Equatable {
         let source: ScholiumExactUTF8.SourceIdentity
+        let isStreaming: Bool
         let isActive: Bool
         let presentationID: UUID?
         let attempt: UUID
@@ -238,12 +249,10 @@ struct AgentChatReadReply: View {
     }
 
     private var readerIsVisible: Bool {
-        // Standalone readers are not part of transcript hydration and retain
-        // their direct interaction path. Only transcript-owned readers wait
-        // for the page's measured geometry before replacing the native preview.
-        readerID == nil
-            || readiness.ready && readiness.hasMeasuredLayout
-                && (surfaceVisibility == .preparing || hasPresentedReader || readingPresentation?.session.isScrolling != true)
+        // Every reader waits for measured geometry before replacing its finite
+        // preview. Transcript readers additionally respect active scrolling.
+        readiness.ready && readiness.hasMeasuredLayout
+            && (surfaceVisibility == .preparing || hasPresentedReader || readingPresentation?.session.isScrolling != true)
     }
 
     @ViewBuilder
@@ -251,7 +260,10 @@ struct AgentChatReadReply: View {
         // Keep retained history readable while the exact WebKit projection is
         // prepared. This is presentation-only; source and selection authority
         // remain in the reader below.
-        let readable = readiness.preview(for: source)
+        // First paint and the first native page share one finite submitted
+        // revision. A live preview must never run ahead of the DOM it hands off
+        // to. Pending chunks coalesce behind that page without starving it.
+        let readable = readerProjection?.previewText ?? (isStreaming ? "" : readiness.preview(for: source))
         if readable.isEmpty {
             ProgressView("Loading…")
         } else {
@@ -352,6 +364,7 @@ struct AgentChatReadReply: View {
                     -webkit-mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
                     mask: var(--scholium-chat-link-symbol) center / contain no-repeat;
                 }
+                .scholium-chat-link[data-scholium-pending-link]::before { visibility: hidden; }
                 .scholium-chat-link[data-scholium-chat-link-symbol="globe"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-globe); }
                 .scholium-chat-link[data-scholium-chat-link-symbol="doc-text"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-text); }
                 .scholium-chat-link[data-scholium-chat-link-symbol="doc-richtext"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-richtext); }
@@ -360,7 +373,7 @@ struct AgentChatReadReply: View {
                 .scholium-chat-link[data-scholium-chat-link-symbol="rectangle-on-rectangle"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-rectangle-on-rectangle); }
                 .scholium-chat-link[data-scholium-chat-link-symbol="photo"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-photo); }
                 .scholium-chat-link[data-scholium-chat-link-symbol="doc-zipper"] { --scholium-chat-link-symbol: var(--scholium-system-symbol-doc-zipper); }
-                .scholium-document a:hover {
+                .scholium-document a[href]:hover {
                     color: var(--scholium-color-accent);
                     background: var(--scholium-content-hover-surface);
                     border-radius: var(--scholium-corner-document-control);

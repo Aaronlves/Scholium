@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Chat cold reader admission")
@@ -17,7 +18,10 @@ struct AgentChatReaderPreparationTests {
         let readers = (0..<8).map { reader(presentation, "reply-\($0)") }
         let results = Results()
         let tasks = readers.map { key in Task { results.values[key] = await queue.acquire(key) != nil } }
-        defer { queue.end(); tasks.forEach { $0.cancel() } }
+        defer {
+            queue.end()
+            tasks.forEach { $0.cancel() }
+        }
         try await settle { results.values.count == 2 }
         #expect(results.values.values.allSatisfy { $0 })
         queue.setScrolling(true)
@@ -54,7 +58,10 @@ struct AgentChatReaderPreparationTests {
         let third = reader(current, "waiting")
         let results = Results()
         let tasks = [first, second, third].map { key in Task { results.values[key] = await queue.acquire(key) != nil } }
-        defer { queue.end(); tasks.forEach { $0.cancel() } }
+        defer {
+            queue.end()
+            tasks.forEach { $0.cancel() }
+        }
         try await settle { results.values.count == 2 }
         queue.complete(reader(old, "same-name"))
         await nativeTurn()
@@ -75,7 +82,10 @@ struct AgentChatReaderPreparationTests {
         session.mountReplyReader(other.id, presentationID: presentation, instance: other.instance, hydrated: false)
         let results = Results()
         let tasks = [old, other].map { key in Task { results.values[key] = await session.readerPreparation.acquire(key) != nil } }
-        defer { session.endPresentation(presentation); tasks.forEach { $0.cancel() } }
+        defer {
+            session.endPresentation(presentation)
+            tasks.forEach { $0.cancel() }
+        }
         try await settle { results.values.count == 2 }
         let successor = reader(presentation, old.id)
         session.mountReplyReader(successor.id, presentationID: presentation, instance: successor.instance, hydrated: false)
@@ -123,7 +133,10 @@ struct AgentChatReaderPreparationTests {
         readiness.failure = "Disposable renderer failure"
         _ = try #require(await readiness.prepare())
         _ = try #require(await session.readerPreparation.acquire(reader(presentation, "other")))
-        defer { readiness.unmount(); session.endPresentation(presentation) }
+        defer {
+            readiness.unmount()
+            session.endPresentation(presentation)
+        }
         readiness.reset()
         #expect(!session.areReadersHydrated(["failed-retry"]))
         let results = Results()

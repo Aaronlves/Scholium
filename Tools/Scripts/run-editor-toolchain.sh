@@ -11,10 +11,12 @@ reader_output=""
 math_output=""
 mermaid_output=""
 mermaid_notices_output=""
+streaming_output=""
+streaming_notices_output=""
 math_assets=""
 
 usage() {
-  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --streaming-output <absolute-path> --streaming-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
   print -u2 "       ${script_name} --check-only"
   exit 64
 }
@@ -51,6 +53,16 @@ while (( $# > 0 )); do
       math_assets="$2"
       shift 2
       ;;
+    --streaming-output)
+      (( $# >= 2 )) || usage
+      streaming_output="$2"
+      shift 2
+      ;;
+    --streaming-notices-output)
+      (( $# >= 2 )) || usage
+      streaming_notices_output="$2"
+      shift 2
+      ;;
     --test)
       run_tests=true
       shift
@@ -67,7 +79,7 @@ done
 
 if $check_only; then
   if [[ -n "$output" || -n "$reader_output" || -n "$math_output" || -n "$mermaid_output" \
-    || -n "$mermaid_notices_output" || -n "$math_assets" ]] || $run_tests; then
+    || -n "$mermaid_notices_output" || -n "$streaming_output" || -n "$streaming_notices_output" || -n "$math_assets" ]] || $run_tests; then
     usage
   fi
 else
@@ -76,6 +88,8 @@ else
   [[ -n "$math_output" && "$math_output" == /* ]] || usage
   [[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
   [[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
+  [[ -n "$streaming_output" && "$streaming_output" == /* ]] || usage
+  [[ -n "$streaming_notices_output" && "$streaming_notices_output" == /* ]] || usage
   [[ -n "$math_assets" && "$math_assets" == /* ]] || usage
   [[ -d "${output:h}" ]] || {
     print -u2 "The editor bundle output directory does not exist: ${output:h}"
@@ -99,6 +113,10 @@ else
   }
   [[ -d "$math_assets" ]] || {
     print -u2 "The mathematics asset output directory does not exist: $math_assets"
+    exit 66
+  }
+  [[ -d "${streaming_output:h}" && -d "${streaming_notices_output:h}" ]] || {
+    print -u2 "The streaming Markdown output directories do not exist."
     exit 66
   }
 fi
@@ -173,6 +191,14 @@ mkdir -p "${mermaid_metafile:h}"
   --metafile="$mermaid_metafile" \
   --outfile="$mermaid_output"
 node generate-mermaid-notices.mjs "$mermaid_metafile" "$mermaid_notices_output"
+
+./node_modules/.bin/esbuild chat-streaming-markdown.ts \
+  --bundle \
+  --format=iife \
+  --platform=neutral \
+  --target=es2023 \
+  --outfile="$streaming_output"
+cp node_modules/remend/LICENSE "$streaming_notices_output"
 
 cp node_modules/katex/dist/katex.min.css "$math_assets/katex.min.css"
 find "$math_assets" -maxdepth 1 -type f -name 'KaTeX_*.woff2' -delete

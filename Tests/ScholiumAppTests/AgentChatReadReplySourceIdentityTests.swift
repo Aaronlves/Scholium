@@ -29,8 +29,8 @@ struct AgentChatReadReplySourceIdentityTests {
                     AgentChatReadReply(source: input.source.source, readerID: "exact-reply", quote: nil, openLink: { _ in })
                 }
             }
-                .environment(\.chatReadingPresentation, .init(id: presentationID, session: session))
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            .environment(\.chatReadingPresentation, .init(id: presentationID, session: session))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
@@ -42,7 +42,8 @@ struct AgentChatReadReplySourceIdentityTests {
         let presentationID = UUID()
         session.beginPresentation(presentationID)
         let host = NSHostingView(rootView: Reply(input: input, session: session, presentationID: presentationID))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 480),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 480),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
@@ -115,7 +116,8 @@ struct AgentChatReadReplySourceIdentityTests {
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             while !(try await condition()) {
                 if ContinuousClock.now >= deadline {
-                    let state = try? await reader(host)?.evaluateJavaScript("({state:document.readyState,sourceLength:document.querySelector('#scholium-document')?.textContent?.length})")
+                    let state = try? await reader(host)?.evaluateJavaScript(
+                        "({state:document.readyState,sourceLength:document.querySelector('#scholium-document')?.textContent?.length})")
                     let hydrated = session.areReadersHydrated(["exact-reply"])
                     let webID = reader(host)?.accessibilityIdentifier() ?? "none"
                     print("CHAT_SOURCE_STATE stage=\(stage) hydrated=\(hydrated) web=\(webID) state=\(String(describing: state))")

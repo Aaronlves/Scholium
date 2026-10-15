@@ -5,23 +5,25 @@ struct AgentChatMarkdown: View {
     private let sourceIdentity: ScholiumExactUTF8.SourceIdentity
     private var text: String { sourceIdentity.source }
     var readerID: String? = nil
+    var isStreaming = false
     var expandsToFillWidth = true
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     init(
-        text: String, readerID: String? = nil, expandsToFillWidth: Bool = true,
+        text: String, readerID: String? = nil, isStreaming: Bool = false, expandsToFillWidth: Bool = true,
         quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     ) {
         sourceIdentity = .init(text)
         self.readerID = readerID
+        self.isStreaming = isStreaming
         self.expandsToFillWidth = expandsToFillWidth
         self.quoteSelection = quoteSelection
     }
 
     var body: some View {
         AgentChatReadReply(
-            source: text, readerID: readerID, quote: quoteSelection, openLink: { openURL($0) },
+            source: text, readerID: readerID, isStreaming: isStreaming, quote: quoteSelection, openLink: { openURL($0) },
             fitsContent: !expandsToFillWidth
         )
         .font(ScholiumChatAppearance.messageFont)

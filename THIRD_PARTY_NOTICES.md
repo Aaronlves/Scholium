@@ -6,6 +6,9 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
 
 - CodeMirror 6 packages (`@codemirror/autocomplete`, `commands`, `lang-markdown`, `language`, `search`, `state`, and `view`) and their CodeMirror/Lezer runtime dependencies: MIT License.
 - KaTeX 0.18.1 and its bundled KaTeX fonts: MIT License.
+- Remend 1.4.0 (Vercel, Inc.), used only for display-time completion of streaming
+  Markdown: Apache License 2.0. Its license and upstream notice are retained in
+  `Tools/Packaging/Licenses/Remend-Apache-2.0.txt` and `Remend-NOTICE.txt`.
 - Mermaid 11.16.0 and the runtime packages included in its offline browser
   bundle: permissive licenses reproduced package-by-package in
   `Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt`.

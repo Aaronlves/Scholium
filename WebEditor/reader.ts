@@ -93,6 +93,28 @@ async function initializeReader(value: unknown): Promise<void> {
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
   const decodedImages = new Set<HTMLImageElement>();
+  async function settleLayout(requireCurrent: () => void): Promise<{settled: true; geometryChanged: boolean}> {
+    requireCurrent();
+    const before = documentRoot.getBoundingClientRect();
+    const previousHeight = document.documentElement.scrollHeight;
+    if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
+    if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+    requireCurrent();
+    documentRoot.getBoundingClientRect();
+    const awaitedFonts = document.fonts.status === 'loading';
+    await document.fonts.ready;
+    requireCurrent();
+    const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+      left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
+    }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+    documentRoot.getBoundingClientRect();
+    await document.fonts.ready;
+    requireCurrent();
+    const after = documentRoot.getBoundingClientRect();
+    return {settled: true, geometryChanged: decodedVisibleImages || awaitedFonts
+      || before.height !== after.height || before.width !== after.width
+      || previousHeight !== document.documentElement.scrollHeight};
+  }
   const readPreparation: NonNullable<ReaderWindow['scholiumReadPreparation']> = {
     async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
       const requireCurrent = () => {
@@ -102,26 +124,7 @@ async function initializeReader(value: unknown): Promise<void> {
           throw new Error('stale reader preparation');
         }
       };
-      requireCurrent();
-      const before = documentRoot.getBoundingClientRect();
-      const previousHeight = document.documentElement.scrollHeight;
-      if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
-      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
-      requireCurrent();
-      documentRoot.getBoundingClientRect();
-      const awaitedFonts = document.fonts.status === 'loading';
-      await document.fonts.ready;
-      requireCurrent();
-      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
-        left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
-      }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
-      documentRoot.getBoundingClientRect();
-      await document.fonts.ready;
-      requireCurrent();
-      const after = documentRoot.getBoundingClientRect();
-      return {settled: true, geometryChanged: decodedVisibleImages || awaitedFonts
-        || before.height !== after.height || before.width !== after.width
-        || previousHeight !== document.documentElement.scrollHeight};
+      return await settleLayout(requireCurrent);
     },
   };
   readerWindow.scholiumReadPreparation = readPreparation;
@@ -392,10 +395,18 @@ async function initializeReader(value: unknown): Promise<void> {
       userStyle.textContent = nextUserCSS;
     }
     scheduleMermaidRefresh();
-    await new Promise<void>(resolve => window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
-    }));
-    if (sequence !== presentationUpdateSequence) return false;
+    // Preparing/hidden WebKit pages can suspend animation frames. Resource
+    // completion and synchronous geometry, shared with initial preparation,
+    // establish readiness without requiring an already visible paint.
+    const isCurrent = () => sequence === presentationUpdateSequence
+      && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
+    try {
+      await settleLayout(() => { if (!isCurrent()) throw new Error('stale presentation update'); });
+    } catch (error) {
+      if (!isCurrent()) return false;
+      throw error;
+    }
+    if (!isCurrent()) return false;
     if (anchor) {
       restoreReadScrollAnchor(anchor);
     } else {
@@ -422,8 +433,8 @@ async function initializeReader(value: unknown): Promise<void> {
       decorateChatReplyLinks(documentRoot);
       readerWindow.scholiumReviewImages?.refresh();
       fingerprint = update.fingerprint;
-      presentationStyle.textContent = update.presentationCSS;
-      userStyle.textContent = update.userCSS;
+      if (presentationStyle.textContent !== update.presentationCSS) presentationStyle.textContent = update.presentationCSS;
+      if (userStyle.textContent !== update.userCSS) userStyle.textContent = update.userCSS;
       renderMathNodes();
       readerWindow.scholiumMermaidReady = renderMermaidNodes();
       await readerWindow.scholiumMermaidReady;

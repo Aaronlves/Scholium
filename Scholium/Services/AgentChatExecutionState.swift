@@ -72,6 +72,8 @@ struct AgentChatExecutionState {
     /// apply to the next turn only.
     var permission: AgentChatPermission = .ask
     var completedTurns: Set<String> = []
+    /// Runtime terminal observations, independent of a reader's presentation.
+    var completedAssistantItemIDs: Set<String> = []
     /// A matching normal completion may advance the queue once delivery settles.
     /// Stop and connection replacement revoke this permission.
     var pendingQueueAdvanceTurnID: String?

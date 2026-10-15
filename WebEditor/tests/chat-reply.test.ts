@@ -2,6 +2,7 @@ import {parseHTML} from 'linkedom';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {installChatReply} from '../chat-reply';
 import {createReplyProjection} from '../chat-reply-projection';
+import {decorateChatReplyLinks} from '../chat-link-presentation';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -20,6 +21,45 @@ function fixture(html: string) {
 }
 
 describe('renderer-owned reply object identity', () => {
+  it('keeps decorated prose and link nodes while appending to the same paragraph', () => {
+    const html = '<p data-source-utf16-end="20">A <a href="https://example.com">source</a> and tail</p>';
+    const {root} = fixture(html);
+    const projection = createReplyProjection(root);
+    decorateChatReplyLinks(root);
+    projection.commit();
+    const paragraph = root.firstElementChild;
+    const anchor = root.querySelector('a');
+    const tail = paragraph!.lastChild;
+    projection.apply('<p data-source-utf16-end="40">A <a href="https://example.com">source</a> and tail with 中文</p>');
+    decorateChatReplyLinks(root);
+    projection.commit();
+    expect(root.firstElementChild).toBe(paragraph);
+    expect(root.querySelector('a')).toBe(anchor);
+    expect(paragraph!.lastChild).toBe(tail);
+    expect(paragraph!.getAttribute('data-source-utf16-end')).toBe('40');
+    expect(anchor!.classList.contains('scholium-chat-link')).toBe(true);
+    expect(root.textContent).toBe('A source and tail with 中文');
+  });
+
+  it('retains an inert pending link and its decorative slot when the destination completes', () => {
+    const {root} = fixture('<p>Read <a data-scholium-pending-link="" aria-disabled="true">the source</a></p>');
+    const projection = createReplyProjection(root);
+    decorateChatReplyLinks(root);
+    projection.commit();
+    const paragraph = root.firstElementChild;
+    const anchor = root.querySelector('a')!;
+    expect(anchor.hasAttribute('href')).toBe(false);
+    expect(anchor.getAttribute('data-scholium-chat-link-symbol')).toBe('globe');
+    projection.apply('<p>Read <a href="https://example.com">the source</a> next</p>');
+    decorateChatReplyLinks(root);
+    projection.commit();
+    expect(root.firstElementChild).toBe(paragraph);
+    expect(root.querySelector('a')).toBe(anchor);
+    expect(anchor.hasAttribute('data-scholium-pending-link')).toBe(false);
+    expect(anchor.hasAttribute('aria-disabled')).toBe(false);
+    expect(anchor.getAttribute('href')).toBe('https://example.com');
+    expect(anchor.getAttribute('data-scholium-chat-link-symbol')).toBe('globe');
+  });
   it('reports the current viewport width after a width-only resize without replacing prose', () => {
     const {root, post, window} = fixture('<p>短句。</p>');
     const paragraph = root.firstElementChild!;

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "build": "esbuild editor.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/editor.bundle.js && esbuild reader.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/reader.bundle.js",
+    "build": "esbuild editor.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/editor.bundle.js && esbuild reader.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/reader.bundle.js && esbuild chat-streaming-markdown.ts --bundle --format=iife --platform=neutral --target=es2023 --outfile=../Scholium/Resources/Editor/chat-streaming-markdown.bundle.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run"
   },
@@ -20,7 +20,8 @@
     "@lezer/highlight": "1.2.3",
     "@lezer/markdown": "1.7.1",
     "katex": "0.18.1",
-    "mermaid": "11.16.1"
+    "mermaid": "11.16.1",
+    "remend": "1.4.0"
   },
   "devDependencies": {
     "@types/node": "22.15.0",

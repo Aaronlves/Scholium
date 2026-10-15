@@ -13,12 +13,17 @@ public enum AgentChatTranscript {
         public let clientMessageID: String?
         public let asyncQuestions: [AgentChatQuestion]?
         public let isManagedTool: Bool
-        public init(id: String, content: Content, clientMessageID: String? = nil, isManagedTool: Bool = false, asyncQuestions: [AgentChatQuestion]? = nil) {
+        public let isStreaming: Bool
+        public init(
+            id: String, content: Content, clientMessageID: String? = nil, isManagedTool: Bool = false,
+            asyncQuestions: [AgentChatQuestion]? = nil, isStreaming: Bool = false
+        ) {
             self.asyncQuestions = asyncQuestions
             self.id = id
             self.content = content
             self.clientMessageID = clientMessageID
             self.isManagedTool = isManagedTool
+            self.isStreaming = isStreaming
         }
     }
 

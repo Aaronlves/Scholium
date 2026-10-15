@@ -666,6 +666,13 @@ extension AgentChatController {
     }
 
     private func applyTranscript(_ event: CodexChatTranscript.Event, in conversationID: UUID) {
+        let observedTurn = event.turnID ?? executions[conversationID]?.turnID
+        let turnHasEnded =
+            observedTurn.map { turn in
+                let status = conversation(conversationID)?.turns[turn]?.status
+                return executions[conversationID]?.completedTurns.contains(turn) == true
+                    || status.map { $0 != .inProgress } == true
+            } ?? false
         switch event.content {
         case .contextUsage(let usage):
             update(in: conversationID) { $0.contextUsage = usage }
@@ -707,6 +714,19 @@ extension AgentChatController {
                 && turn.status == .completed
             attributeTurn(turn, in: conversationID)
             executions[conversationID]?.completedTurns.insert(turn.id)
+            let completedItems =
+                (conversation(conversationID)?.messages
+                    .filter { $0.turnID == turn.id && $0.role == .assistant }.map(\.id) ?? [])
+                + turn.items.compactMap { item in
+                    if case .assistant = item.content { return item.id }
+                    return nil
+                }
+            executions[conversationID]?.completedAssistantItemIDs.formUnion(completedItems)
+            update(in: conversationID) { conversation in
+                for index in conversation.messages.indices where conversation.messages[index].turnID == turn.id {
+                    conversation.messages[index].isStreaming = false
+                }
+            }
             if let active = executions[conversationID]?.turnID, active != turn.id { return }
             if let error = turn.error { executions[conversationID]?.error = error }
             update(in: conversationID) { conversation in
@@ -741,7 +761,7 @@ extension AgentChatController {
             executions[conversationID]?.pendingQueueAdvanceTurnID = mayAdvanceQueue ? turn.id : nil
             drainQueuedMessage(in: conversationID)
         case .item(let item, let completed, let context):
-            if !completed, let turn = event.turnID, executions[conversationID]?.completedTurns.contains(turn) == true { return }
+            if !completed, turnHasEnded { return }
             switch item.content {
             case .activity(let value):
                 if let context { executions[conversationID]?.runtimeItems[item.id] = context }
@@ -755,15 +775,18 @@ extension AgentChatController {
                 recordActivity(activity, id: "runtime:\(item.id)", conversationID: conversationID, turnID: event.turnID)
                 if completed || activity.kind == .compaction { persist() }
             case .assistant(let text, let phase):
+                guard completed || executions[conversationID]?.completedAssistantItemIDs.contains(item.id) != true else { return }
+                if completed { executions[conversationID]?.completedAssistantItemIDs.insert(item.id) }
                 let shouldMarkUnread = !isTranscriptVisible(in: conversationID)
                 update(in: conversationID) {
                     if shouldMarkUnread, !text.isEmpty, $0.messages.first(where: { $0.id == item.id })?.text != text { $0.unreadAt = Date() }
                     if let index = $0.messages.firstIndex(where: { $0.id == item.id }) {
                         $0.messages[index].text = text
                         $0.messages[index].phase = phase
+                        $0.messages[index].isStreaming = !completed
                         if let turn = event.turnID { $0.messages[index].turnID = turn }
                     } else {
-                        var message = AgentChatMessage(id: item.id, role: .assistant, text: text, phase: phase)
+                        var message = AgentChatMessage(id: item.id, role: .assistant, text: text, phase: phase, isStreaming: !completed)
                         message.turnID = event.turnID ?? executions[conversationID]?.turnID
                         $0.messages.append(message)
                     }
@@ -783,12 +806,16 @@ extension AgentChatController {
                 message.activity = activity
             }
         case .assistantDelta(let id, let text):
+            guard executions[conversationID]?.completedAssistantItemIDs.contains(id) != true,
+                !turnHasEnded
+            else { return }
             guard !text.isEmpty else {
                 update(in: conversationID) {
                     if let index = $0.messages.firstIndex(where: { $0.id == id }) {
                         $0.messages[index].text += text
+                        $0.messages[index].isStreaming = true
                     } else {
-                        var message = AgentChatMessage(id: id, role: .assistant, text: text)
+                        var message = AgentChatMessage(id: id, role: .assistant, text: text, isStreaming: true)
                         message.turnID = event.turnID ?? executions[conversationID]?.turnID
                         $0.messages.append(message)
                     }
@@ -799,12 +826,13 @@ extension AgentChatController {
                 in: conversationID, messageID: id, marksUnread: true,
                 { message in
                     message.text += text
+                    message.isStreaming = true
                 })
             {
                 return
             }
             updateHot(in: conversationID, marksUnread: true) {
-                var message = AgentChatMessage(id: id, role: .assistant, text: text)
+                var message = AgentChatMessage(id: id, role: .assistant, text: text, isStreaming: true)
                 message.turnID = event.turnID ?? executions[conversationID]?.turnID
                 $0.messages.append(message)
             }

@@ -5,6 +5,39 @@ import Testing
 
 @Suite("Unified public transcript decoding")
 struct CodexChatTranscriptTests {
+    @Test("Assistant projection state follows explicit live item boundaries and conservative active history")
+    func assistantStreamingState() throws {
+        let assistant: [String: MCPJSONValue] = [
+            "id": .string("reply"), "type": .string("agentMessage"), "text": .string("**Unfinished 中文"),
+        ]
+        for completed in [false, true] {
+            let event = try #require(
+                try CodexChatTranscript.event([
+                    "method": .string(completed ? "item/completed" : "item/started"),
+                    "params": .object([
+                        "threadId": .string("thread"), "turnId": .string("turn"), "item": .object(assistant),
+                    ]),
+                ]))
+            guard case .item(let item, _, _) = event.content else {
+                Issue.record("Expected an assistant item")
+                return
+            }
+            #expect(item.isStreaming == !completed)
+        }
+        for status in ["inProgress", "completed", "interrupted", "failed"] {
+            for itemStatus in ["missing", "inProgress", "completed"] {
+                var item = assistant
+                if itemStatus != "missing" { item["status"] = .string(itemStatus) }
+                let history = try CodexChatTranscript.turn(
+                    .object([
+                        "id": .string("turn"), "status": .string(status), "items": .array([.object(item)]),
+                    ]), threadID: "thread")
+                #expect(history.items.first?.isStreaming == (status == "inProgress" && itemStatus != "completed"))
+                #expect(history.items.first?.content == .assistant(text: "**Unfinished 中文", phase: nil))
+            }
+        }
+    }
+
     @Test("A reported lost Zotero update confirmation remains uncertain instead of inviting a failed-write retry")
     func uncertainZoteroUpdate() throws {
         var item: [String: MCPJSONValue] = [

@@ -105,7 +105,8 @@ final class AgentChatReaderPreparation {
 
     private func pump() {
         guard presentationID != nil, !isScrolling,
-            active.count < Self.concurrentReaders, !pending.isEmpty else { return }
+            active.count < Self.concurrentReaders, !pending.isEmpty
+        else { return }
         let request = pending.removeFirst()
         guard request.reader.presentationID == presentationID else {
             request.continuation.resume(returning: nil)

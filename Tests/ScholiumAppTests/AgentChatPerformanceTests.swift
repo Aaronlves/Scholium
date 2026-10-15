@@ -140,7 +140,13 @@ struct AgentChatPerformanceTests {
         #expect(window.indices(messages: messages, inspectedIDs: []) == Array(messages.indices))
 
         window.reconcile(in: messages, preservesReading: false)
-        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(69..<101))
+        #expect(window.first == "activity-0")
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(messages.indices))
+        messages.append(.init(id: "activity-101", role: .operation, text: "New activity after returning to latest"))
+        window.reconcile(in: messages, preservesReading: false)
+        #expect(window.first == "activity-0", "Returning to latest cannot discard explicitly loaded history.")
+        #expect(window.indices(messages: messages, inspectedIDs: []) == Array(messages.indices))
+        #expect(!window.hasEarlier(messages: messages))
     }
 
     @Test("Following latest keeps a long active process bounded as activity arrives")

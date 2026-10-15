@@ -19,7 +19,26 @@ final class AgentChatReadingSession {
         let earlier: Bool
     }
     private(set) var pendingHistoryPage: HistoryPage?
-    var position: ReadingPosition = .followingLatest
+    // The native viewport retains full-precision offsets. Declarative content
+    // observes only the reading mode and semantic row, never every scroll tick.
+    @ObservationIgnored var position: ReadingPosition = .followingLatest {
+        didSet {
+            let retaining: Bool
+            let itemID: String?
+            switch position {
+            case .followingLatest:
+                retaining = false
+                itemID = nil
+            case .retaining(let anchor):
+                retaining = true
+                itemID = anchor?.id
+            }
+            if isRetainingPosition != retaining { isRetainingPosition = retaining }
+            if currentReadingItemID != itemID { currentReadingItemID = itemID }
+        }
+    }
+    private(set) var isRetainingPosition = false
+    private(set) var currentReadingItemID: String?
     private(set) var initialTranscriptPhase: InitialTranscriptPhase = .unmounted
     private var activePresentationID: UUID?
     @ObservationIgnored private var presentationIsActive = false
@@ -138,10 +157,6 @@ final class AgentChatReadingSession {
         isScrolling = false
     }
 
-    var isRetainingPosition: Bool {
-        if case .retaining = position { return true }
-        return false
-    }
     var anchor: Anchor? {
         get {
             guard case .retaining(let anchor) = position else { return nil }

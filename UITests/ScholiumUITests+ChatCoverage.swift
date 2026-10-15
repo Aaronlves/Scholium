@@ -449,6 +449,66 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testFloatingLatestNavigationKeepsDraftAndEarlierPageActionsReachable() throws {
+        waitForCurrentDocumentSurface()
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        app = configuredApplication(sessionID: UUID(), appearance: .dark)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(fixture.long.id).click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        let transcript = app.scrollViews["scholium.chat.transcript"].firstMatch
+        let latest = app.buttons["scholium.chat.latest"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitUntil(timeout: 5) { !latest.exists || !latest.isEnabled }, "Retained hidden navigation must reject activation")
+        transcript.swipeDown(velocity: .slow)
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { latest.exists && latest.isHittable && latest.isEnabled },
+            "A floating button outside the reserved inset must accept native input")
+        let composerFrame = composer.frame
+        latest.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !latest.exists || !latest.isEnabled })
+        XCTAssertEqual(composer.frame, composerFrame, "Navigation visibility cannot move the input surface")
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+
+        // Outline creates an earlier bounded window with a persistent Latest
+        // action. Both native actions must remain separate at the window end.
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Conversation Outline"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let outline = app.popovers.firstMatch
+        XCTAssertTrue(outline.waitForExistence(timeout: 5))
+        let query = outline.textFields["scholium.chat.outline"].firstMatch
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        typeCommittedText("Synthetic question 1.", into: query, in: app)
+        let request = outline.buttons["scholium.chat.outline.question-0"].firstMatch
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        request.click()
+        let later = app.buttons["scholium.chat.later"].firstMatch
+        XCTAssertTrue(later.waitForExistence(timeout: 15))
+        scrollUntilHittable(later, in: transcript)
+        XCTAssertTrue(latest.isEnabled && later.isHittable)
+        XCTAssertFalse(latest.frame.intersects(later.frame), "Latest cannot obscure Later Messages")
+        later.click()
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        // XCTest's hit-point search clips to the transcript AX frame, which
+        // excludes its safe-area controls. Use the visible button's own center.
+        latest.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !latest.exists || !latest.isEnabled })
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        image.name = "Floating Latest — native pointer and earlier-page navigation"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    @MainActor
     func seedChatEntryFixture() throws -> (
         short: (id: UUID, turns: Int, draft: String), long: (id: UUID, turns: Int, draft: String), archive: URL
     ) {

@@ -299,7 +299,7 @@ struct AgentChatContentTests {
 
     @Test func richObjectsUseTheirOwnRendererPayload() throws {
         let source = "前文 😀\n\n| 概念 | 理由 |\n|---|---|\n|情绪|评价|\n\n后文中的评价。\n\n```mermaid\ngraph LR\nA --> B\n```"
-        let snapshot = AgentChatReplyProjection.Snapshot(source)
+        let snapshot = AgentChatReplyProjection.Snapshot(.init(source))
         #expect(snapshot.objects.count == 2)
         let table = try #require(snapshot.objects.values.first { $0.kind == .table })
         let diagram = try #require(snapshot.objects.values.first { $0.kind == .diagram })

@@ -13,11 +13,14 @@ struct AgentChatNavigationTests {
         _ = NSApplication.shared
         var interactions = 0
         var layouts = 0
+        var layoutSize: CGSize?
         let page = AgentChatReadPageExtension()
         page.update(
             onEvent: { event in
                 switch event {
-                case .layout: layouts += 1
+                case .layout(let height, let viewportWidth, _, _):
+                    layouts += 1
+                    layoutSize = CGSize(width: viewportWidth, height: height)
                 default: interactions += 1
                 }
             }, isInteractive: true)
@@ -38,7 +41,9 @@ struct AgentChatNavigationTests {
         page.update(
             onEvent: { event in
                 switch event {
-                case .layout: layouts += 1
+                case .layout(let height, let viewportWidth, _, _):
+                    layouts += 1
+                    layoutSize = CGSize(width: viewportWidth, height: height)
                 default: interactions += 1
                 }
             }, isInteractive: false)
@@ -62,7 +67,13 @@ struct AgentChatNavigationTests {
         let dismissal: [String: Any] = ["event": ["type": "dismissSurface", "kind": "preview", "id": 1]]
         #expect(!page.handleMessage(type: "floatingSurface", payload: dismissal, webView: reader))
         #expect(page.handleMessage(type: "replyLayout", payload: ["height": 120.0, "intrinsicWidth": NSNull(), "objects": []], webView: reader))
+        #expect(layouts == 0, "A layout without its viewport width cannot prove geometry convergence.")
+        #expect(
+            page.handleMessage(
+                type: "replyLayout",
+                payload: ["height": 120.0, "viewportWidth": 320.0, "intrinsicWidth": NSNull(), "objects": []], webView: reader))
         #expect(layouts == 1, "Retaining inert pixels must not discard native layout convergence.")
+        #expect(layoutSize == CGSize(width: 320, height: 120))
 
         page.update(onEvent: { _ in interactions += 1 }, isInteractive: true)
         #expect(ObjectIdentifier(reader) == retainedIdentity)

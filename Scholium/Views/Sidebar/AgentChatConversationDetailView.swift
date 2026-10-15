@@ -34,7 +34,6 @@ struct AgentChatConversationDetailView: View {
     }
     @State private var fileSelectionTask: Task<Void, Never>?
     @State private var topBarHeight: CGFloat = 0
-    @State private var accessoryHeight: CGFloat = 0
     @State private var entryMeasurementID: UUID?
     @State private var transcriptMountID = UUID()
 
@@ -262,10 +261,10 @@ struct AgentChatConversationDetailView: View {
     }
 
     private var currentReadingRequestID: String? {
-        guard let anchor = readingSession.anchor,
-            let item = timelineItems.first(where: { $0.id == anchor.id }),
+        guard let itemID = readingSession.currentReadingItemID,
+            let item = timelineItems.first(where: { $0.id == itemID }),
             let turnID = item.messages.first?.turnID
-        else { return readingSession.anchor?.id }
+        else { return readingSession.currentReadingItemID }
         return timelineMessages.first(where: { $0.turnID == turnID && $0.role == .user })?.id
     }
 
@@ -444,24 +443,14 @@ struct AgentChatConversationDetailView: View {
         // scroll beneath its glass while the viewport retains enough
         // bottom inset to bring every final-message action into reach.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                if hasConversationAccessories {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                            conversationActivityButtons
-                            conversationNavigationButtons
-                        }.fixedSize(horizontal: true, vertical: false)
-                        VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-                            conversationActivityButtons
-                            conversationNavigationButtons
-                        }
-                    }
-                    .onGeometryChange(for: CGFloat.self) {
-                        $0.size.height
-                    } action: {
-                        accessoryHeight = $0
-                    }
+            AgentChatConversationBottomArea(viewportHeight: max(0, viewportHeight - topBarHeight)) {
+                AgentChatConversationAccessories(
+                    readingSession: readingSession, hasActivity: hasConversationActivity,
+                    latest: { readingSession.latest(in: projection.ids) }
+                ) {
+                    conversationActivityButtons
                 }
+            } input: { availableHeight in
                 if controller.selected?.isAvailable == false {
                     Button("Restore Chat") {
                         if let id = controller.selectedID {
@@ -470,7 +459,7 @@ struct AgentChatConversationDetailView: View {
                         }
                     }.buttonStyle(.glass).padding()
                 } else {
-                    inputDock(viewportHeight: max(0, viewportHeight - topBarHeight - accessoryHeight))
+                    inputDock(viewportHeight: availableHeight)
                 }
             }
             .disabled(!isVisible || !isCurrentConversation)
@@ -505,9 +494,6 @@ struct AgentChatConversationDetailView: View {
         .onDisappear {
             if readingSession.ownsPresentation(transcriptMountID) { presentation.arrivalBaseline = nil }
             readingSession.endPresentation(transcriptMountID)
-        }
-        .onChange(of: hasConversationAccessories) { _, hasAccessories in
-            if !hasAccessories { accessoryHeight = 0 }
         }
     }
 
@@ -556,7 +542,7 @@ struct AgentChatConversationDetailView: View {
                 forceExpanded: presentation.showsFind && item.messages.contains { $0.id == presentation.find.selectedID },
                 isActive: controller.isBusy && turnID != nil && turnID == controller.currentTurnID,
                 status: status,
-                preservesReading: isAwayFromLatest || readingSession.isRetainingPosition || readingSession.isScrolling,
+                preservesReading: readingSession.isRetainingPosition || readingSession.isScrolling || isAwayFromLatest,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 inspectedActivityIDs: inspectedActivityIDs,
                 revealedActivityID: presentation.showsFind ? presentation.find.selectedID : nil,
@@ -579,7 +565,7 @@ struct AgentChatConversationDetailView: View {
                             set: { readingSession.planExpansions[message.id] = $0 }))
                 } else {
                     AgentChatMarkdown(
-                        text: message.text, readerID: message.id
+                        text: message.text, readerID: message.id, isStreaming: message.isStreaming
                     ).foregroundStyle(.secondary)
                 }
             }
@@ -629,7 +615,7 @@ struct AgentChatConversationDetailView: View {
                         }
                     } else if !message.text.isEmpty {
                         AgentChatMarkdown(
-                            text: message.text, readerID: message.id, expandsToFillWidth: message.role != .user,
+                            text: message.text, readerID: message.id, isStreaming: message.isStreaming, expandsToFillWidth: message.role != .user,
                             quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
                     }
                     if !message.attachments.isEmpty || !message.localMaterials.isEmpty {
@@ -717,7 +703,7 @@ struct AgentChatConversationDetailView: View {
     }
 
     private var allowsReplyMotion: Bool {
-        isVisible && !isAwayFromLatest && !readingSession.isRetainingPosition && !readingSession.isScrolling && !controller.isRefreshingHistory
+        isVisible && !readingSession.isRetainingPosition && !readingSession.isScrolling && !isAwayFromLatest && !controller.isRefreshingHistory
     }
 
     @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {
@@ -922,27 +908,13 @@ struct AgentChatConversationDetailView: View {
         }
     }
 
-    private var hasConversationAccessories: Bool {
+    private var hasConversationActivity: Bool {
         let hasChanges = !conversationChangeIDs.isEmpty
         let hasAgents =
             controller.selected.map {
                 !AgentChatAgentRoster(messages: $0.messages, threadID: $0.threadID).entries.isEmpty
             } ?? false
-        return hasChanges || hasAgents || isAwayFromLatest || readingSession.history.last != nil
-    }
-
-    private var conversationNavigationButtons: some View {
-        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
-            if isAwayFromLatest || readingSession.history.last != nil {
-                Button {
-                    readingSession.latest(in: timelineItems.map(\.id))
-                } label: {
-                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.later.symbol, placement: .action)
-                }
-                .scholiumIconControl()
-                .help("Latest Reply").accessibilityLabel("Latest Reply")
-            }
-        }
+        return hasChanges || hasAgents
     }
 
     @ViewBuilder private var agentsButton: some View {
@@ -1244,7 +1216,7 @@ struct AgentChatConversationDetailView: View {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
                 requestCount: controller.pendingRequestCount, isActive: isVisible && isCurrentConversation,
-                isReadingHistory: isAwayFromLatest || readingSession.isRetainingPosition || readingSession.isScrolling,
+                isReadingHistory: readingSession.isRetainingPosition || readingSession.isScrolling || isAwayFromLatest,
                 isEditingDraft: presentation.messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
                         || presentation.completion.isComposing),

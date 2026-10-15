@@ -176,7 +176,8 @@ import ScholiumContracts
                 var hasAdditionalMaterial = false
                 switch item.content {
                 case .assistant(let text, let phase):
-                    message = .init(id: id, role: .assistant, text: text, phase: phase)
+                    message = .init(
+                        id: id, role: .assistant, text: text, phase: phase, isStreaming: item.isStreaming && !isDisconnected)
                 case .user(let text, let additional):
                     hasAdditionalMaterial = additional
                     message = .init(id: id, role: .user, text: text)

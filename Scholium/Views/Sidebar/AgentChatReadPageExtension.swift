@@ -284,6 +284,7 @@ struct AgentChatReadWebViewSurface: View {
     let htmlBody: String
     let presentationCSS: String
     let userCSS: String
+    let projectionRevision: String
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
     let renderingReadinessIsAcknowledged: Bool
@@ -301,6 +302,7 @@ struct AgentChatReadWebViewSurface: View {
         htmlBody: String,
         presentationCSS: String,
         userCSS: String,
+        projectionRevision: String,
         onLinkClick: @escaping (String) -> Void,
         onOpenExternalURL: @escaping (URL) -> Void,
         renderingReadinessIsAcknowledged: Bool,
@@ -316,6 +318,7 @@ struct AgentChatReadWebViewSurface: View {
         self.htmlBody = htmlBody
         self.presentationCSS = presentationCSS
         self.userCSS = userCSS
+        self.projectionRevision = projectionRevision
         self.onLinkClick = onLinkClick
         self.onOpenExternalURL = onOpenExternalURL
         self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
@@ -336,6 +339,7 @@ struct AgentChatReadWebViewSurface: View {
             htmlBody: htmlBody,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
+            configurationRevision: projectionRevision,
             onLinkClick: { if isEnabled { onLinkClick($0) } },
             onOpenExternalURL: { if isEnabled { onOpenExternalURL($0) } },
             selectionSurfaceIsActive: false,

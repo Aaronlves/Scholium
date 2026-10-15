@@ -19,3 +19,9 @@ The shared mathematics runtime, stylesheet, and fonts are built from KaTeX
 
 `math.bundle.js`, `katex.min.css`, and the `KaTeX_*.woff2` files are generated
 from the exact package version locked in `WebEditor/package-lock.json`.
+
+The standalone `chat-streaming-markdown.bundle.js` is built from Remend 1.4.0
+(Vercel, Inc.), under Apache License 2.0. It completes display-only Markdown
+strings inside an isolated JavaScriptCore context; it supplies no HTML or IO.
+Source: https://github.com/vercel/streamdown/tree/main/packages/remend
+Full license and upstream notice are shipped in the app's `Licenses` directory.

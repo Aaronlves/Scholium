@@ -58,7 +58,8 @@ reading earlier messages. The complete bottom area adapts to the available heigh
 retaining readable transcript space. Prepared materials and long request bodies
 scroll locally while native draft editing and delivery controls remain usable.
 New replies follow the bottom only while already there;
-otherwise a compact latest-reply action preserves the reading position.
+otherwise a compact latest-reply action floats above the text; scrolling-driven
+visibility changes never alter transcript geometry.
 Selecting or operating reply content also pauses automatic follow until the
 researcher returns to the latest reply. Streaming preserves the active passage selection.
 A disconnected-state Connect Codex action starts initial setup or retries a real
@@ -593,12 +594,15 @@ Motion supplies the same state immediately. No full-form transition replaces an
 active answer field, restarts its identity, or delays a decision. Streaming directly
 renders received content in the retained reading surface. It has no separate
 visible-character counter, concealed text ranges or synthetic typing delay.
-The received text remains authoritative; later chunks complete its Markdown
-projection without replaying existing text. Reply parsing runs away from the
-interface executor, serially coalescing superseded pending snapshots. Completed
-prefixes may remain readable while appended source is projected; replacements,
-cancellation and final delivery preserve generation identity and exact final text.
-There is no artificial character-reveal delay. Completion, Stop, selection, copying,
+The received text remains authoritative. Incomplete Markdown receives provisional
+formatting only in its display projection; completing inline syntax retains
+existing text and selection. Provisional formatting grants no source locator,
+link destination or replacement bytes. Reply parsing runs away from the interface
+executor and coalesces pending snapshots. Initial preview and reader share one
+snapshot; replacements and cancellation reject obsolete results. Item and turn
+completion settle exact received Markdown, including unfinished syntax; a Stop
+request waits for actual termination. There is no artificial character-reveal
+delay. Completion, Stop, selection, copying,
 history reading and accessibility adaptation never leave received text hidden.
 Newly sent messages and arriving replies may
 fade in once, locally, without moving the transcript. Opening retained history,

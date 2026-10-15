@@ -78,6 +78,8 @@ public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
     public let role: Role
     public let changeID: UUID?
     public var text: String
+    /// Transient runtime observation. Restored prose is settled until refreshed.
+    public var isStreaming = false
     /// Public runtime classification. Absence means unknown, never presumed reasoning.
     public var phase: Phase?
     public var activity: AgentChatActivity?
@@ -92,15 +94,21 @@ public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
     public let attachments: [AgentChatAttachment]
     public let localMaterials: [AgentChatLocalMaterial]
 
+    private enum CodingKeys: String, CodingKey {
+        case id, role, changeID, text, phase, activity, plan, turnID, methods
+        case coordinationTarget, replyQuotes, asyncQuestion, questionReplies, attachments, localMaterials
+    }
+
     public init(
         id: String = UUID().uuidString, role: Role, text: String,
         attachments: [AgentChatAttachment] = [], localMaterials: [AgentChatLocalMaterial] = [], changeID: UUID? = nil,
-        activity: AgentChatActivity? = nil, phase: Phase? = nil
+        activity: AgentChatActivity? = nil, phase: Phase? = nil, isStreaming: Bool = false
     ) {
         self.id = id
         self.role = role
         self.changeID = changeID
         self.text = text
+        self.isStreaming = isStreaming
         self.phase = phase
         self.attachments = attachments
         self.localMaterials = localMaterials

@@ -17,10 +17,16 @@
         text.replaceData(prefix, text.length - prefix, value.slice(prefix));
         return current;
       }
-      if (current.nodeType === 1 && next.nodeType === 1 && current.isEqualNode(previous) && current.tagName === next.tagName) {
+      if (current.nodeType === 1 && previous.nodeType === 1 && next.nodeType === 1 && current.tagName === previous.tagName && current.tagName === next.tagName && current.childNodes.length === previous.childNodes.length) {
         const element = current;
-        for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name);
-        for (const attribute of [...next.attributes]) element.setAttribute(attribute.name, attribute.value);
+        const before = previous;
+        const after = next;
+        for (const attribute of [...before.attributes]) {
+          if (!after.hasAttribute(attribute.name)) element.removeAttribute(attribute.name);
+        }
+        for (const attribute of [...after.attributes]) {
+          if (element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value);
+        }
         const oldChildren = [...previous.childNodes];
         const children = [...current.childNodes];
         [...next.childNodes].forEach((child, index) => {
@@ -220,7 +226,7 @@
   function decorateChatReplyLinks(root) {
     root.querySelectorAll("a").forEach((anchor) => {
       const embedded = anchor.matches(".scholium-embed") || anchor.closest(".scholium-embedded-note") !== null;
-      const symbol = embedded ? null : chatLinkSymbol(anchor.getAttribute("href") ?? "");
+      const symbol = embedded ? null : anchor.hasAttribute("data-scholium-pending-link") ? "globe" : chatLinkSymbol(anchor.getAttribute("href") ?? "");
       if (symbol) {
         anchor.dataset.scholiumChatLinkSymbol = symbol;
         anchor.classList.add("scholium-chat-link");
@@ -5199,6 +5205,29 @@
     userStyle.textContent = userCSS;
     const documentRoot = requiredElement("scholium-document");
     const decodedImages = /* @__PURE__ */ new Set();
+    async function settleLayout(requireCurrent) {
+      requireCurrent();
+      const before = documentRoot.getBoundingClientRect();
+      const previousHeight = document.documentElement.scrollHeight;
+      if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
+      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+      requireCurrent();
+      documentRoot.getBoundingClientRect();
+      const awaitedFonts = document.fonts.status === "loading";
+      await document.fonts.ready;
+      requireCurrent();
+      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+        left: 0,
+        right: window.innerWidth,
+        top: 0,
+        bottom: window.innerHeight
+      }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+      documentRoot.getBoundingClientRect();
+      await document.fonts.ready;
+      requireCurrent();
+      const after = documentRoot.getBoundingClientRect();
+      return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== document.documentElement.scrollHeight };
+    }
     const readPreparation = {
       async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
         const requireCurrent = () => {
@@ -5206,27 +5235,7 @@
             throw new Error("stale reader preparation");
           }
         };
-        requireCurrent();
-        const before = documentRoot.getBoundingClientRect();
-        const previousHeight = document.documentElement.scrollHeight;
-        if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
-        if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
-        requireCurrent();
-        documentRoot.getBoundingClientRect();
-        const awaitedFonts = document.fonts.status === "loading";
-        await document.fonts.ready;
-        requireCurrent();
-        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
-          left: 0,
-          right: window.innerWidth,
-          top: 0,
-          bottom: window.innerHeight
-        }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
-        documentRoot.getBoundingClientRect();
-        await document.fonts.ready;
-        requireCurrent();
-        const after = documentRoot.getBoundingClientRect();
-        return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== document.documentElement.scrollHeight };
+        return await settleLayout(requireCurrent);
       }
     };
     readerWindow.scholiumReadPreparation = readPreparation;
@@ -5488,10 +5497,16 @@
         userStyle.textContent = nextUserCSS;
       }
       scheduleMermaidRefresh();
-      await new Promise((resolve) => window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => resolve());
-      }));
-      if (sequence !== presentationUpdateSequence) return false;
+      const isCurrent = () => sequence === presentationUpdateSequence && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
+      try {
+        await settleLayout(() => {
+          if (!isCurrent()) throw new Error("stale presentation update");
+        });
+      } catch (error) {
+        if (!isCurrent()) return false;
+        throw error;
+      }
+      if (!isCurrent()) return false;
       if (anchor) {
         restoreReadScrollAnchor(anchor);
       } else {
@@ -5514,8 +5529,8 @@
         decorateChatReplyLinks(documentRoot);
         readerWindow.scholiumReviewImages?.refresh();
         fingerprint = update.fingerprint;
-        presentationStyle.textContent = update.presentationCSS;
-        userStyle.textContent = update.userCSS;
+        if (presentationStyle.textContent !== update.presentationCSS) presentationStyle.textContent = update.presentationCSS;
+        if (userStyle.textContent !== update.userCSS) userStyle.textContent = update.userCSS;
         renderMathNodes();
         readerWindow.scholiumMermaidReady = renderMermaidNodes();
         await readerWindow.scholiumMermaidReady;

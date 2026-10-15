@@ -164,13 +164,23 @@ public enum CodexChatTranscript {
         guard let type = object["type"]?.stringValue else { throw CodexConnectionError.invalidMessage }
         if type == "agentMessage" {
             guard let text = object["text"]?.stringValue else { throw CodexConnectionError.invalidMessage }
+            let isStreaming: Bool
+            if let turnStatus {
+                // History can omit per-message status. A running turn does not
+                // prove that an unfinished Markdown projection has settled.
+                let itemHasEnded = ["completed", "interrupted", "failed"].contains(object["status"]?.stringValue ?? "")
+                isStreaming = turnStatus == .inProgress && !itemHasEnded
+            } else {
+                isStreaming = !completed
+            }
             return .init(
                 id: id,
                 content: .assistant(
                     text: text,
                     phase: object["phase"]?.stringValue.flatMap(AgentChatMessage.Phase.init(rawValue:))),
-                asyncQuestions: completed && object["delivery"]?.stringValue == "async"
-                    ? try CodexChatAsyncQuestions.parse(object, id: id, text: text) : nil)
+                asyncQuestions: !isStreaming && object["delivery"]?.stringValue == "async"
+                    ? try CodexChatAsyncQuestions.parse(object, id: id, text: text) : nil,
+                isStreaming: isStreaming)
         }
         if type == "userMessage" {
             guard let values = object["content"]?.arrayValue else { throw CodexConnectionError.invalidMessage }

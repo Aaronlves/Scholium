@@ -44,7 +44,9 @@ struct AgentChatReadingTests {
         var mountedReader: WKWebView?
         while ContinuousClock.now < deadline {
             host.layoutSubtreeIfNeeded()
-            if let webView = reader(in: host) {
+            // A prepared DOM can have geometry before its measured native
+            // surface is published. Exercise the real interaction boundary.
+            if let webView = reader(in: host) as? AgentChatReadWebView, webView.isChatInteractive {
                 mountedReader = webView
                 // Read geometry only: selection must be created by native pointer events.
                 points =

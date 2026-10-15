@@ -142,7 +142,7 @@ struct AgentChatChildView: View {
             } else {
                 Text(message.role == .user ? ScholiumL10n.string("Request", locale: locale) : ScholiumL10n.string("Agent", locale: locale))
                     .font(.caption).foregroundStyle(.secondary)
-                AgentChatMarkdown(text: message.text)
+                AgentChatMarkdown(text: message.text, isStreaming: message.isStreaming)
                     .font(ScholiumChatAppearance.messageFont)
                     .foregroundStyle(ScholiumChatAppearance.messageForeground)
             }

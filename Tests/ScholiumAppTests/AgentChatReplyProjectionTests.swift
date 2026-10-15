@@ -8,11 +8,13 @@ import Testing
 struct AgentChatReplyProjectionTests {
     actor Gate {
         var sources: [String] = []
+        var requests: [AgentChatReplyProjection.Request] = []
         var waiting: [CheckedContinuation<Void, Never>] = []
-        func render(_ source: String) async -> AgentChatReplyProjection.Snapshot {
-            sources.append(source)
+        func render(_ request: AgentChatReplyProjection.Request) async -> AgentChatReplyProjection.Snapshot {
+            sources.append(request.source)
+            requests.append(request)
             await withCheckedContinuation { waiting.append($0) }
-            return .init(source)
+            return .init(request)
         }
         func release() { waiting.removeFirst().resume() }
         func releaseAll() {
@@ -20,6 +22,56 @@ struct AgentChatReplyProjectionTests {
             waiting.removeAll()
             for continuation in continuations { continuation.resume() }
         }
+    }
+    @Test("Completion supersedes an in-flight speculative snapshot even when the source bytes are unchanged")
+    func completionIsAProjectionBoundary() async throws {
+        let gate = Gate()
+        let projection = AgentChatReplyProjection { await gate.render($0) }
+        defer {
+            projection.cancel()
+            Task { await gate.releaseAll() }
+        }
+        let source = "**Partial 中文😀"
+        projection.submit(source, isStreaming: true)
+        try await until { await gate.sources.count == 1 }
+        projection.submit(source, isStreaming: false)
+        await gate.release()
+        try await until { await gate.sources.count == 2 }
+        #expect(projection.snapshot == nil)
+        await gate.release()
+        try await until { projection.snapshot?.request.isStreaming == false }
+        #expect(projection.snapshot?.document.rawContent.utf8.elementsEqual(source.utf8) == true)
+    }
+
+    @Test("Speculative formatting never replaces exact source, and completion returns strict Markdown")
+    func exactSourceAndStrictCompletion() async throws {
+        let projection = AgentChatReplyProjection()
+        defer { projection.cancel() }
+        let source = "\u{FEFF}**Cafe\u{301} 中文😀\r\n"
+        projection.submit(source, isStreaming: true)
+        try await until { projection.snapshot?.request.isStreaming == true }
+        let streaming = try #require(projection.snapshot)
+        #expect(streaming.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(streaming.html.contains("<strong>"))
+        projection.submit(source, isStreaming: false)
+        try await until { projection.snapshot?.request.isStreaming == false }
+        let settled = try #require(projection.snapshot)
+        #expect(settled.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(!settled.html.contains("<strong>"))
+        #expect(settled.presentationRevision != streaming.presentationRevision)
+        #expect(settled.html == SafeMarkdownRenderer.render(settled.document).htmlBody)
+    }
+    @Test("Provisional Markdown supplies neither synthetic source ranges nor a navigable pending destination")
+    func provisionalLocationsHaveNoAuthority() {
+        let source = "Read [source](https://example.com/a-long-unfinished-destination\n\nFollowing **text"
+        let display = "Read [source](streamdown:incomplete-link)\n\nFollowing **text**"
+        let snapshot = AgentChatReplyProjection.Snapshot(.init(source, isStreaming: true), displaySource: display)
+        #expect(snapshot.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(snapshot.html.contains("data-scholium-pending-link"))
+        #expect(!snapshot.html.contains("href="))
+        #expect(!snapshot.html.contains("data-source-"))
+        let settled = AgentChatReplyProjection.Snapshot(.init(source))
+        #expect(settled.html.contains("data-source-"))
     }
     private func until(_ condition: () async -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))

@@ -40,7 +40,10 @@ export function decorateChatReplyLinks(root: ParentNode): void {
   root.querySelectorAll<HTMLAnchorElement>("a").forEach(anchor => {
     const embedded = anchor.matches(".scholium-embed")
       || anchor.closest(".scholium-embedded-note") !== null;
-    const symbol = embedded ? null : chatLinkSymbol(anchor.getAttribute("href") ?? "");
+    // A pending destination is inert, but occupies the same decorative slot
+    // before and after completion so resolving its URL cannot rewrap the label.
+    const symbol = embedded ? null : anchor.hasAttribute('data-scholium-pending-link')
+      ? 'globe' : chatLinkSymbol(anchor.getAttribute("href") ?? "");
     if (symbol) {
       anchor.dataset.scholiumChatLinkSymbol = symbol;
       anchor.classList.add("scholium-chat-link");

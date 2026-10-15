@@ -7,6 +7,8 @@ READER_OUTPUT="$ROOT/Scholium/Resources/Editor/reader.bundle.js"
 MATH_OUTPUT="$ROOT/Scholium/Resources/Editor/math.bundle.js"
 MERMAID_OUTPUT="$ROOT/Scholium/Resources/Editor/mermaid.bundle.js"
 MERMAID_NOTICES_OUTPUT="$ROOT/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
+STREAMING_OUTPUT="$ROOT/Scholium/Resources/Editor/chat-streaming-markdown.bundle.js"
+STREAMING_NOTICES_OUTPUT="$ROOT/Tools/Packaging/Licenses/Remend-NOTICE.txt"
 ASSET_OUTPUT="$ROOT/Scholium/Resources/Editor"
 
 "$ROOT/Tools/Scripts/run-editor-toolchain.sh" \
@@ -15,6 +17,8 @@ ASSET_OUTPUT="$ROOT/Scholium/Resources/Editor"
   --math-output "$MATH_OUTPUT" \
   --mermaid-output "$MERMAID_OUTPUT" \
   --mermaid-notices-output "$MERMAID_NOTICES_OUTPUT" \
+  --streaming-output "$STREAMING_OUTPUT" \
+  --streaming-notices-output "$STREAMING_NOTICES_OUTPUT" \
   --math-assets "$ASSET_OUTPUT"
 
-echo "Built the locked CodeMirror, Read, KaTeX, and Mermaid document resources."
+echo "Built the locked CodeMirror, Read, streaming Markdown, KaTeX, and Mermaid resources."

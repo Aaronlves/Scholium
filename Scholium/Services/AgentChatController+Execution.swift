@@ -3,6 +3,30 @@ import Combine
 import ScholiumApplication
 import ScholiumContracts
 
+/// The local observations a runtime history request was allowed to replace.
+/// A response has no server revision, so later live events retain precedence.
+struct AgentChatHistoryRead {
+    struct Prose: Equatable {
+        let source: ScholiumExactUTF8.SourceIdentity
+        let phase: AgentChatMessage.Phase?
+        let isStreaming: Bool
+        let turnID: String?
+
+        init(_ message: AgentChatMessage) {
+            source = .init(message.text)
+            phase = message.phase
+            isStreaming = message.isStreaming
+            turnID = message.turnID
+        }
+    }
+
+    let conversationID: UUID
+    let threadID: String
+    let prose: [String: Prose]
+    let turns: [String: AgentChatTurnRecord]
+    let completedAssistantItemIDs: Set<String>
+}
+
 private struct AgentChatDraftContents: Equatable {
     let text: String
     let coordinationTarget: AgentChatCoordinationTarget?
@@ -344,9 +368,10 @@ extension AgentChatController {
                     thread = existing
                     if expectedTurnID == nil {
                         params["threadId"] = .string(existing)
+                        let historyRead = try self.beginHistoryRead(in: conversationID)
                         let result = try await runtime.request("thread/resume", params: params)
                         guard self.connectionID == connectionID else { return }
-                        try self.hydrate(result, in: conversationID)
+                        try self.hydrate(result, in: conversationID, after: historyRead)
                     }
                 } else {
                     let result = try await runtime.request("thread/start", params: params)
@@ -500,10 +525,11 @@ extension AgentChatController {
                 if self.connectionID == connection { self.executions[conversationID]?.isRefreshingHistory = false }
             }
             do {
+                let historyRead = try self.beginHistoryRead(in: conversationID)
                 let result = try await runtime.request(
                     "thread/read", params: ["threadId": .string(thread), "includeTurns": .bool(true)])
                 guard self.connectionID == connection, !Task.isCancelled else { return }
-                try self.hydrate(result, in: conversationID)
+                try self.hydrate(result, in: conversationID, after: historyRead)
                 self.executions[conversationID]?.historyUnavailable = false
                 self.executions[conversationID]?.error = nil
                 self.persist()
@@ -526,9 +552,27 @@ extension AgentChatController {
         }
     }
 
-    func hydrate(_ result: MCPJSONValue, in conversationID: UUID) throws {
+    func beginHistoryRead(in conversationID: UUID) throws -> AgentChatHistoryRead {
         guard let conversation = conversation(conversationID), let threadID = conversation.threadID else {
             throw CodexConnectionError.invalidMessage
+        }
+        return .init(
+            conversationID: conversationID, threadID: threadID,
+            prose: conversation.messages.reduce(into: [:]) { values, message in
+                if message.role == .assistant { values[message.id] = .init(message) }
+            },
+            turns: conversation.turns,
+            completedAssistantItemIDs: executions[conversationID]?.completedAssistantItemIDs ?? [])
+    }
+
+    func hydrate(_ result: MCPJSONValue, in conversationID: UUID, after historyRead: AgentChatHistoryRead? = nil) throws {
+        guard let conversation = conversation(conversationID), let threadID = conversation.threadID else {
+            throw CodexConnectionError.invalidMessage
+        }
+        if let historyRead {
+            guard historyRead.conversationID == conversationID, historyRead.threadID == threadID else {
+                throw CodexConnectionError.invalidMessage
+            }
         }
         var origins: [String: String] = [:]
         for message in conversation.messages {
@@ -545,22 +589,57 @@ extension AgentChatController {
         // exposes intermediate history and repeatedly copies/compares the retained
         // conversation on the main actor.
         var reconciled = conversation
+        var exactProseChanged = false
+        var completedAssistantItemIDs = executions[conversationID]?.completedAssistantItemIDs ?? []
+        let currentProse = conversation.messages.reduce(into: [String: AgentChatHistoryRead.Prose]()) { values, message in
+            if message.role == .assistant { values[message.id] = .init(message) }
+        }
+        let hasConcurrentObservations =
+            historyRead.map {
+                $0.prose != currentProse || $0.turns != conversation.turns || $0.completedAssistantItemIDs != completedAssistantItemIDs
+            } ?? false
         var messageIndices = Dictionary(grouping: reconciled.messages.indices, by: { reconciled.messages[$0].id })
         let planMessageIDs = Dictionary(grouping: conversation.messages.filter { $0.plan != nil }, by: { $0.plan!.turnID })
             .mapValues { $0.map(\.id) }
         var previousMessageID: String?
         for turn in turns {
+            let turnChangedDuringRead = historyRead.map { $0.turns[turn.id] != conversation.turns[turn.id] } ?? false
+            let turnHasEnded = conversation.turns[turn.id].map { $0.status != .inProgress } == true
+            var preservesTurn = turnChangedDuringRead || turnHasEnded && turn.status == .inProgress
+            var preservedAssistantItemIDs: Set<String> = []
             for item in turn.items {
                 switch item.content {
                 case .assistant(let text, let phase):
+                    if let current = currentProse[item.id] {
+                        let hasCompletedItem = completedAssistantItemIDs.contains(item.id)
+                        let changedDuringRead =
+                            historyRead.map {
+                                $0.prose[item.id] != current
+                                    || $0.completedAssistantItemIDs.contains(item.id) != hasCompletedItem
+                            } ?? (current.isStreaming || hasCompletedItem)
+                        if changedDuringRead || turnChangedDuringRead || item.isStreaming && (hasCompletedItem || turnHasEnded) {
+                            // The history response cannot establish that it is newer
+                            // than this event. Keep the entire observed item together;
+                            // do not guess from prefix shape or character count.
+                            preservedAssistantItemIDs.insert(item.id)
+                            preservesTurn = true
+                            previousMessageID = item.id
+                            continue
+                        }
+                    }
+                    if !item.isStreaming || turnHasEnded { completedAssistantItemIDs.insert(item.id) }
+                    let isStreaming = item.isStreaming && !completedAssistantItemIDs.contains(item.id)
                     let index: Int
                     if let existing = messageIndices[item.id]?.first {
                         index = existing
+                        if !ScholiumExactUTF8.equal(reconciled.messages[index].text, text) { exactProseChanged = true }
                         reconciled.messages[index].text = text
                         reconciled.messages[index].phase = phase
+                        reconciled.messages[index].isStreaming = isStreaming
                     } else {
                         index = previousMessageID.flatMap { messageIndices[$0]?.first.map { $0 + 1 } } ?? 0
-                        reconciled.messages.insert(.init(id: item.id, role: .assistant, text: text, phase: phase), at: index)
+                        reconciled.messages.insert(
+                            .init(id: item.id, role: .assistant, text: text, phase: phase, isStreaming: isStreaming), at: index)
                         if index == reconciled.messages.count - 1 {
                             messageIndices[item.id] = [index]
                         } else {
@@ -598,19 +677,24 @@ extension AgentChatController {
                     }
                 }
             }
-            let record = AgentChatTurnRecord(status: turn.status, timing: turn.timing)
-            reconciled.turns[turn.id] = reconciled.turns[turn.id]?.merging(record) ?? record
-            for id in turn.messageIDs {
+            if !preservesTurn {
+                let record = AgentChatTurnRecord(status: turn.status, timing: turn.timing)
+                reconciled.turns[turn.id] = reconciled.turns[turn.id]?.merging(record) ?? record
+            }
+            for id in turn.messageIDs where !preservedAssistantItemIDs.contains(id) {
                 for index in messageIndices[id] ?? [] { reconciled.messages[index].turnID = turn.id }
             }
-            reconciled.lastRunStatus = turn.status.runStatus
-            for id in planMessageIDs[turn.id] ?? [] {
-                for index in messageIndices[id] ?? [] where reconciled.messages[index].plan?.turnID == turn.id {
-                    reconciled.messages[index].plan?.runStatus = turn.status.runStatus
+            if !preservesTurn {
+                if !hasConcurrentObservations { reconciled.lastRunStatus = turn.status.runStatus }
+                for id in planMessageIDs[turn.id] ?? [] {
+                    for index in messageIndices[id] ?? [] where reconciled.messages[index].plan?.turnID == turn.id {
+                        reconciled.messages[index].plan?.runStatus = turn.status.runStatus
+                    }
                 }
             }
         }
-        guard reconciled != conversation,
+        executions[conversationID]?.completedAssistantItemIDs = completedAssistantItemIDs
+        guard exactProseChanged || reconciled != conversation,
             let index = conversations.firstIndex(where: { $0.id == conversationID })
         else { return }
         reconciled.updatedAt = Date()
@@ -967,8 +1051,12 @@ extension AgentChatController {
 
     func invalidateExecutions() {
         for id in Array(executions.keys) {
-            if executions[id]?.isBusy == true {
-                update(in: id) { if $0.lastRunStatus?.isActive == true { $0.lastRunStatus = .interrupted } }
+            let wasBusy = executions[id]?.isBusy == true
+            update(in: id) { conversation in
+                if wasBusy, conversation.lastRunStatus?.isActive == true { conversation.lastRunStatus = .interrupted }
+                for index in conversation.messages.indices where conversation.messages[index].isStreaming {
+                    conversation.messages[index].isStreaming = false
+                }
             }
             invalidateActiveObservations(in: id)
             executions[id]?.admissionID = nil

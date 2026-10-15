@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Library Folder": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Library Folder"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文献库文件夹"}}}},
+    "Data Directory": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Data Directory"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "数据文件夹"}}}},
     "Tool Calls (%lld)": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tool Calls (%lld)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 次工具调用"}}}},
     "Scholium locates your Zotero library folder. Confirm Allow Read Access in the file picker. Access is read-only, limited to Zotero originals, and saved on this Mac.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium locates your Zotero library folder. Confirm Allow Read Access in the file picker. Access is read-only, limited to Zotero originals, and saved on this Mac."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Scholium 会定位 Zotero 文献库文件夹。只需在文件选择器中点击“允许读取”。权限仅用于读取 Zotero 原文，保存在此 Mac。"}}}},
     "Finding Zotero Library Folder…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finding Zotero Library Folder…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在定位 Zotero 文献库文件夹…"}}}},
