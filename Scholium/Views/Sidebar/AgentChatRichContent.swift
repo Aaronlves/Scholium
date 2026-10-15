@@ -2,11 +2,20 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// Expanded objects use their renderer-owned payload; no Markdown is reparsed.
+/// Expanded objects use their renderer-owned payload and the immutable source
+/// prepared at activation; view updates never parse the source again.
 struct AgentChatRichContent: View {
     let object: RenderedMarkdownObject
     let naturalSize: CGSize
     let openLink: (URL) -> Void
+    private let document: NoteDocument?
+
+    init(object: RenderedMarkdownObject, naturalSize: CGSize, openLink: @escaping (URL) -> Void) {
+        self.object = object
+        self.naturalSize = naturalSize
+        self.openLink = openLink
+        document = object.kind == .code ? nil : NoteDocument(relativePath: "ChatObject.md", rawContent: object.copyText)
+    }
 
     var body: some View {
         if object.kind == .code {
@@ -16,8 +25,8 @@ struct AgentChatRichContent: View {
                         .frame(width: max(viewport.size.width, naturalSize.width), alignment: .topLeading)
                 }.defaultScrollAnchor(.topLeading)
             }
-        } else {
-            AgentChatObjectHTML(object: object, openLink: openLink)
+        } else if let document {
+            AgentChatObjectHTML(object: object, document: document, openLink: openLink)
         }
     }
 
@@ -46,6 +55,7 @@ struct AgentChatObjectText: NSViewRepresentable {
 /// Safe HTML comes from the same source snapshot as Copy and the inline object.
 private struct AgentChatObjectHTML: View {
     let object: RenderedMarkdownObject
+    let document: NoteDocument
     let openLink: (URL) -> Void
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
@@ -62,8 +72,7 @@ private struct AgentChatObjectHTML: View {
                 }
             } else {
                 SafeMarkdownReadWebView(
-                    documentID: "chat-object", fingerprint: DocumentFingerprint(content: object.copyText).sha256,
-                    source: object.copyText, htmlBody: object.html,
+                    documentID: "chat-object", document: document, htmlBody: object.html,
                     presentationCSS: object.kind == .diagram
                         ? AgentChatDiagram.previewCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
                         : Self.tableCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased),

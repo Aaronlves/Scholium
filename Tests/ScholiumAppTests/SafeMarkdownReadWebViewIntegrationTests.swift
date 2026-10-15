@@ -204,8 +204,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let document = NoteDocument(relativePath: "Teardown.md", rawContent: source)
             let surface = SafeMarkdownReadWebView(
                 documentID: document.relativePath,
-                fingerprint: document.fingerprint.sha256,
-                source: source,
+                document: document,
                 htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
                 presentationCSS: "",
                 userCSS: "",
@@ -2618,10 +2617,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             // close-release behavior from invalidating the Swift property
             // before ReadHarness itself is released.
             window.isReleasedWhenClosed = false
+            let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+            #expect(document.fingerprint.sha256 == fingerprint)
             let root = ReadHarnessRoot(
-                source: source,
+                document: document,
                 htmlBody: htmlBody,
-                fingerprint: fingerprint,
                 documentTitle: documentTitle,
                 userCSS: userCSS,
                 sourceBox: sourceBox,
@@ -3642,9 +3642,8 @@ extension MarkdownEditorWebViewIntegrationTests {
     }
 
     private struct ReadHarnessRoot: View {
-        let source: String
+        let document: NoteDocument
         let htmlBody: String
-        let fingerprint: String
         let documentTitle: String
         let userCSS: String
         @ObservedObject var sourceBox: SourceBox
@@ -3656,8 +3655,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             var surface = SafeMarkdownReadWebView(
                 documentID: "ReadFixture.md",
                 documentTitle: documentTitle,
-                fingerprint: fingerprint,
-                source: source,
+                document: document,
                 htmlBody: htmlBody,
                 presentationCSS: sourceBox.presentationCSS,
                 userCSS: sourceBox.userCSS,
@@ -3681,7 +3679,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 scrollRestoreRequest: sourceBox.restoration.map { restoration in
                     ScrollRestoreRequest(
                         id: restoration.id,
-                        fingerprint: fingerprint,
+                        fingerprint: document.fingerprint.sha256,
                         position: ObservedScrollPosition(
                             fraction: restoration.fraction,
                             anchor: restoration.anchor

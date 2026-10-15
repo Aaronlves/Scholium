@@ -279,8 +279,7 @@ struct AgentChatReadWebViewSurface: View {
     @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     let documentID: String
     let documentTitle: String
-    let fingerprint: String
-    let source: String
+    let document: NoteDocument
     let htmlBody: String
     let presentationCSS: String
     let userCSS: String
@@ -297,8 +296,7 @@ struct AgentChatReadWebViewSurface: View {
     init(
         documentID: String,
         documentTitle: String = "",
-        fingerprint: String,
-        source: String,
+        document: NoteDocument,
         htmlBody: String,
         presentationCSS: String,
         userCSS: String,
@@ -313,8 +311,7 @@ struct AgentChatReadWebViewSurface: View {
     ) {
         self.documentID = documentID
         self.documentTitle = documentTitle
-        self.fingerprint = fingerprint
-        self.source = source
+        self.document = document
         self.htmlBody = htmlBody
         self.presentationCSS = presentationCSS
         self.userCSS = userCSS
@@ -334,8 +331,7 @@ struct AgentChatReadWebViewSurface: View {
         SafeMarkdownReadWebView(
             documentID: documentID,
             documentTitle: documentTitle,
-            fingerprint: fingerprint,
-            source: source,
+            document: document,
             htmlBody: htmlBody,
             presentationCSS: presentationCSS,
             userCSS: userCSS,

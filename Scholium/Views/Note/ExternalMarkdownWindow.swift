@@ -207,6 +207,11 @@ final class ExternalMarkdownWindowRegistry {
 
 @MainActor
 final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDelegate {
+    struct ReadProjection {
+        let document: NoteDocument
+        let html: String
+    }
+
     typealias OpenFile =
         @Sendable (URL) async throws -> (
             session: ExternalMarkdownFileSession, snapshot: ExternalMarkdownFileSnapshot
@@ -217,7 +222,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private let openFile: OpenFile
     private let isApplicationActive: @MainActor () -> Bool
     @Published private(set) var snapshot: ExternalMarkdownFileSnapshot?
-    @Published private(set) var readHTML = ""
+    @Published private(set) var readProjection: ReadProjection?
     @Published private(set) var isLoading = true
     @Published private(set) var isSaving = false
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
@@ -599,10 +604,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         if editorScrollPosition.anchor?.sourceFingerprint != loaded.fingerprint.sha256 {
             editorScrollPosition.anchor = nil
         }
-        readHTML =
-            SafeMarkdownRenderer.render(
-                NoteDocument(relativePath: title, rawContent: loaded.source)
-            ).htmlBody
+        prepareReadProjection(for: loaded)
         openingID = UUID()
         mode = previousMode
         didAllocateEditor = mode != .read
@@ -611,6 +613,13 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         error = nil
         hasConflict = false
         needsFileAccess = false
+    }
+
+    private func prepareReadProjection(for snapshot: ExternalMarkdownFileSnapshot) {
+        let document = NoteDocument(relativePath: title, rawContent: snapshot.source)
+        let projection = ReadProjection(document: document, html: SafeMarkdownRenderer.render(document).htmlBody)
+        guard !isClosed, self.snapshot?.fingerprint == document.fingerprint else { return }
+        readProjection = projection
     }
 
     func selectMode(_ requested: NotePresentationMode) {
@@ -712,10 +721,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
             self.snapshot = committed
             readSelection = nil
             startObservation()
-            readHTML =
-                SafeMarkdownRenderer.render(
-                    NoteDocument(relativePath: title, rawContent: committed.source)
-                ).htmlBody
+            prepareReadProjection(for: committed)
             let acknowledgement = try await editorSession.acknowledgePersistenceSnapshot(
                 candidate, committedText: candidate.text, fingerprint: committed.fingerprint)
             pendingAcknowledgement = nil

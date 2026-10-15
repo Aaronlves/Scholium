@@ -63,51 +63,57 @@ struct ExternalMarkdownWindowView: View {
                     preparationTitle: model.title,
                     preparationPresentation: .init(textScale: model.documentTextScale)
                 ) {
-                    SafeMarkdownReadWebView(
-                        documentID: documentID,
-                        documentTitle: model.title,
-                        fingerprint: snapshot.fingerprint.sha256,
-                        source: snapshot.source,
-                        htmlBody: model.readHTML,
-                        presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: model.documentTextScale).css,
-                        userCSS: "",
-                        onLinkClick: { _ in },
-                        onOpenExternalURL: { url in
-                            WorkspaceStore.openExternal(url) { NSWorkspace.shared.open($0) }
-                        },
-                        onPreviewFailure: { previewFailureMessage = $0.message },
-                        onSelectionChange: { model.acceptReadSelection($0, documentID: documentID, fingerprint: snapshot.fingerprint) },
-                        onRenderingFailure: { error in
-                            guard model.documentID == documentID, model.snapshot?.fingerprint == snapshot.fingerprint else { return }
-                            model.error = error
-                        },
-                        onRenderingReady: {
-                            guard model.documentID == documentID, model.mode == .read, readReadyDocumentID != documentID else { return }
-                            readReadyDocumentID = documentID
-                            documentFind.refresh()
-                        },
-                        findRequest: model.mode == .read ? documentFind.request : nil,
-                        onFindResult: { requestID, result in
-                            guard model.documentID == documentID, model.mode == .read else { return }
-                            switch result {
-                            case .success(let value): documentFind.accept(value, for: requestID)
-                            case .failure(let error): documentFind.fail(error, for: requestID)
+                    if let projection = model.readProjection, projection.document.fingerprint == snapshot.fingerprint {
+                        SafeMarkdownReadWebView(
+                            documentID: documentID,
+                            documentTitle: model.title,
+                            document: projection.document,
+                            htmlBody: projection.html,
+                            presentationCSS: ScholiumDocumentPresentationConfiguration(textScale: model.documentTextScale).css,
+                            userCSS: "",
+                            onLinkClick: { _ in },
+                            onOpenExternalURL: { url in
+                                WorkspaceStore.openExternal(url) { NSWorkspace.shared.open($0) }
+                            },
+                            onPreviewFailure: { previewFailureMessage = $0.message },
+                            onSelectionChange: { model.acceptReadSelection($0, documentID: documentID, fingerprint: snapshot.fingerprint) },
+                            onRenderingFailure: { error in
+                                guard model.documentID == documentID, model.snapshot?.fingerprint == snapshot.fingerprint else { return }
+                                model.error = error
+                            },
+                            onRenderingReady: {
+                                guard model.documentID == documentID, model.mode == .read, readReadyDocumentID != documentID else { return }
+                                readReadyDocumentID = documentID
+                                documentFind.refresh()
+                            },
+                            findRequest: model.mode == .read ? documentFind.request : nil,
+                            onFindResult: { requestID, result in
+                                guard model.documentID == documentID, model.mode == .read else { return }
+                                switch result {
+                                case .success(let value): documentFind.accept(value, for: requestID)
+                                case .failure(let error): documentFind.fail(error, for: requestID)
+                                }
+                            },
+                            observedScrollPosition: model.readScrollPosition,
+                            scrollRestoreRequest: model.readScrollRestoreRequest,
+                            onScrollRestoreConsumed: { id, fingerprint in
+                                model.consumeReadScrollRestore(id, fingerprint: fingerprint, documentID: documentID)
+                            },
+                            onScrollFractionChange: { fraction in
+                                model.observeScrollFraction(
+                                    fraction, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
+                            },
+                            onScrollAnchorChange: { anchor in
+                                model.observeScrollAnchor(
+                                    anchor, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
                             }
-                        },
-                        observedScrollPosition: model.readScrollPosition,
-                        scrollRestoreRequest: model.readScrollRestoreRequest,
-                        onScrollRestoreConsumed: { id, fingerprint in
-                            model.consumeReadScrollRestore(id, fingerprint: fingerprint, documentID: documentID)
-                        },
-                        onScrollFractionChange: { fraction in
-                            model.observeScrollFraction(
-                                fraction, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
-                        },
-                        onScrollAnchorChange: { anchor in
-                            model.observeScrollAnchor(
-                                anchor, on: .read, documentID: documentID, fingerprint: snapshot.fingerprint.sha256)
-                        }
-                    )
+                        )
+                    } else {
+                        DocumentPreparationStatus(
+                            title: model.title,
+                            presentation: .init(textScale: model.documentTextScale)
+                        )
+                    }
                 } editor: {
                     MarkdownEditorWebView(
                         session: model.editorSession,

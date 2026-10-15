@@ -18,8 +18,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
     let documentID: String
     var documentTitle = ""
-    let fingerprint: String
-    let source: String
+    /// Source, revision and frontmatter boundaries come from one already
+    /// prepared immutable snapshot; native page construction never reparses it.
+    let document: NoteDocument
+    private var fingerprint: String { document.fingerprint.sha256 }
     let htmlBody: String
     let presentationCSS: String
     let userCSS: String
@@ -135,7 +137,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.loadIfNeeded(
             htmlBody,
             documentTitle: documentTitle,
-            source: source,
+            document: document,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
             configurationRevision: configurationRevision,
@@ -200,7 +202,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.loadIfNeeded(
             htmlBody,
             documentTitle: documentTitle,
-            source: source,
+            document: document,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
             configurationRevision: configurationRevision,
@@ -440,7 +442,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         func loadIfNeeded(
             _ body: String,
             documentTitle: String,
-            source: String,
+            document: NoteDocument,
             presentationCSS: String,
             userCSS: String,
             configurationRevision: String?,
@@ -448,6 +450,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewRevision: String?,
             in webView: WKWebView
         ) {
+            let source = document.rawContent
             let interfaceLocalization = WebKitInterfaceLocalization.current()
             if desiredPresentationCSS != presentationCSS || desiredUserCSS != userCSS {
                 presentationStyleRevision &+= 1
@@ -559,7 +562,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 body: body,
                 linkPreviews: linkPreviews
             )
-            let sourceDocument = NoteDocument(relativePath: documentID, rawContent: source)
             installBridgeScripts(
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
@@ -571,9 +573,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let html = Self.documentHTML(
                 body: body,
-                frontmatter: sourceDocument.rawFrontmatter,
-                frontmatterHasAuthoredBodyBlankLine: !sourceDocument.body.isEmpty
-                    && sourceDocument.body.prefix { !$0.isNewline }.allSatisfy(\.isWhitespace),
+                frontmatter: document.rawFrontmatter,
+                frontmatterHasAuthoredBodyBlankLine: !document.body.isEmpty
+                    && document.body.prefix { !$0.isNewline }.allSatisfy(\.isWhitespace),
                 documentTitle: documentTitle,
                 includesMathRuntime: includesMathRuntime || pageExtension?.requiresMathRuntime == true,
                 localization: interfaceLocalization

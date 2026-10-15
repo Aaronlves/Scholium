@@ -74,8 +74,8 @@ struct AgentChatReadReply: View {
                     .accessibilityHidden(readerIsVisible)
                     .overlay(alignment: .topLeading) {
                         AgentChatReadWebViewSurface(
-                            documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
-                            source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
+                            documentID: "chat-reply", document: projection.document,
+                            htmlBody: projection.html, presentationCSS: css, userCSS: "",
                             projectionRevision: projection.presentationRevision,
                             onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
                             renderingReadinessIsAcknowledged: readiness.ready,
@@ -123,11 +123,13 @@ struct AgentChatReadReply: View {
                                                 return
                                             }
                                             readingInteraction()
+                                            let content = AgentChatRichContent(
+                                                object: payload, naturalSize: object.naturalSize, openLink: openLink)
                                             preview.present(
                                                 title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
                                                 copyText: payload.copyText, from: origin
                                             ) {
-                                                AgentChatRichContent(object: payload, naturalSize: object.naturalSize, openLink: openLink)
+                                                content
                                             }
                                         }
                                     )

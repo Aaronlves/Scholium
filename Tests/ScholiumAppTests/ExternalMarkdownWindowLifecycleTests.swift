@@ -442,6 +442,10 @@ struct ExternalMarkdownWindowLifecycleTests {
                 let model = try #require(host.model)
                 #expect(model.mode == .read && !model.retainsEditor)
                 #expect(!model.editorSession.hasAttachedWebView)
+                let projection = try #require(model.readProjection)
+                #expect(projection.document.sourceBytes == Data(source.utf8))
+                #expect(projection.document.fingerprint == model.snapshot?.fingerprint)
+                #expect(projection.html == SafeMarkdownRenderer.render(projection.document).htmlBody)
                 try await host.waitForReadText(expectedBodyText)
 
                 // The production view, not this test, must allocate, attach and
@@ -876,6 +880,10 @@ struct ExternalMarkdownWindowLifecycleTests {
             let refreshed = try #require(model.snapshot)
             #expect(Data(refreshed.source.utf8) == Data(replacement.utf8))
             #expect(refreshed.fingerprint == DocumentFingerprint(content: replacement))
+            let projection = try #require(model.readProjection)
+            #expect(projection.document.sourceBytes == Data(replacement.utf8))
+            #expect(projection.document.fingerprint == refreshed.fingerprint)
+            #expect(projection.html == SafeMarkdownRenderer.render(projection.document).htmlBody)
             #expect(!model.isDirty)
             #expect(!model.hasConflict)
             #expect(model.mode == .read)
@@ -934,6 +942,8 @@ struct ExternalMarkdownWindowLifecycleTests {
             #expect(!model.hasConflict)
             #expect(await model.save())
             #expect(try Data(contentsOf: fixture.url) == buffer)
+            #expect(model.readProjection?.document.sourceBytes == buffer)
+            #expect(model.readProjection?.document.fingerprint == model.snapshot?.fingerprint)
         }
     }
 

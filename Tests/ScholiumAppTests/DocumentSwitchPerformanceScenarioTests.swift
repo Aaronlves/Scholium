@@ -217,6 +217,7 @@ import WebKit
         @MainActor
         private final class FixtureDocument {
             let source: String
+            let readDocument: NoteDocument
             let model: DocumentSessionModel
             let dispatcher: CountingDispatcher
             let readPage = DedicatedReadPage()
@@ -225,6 +226,7 @@ import WebKit
                 source =
                     "\u{FEFF}# Synthetic \(label)\r\n\r\n"
                     + (0..<60).map { "Paragraph \($0): 中文 😀 e\u{301} synthetic source.\r\n\r\n" }.joined()
+                readDocument = NoteDocument(relativePath: "Synthetic.md", rawContent: source)
                 dispatcher = CountingDispatcher()
                 let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher, citationIntegration: UnavailableCitationPort())
                 model = DocumentSessionModel(key: key, editorSession: editor)
@@ -489,7 +491,7 @@ import WebKit
                     editorIsReady: editor.isReady && editor.isLoaded && editor.presentedMode == model.retainedEditorMode
                 ) {
                     SafeMarkdownReadWebView(
-                        documentID: editor.bridgeDocumentID, fingerprint: fingerprint, source: document.source,
+                        documentID: editor.bridgeDocumentID, document: document.readDocument,
                         htmlBody: model.renderedReadHTML, presentationCSS: "", userCSS: "",
                         onLinkClick: { _ in }, onOpenExternalURL: { _ in },
                         renderingReadinessIsAcknowledged: model.renderedReadReadyFingerprint == fingerprint,

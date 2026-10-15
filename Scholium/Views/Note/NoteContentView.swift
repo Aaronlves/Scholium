@@ -1172,8 +1172,7 @@ struct NoteContentView<ShellNotices: View>: View {
         SafeMarkdownReadWebView(
             documentID: note.id.relativePath,
             documentTitle: note.summary.title,
-            fingerprint: noteFingerprint.sha256,
-            source: note.document.rawContent,
+            document: note.document,
             htmlBody: renderedReadHTML,
             presentationCSS: documentPresentationCSS,
             userCSS: state.readCSS,

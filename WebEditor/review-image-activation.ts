@@ -26,6 +26,7 @@ export function installReviewImageActivation(root: HTMLElement, actions: ImagePr
     return images?.length === 1 ? images[0] : null;
   };
   const refreshImage = (image: HTMLImageElement) => {
+    if (!root.contains(image) || !image.matches(imageSelector)) return;
     const target = targetFor(image);
     const block = image.dataset.scholiumImageLayout === "block";
     image.classList.toggle("scholium-embedded-image-block", block);
@@ -158,6 +159,7 @@ export function installReviewImageActivation(root: HTMLElement, actions: ImagePr
   root.addEventListener("contextmenu", contextMenu);
   return {
     refresh,
+    refreshImage,
     destroy() {
       spaceTarget = null;
       pointer = null;

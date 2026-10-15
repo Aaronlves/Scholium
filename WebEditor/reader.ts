@@ -106,7 +106,7 @@ async function initializeReader(value: unknown): Promise<void> {
     requireCurrent();
     const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
       left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight,
-    }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+    }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image));
     documentRoot.getBoundingClientRect();
     await document.fonts.ready;
     requireCurrent();

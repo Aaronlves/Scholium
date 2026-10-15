@@ -5006,6 +5006,7 @@
       return images?.length === 1 ? images[0] : null;
     };
     const refreshImage = (image) => {
+      if (!root.contains(image) || !image.matches(imageSelector)) return;
       const target = targetFor(image);
       const block = image.dataset.scholiumImageLayout === "block";
       image.classList.toggle("scholium-embedded-image-block", block);
@@ -5139,6 +5140,7 @@
     root.addEventListener("contextmenu", contextMenu);
     return {
       refresh,
+      refreshImage,
       destroy() {
         spaceTarget = null;
         pointer = null;
@@ -5221,7 +5223,7 @@
         right: window.innerWidth,
         top: 0,
         bottom: window.innerHeight
-      }, decodedImages, requireCurrent, () => readerWindow.scholiumReviewImages?.refresh());
+      }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image));
       documentRoot.getBoundingClientRect();
       await document.fonts.ready;
       requireCurrent();

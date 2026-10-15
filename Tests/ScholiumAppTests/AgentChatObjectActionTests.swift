@@ -41,11 +41,13 @@ struct AgentChatObjectActionTests {
             window.layoutIfNeeded()
             host.layoutSubtreeIfNeeded()
             trackers = elements(host).compactMap { $0 as? ScholiumPointerTrackingView }
-            if trackers.count == 3 { break }
+            // Layout mounts the controls before the prepared reader admits input.
+            if trackers.count == 3, (reader(host) as? AgentChatReadWebView)?.isChatInteractive == true { break }
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(trackers.count == 3)
-        let web = try #require(reader(host))
+        let web = try #require(reader(host) as? AgentChatReadWebView)
+        try #require(web.isChatInteractive)
         let geometry = try #require(
             try await web.evaluateJavaScript(
                 """
@@ -64,7 +66,8 @@ struct AgentChatObjectActionTests {
                 abs(native.minY - rendered.minY) < 2 && abs(native.height - rendered.height) < 2,
                 "The pointer region and controls must follow their own rendered object")
             let textPoint = CGPoint(x: slot.minX + 30, y: slot.maxY - 15)
-            let hit = host.hitTest(web.convert(textPoint, to: host))
+            // NSView.hitTest receives its superview's coordinates.
+            let hit = host.hitTest(web.convert(textPoint, to: host.superview))
             #expect(
                 hit === web || hit?.isDescendant(of: web) == true,
                 "The native action layer must leave text selection with WebKit")
@@ -96,8 +99,11 @@ struct AgentChatObjectActionTests {
             let rendered = SafeMarkdownRenderer.render(NoteDocument(relativePath: "Reply.md", rawContent: "```mermaid\n" + source + "\n```"))
             let object = try #require(rendered.objects.first)
             let host = NSHostingView(
-                rootView: AgentChatRichContent(object: object, naturalSize: .zero, openLink: { _ in })
-                    .environment(\.colorScheme, dark ? .dark : .light))
+                rootView: AgentChatRichContent(
+                    object: object,
+                    naturalSize: .zero, openLink: { _ in }
+                )
+                .environment(\.colorScheme, dark ? .dark : .light))
             host.appearance = NSAppearance(
                 named: contrast
                     ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
