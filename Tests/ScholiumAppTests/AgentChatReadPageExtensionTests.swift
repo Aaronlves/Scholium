@@ -7,6 +7,26 @@ import WebKit
 @Suite("Chat read page extension admission", .serialized)
 @MainActor
 struct AgentChatReadPageExtensionTests {
+    @Test("Reply geometry requires a bounded layout viewport width")
+    func replyLayoutViewport() {
+        var measurements: [CGSize] = []
+        let page = AgentChatReadPageExtension { event in
+            if case .layout(let height, let viewportWidth, _, _) = event {
+                measurements.append(CGSize(width: viewportWidth, height: height))
+            }
+        }
+        let payload: [String: Any] = ["height": 24.0, "intrinsicWidth": 54.0, "objects": []]
+        #expect(page.handleMessage(type: "replyLayout", payload: payload, webView: nil))
+        for invalid in [0.0, -1.0, Double.infinity, Double.nan, 1_000_000.0] {
+            #expect(page.handleMessage(type: "replyLayout", payload: payload.merging(["viewportWidth": invalid]) { _, next in next }, webView: nil))
+        }
+        #expect(measurements.isEmpty)
+        for width in [360.0, 240.0] {
+            #expect(page.handleMessage(type: "replyLayout", payload: payload.merging(["viewportWidth": width]) { _, next in next }, webView: nil))
+        }
+        #expect(measurements == [CGSize(width: 360, height: 24), CGSize(width: 240, height: 24)])
+    }
+
     @Test("Only interaction telemetry may omit the current reply fingerprint")
     func fingerprintBypassIsLimitedToInteractionTelemetry() {
         let pageExtension = AgentChatReadPageExtension()

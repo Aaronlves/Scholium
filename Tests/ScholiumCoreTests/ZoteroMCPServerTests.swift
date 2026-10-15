@@ -552,17 +552,20 @@ struct ZoteroMCPServerTests {
         #expect(await client.recordedRequests().isEmpty)
     }
 
-    @Test("The common Zotero reply boundary refuses oversized encoded reads without partial data")
+    @Test("Indexed reads keep complete MCP replies bounded while large source text remains available by continuation")
     func fulltextCompleteMessageCapacity() async throws {
         let client = MockZoteroMCPHTTPClient()
         let body = try JSONSerialization.data(withJSONObject: [
             "content": String(repeating: "\"", count: 1_536 * 1_024)
         ])
         #expect(body.count < 4 * 1_024 * 1_024)
-        await client.enqueue(
-            method: "GET", path: "/api/users/0/items/ATTACH01/fulltext",
-            response: .init(
-                statusCode: 200, body: body))
+        let attachment = #"{"key":"ATTACH01","version":1,"data":{"key":"ATTACH01","itemType":"attachment","linkMode":"imported_file"}}"#
+        for _ in 0..<2 {
+            await client.enqueueJSON(method: "GET", path: "/api/users/0/items/ATTACH01", json: attachment)
+            await client.enqueue(
+                method: "GET", path: "/api/users/0/items/ATTACH01/fulltext",
+                response: .init(statusCode: 200, body: body))
+        }
         let server = ZoteroMCPServer(client: client)
         let request = try JSONSerialization.data(withJSONObject: [
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -571,11 +574,13 @@ struct ZoteroMCPServerTests {
         let encoded = try #require(await server.handle(requestData: request, access: .readOnly))
         #expect(encoded.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
         let response = try object(JSONSerialization.jsonObject(with: encoded))
-        #expect(try toolIsError(response))
+        #expect(try !toolIsError(response))
         let payload = try structuredContent(response)
-        #expect(payload["status"] as? String == "failed" && payload["error_code"] as? String == "response_too_large")
+        #expect((payload["text"] as? String)?.utf8.count == 16_384)
+        #expect(payload["next_start_utf8"] as? Int == 16_384 && payload["total_utf8"] as? Int == 1_536 * 1_024)
+        #expect(payload["original_file_read"] as? Bool == false)
         #expect(payload["fulltext"] == nil)
-        #expect(await client.recordedRequests().count == 1)
+        #expect(await client.recordedRequests().count == 4)
     }
 
     @Test("An oversized item-update confirmation preserves uncertainty after the one accepted write")

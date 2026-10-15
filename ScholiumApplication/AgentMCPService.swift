@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+import ScholiumCore
 
 /// App-bundled MCP framing for external hosts and token-scoped Chat.
 public enum AgentMCPService {
@@ -42,11 +43,52 @@ public enum AgentMCPService {
         } else {
             throw HelperFailure.unsupportedCommand
         }
-        if let zoteroAccess {
-            let zotero = ZoteroOperations()
-            return { await zotero.handle(requestData: $0, access: zoteroAccess) }
-        }
         let bridge = try MCPBridgeOperations(applicationSupportURL: ScholiumPaths.appBridgeContainerURL(environment: environment))
+        if let zoteroAccess {
+            let discovery = ZoteroMCPServer()
+            return { data in
+                guard data.count <= ScholiumMCPContract.maximumEncodedMessageByteCount else {
+                    return await discovery.handle(requestData: data, access: zoteroAccess)
+                }
+                let request = try? JSONDecoder().decode(MCPJSONValue.self, from: data)
+                guard request?.objectValue?["method"] == .string("tools/call") else {
+                    return await discovery.handle(requestData: data, access: zoteroAccess)
+                }
+                guard let request, request.objectValue?["id"] != nil else { return nil }
+                guard let identity = request.objectValue?["id"],
+                    let identityData = try? JSONEncoder().encode(identity),
+                    identityData.count <= ScholiumMCPContract.maximumEncodedResponseIdentityByteCount
+                else {
+                    return try? JSONEncoder().encode(
+                        ZoteroMCPBridgeReply.failure(
+                            request: .object(["id": .null]), code: "invalid_request", message: "The Zotero MCP response identity exceeds its bounded limit."))
+                }
+                let envelope: ScholiumZoteroBridgeRequest
+                do {
+                    guard data.count <= ScholiumMCPContract.maximumEncodedMessageByteCount else {
+                        throw ScholiumAppBridgeError.requestTooLarge
+                    }
+                    envelope = try .init(access: zoteroAccess, request: request)
+                } catch {
+                    return try? JSONEncoder().encode(
+                        ZoteroMCPBridgeReply.failure(
+                            request: request, code: "invalid_request", message: "The Zotero MCP call is invalid or exceeds its bounded request limit."))
+                }
+                let response: MCPJSONValue
+                do {
+                    response = try await bridge.callZotero(envelope)
+                } catch {
+                    let uncertain = envelope.mayMutate && Self.deliveryMayHaveStarted(error)
+                    response = ZoteroMCPBridgeReply.failure(
+                        request: request, code: uncertain ? "write_outcome_uncertain" : Self.zoteroBridgeFailureCode(error),
+                        message: uncertain
+                            ? "Scholium could not confirm delivery of the Zotero item update. Do not replay the update. Inspect the current Zotero item and version before another update."
+                            : "The running Scholium App could not complete this Zotero call. Open Scholium and check its Zotero connection and original-file access before retrying this call.",
+                        uncertain: uncertain)
+                }
+                return try? JSONEncoder().encode(response)
+            }
+        }
         let server = ScholiumMCPServer(conversationToken: token) { request in
             try await bridge.call(
                 .init(
@@ -56,8 +98,27 @@ public enum AgentMCPService {
         return { await server.handle(requestData: $0) }
     }
 
+    private static func deliveryMayHaveStarted(_ error: Error) -> Bool {
+        guard let error = error as? ScholiumAppBridgeError else { return true }
+        switch error {
+        case .outcomeUnknown, .invalidResponse: return true
+        case .remote(let code, _): return code == "operation_uncertain"
+        default: return false
+        }
+    }
+
+    private static func zoteroBridgeFailureCode(_ error: Error) -> String {
+        guard let error = error as? ScholiumAppBridgeError else { return "app_bridge_failure" }
+        switch error {
+        case .unavailable: return "app_unavailable"
+        case .requestTooLarge: return "request_too_large"
+        case .permissionDenied: return "app_bridge_permission_denied"
+        default: return "app_bridge_failure"
+        }
+    }
+
     private enum HelperFailure: LocalizedError {
         case unsupportedCommand
-        var errorDescription: String? { "The Scholium connection helper accepts only App-mediated Scholium MCP or independent Zotero MCP service requests." }
+        var errorDescription: String? { "The Scholium connection helper accepts only App-mediated Scholium or Zotero MCP service requests." }
     }
 }

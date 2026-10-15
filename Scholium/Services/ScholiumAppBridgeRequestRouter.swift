@@ -34,17 +34,17 @@ final class ScholiumAppBridgeRequestRouter {
     }
 
     func handle(
-        _ request: ScholiumAppBridgeRequest
+        _ request: ScholiumMCPBridgeRequest
     ) async -> ScholiumMCPBridgeResponse {
-        if request.mcpRequest.conversationToken != nil {
-            if let chatHandler { return await chatHandler(request.mcpRequest) }
+        if request.conversationToken != nil {
+            if let chatHandler { return await chatHandler(request) }
             return try! ScholiumMCPBridgeResponse(
-                requestID: request.mcpRequest.requestID,
+                requestID: request.requestID,
                 error: ScholiumMCPFailure(
                     code: .workspaceNotReady, message: "The conversation is unavailable.", recovery: "Reconnect the conversation in Scholium."
                 ))
         }
-        return await mcpRouter.handle(request.mcpRequest)
+        return await mcpRouter.handle(request)
     }
 
     func handleChatOperation(_ request: ScholiumMCPBridgeRequest, mutationAdmission: AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse {

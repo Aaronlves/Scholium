@@ -93,6 +93,7 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
         sidebarModeControl("Chat").click()
         let composer = app.textViews["scholium.chat.message"].firstMatch
         var expectedSamples = 0
@@ -165,6 +166,286 @@ extension ScholiumUITests {
         let conversations = try XCTUnwrap(archive["conversations"] as? [[String: Any]])
         XCTAssertEqual(conversations.compactMap { ($0["messages"] as? [[String: Any]])?.count }.sorted(), [2, 72])
         print("CHAT_ENTRY_RESULTS \(results.path)")
+    }
+
+    @MainActor
+    func testCompletedToolProcessBrowsingRetainsDisclosureFindAndDraft() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: note)
+        app.terminate()
+
+        // The UI target has no Contracts dependency. This isolated archive uses
+        // the current AgentChatStorage v12 and live Codable message/activity/
+        // turn fields, like the existing entry fixture; it has no runtime thread.
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: triptychDirectory.appendingPathComponent(".scholium/manifest.json")))
+                as? [String: Any])
+        let triptychID = try XCTUnwrap(manifest["id"] as? String)
+        let root = homeDirectory.appendingPathComponent("ApplicationSupport/Chat/\(triptychID)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let conversationID = UUID()
+        let turnID = "synthetic-completed-turn"
+        let draft = "Unsent browsing draft — 保留输入。"
+        let beforeProgress = "Public progress before the first tool group."
+        let betweenProgress = "Public progress between the two tool groups."
+        let finalAnswer = "Synthetic final answer after 400 tools. 原文与分析保持区分。"
+        let explicitSource = "QA explicit source"
+        let oldToolMarker = "OLD_TOOL_005"
+        func prose(_ id: String, role: String, text: String, phase: String? = nil) -> [String: Any] {
+            var value: [String: Any] = [
+                "id": id, "role": role, "turnID": turnID, "text": text, "attachments": [], "localMaterials": [],
+            ]
+            if let phase { value["phase"] = phase }
+            return value
+        }
+        func tool(_ index: Int) -> [String: Any] {
+            [
+                "id": String(format: "tool-%03d", index), "role": "operation", "turnID": turnID,
+                "text": "", "attachments": [], "localMaterials": [],
+                "activity": [
+                    "kind": "tool", "status": "completed", "source": "runtime", "files": [],
+                    "subject": "Synthetic tool \(index)",
+                    "detail": "Synthetic retained output \(index)." + (index == 5 ? " \(oldToolMarker)" : ""),
+                ],
+            ]
+        }
+        let messages =
+            [
+                prose("request", role: "user", text: "Inspect synthetic public activity without executing tools."),
+                prose("progress-before", role: "assistant", text: beforeProgress, phase: "commentary"),
+            ] + (0..<369).map(tool) + [
+                prose("progress-between", role: "assistant", text: betweenProgress, phase: "commentary")
+            ] + (369..<400).map(tool) + [
+                prose(
+                    "final-answer", role: "assistant", text: finalAnswer + "\n\n[\(explicitSource)](zotero://select/library/items/ABCD1234)",
+                    phase: "final_answer")
+            ]
+        let archive = root.appendingPathComponent("conversations.json")
+        let conversation: [String: Any] = [
+            "id": conversationID.uuidString, "triptychID": triptychID, "title": "QA completed 400-tool browsing",
+            "permission": "ask", "preferences": ["webSearch": "runtimeDefault"],
+            "turns": [turnID: ["status": "completed", "timing": [:]]], "childDrafts": [:],
+            "draft": draft, "attachments": [], "localMaterials": [], "queuedMessages": [], "messages": messages,
+            "updatedAt": Date().timeIntervalSinceReferenceDate,
+        ]
+        let expectedMessages = try JSONSerialization.data(withJSONObject: messages, options: .sortedKeys)
+        try JSONSerialization.data(withJSONObject: ["version": 12, "conversations": [conversation]]).write(to: archive, options: .atomic)
+
+        app = configuredApplication(sessionID: UUID(), appearance: .light)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(conversationID).click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, draft)
+        let transcript = app.scrollViews["scholium.chat.transcript"].firstMatch
+        let process = app.descendants(matching: .any)["scholium.chat.process.progress-before"].firstMatch
+        XCTAssertTrue(process.waitForExistence(timeout: 15))
+        let processButton = process.disclosureTriangles.matching(NSPredicate(format: "label CONTAINS %@", "Turn complete")).firstMatch
+        XCTAssertTrue(processButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(String(describing: processButton.value ?? ""), "0")
+        XCTAssertTrue(app.staticTexts[finalAnswer].firstMatch.waitForExistence(timeout: 10))
+        let sources = app.buttons["scholium.chat.sources"].firstMatch
+        XCTAssertTrue(sources.waitForExistence(timeout: 5))
+        for _ in 0..<2 {
+            scrollUntilHittable(sources, in: transcript)
+            sources.click()
+            let popover = app.popovers.firstMatch
+            XCTAssertTrue(popover.waitForExistence(timeout: 5))
+            XCTAssertTrue(popover.links[explicitSource].firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(popover.links[explicitSource].firstMatch.value as? String, "Zotero")
+            popover.buttons["Close"].firstMatch.click()
+            XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+        }
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Conversation Outline"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let outline = app.popovers.firstMatch
+        XCTAssertTrue(outline.waitForExistence(timeout: 5))
+        let outlineQuery = outline.textFields["scholium.chat.outline"].firstMatch
+        XCTAssertTrue(outlineQuery.waitForExistence(timeout: 5))
+        typeCommittedText("Inspect synthetic", into: outlineQuery, in: app)
+        let request = outline.buttons["scholium.chat.outline.request"].firstMatch
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        request.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !outline.exists })
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.chat.process.tools:tool-000"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["scholium.chat.activity.tool-399"].firstMatch.exists)
+        scrollUntilHittable(processButton, in: transcript)
+        processButton.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { String(describing: processButton.value ?? "") == "1" })
+
+        // The 32-item window belongs to the process, not each group. One native
+        // page exposes exactly 32 older calls from the first group while both
+        // groups still retain their independent collapsed choice.
+        let earlier = app.buttons["scholium.chat.process.earlier.progress-before"].firstMatch
+        XCTAssertTrue(earlier.waitForExistence(timeout: 5))
+        scrollUntilHittable(earlier, in: transcript)
+        earlier.click()
+        let firstGroup = app.descendants(matching: .any)["scholium.chat.process.tools:tool-000"].firstMatch
+        let secondGroup = app.descendants(matching: .any)["scholium.chat.process.tools:tool-369"].firstMatch
+        XCTAssertTrue(firstGroup.waitForExistence(timeout: 10) && secondGroup.waitForExistence(timeout: 10))
+        let firstGroupButton = firstGroup.disclosureTriangles.matching(NSPredicate(format: "label == %@", "Tool Calls (369)")).firstMatch
+        let secondGroupButton = secondGroup.disclosureTriangles.matching(NSPredicate(format: "label == %@", "Tool Calls (31)")).firstMatch
+        XCTAssertTrue(firstGroupButton.waitForExistence(timeout: 5) && secondGroupButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(firstGroupButton.label, "Tool Calls (369)")
+        XCTAssertEqual(secondGroupButton.label, "Tool Calls (31)")
+        XCTAssertEqual(String(describing: firstGroupButton.value ?? ""), "0")
+        XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+        XCTAssertTrue(app.staticTexts[beforeProgress].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts[betweenProgress].firstMatch.waitForExistence(timeout: 10))
+        let activityPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.activity.tool-")
+        func loadedActivityIDs() -> Set<String> {
+            Set(app.descendants(matching: .any).matching(activityPredicate).allElementsBoundByIndex.map(\.identifier))
+        }
+        XCTAssertTrue(loadedActivityIDs().isEmpty)
+        scrollUntilHittable(firstGroupButton, in: transcript)
+        firstGroupButton.click()
+        let expectedTail = Set((337..<369).map { String(format: "scholium.chat.activity.tool-%03d", $0) })
+        XCTAssertTrue(waitUntil(timeout: 5) { loadedActivityIDs() == expectedTail })
+        XCTAssertEqual(String(describing: firstGroupButton.value ?? ""), "1")
+        XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+
+        // Exercise scrolling after each completed disclosure change. Retained
+        // folded native rows must not intercept transcript input or reopen.
+        for expanded in [true, false, true] {
+            if expanded != (String(describing: firstGroupButton.value ?? "") == "1") {
+                scrollUntilHittable(firstGroupButton, in: transcript)
+                firstGroupButton.click()
+            }
+            transcript.scroll(byDeltaX: 0, deltaY: -180)
+            transcript.scroll(byDeltaX: 0, deltaY: 180)
+            scrollUntilHittable(firstGroupButton, in: transcript)
+            XCTAssertEqual(String(describing: firstGroupButton.value ?? ""), expanded ? "1" : "0")
+            XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+            XCTAssertEqual(composer.value as? String, draft)
+            XCTAssertTrue(waitUntil(timeout: 5) { loadedActivityIDs() == (expanded ? expectedTail : []) })
+        }
+
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Find in Conversation"].hover()
+        app.typeKey(.return, modifierFlags: [])
+        let find = app.descendants(matching: .any)["scholium.chat.find.query"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        typeCommittedText(oldToolMarker, into: find, in: app)
+        let oldActivity = app.descendants(matching: .any)["scholium.chat.activity.tool-005"].firstMatch
+        XCTAssertTrue(oldActivity.waitForExistence(timeout: 10))
+        XCTAssertTrue(oldActivity.buttons["scholium.chat.copyActivityDetails"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            oldActivity.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", oldToolMarker, oldToolMarker)).firstMatch.exists)
+        let openOutput = oldActivity.buttons["Open Output"].firstMatch
+        XCTAssertTrue(openOutput.waitForExistence(timeout: 5))
+        scrollUntilHittable(openOutput, in: transcript)
+        openOutput.click()
+        let output = app.dialogs["scholium.contentPreview"].firstMatch
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            output.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", oldToolMarker, oldToolMarker)).firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !output.exists })
+        XCTAssertTrue(app.staticTexts["Matching Message"].firstMatch.exists)
+        XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+        XCTAssertEqual(composer.value as? String, draft)
+        app.buttons["Done"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !find.exists && !oldActivity.exists && loadedActivityIDs() == expectedTail })
+        XCTAssertEqual(String(describing: firstGroupButton.value ?? ""), "1")
+        XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+
+        let editedDraft = draft + " Native browsing edit."
+        typeCommittedText(editedDraft, into: composer, in: app, clickWithinVisibleFrame: true)
+        returnToChatDeletionList()
+        XCTAssertTrue(waitUntil(timeout: 5) { !composer.exists && !process.exists })
+        chatDeletionRow(conversationID).click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, editedDraft)
+        XCTAssertTrue(waitUntil(timeout: 5) { loadedActivityIDs() == expectedTail })
+        XCTAssertEqual(String(describing: firstGroupButton.value ?? ""), "1")
+        XCTAssertEqual(String(describing: secondGroupButton.value ?? ""), "0")
+        XCTAssertFalse(find.exists)
+        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        image.name = "400-tool Chat browsing — retained disclosure and unsent draft"
+        image.lifetime = .keepAlways
+        add(image)
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                guard let data = try? Data(contentsOf: archive),
+                    let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let records = value["conversations"] as? [[String: Any]]
+                else { return false }
+                return records.first?["draft"] as? String == editedDraft
+            })
+        app.terminate()
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: archive)) as? [String: Any])
+        let records = try XCTUnwrap(saved["conversations"] as? [[String: Any]])
+        let record = try XCTUnwrap(records.first)
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(saved["version"] as? Int, 12)
+        XCTAssertEqual(record["id"] as? String, conversationID.uuidString)
+        XCTAssertNil(record["threadID"])
+        XCTAssertEqual(record["draft"] as? String, editedDraft)
+        XCTAssertEqual(try JSONSerialization.data(withJSONObject: try XCTUnwrap(record["messages"]), options: .sortedKeys), expectedMessages)
+        XCTAssertEqual(try Data(contentsOf: note), original)
+    }
+
+    @MainActor
+    func testEarlierChatMessagesRemainScrollableAndKeepDraftAndSource() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let original = try Data(contentsOf: note)
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        let before = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let beforeConversations = try XCTUnwrap(before["conversations"] as? [[String: Any]])
+        let beforeLong = try XCTUnwrap(beforeConversations.first { $0["id"] as? String == fixture.long.id.uuidString })
+        let expectedMessages = try JSONSerialization.data(withJSONObject: try XCTUnwrap(beforeLong["messages"]), options: .sortedKeys)
+        app = configuredApplication(sessionID: UUID(), appearance: .dark)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(fixture.long.id).click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        let transcript = app.scrollViews["scholium.chat.transcript"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        let earlier = app.buttons["scholium.chat.earlier"].firstMatch
+        XCTAssertTrue(earlier.waitForExistence(timeout: 5))
+        for number in [23, 11] {
+            scrollUntilHittable(earlier, in: transcript)
+            earlier.click()
+            // Exercise native input immediately after each page request. The
+            // native fixture separately asserts the in-flight preparation path;
+            // XCTest's idle wait is not a frame-time measurement.
+            transcript.scroll(byDeltaX: 0, deltaY: -180)
+            let question = app.staticTexts["Synthetic question \(number). 请核对来源和解释边界。"].firstMatch
+            XCTAssertTrue(question.waitForExistence(timeout: 15))
+            scrollUntilHittable(question, in: transcript)
+        }
+        let olderQuestion = app.staticTexts["Synthetic question 11. 请核对来源和解释边界。"].firstMatch
+        let olderY = olderQuestion.frame.minY
+        transcript.scroll(byDeltaX: 0, deltaY: -180)
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(olderQuestion.frame.minY - olderY) > 20 }, "Loaded history must respond to native wheel input")
+        transcript.scroll(byDeltaX: 0, deltaY: 180)
+        scrollUntilHittable(olderQuestion, in: transcript)
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        returnToChatDeletionList()
+        XCTAssertTrue(waitUntil(timeout: 5) { !composer.exists && !transcript.exists })
+        chatDeletionRow(fixture.long.id).click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, fixture.long.draft)
+        XCTAssertTrue(olderQuestion.waitForExistence(timeout: 10), "Returning retains the loaded history extent")
+        app.terminate()
+        let after = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let afterConversations = try XCTUnwrap(after["conversations"] as? [[String: Any]])
+        let afterLong = try XCTUnwrap(afterConversations.first { $0["id"] as? String == fixture.long.id.uuidString })
+        XCTAssertEqual(try JSONSerialization.data(withJSONObject: try XCTUnwrap(afterLong["messages"]), options: .sortedKeys), expectedMessages)
+        XCTAssertEqual(try Data(contentsOf: note), original)
     }
 
     @MainActor

@@ -52,8 +52,8 @@
   file-URL paste/drop, physical cross-app image transfer, system Paste, thumbnail/
   Quick Look, scanned-PDF page-selection sheets and provider image interpretation.
 - Complete packaged independent Zotero acceptance: managed Chat connection,
-  local API/Connector availability, indexed-text and original reads, import
-  confirmation, version-checked item updates, failure/restart and unavailable
+  local API/Connector availability, indexed-text continuation, original file/folder
+  grants and page reads, version-checked item updates, failure/restart and unavailable
   behavior. Deterministic MCP fixtures do not establish human acceptance.
 - Complete managed citations: native insertion/Edit/Refresh, metadata-only Undo,
   restart, paired-save recovery, standalone preservation, file lifecycle,

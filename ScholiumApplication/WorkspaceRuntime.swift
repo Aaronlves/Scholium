@@ -123,7 +123,7 @@ public actor WorkspaceRuntime {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .live
             )
-            zotero = injectedZotero ?? ZoteroOperations()
+            zotero = injectedZotero ?? ZoteroOperations(applicationSupportURL: configuration.applicationSupportURL)
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             membership = .live(
                 registry: registry,
@@ -141,7 +141,7 @@ public actor WorkspaceRuntime {
                 applicationSupportURL: configuration.applicationSupportURL,
                 mode: .snapshot
             )
-            zotero = injectedZotero ?? ZoteroOperations()
+            zotero = injectedZotero ?? ZoteroOperations(applicationSupportURL: configuration.applicationSupportURL)
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             var assignments: [UUID: TriptychAssignment] = [:]
             for assignment in configuration.assignments where assignments[assignment.id] == nil {

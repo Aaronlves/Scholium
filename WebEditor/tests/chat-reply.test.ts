@@ -8,6 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 function fixture(html: string) {
   const {window, document} = parseHTML('<html><body><article></article></body></html>');
   window.getSelection = () => null;
+  Object.defineProperty(window, 'innerWidth', {configurable: true, value: 360});
   vi.stubGlobal('window', window);
   vi.stubGlobal('document', document);
   vi.stubGlobal('HTMLElement', window.HTMLElement);
@@ -15,10 +16,48 @@ function fixture(html: string) {
   const root = document.querySelector('article') as unknown as HTMLElement;
   root.innerHTML = html;
   const post = vi.fn();
-  return {root, post};
+  return {root, post, window};
 }
 
 describe('renderer-owned reply object identity', () => {
+  it('reports the current viewport width after a width-only resize without replacing prose', () => {
+    const {root, post, window} = fixture('<p>短句。</p>');
+    const paragraph = root.firstElementChild!;
+    let viewportWidth = 360;
+    Object.defineProperty(window, 'innerWidth', {configurable: true, get: () => viewportWidth});
+    vi.spyOn(root, 'getBoundingClientRect').mockImplementation(() => ({width: viewportWidth, height: 24}) as DOMRect);
+    vi.spyOn(paragraph, 'getBoundingClientRect').mockReturnValue({width: 54, height: 24} as DOMRect);
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    let resized: (() => void) | undefined;
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { resized = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+
+    const dispose = installChatReply(root, post);
+    expect(observe).toHaveBeenCalledExactlyOnceWith(root);
+    expect(post).toHaveBeenLastCalledWith('replyLayout', {
+      height: 24, viewportWidth: 360, intrinsicWidth: 54, objects: [],
+    });
+
+    viewportWidth = 240;
+    // ResizeObserver observes both dimensions; a width-only change still
+    // delivers its callback even when this short paragraph remains one line.
+    resized!();
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenLastCalledWith('replyLayout', {
+      height: 24, viewportWidth: 240, intrinsicWidth: 54, objects: [],
+    });
+    expect(root.firstElementChild).toBe(paragraph);
+    expect(paragraph.textContent).toBe('短句。');
+    dispose.refresh();
+    expect(post.mock.calls.at(-1)![1].viewportWidth).toBe(240);
+    dispose();
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
   it('reports each table and escaped HTML/code fallback using its renderer ID', () => {
     const {root, post} = fixture(`
       <div class="scholium-table-scroll"><table data-scholium-object="table-a"><tr><td>A</td></tr></table></div>

@@ -123,7 +123,7 @@ struct SidebarTransientSizingTests {
         arguments: [false, true])
     func fittedSidebarContent(chineseDark: Bool) async throws {
         _ = NSApplication.shared
-        for surface in [SidebarSizingSurface.account, .outline, .diagnostics, .sources, .materials, .fileList] {
+        for surface in [SidebarSizingSurface.account, .outline, .sources, .materials, .fileList] {
             let state = SidebarSizingFixtureState()
             state.surface = surface
             let host = NSHostingView(
@@ -246,7 +246,7 @@ private struct SidebarSizingNativeFixture {
     }
 }
 
-private enum SidebarSizingSurface: String { case move, folder, folderMove, account, outline, diagnostics, sources, materials, fileList }
+private enum SidebarSizingSurface: String { case move, folder, folderMove, account, outline, sources, materials, fileList }
 
 @MainActor
 private final class SidebarSizingFixtureState: ObservableObject {
@@ -279,8 +279,7 @@ private struct SidebarSizingFixtureContent: View {
     private var messages: [AgentChatMessage] {
         (0..<state.count).map { index in
             .init(
-                id: "fixture-\(index)", role: .user, text: "Question \(index) 问题",
-                activity: state.surface == .diagnostics ? .init(kind: .read, status: .completed, source: .scholium, subject: "Research/问题 \(index).md") : nil)
+                id: "fixture-\(index)", role: .user, text: "Question \(index) 问题")
         }
     }
     private var materialContext: AgentChatReplySourceContext {
@@ -325,8 +324,6 @@ private struct SidebarSizingFixtureContent: View {
                 }, error: state.error, isRefreshing: state.isRefreshing, canRefresh: false, refresh: {}, close: { state.isPresented = false })
         case .outline:
             AgentChatConversationOutline(messages: messages, currentMessageID: nil, navigate: { _ in })
-        case .diagnostics:
-            AgentChatDiagnosticsView(messages: messages, selectedID: nil, error: nil, close: {})
         case .sources:
             AgentChatSourcesView(
                 sources: (0..<state.count).map { .init(url: AgentChatReference.url(noteID: UUID()), title: "Source \($0) 原文") }, close: {}, open: { _ in })

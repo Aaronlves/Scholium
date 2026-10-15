@@ -10,6 +10,57 @@ import Testing
 
 @Suite("Exact Zotero original selection")
 struct ZoteroMCPOriginalTests {
+    @Test("Application original access gates exact URLs, bounds and revalidation without indexed fallback")
+    func applicationOriginalAccess() async throws {
+        let reader = OriginalReaderProbe()
+        let fixture = try OriginalFixture(
+            filename: "Source.txt", mime: "text/plain",
+            originalContentReader: { try await reader.read($0, maximumByteCount: $1) })
+        defer { fixture.remove() }
+        // There is deliberately no file at the fixture URL. A successful read
+        // must use the Application reader, not an independent helper read.
+        let success = try await fixture.call([:])
+        #expect(!success.failed && success.value["text"] as? String == "Granted original")
+        #expect(await reader.urls == [fixture.file, fixture.file])
+        #expect(await reader.maximums == [20 * 1_024 * 1_024, 20 * 1_024 * 1_024])
+
+        for failure in [OriginalReaderProbe.Failure.deniedPOSIX, .deniedCocoa, .staleGrant] {
+            await reader.reset(failure: failure)
+            await fixture.client.reset()
+            let refused = try await fixture.call([:])
+            #expect(refused.failed && refused.value["error_code"] as? String == "original_permission_denied")
+            #expect(refused.value["text"] == nil && refused.value["image"] == nil)
+            let message = try #require(refused.value["error"] as? String)
+            #expect(message.contains("Settings > Zotero") && message.contains("retry this exact attachment"))
+            #expect(message.contains("Indexed full text is a separate representation"))
+            #expect(await fixture.client.requests.allSatisfy { $0.url?.path.contains("fulltext") == false })
+        }
+
+        for failure in [OriginalReaderProbe.Failure.unsafePath, .changedBytes, .oversized] {
+            await reader.reset(failure: failure)
+            await fixture.client.reset()
+            let refused = try await fixture.call([:])
+            let expected =
+                switch failure {
+                case .unsafePath: "original_path_rejected"
+                case .changedBytes: "material_changed"
+                case .oversized: "original_too_large"
+                default: "unreachable"
+                }
+            #expect(refused.failed && refused.value["error_code"] as? String == expected)
+            #expect(refused.value["text"] == nil)
+        }
+
+        await reader.reset()
+        await fixture.client.reset()
+        await fixture.client.setURLResponse(
+            .init(
+                statusCode: 200, headers: ["Zotero-Server-ID": "synthetic-instance"],
+                body: Data("file://remote.invalid/Source.txt".utf8)))
+        #expect(try await fixture.call([:]).failed)
+        #expect(await reader.urls.isEmpty)
+    }
+
     @Test("A linked original preserves BOM, CRLF and Unicode across fingerprint-bound slices")
     func exactTextOriginal() async throws {
         let fixture = try OriginalFixture(filename: "Source.txt", mime: "text/plain", linked: true)
@@ -234,7 +285,10 @@ private struct OriginalFixture: Sendable {
     let mime: String
     let linked: Bool
 
-    init(filename: String, mime: String, linked: Bool = false) throws {
+    init(
+        filename: String, mime: String, linked: Bool = false,
+        originalContentReader: ZoteroMCPServer.OriginalContentReader? = nil
+    ) throws {
         root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/agent-knowledge-tools/zotero-original-fixtures/\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -242,7 +296,7 @@ private struct OriginalFixture: Sendable {
         self.mime = mime
         self.linked = linked
         client = OriginalFixtureClient(metadata: try Self.metadata(file: file, mime: mime, linked: linked, version: 1), fileURL: file.absoluteString)
-        server = ZoteroMCPServer(client: client)
+        server = ZoteroMCPServer(client: client, originalContentReader: originalContentReader)
     }
 
     func metadata(mime: String? = nil, version: Int = 1, linkedPath: String? = nil) throws -> Data {
@@ -275,6 +329,35 @@ private struct OriginalFixture: Sendable {
         return Response(wire: response, result: result, value: value)
     }
     func remove() { try? FileManager.default.removeItem(at: root) }
+}
+
+private actor OriginalReaderProbe {
+    enum Failure: Sendable {
+        case deniedPOSIX, deniedCocoa, staleGrant, unsafePath, changedBytes, oversized
+    }
+    private var failure: Failure?
+    private(set) var urls: [URL] = []
+    private(set) var maximums: [Int] = []
+
+    func reset(failure: Failure? = nil) {
+        self.failure = failure
+        urls = []
+        maximums = []
+    }
+
+    func read(_ url: URL, maximumByteCount: Int) throws -> Data {
+        urls.append(url)
+        maximums.append(maximumByteCount)
+        switch failure {
+        case .deniedPOSIX: throw POSIXError(.EACCES)
+        case .deniedCocoa: throw CocoaError(.fileReadNoPermission)
+        case .staleGrant where urls.count == 2: throw POSIXError(.EPERM)
+        case .unsafePath: throw POSIXError(.ELOOP)
+        case .changedBytes where urls.count == 2: return Data("Changed after revalidation".utf8)
+        case .oversized: return Data(repeating: 65, count: maximumByteCount + 1)
+        default: return Data("Granted original".utf8)
+        }
+    }
 }
 
 private actor OriginalFixtureClient: ZoteroMCPHTTPClient {

@@ -49,7 +49,7 @@ struct AgentChatFloatingComposerTests {
             nativeSession: AgentChatComposerSession(conversationID: conversation.id),
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-            showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+            showAccountUsage: {})
         let host = NSHostingView(
             rootView:
                 detail
@@ -196,12 +196,14 @@ struct AgentChatFloatingComposerTests {
     @Test("Native inset and clip-size changes preserve follow and a deliberate earlier reading position")
     func nativeViewportGeometryChanges() async throws {
         let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 500))
         scroll.automaticallyAdjustsContentInsets = false
         final class Document: NSView { override var isFlipped: Bool { true } }
         let document = Document(frame: NSRect(x: 0, y: 0, width: 360, height: 1800))
         scroll.documentView = document
-        let viewport = AgentChatTranscriptViewport.View(session: session)
+        let viewport = AgentChatTranscriptViewport.View(session: session, presentationID: presentationID)
         document.addSubview(viewport)
         let earlier = AgentChatReadingMarker.View(id: "earlier", session: session)
         earlier.frame = NSRect(x: 0, y: 500, width: 360, height: 600)

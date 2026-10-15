@@ -118,7 +118,9 @@ export function installChatReply(
         naturalWidth: box?.width || Math.max(1, element.scrollWidth),
         naturalHeight: box?.height || Math.max(1, element.getBoundingClientRect().height)};
     });
-    post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth, objects});
+    // Bind the height to the browser's layout viewport, not the paragraph's
+    // intrinsic width, so the native host can reject an old-width measurement.
+    post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), viewportWidth: window.innerWidth, intrinsicWidth, objects});
   };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
   const dispose = () => {

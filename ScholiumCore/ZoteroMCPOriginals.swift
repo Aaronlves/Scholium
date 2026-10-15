@@ -4,6 +4,64 @@ import ScholiumContracts
 import UniformTypeIdentifiers
 
 extension ZoteroMCPServer {
+    /// A native chooser hint, never a grant or an original-content read. Zotero
+    /// resolves the file URL; only its exact stored-attachment layout identifies
+    /// a data directory. Linked files cannot identify a Zotero library folder.
+    public func suggestedOriginalLibraryDirectory() async throws -> URL? {
+        var attempts = 0
+        if let directory = try await storedLibraryDirectory(route: .user, attempts: &attempts) { return directory }
+        guard attempts < 8 else { return nil }
+        for route in try await libraryRoutes() where route != .user {
+            if let directory = try await storedLibraryDirectory(route: route, attempts: &attempts) { return directory }
+            guard attempts < 8 else { return nil }
+        }
+        return nil
+    }
+
+    private func storedLibraryDirectory(route: LibraryRoute, attempts: inout Int) async throws -> URL? {
+        guard
+            let request = ZoteroMCPRequestFactory.api(
+                route: route,
+                resource: .items(query: [
+                    URLQueryItem(name: "itemType", value: "attachment"),
+                    URLQueryItem(name: "limit", value: "100"),
+                ]))
+        else { throw ZoteroMCPServiceError.invalidRequest }
+        let response = try await sendAPI(request)
+        let values = try JSONDecoder().decode([ZoteroMCPJSONValue].self, from: response.body)
+        guard values.count <= 100 else { throw ZoteroMCPServiceError.responseTooLarge }
+        // Missing, cloud-only or malformed originals must not prevent trying
+        // another stored attachment, but discovery stays a bounded setup task.
+        for value in values {
+            guard let object = value.objectValue, let key = object["key"]?.stringValue,
+                key.utf8.count == 8, key.utf8.allSatisfy({ (65...90).contains($0) || (48...57).contains($0) }),
+                let data = object["data"]?.objectValue, data["key"]?.stringValue == key,
+                data["itemType"]?.stringValue == "attachment",
+                ["imported_file", "imported_url"].contains(data["linkMode"]?.stringValue ?? ""),
+                let filename = data["filename"]?.stringValue, !filename.isEmpty
+            else { continue }
+            guard attempts < 8 else { break }
+            attempts += 1
+            let attachment = AttachmentObservation(value: value, response: response)
+            let url: URL
+            do { url = try await originalURL(key: key, route: route, attachment: attachment) } catch ZoteroMCPServiceError.itemMissing {
+                continue
+            } catch ZoteroMCPServiceError.originalPathRejected { continue }
+            let attachmentDirectory = url.deletingLastPathComponent()
+            let storage = attachmentDirectory.deletingLastPathComponent()
+            let directory = storage.deletingLastPathComponent()
+            guard url.lastPathComponent == filename, attachmentDirectory.lastPathComponent == key,
+                storage.lastPathComponent == "storage", directory.path != "/"
+            else { continue }
+            try await revalidateAttachment(attachment, key: key, route: route)
+            guard try await originalURL(key: key, route: route, attachment: attachment) == url else {
+                throw ZoteroMCPServiceError.materialChanged
+            }
+            return directory
+        }
+        return nil
+    }
+
     private enum OriginalReadKind {
         case nonPDFFile
         case pdfPage
@@ -162,8 +220,12 @@ extension ZoteroMCPServer {
     private func originalBytes(_ url: URL) async throws -> Data {
         try Task.checkCancellation()
         do {
-            return try await VaultAttachmentStore(vaultURL: URL(fileURLWithPath: "/")).readContent(
-                relativePath: AttachmentRelativePath(String(url.path.dropFirst())), maximumByteCount: 20 * 1_024 * 1_024)
+            let bytes = try await originalContentReader(url, 20 * 1_024 * 1_024)
+            guard bytes.count <= 20 * 1_024 * 1_024 else { throw ZoteroMCPServiceError.originalTooLarge }
+            try Task.checkCancellation()
+            return bytes
+        } catch let error as ZoteroMCPServiceError {
+            throw error
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as POSIXError {
@@ -185,6 +247,11 @@ extension ZoteroMCPServer {
         } catch {
             throw ZoteroMCPServiceError.originalReadFailed("The selected local original could not be read at the filesystem boundary.")
         }
+    }
+
+    static func readOriginalContent(_ url: URL, maximumByteCount: Int) async throws -> Data {
+        try await VaultAttachmentStore(vaultURL: URL(fileURLWithPath: "/")).readContent(
+            relativePath: AttachmentRelativePath(String(url.path.dropFirst())), maximumByteCount: maximumByteCount)
     }
 
     private static let originalReadProperties: [String: ZoteroMCPJSONValue] = [

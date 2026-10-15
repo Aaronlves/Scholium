@@ -31,7 +31,9 @@ import SwiftUI
     ) { self.render = render }
 
     func submit(_ source: String) {
-        guard requested != source || worker == nil && snapshot?.document.rawContent != source else { return }
+        let isRequested = requested.map { ScholiumExactUTF8.equal($0, source) } ?? false
+        let isRendered = snapshot.map { ScholiumExactUTF8.equal($0.document.rawContent, source) } ?? false
+        guard !isRequested || worker == nil && !isRendered else { return }
         requested = source
         pending = source
         guard worker == nil else { return }
@@ -42,7 +44,7 @@ import SwiftUI
                 self?.pending = nil
                 let result = await render(source)
                 guard !Task.isCancelled, let self, self.generation == generation else { return }
-                if let requested = self.requested, requested == source || requested.hasPrefix(source) {
+                if let requested = self.requested, ScholiumExactUTF8.hasPrefix(requested, source) {
                     self.snapshot = result
                 }
             }

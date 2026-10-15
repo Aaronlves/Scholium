@@ -145,6 +145,10 @@ Evidence: `.build/agent-chat-evolution/real-loop-retest-*.json`.
 
 ## Retrieval quality and useful measurement comparisons
 
+**2026-10-15 Chat entry:** Native remount geometry drift 303/560→0 points;
+`.build/chat-entry-layout-audit/`. Offscreen probes establish geometry, not paint
+or acceptance.
+
 **2026-09-23 — Retrieval:** Related-Content 14/ranking 12: source-line focus,
 silent bounded Note preparation; focused eligibility/ranking preserved.
 Unit/native checks cover exact capture, cold/prepared/rebuilt equivalence, invalidation,

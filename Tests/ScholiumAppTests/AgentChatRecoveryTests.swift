@@ -204,27 +204,27 @@ struct AgentChatRecoveryTests {
                 $0.pendingMessageID = request.id
             }
             controller.executions[owner]?.report(.historyRefreshFailed, detail: "Fixture history failure")
-            let top = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let top = AgentChatConnectionStatus(controller: controller).statuses
             let history = try #require(top.first { $0.id == "execution" })
             #expect(history.title == AgentChatExecutionRecovery.historyRefreshFailed.title)
             #expect(history.actions.contains(.retryHistory) && history.error == "Fixture history failure")
             let delivery = AgentChatConnectionStatus(
-                controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+                controller: controller, messageID: request.id
             ).statuses
             #expect(delivery.count == 1 && delivery.first?.error == nil)
             controller.executions[owner]?.report(.deliveryUnconfirmed, detail: "Fixture delivery failure")
             #expect(
-                !AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil))
+                !AgentChatConnectionStatus(controller: controller)
                     .statuses.contains { $0.id == "execution" })
             #expect(
                 AgentChatConnectionStatus(
-                    controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+                    controller: controller, messageID: request.id
                 )
                 .statuses.first?.error == "Fixture delivery failure")
             controller.update { $0.pendingMessageID = nil }
             #expect(
                 AgentChatConnectionStatus(
-                    controller: controller, diagnosticsPresentation: .constant(nil), messageID: request.id
+                    controller: controller, messageID: request.id
                 ).statuses.isEmpty)
         }
     }

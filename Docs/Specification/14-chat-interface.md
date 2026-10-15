@@ -125,7 +125,7 @@ the observed action followed by one underlined, keyboard-accessible Note target;
 activating that target opens the exact Note. An unresolved identity never becomes
 a link. Runtime/tool subjects, paths, parameters and raw errors remain in the
 same activity's Details disclosure rather than being repeated in the first-level
-row. Single calls have no extra grouping layer.
+row. Appending calls preserves inspected details, selection and an open output preview.
 Delegation follows the same disclosure hierarchy: its collapsed row names the
 action and supplied task path or Agent count. Opaque identities, requests, reports
 and per-target navigation stay in its details. Coordination completion never
@@ -136,19 +136,26 @@ missing values stay absent. Long output opens in the shared resizable read-only 
 with selection and copying. Failure and unconfirmed-outcome counts remain
 visible when the process is collapsed, regardless of a final answer or later
 successful calls. They report evidence, not an inferred need for intervention.
-Diagnostics remains an additional overview.
 Public progress commentary and individual
 tool calls form a leading-aligned Agent process group, separate from the final answer.
-Each call retains its own target and outcome rather than being replaced by counts
-by tool type. During execution public commentary remains readable while individual tool details stay collapsed unless opened. Accessory symbols share size and semantic
+Each call retains its own target and outcome. Within an inspected process,
+public commentary and plans remain in order; consecutive tool calls between
+them form a separate disclosure with an exact call count and observed failure
+or uncertain-outcome counts. Opening that disclosure reveals individual calls,
+with progressive history loading. The current active turn's process starts expanded
+so public commentary remains readable, and defaults to collapsed when the turn ends.
+Tool-call groups and individual tool details start collapsed, including during
+execution, failure and waiting; explicit disclosure choices remain authoritative.
+Accessory symbols share size and semantic
 secondary color in a shared leading gutter. Tool symbols yield to a disclosure
 triangle on hover or focus; the expanded triangle remains visible. Expanded
 content uses indentation and a quiet hierarchy rule rather than nested cards.
 Inline tool details lead with their outcome and expose Copy and Open Output
 directly, with exact execution facts and output below.
-After completion it collapses while the final answer remains visible, unless the
-user is reading earlier content or has explicitly expanded the process or an
-operation's details. Manual disclosure choices survive new items and outcomes.
+The final answer remains visible independently of process disclosure. Manual
+disclosure choices survive new items and outcomes, paging and conversation returns;
+execution never opens a closed group. Find temporarily reveals its matching entry
+and enclosing tool-call group without replacing those choices.
 Streaming and collapse do not animate the entire transcript or steal its position. Unresolved approval,
 failed-turn and uncertain outcomes remain visible; Find reveals a matching process
 entry without dropping the draft or stored trace. Reply Note links open Notes;
@@ -441,7 +448,7 @@ These summaries never invent plans, progress or token measurements. Short labels
 and direct actions lead, with explanations for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
 
-Conversation options own Outline, Find, Rename, Account Usage and Diagnostics; a branch also
+Conversation options own Outline, Find, Rename and Account Usage; a branch also
 offers Open Original Conversation. Changes has its existing entry beside Agents
 and is not repeated in the detail header. While a request replaces the composer, a conversation is archived or its Context
 indicator is unavailable, conversation options retain the Context entry. Only one Context presentation may be open. Switching

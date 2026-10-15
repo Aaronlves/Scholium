@@ -130,7 +130,7 @@ struct AgentChatSidebarLifecycleTests {
                 readingSession: readingSession, nativeSession: nativeSession,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                 newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-                showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+                showAccountUsage: {})
         }
         let host = NSHostingView(rootView: AnyView(detail(visible: true)))
         let window = mount(host)
@@ -245,7 +245,7 @@ struct AgentChatSidebarLifecycleTests {
                         consumed += 1
                     }
                 }, replyNavigation: nil, openReply: { _ in }, showList: {}, newConversation: {},
-                didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+                didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {})
         }
         let host = NSHostingView(rootView: AnyView(detail(visible: false)))
         let window = mount(host)
@@ -303,7 +303,7 @@ struct AgentChatSidebarLifecycleTests {
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
                     focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                     newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-                    showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+                    showAccountUsage: {})
             }
             let host = NSHostingView(rootView: AnyView(detail()))
             let window = mount(host)
@@ -398,7 +398,7 @@ struct AgentChatSidebarLifecycleTests {
                 readingSession: session, nativeSession: native,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
                 newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-                showAccountUsage: {}, diagnosticsPresentation: .constant(nil)))
+                showAccountUsage: {}))
         let window = mount(host)
         defer {
             window.contentView = nil
@@ -445,8 +445,7 @@ struct AgentChatSidebarLifecycleTests {
                 openReference: { _ in false }, openAttachment: { _, _ in }, showInLibrary: { _ in }, showChanges: { _ in },
                 showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: native,
                 focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
-                newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {},
-                diagnosticsPresentation: .constant(nil)
+                newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}
             )
             .environment(\.scholiumDocumentSurfaceVisibility, visible ? .active : .retained)
         }
@@ -588,7 +587,7 @@ struct AgentChatSidebarLifecycleTests {
             showConversationChanges: { _ in }, presentation: presentation, readingSession: session, nativeSession: nativeSession,
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-            showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+            showAccountUsage: {})
         let host = NSHostingView(rootView: AnyView(detail))
         let entryStart = ContinuousClock.now
         let window = mount(host)

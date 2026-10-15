@@ -44,10 +44,10 @@ struct AgentChatDisclosureTests {
             var parentMounted = false
             let host = NSHostingView(
                 rootView: AgentChatProcessView(
-                    messages: [message], window: .constant(.init()), isActive: false, forceExpanded: false,
+                    messages: [message], window: .constant(.init()), forceExpanded: false,
                     status: .init(state: .completed), preservesReading: true,
                     hasInspectedActivity: true, animates: false,
-                    userExpansion: .constant(savedExpansion)
+                    userExpansion: .constant(savedExpansion), toolGroupExpansions: .constant([:])
                 ) { _ in
                     RenderedStateProbe(expanded: true, record: { contentMounted = $0 })
                         .frame(height: 60)

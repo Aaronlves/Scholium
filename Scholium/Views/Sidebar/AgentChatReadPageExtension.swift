@@ -5,7 +5,7 @@ import WebKit
 
 enum ReadReplyEvent {
     case interaction
-    case layout(height: CGFloat, intrinsicWidth: CGFloat?, objects: [ReadReplyObject])
+    case layout(height: CGFloat, viewportWidth: CGFloat, intrinsicWidth: CGFloat?, objects: [ReadReplyObject])
     case quote(String)
     case selectionContext(String, point: NSPoint, view: NSView)
     case noteContext(URL, point: NSPoint, view: NSView)
@@ -223,7 +223,8 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
             onEvent?(.interaction)
         case "replyLayout":
             guard let height = payload["height"] as? Double, height.isFinite, height > 0,
-                height < 1_000_000
+                height < 1_000_000,
+                let viewportWidth = payload["viewportWidth"] as? Double, viewportWidth.isFinite, viewportWidth > 0, viewportWidth < 1_000_000
             else { return true }
             let width = payload["intrinsicWidth"] as? Double
             guard
@@ -231,7 +232,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                     || width.map({ $0.isFinite && $0 > 0 && $0 < 1_000_000 }) == true,
                 let objects = ReadReplyObject.decode(payload["objects"])
             else { return true }
-            onEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }, objects: objects))
+            onEvent?(.layout(height: height, viewportWidth: viewportWidth, intrinsicWidth: width.map { CGFloat($0) }, objects: objects))
         case "replyNoteContext":
             guard isInteractive else { return true }
             guard let rawURL = payload["url"] as? String, rawURL.utf8.count <= 8_192,
@@ -275,6 +276,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
 /// transcript-specific page extension and callback.
 struct AgentChatReadWebViewSurface: View {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     let documentID: String
     let documentTitle: String
     let fingerprint: String
@@ -325,7 +327,7 @@ struct AgentChatReadWebViewSurface: View {
     }
 
     var body: some View {
-        let _ = pageExtension.update(onEvent: onEvent, isInteractive: isEnabled)
+        let _ = pageExtension.update(onEvent: onEvent, isInteractive: isEnabled && surfaceVisibility.isActive)
         SafeMarkdownReadWebView(
             documentID: documentID,
             documentTitle: documentTitle,

@@ -266,7 +266,7 @@ final class ScholiumPointerTrackingView: NSView {
             setState(isHovering: false, isPressed: false)
             return
         }
-        let isInside = bounds.intersection(visibleRect).contains(convert(event.locationInWindow, from: nil))
+        let isInside = containsVisiblePointer(event.locationInWindow)
         switch event.type {
         case .mouseMoved:
             synchronizePointer(locationInWindow: window.isKeyWindow ? event.locationInWindow : nil)
@@ -331,8 +331,16 @@ final class ScholiumPointerTrackingView: NSView {
     func synchronizePointer(locationInWindow: NSPoint?) {
         let inside =
             window != nil && !isHiddenOrHasHiddenAncestor
-            && locationInWindow.map { bounds.intersection(visibleRect).contains(convert($0, from: nil)) } == true
+            && locationInWindow.map(containsVisiblePointer) == true
         setState(isHovering: inside, isPressed: inside && pointerIsPressed)
+    }
+
+    private func containsVisiblePointer(_ locationInWindow: NSPoint) -> Bool {
+        let point = convert(locationInWindow, from: nil)
+        // Most retained controls are nowhere near the pointer. Avoid walking
+        // ancestor clipping for them on every native scroll or mouse event.
+        guard bounds.contains(point) else { return false }
+        return visibleRect.contains(point)
     }
 
     isolated deinit {

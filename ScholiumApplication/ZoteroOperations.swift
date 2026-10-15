@@ -7,8 +7,26 @@ import ScholiumCore
 public actor ZoteroOperations: ZoteroUseCases {
     typealias RequestLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
+    private struct MCPRequestClient: ZoteroMCPHTTPClient {
+        let load: RequestLoader
+
+        func send(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
+            let (body, response) = try await load(request)
+            guard let response = response as? HTTPURLResponse else {
+                throw ZoteroUseCaseError.invalidResponse
+            }
+            let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
+                if let key = entry.key as? String, let value = entry.value as? String {
+                    result[key] = value
+                }
+            }
+            return .init(statusCode: response.statusCode, headers: headers, body: body)
+        }
+    }
+
     private let loadRequest: RequestLoader
     private let mcpServer: ZoteroMCPServer
+    private let originalAccessStore: ZoteroOriginalAccessStore?
     private var lastSuccessfulConnection: Date?
 
     private struct LocalReadResponse: Sendable {
@@ -51,13 +69,28 @@ public actor ZoteroOperations: ZoteroUseCases {
         }
     }
 
-    init(requestLoader: RequestLoader? = nil) {
+    init(
+        requestLoader: RequestLoader? = nil,
+        applicationSupportURL: URL? = nil,
+        mcpRequestLoader: RequestLoader? = nil
+    ) {
+        let accessStore = applicationSupportURL.map(ZoteroOriginalAccessStore.init)
+        originalAccessStore = accessStore
+        let originalReader: ZoteroMCPServer.OriginalContentReader = { url, maximumByteCount in
+            guard let accessStore else { throw CocoaError(.fileReadNoPermission) }
+            return try await accessStore.readOriginal(at: url, maximumByteCount: maximumByteCount)
+        }
+        let mcpClient: any ZoteroMCPHTTPClient
+        if let mcpRequestLoader {
+            mcpClient = MCPRequestClient(load: mcpRequestLoader)
+        } else {
+            mcpClient = ZoteroMCPURLSessionClient()
+        }
+        mcpServer = ZoteroMCPServer(client: mcpClient, originalContentReader: originalReader)
         if let requestLoader {
             loadRequest = requestLoader
-            mcpServer = ZoteroMCPServer()
         } else {
             let client = ZoteroURLSessionClient()
-            mcpServer = ZoteroMCPServer(client: ZoteroMCPURLSessionClient())
             loadRequest = { request in
                 let result = try await client.send(request)
                 guard let url = request.url,
@@ -116,6 +149,35 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     public func clearConnectionHistory() async throws {
         lastSuccessfulConnection = nil
+    }
+
+    public func originalAccessGrants() async throws -> [ZoteroOriginalAccessGrant] {
+        guard let originalAccessStore else { throw ZoteroOriginalAccessError.storageUnavailable }
+        return try await originalAccessStore.grants()
+    }
+
+    public func suggestedOriginalLibraryDirectory() async throws -> URL? {
+        // Setup should promptly reach the native chooser even when an API is
+        // slow. Cancelling either the page or this deadline cancels discovery.
+        try await withThrowingTaskGroup(of: URL?.self) { group in
+            group.addTask { [mcpServer] in try await mcpServer.suggestedOriginalLibraryDirectory() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                return nil
+            }
+            defer { group.cancelAll() }
+            return try await group.next() ?? nil
+        }
+    }
+
+    public func authorizeOriginalAccess(selectedURL: URL, replacing grantID: UUID?) async throws {
+        guard let originalAccessStore else { throw ZoteroOriginalAccessError.storageUnavailable }
+        try await originalAccessStore.authorize(selectedURL: selectedURL, replacing: grantID)
+    }
+
+    public func removeOriginalAccess(grantID: UUID) async throws {
+        guard let originalAccessStore else { throw ZoteroOriginalAccessError.storageUnavailable }
+        try await originalAccessStore.remove(grantID: grantID)
     }
 
     private func libraries() async throws -> [ZoteroLibraryMetadata] {

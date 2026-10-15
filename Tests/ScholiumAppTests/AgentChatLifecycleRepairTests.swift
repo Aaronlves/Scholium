@@ -23,7 +23,7 @@ struct AgentChatLifecycleRepairTests {
             try await wait { self.loginCount(controller) == "1" }
             #expect(controller.isStartingLogin && !controller.canStartLogin)
             #expect(controller.connectionTask != nil)
-            let status = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let status = AgentChatConnectionStatus(controller: controller).statuses
             #expect(status.first?.isProgress == true && status.first?.actions.isEmpty == true)
             _ = try await runtime.request("test/completeLogin")
             await login.value
@@ -148,7 +148,7 @@ struct AgentChatLifecycleRepairTests {
             #expect(controller.selected?.draft == "Unrelated unsent draft")
             #expect(controller.conversation(owner)?.messages == messages && controller.approvals.isEmpty)
             controller.select(owner)
-            let status = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let status = AgentChatConnectionStatus(controller: controller).statuses
             #expect(status.contains { $0.id == "execution" && $0.error == explanation })
             controller.executions[owner]?.error = nil
             controller.select(visible)
@@ -159,7 +159,7 @@ struct AgentChatLifecycleRepairTests {
             try await wait { self.rejectedID(controller) == .integer(882) }
             #expect(controller.executions[owner]?.error == nil && controller.executions[visible]?.error == nil)
             #expect(controller.connectionError == explanation && controller.selectedID == visible)
-            let fallback = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let fallback = AgentChatConnectionStatus(controller: controller).statuses
             #expect(fallback.contains { $0.id == "connection" && $0.error == explanation })
             #expect(controller.selected?.draft == "Unrelated unsent draft" && controller.approvals.isEmpty)
         }

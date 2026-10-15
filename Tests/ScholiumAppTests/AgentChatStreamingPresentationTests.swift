@@ -13,6 +13,8 @@ struct AgentChatStreamingPresentationTests {
     }
     @MainActor final class Readiness {
         let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        init() { session.beginPresentation(presentationID) }
         var ready: Bool { session.areReadersHydrated(["reply"]) }
         private var lastReady = false
         var interruptions = 0
@@ -26,7 +28,7 @@ struct AgentChatStreamingPresentationTests {
         let readiness: Readiness
         var body: some View {
             AgentChatReadReply(source: input.source, readerID: "reply", quote: { _ in }, openLink: { _ in })
-                .environment(\.chatReadingSession, readiness.session)
+                .environment(\.chatReadingPresentation, .init(id: readiness.presentationID, session: readiness.session))
                 .onChange(of: readiness.ready, initial: true) { _, next in readiness.record(next) }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }

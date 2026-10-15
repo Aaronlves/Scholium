@@ -58,6 +58,12 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
                 }
                 return event
             }
+            return route.dispatch(
+                event, inlineTarget: inlineTarget(for: event, conversation: scroll, content: content), conversation: scroll
+            ) ? nil : event
+        }
+
+        private func inlineTarget(for event: NSEvent, conversation scroll: NSScrollView, content: NSView) -> NSView? {
             let hit = content.hitTest(content.convert(event.locationInWindow, from: nil))
             // SwiftUI's platform group can terminate hitTest before the embedded
             // WKContentView. Locate the typed reader by native visible geometry,
@@ -78,14 +84,15 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
                 reply.flatMap { view in
                     view.hitTest(view.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow)
                 } ?? reply ?? hit ?? scroll
-            return route.dispatch(event, inlineTarget: eligible ? target : nil, conversation: scroll) ? nil : event
+            return eligible ? target : nil
         }
         static func inlineReply(in root: NSView?, at windowPoint: NSPoint) -> AgentChatReadWebView? {
             guard let root, !root.isHiddenOrHasHiddenAncestor else { return nil }
-            if let reply = root as? AgentChatReadWebView,
-                reply.bounds.contains(reply.convert(windowPoint, from: nil))
-            {
-                return reply
+            if let reply = root as? AgentChatReadWebView {
+                // Disabled disclosures retain their readers and selection, but
+                // cannot own input. WebKit's internal descendants never identify
+                // another Chat reply, including when this reply is offscreen.
+                return reply.isChatInteractive && reply.bounds.contains(reply.convert(windowPoint, from: nil)) ? reply : nil
             }
             for child in root.subviews.reversed() {
                 if let found = inlineReply(in: child, at: windowPoint) { return found }
@@ -109,11 +116,13 @@ final class AgentChatWheelRoute {
     }
 
     @discardableResult
-    func dispatch(_ event: NSEvent, inlineTarget: NSView?, conversation: NSScrollView) -> Bool {
+    func dispatch(_ event: NSEvent, inlineTarget: @autoclosure () -> NSView?, conversation: NSScrollView) -> Bool {
         let phased = !event.phase.isEmpty || !event.momentumPhase.isEmpty
         if event.phase.contains(.began) || event.phase.contains(.mayBegin) { reset() }
         if !phased { reset() }
-        if target == nil, initialTarget == nil { initialTarget = inlineTarget }
+        // A locked gesture ignores new hit targets. Resolving the SwiftUI/native
+        // tree on every delta scales with loaded history and retained tool rows.
+        if target == nil, initialTarget == nil { initialTarget = inlineTarget() }
         guard target != nil || initialTarget != nil else { return false }
         let hasDelta = event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0
         if target == nil, !hasDelta, !event.phase.contains(.ended), !event.phase.contains(.cancelled) {

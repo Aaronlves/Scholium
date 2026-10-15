@@ -144,7 +144,7 @@ struct AgentChatPersistenceRecoveryTests {
     }
 
     private func status(_ controller: AgentChatController) -> AgentChatConnectionStatus {
-        .init(controller: controller, diagnosticsPresentation: .constant(nil))
+        .init(controller: controller)
     }
 
     private func saveError(_ code: CocoaError.Code) -> String {

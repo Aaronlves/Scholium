@@ -349,7 +349,7 @@
           naturalHeight: box?.height || Math.max(1, element.getBoundingClientRect().height)
         };
       });
-      post("replyLayout", { height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth, objects });
+      post("replyLayout", { height: Math.ceil(root.getBoundingClientRect().height), viewportWidth: window.innerWidth, intrinsicWidth, objects });
     };
     const observer = new ResizeObserver(reportSize);
     observer.observe(root);

@@ -173,11 +173,13 @@ struct AgentChatReadingTests {
     @Test("Initial hydration follows the mounted window when a new reply evicts its first reader", arguments: [false, true])
     func initialHydrationTracksMountedReaders(initiallyReady: Bool) throws {
         let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
         let initialIDs = ["a", "b", "c", "d"]
         session.mount(in: initialIDs, readerIDs: Set(initialIDs))
         let readers = initialIDs.map { id in
             let reader = AgentChatReadReply.Readiness()
-            reader.mount(in: session, readerID: id)
+            reader.mount(in: session, readerID: id, presentationID: presentationID)
             reader.ready = id != "a" || initiallyReady
             reader.hasMeasuredLayout = true
             return reader
@@ -193,7 +195,7 @@ struct AgentChatReadingTests {
         // reader still has to finish before the transcript can become visible.
         readers[0].unmount()
         let latest = AgentChatReadReply.Readiness()
-        latest.mount(in: session, readerID: "e")
+        latest.mount(in: session, readerID: "e", presentationID: presentationID)
         latest.ready = true
         #expect(session.initialTranscriptPhase == .hydrating)
         latest.hasMeasuredLayout = true
@@ -246,6 +248,7 @@ struct AgentChatReadingTests {
         messages.append(.init(id: "activity-100", role: .operation, text: "New activity"))
         let returned = store.session(for: a)
         returned.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: returned.isRetainingPosition)
+        returned.beginPresentation(UUID())
         returned.mount(in: [processID])
         #expect(returned === session)
         #expect(returned.processWindows[processID]?.indices(messages: messages, inspectedIDs: []) == Array(36..<101))
@@ -254,6 +257,13 @@ struct AgentChatReadingTests {
         #expect(returned.viewportRequest?.target == .anchor(.init(id: processID, offset: -170)))
         #expect(other.processWindows[processID]?.first == "activity-68")
 
+        returned.reachedLatestFromViewport()
+        returned.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: returned.isRetainingPosition)
+        #expect(
+            returned.processWindows[processID]?.indices(messages: messages, inspectedIDs: []) == Array(36..<101),
+            "Ordinary scrolling cannot discard explicitly loaded activity or move its disclosure headers")
+        #expect(returned.processExpansions[processID] == true)
+
         returned.latest(in: [processID])
         returned.processWindows[processID, default: .init()].reconcile(in: messages, preservesReading: returned.isRetainingPosition)
         #expect(returned.processWindows[processID]?.indices(messages: messages, inspectedIDs: []) == Array(69..<101))
@@ -261,23 +271,13 @@ struct AgentChatReadingTests {
 
     @Test("Native reading anchor survives earlier row reflow and viewport reattachment")
     func nativeAnchor() async throws {
-        let session = AgentChatReadingSession()
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
-        final class Document: NSView { override var isFlipped: Bool { true } }
-        let document = Document(frame: NSRect(x: 0, y: 0, width: 300, height: 1600))
-        scroll.documentView = document
-        let viewport = AgentChatTranscriptViewport.View(session: session)
-        document.addSubview(viewport)
-        let marker = AgentChatReadingMarker.View(id: "answer", session: session)
-        marker.frame = NSRect(x: 0, y: 700, width: 300, height: 600)
-        document.addSubview(marker)
-        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = scroll
-        defer {
-            window.contentView = nil
-            window.close()
-        }
+        let fixture = NativeReadingFixture()
+        defer { fixture.close() }
+        let session = fixture.session
+        let scroll = fixture.scroll
+        let document = fixture.document
+        let viewport = fixture.viewport
+        let marker = fixture.marker
         session.pause()
         session.anchor = .init(id: "answer", offset: -120)
         viewport.reconcile()
@@ -305,13 +305,230 @@ struct AgentChatReadingTests {
         #expect(session.viewportRequest == nil)
     }
 
+    @Test("Idle reading survives internal row reflow without a document-size change")
+    func nativeInternalReflow() async throws {
+        let anchor = AgentChatReadingSession.Anchor(id: "answer", offset: -120)
+        let fixture = NativeReadingFixture(anchor: anchor)
+        defer { fixture.close() }
+        try await waitForNativeReading(fixture, stage: "initial internal reflow anchor") {
+            fixture.session.isInitialTranscriptReady && fixture.session.viewportRequest == nil
+                && fixture.session.anchor == anchor && fixture.matches(anchor)
+        }
+        let documentSize = fixture.document.frame.size
+        #expect(abs(fixture.scroll.contentView.bounds.minY - 820) < 1)
+
+        // Earlier replies can exchange height while the transcript's total
+        // height stays unchanged. Only the real marker layout notifies the owner.
+        fixture.marker.setFrameOrigin(NSPoint(x: 0, y: 950))
+        fixture.marker.needsLayout = true
+        try await waitForNativeReading(fixture, stage: "internal row reflow") {
+            fixture.session.viewportRequest == nil && fixture.session.anchor == anchor
+                && fixture.matches(anchor)
+                && abs(fixture.scroll.contentView.bounds.minY - 1070) < 1
+        }
+        #expect(fixture.document.frame.size == documentSize)
+        #expect(!fixture.session.isScrolling && !fixture.window.isVisible)
+    }
+
+    @Test("Native geometry changes capture active scrolling and preserve idle reading", arguments: [false, true])
+    func nativeGeometryChanges(activeGesture: Bool) async throws {
+        for changesDock in [false, true] {
+            let initialAnchor = AgentChatReadingSession.Anchor(id: "answer", offset: -120)
+            let fixture = NativeReadingFixture(anchor: initialAnchor)
+            defer { fixture.close() }
+            let session = fixture.session
+            let scroll = fixture.scroll
+            let receipt = NativeBoundsReceipt()
+            let observer = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+            ) { [weak receipt, weak clip = scroll.contentView] _ in
+                MainActor.assumeIsolated {
+                    guard let receipt, let clip else { return }
+                    receipt.count += 1
+                    receipt.lastY = clip.bounds.minY
+                }
+            }
+            defer { NotificationCenter.default.removeObserver(observer) }
+
+            try await waitForNativeReading(fixture, stage: "initial anchor") {
+                session.isInitialTranscriptReady && session.viewportRequest == nil
+                    && session.anchor == initialAnchor && fixture.matches(initialAnchor)
+            }
+            let initialY = scroll.contentView.bounds.minY
+            let previousEvents = receipt.count
+            if activeGesture { session.beginUserScroll() }
+
+            if changesDock {
+                var insets = scroll.contentInsets
+                insets.top += 28
+                scroll.contentInsets = insets
+            } else {
+                // A preceding reply grows without replacing this marker or the
+                // viewport. This models asynchronous reader-height publication.
+                fixture.marker.setFrameOrigin(NSPoint(x: 0, y: 820))
+                fixture.document.setFrameSize(NSSize(width: 300, height: 1720))
+            }
+
+            if activeGesture {
+                // Give geometry notifications their real dispatch turn before
+                // continuing the gesture. Reconcile must not write this clip.
+                await nativeMainQueueTurn()
+                fixture.window.layoutIfNeeded()
+                fixture.document.layoutSubtreeIfNeeded()
+                await nativeMainQueueTurn()
+                for tick in 0..<2 {
+                    let oldY = scroll.contentView.bounds.minY
+                    var bounds = scroll.contentView.bounds
+                    bounds.origin.y += 18
+                    let destination = scroll.contentView.constrainBoundsRect(bounds).origin
+                    try #require(destination.y > oldY)
+                    let beforeTick = receipt.count
+                    scroll.contentView.scroll(to: destination)
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                    // Neither capture nor settleUserPosition is called here:
+                    // native bounds delivery must update the reading owner.
+                    try await waitForNativeReading(fixture, stage: "active tick \(tick), dock=\(changesDock)") {
+                        receipt.count > beforeTick && receipt.lastY.map { abs($0 - destination.y) < 1 } == true
+                            && abs(scroll.contentView.bounds.minY - destination.y) < 1
+                            && session.viewportRequest == nil && session.anchor.map(fixture.matches) == true
+                    }
+                    #expect(session.isScrolling && session.isRetainingPosition)
+                    #expect(session.anchor?.id == initialAnchor.id)
+                }
+                // End the lifecycle only after both notification-owned captures
+                // succeeded; ending must not conceal a missed active update.
+                session.endUserScroll()
+                try await waitForNativeReading(fixture, stage: "gesture ended") {
+                    !session.isScrolling && session.viewportRequest == nil && session.anchor.map(fixture.matches) == true
+                }
+            } else {
+                let expectedY = changesDock ? initialY - 28 : initialY + 120
+                try await waitForNativeReading(fixture, stage: "idle geometry, dock=\(changesDock)") {
+                    receipt.count > previousEvents && receipt.lastY.map { abs($0 - expectedY) < 1 } == true
+                        && abs(scroll.contentView.bounds.minY - expectedY) < 1
+                        && session.viewportRequest == nil && session.anchor == initialAnchor && fixture.matches(initialAnchor)
+                }
+                #expect(!session.isScrolling && session.isRetainingPosition)
+                #expect(session.anchor == initialAnchor, "Idle layout must compensate the clip instead of replacing its semantic anchor")
+            }
+            #expect(session.ownsViewport(fixture.viewport))
+            #expect(!fixture.window.isVisible)
+        }
+    }
+
+    @Test("Phase-less native scrolling can cross a row and continue without being treated as reflow")
+    func nativeScrollAcrossRows() async throws {
+        let initial = AgentChatReadingSession.Anchor(id: "answer", offset: -120)
+        let fixture = NativeReadingFixture(anchor: initial)
+        defer { fixture.close() }
+        fixture.document.setFrameSize(NSSize(width: 300, height: 2600))
+        let next = AgentChatReadingMarker.View(id: "next-answer", session: fixture.session)
+        next.frame = NSRect(x: 0, y: 1300, width: 300, height: 600)
+        fixture.document.addSubview(next)
+        try await waitForNativeReading(fixture, stage: "initial crossing anchor") {
+            fixture.session.isInitialTranscriptReady && fixture.session.viewportRequest == nil
+                && fixture.matches(initial)
+        }
+        await nativeMainQueueTurn()
+        for y: CGFloat in [1305, 1323] {
+            fixture.scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+            fixture.scroll.reflectScrolledClipView(fixture.scroll.contentView)
+            // Keyboard/accessibility input may have no trackpad gesture phase.
+            // The native notifications alone must admit both movements.
+            try await waitForNativeReading(fixture, stage: "phase-less crossing at \(y)") {
+                fixture.session.anchor == .init(id: "next-answer", offset: 1300 - y)
+                    && abs(fixture.scroll.contentView.bounds.minY - y) < 1
+                    && fixture.session.viewportRequest == nil
+            }
+            #expect(!fixture.session.isScrolling)
+        }
+    }
+
+    @MainActor private final class NativeReadingFixture {
+        final class Document: NSView { override var isFlipped: Bool { true } }
+        let session: AgentChatReadingSession
+        let presentationID: UUID
+        let scroll: NSScrollView
+        let document: Document
+        let viewport: AgentChatTranscriptViewport.View
+        let marker: AgentChatReadingMarker.View
+        let window: NSWindow
+
+        init(anchor: AgentChatReadingSession.Anchor? = nil) {
+            _ = NSApplication.shared
+            let session = AgentChatReadingSession()
+            let presentationID = UUID()
+            let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+            let document = Document(frame: NSRect(x: 0, y: 0, width: 300, height: 1600))
+            let viewport = AgentChatTranscriptViewport.View(session: session, presentationID: presentationID)
+            let marker = AgentChatReadingMarker.View(id: "answer", session: session)
+            let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            self.session = session
+            self.presentationID = presentationID
+            self.scroll = scroll
+            self.document = document
+            self.viewport = viewport
+            self.marker = marker
+            self.window = window
+            session.anchor = anchor
+            session.beginPresentation(presentationID)
+            scroll.documentView = document
+            document.addSubview(viewport)
+            marker.frame = NSRect(x: 0, y: 700, width: 300, height: 600)
+            document.addSubview(marker)
+            window.isReleasedWhenClosed = false
+            window.contentView = scroll
+        }
+
+        func matches(_ anchor: AgentChatReadingSession.Anchor) -> Bool {
+            let top = scroll.contentView.bounds.minY + scroll.contentInsets.top
+            let row = marker.convert(marker.bounds, to: document)
+            return anchor.id == marker.id && abs(anchor.offset - (row.minY - top)) < 1
+        }
+
+        func close() {
+            viewport.retire()
+            session.endPresentation(presentationID)
+            window.contentView = nil
+            window.close()
+        }
+    }
+
+    @MainActor private final class NativeBoundsReceipt {
+        var count = 0
+        var lastY: CGFloat?
+    }
+
+    private func nativeMainQueueTurn() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
+    private func waitForNativeReading(_ fixture: NativeReadingFixture, stage: String, until condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while ContinuousClock.now < deadline {
+            await nativeMainQueueTurn()
+            fixture.window.layoutIfNeeded()
+            fixture.document.layoutSubtreeIfNeeded()
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(
+            condition(),
+            "Native reading did not settle at \(stage); clip=\(fixture.scroll.contentView.bounds), anchor=\(String(describing: fixture.session.anchor))")
+    }
+
     @Test("A jump mounts older history and restores its actual native reading anchor")
     func jumpToUnloadedHistory() async throws {
         let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
         let ids = (0..<90).map(String.init)
         struct Fixture: View {
             let session: AgentChatReadingSession
             let ids: [String]
+            let presentationID: UUID
             var body: some View {
                 ScrollView {
                     VStack(alignment: .leading) {
@@ -319,11 +536,11 @@ struct AgentChatReadingTests {
                             Text("Retained question \(id)").frame(height: 100)
                                 .background(AgentChatReadingMarker(id: id, session: session))
                         }
-                    }.background(AgentChatTranscriptViewport(session: session))
+                    }.background(AgentChatTranscriptViewport(session: session, presentationID: presentationID))
                 }
             }
         }
-        let host = NSHostingView(rootView: Fixture(session: session, ids: ids))
+        let host = NSHostingView(rootView: Fixture(session: session, ids: ids, presentationID: presentationID))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host

@@ -51,7 +51,7 @@ struct ScholiumAppBridgeTests {
                 // synthesized decoder accepts a response with no outcome.
                 var fields: [String: MCPJSONValue] = [
                     "schemaVersion": .integer(ScholiumMCPBridgeResponse.currentSchemaVersion),
-                    "requestID": .string(request.mcpRequest.requestID.uuidString),
+                    "requestID": .string(request.requestID.uuidString),
                 ]
                 if scenario == .bothOutcomes {
                     fields["result"] = .object(["status": .string("ok")])
@@ -115,7 +115,7 @@ struct ScholiumAppBridgeTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try ScholiumAppBridgeServer(applicationSupportURL: root) { request in
             try ScholiumMCPBridgeResponse(
-                requestID: request.mcpRequest.requestID,
+                requestID: request.requestID,
                 error: .init(code: .staleRevision, message: "The Note changed.", recovery: "Read the current Note."))
         }
         defer { server.stop() }
@@ -143,7 +143,7 @@ struct ScholiumAppBridgeTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let gate = BridgeOperationGate()
         let server = try ScholiumAppBridgeServer(applicationSupportURL: root, timeout: 5, operationTimeout: 25) { request in
-            if request.mcpRequest.tool == .updateNote { await gate.enterAndWait() }
+            if request.tool == .updateNote { await gate.enterAndWait() }
             return try Self.success(for: request)
         }
         defer { server.stop() }
@@ -205,7 +205,7 @@ struct ScholiumAppBridgeTests {
         let server = try ScholiumAppBridgeServer(applicationSupportURL: root) { request in
             try await Task.sleep(for: .seconds(5.25))
             return try ScholiumMCPBridgeResponse(
-                requestID: request.mcpRequest.requestID,
+                requestID: request.requestID,
                 result: .object([
                     "schema_version": .integer(2),
                     "status": .string("ok"),
@@ -252,10 +252,10 @@ struct ScholiumAppBridgeTests {
     }
 
     private static func success(
-        for request: ScholiumAppBridgeRequest
+        for request: ScholiumMCPBridgeRequest
     ) throws -> ScholiumMCPBridgeResponse {
         try ScholiumMCPBridgeResponse(
-            requestID: request.mcpRequest.requestID,
+            requestID: request.requestID,
             result: .object([
                 "schema_version": .integer(2),
                 "status": .string("ok"),

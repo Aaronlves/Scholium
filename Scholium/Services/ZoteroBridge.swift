@@ -27,6 +27,22 @@ actor ZoteroBridge {
         try await operations.clearConnectionHistory()
     }
 
+    func originalAccessGrants() async throws -> [ZoteroOriginalAccessGrant] {
+        try await operations.originalAccessGrants()
+    }
+
+    func suggestedOriginalLibraryDirectory() async throws -> URL? {
+        try await operations.suggestedOriginalLibraryDirectory()
+    }
+
+    func authorizeOriginalAccess(selectedURL: URL, replacing grantID: UUID?) async throws {
+        try await operations.authorizeOriginalAccess(selectedURL: selectedURL, replacing: grantID)
+    }
+
+    func removeOriginalAccess(grantID: UUID) async throws {
+        try await operations.removeOriginalAccess(grantID: grantID)
+    }
+
     func searchLibrary(query: String) async throws -> [ZoteroSearchHit] {
         try await operations.searchLibrary(query: query, limit: 25)
     }

@@ -7,16 +7,6 @@ struct AgentChatReplyNavigation: Equatable {
     let messageID: String
 }
 
-private struct AgentChatOutgoingPageInteraction: ViewModifier {
-    let isInteractive: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .allowsHitTesting(isInteractive)
-            .accessibilityHidden(!isInteractive)
-    }
-}
-
 /// Window-local routing and retained page presentation; runtime state stays in the controller.
 struct AgentChatView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
@@ -38,7 +28,7 @@ struct AgentChatView: View {
     @State private var showsConversationList = true
     @State private var hasPresentedDetail = false
     @State private var presentedConversationID: UUID?
-    @State private var outgoingDetailID: UUID?
+    @State private var animatesPageChange = true
     @State private var listState = AgentChatConversationListState()
     @State private var detailStore = AgentChatDetailPresentationStore()
     private var detailPresentation: AgentChatDetailPresentation {
@@ -50,44 +40,36 @@ struct AgentChatView: View {
     @State private var focusRequest: UUID?
     @State private var replyNavigation: AgentChatReplyNavigation?
     @State private var showsAccountUsage = false
-    @State private var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
     @State private var renameID: UUID?
     @State private var showsRename = false
     @State private var renameTitle = ""
 
     private var navigationAnimates: Bool { isVisible && !reduceMotion && activeState != .inactive }
-    private var navigationAnimation: Animation? { navigationAnimates ? .smooth(duration: 0.24) : nil }
-
-    private func pageTransition(from edge: Edge) -> AnyTransition {
-        .asymmetric(
-            insertion: .move(edge: edge),
-            removal: .move(edge: edge).combined(
-                with: .modifier(
-                    active: AgentChatOutgoingPageInteraction(isInteractive: false),
-                    identity: AgentChatOutgoingPageInteraction(isInteractive: true))))
-    }
-
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                if showsConversationList { listPage }
-                // Retain one visited page, rather than recreating its readers
-                // on Back/reopen. A different selection replaces that lifetime.
-                if hasPresentedDetail && (!showsConversationList || presentedConversationID == controller.selectedID) {
-                    detailPage
-                        .offset(x: showsConversationList ? geometry.size.width : 0)
-                        // Native readers remain painted until the page has left;
-                        // detail visibility already removes input and accessibility.
-                        .environment(
-                            \.scholiumDocumentSurfaceVisibility,
-                            isVisible && (!showsConversationList || outgoingDetailID != nil) ? .active : .retained
-                        )
-                        .id(controller.selectedID)
-                        // An already hidden page has no outgoing transition.
-                        .transition(showsConversationList ? .identity : pageTransition(from: .trailing))
+        AgentChatNavigationTransition(
+            showsList: showsConversationList, animates: navigationAnimates && animatesPageChange
+        ) {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    if showsConversationList { listPage }
+                    // Retain one visited page, rather than recreating its readers
+                    // on Back/reopen. A different selection replaces that lifetime.
+                    if hasPresentedDetail && (!showsConversationList || presentedConversationID == controller.selectedID) {
+                        detailPage
+                            .offset(x: showsConversationList ? geometry.size.width : 0)
+                            // Core Animation moves the complete old page while the
+                            // retained native readers immediately give up interaction.
+                            .environment(
+                                \.scholiumDocumentSurfaceVisibility,
+                                isVisible && !showsConversationList ? .active : .retained
+                            )
+                            .id(controller.selectedID)
+
+                    }
                 }
             }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The native Sidebar contains horizontal page transitions across its
         // full bounds; a safe-area-sized clip here would cut off toolbar underlap.
@@ -121,18 +103,15 @@ struct AgentChatView: View {
             return true
         }
         .onChange(of: showsConversationList) { _, _ in
-            diagnosticsPresentation = nil
             markVisibleConversationRead()
         }
         .onChange(of: controller.selectedID) { _, id in
             if showsConversationList {
-                outgoingDetailID = nil
                 hasPresentedDetail = false
             } else {
                 presentedConversationID = id
             }
             _ = detailStore.presentation(for: id)
-            diagnosticsPresentation = nil
             renameID = nil
             showsRename = false
             markVisibleConversationRead()
@@ -145,14 +124,10 @@ struct AgentChatView: View {
         .onChange(of: isVisible) { _, visible in
             if !visible {
                 PerformanceProbe.shared.cancelChatEntry()
-                diagnosticsPresentation = nil
                 showsAccountUsage = false
                 showsRename = false
             }
             markVisibleConversationRead()
-        }
-        .onChange(of: navigationAnimates) { _, animates in
-            if !animates { outgoingDetailID = nil }
         }
         .onAppear { markVisibleConversationRead() }
         .onDisappear {
@@ -178,11 +153,9 @@ struct AgentChatView: View {
             showConversation: { showDetail() },
             newConversation: newConversation, renameConversation: renameConversation,
             showConversationChanges: showConversationChanges,
-            showAccountUsage: { showsAccountUsage = true },
-            diagnosticsPresentation: $diagnosticsPresentation
+            showAccountUsage: { showsAccountUsage = true }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(pageTransition(from: .leading))
     }
 
     private var detailPage: some View {
@@ -213,8 +186,7 @@ struct AgentChatView: View {
             newConversation: newConversation,
             didRestoreConversation: { listState.showsArchived = false },
             renameConversation: renameConversation,
-            showAccountUsage: { showsAccountUsage = true },
-            diagnosticsPresentation: $diagnosticsPresentation
+            showAccountUsage: { showsAccountUsage = true }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -240,25 +212,15 @@ struct AgentChatView: View {
         guard !showsConversationList else { return }
         PerformanceProbe.shared.cancelChatEntry()
         detailPresentation.messageIsFocused = false
-        guard let animation = navigationAnimation else {
-            outgoingDetailID = nil
-            withAnimation(nil) { showsConversationList = true }
-            return
-        }
-        let departureID = UUID()
-        outgoingDetailID = departureID
-        withAnimation(animation, completionCriteria: .removed) {
+        withAnimation(nil) {
+            animatesPageChange = true
             showsConversationList = true
-        } completion: {
-            // A reversal or another Back owns a different visual lifetime.
-            guard outgoingDetailID == departureID, showsConversationList else { return }
-            outgoingDetailID = nil
         }
     }
 
     private func showDetail(animated: Bool = true) {
-        withAnimation(animated ? navigationAnimation : nil) {
-            outgoingDetailID = nil
+        withAnimation(nil) {
+            animatesPageChange = animated
             presentedConversationID = controller.selectedID
             hasPresentedDetail = true
             showsConversationList = false

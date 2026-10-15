@@ -1,6 +1,28 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Tool Calls (%lld)": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tool Calls (%lld)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 次工具调用"}}}},
+    "Scholium locates your Zotero library folder. Confirm Allow Read Access in the file picker. Access is read-only, limited to Zotero originals, and saved on this Mac.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium locates your Zotero library folder. Confirm Allow Read Access in the file picker. Access is read-only, limited to Zotero originals, and saved on this Mac."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Scholium 会定位 Zotero 文献库文件夹。只需在文件选择器中点击“允许读取”。权限仅用于读取 Zotero 原文，保存在此 Mac。"}}}},
+    "Finding Zotero Library Folder…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finding Zotero Library Folder…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在定位 Zotero 文献库文件夹…"}}}},
+    "Zotero identified this library folder. Confirm Allow Read Access to read its originals.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Zotero identified this library folder. Confirm Allow Read Access to read its originals."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Zotero 已定位此文献库文件夹。点击“允许读取”即可读取其中的原文。"}}}},
+    "Scholium could not locate the library folder. Choose it manually using Show Data Directory in Zotero Settings → Advanced → Files and Folders.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium could not locate the library folder. Choose it manually using Show Data Directory in Zotero Settings → Advanced → Files and Folders."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Scholium 未能定位文献库文件夹。请在 Zotero 设置 → 高级 → 文件和文件夹中点击“显示数据文件夹”，再手动选择。"}}}},
+    "Choose Zotero Library Folder…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Zotero Library Folder…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择 Zotero 文献库文件夹…"}}}},
+    "Select an original file to allow read-only access.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Select an original file to allow read-only access."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请选择原文文件，以授予只读权限。"}}}},
+    "Retry the connection.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry the connection."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试连接。"}}}},
+    "Try signing in again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Try signing in again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请再次尝试登录。"}}}},
+    "Original File Access": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Original File Access"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "原文文件访问"}}}},
+    "Loading Original Access…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Loading Original Access…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在载入原文访问权限…"}}}},
+    "No original files or folders selected.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "No original files or folders selected."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "尚未选择原文文件或文件夹。"}}}},
+    "Read Access Available": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Read Access Available"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "可读取"}}}},
+    "Original Access Required": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Original Access Required"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "需要原文访问权限"}}}},
+    "Add Original File…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Add Original File…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "添加原文文件…"}}}},
+    "Restore Original Access…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Original Access…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复原文访问权限…"}}}},
+    "Remove Original Access": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Remove Original Access"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "移除原文访问权限"}}}},
+    "Reload Original Access": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload Original Access"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入原文访问权限"}}}},
+    "Select the same file or folder to restore read-only access.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Select the same file or folder to restore read-only access."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请选择同一个文件或文件夹，以恢复只读权限。"}}}},
+    "Allow Read Access": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Allow Read Access"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "允许读取"}}}},
+    "Restore Original Access for %@": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Original Access for %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复 %@ 的原文访问权限"}}}},
+    "Remove Original Access for %@": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Remove Original Access for %@"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "移除 %@ 的原文访问权限"}}}},
     "The provider could not complete writing assistance." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The provider could not complete writing assistance."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "服务提供方未能完成写作辅助。"}}}},
     "Saved Searches changed in another window. Their current definitions were reloaded. Try the action again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Saved Searches changed in another window. Their current definitions were reloaded. Try the action again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已保存的搜索已在另一个窗口中更改。已重新载入当前定义。请重试此操作。"}}}},
     "Starting Sign-In…": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Starting Sign-In…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在发起登录…"}}}},
@@ -11772,38 +11794,6 @@
         }
       }
     },
-    "Diagnostics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diagnostics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "诊断详情"
-          }
-        }
-      }
-    },
-    "Diagnostics…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diagnostics…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "诊断详情…"
-          }
-        }
-      }
-    },
     "Disable All Snippets" : {
       "localizations" : {
         "en" : {
@@ -18947,22 +18937,6 @@
         }
       }
     },
-    "No diagnostic records" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No diagnostic records"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂无诊断记录"
-          }
-        }
-      }
-    },
     "No enabled actions" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24131,16 +24105,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试"
-          }
-        }
-      }
-    },
-    "Retry the connection or open Diagnostics.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请重试连接或打开诊断。"
           }
         }
       }
@@ -30546,16 +30510,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在更新对话…"
-          }
-        }
-      }
-    },
-    "Try signing in again or open Diagnostics.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请重新登录或打开诊断。"
           }
         }
       }

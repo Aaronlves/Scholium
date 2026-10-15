@@ -6,6 +6,7 @@ import SwiftUI
 struct AgentChatProcessWindow: Equatable {
     static let pageSize = 32
     private(set) var first: String?
+    private var hasLoadedEarlier = false
 
     func indices(messages: [AgentChatMessage], inspectedIDs: Set<String>) -> [Int] {
         let start = startIndex(in: messages)
@@ -20,12 +21,15 @@ struct AgentChatProcessWindow: Equatable {
 
     mutating func reconcile(in messages: [AgentChatMessage], preservesReading: Bool) {
         guard !messages.isEmpty else { return }
-        let start = preservesReading ? startIndex(in: messages) : max(0, messages.count - Self.pageSize)
+        // Reaching the bottom during ordinary scrolling is not a request to
+        // discard an explicitly loaded activity page and shrink the transcript.
+        let start = preservesReading || hasLoadedEarlier ? startIndex(in: messages) : max(0, messages.count - Self.pageSize)
         first = messages[start].id
     }
 
     mutating func earlier(in messages: [AgentChatMessage]) {
         guard !messages.isEmpty else { return }
+        hasLoadedEarlier = true
         first = messages[max(0, startIndex(in: messages) - Self.pageSize)].id
     }
 
@@ -35,34 +39,73 @@ struct AgentChatProcessWindow: Equatable {
     }
 }
 
+/// Segment before paging so a growing or partially mounted tool run retains its
+/// first identity. Commentary and plans keep their original order and boundaries.
+struct AgentChatProcessSegment: Identifiable {
+    let messages: [AgentChatMessage]
+    var id: String { (messages[0].activity == nil ? "message:" : "tools:") + messages[0].id }
+    var groupsActivities: Bool { messages[0].activity != nil }
+
+    static func project(_ messages: [AgentChatMessage]) -> [Self] {
+        var result: [Self] = []
+        var activities: [AgentChatMessage] = []
+        for message in messages {
+            if message.activity != nil {
+                activities.append(message)
+            } else {
+                if !activities.isEmpty {
+                    result.append(.init(messages: activities))
+                    activities = []
+                }
+                result.append(.init(messages: [message]))
+            }
+        }
+        if !activities.isEmpty { result.append(.init(messages: activities)) }
+        return result
+    }
+}
+
 /// A disclosure over retained public items; it owns no execution or inferred reasoning.
 struct AgentChatProcessView<Row: View>: View {
     let messages: [AgentChatMessage]
     @Binding var window: AgentChatProcessWindow
-    let isActive: Bool
     let forceExpanded: Bool
+    var isActive = false
     var status: AgentChatTurnPresentation? = nil
     var preservesReading = false
     var hasInspectedActivity = false
     var inspectedActivityIDs: Set<String> = []
+    var revealedActivityID: String? = nil
     var animates = true
     var inspect: () -> Void = {}
     @Binding var userExpansion: Bool?
+    @Binding var toolGroupExpansions: [String: Bool]
     @ViewBuilder let row: (AgentChatMessage) -> Row
     @Environment(\.locale) private var locale
-    @State private var isExpanded = false
 
-    private var needsAttention: Bool {
-        messages.contains {
-            $0.activity?.status == .uncertain || $0.activity?.status == .interrupted
-                || $0.activity?.status == .waitingForApproval
-                || $0.activity?.status == .waitingForInput
-                || $0.activity?.status == .failed
-        }
+    // Keep live public commentary readable; only an uninspected, ended process
+    // folds automatically. Live updates never replace an explicit choice.
+    private var isExpanded: Bool {
+        let inspectedTools =
+            !toolGroupExpansions.isEmpty
+            && AgentChatProcessSegment.project(messages).contains { toolGroupExpansions[$0.id] == true }
+        return forceExpanded || (userExpansion ?? (isActive || hasInspectedActivity || inspectedTools))
     }
 
-    private var visibleMessages: [AgentChatMessage] {
-        window.indices(messages: messages, inspectedIDs: inspectedActivityIDs).map { messages[$0] }
+    private var visibleSegments: [(segment: AgentChatProcessSegment, messages: [AgentChatMessage])] {
+        var visibleIDs = Set(window.indices(messages: messages, inspectedIDs: inspectedActivityIDs).map { messages[$0].id })
+        let segments = AgentChatProcessSegment.project(messages)
+        // A long tool run must not page away the public progress that explains
+        // it. Retain that one preceding item without mounting older tool rows.
+        for index in segments.indices where index > 0 && segments[index].messages[0].activity != nil {
+            if segments[index].messages.contains(where: { visibleIDs.contains($0.id) }) {
+                visibleIDs.insert(segments[index - 1].messages[0].id)
+            }
+        }
+        return segments.compactMap { segment in
+            let visible = segment.messages.filter { visibleIDs.contains($0.id) }
+            return visible.isEmpty ? nil : (segment, visible)
+        }
     }
 
     private var hasEarlierMessages: Bool {
@@ -86,7 +129,6 @@ struct AgentChatProcessView<Row: View>: View {
                 set: { expanded in
                     inspect()
                     userExpansion = expanded
-                    isExpanded = expanded
                 })
         ) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -102,7 +144,34 @@ struct AgentChatProcessView<Row: View>: View {
                     .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
                     .accessibilityIdentifier("scholium.chat.process.earlier.\(messages.first?.id ?? "")")
                 }
-                ForEach(visibleMessages) { row($0) }
+                ForEach(visibleSegments, id: \.segment.id) { entry in
+                    if entry.segment.groupsActivities {
+                        DisclosureGroup(
+                            isExpanded: Binding(
+                                get: {
+                                    entry.segment.messages.contains { $0.id == revealedActivityID }
+                                        || (toolGroupExpansions[entry.segment.id]
+                                            ?? entry.segment.messages.contains { inspectedActivityIDs.contains($0.id) })
+                                },
+                                set: { expanded in
+                                    inspect()
+                                    toolGroupExpansions[entry.segment.id] = expanded
+                                })
+                        ) {
+                            ForEach(entry.messages) { row($0) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                                Text("Tool Calls (\(entry.segment.messages.count))", bundle: .module).font(.callout)
+                                AgentChatActivityIssues(messages: entry.segment.messages)
+                            }
+                        }
+                        .disclosureGroupStyle(AgentChatDisclosureStyle(animates: animates))
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("scholium.chat.process.\(entry.segment.id)")
+                    } else {
+                        ForEach(entry.messages) { row($0) }
+                    }
+                }
             }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -116,21 +185,6 @@ struct AgentChatProcessView<Row: View>: View {
             }
         }
         .disclosureGroupStyle(AgentChatDisclosureStyle(animates: animates))
-        .onChange(of: isActive, initial: true) { _, active in
-            if needsAttention || forceExpanded {
-                isExpanded = true
-            } else if let userExpansion {
-                isExpanded = userExpansion
-            } else if active || hasInspectedActivity {
-                // Restoring a completed process must also reveal its retained
-                // open child details. An explicit parent choice still wins.
-                isExpanded = true
-            } else if !preservesReading && !hasInspectedActivity && userExpansion != true {
-                isExpanded = false
-            }
-        }
-        .onChange(of: forceExpanded) { _, force in if force { isExpanded = true } }
-        .onChange(of: needsAttention) { _, needed in if needed { isExpanded = true } }
         .onChange(of: messages.count, initial: true) { _, _ in
             window.reconcile(in: messages, preservesReading: preservesReading)
         }

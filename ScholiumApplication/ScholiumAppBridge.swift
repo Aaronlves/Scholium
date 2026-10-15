@@ -8,11 +8,12 @@ import Security
 /// credential proves only that both processes are the current user's
 /// Scholium processes; it is not research permission or an Agent identity.
 public struct ScholiumAppBridgeRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let correlationID: UUID
-    public let mcpRequest: ScholiumMCPBridgeRequest
+    public let mcpRequest: ScholiumMCPBridgeRequest?
+    public let zoteroRequest: ScholiumZoteroBridgeRequest?
 
     public init(
         correlationID: UUID = UUID(),
@@ -21,12 +22,21 @@ public struct ScholiumAppBridgeRequest: Codable, Hashable, Sendable {
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.mcpRequest = mcpRequest
+        zoteroRequest = nil
+    }
+
+    public init(correlationID: UUID = UUID(), zoteroRequest: ScholiumZoteroBridgeRequest) {
+        schemaVersion = Self.currentSchemaVersion
+        self.correlationID = correlationID
+        mcpRequest = nil
+        self.zoteroRequest = zoteroRequest
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
         case mcpRequest = "mcp_request"
+        case zoteroRequest = "zotero_request"
     }
 
     public init(from decoder: Decoder) throws {
@@ -41,32 +51,70 @@ public struct ScholiumAppBridgeRequest: Codable, Hashable, Sendable {
         }
         schemaVersion = version
         correlationID = try container.decode(UUID.self, forKey: .correlationID)
-        mcpRequest = try container.decode(
+        mcpRequest = try container.decodeIfPresent(
             ScholiumMCPBridgeRequest.self,
             forKey: .mcpRequest
         )
+        zoteroRequest = try container.decodeIfPresent(ScholiumZoteroBridgeRequest.self, forKey: .zoteroRequest)
+        guard (mcpRequest == nil) != (zoteroRequest == nil) else { throw ScholiumAppBridgeError.invalidRequest }
+    }
+}
+
+/// A Zotero call carries its MCP identity and a fixed access profile. Native
+/// read grants are never transport inputs; the App resolves originals through
+/// Zotero and validates each tool's closed arguments before accessing bytes.
+public struct ScholiumZoteroBridgeRequest: Codable, Hashable, Sendable {
+    public let access: ZoteroMCPAccess
+    public let request: MCPJSONValue
+
+    public init(access: ZoteroMCPAccess, request: MCPJSONValue) throws {
+        guard let fields = request.objectValue,
+            Set(fields.keys).isSubset(of: ["jsonrpc", "id", "method", "params"]),
+            fields["jsonrpc"] == .string("2.0"), fields["method"] == .string("tools/call"),
+            let identity = fields["id"],
+            try JSONEncoder().encode(identity).count <= ScholiumMCPContract.maximumEncodedResponseIdentityByteCount,
+            let name = fields["params"]?.objectValue?["name"]?.stringValue, name.hasPrefix("zotero_")
+        else { throw ScholiumAppBridgeError.invalidRequest }
+        self.access = access
+        self.request = request
+    }
+
+    public var mayMutate: Bool {
+        access == .full && request.objectValue?["params"]?.objectValue?["name"] == .string("zotero_update_item")
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable { case access, request }
+    public init(from decoder: Decoder) throws {
+        try AppBridgeCoding.rejectUnknownFields(in: decoder, allowed: CodingKeys.allCases.map(\.stringValue))
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            access: container.decode(ZoteroMCPAccess.self, forKey: .access),
+            request: container.decode(MCPJSONValue.self, forKey: .request))
     }
 }
 
 public struct ScholiumAppBridgeResponse: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let mcpResponse: ScholiumMCPBridgeResponse?
+    public let zoteroResponse: MCPJSONValue?
     public let error: ScholiumAppBridgeRemoteError?
 
     public init(
         correlationID: UUID,
         mcpResponse: ScholiumMCPBridgeResponse? = nil,
+        zoteroResponse: MCPJSONValue? = nil,
         error: ScholiumAppBridgeRemoteError? = nil
     ) throws {
-        guard (mcpResponse == nil) != (error == nil) else {
+        guard [mcpResponse != nil, zoteroResponse != nil, error != nil].filter({ $0 }).count == 1 else {
             throw ScholiumAppBridgeError.invalidResponse
         }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.mcpResponse = mcpResponse
+        self.zoteroResponse = zoteroResponse
         self.error = error
     }
 
@@ -74,6 +122,7 @@ public struct ScholiumAppBridgeResponse: Codable, Hashable, Sendable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
         case mcpResponse = "mcp_response"
+        case zoteroResponse = "zotero_response"
         case error
     }
 
@@ -93,6 +142,7 @@ public struct ScholiumAppBridgeResponse: Codable, Hashable, Sendable {
                 ScholiumMCPBridgeResponse.self,
                 forKey: .mcpResponse
             ),
+            zoteroResponse: container.decodeIfPresent(MCPJSONValue.self, forKey: .zoteroResponse),
             error: container.decodeIfPresent(
                 ScholiumAppBridgeRemoteError.self,
                 forKey: .error
@@ -210,7 +260,7 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
             throw ScholiumAppBridgeError.systemCall("create its socket", errno)
         }
         defer { Darwin.close(descriptor) }
-        let responseTimeout = request.mcpRequest.conversationToken == nil ? timeout : 600
+        let responseTimeout = request.mcpRequest?.conversationToken == nil ? timeout : 600
         try AppBridgeIO.configure(descriptor, timeout: responseTimeout)
         var address = AppBridgeIO.address(port: port)
         let connected = withUnsafePointer(to: &address) { pointer in
@@ -288,8 +338,9 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
 
 public final class ScholiumAppBridgeServer: @unchecked Sendable {
     public typealias Handler =
-        @Sendable (ScholiumAppBridgeRequest) async throws
+        @Sendable (ScholiumMCPBridgeRequest) async throws
         -> ScholiumMCPBridgeResponse
+    public typealias ZoteroHandler = @Sendable (ScholiumZoteroBridgeRequest) async throws -> MCPJSONValue
 
     private let queue = DispatchQueue(label: "com.scholium.app-bridge")
     private let peerQueue = DispatchQueue(label: "com.scholium.app-bridge.peers", attributes: .concurrent)
@@ -301,6 +352,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     private let timeout: TimeInterval
     private let operationTimeout: TimeInterval
     private let handler: Handler
+    private let zoteroHandler: ZoteroHandler
     private let lock = NSLock()
     private var listener: Int32 = -1
     private var stopping = false
@@ -312,6 +364,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
         applicationSupportURL: URL,
         timeout: TimeInterval = ScholiumAppBridgeLocation.timeout,
         operationTimeout: TimeInterval = ScholiumAppBridgeLocation.operationTimeout,
+        zoteroHandler: @escaping ZoteroHandler = { _ in throw ScholiumAppBridgeError.unavailable },
         handler: @escaping Handler
     ) throws {
         containerURL = applicationSupportURL.standardizedFileURL
@@ -322,6 +375,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
         self.timeout = min(max(timeout, 0.1), 30)
         self.operationTimeout = min(max(operationTimeout, 0.1), 30)
         self.handler = handler
+        self.zoteroHandler = zoteroHandler
         try start()
     }
 
@@ -450,6 +504,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             let box = AppBridgeResultBox()
             let semaphore = DispatchSemaphore(value: 0)
             let operation = handler
+            let zoteroOperation = zoteroHandler
             let executionID = UUID()
             let task: Task<Void, Never>? = lock.withLock {
                 guard !stopping, handlerTasks.count < Self.maximumConcurrentRequests else { return nil }
@@ -462,7 +517,17 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                     }
                     do {
                         try Task.checkCancellation()
-                        box.result = .success(try await operation(request))
+                        let response: ScholiumAppBridgeResponse
+                        if let mcpRequest = request.mcpRequest {
+                            let result = try await operation(mcpRequest)
+                            response = try .init(correlationID: request.correlationID, mcpResponse: result)
+                        } else if let zoteroRequest = request.zoteroRequest {
+                            let result = try await zoteroOperation(zoteroRequest)
+                            response = try .init(correlationID: request.correlationID, zoteroResponse: result)
+                        } else {
+                            throw ScholiumAppBridgeError.invalidRequest
+                        }
+                        box.result = .success(response)
                     } catch {
                         box.result = .failure(error)
                     }
@@ -472,32 +537,43 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             }
             guard let task else { throw ScholiumAppBridgeError.permissionDenied }
             operationAdmitted = true
-            let budget = request.mcpRequest.conversationToken == nil ? operationTimeout : 590
+            let budget = request.mcpRequest?.conversationToken == nil ? operationTimeout : 590
             let finished = semaphore.wait(timeout: .now() + budget) == .success
             guard finished else {
                 task.cancel()
                 throw ScholiumAppBridgeError.outcomeUnknown
             }
-            let result =
+            let response =
                 try box.result?.get()
                 ?? {
                     throw ScholiumAppBridgeError.invalidResponse
                 }()
-            let response = try ScholiumAppBridgeResponse(
-                correlationID: correlationID,
-                mcpResponse: result
-            )
             let responseData = try AppBridgeCoding.encode(response)
             if responseData.count > ScholiumAppBridgeLocation.maximumFrameByteCount {
-                let failure = ScholiumMCPFailure(
-                    code: request.mcpRequest.tool.mayMutatePersistentState ? .operationUncertain : .invalidRequest,
-                    message: "The complete operation result exceeds the encoded App bridge limit.",
-                    recovery: request.mcpRequest.tool.mayMutatePersistentState
-                        ? "Do not replay the operation. Inspect current source, retained Agent Changes or runtime settings before another mutation."
-                        : "Request a smaller page or source slice and retain its exact fingerprints.")
-                let refusal = try ScholiumAppBridgeResponse(
-                    correlationID: correlationID,
-                    mcpResponse: .init(requestID: request.mcpRequest.requestID, error: failure))
+                let refusal: ScholiumAppBridgeResponse
+                if let mcpRequest = request.mcpRequest {
+                    let failure = ScholiumMCPFailure(
+                        code: mcpRequest.tool.mayMutatePersistentState ? .operationUncertain : .invalidRequest,
+                        message: "The complete operation result exceeds the encoded App bridge limit.",
+                        recovery: mcpRequest.tool.mayMutatePersistentState
+                            ? "Do not replay the operation. Inspect current source, retained Agent Changes or runtime settings before another mutation."
+                            : "Request a smaller page or source slice and retain its exact fingerprints.")
+                    refusal = try .init(
+                        correlationID: correlationID,
+                        mcpResponse: .init(requestID: mcpRequest.requestID, error: failure))
+                } else if let zoteroRequest = request.zoteroRequest {
+                    refusal = try .init(
+                        correlationID: correlationID,
+                        zoteroResponse: ZoteroMCPBridgeReply.failure(
+                            request: zoteroRequest.request,
+                            code: zoteroRequest.mayMutate ? "write_outcome_uncertain" : "response_too_large",
+                            message: zoteroRequest.mayMutate
+                                ? "The complete Zotero reply exceeds the App bridge limit after item-update admission. Do not replay the update. Inspect the current item and version before another update."
+                                : "The complete Zotero reply exceeds the App bridge limit. Request a smaller page or source slice.",
+                            uncertain: zoteroRequest.mayMutate))
+                } else {
+                    throw ScholiumAppBridgeError.invalidRequest
+                }
                 try AppBridgeIO.writeFrame(
                     AppBridgeCoding.encode(refusal), to: peer,
                     deadline: AppBridgeDeadline(timeout: timeout))
@@ -599,9 +675,9 @@ private final class AppBridgeDrainWaiter: @unchecked Sendable {
 
 private final class AppBridgeResultBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: Result<ScholiumMCPBridgeResponse, Error>?
+    private var stored: Result<ScholiumAppBridgeResponse, Error>?
 
-    var result: Result<ScholiumMCPBridgeResponse, Error>? {
+    var result: Result<ScholiumAppBridgeResponse, Error>? {
         get { lock.withLock { stored } }
         set { lock.withLock { stored = newValue } }
     }

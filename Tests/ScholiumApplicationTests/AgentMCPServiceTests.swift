@@ -15,8 +15,11 @@ struct AgentMCPServiceTests {
     }
 
     @Test func independentZoteroHelperExposesReadWriteSurface() async throws {
-        let full = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve"], environment: [:])
-        let readOnly = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve", "--read-only"], environment: [:])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let environment = ["SCHOLIUM_APP_BRIDGE_CONTAINER": root.path]
+        let full = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve"], environment: environment)
+        let readOnly = try AgentMCPService.helperHandler(arguments: ["zotero", "mcp", "serve", "--read-only"], environment: environment)
         for (handler, expectsWrites) in [(full, true), (readOnly, false)] {
             let data = try #require(await handler(Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)))
             let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])

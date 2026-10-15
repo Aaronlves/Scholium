@@ -10,7 +10,6 @@ final class AgentChatDetailPresentation {
     enum ContextAnchor { case composer, conversation }
     var queueEditTarget: AgentChatQueueEditTarget?
     var showsTurns = false
-    var transcriptIsScrolling = false
     var arrivalBaseline: Set<String>?
     var showsFiles = false
     var showsAgents = false

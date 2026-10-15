@@ -1869,9 +1869,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let linkPreviews: [ReadLinkPreview]
         }
 
-        private static var readerScript: String? {
-            ScholiumDocumentWebResources.text(named: "reader.bundle", extension: "js")
-        }
+        private static let readerScript = ScholiumDocumentWebResources.text(named: "reader.bundle", extension: "js")
 
         static func bridgeScript(
             documentID: String,

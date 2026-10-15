@@ -62,6 +62,34 @@ struct PointerTrackingLifecycleTests {
         row.invalidate()
     }
 
+    @Test("Native clip movement transfers hover beneath a stationary pointer")
+    func stationaryPointerDuringScroll() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let scroll = NSScrollView(frame: window.contentView!.bounds)
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 400))
+        scroll.documentView = document
+        window.contentView!.addSubview(scroll)
+        let rows = [40, 120].map { y in
+            let row = ScholiumPointerTrackingView(frame: NSRect(x: 0, y: y, width: 200, height: 40))
+            document.addSubview(row)
+            return row
+        }
+        var hovering = [false, false]
+        for (index, row) in rows.enumerated() {
+            row.stateDidChange = { inside, _ in hovering[index] = inside }
+        }
+        let stationaryPoint = scroll.contentView.convert(NSPoint(x: 20, y: 60), to: nil)
+        rows.forEach { $0.synchronizePointer(locationInWindow: stationaryPoint) }
+        #expect(hovering == [true, false])
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 80))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        rows.forEach { $0.synchronizePointer(locationInWindow: stationaryPoint) }
+        #expect(hovering == [false, true])
+        rows.forEach { $0.invalidate() }
+    }
+
     @Test("Detach publishes a reset instead of leaving SwiftUI's old hover behind")
     func detachClearsPublishedState() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: .borderless, backing: .buffered, defer: false)

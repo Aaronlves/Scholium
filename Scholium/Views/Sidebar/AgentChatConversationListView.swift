@@ -21,7 +21,6 @@ struct AgentChatConversationListView: View {
     let renameConversation: (AgentChatConversation) -> Void
     let showConversationChanges: ([UUID]) -> Void
     let showAccountUsage: () -> Void
-    @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
     @State private var conversationOrder = AgentChatListOrder()
     @State private var deletionTarget: UUID?
 
@@ -52,7 +51,7 @@ struct AgentChatConversationListView: View {
                 back: state.showsArchived ? { state.showsArchived = false } : nil,
                 canCreate: controller.isLoaded, newConversation: newConversation
             ) { archiveMenu }
-            AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: $diagnosticsPresentation)
+            AgentChatConnectionStatus(controller: controller)
             ContextSearchField(
                 text: $state.query, prompt: "Search Conversations",
                 identifier: "scholium.chat.search",

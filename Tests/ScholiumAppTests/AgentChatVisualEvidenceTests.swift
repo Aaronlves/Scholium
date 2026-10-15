@@ -23,8 +23,9 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let content = VStack(alignment: .leading, spacing: 20) {
                 AgentChatProcessView(
-                    messages: process, window: .constant(.init()), isActive: false, forceExpanded: false,
-                    status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false, userExpansion: .constant(nil)
+                    messages: process, window: .constant(.init()), forceExpanded: false,
+                    status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false, userExpansion: .constant(nil),
+                    toolGroupExpansions: .constant([:])
                 ) {
                     AgentChatMarkdown(text: $0.text)
                 }
@@ -907,9 +908,9 @@ struct AgentChatVisualEvidenceTests {
                 AgentChatProcessView(
                     messages: [AgentChatMessage(role: .operation, text: "", activity: noteActivity)],
                     window: .constant(.init()),
-                    isActive: false, forceExpanded: true,
+                    forceExpanded: true,
                     status: .init(state: .completed, timing: .init(durationMilliseconds: 656_000)),
-                    animates: false, userExpansion: .constant(false)
+                    animates: false, userExpansion: .constant(false), toolGroupExpansions: .constant([:])
                 ) { message in
                     if let activity = message.activity {
                         DisclosureGroup {
@@ -971,11 +972,10 @@ struct AgentChatVisualEvidenceTests {
                                 activity: .init(kind: .read, status: .running, source: .scholium))
                         ],
                         window: .constant(.init()),
-                        isActive: false,
                         forceExpanded: false,
                         status: .init(state: .reading, timing: .init(startedAt: Date(timeIntervalSinceNow: -6))),
                         animates: false,
-                        userExpansion: .constant(true)
+                        userExpansion: .constant(true), toolGroupExpansions: .constant([:])
                     ) { message in
                         if let activity = message.activity {
                             DisclosureGroup {

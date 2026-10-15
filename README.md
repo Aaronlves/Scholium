@@ -333,6 +333,17 @@ through Zotero's local API. BibTeX and RIS imports remain in Zotero itself.
 No community Zotero server,
 Python runtime or separate dependency installation is required.
 
+For original PDFs, open **Scholium Settings → Zotero → Original File Access**
+and choose **Choose Zotero Library Folder…**. Scholium locates the data folder
+through Zotero and opens it in the native chooser; confirm **Allow Read Access**.
+If it cannot locate the folder, choose it manually. In Zotero Settings
+→ Advanced → Files and Folders, **Show Data Directory** reveals the folder.
+You can also select a folder containing linked originals or specific original
+files. Access is read-only, stored on This Mac, and removable there.
+The running App reads only originals identified by Zotero. Indexed text supports
+bounded continuation; PDF reads identify physical pages and their actual text
+or image coverage.
+
 Zotero remains the library authority. Item updates require the exact library,
 current Zotero version and Zotero's local write authorization.
 Scholium never accesses Zotero's private database directly. The supported

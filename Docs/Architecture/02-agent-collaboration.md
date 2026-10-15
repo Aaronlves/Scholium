@@ -228,12 +228,12 @@ version-checked item updates; Connector imports lack prewrite target binding.
 Exports preserve exact Zotero text in one item page with continuation;
 item coverage differs from exported entry counts.
 
-The native Zotero service remains the Application owner for settings and links;
-the same Application boundary composes the independent MCP server for Chat and
-external hosts. A Zotero result is not promoted to Scholium source evidence;
-metadata, indexed text, annotations and original-file bytes remain distinct.
-Item updates require an exact library and version; failed readback reports
-an uncertain outcome.
+The App owns Zotero settings, links and execution; helper discovery is local and
+calls use the authenticated bridge. Read-only bookmarks grant selected files/folders;
+Core revalidates identity and uses descriptor containment. Indexed slices retain fingerprints and
+index counts. Results remain runtime reports; metadata, indexed text, annotations
+and original bytes stay distinct. Item updates require an exact library/version;
+failed readback is uncertain.
 
 ### Native presentation boundary
 
@@ -246,14 +246,14 @@ timeout and disconnect interrupt the exact turn. Window-owned selection results
 retain variants; popovers own presentation. Explicit Chat handoff creates drafts;
 Document owns validation and replacement.
 
-Window-local Chat retains one visited detail behind its list;
-hidden readers, input and wheel routing are inactive. Composer sessions retain
-native selection and Undo; conversations own durable drafts. Visibility tokens
-prevent unread cycling during streaming. Sanitized snapshots own rich-object
-identities; Copy/Expand cannot reparse objects. The safe reader preserves
-continuous selection. One native viewport owns scrolling; reading sessions own
-anchors/disclosures. In-page updates preserve unchanged blocks and selection
-without another reveal/scroll timeline. Preview geometry grants no trust.
+Chat retains one visited detail; transitions move whole pages. Hidden readers,
+input and wheel routing are inactive. Conversations own drafts; composer sessions
+retain selection/Undo. Detail mounts own initial display proof; reader receipts
+and viewport callbacks match the mount and retire on departure. Viewports own
+geometry/positioning; sessions retain anchors/disclosures and scroll intent.
+Visibility tokens prevent streaming unread cycles. Sanitized snapshots preserve
+object/selection identity without reparsing or another reveal/scroll timeline.
+Preview geometry grants no trust.
 
 Live notification validity remains execution-owned and is never replayed from
 history. System delivery/routes belong to Runtime and Ownership.

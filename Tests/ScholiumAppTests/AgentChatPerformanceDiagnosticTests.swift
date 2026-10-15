@@ -376,7 +376,7 @@ private final class OffscreenTranscript {
             nativeSession: AgentChatComposerSession(conversationID: id),
             focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
-            showAccountUsage: {}, diagnosticsPresentation: .constant(nil))
+            showAccountUsage: {})
         let host = NSHostingView(rootView: AnyView(detail))
         host.sizingOptions = []
         let window = NSWindow(

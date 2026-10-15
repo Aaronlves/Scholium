@@ -90,6 +90,10 @@ struct WorkspaceSettingsZoteroCapabilities {
     let openZotero: () async -> Void
     let clearZoteroConnectionHistory: () async throws -> Void
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
+    let originalAccessGrants: () async throws -> [ZoteroOriginalAccessGrant]
+    let suggestedOriginalLibraryDirectory: () async throws -> URL?
+    let authorizeOriginalAccess: (URL, UUID?) async throws -> Void
+    let removeOriginalAccess: (UUID) async throws -> Void
 }
 
 struct WorkspaceChangesHistorySnapshot: Equatable, Sendable {
@@ -325,6 +329,26 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     func clearZoteroConnectionHistory() async throws {
         try await capabilities?.zotero.clearZoteroConnectionHistory()
+    }
+
+    func zoteroOriginalAccessGrants() async throws -> [ZoteroOriginalAccessGrant] {
+        guard let capabilities else { throw ZoteroOriginalAccessError.storageUnavailable }
+        return try await capabilities.zotero.originalAccessGrants()
+    }
+
+    func suggestedZoteroOriginalLibraryDirectory() async throws -> URL? {
+        guard let capabilities else { throw ZoteroOriginalAccessError.storageUnavailable }
+        return try await capabilities.zotero.suggestedOriginalLibraryDirectory()
+    }
+
+    func authorizeZoteroOriginalAccess(selectedURL: URL, replacing grantID: UUID?) async throws {
+        guard let capabilities else { throw ZoteroOriginalAccessError.storageUnavailable }
+        try await capabilities.zotero.authorizeOriginalAccess(selectedURL, grantID)
+    }
+
+    func removeZoteroOriginalAccess(grantID: UUID) async throws {
+        guard let capabilities else { throw ZoteroOriginalAccessError.storageUnavailable }
+        try await capabilities.zotero.removeOriginalAccess(grantID)
     }
 
     func changesHistory(triptychID: UUID) async throws -> WorkspaceChangesHistorySnapshot {

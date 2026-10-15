@@ -57,6 +57,28 @@ struct AgentChatReplySource: Identifiable, Equatable {
     }
 }
 
+/// One reply footer retains only its current source projection. Exact bytes,
+/// rather than Unicode canonical equivalence, determine whether it can reuse
+/// the parsed link titles. This does not publish or own presentation state.
+@MainActor
+final class AgentChatReplySourceProjection {
+    private var source: String?
+    private var collected: [AgentChatReplySource] = []
+    private let collect: (String) -> [AgentChatReplySource]
+
+    init(collect: @escaping (String) -> [AgentChatReplySource] = AgentChatReplySource.collect) {
+        self.collect = collect
+    }
+
+    func sources(for text: String) -> [AgentChatReplySource] {
+        if let source, ScholiumExactUTF8.equal(source, text) { return collected }
+        collected = collect(text)
+        source = text
+        return collected
+    }
+
+}
+
 /// Pure availability for the reply footer. Materials are supplied context;
 /// Sources are claims or links made visible by the reply. Keeping this split
 /// outside the view prevents one trigger from silently carrying two meanings.
@@ -77,11 +99,12 @@ struct AgentChatReplyActions: View {
     let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
     @Environment(\.openURL) private var openURL
+    @State private var sourceProjection = AgentChatReplySourceProjection()
     @State private var showsSources = false
     @State private var showsMaterials = false
 
     var body: some View {
-        let sources = AgentChatReplySource.collect(text)
+        let sources = sourceProjection.sources(for: text)
         let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
         HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             ScholiumCopyButton(label: "Copy Markdown", contentIdentity: text) {

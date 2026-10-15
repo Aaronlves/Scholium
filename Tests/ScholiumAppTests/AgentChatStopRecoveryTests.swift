@@ -38,7 +38,7 @@ struct AgentChatStopRecoveryTests {
             #expect(!controller.canSend && !controller.canQueue)
             #expect(controller.executions[owner]?.automaticallyAdvancesQueue == false)
             #expect(controller.selected?.lastRunStatus == .running)
-            let statuses = AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil)).statuses
+            let statuses = AgentChatConnectionStatus(controller: controller).statuses
             #expect(statuses.first { $0.id == "execution" }?.actions == [.retryStop])
 
             // Replayed start notifications must not turn a failure into an automatic retry.
@@ -109,7 +109,7 @@ struct AgentChatStopRecoveryTests {
             #expect(controller.canRetryStop && controller.state == .stopping && controller.currentTurnID == turn)
             #expect(controller.token == nil && controller.selected?.pendingMessageID == pendingMessage)
             let status = try #require(
-                AgentChatConnectionStatus(controller: controller, diagnosticsPresentation: .constant(nil))
+                AgentChatConnectionStatus(controller: controller)
                     .statuses.first { $0.id == "execution" })
             #expect(status.title == AgentChatExecutionRecovery.deliveryUnconfirmed.title)
             #expect(status.error == deliveryError && status.actions == [.retryStop])

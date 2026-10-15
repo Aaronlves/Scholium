@@ -28,9 +28,9 @@ struct MCPTransportCapacityTests {
             ]),
         ]
         let server = try ScholiumAppBridgeServer(applicationSupportURL: root) { request in
-            #expect(request.mcpRequest.arguments == arguments)
+            #expect(request.arguments == arguments)
             return try .init(
-                requestID: request.mcpRequest.requestID,
+                requestID: request.requestID,
                 result: .object([
                     "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"), "source": .string(after),
                 ]))
@@ -58,7 +58,7 @@ struct MCPTransportCapacityTests {
         let server = try ScholiumAppBridgeServer(applicationSupportURL: root) { request in
             await recorder.record()
             try Data("Prohibited mutation".utf8).write(to: noteURL)
-            return try .init(requestID: request.mcpRequest.requestID, result: .object([:]))
+            return try .init(requestID: request.requestID, result: .object([:]))
         }
         defer { server.stop() }
         let request = ScholiumAppBridgeRequest(
@@ -102,7 +102,7 @@ struct MCPTransportCapacityTests {
                 _ = try await agent.updateNote(noteID: noteID, expectedFingerprint: note.fingerprint, update: .source(String(decoding: after, as: UTF8.self)))
             }
             return try .init(
-                requestID: request.mcpRequest.requestID,
+                requestID: request.requestID,
                 result: .object([
                     "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"),
                     "oversized_result": .string(String(repeating: "x", count: ScholiumMCPContract.maximumEncodedMessageByteCount)),

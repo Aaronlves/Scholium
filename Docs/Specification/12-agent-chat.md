@@ -481,8 +481,8 @@ progress percentages, remaining time or philosophical acceptance. A completed
 software step means only the named operation ended successfully. Runtime-labelled
 public progress commentary is distinct from the final answer and is retained with
 its exact turn and item identity. The process view groups the commentary, plans
-and individually inspectable tool calls for that turn; completion collapses the
-process subject to the reading-position rules in §18.2, not the final answer.
+and individually inspectable tool calls for that turn; its default disclosure and
+retained inspection choices follow §18.2.2, independently of the final answer.
 Runtime turn identity owns status and timing; restoration never fabricates elapsed time.
 Missing phase metadata never justifies hiding an
 Agent message as presumed reasoning. The client does not expose raw reasoning

@@ -5,7 +5,6 @@ import SwiftUI
 /// states share a bounded native inspection rather than adding more top bars.
 struct AgentChatConnectionStatus: View {
     @ObservedObject var controller: AgentChatController
-    @Binding var diagnosticsPresentation: AgentChatDiagnosticsPresentation?
     var messageID: String? = nil
     @Environment(\.openSettings) private var openSettings
     @State private var showsDetails = false
@@ -64,7 +63,7 @@ struct AgentChatConnectionStatus: View {
             if let error = controller.connectionError {
                 return Status(
                     id: "connection", title: ScholiumL10n.string("Connection Failed"),
-                    explanation: ScholiumL10n.string("Retry the connection or open Diagnostics."),
+                    explanation: ScholiumL10n.string("Retry the connection."),
                     error: error, actions: [.retryConnection])
             }
             return Status(id: "connection", title: ScholiumL10n.string("Not Connected"), symbol: "network", actions: [.connect])
@@ -83,7 +82,7 @@ struct AgentChatConnectionStatus: View {
             return Status(
                 id: "connection", title: ScholiumL10n.string(controller.connectionError == nil ? "Sign-In Required" : "Sign-In Failed"),
                 symbol: "person.crop.circle",
-                explanation: controller.connectionError.map { _ in ScholiumL10n.string("Try signing in again or open Diagnostics.") },
+                explanation: controller.connectionError.map { _ in ScholiumL10n.string("Try signing in again.") },
                 error: controller.connectionError, actions: [.signIn])
         }
     }
@@ -273,7 +272,10 @@ struct AgentChatConnectionStatus: View {
                         let actions = status.actions.filter { !directActions.contains($0) }
                         if !actions.isEmpty { VStack(alignment: .leading) { actionButtons(actions) } }
                         if let error = status.error {
-                            AgentChatDiagnosticsButton(controller: controller, presentation: $diagnosticsPresentation, error: error)
+                            Text(verbatim: error)
+                                .font(.callout)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }

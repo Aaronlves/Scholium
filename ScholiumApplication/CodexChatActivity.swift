@@ -52,6 +52,20 @@ public enum CodexChatActivity {
         var detail =
             item["error"]?.objectValue?["message"]?.stringValue
             ?? item["aggregatedOutput"]?.stringValue ?? ""
+        if type == "mcpToolCall", let result = item["result"]?.objectValue {
+            if result["isError"]?.boolValue == true { status = .failed }
+            if item["server"]?.stringValue == "scholium-zotero",
+                item["tool"]?.stringValue == "zotero_update_item",
+                let outcome = result["structuredContent"]?.objectValue,
+                outcome["status"] == .string("outcome_uncertain"),
+                outcome["error_code"] == .string("write_outcome_uncertain")
+            {
+                status = .uncertain
+            }
+            // Retention keeps the latest output; keep the runtime diagnostic at
+            // that ending so a large result cannot erase the failure reason.
+            detail = [mcpOutput(result), detail].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
         if let managedTool {
             subject = item["arguments"]?.objectValue?["relative_path"]?.stringValue ?? ""
             detail = [managedTool.rawValue, detail].filter { !$0.isEmpty }.joined(separator: "\n")
@@ -70,6 +84,7 @@ public enum CodexChatActivity {
         var activity = AgentChatActivity(
             kind: kind, status: status, source: .runtime, subject: subject,
             detail: String(detail.suffix(16_000)), files: files)
+        if detail.count > 16_000 { activity.outputTruncated = true }
         if kind == .command {
             activity.commandExecution = .init(
                 workingDirectory: item["cwd"]?.stringValue,
@@ -97,4 +112,61 @@ public enum CodexChatActivity {
         return activity
     }
 
+    /// Public MCP output has its own result envelope; command aggregates are
+    /// unrelated. Keep diagnostics and source coverage, without retaining binary
+    /// derivatives or provider-private metadata in the transcript.
+    private static func mcpOutput(_ result: [String: MCPJSONValue]) -> String {
+        let structured = result["structuredContent"].flatMap { $0 == .null ? nil : publicMCPValue($0) }
+        var parts: [String] = []
+        var includesStructured = false
+        for block in result["content"]?.arrayValue ?? [] {
+            guard let content = block.objectValue else { continue }
+            switch content["type"]?.stringValue {
+            case "text":
+                guard let text = content["text"]?.stringValue else { continue }
+                if let json = try? JSONDecoder().decode(MCPJSONValue.self, from: Data(text.utf8)) {
+                    let value = publicMCPValue(json)
+                    includesStructured = includesStructured || value == structured
+                    parts.append(value == json ? text : jsonText(value))
+                } else {
+                    parts.append(text)
+                }
+            case "image", "audio":
+                let kind = content["type"]?.stringValue ?? ""
+                parts.append("[\(content["mimeType"]?.stringValue ?? kind) \(kind)]")
+            case "resource":
+                if let resource = content["resource"]?.objectValue {
+                    if let text = resource["text"]?.stringValue { parts.append(text) } else if let uri = resource["uri"]?.stringValue { parts.append(uri) }
+                }
+            case "resource_link":
+                if let uri = content["uri"]?.stringValue { parts.append(uri) }
+            default: break
+            }
+        }
+        if let structured, !includesStructured { parts.append(jsonText(structured)) }
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    private static func publicMCPValue(_ value: MCPJSONValue) -> MCPJSONValue {
+        switch value {
+        case .object(var object):
+            object["_meta"] = nil
+            if object["mime_type"]?.stringValue != nil || object["mimeType"]?.stringValue != nil
+                || ["image", "audio"].contains(object["type"]?.stringValue ?? "")
+            {
+                object["data"] = nil
+                object["blob"] = nil
+            }
+            return .object(object.mapValues(publicMCPValue))
+        case .array(let values): return .array(values.map(publicMCPValue))
+        default: return value
+        }
+    }
+
+    private static func jsonText(_ value: MCPJSONValue) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(value) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
 }

@@ -230,7 +230,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             )
             requestRouter = router
             appBridge = try ScholiumAppBridgeServer(
-                applicationSupportURL: bridgeContainerURL
+                applicationSupportURL: bridgeContainerURL,
+                zoteroHandler: { request in
+                    let data = try JSONEncoder().encode(request.request)
+                    guard let reply = await runtime.zotero.handle(requestData: data, access: request.access) else {
+                        throw ScholiumAppBridgeError.invalidResponse
+                    }
+                    return try JSONDecoder().decode(MCPJSONValue.self, from: reply)
+                }
             ) { request in
                 await router.handle(request)
             }
@@ -723,6 +730,18 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 },
                 refreshZoteroLibraryInfo: { [self] in
                     try await zoteroBridge.refreshLibraryInfo()
+                },
+                originalAccessGrants: { [self] in
+                    try await zoteroBridge.originalAccessGrants()
+                },
+                suggestedOriginalLibraryDirectory: { [self] in
+                    try await zoteroBridge.suggestedOriginalLibraryDirectory()
+                },
+                authorizeOriginalAccess: { [self] url, grantID in
+                    try await zoteroBridge.authorizeOriginalAccess(selectedURL: url, replacing: grantID)
+                },
+                removeOriginalAccess: { [self] grantID in
+                    try await zoteroBridge.removeOriginalAccess(grantID: grantID)
                 }
             ),
             changesHistory: WorkspaceChangesHistoryCapabilities(

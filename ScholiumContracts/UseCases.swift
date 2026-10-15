@@ -287,6 +287,10 @@ public protocol ZoteroUseCases: Sendable {
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws
     func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
+    func originalAccessGrants() async throws -> [ZoteroOriginalAccessGrant]
+    func suggestedOriginalLibraryDirectory() async throws -> URL?
+    func authorizeOriginalAccess(selectedURL: URL, replacing grantID: UUID?) async throws
+    func removeOriginalAccess(grantID: UUID) async throws
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

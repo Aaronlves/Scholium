@@ -170,6 +170,10 @@ struct SettingsSearchTarget: Identifiable, Equatable {
             Self(
                 "zotero.chat", .zoteroChat, "Zotero in Chat",
                 ["Zotero connection", "Zotero in Chat", "聊天 Zotero"]),
+            Self(
+                "zotero.originalAccess", .zoteroOriginalAccess, "Original File Access",
+                ["Zotero PDF", "originals", "read permission", "linked files", "storage", "原文", "读取权限", "链接文件", "存储"],
+                aliases: ["Choose Zotero Library Folder…", "Library Folder", "Data Directory", "Add Original File…", "Restore Original Access…"]),
         ]
             + AppearanceHeadingLevel.allCases.map { level in
                 let label = level.rawValue.uppercased()

@@ -71,17 +71,25 @@ public struct ZoteroMCPURLSessionClient: ZoteroMCPHTTPClient, Sendable {
 /// its localhost API, while original reads open only an
 /// exact API-resolved attachment and never SQLite.
 public actor ZoteroMCPServer {
+    /// Application-owned access to the exact URL resolved by Zotero. The
+    /// reader must keep its read-only grant active throughout a bounded,
+    /// descriptor-safe immutable read; agent input never supplies a path.
+    public typealias OriginalContentReader = @Sendable (URL, Int) async throws -> Data
+
     public static let protocolVersion = "2025-11-25"
     public static let serverName = "scholium-zotero"
     public static let serverVersion = ScholiumProductIdentity.marketingVersion
 
     let client: any ZoteroMCPHTTPClient
+    let originalContentReader: OriginalContentReader
     var localAPIAuthorization: ZoteroMCPLocalAPIAuthorization?
 
     public init(
-        client: any ZoteroMCPHTTPClient = ZoteroMCPURLSessionClient()
+        client: any ZoteroMCPHTTPClient = ZoteroMCPURLSessionClient(),
+        originalContentReader: OriginalContentReader? = nil
     ) {
         self.client = client
+        self.originalContentReader = originalContentReader ?? Self.readOriginalContent
     }
 
     /// Handles one JSON-RPC message body. Notifications intentionally return
@@ -841,7 +849,7 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .originalMissing:
             "The local original resolved by Zotero does not exist. Restore the attachment in Zotero and try again."
         case .originalPermissionDenied:
-            "macOS denied access to the local original resolved by Zotero."
+            "Scholium could not access the local original resolved by Zotero. In Scholium Settings > Zotero, grant read access to the folder containing the original, then retry this exact attachment. Indexed full text is a separate representation and does not verify original pages."
         case .originalTooLarge:
             "The local original exceeds Scholium's 20 MiB read limit."
         case .originalUnsupported:

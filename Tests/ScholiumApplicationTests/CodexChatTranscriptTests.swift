@@ -5,6 +5,116 @@ import Testing
 
 @Suite("Unified public transcript decoding")
 struct CodexChatTranscriptTests {
+    @Test("A reported lost Zotero update confirmation remains uncertain instead of inviting a failed-write retry")
+    func uncertainZoteroUpdate() throws {
+        var item: [String: MCPJSONValue] = [
+            "type": .string("mcpToolCall"), "status": .string("failed"),
+            "server": .string("scholium-zotero"), "tool": .string("zotero_update_item"),
+            "result": .object([
+                "content": .array([]),
+                "structuredContent": .object([
+                    "status": .string("outcome_uncertain"), "error_code": .string("write_outcome_uncertain"),
+                    "error": .string("Do not replay the update."),
+                ]),
+            ]),
+        ]
+        let activity = try #require(CodexChatActivity.parse(item, completed: true))
+        #expect(activity.status == .uncertain && activity.detail.contains("Do not replay"))
+        #expect(activity.source == .runtime && activity.files.isEmpty && activity.sourceObservation == nil)
+        item["server"] = .string("another-server")
+        #expect(CodexChatActivity.parse(item, completed: true)?.status == .failed)
+    }
+
+    @Test("MCP source output and failure recovery survive live, restored and persisted history", arguments: [false, true])
+    func mcpOutputRetention(failed: Bool) async throws {
+        let source: MCPJSONValue = .object([
+            "status": .string(failed ? "failed" : "ok"),
+            "source_kind": .string("zotero_original"),
+            "text": .string("原文 😀\r\nExact passage"),
+            "page": .integer(3), "total_pages": .integer(12),
+            "error_code": failed ? .string("original_permission_denied") : .null,
+            "error": failed ? .string("Grant read access in Scholium Settings > Zotero.") : .null,
+        ])
+        let text = String(decoding: try JSONEncoder().encode(source), as: UTF8.self)
+        let item: [String: MCPJSONValue] = [
+            "id": .string("original"), "type": .string("mcpToolCall"),
+            "server": .string("scholium-zotero"), "tool": .string("zotero_read_original_page"),
+            "status": .string(failed ? "failed" : "completed"),
+            "result": .object([
+                "content": .array([.object(["type": .string("text"), "text": .string(text)])]),
+                "structuredContent": source,
+            ]), "error": .null,
+        ]
+        let event = try #require(
+            try CodexChatTranscript.event([
+                "method": .string("item/completed"),
+                "params": .object(["threadId": .string("thread"), "turnId": .string("turn"), "item": .object(item)]),
+            ]))
+        guard case .item(let live, _, _) = event.content else {
+            Issue.record("Expected an MCP result")
+            return
+        }
+        let history = try CodexChatTranscript.turn(turn(items: [.object(item)]), threadID: "thread")
+        #expect(live == history.items.first)
+        guard case .activity(let activity) = live.content else {
+            Issue.record("Expected retained activity")
+            return
+        }
+        let restored = try JSONDecoder().decode(AgentChatActivity.self, from: JSONEncoder().encode(activity))
+        #expect(restored.detail == text)  // Equivalent structured projection is not duplicated.
+        #expect(restored.status == (failed ? .failed : .completed))
+        #expect(restored.sourceObservation == nil)  // Runtime reports do not become App evidence.
+        #expect(restored.detail.contains("original_permission_denied") == failed)
+        #expect(restored.detail.contains("Scholium Settings > Zotero") == failed)
+    }
+
+    @Test("MCP details retain structured-only coverage, text and error, excluding binary and private metadata")
+    func mcpStructuredAndMediaOutput() throws {
+        let item: [String: MCPJSONValue] = [
+            "type": .string("mcpToolCall"), "status": .string("failed"),
+            "tool": .string("zotero_read_original_page"),
+            "error": .object(["message": .string("Reported failure")]),
+            "result": .object([
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string("Readable output")]),
+                    .object(["type": .string("image"), "mimeType": .string("image/png"), "data": .string("binary-secret")]),
+                ]),
+                "structuredContent": .object([
+                    "page": .integer(2), "total_pages": .integer(5),
+                    "image": .object(["mime_type": .string("image/png"), "data": .string("binary-secret")]),
+                    "_meta": .object(["token": .string("provider-private")]),
+                ]),
+                "_meta": .object(["token": .string("provider-private")]),
+            ]),
+        ]
+        let activity = try #require(CodexChatActivity.parse(item, completed: true))
+        #expect(activity.detail.contains("Reported failure") && activity.detail.contains("Readable output"))
+        #expect(activity.detail.contains("image/png") && activity.detail.contains("total_pages"))
+        #expect(!activity.detail.contains("binary-secret") && !activity.detail.contains("provider-private"))
+    }
+
+    @Test("Long MCP output marks bounded retention explicitly and keeps Unicode intact")
+    func boundedMCPOutput() throws {
+        let text = String(repeating: "😀", count: 20_000) + " exact ending"
+        let activity = try #require(
+            CodexChatActivity.parse(
+                [
+                    "type": .string("mcpToolCall"), "status": .string("completed"),
+                    "result": .object(["content": .array([.object(["type": .string("text"), "text": .string(text)])])]),
+                ], completed: true))
+        #expect(activity.detail.count == 16_000 && activity.outputTruncated == true)
+        #expect(activity.detail.hasSuffix(" exact ending") && !activity.detail.contains("�"))
+        let failure = try #require(
+            CodexChatActivity.parse(
+                [
+                    "type": .string("mcpToolCall"), "status": .string("failed"),
+                    "error": .object(["message": .string("Grant read access in Settings > Zotero.")]),
+                    "result": .object(["content": .array([.object(["type": .string("text"), "text": .string(text)])])]),
+                ], completed: true))
+        #expect(failure.detail.hasSuffix("Grant read access in Settings > Zotero."))
+        #expect(failure.outputTruncated == true && failure.status == .failed)
+    }
+
     @Test("Command execution facts retain zero exit codes and duration through persistence")
     func commandFacts() throws {
         let item: [String: MCPJSONValue] = [

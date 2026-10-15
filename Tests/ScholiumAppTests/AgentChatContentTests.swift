@@ -66,6 +66,144 @@ struct AgentChatContentTests {
         override func scrollWheel(with event: NSEvent) { events.append(event) }
     }
 
+    @Test("A complete wheel gesture resolves its native target once, including momentum")
+    func wheelGestureResolvesTargetOnce() throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        var events = 0
+        func target() -> NSView? {
+            lookups += 1
+            return inline
+        }
+        func event(_ y: Int32, _ x: Int32, phase: Int64, momentum: Int64 = 0) throws -> NSEvent {
+            let cg = try #require(
+                CGEvent(
+                    scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                    wheel1: y, wheel2: x, wheel3: 0))
+            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+            cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+            return try #require(NSEvent(cgEvent: cg))
+        }
+        for horizontal in [false, true, false] {
+            let begin = try event(0, 0, phase: 1)
+            let handled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+            events += 1
+            for _ in 0..<96 {
+                let change = try event(horizontal ? 1 : 6, horizontal ? 6 : 1, phase: 2)
+                let handled = route.dispatch(change, inlineTarget: target(), conversation: conversation)
+                #expect(handled)
+                events += 1
+            }
+            for boundary in [
+                try event(0, 0, phase: 4),
+                try event(horizontal ? 1 : 6, horizontal ? 6 : 1, phase: 0, momentum: 1),
+                try event(0, 0, phase: 0, momentum: 3),
+            ] {
+                let handled = route.dispatch(boundary, inlineTarget: target(), conversation: conversation)
+                #expect(handled)
+                events += 1
+            }
+        }
+        print("CHAT_WHEEL_TARGET events=\(events) target_lookups=\(lookups) gestures=3 evidence=dispatch_work_not_paint")
+        #expect(lookups == 3)
+        #expect(conversation.events.count == 200 && inline.events.count == 100)
+        let beforeUnphased = lookups
+        for _ in 0..<3 {
+            let handled = route.dispatch(try event(4, 0, phase: 0), inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+        }
+        #expect(lookups - beforeUnphased == 3, "Each ordinary wheel event remains independently targeted")
+    }
+
+    @Test("Lazy wheel lookup preserves ineligible, Shift, cancellation and weak target boundaries")
+    func wheelTargetBoundaries() throws {
+        let route = AgentChatWheelRoute()
+        let conversation = ScrollProbe()
+        var inline: ScrollProbe?
+        weak var departed: ScrollProbe?
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return inline
+        }
+        func event(_ y: Int32, _ x: Int32, phase: Int64, shift: Bool = false) throws -> NSEvent {
+            let cg = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0))
+            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+            if shift { cg.flags.insert(.maskShift) }
+            return try #require(NSEvent(cgEvent: cg))
+        }
+        try autoreleasepool {
+            inline = ScrollProbe()
+            departed = inline
+            // A local detail scroller may initially own input. A nil lookup does
+            // not consume that event or prevent a later eligible target.
+            let handled1 = !route.dispatch(try event(0, 0, phase: 1), inlineTarget: nil, conversation: conversation)
+            #expect(handled1)
+            let handled2 = route.dispatch(try event(8, 0, phase: 2, shift: true), inlineTarget: target(), conversation: conversation)
+            #expect(handled2)
+            #expect(inline?.events.count == 1 && conversation.events.isEmpty)
+            let handled3 = route.dispatch(try event(0, 0, phase: 8), inlineTarget: target(), conversation: conversation)
+            #expect(handled3)
+            #expect(lookups == 1, "Cancellation reaches the locked recipient before clearing it")
+            let handled4 = route.dispatch(try event(0, 9, phase: 2), inlineTarget: target(), conversation: conversation)
+            #expect(handled4)
+            #expect(lookups == 2)
+            inline = nil
+        }
+        #expect(departed == nil, "Gesture ownership must not retain a removed native reader")
+        inline = ScrollProbe()
+        let handled5 = route.dispatch(try event(0, 9, phase: 2), inlineTarget: target(), conversation: conversation)
+        #expect(handled5)
+        #expect(lookups == 3 && inline?.events.count == 1)
+        route.reset()
+        let handled6 = route.dispatch(try event(0, 0, phase: 128), inlineTarget: target(), conversation: conversation)
+        #expect(handled6)
+        let handled7 = route.dispatch(try event(0, 0, phase: 1), inlineTarget: target(), conversation: conversation)
+        #expect(handled7)
+        #expect(lookups == 5, "mayBegin and began retain their existing separate reset semantics")
+    }
+
+    @Test("Reader lookup skips retained disabled replies and treats each reader as a terminal node")
+    func readerLookupUsesOnlyInteractiveReplyGeometry() throws {
+        _ = NSApplication.shared
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        let window = NSWindow(contentRect: root.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = root
+        defer { window.close() }
+        let visible = AgentChatReadWebView(frame: NSRect(x: 0, y: 0, width: 100, height: 100), configuration: .init())
+        let retained = AgentChatReadWebView(frame: visible.frame, configuration: .init())
+        root.addSubview(visible)
+        root.addSubview(retained)
+        retained.setChatInteractive(false)
+        let inside = root.convert(NSPoint(x: 25, y: 25), to: nil)
+        #expect(AgentChatScrollBoundary.BoundaryView.inlineReply(in: root, at: inside) === visible)
+        let descendants = DescendantProbe(frame: visible.bounds)
+        visible.addSubview(descendants)
+        descendants.subtreeReads = 0
+        let outside = AgentChatScrollBoundary.BoundaryView.inlineReply(in: root, at: root.convert(NSPoint(x: 150, y: 150), to: nil))
+        let subtreeReads = descendants.subtreeReads
+        print("CHAT_READER_TARGET replies=2 webkit_subtree_reads=\(subtreeReads) evidence=lookup_work_not_paint")
+        #expect(outside == nil)
+        #expect(subtreeReads == 0, "The transcript does not search WebKit's internal view tree")
+        visible.setChatInteractive(false)
+        #expect(AgentChatScrollBoundary.BoundaryView.inlineReply(in: root, at: inside) == nil)
+    }
+
+    private final class DescendantProbe: NSView {
+        var subtreeReads = 0
+        override var subviews: [NSView] {
+            get {
+                subtreeReads += 1
+                return super.subviews
+            }
+            set { super.subviews = newValue }
+        }
+    }
+
     @Test func expandedObjectsShareOneParentedPreviewAndEscapeCloses() throws {
         _ = NSApplication.shared
         let window = NSWindow(

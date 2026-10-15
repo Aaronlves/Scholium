@@ -170,11 +170,10 @@ struct AgentChatPerformanceTests {
             AgentChatProcessView(
                 messages: messages,
                 window: .constant(.init()),
-                isActive: true,
                 forceExpanded: true,
                 status: .init(state: .working, timing: .init(startedAt: Date(timeIntervalSinceNow: -12))),
                 animates: false,
-                userExpansion: .constant(true)
+                userExpansion: .constant(true), toolGroupExpansions: .constant(["tools:activity-0": true])
             ) { message in
                 if let activity = message.activity {
                     DisclosureGroup {

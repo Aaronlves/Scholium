@@ -2,6 +2,37 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
+/// One mounted material retains only its current display copy. The captured
+/// attachment remains source authority; Note revisions do not identify a
+/// selected passage's bytes.
+@MainActor
+final class AgentChatMaterialExcerptProjection {
+    struct Excerpt {
+        let visibleText: String?
+        let accessibilityText: String
+    }
+
+    private var source: String?
+    private var extent: AgentChatAttachment.Extent?
+    private var retained = Excerpt(visibleText: nil, accessibilityText: "")
+    private let readableText: (String) -> String
+
+    init(readableText: @escaping (String) -> String = { ResearchExcerptPresentation.readableText($0) }) {
+        self.readableText = readableText
+    }
+
+    func excerpt(for text: String, extent: AgentChatAttachment.Extent) -> Excerpt {
+        if let source, self.extent == extent, ScholiumExactUTF8.equal(source, text) { return retained }
+        let readable = readableText(text)
+        retained = .init(
+            visibleText: extent == .wholeNote ? nil : readable,
+            accessibilityText: String(readable.prefix(120)))
+        source = text
+        self.extent = extent
+        return retained
+    }
+}
+
 /// Compact source attachment. The conversation and runtime continue to
 /// receive the untouched captured bytes.
 struct AgentChatMaterialChip: View {
@@ -10,6 +41,7 @@ struct AgentChatMaterialChip: View {
     let remove: (() -> Void)?
     let open: (WindowOpenDisposition) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var excerptProjection = AgentChatMaterialExcerptProjection()
     @State private var isHovered = false
     @FocusState private var noteIsFocused: Bool
     @FocusState private var removeIsFocused: Bool
@@ -21,7 +53,6 @@ struct AgentChatMaterialChip: View {
     private var title: String {
         URL(fileURLWithPath: attachment.relativePath).deletingPathExtension().lastPathComponent
     }
-    private var excerpt: String { ResearchExcerptPresentation.readableText(attachment.text) }
     private var extent: String {
         String(
             localized: attachment.extent == .wholeNote ? "Whole Note" : "Attached Passage",
@@ -36,6 +67,7 @@ struct AgentChatMaterialChip: View {
     }
 
     var body: some View {
+        let excerpt = excerptProjection.excerpt(for: attachment.text, extent: attachment.extent)
         AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             ZStack(alignment: .topTrailing) {
                 Button {
@@ -65,8 +97,8 @@ struct AgentChatMaterialChip: View {
                                         Color.black
                                     }
                                 }
-                            if attachment.extent != .wholeNote {
-                                Text(excerpt)
+                            if let visibleText = excerpt.visibleText {
+                                Text(visibleText)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -80,7 +112,7 @@ struct AgentChatMaterialChip: View {
                 .buttonStyle(ScholiumContentActionButtonStyle(restingRole: .primaryText))
                 .help(attachment.relativePath)
                 .accessibilityLabel(Text("Open Note: \(title)"))
-                .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))
+                .accessibilityValue(Text("\(extent), \(source): \(excerpt.accessibilityText)"))
                 .accessibilityActions {
                     if let remove {
                         Button("Remove Material", action: remove)

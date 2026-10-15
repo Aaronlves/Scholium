@@ -58,6 +58,7 @@ struct SettingsSection: Hashable, Identifiable {
     }
 
     static let zoteroDesktop = Self("zotero.desktop", .zotero)
+    static let zoteroOriginalAccess = Self("zotero.originalAccess", .zotero)
     static let zoteroChat = Self("zotero.chat", .zotero)
 
     static func shortcut(_ command: ScholiumHotkeyCommand) -> Self {

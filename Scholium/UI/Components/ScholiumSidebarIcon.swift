@@ -103,10 +103,16 @@ struct ScholiumSidebarCopyIcon: View {
 /// a restartable feedback lifetime. The caller retains clipboard-content authority.
 struct ScholiumCopyButton: View {
     var label: LocalizedStringKey = "Copy"
-    var contentIdentity = ""
+    private let contentIdentity: ScholiumExactUTF8.SourceIdentity
     let copy: () -> Bool
     @State private var copied = false
     @State private var confirmation = 0
+
+    init(label: LocalizedStringKey = "Copy", contentIdentity: String = "", copy: @escaping () -> Bool) {
+        self.label = label
+        self.contentIdentity = .init(contentIdentity)
+        self.copy = copy
+    }
 
     var body: some View {
         Button {

@@ -27,7 +27,7 @@ struct ScholiumAppBridgeSecurityTests {
         let request = ScholiumAppBridgeRequest(mcpRequest: .init(tool: .search))
         let payload = Data(repeating: 7, count: 32) + (try JSONEncoder().encode(request))
         let response = try ScholiumAppBridgeResponse(
-            correlationID: request.correlationID, mcpResponse: Self.success(request))
+            correlationID: request.correlationID, mcpResponse: Self.success(try #require(request.mcpRequest)))
         #expect(throws: ScholiumAppBridgeError.outcomeUnknown) {
             try ScholiumAppBridgeClient.withRequestDeliveryOutcome {
                 try AppBridgeIO.writeFrame(payload, to: pair.writer, deadline: AppBridgeDeadline(timeout: 1))
@@ -372,8 +372,8 @@ struct ScholiumAppBridgeSecurityTests {
         }
     }
 
-    private static func success(_ request: ScholiumAppBridgeRequest) throws -> ScholiumMCPBridgeResponse {
-        try .init(requestID: request.mcpRequest.requestID, result: .object(["status": .string("ok")]))
+    private static func success(_ request: ScholiumMCPBridgeRequest) throws -> ScholiumMCPBridgeResponse {
+        try .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
     }
 
     private func makeRoot(_ name: String) throws -> URL {

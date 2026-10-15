@@ -132,6 +132,14 @@ def check(executable, root):
     read_only = call(["zotero", "mcp", "serve", "--read-only"], [listing])
     read_only_names = {tool["name"] for tool in read_only[0]["result"]["tools"]}
     assert "zotero_update_item" not in read_only_names
+    original_call = {"jsonrpc": "2.0", "id": 51, "method": "tools/call",
+                     "params": {"name": "zotero_read_original_page", "arguments": {
+                         "library": "user", "attachment_key": "ATTACH01", "page": 1, "mode": "text"}}}
+    for args in [["zotero", "mcp", "serve"], ["zotero", "mcp", "serve", "--read-only"]]:
+        refusal = call(args, [original_call])[0]
+        assert refusal["id"] == original_call["id"]
+        assert refusal["result"]["isError"] is True
+        assert refusal["result"]["structuredContent"]["error_code"] == "app_unavailable"
     for args in [["version"], ["update"], ["search", "test"],
                  ["zotero", "mcp", "serve", "--unsupported"],
                  ["mcp", "serve", "--conversation-token", "invalid"]]:
@@ -139,7 +147,7 @@ def check(executable, root):
                                 cwd=root, env=environment)
         assert result.returncode != 0 and not result.stdout
     assert not (root / "Workspace").exists()
-    print("Bundled helper: Scholium isolation, independent Zotero read/write surface, absent-App refusal and closed entry points passed")
+    print("Bundled helper: Scholium isolation, App-mediated Zotero read/write surface, absent-App refusal and closed entry points passed")
 
 
 if __name__ == "__main__":

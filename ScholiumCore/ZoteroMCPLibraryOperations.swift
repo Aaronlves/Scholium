@@ -44,9 +44,15 @@ extension ZoteroMCPServer {
         ),
         tool(
             name: "zotero_fulltext",
-            description: "Read Zotero's indexed attachment text for one exact attachment key. The response is bounded by the local MCP transport limit.",
-            properties: ["library": libraryProperty, "attachment_key": keyProperty],
-            required: ["attachment_key"]
+            description:
+                "Read a bounded UTF-8 slice of Zotero's indexed attachment text, with exact attachment/parent references and separate index coverage. Does not read or verify the original. Continuation requires the returned indexed_fingerprint.",
+            properties: [
+                "library": libraryProperty, "attachment_key": keyProperty,
+                "start_utf8": .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(4 * 1_024 * 1_024), "default": .integer(0)]),
+                "maximum_utf8": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(65_536), "default": .integer(16_384)]),
+                "expected_fingerprint": .object(["type": .string("string"), "pattern": .string("^[0-9a-f]{64}$")]),
+            ],
+            required: ["library", "attachment_key"]
         ),
         tool(
             name: "zotero_file_url",
@@ -237,16 +243,73 @@ extension ZoteroMCPServer {
     }
 
     func fullText(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
-        guard arguments.keys.allSatisfy(["library", "attachment_key"].contains),
-            let key = normalizedKey(arguments["attachment_key"]?.stringValue)
-        else { throw ZoteroMCPServiceError.invalidArguments }
-        let route = try await singleLibraryRoute(arguments["library"]?.stringValue)
+        guard Set(arguments.keys).isSubset(of: ["library", "attachment_key", "start_utf8", "maximum_utf8", "expected_fingerprint"]) else {
+            throw ZoteroMCPServiceError.invalidArguments
+        }
+        let (route, key) = try materialScope(arguments)
+        let start = try boundedInteger(arguments["start_utf8"], default: 0, range: 0...4 * 1_024 * 1_024)
+        let maximum = try boundedInteger(arguments["maximum_utf8"], default: 16_384, range: 1...65_536)
+        let expected = try expectedFingerprint(arguments["expected_fingerprint"])
+        guard start == 0 || expected != nil else { throw ZoteroMCPServiceError.invalidArguments }
+        try Task.checkCancellation()
+        let attachment = try await fileAttachment(key, route: route)
         guard let request = ZoteroMCPRequestFactory.api(route: route, resource: .fullText(itemKey: key)) else {
             throw ZoteroMCPServiceError.invalidRequest
         }
-        let value = try decodeJSON((try await sendAPI(request)).body)
-        guard case .object = value else { throw ZoteroMCPServiceError.invalidResponse }
-        return .object(["library": route.value, "attachment_key": .string(key), "fulltext": value])
+        let response = try await sendAPI(request)
+        try sameServer(attachment.response, response)
+        let value = try decodeJSON(response.body)
+        guard let index = value.objectValue, let text = index["content"]?.stringValue else {
+            throw ZoteroMCPServiceError.invalidResponse
+        }
+        let fingerprint = DocumentFingerprint(
+            data: try encodeJSON(
+                .object([
+                    "library": route.value, "attachment": attachment.value, "index": value,
+                    "server_id": response.header(named: "Zotero-Server-ID").map(ZoteroMCPJSONValue.string) ?? .null,
+                    "index_version": response.header(named: "Last-Modified-Version").map(ZoteroMCPJSONValue.string) ?? .null,
+                ]), maximum: 8 * 1_024 * 1_024)
+        ).sha256
+        if let expected, fingerprint != expected { throw ZoteroMCPServiceError.materialChanged }
+        let bytes = Data(text.utf8)
+        guard start <= bytes.count, start == bytes.count || bytes[start] & 0xC0 != 0x80 else {
+            throw ZoteroMCPServiceError.invalidArguments
+        }
+        var end = start + min(maximum, bytes.count - start)
+        while end < bytes.count && end > start && bytes[end] & 0xC0 == 0x80 { end -= 1 }
+        guard end > start || end == bytes.count,
+            let slice = NoteDocument.decodeUTF8PreservingBOM(bytes.subdata(in: start..<end))
+        else { throw ZoteroMCPServiceError.invalidArguments }
+        var indexMetadata: [String: ZoteroMCPJSONValue] = [:]
+        for field in ["indexedPages", "totalPages", "indexedChars", "totalChars"] {
+            if let number = index[field] {
+                guard let count = number.intValue, count >= 0 else { throw ZoteroMCPServiceError.invalidResponse }
+                indexMetadata[field] = .integer(count)
+            }
+        }
+        let currentResponse = try await sendAPI(request)
+        try sameServer(response, currentResponse)
+        guard try decodeJSON(currentResponse.body) == value,
+            currentResponse.header(named: "Last-Modified-Version") == response.header(named: "Last-Modified-Version")
+        else { throw ZoteroMCPServiceError.materialChanged }
+        try await revalidateAttachment(attachment, key: key, route: route)
+        try Task.checkCancellation()
+        var result: [String: ZoteroMCPJSONValue] = [
+            "source_kind": .string("zotero_indexed_text"), "original_file_read": .bool(false),
+            "library": route.value, "attachment_key": .string(key),
+            "reference": try referenceValue(route: route, itemKey: key),
+            "indexed_fingerprint": .string(fingerprint),
+            "index_version": response.header(named: "Last-Modified-Version").map(ZoteroMCPJSONValue.string) ?? .null,
+            "index_metadata": .object(indexMetadata),
+            "text": .string(slice), "text_available": .bool(!slice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+            "start_utf8": .integer(start), "end_utf8": .integer(end), "total_utf8": .integer(bytes.count),
+            "next_start_utf8": end < bytes.count ? .integer(end) : .null,
+            "coverage": .string("indexed_text_slice"),
+        ]
+        if let parent = attachment.value.objectValue?["data"]?.objectValue?["parentItem"]?.stringValue {
+            result["parent_reference"] = try referenceValue(route: route, itemKey: parent)
+        }
+        return .object(result)
     }
 
     func fileURL(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {

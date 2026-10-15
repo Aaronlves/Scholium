@@ -4,11 +4,22 @@ import ScholiumContracts
 import SwiftUI
 
 struct AgentChatMarkdown: View {
-    let text: String
+    private let sourceIdentity: ScholiumExactUTF8.SourceIdentity
+    private var text: String { sourceIdentity.source }
     var readerID: String? = nil
     var expandsToFillWidth = true
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
+
+    init(
+        text: String, readerID: String? = nil, expandsToFillWidth: Bool = true,
+        quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
+    ) {
+        sourceIdentity = .init(text)
+        self.readerID = readerID
+        self.expandsToFillWidth = expandsToFillWidth
+        self.quoteSelection = quoteSelection
+    }
 
     var body: some View {
         AgentChatReadReply(
@@ -65,6 +76,7 @@ struct AgentChatTimelineProjection {
     let messages: [AgentChatMessage]
     let items: [AgentChatTimelineItem]
     let ids: [String]
+    let replyReaderIDs: Set<String>
     private let messagesByTurn: [String: [AgentChatMessage]]
     private let statusOwnerIDs: Set<String>
     private let activeActivityIDs: [String: String]
@@ -91,12 +103,19 @@ struct AgentChatTimelineProjection {
         self.activeActivityIDs = activeActivityIDs
 
         var statusOwnerIDs: Set<String> = []
+        var replyReaderIDs: Set<String> = []
         for item in items {
+            if !item.isProcess {
+                for message in item.messages where message.asyncQuestion == nil && !message.text.isEmpty {
+                    replyReaderIDs.insert(message.id)
+                }
+            }
             guard let turnID = item.messages.first?.turnID else { continue }
             let owner = firstNonUserIDs[turnID] ?? lastUserIDs[turnID]
             if owner == item.id { statusOwnerIDs.insert(item.id) }
         }
         self.statusOwnerIDs = statusOwnerIDs
+        self.replyReaderIDs = replyReaderIDs
     }
 
     func messages(for turnID: String?) -> [AgentChatMessage] {

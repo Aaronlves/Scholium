@@ -2,49 +2,68 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// The same retained evidence is available in-place and in the diagnostic overview.
+/// SwiftUI's ordinary String equality ignores canonical Unicode byte changes.
+/// An open output reader and its copy payload must observe those replacements
+/// while retaining the activity's ordinary metadata change detection.
+struct AgentChatActivityPreviewIdentity: Equatable, Sendable {
+    let activity: AgentChatActivity
+
+    init(_ activity: AgentChatActivity) { self.activity = activity }
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        let left = lhs.activity
+        let right = rhs.activity
+        guard left == right,
+            ScholiumExactUTF8.equal(left.subject, right.subject),
+            ScholiumExactUTF8.equal(left.detail, right.detail),
+            zip(left.files, right.files).allSatisfy({ ScholiumExactUTF8.equal($0.0.path, $0.1.path) })
+        else { return false }
+        switch (left.commandExecution?.workingDirectory, right.commandExecution?.workingDirectory) {
+        case (nil, nil): return true
+        case (.some(let left), .some(let right)): return ScholiumExactUTF8.equal(left, right)
+        default: return false
+        }
+    }
+}
+
+/// Retained execution facts and output, inspected from the activity itself.
 struct AgentChatActivityDetails: View {
     let activity: AgentChatActivity
-    var isInline = false
     var openNote: ((URL) -> Void)? = nil
     @Environment(\.locale) private var locale
     @State private var preview = ScholiumContentPreview()
     @State private var originView: NSView?
     @State private var copied = false
     @State private var contentHeight: CGFloat = 180
-    @State private var isHovered = false
-    @FocusState private var copyIsFocused: Bool
 
     var body: some View {
-        Group {
-            if isInline { details } else { GroupBox { details } }
-        }
-        .font(.callout)
-        .padding(.vertical, 6)
-        .scholiumHoverState { isHovered = $0 }
-        .contextMenu { Button("Copy Details", action: copyDetails) }
-        .onChange(of: activity) { _, value in
-            preview.update(title: previewTitle, copyText: copyText) { AgentChatOutputContents(activity: value) }
-        }
-        .onDisappear {
-            preview.close()
-            originView = nil
-        }
+        details
+            .font(.callout)
+            .padding(.vertical, 6)
+            .contextMenu { Button("Copy Details", action: copyDetails) }
+            .onChange(of: AgentChatActivityPreviewIdentity(activity)) { _, value in
+                guard preview.panel != nil else { return }
+                let snapshot = value.activity
+                preview.update(
+                    title: Self.outputPreviewTitle(for: snapshot),
+                    copyText: Self.outputCopyText(for: snapshot, locale: locale)
+                ) { AgentChatOutputContents(activity: snapshot).equatable() }
+            }
+            .onDisappear {
+                preview.close()
+                originView = nil
+            }
     }
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if isInline {
-                    Text(activity.status.label(locale: locale))
-                } else {
-                    Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary)
-                }
+                Text(activity.status.label(locale: locale))
                 Spacer()
                 Button {
                     guard let originView else { return }
                     preview.present(title: previewTitle, copyText: copyText, from: originView) {
-                        AgentChatOutputContents(activity: activity)
+                        AgentChatOutputContents(activity: activity).equatable()
                     }
                 } label: {
                     ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
@@ -55,10 +74,8 @@ struct AgentChatActivityDetails: View {
                 .accessibilityLabel(Text("Open Output", bundle: .module))
                 Button(action: copyDetails) {
                     ScholiumSidebarCopyIcon(copied: copied)
-                        .opacity(isInline || isHovered || copyIsFocused || copied ? 1 : 0)
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle())
-                .focused($copyIsFocused)
                 .accessibilityLabel(copied ? "Copied" : "Copy Details")
                 .help(copied ? String(localized: "Copied") : String(localized: "Copy Details"))
                 .accessibilityIdentifier("scholium.chat.copyActivityDetails")
@@ -82,8 +99,7 @@ struct AgentChatActivityDetails: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !isInline { Text(activity.status.label(locale: locale)).font(.callout) }
-            AgentChatCommandFacts(activity: activity)
+            AgentChatCommandFacts(activity: activity).equatable()
             if !activity.subject.isEmpty {
                 Text(verbatim: activity.subject).monospaced()
             }
@@ -120,10 +136,18 @@ struct AgentChatActivityDetails: View {
     }
 
     private var previewTitle: String {
+        Self.outputPreviewTitle(for: activity)
+    }
+
+    private static func outputPreviewTitle(for activity: AgentChatActivity) -> String {
         ScholiumL10n.string(activity.kind == .command ? "Command Output" : "Operation Details")
     }
 
     private var copyText: String {
+        Self.outputCopyText(for: activity, locale: locale)
+    }
+
+    static func outputCopyText(for activity: AgentChatActivity, locale: Locale) -> String {
         ([
             activity.status.label(locale: locale), activity.commandExecution?.workingDirectory ?? "",
             activity.commandExecution?.exitCode.map { "exitCode: \($0)" } ?? "",
@@ -140,8 +164,13 @@ struct AgentChatActivityDetails: View {
     }
 }
 
-private struct AgentChatCommandFacts: View {
-    let activity: AgentChatActivity
+private struct AgentChatCommandFacts: View, Equatable {
+    private let identity: AgentChatActivityPreviewIdentity
+    private var activity: AgentChatActivity { identity.activity }
+
+    init(activity: AgentChatActivity) { identity = .init(activity) }
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.identity == rhs.identity }
+
     var body: some View {
         if let command = activity.commandExecution {
             VStack(alignment: .leading, spacing: 4) {
@@ -155,12 +184,17 @@ private struct AgentChatCommandFacts: View {
     }
 }
 
-private struct AgentChatOutputContents: View {
-    let activity: AgentChatActivity
+struct AgentChatOutputContents: View, Equatable {
+    private let identity: AgentChatActivityPreviewIdentity
+    var activity: AgentChatActivity { identity.activity }
+
+    init(activity: AgentChatActivity) { identity = .init(activity) }
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.identity == rhs.identity }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(activity.status.label).font(.headline)
-            AgentChatCommandFacts(activity: activity)
+            AgentChatCommandFacts(activity: activity).equatable()
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(verbatim: activity.subject)

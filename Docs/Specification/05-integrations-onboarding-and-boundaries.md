@@ -19,6 +19,15 @@ Settings shows connection status, **Open Zotero**, **Check Connection**, clear
 history, last successful time, and a concise local privacy statement.
 When disabled, it names the exact Zotero setting required to allow local
 applications.
+Original File Access locates Zotero's data/library folder through exact stored
+attachment metadata and file URLs, then positions the native chooser there.
+When it cannot locate the folder, manual selection remains available, including
+folders containing linked originals and individual files. Locating a folder
+never grants access. The researcher can inspect, renew or remove read-only grants
+on This Mac. A folder grant
+covers only contained originals identified by Zotero; it does not grant an
+Agent arbitrary filesystem or library-database access. Selection is a native
+researcher action; cancellation preserves existing grants.
 
 ### 15.2 Authored Zotero links and task context
 
@@ -42,9 +51,13 @@ In-app Chat injects the managed `scholium-zotero` local MCP server alongside
 the Scholium workspace server. The Agent may use its bounded Zotero surface:
 search, item/collection/tag/group/child inspection, indexed full text,
 originals, annotations, file URLs, BibTeX/citation export, and local-API item
-updates. PDF originals use a page-specific read with
+updates. Indexed text uses bounded UTF-8 slices with revision-bound continuation;
+Zotero's index coverage counts remain separate from returned-slice coverage.
+PDF originals use a page-specific read with
 an exact one-based physical page; non-PDF text and image originals use the
-separate bounded file read. Item updates require explicit confirmation, the
+separate bounded file read. Original reads use the running App's machine-local
+read-only grants; absent, stale or revoked access names Original File Access
+as the repair, without granting access or substituting indexed text. Item updates require explicit confirmation, the
 exact library, and the current Zotero item version. Zotero controls local API
 write authorization and may ask the researcher to allow Scholium. A Zotero
 write receipt followed by failed readback is an uncertain outcome; inspect

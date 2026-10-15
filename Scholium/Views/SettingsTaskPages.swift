@@ -45,6 +45,7 @@ struct ZoteroSettingsPageView: View {
     var body: some View {
         Form {
             ZoteroSettingsView().id(SettingsSection.zoteroDesktop)
+            ZoteroOriginalAccessSettingsView().id(SettingsSection.zoteroOriginalAccess)
             if let controller {
                 AgentZoteroCapabilitySettingsView(controller: controller, capabilities: controller.capabilities)
                     .id(controller.triptychID)

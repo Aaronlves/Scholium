@@ -92,8 +92,11 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         guard let panel else { return }
         panel.title = title
         let root = AnyView(
-            PreviewContents(title: title, copyText: copyText, dismiss: { [weak self] in self?.dismiss() }, content: content())
-                .ignoresSafeArea().tint(nil as Color?))
+            PreviewContents(
+                title: ScholiumExactUTF8.SourceIdentity(title), copyText: ScholiumExactUTF8.SourceIdentity(copyText),
+                dismiss: { [weak self] in self?.dismiss() }, content: content()
+            )
+            .ignoresSafeArea().tint(nil as Color?))
         if let host {
             host.rootView = root
         } else {
@@ -226,8 +229,8 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
 }
 
 private struct PreviewContents<Content: View>: View {
-    let title: String
-    let copyText: String
+    let title: ScholiumExactUTF8.SourceIdentity
+    let copyText: ScholiumExactUTF8.SourceIdentity
     let dismiss: () -> Void
     let content: Content
     var body: some View {
@@ -238,11 +241,11 @@ private struct PreviewContents<Content: View>: View {
                 }
                 .help("Close").accessibilityLabel("Close")
                 .accessibilityIdentifier("scholium.contentPreview.close")
-                Text(verbatim: title).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                Text(verbatim: title.source).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 0)
-                ScholiumCopyButton(contentIdentity: copyText) {
+                ScholiumCopyButton(contentIdentity: copyText.source) {
                     NSPasteboard.general.clearContents()
-                    return NSPasteboard.general.setString(copyText, forType: .string)
+                    return NSPasteboard.general.setString(copyText.source, forType: .string)
                 }
                 .accessibilityIdentifier("scholium.contentPreview.copy")
             }

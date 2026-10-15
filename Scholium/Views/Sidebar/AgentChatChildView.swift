@@ -6,6 +6,7 @@ struct AgentChatChildView: View {
     @ObservedObject var child: AgentChatChildController
     @Environment(\.locale) private var locale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expandedActivityIDs: Set<String> = []
     let openReference: (URL) -> Bool
     var openAgent: ((String, String) -> Void)? = nil
     let close: () -> Void
@@ -16,7 +17,7 @@ struct AgentChatChildView: View {
             operationFeedback
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                LazyVStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                     if child.snapshot?.page.nextCursor != nil {
                         Button {
                             child.loadEarlier()
@@ -54,6 +55,9 @@ struct AgentChatChildView: View {
             }
         }
         .padding().frame(minWidth: 420, idealWidth: 600, minHeight: 420, idealHeight: 600)
+        .onChange(of: child.messages.map(\.id), initial: true) { _, ids in
+            expandedActivityIDs.formIntersection(ids)
+        }
         .task { if child.snapshot == nil && child.error == nil { child.refresh() } }
         .environment(
             \.openURL,
@@ -122,9 +126,9 @@ struct AgentChatChildView: View {
                 AgentChatDelegationView(
                     report: report, operationStatus: activity.status,
                     openAgent: openAgent.map { open in { target in open(target, presented.id) } },
-                    canOpenAgent: child.canInspectReports)
+                    canOpenAgent: child.canInspectReports, expansion: activityExpansion(presented.id))
             } else if let activity = message.activity {
-                DisclosureGroup {
+                DisclosureGroup(isExpanded: activityExpansion(presented.id)) {
                     if !activity.subject.isEmpty { Text(verbatim: activity.subject).monospaced().textSelection(.enabled) }
                     if !activity.detail.isEmpty { Text(verbatim: activity.detail).monospaced().textSelection(.enabled) }
                 } label: {
@@ -134,6 +138,7 @@ struct AgentChatChildView: View {
                         Text(activity.status.label(locale: locale)).foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityIdentifier("scholium.chat.childActivityDisclosure.\(presented.id)")
             } else {
                 Text(message.role == .user ? ScholiumL10n.string("Request", locale: locale) : ScholiumL10n.string("Agent", locale: locale))
                     .font(.caption).foregroundStyle(.secondary)
@@ -146,6 +151,14 @@ struct AgentChatChildView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func activityExpansion(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedActivityIDs.contains(id) },
+            set: { expanded in
+                if expanded { expandedActivityIDs.insert(id) } else { expandedActivityIDs.remove(id) }
+            })
     }
 
     private var details: some View {

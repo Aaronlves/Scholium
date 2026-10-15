@@ -6,6 +6,27 @@ import Testing
 
 @Suite("Runtime-owned Zotero operations")
 struct ZoteroOperationsTests {
+    @Test("A stalled directory lookup reaches manual selection and cancels its network work")
+    func directoryLookupDeadline() async throws {
+        let probe = DirectoryLookupProbe()
+        let operations = ZoteroOperations(mcpRequestLoader: { try await probe.wait($0) })
+        #expect(try await operations.suggestedOriginalLibraryDirectory() == nil)
+        #expect(await probe.started == 1)
+        #expect(await probe.cancelled == 1)
+    }
+
+    @Test("Cancelling directory lookup ends the pending request without another library query")
+    func cancelDirectoryLookup() async throws {
+        let probe = DirectoryLookupProbe()
+        let operations = ZoteroOperations(mcpRequestLoader: { try await probe.wait($0) })
+        let task = Task { try await operations.suggestedOriginalLibraryDirectory() }
+        while await probe.started == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        task.cancel()
+        _ = await task.result
+        #expect(await probe.started == 1)
+        #expect(await probe.cancelled == 1)
+    }
+
     @Test("Snapshot runtime owns one native Zotero connection")
     func runtimeOwnership() async throws {
         let fixture = try Fixture.make()
@@ -217,5 +238,20 @@ private struct Fixture {
 
     func remove() {
         try? FileManager.default.removeItem(at: rootURL)
+    }
+}
+
+private actor DirectoryLookupProbe {
+    private(set) var started = 0
+    private(set) var cancelled = 0
+    func wait(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        started += 1
+        do { try await Task.sleep(for: .seconds(30)) } catch {
+            cancelled += 1
+            throw error
+        }
+        let url = try #require(request.url)
+        let response = try #require(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+        return (Data("[]".utf8), response)
     }
 }

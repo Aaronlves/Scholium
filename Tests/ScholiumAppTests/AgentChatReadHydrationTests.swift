@@ -14,6 +14,8 @@ struct AgentChatReadHydrationTests {
     }
     @MainActor final class Hydration {
         let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        init() { session.beginPresentation(presentationID) }
         var complete: Bool { session.areReadersHydrated(["0", "1", "2", "3"]) }
     }
     private struct Transcript: View {
@@ -33,7 +35,7 @@ struct AgentChatReadHydrationTests {
                     }
                 }
             }
-            .environment(\.chatReadingSession, hydration.session)
+            .environment(\.chatReadingPresentation, .init(id: hydration.presentationID, session: hydration.session))
             .opacity(hydration.complete ? 1 : 0)
             .allowsHitTesting(hydration.complete)
             .preferredColorScheme(appearance.scheme)
