@@ -16,7 +16,9 @@ import Testing
 struct LargeVaultStressDiagnosticTests {
     @Test(
         "Large mixed-content Triptych retains complete current generations through its lifecycle",
-        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_FIXTURE"] != nil)
+        .enabled(
+            if: ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_FIXTURE"] != nil
+                && ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_REOPEN"] != "1")
     )
     func largeDiskTriptych() async throws {
         let environment = ProcessInfo.processInfo.environment
@@ -373,6 +375,320 @@ struct LargeVaultStressDiagnosticTests {
     }
 
     @Test(
+        "A retained synthetic Release seed reopens through three fresh live runtimes",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_REOPEN"] == "1")
+    )
+    func reusableLiveReopen() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        try #require(buildConfiguration == "SwiftPM Release")
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let buildRoot = repository.appendingPathComponent(".build", isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let fixture = URL(fileURLWithPath: try #require(environment["SCHOLIUM_STRESS_FIXTURE"]))
+            .resolvingSymlinksInPath().standardizedFileURL
+        let root = buildRoot.appendingPathComponent("Release-reopen-seed", isDirectory: true)
+        let working = root.appendingPathComponent("fixture", isDirectory: true)
+        let support = root.appendingPathComponent("state/Application Support", isDirectory: true)
+        let registry = root.appendingPathComponent("state/Registry", isDirectory: true)
+        let registryFile = registry.appendingPathComponent("workspace-registration-v3.json")
+        let readyURL = root.appendingPathComponent("ready.json")
+        let receiptURL = root.appendingPathComponent("ready.sha256")
+        let stateURL = root.appendingPathComponent("run-state.json")
+        let output = buildRoot.appendingPathComponent("Release-reopen-reports", isDirectory: true)
+        try #require(fixture.path.hasPrefix(buildRoot.path + "/"))
+        try #require(fixture != root && !fixture.path.hasPrefix(root.path + "/"))
+        try #require(!root.path.hasPrefix(fixture.path + "/"))
+        try requireDiagnosticTreeWithoutLinks(fixture)
+        let manifestBytes = try Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))
+        let manifest = try #require(JSONSerialization.jsonObject(with: manifestBytes) as? [String: Any])
+        try #require(manifest["synthetic_nonprivate"] as? Bool == true)
+        let count = try #require((manifest["counts"] as? [String: Int])?["notes"])
+        try #require(count == 5_000)
+        let original = try sourceOracle(at: fixture)
+        try #require(original.count == count)
+        let manifestFingerprint = DocumentFingerprint(data: manifestBytes)
+        let scenarios = try searchScenarios(at: fixture)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let decoder = JSONDecoder()
+        let manager = FileManager.default
+        // Exclusive test-owned lease. An abandoned lease or incomplete seed is
+        // evidence to inspect, never authority to delete or initialize it again.
+        let lease = buildRoot.appendingPathComponent("Release-reopen-seed.lock")
+        let leaseDescriptor = lease.path.withCString {
+            Darwin.open($0, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
+        }
+        try #require(leaseDescriptor >= 0)
+        defer {
+            _ = Darwin.close(leaseDescriptor)
+            try? manager.removeItem(at: lease)
+        }
+        try manager.createDirectory(at: output, withIntermediateDirectories: true)
+        try requireDiagnosticTreeWithoutLinks(output)
+        let runID = UUID().uuidString.lowercased()
+        let reportURL = output.appendingPathComponent("reopen-\(runID).json")
+        var stage = "seed_admission"
+        var runtime: WorkspaceRuntime?
+        var samples: [[String: Any]] = []
+        var ownsRunState = false
+        var report: [String: Any] = [
+            "schema": "scholium-retained-live-reopen-v1", "status": "in_progress",
+            "build_configuration": buildConfiguration, "runtime_configuration": "live",
+            "sample_count": 3, "fixture_note_count": count,
+            "fixture_source_sha256": sourceDigest(original),
+            "fixture_source_bytes": original.values.reduce(0) { $0 + $1.byteCount },
+            "operating_system": ProcessInfo.processInfo.operatingSystemVersionString,
+            "physical_memory_bytes": ProcessInfo.processInfo.physicalMemory,
+            "processor_count": ProcessInfo.processInfo.activeProcessorCount,
+            "developer_directory": environment["DEVELOPER_DIR"] ?? "not set",
+            "measurement": "Fresh live runtime; initial timer includes maintenance and membership admission. Presentation-to-complete uses the existing lifecycle boundary. Seed creation, source oracles, full Search/Graph comparison and shutdown are outside timers. No UI or paint claim.",
+            "cache_condition": "One retained closed compatible seed at identical paths; same source and portable identities. OS caches are not purged. Pre-sample source validation warms filesystem caches. No retained-memory claim.",
+            "search_comparison": "Every result page for every fixture Search oracle; complete ordered note material except generation freshness tokens, independently checked against each current snapshot.",
+        ]
+        func emit(_ record: [String: Any]) throws {
+            let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+            diagnosticProgress("LIVE_REOPEN_DIAGNOSTIC \(String(decoding: data, as: UTF8.self))")
+        }
+        func runState(_ status: String) throws {
+            try writeReport(["schema": "scholium-live-reopen-seed-state-v1", "status": status,
+                             "run_id": runID, "stage": stage], to: stateURL)
+        }
+        func requireClosedState() throws {
+            let summary = storageSummary(at: support)
+            try #require(summary["exists"] as? Bool == true)
+            try #require(summary["enumeration_complete"] as? Bool == true)
+            try #require(((summary["sqlite_database"] as? [String: Int64])?["files"] ?? 0) > 0)
+            try #require(summary["skipped_symbolic_links"] as? Int == 0)
+            for kind in ["sqlite_wal", "sqlite_shm"] {
+                try #require((summary[kind] as? [String: Int64])?["files"] == 0)
+            }
+        }
+        let configuration = WorkspaceRuntime.Configuration.live(
+            .init(applicationSupportURL: support, workspaceRegistryStorageURL: registry))
+        do {
+            let existed = manager.fileExists(atPath: root.path)
+            if !existed {
+                // No recovery/reinitialization branch exists for a preexisting root.
+                try manager.createDirectory(at: root, withIntermediateDirectories: false)
+                ownsRunState = true
+                stage = "seed_preparation"
+                try runState("preparing")
+                report["active_stage"] = stage
+                try writeReport(report, to: reportURL)
+                try emit(["phase": "seed_preparation_begun", "build_configuration": buildConfiguration,
+                          "fixture_note_count": count, "preparation_excluded": true])
+                let preparationStarted = ContinuousClock.now
+                try manager.copyItem(at: fixture, to: working)
+                try #require(try sourceOracle(at: working) == original)
+                let preparationRuntime = WorkspaceRuntime(configuration: configuration)
+                runtime = preparationRuntime
+                let coldStarted = ContinuousClock.now
+                let handle = try await preparationRuntime.configureTriptych(
+                    paperAnalysisURL: working.appendingPathComponent(slots[0]),
+                    topicKnowledgeURL: working.appendingPathComponent(slots[1]),
+                    outputURL: working.appendingPathComponent(slots[2]),
+                    portableContainerURL: working, triptychName: "Synthetic Release Reopen Seed")
+                let coldMilliseconds = milliseconds(coldStarted.duration(to: .now))
+                let snapshot = try await handle.snapshot()
+                try requireReopenSnapshot(snapshot, oracle: original, assignment: handle.assignment)
+                let graph = try #require(snapshot.discovery.catalog.graph)
+                let generation = try #require(snapshot.discovery.searchGeneration)
+                let measurement = await handle.latestRefreshMeasurement
+                try #require(measurement.readFiles == count)
+                try #require(measurement.parsedDocuments == count)
+                try #require(measurement.projectedDocuments == count)
+                let search = try await completeReopenSearchResponses(
+                    handle, scenarios: scenarios, oracle: original, root: working)
+                let assignment = handle.assignment
+                await preparationRuntime.shutdown()
+                runtime = nil
+                try requireClosedState()
+                try #require(try sourceOracle(at: working) == original)
+                try #require(try sourceOracle(at: fixture) == original)
+                let ready = ReopenReadySeed(
+                    schema: "scholium-live-reopen-ready-v1", status: "closed_ready",
+                    buildConfiguration: buildConfiguration, fixtureManifest: manifestFingerprint,
+                    sourceDigest: sourceDigest(original), oracle: original,
+                    triptych: assignment.triptych,
+                    vaults: Dictionary(uniqueKeysWithValues: assignment.vaults.map { ($0.key.rawValue, $0.value) }),
+                    hasCommonParent: assignment.hasCommonParent,
+                    registryFingerprint: DocumentFingerprint(data: try Data(contentsOf: registryFile)),
+                    searchGeneration: generation, workspaceGeneration: measurement.workspaceGeneration,
+                    graph: graph, searchQueries: scenarios.map(\.query), searchPages: search,
+                    coldConfigurationMilliseconds: coldMilliseconds,
+                    preparationMilliseconds: milliseconds(preparationStarted.duration(to: .now)))
+                let bytes = try encoder.encode(ready)
+                try bytes.write(to: readyURL, options: .atomic)
+                try Data((DocumentFingerprint(data: bytes).sha256 + "\n").utf8)
+                    .write(to: receiptURL, options: .atomic)
+                try runState("closed_ready")
+                ownsRunState = false
+            }
+            try requireDiagnosticTreeWithoutLinks(root)
+            let previousState = try #require(
+                JSONSerialization.jsonObject(with: Data(contentsOf: stateURL)) as? [String: Any])
+            try #require(previousState["schema"] as? String == "scholium-live-reopen-seed-state-v1")
+            try #require(previousState["status"] as? String == "closed_ready")
+            let readyBytes = try Data(contentsOf: readyURL)
+            let readyHash = DocumentFingerprint(data: readyBytes).sha256
+            let receipt = String(decoding: try Data(contentsOf: receiptURL), as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            try #require(receipt == readyHash)
+            let ready = try decoder.decode(ReopenReadySeed.self, from: readyBytes)
+            try #require(ready.schema == "scholium-live-reopen-ready-v1" && ready.status == "closed_ready")
+            try #require(ready.buildConfiguration == buildConfiguration)
+            try #require(ready.fixtureManifest == manifestFingerprint)
+            try #require(ready.oracle == original && ready.sourceDigest == sourceDigest(original))
+            try #require(ready.searchQueries == scenarios.map(\.query))
+            try #require(ready.searchPages.count == scenarios.count)
+            let vaults = try Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { slot in
+                (slot, try #require(ready.vaults[slot.rawValue]))
+            })
+            let assignment = TriptychAssignment(
+                triptych: ready.triptych, vaults: vaults, hasCommonParent: ready.hasCommonParent)
+            try #require(ready.vaults.count == 3)
+            for (slot, folder) in zip(WorkspaceVaultSlot.allCases, slots) {
+                try #require(assignment.vault(for: slot)?.canonicalPath == working.appendingPathComponent(folder).path)
+            }
+            try #require(assignment.triptych.portableControlAccess?.canonicalContainerPath == working.path)
+            try #require(ready.searchGeneration.triptychID == assignment.id)
+            try #require(ready.searchGeneration.schemaVersion == SearchContract.schemaVersion)
+            try #require(ready.searchGeneration.queryContractVersion == SearchContract.currentVersion)
+            try #require(ready.searchGeneration.tokenizerPolicyVersion == SearchContract.tokenizerPolicyVersion)
+            try #require(ready.searchGeneration.rankingPolicyVersion == SearchContract.rankingPolicyVersion)
+            try #require(ready.graph.contractVersion == GraphSnapshot.currentContractVersion)
+            try #require(DocumentFingerprint(data: try Data(contentsOf:
+                working.appendingPathComponent("stress-manifest.json"))) == manifestFingerprint)
+            try #require(try sourceOracle(at: working) == original)
+            try #require(DocumentFingerprint(data: try Data(contentsOf: registryFile)) == ready.registryFingerprint)
+            try requireClosedState()
+            report["seed_reused"] = existed
+            report["seed_material_sha256"] = readyHash
+            report["seed_cold_configuration_ms"] = ready.coldConfigurationMilliseconds
+            report["seed_preparation_ms"] = ready.preparationMilliseconds
+            try emit(["phase": "seed_ready", "reused": existed,
+                      "seed_material_sha256": readyHash, "preparation_excluded": true,
+                      "build_configuration": buildConfiguration,
+                      "cold_configuration_ms": ready.coldConfigurationMilliseconds,
+                      "preparation_ms": ready.preparationMilliseconds])
+            ownsRunState = true
+            stage = "live_reopen_samples"
+            try runState("sampling")
+            try writeReport(report, to: reportURL)
+            var previousWorkspaceGeneration = ready.workspaceGeneration
+            for iteration in 0..<3 {
+                stage = "live_reopen_\(iteration)"
+                try runState("sampling")
+                try #require(try sourceOracle(at: working) == original)
+                try #require(DocumentFingerprint(data: try Data(contentsOf: registryFile)) == ready.registryFingerprint)
+                try requireClosedState()
+                let sampleRuntime = WorkspaceRuntime(configuration: configuration)
+                runtime = sampleRuntime
+                // Do not call availableWorkspaces here: it would run maintenance
+                // before the timer and invalidate the initial-usable boundary.
+                let started = ContinuousClock.now
+                let handle = try await sampleRuntime.openWorkspace(id: assignment.id, openingVault: .paperAnalysis)
+                let usable = milliseconds(started.duration(to: .now))
+                let stream = await handle.events.events()
+                let opening = try await handle.snapshot()
+                try #require(handle.assignment == assignment)
+                try #require(!opening.phase.isComplete)
+                try #require(opening.discovery.searchGeneration == nil)
+                let initial = await handle.latestRefreshMeasurement
+                let selectedCount = original.keys.filter { $0.hasPrefix(slots[0] + "/") }.count
+                try #require(initial.readFiles == selectedCount)
+                try #require(initial.parsedDocuments == 0 && initial.projectedDocuments == 0)
+                try #require(initial.restoredCatalogProjections == initial.readFiles)
+                let presentationStarted = ContinuousClock.now
+                let gap = milliseconds(started.duration(to: presentationStarted)) - usable
+                await handle.openingPresentationDidComplete()
+                let complete = try await completeSnapshot(in: stream)
+                let completion = milliseconds(presentationStarted.duration(to: .now))
+                let initialToComplete = milliseconds(started.duration(to: .now))
+                await handle.awaitOpeningCompletionForTesting()
+                try requireReopenSnapshot(complete, oracle: original, assignment: assignment)
+                let measurement = await handle.latestRefreshMeasurement
+                // The initial library's installed catalog is current in this
+                // second pass; work counters describe only newly read sources.
+                try #require(measurement.readFiles == count - selectedCount)
+                try #require(initial.readFiles + measurement.readFiles == count)
+                try #require(measurement.parsedDocuments == 0 && measurement.projectedDocuments == 0)
+                try #require(measurement.restoredCatalogProjections == measurement.readFiles)
+                try #require(initial.restoredCatalogProjections + measurement.restoredCatalogProjections == count)
+                try #require(measurement.restoredSearchProjections == 0)
+                try #require(measurement.workspaceGeneration > previousWorkspaceGeneration)
+                previousWorkspaceGeneration = measurement.workspaceGeneration
+                try #require(complete.discovery.searchGeneration == ready.searchGeneration)
+                let graph = try #require(complete.discovery.catalog.graph)
+                try #require(graph.contractVersion == ready.graph.contractVersion)
+                try #require(graph.sourceManifestHash == ready.graph.sourceManifestHash)
+                try #require(graph.outgoing == ready.graph.outgoing && graph.incoming == ready.graph.incoming)
+                try #require(graph.diagnostics == ready.graph.diagnostics)
+                let search = try await completeReopenSearchResponses(
+                    handle, scenarios: scenarios, oracle: original, root: working)
+                try #require(search == ready.searchPages)
+                var sample = await refreshReport(
+                    handle, stage: stage, wallMilliseconds: usable + completion)
+                sample["iteration"] = iteration
+                sample["usable_open_ms"] = usable
+                sample["completion_after_presentation_ms"] = completion
+                sample["initial_to_complete_wall_ms"] = initialToComplete
+                sample["validation_gap_before_presentation_ms"] = gap
+                sample["opening_read_files"] = initial.readFiles
+                sample["opening_parsed_documents"] = initial.parsedDocuments
+                sample["opening_restored_catalog_projections"] = initial.restoredCatalogProjections
+                sample["combined_opening_read_files"] = initial.readFiles + measurement.readFiles
+                sample["combined_opening_restored_catalog_projections"] =
+                    initial.restoredCatalogProjections + measurement.restoredCatalogProjections
+                sample["complete_snapshot_document_count"] = complete.vaults.flatMap(\.documents).count
+                sample["full_search_graph_equivalent"] = true
+                sample["search_sequence"] = ready.searchGeneration.sequence
+                await sampleRuntime.shutdown()
+                runtime = nil
+                try requireClosedState()
+                try #require(try sourceOracle(at: working) == original)
+                try #require(try sourceOracle(at: fixture) == original)
+                try #require(DocumentFingerprint(data: try Data(contentsOf: registryFile)) == ready.registryFingerprint)
+                sample["closed_journals_verified"] = true
+                sample["source_unchanged"] = true
+                samples.append(sample)
+                report["samples"] = samples
+                try writeReport(report, to: reportURL)
+                try emit(["phase": "sample", "iteration": iteration,
+                          "usable_open_ms": usable, "completion_after_presentation_ms": completion,
+                          "initial_to_complete_wall_ms": initialToComplete,
+                          "validation_gap_before_presentation_ms": gap,
+                          "workspace_generation": measurement.workspaceGeneration,
+                          "source_and_full_search_graph_verified": true, "closed_journals_verified": true])
+            }
+            stage = "completed"
+            try runState("closed_ready")
+            report["status"] = "completed"
+            report["samples"] = samples
+            report["usable_open_ms"] = distribution(try samples.map { try #require($0["usable_open_ms"] as? Double) })
+            report["completion_after_presentation_ms"] = distribution(
+                try samples.map { try #require($0["completion_after_presentation_ms"] as? Double) })
+            try writeReport(report, to: reportURL)
+            ownsRunState = false
+            try emit(["phase": "completed", "sample_count": samples.count,
+                      "seed_material_sha256": readyHash, "build_configuration": buildConfiguration])
+        } catch {
+            await runtime?.shutdown()
+            runtime = nil
+            // Retain uncertain or failed state for inspection. No seed deletion,
+            // reconfiguration or attempt to make a failed run look ready occurs.
+            if ownsRunState { try? runState("failed") }
+            report["status"] = "failed"
+            report["failed_stage"] = stage
+            report["samples"] = samples
+            try? writeReport(report, to: reportURL)
+            try? emit(["phase": "failed", "stage": stage, "seed_retained": true])
+            throw error
+        }
+    }
+
+    @Test(
         "An exact cached large Triptych refreshes unchanged sources and one committed revision",
         .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_CACHED_SEED"] != nil)
     )
@@ -576,6 +892,112 @@ struct LargeVaultStressDiagnosticTests {
 }
 
 extension LargeVaultStressDiagnosticTests {
+    fileprivate struct ReopenReadySeed: Codable {
+        let schema: String
+        let status: String
+        let buildConfiguration: String
+        let fixtureManifest: DocumentFingerprint
+        let sourceDigest: String
+        let oracle: [String: DocumentFingerprint]
+        let triptych: ScholiumTriptych
+        let vaults: [String: RegisteredVault]
+        let hasCommonParent: Bool
+        let registryFingerprint: DocumentFingerprint
+        let searchGeneration: SearchGenerationID
+        let workspaceGeneration: UInt64
+        let graph: GraphSnapshot
+        let searchQueries: [String]
+        let searchPages: [[Data]]
+        let coldConfigurationMilliseconds: Double
+        let preparationMilliseconds: Double
+    }
+
+    fileprivate func requireDiagnosticTreeWithoutLinks(_ root: URL) throws {
+        let values = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        try #require(values.isDirectory == true && values.isSymbolicLink != true)
+        let files = try #require(FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))
+        for case let url as URL in files {
+            try #require(try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true)
+        }
+    }
+
+    /// The retained-ready marker requires throwing assertions; the shared
+    /// lifecycle helper's nonfatal expectations remain useful to other tests.
+    fileprivate func requireReopenSnapshot(
+        _ snapshot: WorkspaceSnapshot, oracle: [String: DocumentFingerprint],
+        assignment: TriptychAssignment
+    ) throws {
+        try validateSnapshot(snapshot, oracle: oracle, assignment: assignment)
+        try #require(snapshot.phase.isComplete && snapshot.vaults.count == 3)
+        let summaries = snapshot.vaults.flatMap(\.documents)
+        try #require(summaries.count == oracle.count)
+        for summary in summaries {
+            let path = try sourcePath(summary.id, assignment: assignment)
+            try #require(summary.fingerprint == oracle[path] && summary.stableIdentity.resolvedID != nil)
+        }
+        let manifest = SearchSourceManifest.hash(summaries.map {
+            SearchSourceManifestEntry(vaultID: $0.id.vaultID, relativePath: $0.id.relativePath, fingerprint: $0.fingerprint)
+        })
+        try #require(snapshot.discovery.searchGeneration?.sourceManifestHash == manifest)
+        try #require(snapshot.discovery.catalog.graph?.sourceManifestHash == manifest)
+        try #require(snapshot.research.healthIssues.isEmpty)
+    }
+
+    /// Full result material, including all pages; no ranked prefix is mistaken
+    /// for complete Search equivalence. Only current-generation tokens differ.
+    fileprivate func completeReopenSearchResponses(
+        _ handle: WorkspaceHandle, scenarios: [SearchScenario],
+        oracle: [String: DocumentFingerprint], root: URL
+    ) async throws -> [[Data]] {
+        // One generation owns the complete multi-query, multi-page comparison.
+        let expectedGeneration: SearchGenerationID = try #require(
+            (try await handle.snapshot()).discovery.searchGeneration)
+        var queries: [[Data]] = []
+        for scenario in scenarios {
+            var pages: [Data] = []
+            var offset = 0
+            var seen: Set<VaultQualifiedNoteID> = []
+            var paths: Set<String> = []
+            while true {
+                let response = try await handle.discovery.search(SearchRequest(
+                    query: scenario.query, presentationScope: .triptych, executionScope: .triptych,
+                    limit: SearchContract.maximumNoteResults, offset: offset))
+                try #require((try await handle.snapshot()).discovery.searchGeneration == expectedGeneration)
+                try #require(response.availability == .current(expectedGeneration))
+                try #require(response.freshnessToken == .triptych(expectedGeneration))
+                try #require(response.diagnostics.isEmpty && response.indeterminateDocumentCount == 0)
+                try #require(response.totalResultCount == scenario.expectedCount)
+                for result in response.results {
+                    switch result {
+                    case .note(let note):
+                        try #require(seen.insert(note.noteReference).inserted)
+                        let path = try sourcePath(note.noteReference, assignment: handle.assignment)
+                        paths.insert(path)
+                        try #require(note.fingerprint == oracle[path] && note.stableNoteID != nil)
+                        try #require(note.freshnessToken == response.freshnessToken)
+                        let source = try exactSource(at: root.appendingPathComponent(path))
+                        for range in note.paragraphRanges + (note.sourceRange.map { [$0] } ?? []) {
+                            try #require(range.utf16LowerBound >= 0 && range.utf16UpperBound >= range.utf16LowerBound)
+                            try #require(Range(NSRange(location: range.utf16LowerBound,
+                                length: range.utf16UpperBound - range.utf16LowerBound), in: source) != nil)
+                        }
+                    }
+                }
+                pages.append(try comparableResponse(response))
+                offset += response.results.count
+                try #require(offset <= oracle.count)
+                if !response.hasMore { break }
+                try #require(!response.results.isEmpty && offset < scenario.expectedCount)
+            }
+            try #require(offset == scenario.expectedCount)
+            if let expected = scenario.expectedPaths { try #require(paths == Set(expected)) }
+            queries.append(pages)
+        }
+        try #require((try await handle.snapshot()).discovery.searchGeneration == expectedGeneration)
+        return queries
+    }
+
     fileprivate var slots: [String] { ["01-analyses", "02-topics", "03-works"] }
 
     fileprivate var buildConfiguration: String {

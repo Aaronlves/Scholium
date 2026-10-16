@@ -188,17 +188,16 @@ native publication; they are not G7 or click-to-paint acceptance.
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
   native optimization. All 16 private cases preserve ordered results; source
   bytes unchanged. This recorded exception is not standing private-vault authority.
-- **2026-10-16 5,000-Note lifecycle:** 57,299,729 Markdown bytes.
-  Cold configure 490.49 → 281.62 s; rebuild 488.76 → 280.18 s.
-  Compatible reopen 65.14 → 30.36 s: 5,000 restored, zero parsed.
-  Unchanged refresh 3.09–3.17 s: zero reads/parses/projections.
-  Source fidelity, Search/Graph equivalence and closed journals passed.
-  Frozen Debug backend evidence; UI/Release unverified.
-- **2026-10-16 long-Note Debug:** CJK complete-hit median 1,118 → 150 ms
-  (1,081,344 bytes; 20 samples). Review semantic parse 4,552 → 442 ms;
-  fresh rendering including parsing 4,887 → 781 ms (520,865 bytes; three samples).
-  Exact source and complete result/semantic/HTML/object hashes agree.
-  `.build/performance-evidence/comparison.json`; native paint/Release performance unverified.
+- **2026-10-16 5,000-Note Release:** 57,299,729 bytes. Cold/rebuild
+  166.51/165.97 → 154.36/153.65 s (one lifecycle/variant). Three warm
+  reopens: usable median 11.726→10.592 s; generated admission 7.473→6.307 s.
+  Exact source, complete Search/Graph, generations, journals and scoped regressions pass.
+- **2026-10-16 long-Note Release:** CJK 754.37→76.72 ms (1,081,344 bytes;
+  20 samples); Review semantics 427.24→274.24 ms, fresh rendering
+  637.66→475.93 ms (520,865 bytes; three samples). Complete hashes agree.
+  `.build/performance-evidence/further-comparison.json` binds optimized/testable
+  builds and corrects stale Debug labels. UI/paint, packaged gates and retained
+  memory remain unverified.
 - **2026-09-16 editor reuse:** synthetic 60-paragraph Debug Edit, two warmups and
   five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
   including capture, pool clearing, bridge readiness and DOM layout. Throttled
