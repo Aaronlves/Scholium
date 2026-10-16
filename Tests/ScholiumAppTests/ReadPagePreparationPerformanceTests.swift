@@ -77,6 +77,94 @@ struct ReadPagePreparationPerformanceTests {
         }
     }
 
+    @Test(
+        "Separate large Review document, semantic and renderer work with complete output equivalence",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_READ_RENDERER"] == "1"))
+    func largeSourceRendererPreparation() throws {
+        let fixture = Fixture(label: "large-lf", paragraphs: 1_536, newline: "\n", hasBOM: false, bodyBlankLine: false)
+        let originalBytes = Data(fixture.source.utf8)
+        let prepared = NoteDocument(relativePath: "Synthetic.md", rawContent: fixture.source)
+        let semantic = MarkdownSemanticDocument(parsing: prepared)
+        try #require(prepared.sourceBytes == originalBytes)
+        try #require(semantic.fingerprint == prepared.fingerprint)
+        var expected: RenderedMarkdownDocument?
+        var timings: [String: [Double]] = [:]
+        let warmups = 1
+        let samples = 3
+        for iteration in 0..<(warmups + samples) {
+            let (document, documentMS) = measured {
+                NoteDocument(relativePath: prepared.relativePath, rawContent: fixture.source)
+            }
+            let (parsed, semanticMS) = measured { MarkdownSemanticDocument(parsing: prepared) }
+            let reused: (RenderedMarkdownDocument, Double)
+            let fresh: (RenderedMarkdownDocument, Double)
+            // Alternate renderer order; both consume the same exact NoteDocument.
+            // Fresh rendering includes its own semantic parse, but not construction
+            // of the NoteDocument, which is measured separately above.
+            if iteration.isMultiple(of: 2) {
+                reused = measured { SafeMarkdownRenderer.render(prepared, semantic: semantic) }
+                fresh = measured { SafeMarkdownRenderer.render(prepared) }
+            } else {
+                fresh = measured { SafeMarkdownRenderer.render(prepared) }
+                reused = measured { SafeMarkdownRenderer.render(prepared, semantic: semantic) }
+            }
+
+            // No output normalization, nonce stripping or assertions enter timers.
+            // Generated replacement nonces must be consumed by the renderer: this
+            // fixture's complete final HTML and object identities are deterministic.
+            let reference = expected ?? reused.0
+            #expect(document.sourceBytes == originalBytes)
+            #expect(document.fingerprint == prepared.fingerprint)
+            #expect(parsed == semantic)
+            for rendered in [reused.0, fresh.0] {
+                #expect(rendered.htmlBody.utf8.elementsEqual(reference.htmlBody.utf8))
+                #expect(rendered.semanticDocument == reference.semanticDocument)
+                #expect(rendered.objects == reference.objects)
+                for (actual, original) in zip(rendered.objects, reference.objects) {
+                    #expect(actual.copyText.utf8.elementsEqual(original.copyText.utf8))
+                    #expect(actual.html.utf8.elementsEqual(original.html.utf8))
+                }
+                #expect(!rendered.htmlBody.contains("SCHOLIUMINLINETOKEN"))
+                #expect(!rendered.htmlBody.contains("data-scholium-block-token"))
+            }
+            #expect(prepared.sourceBytes == originalBytes)
+            expected = reference
+            guard iteration >= warmups else { continue }
+            for (stage, duration) in [
+                ("note_document", documentMS), ("semantic_parse", semanticMS),
+                ("renderer_prepared_semantic", reused.1), ("renderer_fresh_semantic", fresh.1),
+            ] {
+                timings[stage, default: []].append(duration)
+            }
+        }
+        let reference = try #require(expected)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let semanticDigest = DocumentFingerprint(data: try encoder.encode(semantic)).sha256
+        let objectMaterial = reference.objects.map { object in
+            ["id": object.id, "kind": object.kind.rawValue, "copy_text": object.copyText, "html": object.html]
+        }
+        let objectDigest = DocumentFingerprint(
+            data: try JSONSerialization.data(withJSONObject: objectMaterial, options: [.sortedKeys])).sha256
+        let summaries = timings.mapValues { values in
+            let sorted = values.sorted()
+            return ["min": sorted[0], "median": sorted[1], "max": sorted[2]]
+        }
+        let record: [String: Any] = [
+            "schema": "scholium-read-renderer-diagnostic-v1", "fixture": fixture.label,
+            "source_utf8_bytes": originalBytes.count, "source_sha256": prepared.fingerprint.sha256,
+            "paragraph_groups": 1_536, "html_utf8_bytes": reference.htmlBody.utf8.count,
+            "html_sha256": DocumentFingerprint(content: reference.htmlBody).sha256,
+            "semantic_sha256": semanticDigest, "rendered_objects_sha256": objectDigest,
+            "rendered_objects": reference.objects.count, "semantic_blocks": semantic.blocks.count,
+            "warmups": warmups, "samples": samples, "stage_ms": summaries, "stage_samples_ms": timings,
+            "scope": "SwiftPM Debug pure construction and rendering; fresh renderer includes semantic parsing, excludes NoteDocument construction; no I/O, WebKit, layout, XCTest transport or paint",
+            "complete_output_equivalent": true, "exact_source": true,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        print("READ_RENDERER_DIAGNOSTIC \(String(decoding: data, as: UTF8.self))")
+    }
+
     private struct PageInputs: Equatable {
         let frontmatter: String?
         let hasAuthoredBodyBlankLine: Bool

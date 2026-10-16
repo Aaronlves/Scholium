@@ -511,7 +511,7 @@ enum SearchMatcher {
         var fields: [SearchMatchedField] = []
         for clause in ast.positiveLexicalClauses {
             for segment in matchingSegments(for: clause, in: document)
-            where !occurrences(of: clause.value, in: segment.normalizedText).isEmpty {
+            where !occurrences(of: clause.value, in: segment.normalizedText, firstOnly: true).isEmpty {
                 if !fields.contains(segment.field) { fields.append(segment.field) }
             }
         }
@@ -949,11 +949,15 @@ enum NoteSearchResultBuilder {
                 occurrences.append(
                     contentsOf: SearchMatcher.occurrences(
                         of: clause.value, in: segment.normalizedText,
-                        normalizedNeedle: clause.value.text
+                        normalizedNeedle: clause.value.text,
+                        // One predicate has no denser cluster than its first
+                        // occurrence; preserve the full multi-predicate scan.
+                        firstOnly: clauses.count == 1
                     ).map { (predicate, $0) })
             }
-            let displayRanges = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-                in: segment.text, requestedRanges: occurrences.map(\.range))
+            let displayRanges = mappedDisplayRanges(
+                in: segment.text, normalizedText: segment.normalizedText,
+                requestedRanges: occurrences.map(\.range))
             let displayed = zip(occurrences, displayRanges).compactMap { occurrence, displayRange in
                 displayRange.map { (predicate: occurrence.predicate, range: occurrence.range, displayRange: $0) }
             }.sorted {
@@ -987,6 +991,37 @@ enum NoteSearchResultBuilder {
             }
         }
         return best
+    }
+
+    /// Edge whitespace may be trimmed without changing retained coordinates.
+    /// Prove whole-input normalization is otherwise byte-identical and every
+    /// retained grapheme has one UTF-16 unit; other text uses the checked mapper.
+    private static func mappedDisplayRanges(
+        in text: String,
+        normalizedText: String,
+        requestedRanges: [Range<Int>]
+    ) -> [Range<Int>?] {
+        guard !requestedRanges.isEmpty else { return [] }
+        let leadingTrimmed = text.drop(while: { $0.isWhitespace })
+        let retainedEnd = leadingTrimmed.lastIndex(where: { !$0.isWhitespace })
+            .map { leadingTrimmed.index(after: $0) } ?? leadingTrimmed.startIndex
+        let retained = leadingTrimmed[..<retainedEnd]
+        let utf16Count = retained.utf16.count
+        // Reject ordinary folded/collapsed segments before repeating canonical
+        // normalization. Stored comparison text is only a rejection filter;
+        // admission still proves normalization against the exact display text.
+        if retained == normalizedText,
+            retained.count == utf16Count,
+            SearchTextNormalization.lexicalNormalize(text).utf8.elementsEqual(retained.utf8)
+        {
+            let sourceOffset = retained.startIndex.utf16Offset(in: text)
+            return requestedRanges.map { range in
+                guard !range.isEmpty, range.lowerBound >= 0, range.upperBound <= utf16Count else { return nil }
+                return (range.lowerBound + sourceOffset)..<(range.upperBound + sourceOffset)
+            }
+        }
+        return SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+            in: text, requestedRanges: requestedRanges)
     }
 
     static func sourceRange(
@@ -1046,8 +1081,9 @@ enum NoteSearchResultBuilder {
                         normalizedNeedle: key.value.text))
             }
         }
-        let mappedRanges = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-            in: source, requestedRanges: [normalizedRange ?? 0..<0] + highlightRanges)
+        let mappedRanges = mappedDisplayRanges(
+            in: source, normalizedText: segment.normalizedText,
+            requestedRanges: [normalizedRange ?? 0..<0] + highlightRanges)
         let targetUTF16 = mappedRanges[0] ?? 0..<0
         let boundedLower = min(max(0, targetUTF16.lowerBound), source.utf16.count)
         let boundedUpper = min(max(boundedLower, targetUTF16.upperBound), source.utf16.count)

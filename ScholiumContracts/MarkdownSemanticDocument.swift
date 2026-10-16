@@ -483,37 +483,38 @@ public enum MarkdownSemanticParser {
         )
         literalRanges.append(contentsOf: commentResult.ranges)
         literalRanges.append(contentsOf: inlineCodeRanges(in: document.body))
+        let literalExclusions = LiteralExclusions(literalRanges)
         inlines.append(
             contentsOf: parseHighlights(
                 body: document.body,
                 bodyUTF16Offset: bodyOffset,
                 sourceMapper: sourceMapper,
-                excluded: literalRanges
+                excluded: literalExclusions
             ))
 
         let calloutResult = parseCallouts(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges
+            excluded: literalExclusions
         )
         let footnoteResult = parseFootnotes(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges
+            excluded: literalExclusions
         )
         let mathResult = parseMath(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges
+            excluded: literalExclusions
         )
         let linkResult = parseLinks(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges,
+            excluded: literalExclusions,
             inlines: inlines
         )
         let original = MarkdownSemanticDocument(
@@ -634,7 +635,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange]
+        excluded: LiteralExclusions
     ) -> [MarkdownInline] {
         guard let expression = try? NSRegularExpression(pattern: #"(?<!\\)==([^=\r\n]+)=="#) else {
             return []
@@ -682,7 +683,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange]
+        excluded: LiteralExclusions
     ) -> CalloutParseResult {
         let nsBody = body as NSString
         guard
@@ -831,7 +832,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange]
+        excluded: LiteralExclusions
     ) -> FootnoteParseResult {
         let nsBody = body as NSString
         let definitionRegex = try? NSRegularExpression(
@@ -1029,7 +1030,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange]
+        excluded: LiteralExclusions
     ) -> MathParseResult {
         let source = body as NSString
         var expressions: [MathExpression] = []
@@ -1099,7 +1100,7 @@ public enum MarkdownSemanticParser {
             cursor = NSMaxRange(closingLineRange)
         }
 
-        let inlineExcluded = excluded + displayRanges
+        let inlineExcluded = excluded.including(displayRanges)
         cursor = 0
         while cursor < source.length {
             guard source.character(at: cursor) == 0x24 else {
@@ -1201,7 +1202,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange],
+        excluded: LiteralExclusions,
         inlines: [MarkdownInline]
     ) -> LinkParseResult {
         let nsBody = body as NSString
@@ -1587,8 +1588,49 @@ public enum MarkdownSemanticParser {
         return NSRange(location: lineRange.location, length: length)
     }
 
-    private static func intersectsExcluded(_ range: NSRange, _ excluded: [NSRange]) -> Bool {
-        excluded.contains { NSIntersectionRange($0, range).length > 0 }
+    /// Parser-local union of body-relative literal spans. Every consumer asks
+    /// only whether a positive-length intersection exists, so duplicate,
+    /// overlapping and touching exclusions may share one immutable interval.
+    private struct LiteralExclusions {
+        private let ranges: [NSRange]
+
+        init(_ source: [NSRange]) {
+            let ordered = source.filter { $0.length > 0 }.sorted {
+                $0.location == $1.location ? $0.length < $1.length : $0.location < $1.location
+            }
+            var merged: [NSRange] = []
+            for range in ordered {
+                if let previous = merged.last, range.location <= NSMaxRange(previous) {
+                    merged[merged.count - 1] = NSUnionRange(previous, range)
+                } else {
+                    merged.append(range)
+                }
+            }
+            ranges = merged
+        }
+
+        func including(_ additional: [NSRange]) -> Self {
+            additional.isEmpty ? self : Self(ranges + additional)
+        }
+
+        func intersects(_ range: NSRange) -> Bool {
+            guard range.length > 0 else { return false }
+            var lower = 0
+            var upper = ranges.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                if NSMaxRange(ranges[middle]) <= range.location {
+                    lower = middle + 1
+                } else {
+                    upper = middle
+                }
+            }
+            return lower < ranges.count && NSIntersectionRange(ranges[lower], range).length > 0
+        }
+    }
+
+    private static func intersectsExcluded(_ range: NSRange, _ excluded: LiteralExclusions) -> Bool {
+        excluded.intersects(range)
     }
 
     private static func shifted(_ range: NSRange, by offset: Int) -> NSRange {

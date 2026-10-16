@@ -194,10 +194,11 @@ native publication; they are not G7 or click-to-paint acceptance.
   Unchanged refresh 3.09–3.17 s: zero reads/parses/projections.
   Source fidelity, Search/Graph equivalence and closed journals passed.
   Frozen Debug backend evidence; UI/Release unverified.
-- **2026-09-15 Search benchmark, 2,056 Notes:** schema 18 / ranking policy 4.
-  Warm query p95 97 ms, first five pages p95 466 ms, incremental publication
-  p95 27 ms against unchanged 100/500/250 ms budgets. A dated measured-build
-  result, not current packaged performance.
+- **2026-10-16 long-Note Debug:** CJK complete-hit median 1,118 → 150 ms
+  (1,081,344 bytes; 20 samples). Review semantic parse 4,552 → 442 ms;
+  fresh rendering including parsing 4,887 → 781 ms (520,865 bytes; three samples).
+  Exact source and complete result/semantic/HTML/object hashes agree.
+  `.build/performance-evidence/comparison.json`; native paint/Release performance unverified.
 - **2026-09-16 editor reuse:** synthetic 60-paragraph Debug Edit, two warmups and
   five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
   including capture, pool clearing, bridge readiness and DOM layout. Throttled

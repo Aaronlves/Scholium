@@ -156,6 +156,35 @@ struct MarkdownSemanticDocumentTests {
         #expect(semantic.diagnostics.isEmpty)
     }
 
+    @Test("Literal unions preserve real syntax touching code and overlapping comment boundaries")
+    func touchingLiteralBoundaries() throws {
+        let source = "\u{FEFF}---\r\ntitle: Literal boundaries\r\n---\r\n\r\n"
+            + "`[[CodeHidden]] ==CodeHidden== $codeHidden$`[[AfterCode]]==afterCode==$afterCode$\r\n\r\n"
+            + "[[BeforeCode]]==beforeCode==$beforeCode$`literal`\r\n\r\n"
+            + "%% `[[CommentHidden]] ==CommentHidden== $commentHidden$` %%[[AfterComment]]==afterComment==$afterComment$\r\n\r\n"
+            + "Text <!-- `[[HtmlHidden]] ==HtmlHidden== $htmlHidden$` -->[[AfterHTML]]==afterHTML==$afterHTML$\r\n\r\n"
+            + "$$\r\n$insideDisplay$\r\n$$\r\n\r\n$afterDisplay$\r\n"
+        let document = NoteDocument(relativePath: "literal-boundaries.md", rawContent: source)
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        #expect(semantic.links.map(\.target) == ["AfterCode", "BeforeCode", "AfterComment", "AfterHTML"])
+        let highlights = semantic.inlines.filter { $0.kind == .highlight }
+        #expect(highlights.map { (source as NSString).substring(with: $0.span.nsRange) } == [
+            "==afterCode==", "==beforeCode==", "==afterComment==", "==afterHTML==",
+        ])
+        #expect(semantic.mathExpressions.map(\.kind) == [.inline, .inline, .inline, .inline, .display, .inline])
+        #expect(semantic.mathExpressions.map(\.content) == [
+            "afterCode", "beforeCode", "afterComment", "afterHTML", "$insideDisplay$", "afterDisplay",
+        ])
+        for link in semantic.links {
+            #expect((source as NSString).substring(with: link.span.nsRange) == "[[" + link.target + "]]")
+        }
+        for span in semantic.links.map(\.span) + highlights.map(\.span) + semantic.mathExpressions.map(\.span) {
+            let exact = (source as NSString).substring(with: span.nsRange)
+            #expect(Data(source.utf8)[span.utf8Range] == Data(exact.utf8))
+        }
+        #expect(document.sourceBytes == Data(source.utf8))
+    }
+
     @Test("Mismatched backtick runs do not suppress valid annotated links")
     func mismatchedBackticks() {
         let source = "` unmatched [[Visible]]{{Reason}} ``\nText ``` [[Hidden]]{{Hidden}} ```"
@@ -174,6 +203,30 @@ struct MarkdownSemanticDocumentTests {
         #expect(heading.span.start.line == 5)
         #expect((source as NSString).substring(with: heading.span.nsRange) == "# 哲学 🧭")
         #expect(Data(source.utf8)[heading.span.utf8Range] == Data("# 哲学 🧭".utf8))
+    }
+
+    @Test("Unrecorded containers retain nested inline spans and InlineHTML literal exclusions")
+    func nestedInlineSourceOwnership() throws {
+        let source = "\u{FEFF}---\r\ntitle: Mapper\r\n---\r\n\r\n# 范围 e\u{301} 🧭\r\n\r\n"
+            + "| Cell | Meaning |\r\n| --- | --- |\r\n| **证据 e\u{301} 🧭** | [Visible](Target.md) |\r\n\r\n"
+            + "Paragraph <span title=\"[[Hidden]]\">visible</span> and [[Real]].\r\n"
+        let document = NoteDocument(relativePath: "nested-inline.md", rawContent: source)
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let strong = try #require(semantic.inlines.first { $0.kind == .strong })
+        let link = try #require(semantic.inlines.first { $0.kind == .link })
+        let table = try #require(semantic.blocks.first { $0.kind == .table })
+        let expectedStrong = "**证据 e\u{301} 🧭**"
+        let expectedLink = "[Visible](Target.md)"
+        #expect((source as NSString).substring(with: strong.span.nsRange).utf8.elementsEqual(expectedStrong.utf8))
+        #expect((source as NSString).substring(with: link.span.nsRange).utf8.elementsEqual(expectedLink.utf8))
+        #expect(strong.span.start.line == 9 && strong.span.start.utf16Column == 3)
+        #expect(semantic.links.map(\.target) == ["Target.md", "Real"])
+        #expect(!semantic.links.contains { $0.target == "Hidden" })
+        for span in [table.span, strong.span, link.span] + semantic.links.map(\.span) {
+            let exact = (source as NSString).substring(with: span.nsRange)
+            #expect(Data(source.utf8)[span.utf8Range] == Data(exact.utf8))
+        }
+        #expect(document.sourceBytes == Data(source.utf8))
     }
 
     @Test("Obsidian callouts are typed without parsing literal regions")
