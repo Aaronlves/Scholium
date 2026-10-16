@@ -21,9 +21,20 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey { case scoringDocument, segments }
 
-    private struct Stored: Decodable {
-        let scoringDocument: RelatedContentBM25F.Document.Stored
-        let segments: [StoredSegment]
+    private struct Admission: Decodable {
+        private enum SegmentKeys: String, CodingKey { case field, material }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let scoring = try container.decode(RelatedContentBM25F.Document.Admission.self, forKey: .scoringDocument)
+            var segments = try container.nestedUnkeyedContainer(forKey: .segments)
+            while !segments.isAtEnd {
+                let segment = try segments.superDecoder().container(keyedBy: SegmentKeys.self)
+                _ = try segment.decode(SearchMatchedField.self, forKey: .field)
+                let material = try segment.decode(RelatedContentBM25F.Document.StoredText.Admission.self, forKey: .material)
+                try material.validate(in: scoring)
+            }
+        }
     }
 
     /// Publication shares the Note scorer already built for the same prepared
@@ -77,13 +88,6 @@ struct RelatedContentLexicalProjection: Codable, Sendable {
     }
 
     static func validate(_ data: Data?, checksum: String?) throws {
-        _ = try validatedStorage(data, checksum: checksum)
-    }
-
-    private static func validatedStorage(_ data: Data?, checksum: String?) throws -> Stored {
-        let result = try decodedStorage(Stored.self, data: data, checksum: checksum)
-        try result.scoringDocument.validate()
-        for segment in result.segments { try segment.material.validate(in: result.scoringDocument) }
-        return result
+        _ = try decodedStorage(Admission.self, data: data, checksum: checksum)
     }
 }

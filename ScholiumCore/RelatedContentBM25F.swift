@@ -48,11 +48,33 @@ struct RelatedContentBM25F {
             }
         }
 
-        private static func validFields(_ fields: [String: String], lengths: [String: Double], indexKeys: Set<String>) -> Bool {
-            Set(fields.keys).isSubset(of: Set(RelatedContentRankingField.allCases.map(\.rawValue)))
-                && Set(fields.keys) == Set(lengths.keys)
-                && indexKeys == Set(fields.keys)
+        /// Only field identities survive admission. Text and lengths still
+        /// decode with their exact stored types; every index is fully checked.
+        struct Admission: Decodable {
+            let fieldKeys: Set<String>
+            private enum CodingKeys: String, CodingKey { case fields, fieldLengths, textIndexes }
+
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                let fields = try container.decode([String: String].self, forKey: .fields)
+                let lengths = try container.decode([String: Double].self, forKey: .fieldLengths)
+                let indexes = try container.decode([String: RelatedContentTextIndex.Admission].self, forKey: .textIndexes)
+                fieldKeys = Set(fields.keys)
+                guard Document.validFieldKeys(fieldKeys, lengths: lengths, indexKeys: Set(indexes.keys)) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+            }
+        }
+
+        private static func validFieldKeys(_ keys: Set<String>, lengths: [String: Double], indexKeys: Set<String>) -> Bool {
+            keys.isSubset(of: Set(RelatedContentRankingField.allCases.map(\.rawValue)))
+                && keys == Set(lengths.keys)
+                && indexKeys == keys
                 && lengths.values.allSatisfy { $0.isFinite && $0 >= 0 }
+        }
+
+        private static func validFields(_ fields: [String: String], lengths: [String: Double], indexKeys: Set<String>) -> Bool {
+            validFieldKeys(Set(fields.keys), lengths: lengths, indexKeys: indexKeys)
         }
 
         var isValid: Bool {
@@ -91,12 +113,49 @@ struct RelatedContentBM25F {
             case scoringField(String)
             case independent(text: String, index: RelatedContentTextIndex.Stored)
 
+            /// Mirrors the synthesized enum's one recognized case key and
+            /// associated-value containers. Unknown keys remain ignored, just
+            /// as they are by StoredText's independent full query decoder.
+            struct Admission: Decodable {
+                private let scoringField: String?
+                private enum CaseKeys: String, CodingKey { case scoringField, independent }
+                private enum ReferenceKeys: String, CodingKey { case _0 }
+                private enum IndependentKeys: String, CodingKey { case text, index }
+
+                init(from decoder: any Decoder) throws {
+                    let container = try decoder.container(keyedBy: CaseKeys.self)
+                    guard container.allKeys.count == 1, let key = container.allKeys.first else {
+                        throw SearchIndexError.corruptDatabase
+                    }
+                    switch key {
+                    case .scoringField:
+                        let value = try container.nestedContainer(keyedBy: ReferenceKeys.self, forKey: key)
+                        scoringField = try value.decode(String.self, forKey: ._0)
+                    case .independent:
+                        let value = try container.nestedContainer(keyedBy: IndependentKeys.self, forKey: key)
+                        _ = try value.decode(String.self, forKey: .text)
+                        _ = try value.decode(RelatedContentTextIndex.Admission.self, forKey: .index)
+                        scoringField = nil
+                    }
+                }
+
+                func validate(in document: Document.Admission) throws {
+                    if let scoringField {
+                        try StoredText.validateReference(
+                            fieldExists: document.fieldKeys.contains(scoringField),
+                            indexExists: document.fieldKeys.contains(scoringField))
+                    }
+                }
+            }
+
+            private static func validateReference(fieldExists: Bool, indexExists: Bool) throws {
+                guard fieldExists, indexExists else { throw SearchIndexError.corruptDatabase }
+            }
+
             func validate(in document: Stored) throws {
                 switch self {
                 case .scoringField(let field):
-                    guard document.fields[field] != nil, document.textIndexes[field] != nil else {
-                        throw SearchIndexError.corruptDatabase
-                    }
+                    try Self.validateReference(fieldExists: document.fields[field] != nil, indexExists: document.textIndexes[field] != nil)
                 case .independent(_, let index):
                     try index.validate()
                 }

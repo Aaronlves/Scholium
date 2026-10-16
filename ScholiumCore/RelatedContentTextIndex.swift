@@ -98,16 +98,67 @@ struct RelatedContentTextIndex: Codable, Sendable {
         }
     }
 
-    private static func validatedByteCount(_ counts: [String: Int]) -> Int? {
-        guard UInt32(exactly: counts.count) != nil else { return nil }
-        var byteCount = 0
-        for (word, count) in counts {
-            guard isASCIIWord(word), count > 0, UInt32(exactly: count) != nil else { return nil }
-            let (sum, overflow) = byteCount.addingReportingOverflow(word.utf8.count)
-            guard !overflow, UInt32(exactly: sum) != nil else { return nil }
-            byteCount = sum
+    /// Admission inspects the same wire value without constructing a word
+    /// dictionary or packing query storage that opening immediately discards.
+    struct Admission: Decodable {
+        private enum CodingKeys: String, CodingKey { case words, containsCJK }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            _ = try container.decodeIfPresent(AdmittedWords.self, forKey: .words)
+            _ = try container.decode(Bool.self, forKey: .containsCJK)
         }
-        return byteCount
+    }
+
+    private struct AdmittedWords: Decodable {
+        private struct WordKey: CodingKey {
+            let stringValue: String
+            var intValue: Int? { nil }
+            init(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: WordKey.self)
+            let keys = container.allKeys
+            guard var validation = WordValidation(wordCount: keys.count) else {
+                throw SearchIndexError.corruptDatabase
+            }
+            for key in keys {
+                let count = try container.decode(Int.self, forKey: key)
+                guard validation.include(key.stringValue, count: count) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+            }
+        }
+    }
+
+    /// Shared by persisted admission and packed query construction. This is
+    /// only the established ASCII/count/aggregate-byte policy, not tokenization.
+    private struct WordValidation {
+        private(set) var byteCount = 0
+
+        init?(wordCount: Int) {
+            guard UInt32(exactly: wordCount) != nil else { return nil }
+        }
+
+        mutating func include(_ word: String, count: Int) -> Bool {
+            guard RelatedContentTextIndex.isASCIIWord(word), count > 0, UInt32(exactly: count) != nil else {
+                return false
+            }
+            let (sum, overflow) = byteCount.addingReportingOverflow(word.utf8.count)
+            guard !overflow, UInt32(exactly: sum) != nil else { return false }
+            byteCount = sum
+            return true
+        }
+    }
+
+    private static func validatedByteCount(_ counts: [String: Int]) -> Int? {
+        guard var validation = WordValidation(wordCount: counts.count) else { return nil }
+        for (word, count) in counts {
+            guard validation.include(word, count: count) else { return nil }
+        }
+        return validation.byteCount
     }
 
     var stored: Stored { .init(words: preparedWords?.dictionary(), containsCJK: containsCJK) }

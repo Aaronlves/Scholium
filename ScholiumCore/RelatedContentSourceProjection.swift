@@ -38,6 +38,25 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             let scoringDocument: RelatedContentBM25F.Document.Stored
         }
 
+        /// One passage's fields are checked and released before the next is
+        /// decoded. Only the endpoint is needed for the enclosing source bound.
+        struct Admission: Decodable {
+            let sourceUpperBound: Int
+
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                let range = try container.decode(SearchSourceRange.self, forKey: .range)
+                _ = try container.decodeIfPresent(String.self, forKey: .displayText)
+                let scoring = try container.decode(RelatedContentBM25F.Document.Admission.self, forKey: .scoringDocument)
+                let matching = try container.decode(RelatedContentBM25F.Document.StoredText.Admission.self, forKey: .matchingText)
+                try matching.validate(in: scoring)
+                guard RelatedContentSourceProjection.validRange(range, sourceUTF16Count: Int.max) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+                sourceUpperBound = range.utf16UpperBound
+            }
+        }
+
         init(from decoder: any Decoder) throws {
             try self.init(stored: Stored(from: decoder))
         }
@@ -67,9 +86,20 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     let noteScoringDocument: RelatedContentBM25F.Document
     let paragraphs: [Paragraph]
 
-    private struct Stored: Decodable {
-        let noteScoringDocument: RelatedContentBM25F.Document.Stored
-        let paragraphs: [Paragraph.Stored]
+    private struct Admission: Decodable {
+        let maximumParagraphEnd: Int?
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            _ = try container.decode(RelatedContentBM25F.Document.Admission.self, forKey: .noteScoringDocument)
+            var paragraphs = try container.nestedUnkeyedContainer(forKey: .paragraphs)
+            var maximumEnd: Int?
+            while !paragraphs.isAtEnd {
+                let paragraph = try paragraphs.decode(Paragraph.Admission.self)
+                maximumEnd = max(maximumEnd ?? paragraph.sourceUpperBound, paragraph.sourceUpperBound)
+            }
+            maximumParagraphEnd = maximumEnd
+        }
     }
 
     private enum CodingKeys: String, CodingKey { case noteScoringDocument, paragraphs }
@@ -169,19 +199,13 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     /// Opening checks every persisted field without constructing passage
     /// signatures or packed word tables that only a retrieval query consumes.
     static func validate(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws {
-        _ = try validatedStorage(data, checksum: checksum, sourceUTF16Count: sourceUTF16Count)
-    }
-
-    private static func validatedStorage(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws -> Stored {
-        let value = try decodedStorage(Stored.self, data: data, checksum: checksum)
-        try value.noteScoringDocument.validate()
-        for paragraph in value.paragraphs {
-            guard validRange(paragraph.range, sourceUTF16Count: sourceUTF16Count)
-            else { throw SearchIndexError.corruptDatabase }
-            try paragraph.scoringDocument.validate()
-            try paragraph.matchingText.validate(in: paragraph.scoringDocument)
+        let value = try decodedStorage(Admission.self, data: data, checksum: checksum)
+        // Each range already passed the same predicate with Int.max. Its one
+        // remaining condition is upperBound <= this source's exact length.
+        // No range means no bound check, preserving empty-payload acceptance.
+        guard value.maximumParagraphEnd.map({ $0 <= sourceUTF16Count }) ?? true else {
+            throw SearchIndexError.corruptDatabase
         }
-        return value
     }
 
     /// Accounting budget, not a claim about exact allocator resident memory.
