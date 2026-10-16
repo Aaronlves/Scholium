@@ -119,8 +119,10 @@ struct CurrentSourceSearchTests {
         let noIdentity = SearchSourceSnapshot(
             noteID: source.noteID, editorSessionID: UUID(),
             source: "---\nnote_id: forged\n---\nneedle", editorRevision: 1)
-        #expect(try TriptychSearchIndex.searchCurrentSource(
-            request("needle", source: noIdentity), ast: ast, vault: vault).noteResults.map(\.stableNoteID) == [nil])
+        #expect(
+            try TriptychSearchIndex.searchCurrentSource(
+                request("needle", source: noIdentity), ast: ast, vault: vault
+            ).noteResults.map(\.stableNoteID) == [nil])
     }
 
     @Test("Unavailable admission and unsupported This Note filters retain the canonical diagnostics")
@@ -166,7 +168,10 @@ struct CurrentSourceSearchTests {
             (SearchRequest(query: "needle", presentationScope: .triptych, executionScope: .triptych, limit: 20), vault),
             (SearchRequest(query: "needle", presentationScope: .currentVault, executionScope: .currentVault(vault.id), limit: 20), vault),
             (SearchRequest(query: "needle", presentationScope: .triptych, executionScope: .currentNote(source), limit: 20), vault),
-            (SearchRequest(query: "needle", presentationScope: .thisNote, executionScope: .currentNote(source), limit: 20, includedVaultIDs: [vault.id]), vault),
+            (
+                SearchRequest(query: "needle", presentationScope: .thisNote, executionScope: .currentNote(source), limit: 20, includedVaultIDs: [vault.id]),
+                vault
+            ),
         ]
         for (request, descriptor) in invalid {
             do {
@@ -217,7 +222,8 @@ struct CurrentSourceSearchTests {
         }
 
         func snapshot(_ source: String, vault: RegisteredVault, stableNoteID: UUID? = nil) -> SearchSourceSnapshot {
-            SearchSourceSnapshot(noteID: .init(vaultID: vault.id, relativePath: "Unsaved/Draft.md"), stableNoteID: stableNoteID,
+            SearchSourceSnapshot(
+                noteID: .init(vaultID: vault.id, relativePath: "Unsaved/Draft.md"), stableNoteID: stableNoteID,
                 editorSessionID: UUID(), source: source, editorRevision: 1)
         }
 

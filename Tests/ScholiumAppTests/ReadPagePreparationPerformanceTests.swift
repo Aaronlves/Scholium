@@ -145,7 +145,8 @@ struct ReadPagePreparationPerformanceTests {
             ["id": object.id, "kind": object.kind.rawValue, "copy_text": object.copyText, "html": object.html]
         }
         let objectDigest = DocumentFingerprint(
-            data: try JSONSerialization.data(withJSONObject: objectMaterial, options: [.sortedKeys])).sha256
+            data: try JSONSerialization.data(withJSONObject: objectMaterial, options: [.sortedKeys])
+        ).sha256
         let summaries = timings.mapValues { values in
             let sorted = values.sorted()
             return ["min": sorted[0], "median": sorted[1], "max": sorted[2]]
@@ -158,7 +159,8 @@ struct ReadPagePreparationPerformanceTests {
             "semantic_sha256": semanticDigest, "rendered_objects_sha256": objectDigest,
             "rendered_objects": reference.objects.count, "semantic_blocks": semantic.blocks.count,
             "warmups": warmups, "samples": samples, "stage_ms": summaries, "stage_samples_ms": timings,
-            "scope": "SwiftPM Debug pure construction and rendering; fresh renderer includes semantic parsing, excludes NoteDocument construction; no I/O, WebKit, layout, XCTest transport or paint",
+            "scope":
+                "SwiftPM Debug pure construction and rendering; fresh renderer includes semantic parsing, excludes NoteDocument construction; no I/O, WebKit, layout, XCTest transport or paint",
             "complete_output_equivalent": true, "exact_source": true,
         ]
         let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])

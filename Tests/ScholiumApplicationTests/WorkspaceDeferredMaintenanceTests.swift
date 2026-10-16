@@ -208,9 +208,11 @@ import Testing
             _ body: (ApplicationFixture, WorkspaceRuntime, MaintenancePassProbe, MaintenanceTestLifetime) async throws -> Void
         ) async throws {
             let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
-            let runtime = WorkspaceRuntime(configuration: .live(.init(
-                applicationSupportURL: fixture.applicationSupportURL,
-                workspaceRegistryStorageURL: fixture.registryStorageURL)))
+            let runtime = WorkspaceRuntime(
+                configuration: .live(
+                    .init(
+                        applicationSupportURL: fixture.applicationSupportURL,
+                        workspaceRegistryStorageURL: fixture.registryStorageURL)))
             let passes = MaintenancePassProbe()
             let lifetime = MaintenanceTestLifetime()
             await runtime.setDerivedMaintenanceBarrierForTesting { await passes.wait($0) }

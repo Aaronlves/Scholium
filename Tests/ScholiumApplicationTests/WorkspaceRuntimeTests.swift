@@ -765,7 +765,8 @@ struct WorkspaceRuntimeTests {
             source: openedDocument.rawContent + "\nsourceonlyneedle is unsaved.\n",
             editorRevision: 1)
         let unsavedResponse = try await handle.discovery.search(
-            SearchRequest(query: "sourceonlyneedle", presentationScope: .thisNote,
+            SearchRequest(
+                query: "sourceonlyneedle", presentationScope: .thisNote,
                 executionScope: .currentNote(currentSource), limit: 20))
         #expect(unsavedResponse.results.count == 1)
         #expect(unsavedResponse.freshnessToken == .currentNote(currentSource))
@@ -776,11 +777,14 @@ struct WorkspaceRuntimeTests {
             #expect(hit.fingerprint == currentSource.fingerprint)
             #expect(hit.stableNoteID == currentSource.stableNoteID?.uuidString.lowercased())
             let range = try #require(hit.sourceRange)
-            #expect((currentSource.source as NSString).substring(with: NSRange(
-                location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound)) == "sourceonlyneedle")
+            #expect(
+                (currentSource.source as NSString).substring(
+                    with: NSRange(
+                        location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound)) == "sourceonlyneedle")
         }
         let currentCompletions = try await handle.discovery.searchCompletions(
-            SearchCompletionRequest(lookup: .init(partial: "sourceonly", field: .body),
+            SearchCompletionRequest(
+                lookup: .init(partial: "sourceonly", field: .body),
                 presentationScope: .thisNote, executionScope: .currentNote(currentSource)))
         #expect(currentCompletions.terms.map(\.id) == ["sourceonlyneedle"])
         #expect(currentCompletions.freshnessToken == .currentNote(currentSource))
@@ -789,22 +793,26 @@ struct WorkspaceRuntimeTests {
             noteID: .init(vaultID: fixture.analysisNoteID.vaultID, relativePath: "Not Authorized.md"),
             editorSessionID: UUID(), source: currentSource.source, editorRevision: 1)
         let rejectedCompletions = try await handle.discovery.searchCompletions(
-            SearchCompletionRequest(lookup: .init(partial: "sourceonly"),
+            SearchCompletionRequest(
+                lookup: .init(partial: "sourceonly"),
                 presentationScope: .thisNote, executionScope: .currentNote(forgedSource)))
         #expect(rejectedCompletions.terms.isEmpty)
         let invalidQuery = try await handle.discovery.search(
-            SearchRequest(query: "\"unfinished", presentationScope: .thisNote,
+            SearchRequest(
+                query: "\"unfinished", presentationScope: .thisNote,
                 executionScope: .currentNote(currentSource), limit: 20))
         #expect(invalidQuery.results.isEmpty)
         #expect(invalidQuery.diagnostics.map(\.code) == [.unclosedPhrase])
         #expect(invalidQuery.availability == .unavailable)
         let invalidScope = try await handle.discovery.search(
-            SearchRequest(query: "kind:unsupported", presentationScope: .currentVault,
+            SearchRequest(
+                query: "kind:unsupported", presentationScope: .currentVault,
                 executionScope: .currentVault(UUID()), limit: 20))
         #expect(invalidScope.results.isEmpty)
         #expect(invalidScope.diagnostics.map(\.reason) == [.vaultOutsideTriptych])
         let pendingVaultResponse = try await handle.discovery.search(
-            SearchRequest(query: "bounded", presentationScope: .currentVault,
+            SearchRequest(
+                query: "bounded", presentationScope: .currentVault,
                 executionScope: .currentVault(fixture.analysisNoteID.vaultID), limit: 20))
         #expect(pendingVaultResponse.results.isEmpty && !pendingVaultResponse.hasMore)
         #expect(pendingVaultResponse.availability == .building(.init(completed: 0, total: 0)))

@@ -89,8 +89,9 @@ struct SearchNormalizationRangeTests {
                 let end = min(offset + 7, ranges.count)
                 #expect(prepared.originalUTF16Ranges(for: Array(ranges[offset..<end])) == Array(expected[offset..<end]))
             }
-            #expect(SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-                in: source, requestedRanges: ranges) == expected)
+            #expect(
+                SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+                    in: source, requestedRanges: ranges) == expected)
         }
     }
 
@@ -129,8 +130,9 @@ struct SearchNormalizationRangeTests {
             let expected = frozenRanges(in: source, requestedRanges: ranges)
             let prepared = SearchTextNormalization.prepareOriginalUTF16RangesForLexicalNormalization(in: source)
             #expect(prepared.originalUTF16Ranges(for: ranges) == expected)
-            #expect(SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-                in: source, requestedRanges: ranges) == expected)
+            #expect(
+                SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+                    in: source, requestedRanges: ranges) == expected)
             for offset in stride(from: 0, to: ranges.count, by: 19) {
                 let end = min(offset + 19, ranges.count)
                 #expect(prepared.originalUTF16Ranges(for: Array(ranges[offset..<end])) == Array(expected[offset..<end]))
@@ -144,8 +146,9 @@ struct SearchNormalizationRangeTests {
         let requested = [0..<1, 2..<3, 4..<5, 6..<7, 1..<6]
         let expected: [Range<Int>?] = [0..<1, 2..<4, 5..<6, 7..<9, 1..<7]
         #expect(SearchTextNormalization.lexicalNormalize(source) == "e e e e")
-        #expect(SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-            in: source, requestedRanges: requested) == expected)
+        #expect(
+            SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+                in: source, requestedRanges: requested) == expected)
     }
 
     private func frozenRanges(

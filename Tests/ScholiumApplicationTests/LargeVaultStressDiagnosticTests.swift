@@ -442,17 +442,23 @@ struct LargeVaultStressDiagnosticTests {
             "physical_memory_bytes": ProcessInfo.processInfo.physicalMemory,
             "processor_count": ProcessInfo.processInfo.activeProcessorCount,
             "developer_directory": environment["DEVELOPER_DIR"] ?? "not set",
-            "measurement": "Fresh live runtime; initial timer includes membership and authoritative selected-library source admission. Generated-index admission and maintenance follow source readiness. Presentation-to-complete uses the existing lifecycle boundary. Seed creation, source oracles, full Search/Graph comparison and shutdown are outside timers. No UI or paint claim.",
-            "cache_condition": "One retained closed compatible seed at identical paths; same source and portable identities. OS caches are not purged. Pre-sample source validation warms filesystem caches. No retained-memory claim.",
-            "search_comparison": "Every result page for every fixture Search oracle; complete ordered note material except generation freshness tokens, independently checked against each current snapshot.",
+            "measurement":
+                "Fresh live runtime; initial timer includes membership and authoritative selected-library source admission. Generated-index admission and maintenance follow source readiness. Presentation-to-complete uses the existing lifecycle boundary. Seed creation, source oracles, full Search/Graph comparison and shutdown are outside timers. No UI or paint claim.",
+            "cache_condition":
+                "One retained closed compatible seed at identical paths; same source and portable identities. OS caches are not purged. Pre-sample source validation warms filesystem caches. No retained-memory claim.",
+            "search_comparison":
+                "Every result page for every fixture Search oracle; complete ordered note material except generation freshness tokens, independently checked against each current snapshot.",
         ]
         func emit(_ record: [String: Any]) throws {
             let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
             diagnosticProgress("LIVE_REOPEN_DIAGNOSTIC \(String(decoding: data, as: UTF8.self))")
         }
         func runState(_ status: String) throws {
-            try writeReport(["schema": "scholium-live-reopen-seed-state-v1", "status": status,
-                             "run_id": runID, "stage": stage], to: stateURL)
+            try writeReport(
+                [
+                    "schema": "scholium-live-reopen-seed-state-v1", "status": status,
+                    "run_id": runID, "stage": stage,
+                ], to: stateURL)
         }
         func requireClosedState() throws {
             let summary = storageSummary(at: support)
@@ -476,8 +482,10 @@ struct LargeVaultStressDiagnosticTests {
                 try runState("preparing")
                 report["active_stage"] = stage
                 try writeReport(report, to: reportURL)
-                try emit(["phase": "seed_preparation_begun", "build_configuration": buildConfiguration,
-                          "fixture_note_count": count, "preparation_excluded": true])
+                try emit([
+                    "phase": "seed_preparation_begun", "build_configuration": buildConfiguration,
+                    "fixture_note_count": count, "preparation_excluded": true,
+                ])
                 let preparationStarted = ContinuousClock.now
                 try manager.copyItem(at: fixture, to: working)
                 try #require(try sourceOracle(at: working) == original)
@@ -542,9 +550,10 @@ struct LargeVaultStressDiagnosticTests {
             try #require(ready.oracle == original && ready.sourceDigest == sourceDigest(original))
             try #require(ready.searchQueries == scenarios.map(\.query))
             try #require(ready.searchPages.count == scenarios.count)
-            let vaults = try Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { slot in
-                (slot, try #require(ready.vaults[slot.rawValue]))
-            })
+            let vaults = try Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { slot in
+                    (slot, try #require(ready.vaults[slot.rawValue]))
+                })
             let assignment = TriptychAssignment(
                 triptych: ready.triptych, vaults: vaults, hasCommonParent: ready.hasCommonParent)
             try #require(ready.vaults.count == 3)
@@ -558,8 +567,11 @@ struct LargeVaultStressDiagnosticTests {
             try #require(ready.searchGeneration.tokenizerPolicyVersion == SearchContract.tokenizerPolicyVersion)
             try #require(ready.searchGeneration.rankingPolicyVersion == SearchContract.rankingPolicyVersion)
             try #require(ready.graph.contractVersion == GraphSnapshot.currentContractVersion)
-            try #require(DocumentFingerprint(data: try Data(contentsOf:
-                working.appendingPathComponent("stress-manifest.json"))) == manifestFingerprint)
+            try #require(
+                DocumentFingerprint(
+                    data: try Data(
+                        contentsOf:
+                            working.appendingPathComponent("stress-manifest.json"))) == manifestFingerprint)
             try #require(try sourceOracle(at: working) == original)
             try #require(DocumentFingerprint(data: try Data(contentsOf: registryFile)) == ready.registryFingerprint)
             try requireClosedState()
@@ -567,11 +579,13 @@ struct LargeVaultStressDiagnosticTests {
             report["seed_material_sha256"] = readyHash
             report["seed_cold_configuration_ms"] = ready.coldConfigurationMilliseconds
             report["seed_preparation_ms"] = ready.preparationMilliseconds
-            try emit(["phase": "seed_ready", "reused": existed,
-                      "seed_material_sha256": readyHash, "preparation_excluded": true,
-                      "build_configuration": buildConfiguration,
-                      "cold_configuration_ms": ready.coldConfigurationMilliseconds,
-                      "preparation_ms": ready.preparationMilliseconds])
+            try emit([
+                "phase": "seed_ready", "reused": existed,
+                "seed_material_sha256": readyHash, "preparation_excluded": true,
+                "build_configuration": buildConfiguration,
+                "cold_configuration_ms": ready.coldConfigurationMilliseconds,
+                "preparation_ms": ready.preparationMilliseconds,
+            ])
             ownsRunState = true
             stage = "live_reopen_samples"
             try runState("sampling")
@@ -602,24 +616,25 @@ struct LargeVaultStressDiagnosticTests {
                 try #require(initial.restoredCatalogProjections == initial.readFiles)
                 // Probe actual source capabilities before signalling presentation.
                 // The draft is never written to disk or installed as a generation.
-                let probeNote = try #require(opening.vaults.flatMap(\.documents).first {
-                    $0.fingerprint.byteCount < 32_768
-                })
+                let probeNote = try #require(
+                    opening.vaults.flatMap(\.documents).first {
+                        $0.fingerprint.byteCount < 32_768
+                    })
                 let loadStarted = ContinuousClock.now
                 let probeDocument = try await handle.documents.load(probeNote.id)
                 let firstSourceLoadMilliseconds = milliseconds(loadStarted.duration(to: .now))
                 try #require(probeDocument.fingerprint == probeNote.fingerprint)
                 let stableID: UUID?
-                if case .resolved(let value) = probeNote.stableIdentity { stableID = value }
-                else { stableID = nil }
+                if case .resolved(let value) = probeNote.stableIdentity { stableID = value } else { stableID = nil }
                 let resolvedProbeID = try #require(stableID)
                 let probeMarker = "startupbufferfindqzv"
                 let probeBuffer = probeDocument.rawContent + "\n\n" + probeMarker + "\n"
                 let sourceRequest = SearchRequest(
                     query: probeMarker, presentationScope: .thisNote,
-                    executionScope: .currentNote(.init(
-                        noteID: probeNote.id, stableNoteID: stableID,
-                        editorSessionID: UUID(), source: probeBuffer, editorRevision: 1)),
+                    executionScope: .currentNote(
+                        .init(
+                            noteID: probeNote.id, stableNoteID: stableID,
+                            editorSessionID: UUID(), source: probeBuffer, editorRevision: 1)),
                     limit: 20)
                 let findStarted = ContinuousClock.now
                 let sourceResponse = try await handle.discovery.search(sourceRequest)
@@ -632,23 +647,26 @@ struct LargeVaultStressDiagnosticTests {
                         try #require(hit.fingerprint == DocumentFingerprint(content: probeBuffer))
                         try #require(hit.stableNoteID == resolvedProbeID.uuidString.lowercased())
                         let locator = try #require(hit.sourceRange)
-                        let range = try #require(Range(NSRange(
-                            location: locator.utf16LowerBound,
-                            length: locator.utf16UpperBound - locator.utf16LowerBound), in: probeBuffer))
+                        let range = try #require(
+                            Range(
+                                NSRange(
+                                    location: locator.utf16LowerBound,
+                                    length: locator.utf16UpperBound - locator.utf16LowerBound), in: probeBuffer))
                         try #require(String(probeBuffer[range]).contains(probeMarker))
                     }
                 }
-                let vaultResponse = try await handle.discovery.search(.init(
-                    query: probeMarker, presentationScope: .currentVault,
-                    executionScope: .currentVault(probeNote.id.vaultID), limit: 20))
+                let vaultResponse = try await handle.discovery.search(
+                    .init(
+                        query: probeMarker, presentationScope: .currentVault,
+                        executionScope: .currentVault(probeNote.id.vaultID), limit: 20))
                 try #require(vaultResponse.results.isEmpty)
                 let vaultSearchIsBuilding: Bool
-                if case .building = vaultResponse.availability { vaultSearchIsBuilding = true }
-                else { vaultSearchIsBuilding = false }
+                if case .building = vaultResponse.availability { vaultSearchIsBuilding = true } else { vaultSearchIsBuilding = false }
                 try #require(vaultSearchIsBuilding)
                 var triptychSearchBlocked = false
-                do { _ = try await handle.discovery.search(request(probeMarker, limit: 20)) }
-                catch ScholiumApplicationError.workspaceStillLoading { triptychSearchBlocked = true }
+                do { _ = try await handle.discovery.search(request(probeMarker, limit: 20)) } catch ScholiumApplicationError.workspaceStillLoading {
+                    triptychSearchBlocked = true
+                }
                 try #require(triptychSearchBlocked)
                 try #require(await handle.services.searchIndexOwner.readyIndex() == nil)
                 let presentationStarted = ContinuousClock.now
@@ -692,9 +710,10 @@ struct LargeVaultStressDiagnosticTests {
                     "exact_source_loaded": true, "unsaved_buffer_this_note_search": true,
                     "exact_current_buffer_locator": true,
                     "vault_search_building_without_results": true,
-                    "triptych_search_blocked": true, "derived_index_not_admitted": true
+                    "triptych_search_blocked": true, "derived_index_not_admitted": true,
                 ]
-                sample["capability_probe_scope"] = "Backend source load and unsaved-buffer This Note Search before presentation; no native typing, layout, paint or save timing. Probe work is reported in the pre-presentation gap."
+                sample["capability_probe_scope"] =
+                    "Backend source load and unsaved-buffer This Note Search before presentation; no native typing, layout, paint or save timing. Probe work is reported in the pre-presentation gap."
                 sample["opening_read_files"] = initial.readFiles
                 sample["opening_parsed_documents"] = initial.parsedDocuments
                 sample["opening_restored_catalog_projections"] = initial.restoredCatalogProjections
@@ -715,12 +734,14 @@ struct LargeVaultStressDiagnosticTests {
                 samples.append(sample)
                 report["samples"] = samples
                 try writeReport(report, to: reportURL)
-                try emit(["phase": "sample", "iteration": iteration,
-                          "usable_open_ms": usable, "completion_after_presentation_ms": completion,
-                          "initial_to_complete_wall_ms": initialToComplete,
-                          "validation_gap_before_presentation_ms": gap,
-                          "workspace_generation": measurement.workspaceGeneration,
-                          "source_and_full_search_graph_verified": true, "closed_journals_verified": true])
+                try emit([
+                    "phase": "sample", "iteration": iteration,
+                    "usable_open_ms": usable, "completion_after_presentation_ms": completion,
+                    "initial_to_complete_wall_ms": initialToComplete,
+                    "validation_gap_before_presentation_ms": gap,
+                    "workspace_generation": measurement.workspaceGeneration,
+                    "source_and_full_search_graph_verified": true, "closed_journals_verified": true,
+                ])
             }
             stage = "completed"
             try runState("closed_ready")
@@ -731,8 +752,10 @@ struct LargeVaultStressDiagnosticTests {
                 try samples.map { try #require($0["completion_after_presentation_ms"] as? Double) })
             try writeReport(report, to: reportURL)
             ownsRunState = false
-            try emit(["phase": "completed", "sample_count": samples.count,
-                      "seed_material_sha256": readyHash, "build_configuration": buildConfiguration])
+            try emit([
+                "phase": "completed", "sample_count": samples.count,
+                "seed_material_sha256": readyHash, "build_configuration": buildConfiguration,
+            ])
         } catch {
             await runtime?.shutdown()
             runtime = nil
@@ -975,8 +998,9 @@ extension LargeVaultStressDiagnosticTests {
     fileprivate func requireDiagnosticTreeWithoutLinks(_ root: URL) throws {
         let values = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         try #require(values.isDirectory == true && values.isSymbolicLink != true)
-        let files = try #require(FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))
+        let files = try #require(
+            FileManager.default.enumerator(
+                at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))
         for case let url as URL in files {
             try #require(try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true)
         }
@@ -996,9 +1020,10 @@ extension LargeVaultStressDiagnosticTests {
             let path = try sourcePath(summary.id, assignment: assignment)
             try #require(summary.fingerprint == oracle[path] && summary.stableIdentity.resolvedID != nil)
         }
-        let manifest = SearchSourceManifest.hash(summaries.map {
-            SearchSourceManifestEntry(vaultID: $0.id.vaultID, relativePath: $0.id.relativePath, fingerprint: $0.fingerprint)
-        })
+        let manifest = SearchSourceManifest.hash(
+            summaries.map {
+                SearchSourceManifestEntry(vaultID: $0.id.vaultID, relativePath: $0.id.relativePath, fingerprint: $0.fingerprint)
+            })
         try #require(snapshot.discovery.searchGeneration?.sourceManifestHash == manifest)
         try #require(snapshot.discovery.catalog.graph?.sourceManifestHash == manifest)
         try #require(snapshot.research.healthIssues.isEmpty)
@@ -1020,9 +1045,10 @@ extension LargeVaultStressDiagnosticTests {
             var seen: Set<VaultQualifiedNoteID> = []
             var paths: Set<String> = []
             while true {
-                let response = try await handle.discovery.search(SearchRequest(
-                    query: scenario.query, presentationScope: .triptych, executionScope: .triptych,
-                    limit: SearchContract.maximumNoteResults, offset: offset))
+                let response = try await handle.discovery.search(
+                    SearchRequest(
+                        query: scenario.query, presentationScope: .triptych, executionScope: .triptych,
+                        limit: SearchContract.maximumNoteResults, offset: offset))
                 try #require((try await handle.snapshot()).discovery.searchGeneration == expectedGeneration)
                 try #require(response.availability == .current(expectedGeneration))
                 try #require(response.freshnessToken == .triptych(expectedGeneration))
@@ -1039,8 +1065,11 @@ extension LargeVaultStressDiagnosticTests {
                         let source = try exactSource(at: root.appendingPathComponent(path))
                         for range in note.paragraphRanges + (note.sourceRange.map { [$0] } ?? []) {
                             try #require(range.utf16LowerBound >= 0 && range.utf16UpperBound >= range.utf16LowerBound)
-                            try #require(Range(NSRange(location: range.utf16LowerBound,
-                                length: range.utf16UpperBound - range.utf16LowerBound), in: source) != nil)
+                            try #require(
+                                Range(
+                                    NSRange(
+                                        location: range.utf16LowerBound,
+                                        length: range.utf16UpperBound - range.utf16LowerBound), in: source) != nil)
                         }
                     }
                 }

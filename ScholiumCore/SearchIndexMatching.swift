@@ -1037,9 +1037,10 @@ enum NoteSearchResultBuilder {
                 } else {
                     // A long exact phrase remains a usable anchor even when it
                     // cannot share a compact window with another predicate.
-                    retain(.init(
-                        segment: segment, range: occurrence.range, contextRange: occurrence.range, coverage: 1,
-                        preparedDisplayRangeMapping: mapping))
+                    retain(
+                        .init(
+                            segment: segment, range: occurrence.range, contextRange: occurrence.range, coverage: 1,
+                            preparedDisplayRangeMapping: mapping))
                 }
             }
         }
@@ -1062,7 +1063,8 @@ enum NoteSearchResultBuilder {
             self.text = text
             self.normalizedText = normalizedText
             let leadingTrimmed = text.drop(while: { $0.isWhitespace })
-            let retainedEnd = leadingTrimmed.lastIndex(where: { !$0.isWhitespace })
+            let retainedEnd =
+                leadingTrimmed.lastIndex(where: { !$0.isWhitespace })
                 .map { leadingTrimmed.index(after: $0) } ?? leadingTrimmed.startIndex
             let retained = leadingTrimmed[..<retainedEnd]
             let utf16Count = retained.utf16.count

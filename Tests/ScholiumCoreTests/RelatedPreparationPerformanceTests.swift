@@ -157,10 +157,14 @@ struct RelatedPreparationPerformanceTests {
             "ranking_policy_version": SearchContract.rankingPolicyVersion,
             "warmup_count": warmups, "retained_sample_count": sampleCount,
             "fixture": "search-sync-433-note-zero-original-and-revision-zero",
-            "measurement": "Exact source-bound Related constructor only; excludes source/Search preparation, encoding, hashing, assertions, I/O, SQLite/FTS and native publication.",
-            "sampling": "Three warmups and twenty retained samples per shape; production and replica constructor order alternates. Stage durations sum over every admitted nested paragraph.",
-            "replica_overhead": "Replica total includes stage clock reads, duration accumulation, loop and cancellation overhead; it is not additive to its stages. A small replica/production difference is not an optimization.",
-            "oracle": "Complete sorted-key encoded material and SHA match the standalone constructor outside all timers; derived exact readable bytes and independent matching indexes also match.",
+            "measurement":
+                "Exact source-bound Related constructor only; excludes source/Search preparation, encoding, hashing, assertions, I/O, SQLite/FTS and native publication.",
+            "sampling":
+                "Three warmups and twenty retained samples per shape; production and replica constructor order alternates. Stage durations sum over every admitted nested paragraph.",
+            "replica_overhead":
+                "Replica total includes stage clock reads, duration accumulation, loop and cancellation overhead; it is not additive to its stages. A small replica/production difference is not an optimization.",
+            "oracle":
+                "Complete sorted-key encoded material and SHA match the standalone constructor outside all timers; derived exact readable bytes and independent matching indexes also match.",
             "shapes": shapeReports,
         ]
         let bytes = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])

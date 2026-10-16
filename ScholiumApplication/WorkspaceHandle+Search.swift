@@ -497,9 +497,12 @@ extension WorkspaceHandle {
         let usesOpeningSource: Bool
         if !currentSnapshot.phase.isComplete, case .currentNote = request.executionScope {
             usesOpeningSource = true
-        } else { usesOpeningSource = false }
+        } else {
+            usesOpeningSource = false
+        }
         let index = usesOpeningSource ? nil : await services.searchIndexOwner.readyIndex()
-        let availability = usesOpeningSource
+        let availability =
+            usesOpeningSource
             ? await sourceSearchAvailabilityWithoutIndex()
             : await searchAvailabilityWithoutAdmission()
         let generation = try await index?.generation()

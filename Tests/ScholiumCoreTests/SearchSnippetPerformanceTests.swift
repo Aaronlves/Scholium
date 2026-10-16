@@ -31,9 +31,10 @@ struct SearchSnippetPerformanceTests {
             #expect(locator.utf16UpperBound == expectedRange.location + expectedRange.length)
             #expect(fixture.document.sourceBytes == Data(source.utf8))
             let words = try hit.highlights.map { highlight -> String in
-                let range = try #require(Range(
-                    NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
-                    in: hit.snippet))
+                let range = try #require(
+                    Range(
+                        NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
+                        in: hit.snippet))
                 return String(hit.snippet[range])
             }
             #expect(words.first?.utf8.elementsEqual(exact.utf8) == true)
@@ -54,21 +55,26 @@ struct SearchSnippetPerformanceTests {
         let segment = SearchTextSegment(
             field: .body, ordinal: 0, text: source, normalizedText: normalized,
             sourceRange: .init(utf16LowerBound: 0, utf16UpperBound: source.utf16.count, line: 1, column: 1, endLine: 2, endColumn: 3),
-            offsetMap: [.init(
-                normalizedUTF16LowerBound: 0, normalizedUTF16UpperBound: 5,
-                sourceUTF16LowerBound: 3, sourceUTF16UpperBound: 8, mappingKind: .linear)])
+            offsetMap: [
+                .init(
+                    normalizedUTF16LowerBound: 0, normalizedUTF16UpperBound: 5,
+                    sourceUTF16LowerBound: 3, sourceUTF16UpperBound: 8, mappingKind: .linear)
+            ])
         var document = fixture.stored
         document.segments = [segment]
         let hit = NoteSearchResultBuilder.hit(
             candidate: .init(document: document, identityPriority: 3, lexicalRank: 0),
             ast: fixture.ast, freshness: fixture.freshness, linkMatches: [:])
         #expect(hit.snippet.utf8.elementsEqual("   哲学 哲学   ".utf8))
-        #expect(hit.highlights == [
-            SearchHighlight(utf16LowerBound: 3, utf16UpperBound: 5),
-            SearchHighlight(utf16LowerBound: 6, utf16UpperBound: 8),
-        ])
-        #expect(hit.sourceRange == SearchSourceRange(
-            utf16LowerBound: 3, utf16UpperBound: 5, line: 1, column: 4, endLine: 1, endColumn: 6))
+        #expect(
+            hit.highlights == [
+                SearchHighlight(utf16LowerBound: 3, utf16UpperBound: 5),
+                SearchHighlight(utf16LowerBound: 6, utf16UpperBound: 8),
+            ])
+        #expect(
+            hit.sourceRange
+                == SearchSourceRange(
+                    utf16LowerBound: 3, utf16UpperBound: 5, line: 1, column: 4, endLine: 1, endColumn: 6))
         #expect(fixture.document.sourceBytes == Data(source.utf8))
     }
 
@@ -97,7 +103,6 @@ struct SearchSnippetPerformanceTests {
         #expect(hit.highlights.count == 2)
         #expect(hit.matchedField == .body)
     }
-
 
     @Test("Winning display maps preserve all highlights for distinct selection and snippet range batches")
     func hitLocalMappingParity() throws {
@@ -203,7 +208,6 @@ struct SearchSnippetPerformanceTests {
         try emitSnippetDiagnostic(report, prefix: "SEARCH_SNIPPET_DIAGNOSTIC")
     }
 
-
     @Test(
         "Measure complete Search hits over exact mixed folded and CJK long-note display text",
         .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_SNIPPETS"] == "1"),
@@ -234,16 +238,19 @@ struct SearchSnippetPerformanceTests {
             "source_bytes": fixture.document.sourceBytes.count,
             "source_sha256": fixture.document.fingerprint.sha256,
             "query": "body:自由", "warmups": warmups, "samples": samples,
-            "stage_ms": ["complete_hit": [
-                "median": (sorted[9] + sorted[10]) / 2, "p95": sorted[18], "min": sorted[0], "max": sorted[19],
-            ]],
+            "stage_ms": [
+                "complete_hit": [
+                    "median": (sorted[9] + sorted[10]) / 2, "p95": sorted[18], "min": sorted[0], "max": sorted[19],
+                ]
+            ],
             "samples_ms": ["complete_hit": timings],
             "result_sha256": DocumentFingerprint(data: oracle).sha256,
             "complete_result": try JSONSerialization.jsonObject(with: oracle),
             "all_timed_outputs_byte_equal_oracle": true,
             "canonical_fallback_forced_by_display_bytes": true,
             "allocation_sampling_during_timings": false,
-            "oracle": "Authored NFD source remains byte exact; projected display adds one unmapped trailing LF. Authored first source range 12..<14 at line 1 / column 13; 174-Character exact source prefix plus ellipsis; ten complete visible CJK highlights at explicit UTF-16 offsets. Full sorted-key encoded NoteSearchResult equality for all 23 calls, including warmups.",
+            "oracle":
+                "Authored NFD source remains byte exact; projected display adds one unmapped trailing LF. Authored first source range 12..<14 at line 1 / column 13; 174-Character exact source prefix plus ellipsis; ten complete visible CJK highlights at explicit UTF-16 offsets. Full sorted-key encoded NoteSearchResult equality for all 23 calls, including warmups.",
             "scope": directPresentationScope,
         ]
         try emitSnippetDiagnostic(report, prefix: "SEARCH_SNIPPET_MIXED_DIAGNOSTIC")
@@ -251,8 +258,9 @@ struct SearchSnippetPerformanceTests {
 
     @Test(
         "Separately sample live malloc allocations during mixed long-note complete Search hits",
-        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_SNIPPETS"] == "1"
-            && ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_SNIPPET_ALLOCATIONS"] == "1"),
+        .enabled(
+            if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_SNIPPETS"] == "1"
+                && ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SEARCH_SNIPPET_ALLOCATIONS"] == "1"),
         arguments: [32_768])
     func mixedFoldedCJKAllocationMeasurement(repetitions: Int) throws {
         let fixture = try mixedFoldedCJKFixture(repetitions: repetitions)
@@ -287,7 +295,8 @@ struct SearchSnippetPerformanceTests {
             "complete_result": try JSONSerialization.jsonObject(with: oracle),
             "samples": observations, "sampling_interval_ms": 1,
             "allocation_api": "malloc_zone_statistics(nil).size_in_use",
-            "scope": "Separate observer-enabled process malloc sampling during one complete Search hit; source projection, fixture/oracle setup and assertions excluded. Observed sampled high-water only, not exact peak, RSS, unique Search allocations, retained growth or native UI latency. No latency values are collected in this pass.",
+            "scope":
+                "Separate observer-enabled process malloc sampling during one complete Search hit; source projection, fixture/oracle setup and assertions excluded. Observed sampled high-water only, not exact peak, RSS, unique Search allocations, retained growth or native UI latency. No latency values are collected in this pass.",
         ]
         try emitSnippetDiagnostic(report, prefix: "SEARCH_SNIPPET_ALLOCATION_DIAGNOSTIC")
     }
@@ -384,7 +393,8 @@ struct SearchSnippetPerformanceTests {
             "stage_ms": summaries, "samples_ms": timings,
             "all_outputs_equal_manual_or_full_result_oracle": true,
             "allocation_sampling_during_timings": false,
-            "scope": "Prepared exact 1572863-byte mixed fixture; source/projection setup excluded. Mapping preparation and its range batch are separate elapsed stages. Stage durations overlap causally and are not additive. Only one warmup plus three samples; no original 23-call timing method or allocator observer is enabled by this flag.",
+            "scope":
+                "Prepared exact 1572863-byte mixed fixture; source/projection setup excluded. Mapping preparation and its range batch are separate elapsed stages. Stage durations overlap causally and are not additive. Only one warmup plus three samples; no original 23-call timing method or allocator observer is enabled by this flag.",
         ]
         try emitSnippetDiagnostic(report, prefix: "SEARCH_MIXED_STAGE_DIAGNOSTIC")
     }
@@ -399,7 +409,10 @@ struct SearchSnippetPerformanceTests {
         // The authored NFD bytes remain otherwise exact; do not NFC-fold the oracle.
         let expectedDisplay = source + "\n"
         let displayBytesMatch = body.text.utf8.elementsEqual(expectedDisplay.utf8)
-        try #require(displayBytesMatch, "Expected raw display plus paragraph LF; actual bytes \(body.text.utf8.count), expected \(expectedDisplay.utf8.count); suffix \(String(body.text.suffix(12)).debugDescription)")
+        try #require(
+            displayBytesMatch,
+            "Expected raw display plus paragraph LF; actual bytes \(body.text.utf8.count), expected \(expectedDisplay.utf8.count); suffix \(String(body.text.suffix(12)).debugDescription)"
+        )
         // Keep the case-folding mismatch that rejects the identity/linear map,
         // independently of the collector's trailing paragraph separator.
         try #require(!body.text.utf8.elementsEqual(body.normalizedText.utf8))
@@ -425,16 +438,19 @@ struct SearchSnippetPerformanceTests {
         }
         try #require(hit.snippet.utf8.elementsEqual(expectedSnippet.utf8))
         try #require(hit.highlights == expectedHighlights)
-        try #require(hit.sourceRange == SearchSourceRange(
-            utf16LowerBound: 12, utf16UpperBound: 14, line: 1, column: 13, endLine: 1, endColumn: 15))
+        try #require(
+            hit.sourceRange
+                == SearchSourceRange(
+                    utf16LowerBound: 12, utf16UpperBound: 14, line: 1, column: 13, endLine: 1, endColumn: 15))
         try #require(hit.matchedField == .body && hit.matchedFields == [.body])
         try #require(hit.fingerprint == fixture.document.fingerprint)
         let exact = try #require(Range(NSRange(location: 12, length: 2), in: source))
         try #require(String(source[exact]).utf8.elementsEqual("自由".utf8))
         for highlight in hit.highlights {
-            let range = try #require(Range(
-                NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
-                in: hit.snippet))
+            let range = try #require(
+                Range(
+                    NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
+                    in: hit.snippet))
             try #require(String(hit.snippet[range]).utf8.elementsEqual("自由".utf8))
         }
         return hit
@@ -495,9 +511,11 @@ struct SearchSnippetPerformanceTests {
             defer { lock.unlock() }
             peak = max(peak, after)
             active = false
-            return ["before_bytes": before, "after_bytes": after,
-                    "observed_peak_bytes": peak, "observed_peak_delta_bytes": max(0, peak - before),
-                    "timer_sample_count": samples]
+            return [
+                "before_bytes": before, "after_bytes": after,
+                "observed_peak_bytes": peak, "observed_peak_delta_bytes": max(0, peak - before),
+                "timer_sample_count": samples,
+            ]
         }
 
         private static func allocatedBytes() -> Int {
@@ -558,7 +576,8 @@ struct SearchSnippetPerformanceTests {
         }
 
         func hit() -> NoteSearchResult {
-            NoteSearchResultBuilder.hit(candidate: .init(document: stored, identityPriority: 3, lexicalRank: 0), ast: ast, freshness: freshness, linkMatches: [:])
+            NoteSearchResultBuilder.hit(
+                candidate: .init(document: stored, identityPriority: 3, lexicalRank: 0), ast: ast, freshness: freshness, linkMatches: [:])
         }
     }
 }

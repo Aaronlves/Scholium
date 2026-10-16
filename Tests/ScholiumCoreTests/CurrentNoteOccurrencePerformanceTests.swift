@@ -43,15 +43,17 @@ struct CurrentNoteOccurrencePerformanceTests {
                         request, ast: fixture.ast, vault: fixture.vault)
                     try #require(try encoded(actual) == encoded(expected))
                     #expect(actual.freshnessToken == .currentNote(fixture.source))
-                    #expect(actual.results.allSatisfy { result in
-                        guard case .note(let hit) = result else { return false }
-                        return hit.fingerprint == fixture.note.fingerprint
-                            && hit.stableNoteID == fixture.source.stableNoteID?.uuidString.lowercased()
-                    })
+                    #expect(
+                        actual.results.allSatisfy { result in
+                            guard case .note(let hit) = result else { return false }
+                            return hit.fingerprint == fixture.note.fingerprint
+                                && hit.stableNoteID == fixture.source.stableNoteID?.uuidString.lowercased()
+                        })
                     for hit in noteHits(actual) {
                         if let range = hit.sourceRange {
                             try #require(range.utf16LowerBound >= 0 && range.utf16UpperBound <= raw.utf16.count)
-                            let sourceRange = try #require(Range(NSRange(location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound), in: raw))
+                            let sourceRange = try #require(
+                                Range(NSRange(location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound), in: raw))
                             #expect(!raw[sourceRange].isEmpty)
                         }
                     }
@@ -148,7 +150,9 @@ struct CurrentNoteOccurrencePerformanceTests {
                 try #require(try encoded(prepared.0) == expectedBytes)
                 try #require(locators.0 == expectedLocators)
                 if iteration >= warmups {
-                    for (stage, elapsed) in [("current_source_api", api.1), ("prepared_occurrence_page", prepared.1), ("enumeration_and_locators_only", locators.1)] {
+                    for (stage, elapsed) in [
+                        ("current_source_api", api.1), ("prepared_occurrence_page", prepared.1), ("enumeration_and_locators_only", locators.1),
+                    ] {
                         timings[stage, default: []].append(elapsed)
                     }
                 }
@@ -171,12 +175,16 @@ struct CurrentNoteOccurrencePerformanceTests {
             "source_utf8": raw, "query": fixture.query,
             "full_ordered_occurrences_sha256": DocumentFingerprint(data: try encoded(allExpected)).sha256,
             "manual_source_locators": allExpected.compactMap(\.sourceRange).map {
-                ["lower": $0.utf16LowerBound, "upper": $0.utf16UpperBound,
-                 "line": $0.line, "column": $0.column, "end_line": $0.endLine, "end_column": $0.endColumn]
+                [
+                    "lower": $0.utf16LowerBound, "upper": $0.utf16UpperBound,
+                    "line": $0.line, "column": $0.column, "end_line": $0.endLine, "end_column": $0.endColumn,
+                ]
             },
             "warmups": warmups, "samples": samples, "pages": pageRecords,
-            "scope": "Current-buffer This Note API includes fresh source projection; prepared occurrence stage excludes it; locator-only stage excludes all snippet/result materialization. No SQLite, file reads, UI/paint, allocation sampling, corpus truncation or long-note claim.",
-            "oracle": "Frozen pre-change eager occurrence algorithm retains recursive per-child limits, exact sort/dedup and all result fields. Dense source coordinates are independently computed from authored unit offsets. Full sorted-key response bytes checked outside every timer.",
+            "scope":
+                "Current-buffer This Note API includes fresh source projection; prepared occurrence stage excludes it; locator-only stage excludes all snippet/result materialization. No SQLite, file reads, UI/paint, allocation sampling, corpus truncation or long-note claim.",
+            "oracle":
+                "Frozen pre-change eager occurrence algorithm retains recursive per-child limits, exact sort/dedup and all result fields. Dense source coordinates are independently computed from authored unit offsets. Full sorted-key response bytes checked outside every timer.",
         ]
         try emit(report)
     }
@@ -194,13 +202,15 @@ struct CurrentNoteOccurrencePerformanceTests {
             try #require(hit.sourceRange == expected)
             #expect(hit.sourceLine == 3 && hit.matchedField == .body)
             #expect(hit.resultID == "\(fixture.vault.id.uuidString.lowercased()):Unsaved/Dense.md:\(lower):\(lower + 2)")
-            let range = try #require(Range(NSRange(location: expected.utf16LowerBound, length: expected.utf16UpperBound - expected.utf16LowerBound), in: fixture.source.source))
+            let range = try #require(
+                Range(NSRange(location: expected.utf16LowerBound, length: expected.utf16UpperBound - expected.utf16LowerBound), in: fixture.source.source))
             #expect(fixture.source.source[range].utf8.elementsEqual("哲学".utf8))
             #expect(hit.highlights.count == 1)
             let highlight = try #require(hit.highlights.first)
-            let displayed = try #require(Range(
-                NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
-                in: hit.snippet))
+            let displayed = try #require(
+                Range(
+                    NSRange(location: highlight.utf16LowerBound, length: highlight.utf16UpperBound - highlight.utf16LowerBound),
+                    in: hit.snippet))
             #expect(hit.snippet[displayed].utf8.elementsEqual("哲学".utf8))
         }
     }
@@ -313,8 +323,14 @@ struct CurrentNoteOccurrencePerformanceTests {
     private struct Locator: Equatable {
         let resultID: String
         let range: SearchSourceRange?
-        init(_ hit: NoteSearchResult) { resultID = hit.resultID; range = hit.sourceRange }
-        init(resultID: String, range: SearchSourceRange?) { self.resultID = resultID; self.range = range }
+        init(_ hit: NoteSearchResult) {
+            resultID = hit.resultID
+            range = hit.sourceRange
+        }
+        init(resultID: String, range: SearchSourceRange?) {
+            self.resultID = resultID
+            self.range = range
+        }
     }
 
     /// Measurement-only lower-bound stage, not a proposed production engine.
@@ -325,9 +341,11 @@ struct CurrentNoteOccurrencePerformanceTests {
             for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
                 for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
                     let source = NoteSearchResultBuilder.sourceRange(for: range, segment: segment, lineStarts: document.sourceLineStarts)
-                    values.append(.init(
-                        resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(source?.utf16LowerBound ?? segment.ordinal):\(source?.utf16UpperBound ?? segment.ordinal)",
-                        range: source))
+                    values.append(
+                        .init(
+                            resultID:
+                                "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(source?.utf16LowerBound ?? segment.ordinal):\(source?.utf16UpperBound ?? segment.ordinal)",
+                            range: source))
                 }
             }
         }
@@ -336,10 +354,11 @@ struct CurrentNoteOccurrencePerformanceTests {
             values.append(contentsOf: locatorPrefix(candidate: local, ast: paragraph.ast, limit: limit))
         }
         var seen: Set<String> = []
-        return Array(values.sorted {
-            ($0.range?.utf16LowerBound ?? 0, $0.range?.utf16UpperBound ?? 0)
-                < ($1.range?.utf16LowerBound ?? 0, $1.range?.utf16UpperBound ?? 0)
-        }.filter { seen.insert($0.resultID).inserted }.prefix(limit))
+        return Array(
+            values.sorted {
+                ($0.range?.utf16LowerBound ?? 0, $0.range?.utf16UpperBound ?? 0)
+                    < ($1.range?.utf16LowerBound ?? 0, $1.range?.utf16UpperBound ?? 0)
+            }.filter { seen.insert($0.resultID).inserted }.prefix(limit))
     }
 
     private struct Fixture {

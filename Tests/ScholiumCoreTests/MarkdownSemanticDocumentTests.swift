@@ -184,7 +184,8 @@ struct MarkdownSemanticDocumentTests {
 
     @Test("Literal unions preserve real syntax touching code and overlapping comment boundaries")
     func touchingLiteralBoundaries() throws {
-        let source = "\u{FEFF}---\r\ntitle: Literal boundaries\r\n---\r\n\r\n"
+        let source =
+            "\u{FEFF}---\r\ntitle: Literal boundaries\r\n---\r\n\r\n"
             + "`[[CodeHidden]] ==CodeHidden== $codeHidden$`[[AfterCode]]==afterCode==$afterCode$\r\n\r\n"
             + "[[BeforeCode]]==beforeCode==$beforeCode$`literal`\r\n\r\n"
             + "%% `[[CommentHidden]] ==CommentHidden== $commentHidden$` %%[[AfterComment]]==afterComment==$afterComment$\r\n\r\n"
@@ -194,13 +195,15 @@ struct MarkdownSemanticDocumentTests {
         let semantic = MarkdownSemanticDocument(parsing: document)
         #expect(semantic.links.map(\.target) == ["AfterCode", "BeforeCode", "AfterComment", "AfterHTML"])
         let highlights = semantic.inlines.filter { $0.kind == .highlight }
-        #expect(highlights.map { (source as NSString).substring(with: $0.span.nsRange) } == [
-            "==afterCode==", "==beforeCode==", "==afterComment==", "==afterHTML==",
-        ])
+        #expect(
+            highlights.map { (source as NSString).substring(with: $0.span.nsRange) } == [
+                "==afterCode==", "==beforeCode==", "==afterComment==", "==afterHTML==",
+            ])
         #expect(semantic.mathExpressions.map(\.kind) == [.inline, .inline, .inline, .inline, .display, .inline])
-        #expect(semantic.mathExpressions.map(\.content) == [
-            "afterCode", "beforeCode", "afterComment", "afterHTML", "$insideDisplay$", "afterDisplay",
-        ])
+        #expect(
+            semantic.mathExpressions.map(\.content) == [
+                "afterCode", "beforeCode", "afterComment", "afterHTML", "$insideDisplay$", "afterDisplay",
+            ])
         for link in semantic.links {
             #expect((source as NSString).substring(with: link.span.nsRange) == "[[" + link.target + "]]")
         }
@@ -233,7 +236,8 @@ struct MarkdownSemanticDocumentTests {
 
     @Test("Unrecorded containers retain nested inline spans and InlineHTML literal exclusions")
     func nestedInlineSourceOwnership() throws {
-        let source = "\u{FEFF}---\r\ntitle: Mapper\r\n---\r\n\r\n# 范围 e\u{301} 🧭\r\n\r\n"
+        let source =
+            "\u{FEFF}---\r\ntitle: Mapper\r\n---\r\n\r\n# 范围 e\u{301} 🧭\r\n\r\n"
             + "| Cell | Meaning |\r\n| --- | --- |\r\n| **证据 e\u{301} 🧭** | [Visible](Target.md) |\r\n\r\n"
             + "Paragraph <span title=\"[[Hidden]]\">visible</span> and [[Real]].\r\n"
         let document = NoteDocument(relativePath: "nested-inline.md", rawContent: source)

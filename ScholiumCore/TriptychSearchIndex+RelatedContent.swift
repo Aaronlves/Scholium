@@ -192,7 +192,8 @@ extension TriptychSearchIndex {
         // Note and paragraph statistics have different units. Keep their
         // rankings separate instead of adding incomparable numeric scores.
         let noteScores = try RelatedContentBM25F.evaluate(
-            prepared: noteCorpus, roles: noteRoles).scores
+            prepared: noteCorpus, roles: noteRoles
+        ).scores
         let passageRelevance = Dictionary(ranked.map { ($0.passage.id, $0.score) }, uniquingKeysWith: max)
         var grouped: [VaultQualifiedNoteID: [RelatedContentPassage]] = [:]
         var seen: [VaultQualifiedNoteID: Set<String>] = [:]

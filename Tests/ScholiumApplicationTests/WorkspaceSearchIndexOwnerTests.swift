@@ -113,7 +113,10 @@ import Testing
                 try await requireState { await factory.callCount == 1 }
                 let shutdown = await owner.beginShutdown()
                 let completion = AdmissionCompletionProbe()
-                let observer = Task { await shutdown.value; await completion.finish() }
+                let observer = Task {
+                    await shutdown.value
+                    await completion.finish()
+                }
                 await context.track(observer)
                 try await requireState { await factory.cancelledCalls == [0] }
                 #expect(!(await completion.finished))
@@ -132,7 +135,10 @@ import Testing
                 let index = try await context.makeIndex()
                 let factory = AdmissionFactoryProbe(outcomes: [.success(index)])
                 let delivery = AdmissionResultDeliveryGate(passFirst: false)
-                await context.releaseOnCleanup { await factory.releaseAll(); await delivery.releaseAll() }
+                await context.releaseOnCleanup {
+                    await factory.releaseAll()
+                    await delivery.releaseAll()
+                }
                 let owner = await context.makeOwner { try await factory.run() }
                 await owner.setResultDeliveryBarrierForTesting { await delivery.arrive($0) }
                 let resolving = Task { try await owner.resolve() }
@@ -155,7 +161,10 @@ import Testing
                 let index = try await context.makeIndex()
                 let factory = AdmissionFactoryProbe(outcomes: [.failure(.injected), .success(index)])
                 let delivery = AdmissionResultDeliveryGate(passFirst: true)
-                await context.releaseOnCleanup { await factory.releaseAll(); await delivery.releaseAll() }
+                await context.releaseOnCleanup {
+                    await factory.releaseAll()
+                    await delivery.releaseAll()
+                }
                 let owner = await context.makeOwner { try await factory.run() }
                 await owner.setResultDeliveryBarrierForTesting { await delivery.arrive($0) }
                 let first = Task { try await owner.resolve() }
@@ -318,7 +327,10 @@ import Testing
         func releaseOnCleanup(_ release: @escaping @Sendable () async -> Void) { releases.append(release) }
 
         func track<Success: Sendable, Failure: Error>(_ task: Task<Success, Failure>) {
-            drains.append { task.cancel(); _ = await task.result }
+            drains.append {
+                task.cancel()
+                _ = await task.result
+            }
         }
 
         func cleanup() async {

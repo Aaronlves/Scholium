@@ -2013,7 +2013,8 @@ public actor TriptychSearchIndex {
             )
             let page = candidates.dropFirst(min(resultOffset, candidates.count))
             results = NoteSearchResultBuilder.materializeOccurrenceCandidates(
-                page.prefix(limit), freshness: freshness).map(SearchResult.note)
+                page.prefix(limit), freshness: freshness
+            ).map(SearchResult.note)
             hasMore = page.count > limit
         } else {
             let candidates = [

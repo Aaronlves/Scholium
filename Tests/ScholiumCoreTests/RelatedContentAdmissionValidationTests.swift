@@ -75,10 +75,14 @@ struct RelatedContentAdmissionValidationTests {
 
     @Test("Lexical fields retain the complete SearchMatchedField domain")
     func lexicalFieldDomain() {
-        for field in ["title", "alias", "heading", "summary", "author", "body", "callout", "footnote",
-                      "path", "keyword", "publication_date", "broken_link", "link_annotation"] {
-            let value = Data(String(decoding: lexical(), as: UTF8.self).replacingOccurrences(
-                of: #""field":"body""#, with: #""field":"\#(field)""#).utf8)
+        for field in [
+            "title", "alias", "heading", "summary", "author", "body", "callout", "footnote",
+            "path", "keyword", "publication_date", "broken_link", "link_annotation",
+        ] {
+            let value = Data(
+                String(decoding: lexical(), as: UTF8.self).replacingOccurrences(
+                    of: #""field":"body""#, with: #""field":"\#(field)""#
+                ).utf8)
             parity(source: source(), lexical: value, expected: true)
         }
     }
@@ -86,8 +90,10 @@ struct RelatedContentAdmissionValidationTests {
     @Test("Discarded display text still has its optional String wire type checked")
     func optionalDisplayType() {
         for display in ["42", "true", "[]", "{}"] {
-            let value = Data(String(decoding: source(), as: UTF8.self).replacingOccurrences(
-                of: #""displayText":null"#, with: #""displayText":\#(display)"#).utf8)
+            let value = Data(
+                String(decoding: source(), as: UTF8.self).replacingOccurrences(
+                    of: #""displayText":null"#, with: #""displayText":\#(display)"#
+                ).utf8)
             parity(source: value, lexical: lexical(), sourceExpected: false)
         }
     }
@@ -146,9 +152,12 @@ struct RelatedContentAdmissionValidationTests {
     func corruptLastEntry() {
         let paragraphs = Array(repeating: paragraph(), count: 64)
         let segments = Array(repeating: segment(), count: 64)
-        for material in [#"{"scoringField":{"_0":"missing"}}"#,
-                         #"{"independent":{"text":"word","index":{"words":{"word":0},"containsCJK":false}}}"#] {
-            let source = Data(#"{"noteScoringDocument":\#(Self.scoring),"paragraphs":[\#((paragraphs + [paragraph(material: material)]).joined(separator: ","))]}"#.utf8)
+        for material in [
+            #"{"scoringField":{"_0":"missing"}}"#,
+            #"{"independent":{"text":"word","index":{"words":{"word":0},"containsCJK":false}}}"#,
+        ] {
+            let source = Data(
+                #"{"noteScoringDocument":\#(Self.scoring),"paragraphs":[\#((paragraphs + [paragraph(material: material)]).joined(separator: ","))]}"#.utf8)
             let lexical = Data(#"{"scoringDocument":\#(Self.scoring),"segments":[\#((segments + [segment(material: material)]).joined(separator: ","))]}"#.utf8)
             parity(source: source, lexical: lexical, expected: false)
         }
@@ -159,19 +168,22 @@ struct RelatedContentAdmissionValidationTests {
     func sourceBoundsAndEmptyCollections() {
         let valid = source()
         for count in [Int.min, -1, 0, 18, 19, 20, Int.max] {
-            parity(source: valid, lexical: lexical(), sourceCount: count,
-                   sourceExpected: count >= 19)
+            parity(
+                source: valid, lexical: lexical(), sourceCount: count,
+                sourceExpected: count >= 19)
         }
         let empty = #"{"fields":{},"fieldLengths":{},"textIndexes":{}}"#
         for count in [Int.min, -1, 0, 19, Int.max] {
-            parity(source: Data(#"{"noteScoringDocument":\#(empty),"paragraphs":[]}"#.utf8),
-                   lexical: Data(#"{"scoringDocument":\#(empty),"segments":[]}"#.utf8),
-                   sourceCount: count, expected: true)
+            parity(
+                source: Data(#"{"noteScoringDocument":\#(empty),"paragraphs":[]}"#.utf8),
+                lexical: Data(#"{"scoringDocument":\#(empty),"segments":[]}"#.utf8),
+                sourceCount: count, expected: true)
         }
         for upper in [32_000, 32_001] {
             let range = Self.range.replacingOccurrences(of: #""utf16UpperBound":19"#, with: #""utf16UpperBound":\#(upper)"#)
-            parity(source: source(range: range), lexical: lexical(), sourceCount: upper,
-                   sourceExpected: upper == 32_000)
+            parity(
+                source: source(range: range), lexical: lexical(), sourceCount: upper,
+                sourceExpected: upper == 32_000)
         }
         let outside = Self.range.replacingOccurrences(of: #""utf16UpperBound":19"#, with: #""utf16UpperBound":20"#)
         for paragraphs in [[paragraph(range: outside), paragraph()], [paragraph(), paragraph(range: outside)]] {
@@ -182,8 +194,10 @@ struct RelatedContentAdmissionValidationTests {
         parity(source: source(range: extremeRange), lexical: lexical(), sourceCount: Int.max, expected: true)
     }
 
-    private func paragraph(material: String = Self.shared, range: String = Self.range,
-                           scoring: String = Self.scoring) -> String {
+    private func paragraph(
+        material: String = Self.shared, range: String = Self.range,
+        scoring: String = Self.scoring
+    ) -> String {
         #"{"range":\#(range),"displayText":null,"matchingText":\#(material),"scoringDocument":\#(scoring)}"#
     }
 
@@ -191,8 +205,10 @@ struct RelatedContentAdmissionValidationTests {
         #"{"field":"body","material":\#(material)}"#
     }
 
-    private func source(material: String = Self.shared, range: String = Self.range,
-                        scoring: String = Self.scoring, note: String = Self.scoring) -> Data {
+    private func source(
+        material: String = Self.shared, range: String = Self.range,
+        scoring: String = Self.scoring, note: String = Self.scoring
+    ) -> Data {
         Data(#"{"noteScoringDocument":\#(note),"paragraphs":[\#(paragraph(material: material, range: range, scoring: scoring))]}"#.utf8)
     }
 
@@ -201,11 +217,16 @@ struct RelatedContentAdmissionValidationTests {
     }
 
     private func accepts(_ operation: () throws -> Void) -> Bool {
-        do { try operation(); return true } catch { return false }
+        do {
+            try operation()
+            return true
+        } catch { return false }
     }
 
-    private func parity(source: Data, lexical: Data, sourceCount: Int = 19,
-                        expected: Bool? = nil, sourceExpected: Bool? = nil) {
+    private func parity(
+        source: Data, lexical: Data, sourceCount: Int = 19,
+        expected: Bool? = nil, sourceExpected: Bool? = nil
+    ) {
         let rawSource = accepts { try JSONDecoder().decode(RawSource.self, from: source).validate(sourceCount: sourceCount) }
         let rawLexical = accepts { try JSONDecoder().decode(RawLexical.self, from: lexical).validate() }
         let admittedSource = accepts {
