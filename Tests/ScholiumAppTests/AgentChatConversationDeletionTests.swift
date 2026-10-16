@@ -107,7 +107,7 @@ struct AgentChatConversationDeletionTests {
         let triptychID = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
         let gate = ConversationDeletionSaveGate(storage: storage)
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -155,7 +155,7 @@ struct AgentChatConversationDeletionTests {
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
         let gate = ConversationDeletionSaveGate(storage: storage)
         defer { gate.finish(failure: true) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -241,7 +241,7 @@ struct AgentChatConversationDeletionTests {
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
         let gate = ConversationDeletionSaveGate(storage: storage)
         defer { gate.finish(failure: true) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -284,7 +284,7 @@ struct AgentChatConversationDeletionTests {
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptychID.uuidString))
         let gate = ConversationDeletionSaveGate(storage: storage)
         defer { gate.finish(failure: true) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptychID) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })

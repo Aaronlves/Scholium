@@ -261,7 +261,7 @@ struct AgentChatPersistenceRecoveryTests {
         let suite = "scholium.qa.chat-persistence.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         let writer = ChatPersistenceSaveGate()
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, methodDefaults: defaults,
             saveHistory: { try await writer.save($0) },
             toolHandler: { request, _ in

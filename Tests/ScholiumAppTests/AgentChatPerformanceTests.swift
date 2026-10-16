@@ -34,7 +34,7 @@ struct AgentChatPerformanceTests {
         try await storage.save([conversation])
 
         let recorder = ChatPerformanceSaveRecorder()
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID,
             root: root,
             workspaceDirectory: { root.appendingPathComponent("workspace", isDirectory: true) },
@@ -227,7 +227,7 @@ struct AgentChatPerformanceTests {
         conversation.messages.append(streaming)
         try await storage.save([conversation])
 
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptychID,
             root: root,
             workspaceDirectory: { root.appendingPathComponent("workspace", isDirectory: true) },

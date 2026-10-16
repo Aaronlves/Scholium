@@ -344,7 +344,7 @@ struct AgentChatMutationAdmissionTests {
             let router = MCPAppBridgeRequestRouter(
                 runtime: fixture.runtime, flushEditors: flushEditors, openTriptychs: { [fixture.assignment] })
             let chatRoot = fixture.root.appendingPathComponent("Chat")
-            let active = AgentChatController(
+            let active = fixtureChatControllerWithAdmission(
                 triptychID: fixture.assignment.id, root: chatRoot,
                 workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
                 methodDefaults: defaults, previewUpdate: { try await router.previewUpdate($0) },

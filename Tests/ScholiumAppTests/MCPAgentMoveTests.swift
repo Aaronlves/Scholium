@@ -12,7 +12,7 @@ extension MCPAppBridgeRequestRouterTests {
             let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
             let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
             let chatRoot = fixture.root.appendingPathComponent("Chat")
-            let controller = AgentChatController(
+            let controller = fixtureChatControllerWithAdmission(
                 triptychID: fixture.assignment.id,
                 root: chatRoot,
                 workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },

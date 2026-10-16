@@ -99,7 +99,7 @@ struct MCPAppBridgeRequestRouterTests {
             let topic = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
             let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
             let chatRoot = fixture.root.appendingPathComponent("Chat")
-            let controller = AgentChatController(
+            let controller = fixtureChatControllerWithAdmission(
                 triptychID: fixture.assignment.id, root: chatRoot,
                 workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
                 toolHandler: { request, admission in await router.handle(request, mutationAdmission: admission) })
@@ -391,7 +391,7 @@ struct MCPAppBridgeRequestRouterTests {
                         ])))
             let ending = try Data(contentsOf: file)
             let chatRoot = fixture.root.appendingPathComponent("Chat")
-            let controller = AgentChatController(
+            let controller = fixtureChatControllerWithAdmission(
                 triptychID: fixture.assignment.id, root: chatRoot,
                 workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
                 previewUpdate: router.previewUpdate,
@@ -698,7 +698,7 @@ struct MCPAppBridgeRequestRouterTests {
                 runtime: fixture.runtime,
                 flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
             let chatRoot = fixture.root.appendingPathComponent("Chat")
-            let controller = AgentChatController(
+            let controller = fixtureChatControllerWithAdmission(
                 triptychID: fixture.assignment.id, root: chatRoot,
                 workspaceDirectory: { try agentChatFixtureWorkspace(root: chatRoot, triptychID: fixture.assignment.id) },
                 previewUpdate: router.previewUpdate,

@@ -14,7 +14,7 @@ struct AgentChatHistoryPerformanceTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/chat-history-tests/\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, saveHistory: { _ in },
             toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())
@@ -70,7 +70,7 @@ struct AgentChatHistoryPerformanceTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/chat-history-tests/\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root },
             saveHistory: { _ in },
             toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })

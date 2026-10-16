@@ -250,6 +250,8 @@ struct AgentChatCurrentStateObservationTests {
                 return try! .init(requestID: request.requestID, error: .chatObservation(.internalError))
             })
         let controller = registry.controller(for: UUID())
+        // Install the existing fixture suite before its MainActor load task runs.
+        controller.connectionDefaults = defaults
         try #require(await controller.waitUntilLoaded())
         let owner = try #require(controller.selectedID)
         let token = UUID()

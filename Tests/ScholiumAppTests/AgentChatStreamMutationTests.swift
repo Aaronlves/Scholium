@@ -18,7 +18,7 @@ struct AgentChatStreamMutationTests {
         let triptych = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
         var saves = 0
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptych, root: root, workspaceDirectory: { root },
             saveHistory: { values in
                 saves += 1
@@ -91,7 +91,7 @@ struct AgentChatStreamMutationTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/chat-stream-tests/\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, saveHistory: { _ in },
             toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())

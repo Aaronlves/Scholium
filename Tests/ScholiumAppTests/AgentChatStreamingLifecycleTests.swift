@@ -13,7 +13,7 @@ struct AgentChatStreamingLifecycleTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/chat-streaming-lifecycle/\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root }, saveHistory: { _ in },
             toolHandler: { _, _ in try! .init(requestID: UUID(), result: .object([:])) })
         #expect(await controller.waitUntilLoaded())

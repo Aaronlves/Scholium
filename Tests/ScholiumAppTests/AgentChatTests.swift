@@ -491,12 +491,18 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         var writtenNotes: [String] = []
         let triptych = UUID()
-        let registry = AgentChatRegistry(root: root, workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: $0) }, previewUpdate: preview)
-        { request, _ in
+        let registryPreferences = AgentChatFixturePreferenceStore()
+        let registry = AgentChatRegistry(
+            root: root,
+            contextAccessPreferences: AgentContextAccessPreferences(defaults: registryPreferences.defaults),
+            workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: $0) }, previewUpdate: preview
+        ) { request, _ in
             if request.tool == .updateNote { writtenNotes.append(request.arguments["note_id"]?.stringValue ?? "") }
             return success(request)
         }
         let controller = registry.controller(for: triptych)
+        // The controller's MainActor load task cannot run before this first await.
+        controller.connectionDefaults = registryPreferences.defaults
         try await connect(controller)
         let first = try #require(controller.selectedID)
         controller.editDraft("hold first")
@@ -1102,7 +1108,7 @@ struct AgentChatTests {
         let triptych = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
         let gate = AgentChatHistorySaveGate(storage: storage)
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -1151,7 +1157,7 @@ struct AgentChatTests {
         let triptych = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
         let gate = AgentChatHistorySaveGate(storage: storage)
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -1189,7 +1195,7 @@ struct AgentChatTests {
         let triptych = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
         let gate = AgentChatHistorySaveGate(storage: storage)
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })
@@ -1227,7 +1233,7 @@ struct AgentChatTests {
         let triptych = UUID()
         let storage = AgentChatStorage(root: root.appendingPathComponent(triptych.uuidString))
         let gate = AgentChatHistorySaveGate(storage: storage)
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: triptych, root: root,
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: triptych) },
             saveHistory: { try await gate.save($0) }, toolHandler: { request, _ in success(request) })

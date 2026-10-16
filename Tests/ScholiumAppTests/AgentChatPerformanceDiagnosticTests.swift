@@ -275,7 +275,7 @@ struct AgentChatPerformanceDiagnosticTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let preference = ChatSidebarPreferenceFixture()
         defer { preference.cleanup() }
-        let controller = AgentChatController(
+        let controller = fixtureChatControllerWithAdmission(
             triptychID: UUID(), root: root, workspaceDirectory: { root },
             methodDefaults: preference.defaults,
             contextAccessPreferences: AgentContextAccessPreferences(defaults: preference.defaults),
