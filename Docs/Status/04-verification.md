@@ -105,12 +105,12 @@ recovery notices retain actions at 300/520 points. Original private-Note/install
 binary reproduction and human VoiceOver remain unverified. Evidence:
 `.build/image-inline-evidence/RESULTS.md`.
 
-**2026-10-16 — Pre-Settings full gate (`7cbe3624`):** Default `verify.sh`
-passes all 14 phases, including measurement/display and WebKit integration/switching;
-declared skips remain. `.build/performance-evidence/current-performance-phase-summary.json`
-binds product summaries, source/formatting identities and sealed gate proof.
-This predates Settings changes; their final gate remains pending. No packaged,
-real-service or human acceptance.
+**2026-10-16 — Full gate (`992740ad`):** Default `verify.sh` passes all
+14 phases, including measurement/display, WebKit and clean Release compilation.
+`.build/performance-evidence/current-settings-phase-summary.json` binds exact-source
+proof, verified local dependencies and retained failures; earlier performance
+comparisons remain in `current-performance-phase-summary.json`. Declared skips
+remain; packaged, real-service and human acceptance are unproved.
 
 **2026-10-05 — Saving/recovery and presentation:** Prior native fixture QA preserves
 accepted bytes through switching, caret return, closure and graceful relaunch.
