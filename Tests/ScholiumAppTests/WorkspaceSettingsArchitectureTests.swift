@@ -27,11 +27,11 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.portableSettingsState == .current(revision))
     }
 
-    @Test("Settings exposes the six canonical task categories in navigation order")
+    @Test("Settings exposes the seven canonical task categories in navigation order")
     func topLevelPaneOwnership() {
         #expect(
             ScholiumSettingsDestination.allCases.map(\.rawValue) == [
-                "workspace", "document", "writing", "agents", "shortcuts", "zotero",
+                "workspace", "document", "writing", "agents", "shortcuts", "zotero", "storage",
             ])
     }
 

@@ -364,6 +364,188 @@ extension ScholiumUITests {
         captureSettingsTransaction(window, named: "settings-appearance-repaired")
     }
 
+    /// One native task covers cancellation, real cache cleanup, deferred index
+    /// clearing and explicit rebuilding without modifying the research fixture.
+    @MainActor
+    func testStorageCleanupAndIndexRebuildPreserveResearch() throws {
+        waitForCurrentDocumentSurface()
+        let protectedBefore = try storageResearchFixtureBytes()
+        let support = homeDirectory.appendingPathComponent("ApplicationSupport", isDirectory: true)
+        let unknown = support.appendingPathComponent("unknown-test-owner/protected.bin")
+        try FileManager.default.createDirectory(at: unknown.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let sentinel = Data("Synthetic unknown owner — preserve exact bytes.\r\n".utf8)
+        try sentinel.write(to: unknown, options: .atomic)
+        XCTAssertTrue(waitUntil(timeout: 30) { (try? self.storageProjectionFiles(in: support).isEmpty) == false })
+        let cachedBefore = try storageProjectionFiles(in: support)
+
+        var window = openSettingsForTransactionTest()
+        selectSettingsCategory("storage", in: window)
+        resizeSettingsToMinimumWidth(window)
+        for label in ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero", "Storage"] {
+            XCTAssertTrue(window.toolbars.buttons[label].isHittable)
+        }
+        let total = window.descendants(matching: .any)["scholium.settings.storage.total"].firstMatch
+        XCTAssertTrue(total.waitForExistence(timeout: 15))
+        var search = window.searchFields["scholium.settings.search"]
+        func reveal(_ id: String, query: String) {
+            typeCommittedText(query, into: search, in: app)
+            selectSettingsSearchResult(id, in: window)
+        }
+
+        reveal("storage.index", query: "clear index")
+        let selectedIndex = window.descendants(matching: .any)["scholium.settings.storage.selectedIndexSize"].firstMatch
+        XCTAssertTrue(selectedIndex.waitForExistence(timeout: 5))
+        XCTAssertFalse(selectedIndex.staticTexts["Not Measured"].exists)
+        let clear = window.buttons["scholium.settings.storage.clearIndex"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 5))
+        clear.click()
+        let confirmClear = window.buttons["Clear Index"].firstMatch
+        XCTAssertTrue(confirmClear.waitForExistence(timeout: 5))
+        window.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !confirmClear.exists })
+        XCTAssertFalse(window.staticTexts["Index cleared. Choose Rebuild Index or reopen the Triptych."].exists)
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        XCTAssertEqual(try Data(contentsOf: unknown), sentinel)
+
+        reveal("storage.cache", query: "clear cache")
+        let clearCache = window.buttons["scholium.settings.storage.clearProjectionCache"]
+        XCTAssertTrue(clearCache.waitForExistence(timeout: 5))
+        clearCache.click()
+        let result = window.descendants(matching: .any)["scholium.settings.storage.result"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitUntil(timeout: 20) { !window.descendants(matching: .any)["scholium.settings.storage.progress"].firstMatch.exists })
+        XCTAssertFalse(window.descendants(matching: .any)["scholium.settings.storage.error"].firstMatch.exists)
+        let cachedAfter = try storageProjectionFiles(in: support)
+        XCTAssertLessThan(cachedAfter.count, cachedBefore.count, "The real indexed fixture must release projection-cache files.")
+
+        reveal("storage.index", query: "clear index")
+        clear.click()
+        XCTAssertTrue(confirmClear.waitForExistence(timeout: 5))
+        confirmClear.click()
+        let deferred = window.staticTexts["Index cleared. Choose Rebuild Index or reopen the Triptych."]
+        XCTAssertTrue(deferred.waitForExistence(timeout: 25))
+        XCTAssertTrue(waitUntil(timeout: 20) { !window.descendants(matching: .any)["scholium.settings.storage.progress"].firstMatch.exists })
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        XCTAssertEqual(try Data(contentsOf: unknown), sentinel)
+        captureSettingsTransaction(window, named: "settings-storage-cleared-index-deferred")
+        let clearedState = try storageSearchIndexState(in: support)
+        XCTAssertEqual(clearedState.documentCount, 0)
+        XCTAssertGreaterThan(clearedState.sequence, 0)
+        XCTAssertEqual(clearedState.manifestLength, 0)
+
+        // A real Settings refresh must borrow metadata without opening the
+        // paused Search owner as a new user workspace activation.
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        window = openSettingsForTransactionTest()
+        search = window.searchFields["scholium.settings.search"]
+        selectSettingsCategory("workspace", in: window)
+        reveal("workspace.settingsRecovery", query: "portable settings")
+        let reload = window.buttons["Reload Portable Settings"]
+        XCTAssertTrue(reload.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 10) { reload.isEnabled })
+        reload.click()
+        XCTAssertTrue(waitUntil(timeout: 20) { reload.isEnabled && window.progressIndicators.count == 0 })
+        let afterSettingsRefresh = try storageSearchIndexState(in: support)
+        XCTAssertEqual(
+            afterSettingsRefresh, clearedState, "Opening Settings and completing its explicit metadata reload must preserve the cleared marker and empty index."
+        )
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        XCTAssertEqual(try Data(contentsOf: unknown), sentinel)
+        reveal("storage.index", query: "rebuild index")
+
+        let rebuild = window.buttons["scholium.settings.storage.rebuildIndex"]
+        XCTAssertTrue(rebuild.isEnabled)
+        rebuild.click()
+        let confirmRebuild = window.buttons["Rebuild Index"].firstMatch
+        XCTAssertTrue(confirmRebuild.waitForExistence(timeout: 5))
+        confirmRebuild.click()
+        XCTAssertTrue(window.staticTexts["Index rebuild completed."].waitForExistence(timeout: 45))
+        XCTAssertTrue(waitUntil(timeout: 20) { !window.descendants(matching: .any)["scholium.settings.storage.progress"].firstMatch.exists })
+        XCTAssertFalse(window.descendants(matching: .any)["scholium.settings.storage.error"].firstMatch.exists)
+        selectSettingsCategory("workspace", in: window)
+        selectSettingsCategory("storage", in: window)
+        XCTAssertTrue(window.staticTexts["Index rebuild completed."].exists, "The retained page keeps its completed result.")
+        captureSettingsTransaction(window, named: "settings-storage-rebuilt-index")
+        window.buttons[XCUIIdentifierCloseWindow].click()
+
+        let query = app.searchFields["scholium.searchField"].firstMatch
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        selectResearchSearchScope("Triptych", in: app)
+        typeCommittedText("title:\"QA Topic\"", into: query, in: app)
+        XCTAssertTrue(searchResult(named: "QA Topic").waitForExistence(timeout: 15))
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        XCTAssertEqual(try Data(contentsOf: unknown), sentinel)
+    }
+
+    private struct StorageSearchIndexState: Equatable {
+        let documentCount: Int
+        let sequence: Int
+        let manifestLength: Int
+    }
+
+    /// Read-only SQLite observation is limited to this journey's isolated QA
+    /// database; no product reset helper or cached completion message is proof.
+    @MainActor
+    private func storageSearchIndexState(in support: URL) throws -> StorageSearchIndexState {
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: triptychDirectory.appendingPathComponent(".scholium/manifest.json"))) as? [String: Any])
+        let id = try XCTUnwrap((manifest["id"] as? String).flatMap(UUID.init(uuidString:)))
+        let database = support.appendingPathComponent("Triptychs/\(id.uuidString.lowercased())/indexes/search-v10.sqlite")
+        XCTAssertTrue(database.standardizedFileURL.path.hasPrefix(homeDirectory.standardizedFileURL.path + "/"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: database.path))
+        let process = Process()
+        let output = Pipe()
+        let errors = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [
+            "-readonly", "-batch", "-noheader", "-cmd", ".timeout 3000", database.path,
+            "SELECT (SELECT count(*) FROM search_documents), sequence, length(source_manifest_hash) FROM search_index_state WHERE singleton = 1;",
+        ]
+        process.standardOutput = output
+        process.standardError = errors
+        try process.run()
+        process.waitUntilExit()
+        let diagnostic = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, diagnostic)
+        let fields = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "|")
+        XCTAssertEqual(fields.count, 3)
+        return try StorageSearchIndexState(
+            documentCount: XCTUnwrap(fields.first.flatMap { Int($0) }),
+            sequence: XCTUnwrap(fields.dropFirst().first.flatMap { Int($0) }),
+            manifestLength: XCTUnwrap(fields.dropFirst(2).first.flatMap { Int($0) }))
+    }
+
+    @MainActor
+    private func storageProjectionFiles(in support: URL) throws -> Set<URL> {
+        let root = support.appendingPathComponent("Vaults", isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) else { return [] }
+        var files: Set<URL> = []
+        for case let url as URL in enumerator {
+            if url.lastPathComponent.hasSuffix(".catalog.plist") || url.lastPathComponent.hasSuffix(".projection.plist") {
+                files.insert(url)
+            }
+        }
+        return files
+    }
+
+    @MainActor
+    private func storageResearchFixtureBytes() throws -> [URL: Data] {
+        let enumerator = try XCTUnwrap(
+            FileManager.default.enumerator(
+                at: triptychDirectory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]))
+        var bytes: [URL: Data] = [:]
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "md" || url.path.contains("/.scholium/") else { continue }
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            bytes[url] = try Data(contentsOf: url)
+        }
+        XCTAssertFalse(bytes.isEmpty)
+        return bytes
+    }
+
     @MainActor
     func settingsContentScrollView(in window: XCUIElement) -> XCUIElement {
         window.descendants(matching: .any)["scholium.settings.pages"].firstMatch.scrollViews.firstMatch
@@ -387,6 +569,7 @@ extension ScholiumUITests {
             "agents": ["Agents", "智能体"],
             "shortcuts": ["Shortcuts", "快捷键"],
             "zotero": ["Zotero"],
+            "storage": ["Storage", "存储"],
         ]
         guard let labels = nativeLabels[key] else {
             XCTFail("Unknown settings category: \(key)")

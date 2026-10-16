@@ -512,7 +512,7 @@ struct RelatedContentBackgroundPreparationTests {
         }
 
         func index(name: String = "search.sqlite") throws -> TriptychSearchIndex {
-            try .init(databaseURL: root.appendingPathComponent(name), triptychID: triptychID, vaults: [analyses, topics, works])
+            try .init(isolatedDatabaseURL: root.appendingPathComponent(name), triptychID: triptychID, vaults: [analyses, topics, works])
         }
 
         func execute(_ sql: String) throws {

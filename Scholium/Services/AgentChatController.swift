@@ -119,6 +119,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     // A failed deletion save cannot abandon the copies it will later release.
     var pendingDeletionMaterials: [UUID: AgentChatLocalMaterial] = [:]
     var pendingHistorySaveReferences: [UUID: Set<UUID>] = [:]
+    var archivedChatCleanup: ArchivedChatCleanupTransaction?
     // Each mounted Chat owns one token; closing one window cannot mark a
     // conversation unread while another window still displays its transcript.
     var transcriptReaders: [UUID: UUID] = [:]

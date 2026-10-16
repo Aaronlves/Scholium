@@ -88,12 +88,12 @@ struct SearchSyncDiagnosticsTests {
         for sample in 0..<3 {
             let triptychID = UUID()
             let url = root.appendingPathComponent("sample-\(sample).sqlite")
-            let cold = try TriptychSearchIndex(databaseURL: url, triptychID: triptychID, vaults: vaults)
+            let cold = try TriptychSearchIndex(isolatedDatabaseURL: url, triptychID: triptychID, vaults: vaults)
             let initial = try await cold.synchronize(documents)
             #expect(initial.disposition == .rebuilt)
             try await report(cold, scenario: "cold", sample: sample, expectedChanged: documents.count)
             let reopened = try TriptychSearchIndex(
-                databaseURL: url, triptychID: triptychID, vaults: vaults)
+                isolatedDatabaseURL: url, triptychID: triptychID, vaults: vaults)
             let unchanged = try await reopened.synchronize(documents)
             #expect(unchanged.disposition == .unchanged)
             #expect(unchanged.generation == initial.generation)

@@ -36,6 +36,10 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
     private var cancelledTokens: Set<UUID> = []
     private var worker: Task<Void, Never>?
     private var isShutDown = false
+    private var shutdownTask: Task<Void, Never>?
+    #if DEBUG
+        private(set) var shutdownJoinCountForTesting = 0
+    #endif
 
     init(startingAfter initialValue: UInt64 = 0, cycle: @escaping Cycle) {
         nextRequestValue = initialValue
@@ -74,8 +78,14 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
         return try result.get()
     }
 
-    func shutdown() {
-        guard !isShutDown else { return }
+    func shutdown() async {
+        if let shutdownTask {
+            #if DEBUG
+                shutdownJoinCountForTesting += 1
+            #endif
+            await shutdownTask.value
+            return
+        }
         isShutDown = true
         pending.removeAll()
         cancelledTokens.removeAll()
@@ -84,8 +94,13 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
         for continuation in continuations {
             continuation.resume(returning: .failure(CancellationError()))
         }
-        worker?.cancel()
-        worker = nil
+        let activeWorker = worker
+        activeWorker?.cancel()
+        let task = Task {
+            if let activeWorker { await activeWorker.value }
+        }
+        shutdownTask = task
+        await task.value
     }
 
     var queuedRequestCount: Int { pending.count }

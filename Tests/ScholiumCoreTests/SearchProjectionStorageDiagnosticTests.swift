@@ -26,7 +26,7 @@ struct SearchProjectionStorageDiagnosticTests {
             ("format_matrix", "03-works/Stress/Stress Format Matrix.md"),
             ("source_fidelity", "03-works/Stress/Stress Source Fidelity.md"),
         ]
-        let cache = SourceSearchProjectionCache(applicationSupportURL: root, vaultID: UUID(), role: .topicKnowledge)
+        let cache = SourceProjectionCache(applicationSupportURL: root, vaultID: UUID(), role: .topicKnowledge)
         var records: [[String: Any]] = []
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -63,10 +63,10 @@ struct SearchProjectionStorageDiagnosticTests {
             let files = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.fileSizeKey]))
             var recordBytes = 0
             var cacheComponents: [String: Int] = [:]
-            for case let url as URL in files where url.lastPathComponent == SourceSearchProjectionCache.fileName(path) {
+            for case let url as URL in files where url.lastPathComponent == SourceProjectionCache.fileName(path) {
                 recordBytes = try #require(url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
                 let bytes = try Data(contentsOf: url)
-                let frame = try PropertyListDecoder().decode(SourceSearchProjectionCache.Frame.self, from: bytes)
+                let frame = try PropertyListDecoder().decode(SourceProjectionCache.Frame.self, from: bytes)
                 let binaryEncoder = PropertyListEncoder()
                 binaryEncoder.outputFormat = .binary
                 let decodedPayload = try SearchProjectionBlobCodec.decode(frame.payload)

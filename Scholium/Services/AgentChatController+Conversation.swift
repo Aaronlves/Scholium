@@ -1,7 +1,42 @@
 import AppKit
 import Combine
+import CryptoKit
 import ScholiumApplication
 import ScholiumContracts
+
+enum ArchivedChatCleanupError: Error, LocalizedError {
+    case changed, notSaved
+
+    var errorDescription: String? {
+        switch self {
+        case .changed:
+            String(localized: "Archived conversations changed. Review their current size before deleting them.", bundle: .module)
+        case .notSaved:
+            String(
+                localized: "Conversation deletion could not be saved. The conversations have been retained; retry after the history save error is resolved.",
+                bundle: .module)
+        }
+    }
+}
+
+/// Saves admitted during a tentative deletion share its outcome. A failed
+/// deletion restores their captured snapshots before the next ordered write.
+@MainActor
+final class ArchivedChatCleanupTransaction {
+    let retained: [(offset: Int, element: AgentChatConversation)]
+    var didRollBack = false
+
+    init(retained: [(offset: Int, element: AgentChatConversation)]) { self.retained = retained }
+
+    func restoringRetainedConversations(in snapshot: [AgentChatConversation]) -> [AgentChatConversation] {
+        guard didRollBack else { return snapshot }
+        var restored = snapshot
+        for (position, conversation) in retained where !restored.contains(where: { $0.id == conversation.id }) {
+            restored.insert(conversation, at: min(position, restored.count))
+        }
+        return restored
+    }
+}
 
 @MainActor
 extension AgentChatController {
@@ -79,6 +114,58 @@ extension AgentChatController {
         Task { @MainActor [weak self] in
             try? await self?.saveNow()
         }
+    }
+
+    func archivedChatCleanupPlan() async throws -> ArchivedChatCleanupPlan {
+        guard await waitUntilLoaded(), !Task.isCancelled else { throw CancellationError() }
+        let archived = conversations.filter { $0.archivedAt != nil && canArchive($0.id) }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let bytes = try encoder.encode(archived)
+        return ArchivedChatCleanupPlan(
+            triptychID: triptychID, conversationIDs: archived.map(\.id),
+            revision: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(),
+            estimatedByteCount: Int64(bytes.count))
+    }
+
+    /// Settings delegates to this same live history/material owner. Runtime
+    /// thread history and settings are deliberately outside this operation.
+    func deleteArchivedChats(_ plan: ArchivedChatCleanupPlan) async throws -> ArchivedChatCleanupResult {
+        let current = try await archivedChatCleanupPlan()
+        guard plan == current, archivedChatCleanup == nil else { throw ArchivedChatCleanupError.changed }
+        try Task.checkCancellation()
+        let ids = Set(plan.conversationIDs)
+        let removed = conversations.enumerated().filter { ids.contains($0.element.id) }
+        let previousExecutions = executions.filter { ids.contains($0.key) }
+        let previousSelection = selectedID
+        let transaction = ArchivedChatCleanupTransaction(retained: removed)
+        archivedChatCleanup = transaction
+        defer { archivedChatCleanup = nil }
+        conversations.removeAll { ids.contains($0.id) }
+        for (_, conversation) in removed {
+            for material in unreferencedMaterials(in: conversation) {
+                pendingDeletionMaterials[material.id] = material
+            }
+        }
+        for id in ids { executions.removeValue(forKey: id) }
+        if let selectedID, ids.contains(selectedID) { self.selectedID = nil }
+        do {
+            try await saveNow { [weak self] in
+                guard let self else { return }
+                // Roll back within the ordered writer, before any later save
+                // or material release can observe this deletion as committed.
+                transaction.didRollBack = true
+                conversations = transaction.restoringRetainedConversations(in: conversations)
+                for id in ids { executions[id] = previousExecutions[id] }
+                if selectedID == nil, let previousSelection, ids.contains(previousSelection) { selectedID = previousSelection }
+                persist()
+            }
+        } catch {
+            throw ArchivedChatCleanupError.notSaved
+        }
+        return ArchivedChatCleanupResult(
+            removedConversations: removed.count, materialCleanupIssue: materialCleanupError)
     }
 
     func setUnread(_ id: UUID, unread: Bool) {
@@ -368,8 +455,9 @@ extension AgentChatController {
     /// Both ordinary updates and write-ahead saves use this one ordered writer.
     /// Edits during a send preparation therefore cannot overwrite the durable
     /// pending-message state with an older, unconsumed draft snapshot.
-    private func enqueueHistorySave() -> Task<Void, Error> {
+    private func enqueueHistorySave(onFailure: (@MainActor () -> Void)? = nil) -> Task<Void, Error> {
         let snapshot = historySnapshot()
+        let archiveTransaction = archivedChatCleanup
         let deletionMaterials = Array(pendingDeletionMaterials.values)
         let saveID = UUID()
         pendingHistorySaveReferences[saveID] = referencedMaterialIDs(in: snapshot)
@@ -378,11 +466,14 @@ extension AgentChatController {
         let operation = Task<Void, Error> { @MainActor [weak self] in
             await previous?.value
             defer { self?.pendingHistorySaveReferences.removeValue(forKey: saveID) }
+            let snapshot = archiveTransaction?.restoringRetainedConversations(in: snapshot) ?? snapshot
+            self?.pendingHistorySaveReferences[saveID] = self?.referencedMaterialIDs(in: snapshot)
             do {
                 try await saveHistory(snapshot)
                 self?.historySaveError = nil
                 await self?.releaseDeletedMaterials(deletionMaterials, afterSaving: snapshot)
             } catch {
+                onFailure?()
                 self?.historySaveError = String(localized: "Conversation not saved: \(error.localizedDescription)")
                 throw error
             }
@@ -469,11 +560,11 @@ extension AgentChatController {
         try await saveNow()
     }
 
-    func saveNow() async throws {
+    func saveNow(onFailure: (@MainActor () -> Void)? = nil) async throws {
         guard isLoaded else { return }
         scheduledPersistenceTask?.cancel()
         scheduledPersistenceTask = nil
         persistenceDirty = false
-        try await enqueueHistorySave().value
+        try await enqueueHistorySave(onFailure: onFailure).value
     }
 }

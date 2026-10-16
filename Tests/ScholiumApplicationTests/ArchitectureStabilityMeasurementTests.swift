@@ -96,6 +96,10 @@ struct ArchitectureStabilityMeasurementTests {
             throw error
         }
         let assignment = configured.assignment
+        let cold = await configured.latestRefreshMeasurement
+        #expect(cold.readFiles == 800)
+        #expect(cold.parsedDocuments == 800)
+        #expect(cold.restoredCatalogProjections == 0)
         await configurationRuntime.shutdown()
 
         let runtime = WorkspaceRuntime(
@@ -186,7 +190,8 @@ struct ArchitectureStabilityMeasurementTests {
 
             #expect(initial.enumeratedFiles == 800)
             #expect(initial.readFiles == 800)
-            #expect(initial.parsedDocuments == 800)
+            #expect(initial.parsedDocuments == 0)
+            #expect(initial.restoredCatalogProjections == 800)
             #expect(initial.projectedDocuments == 0)
             // Reopening a compatible complete index needs no decoded Search projections.
             #expect(initial.restoredSearchProjections == 0)
@@ -205,7 +210,8 @@ struct ArchitectureStabilityMeasurementTests {
                 "schema": "scholium-architecture-refresh-measurement-v1",
                 "rdf1_tree_sha256": treeHash,
                 "steps": [
-                    report(initial, step: "cold_open"),
+                    report(cold, step: "cold_configuration"),
+                    report(initial, step: "compatible_open"),
                     report(added, step: "add"),
                     report(edited, step: "edit"),
                     report(renamed, step: "rename"),
@@ -237,6 +243,7 @@ struct ArchitectureStabilityMeasurementTests {
             "enumerated_files": measurement.enumeratedFiles,
             "read_files": measurement.readFiles,
             "parsed_documents": measurement.parsedDocuments,
+            "restored_catalog_projections": measurement.restoredCatalogProjections,
             "projected_documents": measurement.projectedDocuments,
             "restored_search_projections": measurement.restoredSearchProjections,
             "cache_read_work_ms": milliseconds(measurement.cacheReadDuration),

@@ -32,7 +32,7 @@ struct RelatedContentLexicalPoolLatencyMeasurementTests {
             defer { try? FileManager.default.removeItem(at: storage) }
             let roles = roles(fixture: fixture)
             let index = try TriptychSearchIndex(
-                databaseURL: storage.appendingPathComponent("search.sqlite"), triptychID: UUID(),
+                isolatedDatabaseURL: storage.appendingPathComponent("search.sqlite"), triptychID: UUID(),
                 vaults: roles.map(\.vault))
             let sourceBytes = try await populate(index: index, roles: roles, fixture: fixture, isLong: isLong)
             #expect(sourceBytes == (isLong ? 4_975_480 : 175_100))

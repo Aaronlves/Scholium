@@ -5,8 +5,7 @@ workspace publication, window lifetimes, and native delivery.
 
 ## Architectural stance
 
-Scholium is a local modular monolith, not a service or XPC architecture.
-Compiler-enforced dependencies separate delivery from backend authority:
+Scholium is a local modular monolith.
 
 ```text
 ScholiumApp ──────────┐
@@ -14,21 +13,19 @@ ScholiumApp ──────────┐
 ScholiumAgentHelper ─┘
 ```
 
-Contracts owns immutable boundary values, capability protocols, closed schemas,
-errors, deterministic source parsing and transformations. It has no I/O, UI,
-store, watcher or mutable global authority. Core owns repositories, registries,
+Contracts owns immutable boundary values, capabilities, schemas, errors and
+deterministic source parsing/transformations, without I/O, UI, stores, watchers
+or mutable global authority. Core owns repositories, registries,
 indexes, watchers, coordinated mutations, portable stores and transport
-implementations. Application composes those owners into delivery-neutral
-workspace lifetimes and use cases. Core is not a public library product; App
-and helper reach it only through Application capabilities.
+implementations. Application composes delivery-neutral workspace lifetimes and
+use cases; App and helper access Core only through Application capabilities.
 
 ## Global ownership invariant
 
-Every mutable fact and authorization policy has one owner of its identity,
-lifetime, writer, persistence, cancellation and recovery. A coordinator sequences
-owners through typed intents; it does not copy domain semantics. Disposable
-projections may be rebuilt, but never authorize writes or become writable source.
-The table below records cross-boundary ownership, not a class inventory.
+Each mutable fact and authorization policy has one owner for identity, lifetime,
+writing, persistence, cancellation and recovery. Coordinators sequence typed intents
+without copying domain semantics. Disposable projections never authorize writes
+or become writable source.
 
 ## Ownership
 
@@ -46,16 +43,14 @@ The table below records cross-boundary ownership, not a class inventory.
 
 ### Runtime bootstrap, refresh, and Search
 
-Bootstrap validates the actual machine-local state root before constructing
-the store. Construction is explicit and failable: malformed registration enters
-Registry Recovery; unsafe, unreadable or newer state does not produce an empty
-registry or temporary fallback. Relinking validates the existing owner without
-scanning or mutating research Markdown. QA roots use the same validation.
+Bootstrap validates machine-local storage before construction. Malformed registration
+enters Registry Recovery; unsafe, unreadable or newer state never yields an empty
+registry or temporary fallback. Relinking validates ownership without scanning or
+mutating Markdown. QA uses the same validation.
 
-Live runtimes reuse pooled vault repositories, catalogs and watchers while
-windows need them. Snapshot runtimes load once without watchers and shut down
-after the isolated operation. Root replacement latches a pooled vault unavailable
-until explicit access restoration replaces its authorization.
+Live runtimes pool vault repositories, catalogs and watchers for borrowing windows.
+Snapshot runtimes load once without watchers and shut down after use. Replaced
+roots remain unavailable until explicit access restoration renews authorization.
 
 An opening workspace publishes each prepared vault's authoritative catalog
 and portable identities. Document load and exact current-buffer Search are usable;
@@ -69,14 +64,13 @@ Initial document visible-layout readiness delays competing full
 reconcile, with a bounded fallback for Library-only or failed-renderer cases.
 Shutdown cancels and awaits completion; it never creates a second source runtime.
 
-Application derives Search manifests from source-free catalogs:
-metadata, links, descriptor facts and versions. Watchers precede
-reconciliation; precise events update entries; event loss requires full
-reconciliation. Search compares manifests, prepares changed Notes in a bounded
-ordered window, and releases inserted source. One writer transaction validates source
-versions before publication; readers retain committed generations. Cached projections
-require fresh changed-row reads and fingerprints. Vault preparation overlaps;
-Graph, Search synchronization and publication remain ordered.
+Application derives Search manifests from source-free catalog metadata, links,
+descriptor facts and versions. Watchers precede reconciliation; precise events
+update entries, event loss forces full reconciliation. Search compares manifests,
+prepares changed Notes in a bounded ordered window and releases inserted source.
+One writer validates source versions before publication; readers retain committed
+generations. Cached projections require fresh reads and fingerprints. Vault
+preparation overlaps; Graph, Search and publication remain ordered.
 
 One coordinator serializes generations. Background catalog preparation
 produces immutable candidates outside the source-operation gate; validated
@@ -89,6 +83,12 @@ through App publication. Superseded work recaptures after rollback. Cohorts reta
 publication kind and paths; waiter cancellation cannot cancel another caller.
 Admitted source transactions finish or recover. Monotonic generations reject stale
 reopened publication; failure retains the last complete snapshot/index.
+
+Runtime serializes Storage operations and registry-coordinated retention.
+Library activation or rebuilding resumes Search; service/metadata borrowing preserves
+its pause. Core inventories metadata; process-shared leases exclude live owners
+from maintenance. Shutdown drains operations/publication and closes both Search
+connections before release. Cleanup preserves permanent locks and Triptych/Vault roots.
 
 Authoritative source completion is distinct from derived publication. Autosave
 commit and direct creation return proven source/identity before background
@@ -278,16 +278,16 @@ delayed keep/open checks runtime/owner identity. Kept text never persists.
 
 ### Settings authority
 
-Settings composes workspace, document, shortcut, writing, Zotero and
-Chat owners; it creates no workspace runtime. `WorkspaceSettingsModel` owns
-Triptych selection; refresh follows it while confirmed snapshots retain
-identity and revision. Scope/revision mismatch requires explicit reload. Native
-hosts retain drafts but exclude inactive input/accessibility/default actions.
-Background font discovery publishes names, coalesces invalidation and rejects
-stale results. Search, contextual links and scroll anchors share typed section
-identities; search indexes static interface metadata, never research content or
-permission. AppKit owns the preferences toolbar, safe area and
-temporary search-result selection; SwiftUI owns category, query and destination.
+Settings borrows capabilities, creating no workspace runtime.
+`WorkspaceSettingsModel` owns Triptych selection; refresh follows it while confirmed
+snapshots retain identity/revision. Scope/revision mismatch requires explicit reload.
+`StorageSettingsModel` retains measurements and operation feedback;
+pane/target changes retire unconfirmed plans. Native hosts retain drafts, excluding inactive input, accessibility and default actions. Background font discovery
+publishes names, coalesces invalidation and rejects stale results.
+Search, contextual links and scroll anchors share typed sections;
+search indexes static interface metadata, never research content or permission.
+AppKit owns toolbar, safe area and temporary search-result selection;
+SwiftUI owns category, query and destination.
 
 Shortcuts have one command catalog/validated preference writer; menus consume it.
 The application hotkey event adapter owns hardware-event normalization, while the

@@ -9,7 +9,7 @@ struct PreparedSearchIndexDocument: Sendable {
     let properties: SearchPropertyProjection
     let preparation: SearchProjectionPreparation
 
-    init(source: SearchIndexDocument, cache: SourceSearchProjectionCache?) {
+    init(source: SearchIndexDocument, cache: SourceProjectionCache?) {
         self.source = source
         let cache = cache.flatMap { $0.isBound(to: source.vaultID, role: source.vaultRole) ? $0 : nil }
         let readStart = ContinuousClock.now

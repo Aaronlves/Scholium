@@ -187,7 +187,7 @@ struct SearchExcerptTests {
         }
 
         func index() throws -> TriptychSearchIndex {
-            try TriptychSearchIndex(databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: [vault])
+            try TriptychSearchIndex(isolatedDatabaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: [vault])
         }
 
         func note(_ path: String, _ source: String) -> SearchIndexDocument {

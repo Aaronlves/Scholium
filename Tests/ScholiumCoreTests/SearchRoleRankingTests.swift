@@ -95,7 +95,7 @@ struct SearchRoleRankingTests {
         }
 
         func index() throws -> TriptychSearchIndex {
-            try TriptychSearchIndex(databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: vaults)
+            try TriptychSearchIndex(isolatedDatabaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: vaults)
         }
 
         func item(_ vault: RegisteredVault, path: String, source: String) -> SearchIndexDocument {

@@ -385,33 +385,31 @@ extension WorkspaceHandle {
         let manifest: [SearchSourceManifestEntry]
     }
 
-    /// A fresh compact cohort proves resolution without retaining every Note
-    /// source. Only moved Notes and graph-identified link owners are loaded.
+    /// Consequential move planning rebuilds the complete link cohort from
+    /// descriptor-authorized source, independently of disposable catalog hits.
+    /// Only compact projections survive each read; moved Notes and proven link
+    /// owners are loaded again for exact rewrites against these same versions.
     func freshScopedMoveProjectionContext() async throws -> ScopedMoveProjectionContext {
+        try requireActive()
         var projections: [VaultQualifiedNoteID: WorkspaceSourceProjection] = [:]
         var versions: [VaultQualifiedNoteID: SourceVersion] = [:]
         for vault in orderedVaults() {
-            guard let sourceCatalog = services.sourceCatalogs[vault.id] else {
-                throw ScholiumApplicationError.vaultNotInWorkspace(vault.id)
-            }
-            var captured: VaultSourceCatalogSnapshot?
-            while captured == nil {
+            let repository = try repository(vaultID: vault.id)
+            let paths = try await repository.markdownRelativePaths()
+            for path in paths {
                 try Task.checkCancellation()
-                let candidate = try await sourceCatalog.prepare(.fullReconcile)
-                if case .installed(let snapshot) = try await sourceCatalog.install(candidate) {
-                    captured = snapshot
-                }
-            }
-            guard let source = captured else { throw CancellationError() }
-            for projection in source.projections {
-                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: projection.relativePath)
-                guard let version = source.sourceVersions[projection.relativePath] else {
-                    throw WorkspaceHydrationError.staleSnapshot
-                }
-                projections[id] = projection
-                versions[id] = version
+                let loaded = try await repository.loadCatalogSource(relativePath: path)
+                try Task.checkCancellation()
+                try requireActive()
+                let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
+                projections[id] = WorkspaceSourceProjection(
+                    vaultID: vault.id, document: loaded.document,
+                    semantic: MarkdownSemanticDocument(parsing: loaded.document))
+                versions[id] = loaded.version
             }
         }
+        try Task.checkCancellation()
+        try requireActive()
         let all = projections.values.sorted { $0.linkCatalog.id < $1.linkCatalog.id }
         let manifest = all.map {
             SearchSourceManifestEntry(

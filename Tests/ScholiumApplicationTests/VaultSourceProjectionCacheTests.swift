@@ -63,7 +63,7 @@ struct VaultSourceProjectionCacheTests {
         #expect(complete.queued == 0)
     }
 
-    @Test("A new catalog reuses Search coordinates while reading and parsing current source")
+    @Test("A new catalog reads exact source and restores compact Catalog without semantic parsing")
     func freshStartupHit() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
@@ -71,11 +71,14 @@ struct VaultSourceProjectionCacheTests {
         let firstSearch = try await fixture.index(first)
         #expect(firstSearch.projectedDocuments == 1)
         #expect(firstSearch.restoredSearchProjections == 0)
+        #expect(first.measurement.parsedDocuments == 1)
+        #expect(first.measurement.restoredCatalogProjections == 0)
 
         let reopened = try await fixture.snapshot()
         let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.measurement.readFiles == 1)
-        #expect(reopened.measurement.parsedDocuments == 1)
+        #expect(reopened.measurement.parsedDocuments == 0)
+        #expect(reopened.measurement.restoredCatalogProjections == 1)
         #expect(reopenedSearch.projectedDocuments == 0)
         #expect(reopenedSearch.restoredSearchProjections == 1)
         #expect(reopened.projections.map(\.fingerprint) == [DocumentFingerprint(data: Data(fixture.source.utf8))])
@@ -107,11 +110,76 @@ struct VaultSourceProjectionCacheTests {
         #expect(newMetadata.modificationDate == replacementDate)
         #expect(reopened.fileMetadata != first.fileMetadata)
         #expect(reopened.measurement.readFiles == 1)
-        #expect(reopened.measurement.parsedDocuments == 1)
+        #expect(reopened.measurement.parsedDocuments == 0)
+        #expect(reopened.measurement.restoredCatalogProjections == 1)
         #expect(reopenedSearch.restoredSearchProjections == 1)
         #expect(reopenedSearch.projectedDocuments == 0)
         #expect(reopened.projections == first.projections)
         #expect(try await fixture.projections(in: reopened) == fixture.projections(in: first))
+    }
+
+    @Test("A damaged compact record reparses fresh source and repairs only disposable state")
+    func damagedCatalogRecomputes() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let first = try await fixture.snapshot()
+        let record = try #require(
+            FileManager.default.contentsOfDirectory(at: fixture.cacheDirectory, includingPropertiesForKeys: nil)
+                .first { $0.lastPathComponent.hasSuffix(".catalog.plist") })
+        try Data("damaged disposable record".utf8).write(to: record)
+        let recomputed = try await fixture.snapshot()
+        #expect(recomputed.measurement.readFiles == 1)
+        #expect(recomputed.measurement.parsedDocuments == 1)
+        #expect(recomputed.measurement.restoredCatalogProjections == 0)
+        #expect(recomputed.projections == first.projections)
+        #expect(recomputed.sourceVersions == first.sourceVersions)
+        let restored = try await fixture.snapshot()
+        #expect(restored.measurement.readFiles == 1)
+        #expect(restored.measurement.parsedDocuments == 0)
+        #expect(restored.measurement.restoredCatalogProjections == 1)
+        #expect(restored.projections == first.projections)
+        #expect(try Data(contentsOf: fixture.noteURL) == Data(fixture.source.utf8))
+    }
+
+    @Test("Unavailable cache storage recomputes exact-source Catalog without changing source success")
+    func unavailableCacheRecomputes() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let unavailable = Data("unavailable disposable cache directory".utf8)
+        let vaults = fixture.supportURL.appendingPathComponent("Vaults")
+        try unavailable.write(to: vaults)
+        let first = try await fixture.snapshot()
+        let reopened = try await fixture.snapshot()
+        #expect(first.measurement.readFiles == 1 && first.measurement.parsedDocuments == 1)
+        #expect(reopened.measurement.readFiles == 1 && reopened.measurement.parsedDocuments == 1)
+        #expect(first.measurement.restoredCatalogProjections == 0 && reopened.measurement.restoredCatalogProjections == 0)
+        #expect(first.projections == reopened.projections)
+        #expect(first.sourceVersions == reopened.sourceVersions)
+        #expect(try Data(contentsOf: vaults) == unavailable)
+        #expect(try Data(contentsOf: fixture.noteURL) == Data(fixture.source.utf8))
+    }
+
+    @Test("Restored Catalog candidates still reject source drift at installation and reparse current links")
+    func restoredCandidateCannotPublishAfterSourceDrift() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let first = try await fixture.snapshot()
+        let catalog = try await fixture.catalog()
+        let candidate = try await catalog.prepare(.fullReconcile)
+        let changed = fixture.source.replacingOccurrences(of: "[[Target]]", with: "[[Edited]]")
+        try Data(changed.utf8).write(to: fixture.noteURL, options: .atomic)
+        guard case .superseded = try await catalog.install(candidate) else {
+            Issue.record("A restored candidate published after its exact source changed")
+            return
+        }
+        await #expect(throws: VaultSourceCatalogError.preparationRequired) { try await catalog.snapshot() }
+        let fresh = try await preparedSnapshot(catalog)
+        #expect(fresh.measurement.readFiles == 1)
+        #expect(fresh.measurement.parsedDocuments == 1)
+        #expect(fresh.measurement.restoredCatalogProjections == 0)
+        #expect(fresh.projections.first?.authoredLinks.map(\.target) == ["Edited"])
+        #expect(fresh.sourceVersions != first.sourceVersions)
+        #expect(try Data(contentsOf: fixture.noteURL) == Data(changed.utf8))
     }
 
     @Test("A same-size edit with restored mtime misses the cache and parses new authored links")
@@ -206,10 +274,11 @@ struct VaultSourceProjectionCacheTests {
         let source = "\u{FEFF}---\r\nsummary: 情感 résumé\r\n---\r\n# Émotion 😀\r\n\r\nAuthored [[Target]] and *freedom*.\r\n"
 
         var noteURL: URL { vaultURL.appendingPathComponent(Self.path) }
+        var cacheDirectory: URL {
+            supportURL.appendingPathComponent("Vaults/\(vaultID.uuidString)/source-projections-v1", isDirectory: true)
+        }
         var hasPersistedProjection: Bool {
-            let directory = supportURL.appendingPathComponent(
-                "Vaults/\(vaultID.uuidString)/source-projections-v1", isDirectory: true)
-            return (try? FileManager.default.contentsOfDirectory(atPath: directory.path))?
+            return (try? FileManager.default.contentsOfDirectory(atPath: cacheDirectory.path))?
                 .contains { $0.hasSuffix(".projection.plist") } == true
         }
 
@@ -271,41 +340,58 @@ struct VaultSourceProjectionCacheTests {
         }
 
         func index(_ snapshot: VaultSourceCatalogSnapshot) async throws -> (projectedDocuments: Int, restoredSearchProjections: Int) {
-            let index = await handle.services.searchIndex
-            let repository = try #require(await handle.services.repositories[vaultID])
-            let generation = try await index.workspaceGeneration()
-            // Clear only this stopped fixture runtime's disposable index so
-            // the next publication must prepare the source-derived rows.
-            _ = try await index.synchronizeManifest(
-                [], workspaceGeneration: generation + 1,
-                loadChanged: { _ in throw SearchIndexError.invalidDocuments("unexpected fixture source") },
-                validateManifest: {})
-            _ = try await index.synchronizeManifest(
-                snapshot.projections.map { projection in
-                    SearchIndexManifestEntry(
-                        vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
-                        relativePath: projection.relativePath, stableNoteID: nil,
-                        fingerprint: projection.fingerprint, hasBrokenLink: false)
-                },
-                sourceProjectionCaches: snapshot.searchProjectionCache.map { [vaultID: $0] } ?? [:],
-                workspaceGeneration: generation + 2,
-                loadChanged: { entry in
-                    let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
-                    guard loaded.version == snapshot.sourceVersions[entry.relativePath] else {
-                        throw WorkspaceHydrationError.staleSnapshot
-                    }
-                    return SearchIndexDocument(
-                        vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
-                        document: loaded.document)
-                },
-                validateManifest: {
-                    for (path, version) in snapshot.sourceVersions {
-                        guard try await repository.sourceVersionIsCurrent(relativePath: path, version: version)
-                        else { throw WorkspaceHydrationError.staleSnapshot }
-                    }
-                })
-            let measurement = try #require(await index.lastSynchronizationTimings)
-            return (measurement.projectedDocuments, measurement.restoredSearchProjections)
+            // The bootstrap runtime is closed. Each publication borrows a new
+            // Application-owned index and drains it before fixture deletion.
+            // Its own bootstrap caches are separate from the cache under test.
+            let indexSupport = root.appendingPathComponent("Index Runtime Support", isDirectory: true)
+            try FileManager.default.createDirectory(at: indexSupport, withIntermediateDirectories: true)
+            let runtime = WorkspaceRuntime(
+                configuration: .snapshot(
+                    .init(
+                        applicationSupportURL: indexSupport,
+                        assignments: [handle.assignment])))
+            do {
+                let indexHandle = try await runtime.openWorkspace(id: handle.assignment.id)
+                let index = await indexHandle.services.searchIndex
+                let repository = try #require(await handle.services.repositories[vaultID])
+                let generation = try await index.workspaceGeneration()
+                // Force the next publication to prepare the rows using the
+                // freshly captured source versions and cache under test.
+                _ = try await index.synchronizeManifest(
+                    [], workspaceGeneration: generation + 1,
+                    loadChanged: { _ in throw SearchIndexError.invalidDocuments("unexpected fixture source") },
+                    validateManifest: {})
+                _ = try await index.synchronizeManifest(
+                    snapshot.projections.map { projection in
+                        SearchIndexManifestEntry(
+                            vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                            relativePath: projection.relativePath, stableNoteID: nil,
+                            fingerprint: projection.fingerprint, hasBrokenLink: false)
+                    },
+                    sourceProjectionCaches: snapshot.searchProjectionCache.map { [vaultID: $0] } ?? [:],
+                    workspaceGeneration: generation + 2,
+                    loadChanged: { entry in
+                        let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
+                        guard loaded.version == snapshot.sourceVersions[entry.relativePath] else {
+                            throw WorkspaceHydrationError.staleSnapshot
+                        }
+                        return SearchIndexDocument(
+                            vaultID: vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                            document: loaded.document)
+                    },
+                    validateManifest: {
+                        for (path, version) in snapshot.sourceVersions {
+                            guard try await repository.sourceVersionIsCurrent(relativePath: path, version: version)
+                            else { throw WorkspaceHydrationError.staleSnapshot }
+                        }
+                    })
+                let measurement = try #require(await index.lastSynchronizationTimings)
+                await runtime.shutdown()
+                return (measurement.projectedDocuments, measurement.restoredSearchProjections)
+            } catch {
+                await runtime.shutdown()
+                throw error
+            }
         }
 
         func projections(in snapshot: VaultSourceCatalogSnapshot) async throws -> [String: SearchDocumentProjection] {

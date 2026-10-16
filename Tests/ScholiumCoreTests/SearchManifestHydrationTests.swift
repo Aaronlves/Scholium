@@ -13,7 +13,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
         let source = FixtureSources(vault: fixture.vault, documents: ["A.md": "oldneedle"])
         let previous = try await index.synchronizeManifest(
             await source.manifest(), workspaceGeneration: 1,
@@ -78,7 +78,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
         let source = FixtureSources(
             vault: fixture.vault,
             documents: ["A.md": "# Alpha\n\nCafé 自由 needle.", "B.md": "# Beta\n\nCafe\u{301} 😀 needle."])
@@ -110,7 +110,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: [fixture.vault])
         let source = FixtureSources(vault: fixture.vault, documents: ["A.md": "oldneedle"])
         let previous = try await index.synchronizeManifest(
             await source.manifest(), workspaceGeneration: 1,
@@ -159,7 +159,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
             vaults: [fixture.vault])
         let source = FixtureSources(vault: fixture.vault, documents: ["A.md": "# Alpha\n\noldneedle."])
         _ = try await index.synchronizeManifest(
@@ -204,7 +204,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
             vaults: [fixture.vault])
         let source = FixtureSources(vault: fixture.vault, documents: ["A.md": "# Alpha\n\noldneedle."])
         let firstManifest = await source.manifest()
@@ -263,7 +263,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
             vaults: [fixture.vault])
         let source = FixtureSources(
             vault: fixture.vault,
@@ -300,7 +300,7 @@ struct SearchManifestHydrationTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID,
             vaults: [fixture.vault])
         let source = FixtureSources(vault: fixture.vault, documents: ["A.md": "# Alpha\n"])
         let manifest = await source.manifest()

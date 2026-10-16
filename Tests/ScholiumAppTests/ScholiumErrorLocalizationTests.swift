@@ -10,6 +10,30 @@ struct ScholiumErrorLocalizationTests {
     private let chinese = Locale(identifier: "zh-Hans")
     private let english = Locale(identifier: "en")
 
+    @Test("Storage failures and committed index-clear warnings retain their distinct consequences in Chinese")
+    func storageManagementMessages() {
+        #expect(ScholiumErrorLocalization.message(ScholiumStorageManagementError.operationInProgress, locale: chinese) == "另一个存储操作正在运行。")
+        #expect(ScholiumErrorLocalization.message(ScholiumStorageManagementError.triptychRequired, locale: chinese) == "请选择要管理索引的脉络。")
+        #expect(ScholiumErrorLocalization.message(ArchivedChatCleanupError.changed, locale: chinese) == "归档对话发生了更改。请查看当前用量后再删除。")
+        #expect(
+            ScholiumErrorLocalization.message(ArchivedChatCleanupError.notSaved, locale: chinese)
+                == "无法保存对话删除操作。对话已保留；请解决历史保存错误后重试。")
+        #expect(
+            ScholiumErrorLocalization.storageWarning("Index cleared; reclaiming its remaining disk space was deferred.", locale: chinese)
+                == "索引已清除；剩余磁盘空间的回收已推迟。")
+        #expect(
+            ScholiumErrorLocalization.storageWarning("Index cleared; compacting its remaining storage failed.", locale: chinese)
+                == "索引已清除；剩余存储空间的压缩失败。")
+        let detail = "Review/原文 🦉.md\nEIO"
+        let warning = "Index cleared; the subsequent workspace refresh failed: \(detail)"
+        #expect(ScholiumErrorLocalization.storageWarning(warning, locale: chinese) == "索引已清除，但随后的工作区刷新失败：\(detail)")
+        #expect(ScholiumErrorLocalization.storageWarning(warning, locale: english) == warning)
+        #expect(ScholiumErrorLocalization.storageWarning(detail, locale: chinese) == detail)
+        #expect(
+            ScholiumErrorLocalization.message(SearchIndexError.awaitingRebuild, locale: chinese)
+                == "索引已清除。请在“存储”设置中选择“重建索引”，或重新打开此脉络。")
+    }
+
     @Test("Conflict, failed verification and unknown outcome retain distinct save meanings")
     func consequentialSaveStates() {
         let revision = DocumentFingerprint(content: "exact source")

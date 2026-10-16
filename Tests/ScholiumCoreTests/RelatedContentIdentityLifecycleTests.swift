@@ -70,7 +70,7 @@ struct RelatedContentIdentityLifecycleTests {
         }
 
         func index(name: String = "index.sqlite") throws -> TriptychSearchIndex {
-            try .init(databaseURL: root.appendingPathComponent(name), triptychID: triptychID, vaults: [vault])
+            try .init(isolatedDatabaseURL: root.appendingPathComponent(name), triptychID: triptychID, vaults: [vault])
         }
 
         func evaluate(_ index: TriptychSearchIndex, request: RelatedContentRequest, documents: [SearchIndexDocument]) async throws

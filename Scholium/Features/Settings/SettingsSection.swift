@@ -18,7 +18,11 @@ struct SettingsSection: Hashable, Identifiable {
     static let workspaceFolders = Self("workspace.folders", .workspace)
     static let workspacePortable = Self("workspace.portable", .workspace)
     static let workspaceSettingsRecovery = Self("workspace.settingsRecovery", .workspace)
-    static let workspaceChangesHistory = Self("workspace.changesHistory", .workspace)
+    static let storageOverview = Self("storage.overview", .storage)
+    static let storageCache = Self("storage.cache", .storage)
+    static let storageIndex = Self("storage.index", .storage)
+    static let storageChangesHistory = Self("storage.changesHistory", .storage)
+    static let storageChatHistory = Self("storage.chatHistory", .storage)
 
     static let appearanceProfile = Self("appearance.profile", .document)
     static let appearanceReading = Self("appearance.reading", .document)

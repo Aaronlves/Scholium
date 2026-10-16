@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
 import ScholiumContracts
+import ScholiumNativeFileOperations
 
 // Core-internal SQLite mechanics for the single TriptychSearchIndex owner.
 // This file creates no independent index, generation, or transaction owner.
@@ -19,23 +20,45 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     // statements leave this pool, so nested row queries cannot reuse an active cursor.
     private var readStatements: [String: SearchSQLiteStatement]?
     private var searchTokenizer: SearchSQLiteTokenizer?
+    private let didClose: (@Sendable () -> Void)?
 
-    init(path: String) throws {
+    /// The optional, per-owner close observation is used only by ownership tests.
+    init(path: String, readOnly: Bool = false, immutable: Bool = false, didClose: (@Sendable () -> Void)? = nil) throws {
+        precondition(!immutable || readOnly)
+        self.didClose = didClose
+        let fileName: String
+        if immutable {
+            var url = URLComponents(url: URL(fileURLWithPath: path), resolvingAgainstBaseURL: false)!
+            url.queryItems = [URLQueryItem(name: "immutable", value: "1")]
+            fileName = url.string!
+        } else {
+            fileName = path
+        }
+        var opened: OpaquePointer?
         if sqlite3_open_v2(
-            path,
-            &handle,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            fileName,
+            &opened,
+            (readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW
+                | (immutable ? SQLITE_OPEN_URI : 0),
             nil
         ) != SQLITE_OK {
             let message =
-                handle.map { String(cString: sqlite3_errmsg($0)) }
+                opened.map { String(cString: sqlite3_errmsg($0)) }
                 ?? "could not open Search v10 database"
-            let code = handle.map { sqlite3_extended_errcode($0) }
-            if let handle { sqlite3_close(handle) }
+            let code = opened.map { sqlite3_extended_errcode($0) }
+            if let opened {
+                sqlite3_close_v2(opened)
+                didClose?()
+            }
             if code.map({ ($0 & 0xFF) == SQLITE_CORRUPT || ($0 & 0xFF) == SQLITE_NOTADB }) == true {
                 throw SearchIndexError.corruptDatabase
             }
             throw SearchIndexError.sqlite(message)
+        }
+        self.handle = opened
+        guard let handle, ScholiumSQLiteSetCheckpointOnClose(handle, false) == SQLITE_OK else {
+            close()
+            throw SearchIndexError.sqlite("Could not configure the Search connection lifecycle.")
         }
         sqlite3_busy_timeout(handle, 3_000)
         sqlite3_progress_handler(
@@ -44,21 +67,69 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
             { _ in Task<Never, Never>.isCancelled ? 1 : 0 },
             nil
         )
-        try execute("PRAGMA foreign_keys=ON;")
-    }
-
-    deinit {
-        if let handle {
-            sqlite3_progress_handler(handle, 0, nil, nil)
-            sqlite3_close(handle)
+        do { try execute("PRAGMA foreign_keys=ON;") } catch {
+            close()
+            throw error
         }
     }
 
-    var lastInsertRowID: Int { Int(sqlite3_last_insert_rowid(handle)) }
+    deinit { close() }
+
+    /// Only the owning index calls this after accepting the existing policy.
+    /// Rejected/readonly inspection keeps durable WAL bytes untouched on close.
+    func admitCheckpointOnClose() throws {
+        guard let handle, ScholiumSQLiteSetCheckpointOnClose(handle, true) == SQLITE_OK else {
+            throw SearchIndexError.sqlite("Could not admit the Search connection lifecycle.")
+        }
+        // The native VFS may retain persistent WAL state independently of the
+        // connection's checkpoint flag. This disposable, accepted store owns
+        // normal last-close cleanup; SQLite still respects every live peer.
+        var persistent: Int32 = 0
+        guard sqlite3_file_control(handle, "main", SQLITE_FCNTL_PERSIST_WAL, &persistent) == SQLITE_OK else {
+            throw SearchIndexError.sqlite("Could not admit the Search WAL lifecycle.")
+        }
+    }
+
+    func close() {
+        if let handle {
+            self.handle = nil
+            for statement in readStatements?.values ?? [String: SearchSQLiteStatement]().values {
+                sqlite3_finalize(statement.handle)
+            }
+            readStatements = nil
+            searchTokenizer = nil
+            sqlite3_progress_handler(handle, 0, nil, nil)
+            sqlite3_close_v2(handle)
+            didClose?()
+        }
+    }
+
+    /// SQLite owns journal coordination with every live peer. A busy reader
+    /// may defer physical reclamation after logical deletion has committed.
+    func compactAndCheckpoint() throws -> Bool {
+        do { try execute("VACUUM;") } catch {
+            if let handle {
+                let code = sqlite3_extended_errcode(handle) & 0xFF
+                if code == SQLITE_BUSY || code == SQLITE_LOCKED { return false }
+            }
+            throw error
+        }
+        var completed = false
+        try query("PRAGMA wal_checkpoint(TRUNCATE);") { completed = $0.int(at: 0) == 0 }
+        return completed
+    }
+
+    var lastInsertRowID: Int {
+        get throws {
+            guard let handle else { throw SearchIndexError.sqlite("The Search database is closed.") }
+            return Int(sqlite3_last_insert_rowid(handle))
+        }
+    }
 
     /// A nil expression means this lexical clause supplies no safe indexed
     /// constraint. Exact matching remains responsible for its truth and range.
     func ftsExpression(for clauses: [SearchLexicalClause]) throws -> String? {
+        guard handle != nil else { throw SearchIndexError.sqlite("The Search database is closed.") }
         let tokenizer: SearchSQLiteTokenizer
         if let existing = searchTokenizer {
             tokenizer = existing
@@ -73,6 +144,7 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     /// Diagnostic only. Sample after the index writer has settled; no page
     /// contents or source text cross this boundary.
     var cacheUsedBytes: Int {
+        guard let handle else { return -1 }
         var current: Int32 = 0
         var highWater: Int32 = 0
         guard sqlite3_db_status(handle, SQLITE_DBSTATUS_CACHE_USED, &current, &highWater, 0) == SQLITE_OK
@@ -81,6 +153,7 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     }
 
     func execute(_ sql: String, bindings: [SearchSQLiteBinding] = []) throws {
+        guard let handle else { throw SearchIndexError.sqlite("The Search database is closed.") }
         if bindings.isEmpty {
             var error: UnsafeMutablePointer<CChar>?
             let result = sqlite3_exec(handle, sql, nil, nil, &error)
@@ -183,6 +256,7 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
     }
 
     private func prepare(_ sql: String) throws -> SearchSQLiteStatement {
+        guard let handle else { throw SearchIndexError.sqlite("The Search database is closed.") }
         var statement: OpaquePointer?
         let result = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
         guard result == SQLITE_OK, let statement else {

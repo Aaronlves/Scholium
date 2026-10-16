@@ -82,6 +82,13 @@ public actor WorkspaceRuntime {
         let task: Task<WorkspaceHandle, Error>
     }
 
+    private struct StorageOperation: Sendable {
+        let id: UUID
+        let action: ScholiumStorageAction
+        let triptychID: UUID?
+        let task: Task<ScholiumStorageOperationResult, Error>
+    }
+
     private struct Replacement: Sendable {
         let previousCacheID: UUID
         let previous: WorkspaceHandle
@@ -102,6 +109,43 @@ public actor WorkspaceRuntime {
     /// process shutdown, even though they are no longer returned by new opens.
     private var retainedHandles: [UUID: WorkspaceHandle] = [:]
     private var isShutDown = false
+    private var shutdownTask: Task<Void, Never>?
+    private var storageOperation: StorageOperation?
+    #if DEBUG
+        private(set) var shutdownJoinCountForTesting = 0
+        private(set) var openingLookupCountForTesting = 0
+        private(set) var openingFactoryCountForTesting = 0
+        private(set) var openingJoinCountForTesting = 0
+        private(set) var storageOpeningJoinCountForTesting = 0
+        private var openingLookupBarrierForTesting: (@Sendable (UUID) async -> Void)?
+
+        func setOpeningLookupBarrierForTesting(_ barrier: (@Sendable (UUID) async -> Void)?) {
+            openingLookupBarrierForTesting = barrier
+        }
+    #endif
+    private var didMaintainDerivedState = false
+    private(set) var latestDerivedStateMaintenanceSummary: DerivedStateMaintenanceSummary?
+
+    private func maintainDerivedStateIfNeeded(force: Bool = false) async {
+        guard case .live(let registry, let supportURL) = membership,
+            force || !didMaintainDerivedState
+        else { return }
+        didMaintainDerivedState = true
+        let summary: DerivedStateMaintenanceSummary
+        do {
+            summary = try await registry.maintainDerivedState(applicationSupportURL: supportURL)
+        } catch {
+            let failed = DerivedStateMaintenanceSummary(failedDirectories: 1)
+            // A failed registry read is never an empty reference set.
+            latestDerivedStateMaintenanceSummary = failed
+            Self.openLogger.error("derivedMaintenance unavailable; no membership-based deletion admitted")
+            return
+        }
+        latestDerivedStateMaintenanceSummary = summary
+        Self.openLogger.info(
+            "derivedMaintenance removedFiles=\(summary.removedFiles) removedBytes=\(summary.removedBytes) busyDirectories=\(summary.busyDirectories) failedDirectories=\(summary.failedDirectories) failedFiles=\(summary.failedFiles) preservedFiles=\(summary.preservedFiles)"
+        )
+    }
 
     public init(
         configuration: Configuration,
@@ -176,6 +220,7 @@ public actor WorkspaceRuntime {
 
     public func availableWorkspaces() async throws -> [TriptychAssignment] {
         try requireActive()
+        await maintainDerivedStateIfNeeded()
         let assignments: [TriptychAssignment]
         switch membership {
         case .live(let registry, _):
@@ -205,6 +250,7 @@ public actor WorkspaceRuntime {
             throw ScholiumApplicationError.workspaceRegistrationInUse(id)
         }
         try await registry.removeTriptychRegistration(id: id)
+        await maintainDerivedStateIfNeeded(force: true)
     }
 
     /// Explicitly archives one unsupported `.scholium` owner so the selected
@@ -325,6 +371,7 @@ public actor WorkspaceRuntime {
             forcing: [currentID]
         )
         _ = try await completeReplacements(prepared.replacements)
+        await maintainDerivedStateIfNeeded(force: true)
         return assignment
     }
 
@@ -359,6 +406,7 @@ public actor WorkspaceRuntime {
             replacements,
             detachedVaults: detachedVaults
         )
+        await maintainDerivedStateIfNeeded(force: true)
         return updated
     }
 
@@ -555,6 +603,7 @@ public actor WorkspaceRuntime {
         )
         let replacementsReady = clock.now
         if let replacement = replacements[assignment.id] {
+            await maintainDerivedStateIfNeeded(force: true)
             Self.logOpen(
                 portable: totalStart.duration(to: portableReady),
                 identities: portableReady.duration(to: identitiesReady),
@@ -565,11 +614,12 @@ public actor WorkspaceRuntime {
             )
             return replacement
         }
-        let handle = try await openWorkspace(
+        let handle = try await workspace(
             id: assignment.id,
             openingVault: openingVault
         )
         let completed = clock.now
+        await maintainDerivedStateIfNeeded(force: true)
         Self.logOpen(
             portable: totalStart.duration(to: portableReady),
             identities: portableReady.duration(to: identitiesReady),
@@ -705,6 +755,7 @@ public actor WorkspaceRuntime {
     /// Returns the persisted default Triptych.
     public func defaultWorkspace() async throws -> TriptychAssignment {
         try requireActive()
+        await maintainDerivedStateIfNeeded()
         switch membership {
         case .live(let registry, _):
             guard let assignment = try await registry.defaultTriptych() else {
@@ -724,21 +775,222 @@ public actor WorkspaceRuntime {
 
     /// Repeated opens for one Triptych return the same actor identity until
     /// the runtime is shut down.
+    public func storageInventory() async throws -> ScholiumStorageInventory {
+        try requireActive()
+        let support = storageRootURL
+        let task = Task.detached(priority: .utility) {
+            try ScholiumStorageInventoryReader.scan(applicationSupportURL: support)
+        }
+        return try await withTaskCancellationHandler {
+            let inventory = try await task.value
+            try Task.checkCancellation()
+            try requireActive()
+            return inventory
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// One App-level maintenance owner. Destructive operations never race a
+    /// second Settings request. Shutdown cancels its admitted owners before
+    /// joining this waiter, then drains every owner before releasing storage.
+    public func performStorageAction(
+        _ action: ScholiumStorageAction, triptychID: UUID? = nil
+    ) async throws -> ScholiumStorageOperationResult {
+        try requireActive()
+        try Task.checkCancellation()
+        guard storageOperation == nil else { throw ScholiumStorageManagementError.operationInProgress }
+        let token = UUID()
+        let task = Task { try await executeStorageAction(action, triptychID: triptychID) }
+        storageOperation = StorageOperation(id: token, action: action, triptychID: triptychID, task: task)
+        defer { if storageOperation?.id == token { storageOperation = nil } }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private var storageRootURL: URL {
+        switch membership {
+        case .live(_, let support), .snapshot(_, _, let support): support
+        }
+    }
+
+    private func executeStorageAction(
+        _ action: ScholiumStorageAction, triptychID: UUID?
+    ) async throws -> ScholiumStorageOperationResult {
+        try requireActive()
+        try Task.checkCancellation()
+        let support = storageRootURL
+        switch action {
+        case .clearTemporaryFiles:
+            let result = try await Task.detached(priority: .utility) {
+                try DerivedStateStorage.clearWordTemporaryDirectories(applicationSupportURL: support)
+            }.value
+            return .init(action: action, cleanup: result)
+        case .clearProjectionCache:
+            let vaults = try await registeredVaults()
+            let result = try await Task.detached(priority: .utility) {
+                var removedFiles = 0
+                var preservedFiles = 0
+                var failedFiles = 0
+                var busyDirectories = 0
+                var removedBytes: Int64 = 0
+                for vault in vaults {
+                    try Task.checkCancellation()
+                    do {
+                        let result = try SourceProjectionCache(
+                            applicationSupportURL: support, vaultID: vault.id, role: vault.role
+                        ).clearRecognizedRecords()
+                        removedFiles += result.removedFiles
+                        removedBytes += result.removedBytes
+                        preservedFiles += result.preservedFiles
+                        failedFiles += result.failedFiles
+                        busyDirectories += result.busyDirectories
+                    } catch DerivedStateStorageError.inUse {
+                        busyDirectories += 1
+                    } catch {
+                        failedFiles += 1
+                    }
+                }
+                return ScholiumStorageClearResult(
+                    removedFiles: removedFiles, removedBytes: removedBytes, preservedFiles: preservedFiles,
+                    failedFiles: failedFiles, busyDirectories: busyDirectories)
+            }.value
+            return .init(action: action, cleanup: result)
+        case .cleanRetiredDerivedState:
+            guard case .live(let registry, _) = membership else {
+                throw ScholiumApplicationError.runtimeConfigurationUnavailable
+            }
+            let summary = try await registry.maintainDerivedState(applicationSupportURL: support)
+            latestDerivedStateMaintenanceSummary = summary
+            return .init(
+                action: action,
+                cleanup: .init(
+                    removedFiles: summary.removedFiles, removedBytes: summary.removedBytes,
+                    preservedFiles: summary.preservedFiles, failedFiles: summary.failedFiles + summary.failedDirectories,
+                    busyDirectories: summary.busyDirectories))
+        case .rebuildIndex:
+            guard let triptychID else { throw ScholiumStorageManagementError.triptychRequired }
+            _ = try await assignment(id: triptychID)
+            let handle: WorkspaceHandle
+            if let active = handles[triptychID] {
+                handle = active
+            } else {
+                // Settings needs a source-ready activation, then one explicit
+                // complete rebuild; opening all roles first would build twice.
+                handle = try await workspace(id: triptychID, openingVault: .paperAnalysis)
+            }
+            _ = try await handle.rebuildSearchIndex()
+            return .init(action: action)
+        case .clearIndex:
+            guard let triptychID else { throw ScholiumStorageManagementError.triptychRequired }
+            let assignment = try await assignment(id: triptychID)
+            let outcome: SearchIndexClearResult
+            var warnings: [String] = []
+            var openingHandle: WorkspaceHandle?
+            if let opening = openings[triptychID] {
+                #if DEBUG
+                    storageOpeningJoinCountForTesting += 1
+                #endif
+                openingHandle = try await opening.task.value
+                try requireActive()
+            }
+            if let active = handles[triptychID] ?? openingHandle {
+                let result = try await active.clearSearchIndex()
+                outcome = result.0
+                if let warning = result.1 { warnings.append("Index cleared; the subsequent workspace refresh failed: \(warning)") }
+            } else {
+                // No vault access or source reads are required to clear an
+                // inactive index. The factory enforces policy and containment.
+                let opened = try await TriptychSearchIndex.openRecovering(
+                    applicationSupportURL: support, triptychID: triptychID,
+                    vaults: Array(assignment.vaults.values))
+                do {
+                    outcome = try await opened.index.clear()
+                } catch {
+                    await opened.index.shutdown()
+                    throw error
+                }
+                await opened.index.shutdown()
+            }
+            switch outcome.reclamation {
+            case .completed: break
+            case .deferred: warnings.append("Index cleared; reclaiming its remaining disk space was deferred.")
+            case .failed: warnings.append("Index cleared; compacting its remaining storage failed.")
+            }
+            return .init(action: action, warnings: warnings)
+        }
+    }
+
+    /// Activates a Library and resumes any explicitly cleared index. Live
+    /// activations retain source-ready presentation while the owned rebuild runs.
     public func openWorkspace(
         id: UUID,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
+        let handle = try await workspace(id: id, openingVault: openingVault)
+        try Task.checkCancellation()
+        try await handle.resumeSearchIndexForActivation()
+        try Task.checkCancellation()
         try requireActive()
-        if let handle = handles[id] { return handle }
-        if let opening = openings[id] { return try await opening.task.value }
+        return handle
+    }
 
-        let assignment = try await assignment(id: id)
+    /// Borrows the one workspace service owner. Capability and metadata reads
+    /// preserve an explicitly cleared Search index, including after restart.
+    public func workspace(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WorkspaceHandle {
+        try requireActive()
+        try Task.checkCancellation()
+        if let operation = storageOperation, operation.action == .clearIndex, operation.triptychID == id {
+            _ = try await operation.task.value
+            try requireActive()
+            try Task.checkCancellation()
+        }
+        if let handle = handles[id] {
+            try requireActive()
+            return handle
+        }
+        if let opening = openings[id] {
+            #if DEBUG
+                openingJoinCountForTesting += 1
+            #endif
+            let handle = try await opening.task.value
+            try requireActive()
+            return handle
+        }
+
         let token = UUID()
-        let task: Task<WorkspaceHandle, Error>
-        switch membership {
-        case .live(_, let supportURL):
-            task = Task {
-                try await WorkspaceHandle.open(
+        // Admission and registration are one actor turn. Membership lookup
+        // and storage maintenance belong to the same owned task as creation,
+        // so shutdown cannot miss an opener suspended before the factory.
+        let task = Task {
+            try Task.checkCancellation()
+            try requireActive()
+            await maintainDerivedStateIfNeeded()
+            try Task.checkCancellation()
+            try requireActive()
+            #if DEBUG
+                openingLookupCountForTesting += 1
+            #endif
+            let assignment = try await assignment(id: id)
+            try Task.checkCancellation()
+            try requireActive()
+            #if DEBUG
+                if let openingLookupBarrierForTesting { await openingLookupBarrierForTesting(id) }
+            #endif
+            try Task.checkCancellation()
+            try requireActive()
+            #if DEBUG
+                openingFactoryCountForTesting += 1
+            #endif
+            switch membership {
+            case .live(_, let supportURL):
+                return try await WorkspaceHandle.open(
                     assignment: assignment,
                     mode: .live,
                     applicationSupportURL: supportURL,
@@ -748,10 +1000,8 @@ public actor WorkspaceRuntime {
                     access: .live,
                     openingVault: openingVault
                 )
-            }
-        case .snapshot(_, _, let supportURL):
-            task = Task {
-                try await WorkspaceHandle.open(
+            case .snapshot(_, _, let supportURL):
+                return try await WorkspaceHandle.open(
                     assignment: assignment,
                     mode: .snapshot,
                     applicationSupportURL: supportURL,
@@ -844,29 +1094,43 @@ public actor WorkspaceRuntime {
     /// Cancels in-flight opens, shuts down every cached handle, and prevents
     /// later reuse. Calling shutdown repeatedly is harmless.
     public func shutdown() async {
-        guard !isShutDown else { return }
+        if let shutdownTask {
+            #if DEBUG
+                shutdownJoinCountForTesting += 1
+            #endif
+            await shutdownTask.value
+            return
+        }
         isShutDown = true
+        let task = Task { await finishShutdown() }
+        shutdownTask = task
+        await task.value
+    }
 
+    private func finishShutdown() async {
+        let operation = storageOperation?.task
         let pending = openings.values.map(\.task)
         openings.removeAll()
+        let active = Array(handles.values) + Array(retainedHandles.values)
+        handles.removeAll()
+        retainedHandles.removeAll()
+        operation?.cancel()
         pending.forEach { $0.cancel() }
-        for task in pending {
-            if let handle = try? await task.value {
-                await handle.shutdown()
+        // Storage requests can be waiting on an opening or a Handle-owned
+        // rebuild. Start every owner's shutdown before joining those waiters.
+        await withTaskGroup(of: Void.self) { drains in
+            for handle in active {
+                drains.addTask { await handle.shutdown() }
+            }
+            if let operation { _ = try? await operation.value }
+            for task in pending {
+                if let handle = try? await task.value {
+                    await handle.shutdown()
+                }
             }
         }
-
-        let active = handles.values
-        handles.removeAll()
-        for handle in active {
-            await handle.shutdown()
-        }
-        let retained = retainedHandles.values
-        retainedHandles.removeAll()
-        for handle in retained {
-            await handle.shutdown()
-        }
         await vaultPool.shutdown()
+        await maintainDerivedStateIfNeeded(force: true)
     }
 
     /// Detaches cached activations without finishing their streams. The old
@@ -908,7 +1172,7 @@ public actor WorkspaceRuntime {
         var successorSnapshots: [UUID: WorkspaceSnapshot] = [:]
         do {
             for replacement in replacements {
-                let successor = try await openWorkspace(id: replacement.workspaceID)
+                let successor = try await workspace(id: replacement.workspaceID)
                 successors[replacement.workspaceID] = successor
                 successorSnapshots[replacement.workspaceID] = try await successor.snapshot()
             }

@@ -40,7 +40,7 @@ struct RelatedContentCacheAttributionMeasurementTests {
                     folder: "03-works", vault: .init(name: "Works", role: .draftProject, canonicalPath: fixtureRoot.appendingPathComponent("03-works").path)),
             ]
             let index = try TriptychSearchIndex(
-                databaseURL: storage.appendingPathComponent("search.sqlite"), triptychID: UUID(),
+                isolatedDatabaseURL: storage.appendingPathComponent("search.sqlite"), triptychID: UUID(),
                 vaults: roles.map(\.vault))
             let sourceBytes = try await populate(index: index, roles: roles, fixtureRoot: fixtureRoot, isLong: isLong)
             #expect(sourceBytes == (isLong ? 4_975_480 : 175_100))

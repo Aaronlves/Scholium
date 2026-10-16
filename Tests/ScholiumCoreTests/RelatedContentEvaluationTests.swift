@@ -158,7 +158,7 @@ struct RelatedContentEvaluationTests {
         let request = RelatedContentRequest(
             seed: .init(noteID: seedID, source: scenario.focus, focuses: [.init(kind: .selectedPassage, text: scenario.focus)]))
         let index = try TriptychSearchIndex(
-            databaseURL: root.appendingPathComponent("\(scenario.id).sqlite"), triptychID: UUID(), vaults: vaults)
+            isolatedDatabaseURL: root.appendingPathComponent("\(scenario.id).sqlite"), triptychID: UUID(), vaults: vaults)
         _ = try await index.synchronize(documents)
         let response = try await index.relatedMaterialSourceCandidates(request)
         #expect(response.state == .current || response.state == .empty)

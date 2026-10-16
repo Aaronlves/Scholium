@@ -91,10 +91,12 @@ fingerprint and identity before returning source. Filename and YAML projections
 support display/discovery without write or bibliographic authority. Yams proves
 source ranges and refuses ambiguity.
 
-Disposable source-projection caches bind exact path/fingerprint, role/profile,
-parser/search policy and checked coordinates/payload digest. Fresh descriptor reads
-and semantic parsing precede restoration; invalid/missing/unwritable caches cause
-recomputation. Caches contain no authoritative source, file facts or identity.
+One source-projection cache owns compact catalog and Search records under independent
+parser/projection and Search policies. Fresh descriptor reads supply exact fingerprints,
+facts and versions; validated catalog hits skip semantic parsing. Restoration validates
+path, role/profile, coordinates and payload digest; unusable records recompute. Caches
+contain no source or identity authority. Coordinated path deletion clears both kinds;
+policy retirement and abandoned staging share that owner.
 Search index publication transactionally binds complete paragraph/offset maps and
 lexical preparation to exact source revisions. Negation cannot evaluate cropped
 body passages. Literal term groups persist raw alternatives with group-level

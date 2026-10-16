@@ -87,7 +87,7 @@ struct RelatedContentCompactScoringTests {
             vaultID: work.id, vaultName: work.name, vaultRole: work.role,
             document: .init(relativePath: "Draft.md", rawContent: "Compass reason 自由. Éthique matters."))
         let index = try TriptychSearchIndex(
-            databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(),
+            isolatedDatabaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(),
             vaults: [analysis, topic, work])
         _ = try await index.synchronize(candidateItems + [excluded, seed])
         let request = RelatedContentRequest(

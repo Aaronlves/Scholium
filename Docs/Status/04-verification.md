@@ -31,6 +31,13 @@ packaged performance campaign were omitted. G6/G7/G9 remain incomplete.
 
 ## Current feature coverage
 
+**2026-10-16 — Storage:** 244 scoped regressions plus activation/recovery checks pass.
+Native seven-category English/Chinese navigation, cache/index cleanup, Search pause
+across Settings reload, explicit rebuild/query recovery and exact source/unknown-file
+preservation pass.
+Artifact/source boundaries: `.build/index-lifecycle-management/results.md`.
+VoiceOver and researcher acceptance remain open.
+
 **2026-10-10 — Retrieval:** Long-focus title/alias and identity-lifecycle
 regressions pass with exact source/highlight checks (`.build/long-focus-proof/`).
 Usefulness and native latency remain open.
@@ -181,11 +188,12 @@ native publication; they are not G7 or click-to-paint acceptance.
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
   native optimization. All 16 private cases preserve ordered results; source
   bytes unchanged. This recorded exception is not standing private-vault authority.
-- **2026-10-16 synthetic 5,000-Note Debug lifecycle:** 57,299,729 Markdown bytes.
-  Cold configure 490.49 → 275.79 s; rebuild 488.76 → 274.11 s.
-  First dense Topics Note 527.21 → 15.29 s, including XCTest waits, not paint/FPS.
-  Two-pass browsing, exact source/Undo, ordered Search/Graph rebuild
-  equivalence passed. Frozen-source evidence; human/release acceptance remains unverified.
+- **2026-10-16 5,000-Note lifecycle:** 57,299,729 Markdown bytes.
+  Cold configure 490.49 → 281.62 s; rebuild 488.76 → 280.18 s.
+  Compatible reopen 65.14 → 30.36 s: 5,000 restored, zero parsed.
+  Unchanged refresh 3.09–3.17 s: zero reads/parses/projections.
+  Source fidelity, Search/Graph equivalence and closed journals passed.
+  Frozen Debug backend evidence; UI/Release unverified.
 - **2026-09-15 Search benchmark, 2,056 Notes:** schema 18 / ranking policy 4.
   Warm query p95 97 ms, first five pages p95 466 ms, incremental publication
   p95 27 ms against unchanged 100/500/250 ms budgets. A dated measured-build
@@ -194,10 +202,6 @@ native publication; they are not G7 or click-to-paint acceptance.
   five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
   including capture, pool clearing, bridge readiness and DOM layout. Throttled
   WebKit frame delivery excludes paint/Release claims.
-- **2026-09-16 Settings:** Debug Time Profiler + Hangs, six warm Appearance
-  selections. Median hosting-layout CPU sample weight 72 → 40 ms; action-window
-  main-thread weight 225.5 → 200.5 ms; no detected >250 ms hang versus baseline
-  first-Appearance 267.9 ms. Workspace totals overlap; not click-to-paint.
 
 Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
 0.601/0.641 → 0.635/0.717; material recall 0.625 → 0.688/0.750. Agent-authored cases are
@@ -224,7 +228,7 @@ Evidence: `.build/recommendation-evaluation/`,
 `.build/recommendation-native-release-build.log`,
 `.build/semantic-multilingual-prototype/`,
 `.build/writing-references-release-harness/.build/writing-references-performance/`,
-`.build/first-index-lifecycle-optimization/`, `.build/search-opening-diagnostics/`,
+`.build/index-lifecycle-management/`, `.build/search-opening-diagnostics/`,
 `.build/search-performance-final-correctness.log`,
 `.build/note-switch/RESULTS.md`, `.build/settings-performance-fix/`.
 

@@ -8,6 +8,20 @@ enum ScholiumErrorLocalization {
     static func message(_ error: any Error, locale: Locale = .current) -> String {
         if let message = applicationMessage(error, locale: locale) { return message }
         switch error {
+        case let error as ScholiumStorageManagementError:
+            return switch error {
+            case .operationInProgress: ScholiumL10n.string("Another storage operation is already running.", locale: locale)
+            case .triptychRequired: ScholiumL10n.string("Choose the Triptych whose index you want to manage.", locale: locale)
+            }
+        case let error as ArchivedChatCleanupError:
+            return switch error {
+            case .changed:
+                ScholiumL10n.string("Archived conversations changed. Review their current size before deleting them.", locale: locale)
+            case .notSaved:
+                ScholiumL10n.string(
+                    "Conversation deletion could not be saved. The conversations have been retained; retry after the history save error is resolved.",
+                    locale: locale)
+            }
         case let error as ExactFileReplacementError:
             return switch error {
             case .revisionConflict: ScholiumL10n.string("The configuration file or its directory changed. Reload before trying again.", locale: locale)
@@ -373,6 +387,7 @@ enum ScholiumErrorLocalization {
             }
         case let error as SearchIndexError:
             return switch error {
+            case .awaitingRebuild: ScholiumL10n.string("Index Cleared. Choose Rebuild Index in Storage settings or reopen this Triptych.", locale: locale)
             case .sqlite(let detail): ScholiumL10n.string("The search index failed: \(detail)", locale: locale)
             case .corruptDatabase: ScholiumL10n.string("The generated search index is corrupt and must be rebuilt.", locale: locale)
             case .incompatibleSchema: ScholiumL10n.string("The generated search index uses an incompatible schema and must be rebuilt.", locale: locale)
@@ -471,6 +486,23 @@ enum ScholiumErrorLocalization {
             }
         default:
             return error.localizedDescription
+        }
+    }
+
+    /// Only fixed App-authored Storage warnings are translated. Any diagnostic
+    /// suffix or unrecognized warning remains verbatim.
+    static func storageWarning(_ warning: String, locale: Locale = .current) -> String {
+        let refreshPrefix = "Index cleared; the subsequent workspace refresh failed: "
+        if warning.hasPrefix(refreshPrefix) {
+            let detail = String(warning.dropFirst(refreshPrefix.count))
+            return ScholiumL10n.string("Index cleared; the subsequent workspace refresh failed: \(detail)", locale: locale)
+        }
+        switch warning {
+        case "Index cleared; reclaiming its remaining disk space was deferred.":
+            return ScholiumL10n.string("Index cleared; reclaiming its remaining disk space was deferred.", locale: locale)
+        case "Index cleared; compacting its remaining storage failed.":
+            return ScholiumL10n.string("Index cleared; compacting its remaining storage failed.", locale: locale)
+        default: return warning
         }
     }
 

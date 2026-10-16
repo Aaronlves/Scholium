@@ -104,6 +104,74 @@ struct WorkspaceRefreshCoordinatorTests {
         await coordinator.shutdown()
     }
 
+    #if DEBUG
+        @Test("Shutdown cancels caller waits immediately and joins one retained worker", .timeLimit(.minutes(1)))
+        func shutdownJoinsWorkerForEveryCaller() async throws {
+            let probe = RefreshCycleProbe()
+            let completions = RefreshShutdownCompletions()
+            let coordinator = WorkspaceRefreshCoordinator<Int, Int> {
+                requestID, payloads in
+                await probe.run(requestID: requestID, payloads: payloads)
+            }
+            let active = Task { try await coordinator.request(1) }
+            var queued: Task<Int, any Error>?
+            var shutdowns: [Task<Void, Never>] = []
+            try await withTaskCancellationHandler {
+                do {
+                    try await waitUntilShutdownState { (await probe.evidence()).payloads == [[1]] }
+                    let cancelled = Task { try await coordinator.request(2) }
+                    queued = cancelled
+                    try await waitUntilShutdownState { await coordinator.queuedRequestCount == 1 }
+                    cancelled.cancel()
+                    await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
+                    #expect((await probe.evidence()).payloads == [[1]])
+
+                    shutdowns.append(
+                        Task {
+                            await coordinator.shutdown()
+                            await completions.finished("first")
+                        })
+                    // The active caller is released before its held cycle can
+                    // finish. Shutdown retains that cycle's worker separately.
+                    await #expect(throws: CancellationError.self) { _ = try await active.value }
+                    shutdowns.append(
+                        Task {
+                            await coordinator.shutdown()
+                            await completions.finished("second")
+                        })
+                    try await waitUntilShutdownState { await coordinator.shutdownJoinCountForTesting == 1 }
+                    #expect(await completions.names.isEmpty)
+                    #expect(await coordinator.queuedRequestCount == 0)
+                    await #expect(throws: CancellationError.self) { _ = try await coordinator.request(3) }
+
+                    await probe.releaseNext()
+                    for shutdown in shutdowns { await shutdown.value }
+                    #expect(await completions.names == ["first", "second"])
+                    #expect((await probe.evidence()).payloads == [[1]])
+                } catch {
+                    await probe.releaseAll()
+                    await coordinator.shutdown()
+                    _ = await active.result
+                    _ = await queued?.result
+                    for shutdown in shutdowns { await shutdown.value }
+                    throw error
+                }
+            } onCancel: {
+                Task { await probe.releaseAll() }
+            }
+        }
+
+        private func waitUntilShutdownState(_ predicate: @Sendable () async -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while ContinuousClock.now < deadline {
+                try Task.checkCancellation()
+                if await predicate() { return }
+                await Task.yield()
+            }
+            throw RefreshTestError.shutdownBoundaryNotReached
+        }
+    #endif
+
     private func waitUntilQueued(
         _ count: Int,
         coordinator: WorkspaceRefreshCoordinator<Int, Int>
@@ -149,14 +217,17 @@ private actor RefreshCycleProbe {
     private var requestIDs: [UInt64] = []
     private var releases: [CheckedContinuation<Void, Never>] = []
     private var completed = 0
+    private var isDraining = false
 
     func run(requestID: RefreshRequestID, payloads: [Int]) async -> Int {
         active += 1
         maximumActive = max(maximumActive, active)
         self.payloads.append(payloads)
         requestIDs.append(requestID.rawValue)
-        await withCheckedContinuation { continuation in
-            releases.append(continuation)
+        if !isDraining {
+            await withCheckedContinuation { continuation in
+                releases.append(continuation)
+            }
         }
         active -= 1
         completed += 1
@@ -172,6 +243,13 @@ private actor RefreshCycleProbe {
     func releaseNext() {
         guard !releases.isEmpty else { return }
         releases.removeFirst().resume()
+    }
+
+    func releaseAll() {
+        isDraining = true
+        let pending = releases
+        releases.removeAll()
+        for continuation in pending { continuation.resume() }
     }
 
     func waitUntilCyclesCompleted(_ count: Int) async {
@@ -191,6 +269,12 @@ private actor RefreshCycleProbe {
 
 private enum RefreshTestError: Error {
     case injected
+    case shutdownBoundaryNotReached
+}
+
+private actor RefreshShutdownCompletions {
+    private(set) var names: Set<String> = []
+    func finished(_ name: String) { names.insert(name) }
 }
 
 private actor RefreshAttemptCounter {

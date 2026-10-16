@@ -170,7 +170,7 @@ struct SearchConservativeAdmissionTests {
             let database = try SearchSQLiteDatabase(path: databaseURL.path)
             try database.execute("UPDATE search_index_state SET \(policy) = \(policy) - 1;")
         }
-        let opened = try TriptychSearchIndex.openRecovering(databaseURL: databaseURL, triptychID: fixture.triptychID)
+        let opened = try TriptychSearchIndex.openRecovering(isolatedDatabaseURL: databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         #expect(try await opened.index.synchronize(documents).disposition == .recoveredAndRebuilt)
         let response = try await opened.index.testSearch(fixture.request("body:λογος AND body:\"→\""))
@@ -227,7 +227,7 @@ struct SearchConservativeAdmissionTests {
 
         func remove() { try? FileManager.default.removeItem(at: root) }
         func index(name: String = "index.sqlite") throws -> TriptychSearchIndex {
-            try TriptychSearchIndex(databaseURL: root.appendingPathComponent(name), triptychID: triptychID)
+            try TriptychSearchIndex(isolatedDatabaseURL: root.appendingPathComponent(name), triptychID: triptychID)
         }
         func note(_ path: String, _ source: String) -> SearchIndexDocument {
             .init(

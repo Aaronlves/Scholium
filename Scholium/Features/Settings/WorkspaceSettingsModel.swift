@@ -116,6 +116,7 @@ struct WorkspaceSettingsCapabilities {
     let workspace: WorkspaceSettingsWorkspaceCapabilities
     let zotero: WorkspaceSettingsZoteroCapabilities
     let changesHistory: WorkspaceChangesHistoryCapabilities
+    let storage: StorageSettingsCapabilities
 }
 
 /// Application-lifetime Settings boundary. It receives delivery-neutral
@@ -178,6 +179,8 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.loadRecoverySnapshot = loadSettingsRecovery
         self.resetSnapshot = resetSettings
     }
+
+    var storageCapabilities: StorageSettingsCapabilities? { capabilities?.storage }
 
     var registeredVaults: [RegisteredVault] { snapshot.registeredVaults }
     var registeredTriptychs: [TriptychAssignment] { snapshot.registeredTriptychs }

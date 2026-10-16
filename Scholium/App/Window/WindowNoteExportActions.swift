@@ -9,6 +9,7 @@ extension WindowModel {
             let note = currentNote?.hydratedSnapshot
         else { return }
 
+        let applicationSupportURL = workspaceStore.applicationSupportURL
         noteExportLifecycle.prepare(
             acquire: { [weak self] in
                 guard let self, !self.windowCloseCoordinator.isPreparingOrFinalized,
@@ -80,6 +81,7 @@ extension WindowModel {
             },
             publish: { payload, onClose in
                 let controller = ScholiumNoteExportWindowController(
+                    applicationSupportURL: applicationSupportURL,
                     document: payload.document, title: payload.title,
                     embeddedImages: payload.embeddedImages,
                     excludedRoots: payload.excludedRoots,

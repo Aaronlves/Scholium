@@ -8,30 +8,41 @@ import Foundation
 /// Record, recovery-policy, or execution semantics.
 final class AdvisoryFileLock: @unchecked Sendable {
     private let descriptor: Int32
+    private let didClose: (@Sendable () -> Void)?
 
-    init(directory: SecureRecordDirectory, fileName: String) throws {
-        descriptor = try directory.openLockFile(fileName)
-        var status = stat()
-        guard fstat(descriptor, &status) == 0,
-            (status.st_mode & S_IFMT) == S_IFREG,
-            status.st_nlink == 1
-        else {
-            Darwin.close(descriptor)
-            throw SecureRecordDirectoryError.unsafe(
-                "The coordination lock is linked or is not a regular file."
-            )
-        }
-        if status.st_mode & 0o777 != 0o600 {
-            guard fchmod(descriptor, 0o600) == 0 else {
-                Darwin.close(descriptor)
+    /// The optional, per-owner close observation is used only by ownership tests.
+    init(directory: SecureRecordDirectory, fileName: String, didClose: (@Sendable () -> Void)? = nil) throws {
+        let openedDescriptor = try directory.openLockFile(fileName)
+        do {
+            var status = stat()
+            guard fstat(openedDescriptor, &status) == 0,
+                (status.st_mode & S_IFMT) == S_IFREG,
+                status.st_nlink == 1
+            else {
                 throw SecureRecordDirectoryError.unsafe(
-                    "Cannot restrict the coordination lock."
+                    "The coordination lock is linked or is not a regular file."
                 )
             }
+            if status.st_mode & 0o777 != 0o600 {
+                guard fchmod(openedDescriptor, 0o600) == 0 else {
+                    throw SecureRecordDirectoryError.unsafe(
+                        "Cannot restrict the coordination lock."
+                    )
+                }
+            }
+        } catch {
+            Darwin.close(openedDescriptor)
+            didClose?()
+            throw error
         }
+        self.didClose = didClose
+        descriptor = openedDescriptor
     }
 
-    deinit { Darwin.close(descriptor) }
+    deinit {
+        Darwin.close(descriptor)
+        didClose?()
+    }
 
     func withSharedLock<T>(_ operation: () throws -> T) throws -> T {
         try withLock(LOCK_SH, operation)
@@ -125,6 +136,47 @@ struct SecureRecordDirectory: Sendable {
         self.fileExtensions = fileExtensions
         self.preCommitFault = preCommitFault
         self.postCommitFault = postCommitFault
+    }
+
+    /// Foundation intentionally folds /private/var back to /var. SQLite's
+    /// NOFOLLOW needs the physical root spelling, without resolving any of this
+    /// owner's internal components or the requested leaf.
+    func physicalTrustedRootPath() throws -> String {
+        let root = trustedRootURL.path.withCString {
+            Darwin.open($0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        }
+        guard root >= 0 else { throw unsafe("open trusted root for native path") }
+        defer { Darwin.close(root) }
+        guard let resolved = trustedRootURL.path.withCString({ Darwin.realpath($0, nil) }) else {
+            throw unsafe("resolve trusted root for native path")
+        }
+        defer { free(resolved) }
+        guard let path = String(validatingCString: resolved) else {
+            throw SecureRecordDirectoryError.unsafe("The trusted root has no valid native path.")
+        }
+        let physical = Darwin.open(resolved, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard physical >= 0 else { throw unsafe("open physical trusted root") }
+        defer { Darwin.close(physical) }
+        var expected = stat()
+        var actual = stat()
+        guard fstat(root, &expected) == 0, fstat(physical, &actual) == 0,
+            expected.st_dev == actual.st_dev, expected.st_ino == actual.st_ino,
+            actual.st_mode & S_IFMT == S_IFDIR
+        else { throw SecureRecordDirectoryError.unsafe("The trusted root changed during native-path resolution.") }
+        return path
+    }
+
+    func physicalFilePath(fileName: String) throws -> String {
+        guard Self.isSafeComponent(fileName) else {
+            throw SecureRecordDirectoryError.unsafe("Invalid native storage filename.")
+        }
+        let root = try physicalTrustedRootPath()
+        // Validate the original descriptor-relative chain. The physical path
+        // keeps those components verbatim so SQLite independently refuses any
+        // substituted internal symlink too.
+        let directory = try openStorageDirectory(createIfMissing: false)
+        defer { Darwin.close(directory) }
+        return ([root == "/" ? "" : root] + components + [fileName]).joined(separator: "/")
     }
 
     func ensureDirectories(_ children: [String]) throws {
@@ -248,13 +300,28 @@ struct SecureRecordDirectory: Sendable {
         return try fileNames(parent: parent, includingStaging: includingStaging)
     }
 
-    private func fileNames(
+    func fileNames(
         parent: Int32,
         includingStaging: Bool
     ) throws -> [String] {
-        let enumerationDescriptor = dup(parent)
+        var anchored = stat()
+        guard fstat(parent, &anchored) == 0, anchored.st_mode & S_IFMT == S_IFDIR else {
+            throw unsafe("validate storage directory enumeration")
+        }
+        // dup shares the directory's open-file description and offset. A
+        // preflight enumeration must not consume the caller's later cleanup
+        // or verification pass over this same anchored directory.
+        let enumerationDescriptor = openat(parent, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard enumerationDescriptor >= 0 else {
-            throw unsafe("duplicate storage directory")
+            throw unsafe("open storage directory enumeration")
+        }
+        var opened = stat()
+        guard fstat(enumerationDescriptor, &opened) == 0,
+            opened.st_mode & S_IFMT == S_IFDIR,
+            anchored.st_dev == opened.st_dev, anchored.st_ino == opened.st_ino
+        else {
+            Darwin.close(enumerationDescriptor)
+            throw unsafe("validate storage enumeration identity")
         }
         guard let stream = fdopendir(enumerationDescriptor) else {
             Darwin.close(enumerationDescriptor)
@@ -262,7 +329,12 @@ struct SecureRecordDirectory: Sendable {
         }
         defer { closedir(stream) }
         var names: [String] = []
-        while let entry = readdir(stream) {
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else {
+                guard errno == 0 else { throw unsafe("enumerate storage directory") }
+                break
+            }
             let name = withUnsafePointer(to: entry.pointee.d_name) { pointer in
                 pointer.withMemoryRebound(
                     to: CChar.self,
@@ -406,13 +478,15 @@ struct SecureRecordDirectory: Sendable {
         }
         let parent = try openStorageDirectory(createIfMissing: true)
         defer { Darwin.close(parent) }
-        let descriptor = fileName.withCString {
-            openat(
-                parent,
-                $0,
-                O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW,
-                fileMode
-            )
+        let flags = O_RDWR | O_CLOEXEC | O_NOFOLLOW
+        let descriptor = fileName.withCString { name in
+            let existing = openat(parent, name, flags, fileMode)
+            guard existing < 0, errno == ENOENT else { return existing }
+            // Darwin can report ENOENT for concurrent O_CREAT|O_NOFOLLOW
+            // first opens. Create exclusively, then open the winning inode.
+            let created = openat(parent, name, flags | O_CREAT | O_EXCL, fileMode)
+            guard created < 0, errno == EEXIST else { return created }
+            return openat(parent, name, flags, fileMode)
         }
         guard descriptor >= 0 else { throw unsafe("open coordination lock") }
         return descriptor
@@ -552,7 +626,7 @@ struct SecureRecordDirectory: Sendable {
         }
     }
 
-    private func openStorageDirectory(createIfMissing: Bool) throws -> Int32 {
+    func openStorageDirectory(createIfMissing: Bool) throws -> Int32 {
         var current = trustedRootURL.path.withCString {
             Darwin.open($0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         }
@@ -617,7 +691,7 @@ struct SecureRecordDirectory: Sendable {
         return next
     }
 
-    private func read(parent: Int32, fileName: String) throws -> Data {
+    func read(parent: Int32, fileName: String) throws -> Data {
         let descriptor = fileName.withCString {
             openat(parent, $0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
         }
@@ -690,7 +764,7 @@ struct SecureRecordDirectory: Sendable {
         }
     }
 
-    private static func sameFile(_ lhs: stat, _ rhs: stat) -> Bool {
+    static func sameFile(_ lhs: stat, _ rhs: stat) -> Bool {
         lhs.st_dev == rhs.st_dev
             && lhs.st_ino == rhs.st_ino
             && lhs.st_size == rhs.st_size

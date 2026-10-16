@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import ScholiumContracts
 import ScholiumCore
 
@@ -28,15 +29,27 @@ actor PooledWorkspaceVault {
     private var subscribers: [UUID: Subscriber] = [:]
     private var rootAuthorityIsInvalid = false
     private var isShutDown = false
+    private var shutdownTask: Task<Void, Never>?
+    #if DEBUG
+        private(set) var shutdownJoinCountForTesting = 0
+        var shutdownBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setShutdownBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            shutdownBarrierForTesting = barrier
+        }
+    #endif
+    private var cacheStorageLease: DerivedStateStorageLease?
 
     init(
         vault: RegisteredVault,
         rootURL: URL,
         repository: VaultRepository,
         sourceCatalog: VaultSourceCatalog,
+        cacheStorageLease: DerivedStateStorageLease?,
         securityScopeURL: URL?,
         watcher: WorkspaceFileEventWatcher?
     ) {
+        self.cacheStorageLease = cacheStorageLease
         self.vault = vault
         self.rootURL = rootURL
         self.repository = repository
@@ -90,8 +103,20 @@ actor PooledWorkspaceVault {
     }
 
     func shutdown() async {
-        guard !isShutDown else { return }
+        if let shutdownTask {
+            #if DEBUG
+                shutdownJoinCountForTesting += 1
+            #endif
+            await shutdownTask.value
+            return
+        }
         isShutDown = true
+        let task = Task { await finishShutdown() }
+        shutdownTask = task
+        await task.value
+    }
+
+    private func finishShutdown() async {
         await sourceCatalog.shutdown()
         let task = watcherTask
         watcherTask = nil
@@ -102,6 +127,10 @@ actor PooledWorkspaceVault {
         let active = subscribers.values
         subscribers.removeAll()
         for subscriber in active { subscriber.continuation.finish() }
+        #if DEBUG
+            if let shutdownBarrierForTesting { await shutdownBarrierForTesting() }
+        #endif
+        cacheStorageLease = nil
         securityScopeURL?.stopAccessingSecurityScopedResource()
     }
 
@@ -201,6 +230,8 @@ actor PooledWorkspaceVault {
 /// Runtime-owned pool keyed by stable vault UUID and guarded by canonical
 /// path equality. Handles for different Triptychs borrow the same authority.
 actor WorkspaceVaultPool {
+    private static let cacheLogger = Logger(subsystem: "com.scholium.app", category: "SourceProjectionCache")
+
     private struct Opening: Sendable {
         let token: UUID
         let canonicalPath: String
@@ -212,6 +243,10 @@ actor WorkspaceVaultPool {
     private var vaults: [UUID: PooledWorkspaceVault] = [:]
     private var openings: [UUID: Opening] = [:]
     private var isShutDown = false
+    private var shutdownTask: Task<Void, Never>?
+    #if DEBUG
+        private(set) var shutdownJoinCountForTesting = 0
+    #endif
 
     init(applicationSupportURL: URL, mode: WorkspaceVaultPoolMode) {
         self.applicationSupportURL = applicationSupportURL.standardizedFileURL
@@ -281,8 +316,20 @@ actor WorkspaceVaultPool {
     }
 
     func shutdown() async {
-        guard !isShutDown else { return }
+        if let shutdownTask {
+            #if DEBUG
+                shutdownJoinCountForTesting += 1
+            #endif
+            await shutdownTask.value
+            return
+        }
         isShutDown = true
+        let task = Task { await finishShutdown() }
+        shutdownTask = task
+        await task.value
+    }
+
+    private func finishShutdown() async {
         let pending = openings.values.map(\.task)
         openings.removeAll()
         pending.forEach { $0.cancel() }
@@ -369,6 +416,21 @@ actor WorkspaceVaultPool {
                 applicationSupportURL: applicationSupportURL,
                 vaultRole: registeredVault.role
             )
+            let cacheLease: DerivedStateStorageLease?
+            do {
+                cacheLease = try DerivedStateStorage.vaultCacheLease(applicationSupportURL: applicationSupportURL, vaultID: registeredVault.id)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                cacheLease = nil
+                Self.cacheLogger.notice("sourceProjectionCache unavailable disabledVaultCaches=1")
+            }
+            try Task.checkCancellation()
+            let sourceCatalog = VaultSourceCatalog(
+                repository: repository,
+                searchProjectionCache: cacheLease.map { _ in
+                    SourceProjectionCache(applicationSupportURL: applicationSupportURL, vaultID: registeredVault.id, role: registeredVault.role)
+                })
             let watcher: WorkspaceFileEventWatcher? =
                 switch mode {
                 case .live: WorkspaceFileEventWatcher(rootURL: rootURL)
@@ -378,12 +440,8 @@ actor WorkspaceVaultPool {
                 vault: registeredVault,
                 rootURL: rootURL,
                 repository: repository,
-                sourceCatalog: VaultSourceCatalog(
-                    repository: repository,
-                    vaultRole: registeredVault.role,
-                    applicationSupportURL: applicationSupportURL,
-                    vaultID: registeredVault.id
-                ),
+                sourceCatalog: sourceCatalog,
+                cacheStorageLease: cacheLease,
                 securityScopeURL: securityScopeURL,
                 watcher: watcher
             )

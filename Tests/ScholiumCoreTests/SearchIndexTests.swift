@@ -494,7 +494,7 @@ struct SearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         try Data("not a sqlite database".utf8).write(to: fixture.databaseURL)
-        let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        let opened = try TriptychSearchIndex.openRecovering(isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([
             fixture.item(fixture.analyses, "Recovered.md", "---\ntitle: Recovered\n---\nrecoverable concept")
@@ -512,7 +512,7 @@ struct SearchIndexTests {
         _ = try await index?.synchronize([source])
         index = nil
         try setSchemaVersion(SearchContract.schemaVersion - 1, in: fixture.databaseURL)
-        let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        let opened = try TriptychSearchIndex.openRecovering(isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([source])
         #expect(result.generation.schemaVersion == SearchContract.schemaVersion)
@@ -537,7 +537,7 @@ struct SearchIndexTests {
         )
 
         let opened = try TriptychSearchIndex.openRecovering(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         #expect(opened.recoveredCorruption)
@@ -575,7 +575,7 @@ struct SearchIndexTests {
             try execute(mutation, in: fixture.databaseURL)
 
             let opened = try TriptychSearchIndex.openRecovering(
-                databaseURL: fixture.databaseURL,
+                isolatedDatabaseURL: fixture.databaseURL,
                 triptychID: fixture.triptychID
             )
             #expect(opened.recoveredCorruption, Comment(rawValue: mutation))
@@ -631,7 +631,7 @@ struct SearchIndexTests {
 
         let opening = Task {
             try TriptychSearchIndex.openRecovering(
-                databaseURL: fixture.databaseURL,
+                isolatedDatabaseURL: fixture.databaseURL,
                 triptychID: fixture.triptychID
             )
         }
@@ -641,7 +641,7 @@ struct SearchIndexTests {
         }
 
         let reopened = try TriptychSearchIndex.openRecovering(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         #expect(!reopened.recoveredCorruption)
@@ -700,7 +700,7 @@ struct SearchIndexTests {
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {
-            try TriptychSearchIndex(databaseURL: url ?? databaseURL, triptychID: triptychID)
+            try TriptychSearchIndex(isolatedDatabaseURL: url ?? databaseURL, triptychID: triptychID)
         }
 
         func item(

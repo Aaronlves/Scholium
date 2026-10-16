@@ -174,7 +174,7 @@ struct BooleanSearchIndexTests {
         }
         func remove() { try? FileManager.default.removeItem(at: root) }
         func index(name: String = "search.sqlite") throws -> TriptychSearchIndex {
-            try TriptychSearchIndex(databaseURL: root.appendingPathComponent(name), triptychID: triptych, vaults: [vault])
+            try TriptychSearchIndex(isolatedDatabaseURL: root.appendingPathComponent(name), triptychID: triptych, vaults: [vault])
         }
         func note(_ path: String, _ source: String) -> SearchIndexDocument {
             SearchIndexDocument(vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, document: NoteDocument(relativePath: path, rawContent: source))

@@ -319,7 +319,7 @@ struct RelatedContentFocusAdmissionTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/synthetic/topics")
-        let index = try TriptychSearchIndex(databaseURL: root.appendingPathComponent("index.sqlite"), triptychID: UUID(), vaults: [vault])
+        let index = try TriptychSearchIndex(isolatedDatabaseURL: root.appendingPathComponent("index.sqlite"), triptychID: UUID(), vaults: [vault])
         let documents = notes.sorted { $0.key < $1.key }.map { path, text in
             SearchIndexDocument(
                 vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,

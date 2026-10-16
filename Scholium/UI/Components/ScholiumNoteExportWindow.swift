@@ -21,11 +21,13 @@ final class ScholiumNoteExportWindowController: NSWindowController, NSWindowDele
     var onClose: (() -> Void)?
 
     init(
+        applicationSupportURL: URL,
         document: NoteDocument, title: String,
         embeddedImages: [String: RenderedMarkdownImage], excludedRoots: [URL],
         appearance: DocumentAppearanceSettings, colorScheme: WindowColorSchemeChoice
     ) {
         let model = NoteExportPreviewModel(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: title, embeddedImages: embeddedImages,
             excludedRoots: excludedRoots, appearance: appearance
         )
@@ -63,6 +65,7 @@ final class ScholiumNoteExportWindowController: NSWindowController, NSWindowDele
 
 @MainActor
 private final class NoteExportPreviewModel: ObservableObject {
+    let applicationSupportURL: URL
     let document: NoteDocument
     let title: String
     let embeddedImages: [String: RenderedMarkdownImage]
@@ -84,10 +87,12 @@ private final class NoteExportPreviewModel: ObservableObject {
     private var renderedKey: NoteExportPreviewKey?
 
     init(
+        applicationSupportURL: URL,
         document: NoteDocument, title: String,
         embeddedImages: [String: RenderedMarkdownImage], excludedRoots: [URL],
         appearance: DocumentAppearanceSettings
     ) {
+        self.applicationSupportURL = applicationSupportURL
         self.document = document
         self.title = title
         self.embeddedImages = embeddedImages
@@ -132,6 +137,7 @@ private final class NoteExportPreviewModel: ObservableObject {
                 )
             } else {
                 data = try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: document, title: title, format: key.format,
                     style: key.style, textSize: key.textSize, paperSize: key.paperSize,
                     appearance: appearance,
@@ -198,6 +204,7 @@ private final class NoteExportPreviewModel: ObservableObject {
                 data = previewData
             } else {
                 data = try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: document, title: title, format: key.format,
                     style: key.style, textSize: key.textSize, paperSize: key.paperSize,
                     appearance: appearance,

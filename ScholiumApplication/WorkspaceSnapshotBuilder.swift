@@ -9,11 +9,14 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let enumeratedFiles: Int
     let readFiles: Int
     let parsedDocuments: Int
+    let restoredCatalogProjections: Int
     let projectedDocuments: Int
     let restoredSearchProjections: Int
     let enumerationDuration: Duration
     let readDuration: Duration
     let parseDuration: Duration
+    let catalogCacheReadDuration: Duration
+    let catalogCacheWriteDuration: Duration
     let projectionDuration: Duration
     let cacheReadDuration: Duration
     let cacheWriteDuration: Duration
@@ -58,6 +61,7 @@ struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
+    var searchSynchronizationMode: SearchIndexSynchronizationMode = .incremental
     var sourceCaptureDidComplete: (@Sendable () async throws -> Void)?
     var beginDerivedPublication: (@Sendable () async throws -> Void)?
     #if DEBUG
@@ -127,7 +131,7 @@ enum WorkspaceSnapshotBuilder {
         let fileMetadata: [String: WorkspaceFileMetadata]
         let projections: [WorkspaceSourceProjection]
         let sourceVersions: [String: SourceVersion]
-        let searchProjectionCache: SourceSearchProjectionCache?
+        let searchProjectionCache: SourceProjectionCache?
         let identityStates: [String: WorkspaceNoteIdentityState]
         let identityRecovery: NoteIdentityRecoveryState
         let identityHealthIssues: [String]
@@ -262,11 +266,14 @@ enum WorkspaceSnapshotBuilder {
                 enumeratedFiles: measurement.enumeratedFiles,
                 readFiles: measurement.readFiles,
                 parsedDocuments: measurement.parsedDocuments,
+                restoredCatalogProjections: measurement.restoredCatalogProjections,
                 projectedDocuments: 0,
                 restoredSearchProjections: 0,
                 enumerationDuration: measurement.enumerationDuration,
                 readDuration: measurement.readDuration,
                 parseDuration: measurement.parseDuration,
+                catalogCacheReadDuration: measurement.catalogCacheReadDuration,
+                catalogCacheWriteDuration: measurement.catalogCacheWriteDuration,
                 projectionDuration: .zero,
                 cacheReadDuration: .zero,
                 cacheWriteDuration: .zero,
@@ -505,56 +512,72 @@ enum WorkspaceSnapshotBuilder {
                 ($0.vault.id, $0.sourceVersions)
             })
         let capturedManifest = searchManifest
+        let validatePublication: @Sendable () async throws -> Void = {
+            // The handle retains this authority through SQLite COMMIT (when
+            // Search synchronizes) and matching Application publication. A
+            // deferred Search still publishes the same source-bound Graph.
+            try await dependencies.beginDerivedPublication?()
+            for entry in capturedManifest {
+                try Task.checkCancellation()
+                guard let repository = capturedRepositories[entry.vaultID],
+                    let version = capturedVersions[entry.vaultID]?[entry.relativePath],
+                    try await repository.sourceVersionIsCurrent(
+                        relativePath: entry.relativePath, version: version)
+                else {
+                    throw SearchIndexError.invalidDocuments("Source changed before complete publication")
+                }
+            }
+        }
         #if DEBUG
             await dependencies.capturedSearchManifestBarrierForTesting?()
         #endif
-        let searchPublication = try await dependencies.searchIndex.synchronizeManifest(
-            searchManifest,
-            sourceProjectionCaches: Dictionary(
-                uniqueKeysWithValues: loadedVaults.compactMap { loaded in
-                    loaded.searchProjectionCache.map { (loaded.vault.id, $0) }
-                }),
-            workspaceGeneration: workspaceGeneration,
-            loadChanged: { entry in
-                try Task.checkCancellation()
-                guard let repository = capturedRepositories[entry.vaultID],
-                    let version = capturedVersions[entry.vaultID]?[entry.relativePath]
-                else {
-                    throw SearchIndexError.invalidDocuments("Search source authority is unavailable")
-                }
-                let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
-                guard loaded.version == version,
-                    loaded.document.fingerprint == entry.fingerprint
-                else {
-                    throw SearchIndexError.invalidDocuments("Search source changed before row preparation")
-                }
-                return SearchIndexDocument(
-                    vaultID: entry.vaultID, vaultName: entry.vaultName,
-                    vaultRole: entry.vaultRole, document: loaded.document,
-                    stableNoteID: entry.stableNoteID,
-                    hasBrokenLink: entry.hasBrokenLink
+        var searchPublication: TriptychSearchIndexSyncResult?
+        var searchPreparation: SearchSynchronizationTimings?
+        do {
+            let deferred = try await dependencies.searchIndex.hasDeferredRebuild
+            if dependencies.searchSynchronizationMode == .rebuild || !deferred {
+                searchPublication = try await dependencies.searchIndex.synchronizeManifest(
+                    searchManifest,
+                    sourceProjectionCaches: Dictionary(
+                        uniqueKeysWithValues: loadedVaults.compactMap { loaded in
+                            loaded.searchProjectionCache.map { (loaded.vault.id, $0) }
+                        }),
+                    workspaceGeneration: workspaceGeneration,
+                    mode: dependencies.searchSynchronizationMode,
+                    loadChanged: { entry in
+                        try Task.checkCancellation()
+                        guard let repository = capturedRepositories[entry.vaultID],
+                            let version = capturedVersions[entry.vaultID]?[entry.relativePath]
+                        else {
+                            throw SearchIndexError.invalidDocuments("Search source authority is unavailable")
+                        }
+                        let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
+                        guard loaded.version == version,
+                            loaded.document.fingerprint == entry.fingerprint
+                        else {
+                            throw SearchIndexError.invalidDocuments("Search source changed before row preparation")
+                        }
+                        return SearchIndexDocument(
+                            vaultID: entry.vaultID, vaultName: entry.vaultName,
+                            vaultRole: entry.vaultRole, document: loaded.document,
+                            stableNoteID: entry.stableNoteID,
+                            hasBrokenLink: entry.hasBrokenLink
+                        )
+                    },
+                    validateManifest: validatePublication
                 )
-            },
-            validateManifest: {
-                // The handle retains this authority through SQLite COMMIT and
-                // its matching complete snapshot publication. Checking only
-                // source versions would leave a same-App write in that gap.
-                try await dependencies.beginDerivedPublication?()
-                for entry in capturedManifest {
-                    try Task.checkCancellation()
-                    guard let repository = capturedRepositories[entry.vaultID],
-                        let version = capturedVersions[entry.vaultID]?[entry.relativePath],
-                        try await repository.sourceVersionIsCurrent(
-                            relativePath: entry.relativePath, version: version)
-                    else {
-                        throw SearchIndexError.invalidDocuments("Search source changed before complete publication")
-                    }
-                }
+                searchPreparation = await dependencies.searchIndex.lastSynchronizationTimings
             }
-        )
-        let searchPreparation = await dependencies.searchIndex.lastSynchronizationTimings
+        } catch SearchIndexError.awaitingRebuild {
+            // A peer may clear after the initial check. The fresh Graph/source
+            // cohort still publishes, without claiming a Search generation.
+            searchPublication = nil
+        }
+        if searchPublication == nil {
+            try await validatePublication()
+        }
         let searchDuration = searchStart.duration(to: clock.now)
-        guard searchPublication.generation.sourceManifestHash == sourceManifestHash else {
+        if let searchPublication, searchPublication.generation.sourceManifestHash != sourceManifestHash {
             throw SearchIndexError.invalidDocuments(
                 "Search and Graph were derived from different source manifests"
             )
@@ -591,7 +614,7 @@ enum WorkspaceSnapshotBuilder {
             phase: .complete,
             loadedVaults: loadedVaults,
             graph: graph,
-            searchGeneration: searchPublication.generation,
+            searchGeneration: searchPublication?.generation,
             research: research
         )
         let assemblyDuration = assemblyStart.duration(to: clock.now)
@@ -606,6 +629,9 @@ enum WorkspaceSnapshotBuilder {
                 parsedDocuments: sourceMeasurements.reduce(0) {
                     $0 + $1.parsedDocuments
                 },
+                restoredCatalogProjections: sourceMeasurements.reduce(0) {
+                    $0 + $1.restoredCatalogProjections
+                },
                 projectedDocuments: searchPreparation?.projectedDocuments ?? 0,
                 restoredSearchProjections: searchPreparation?.restoredSearchProjections ?? 0,
                 enumerationDuration: sourceMeasurements.reduce(.zero) {
@@ -616,6 +642,12 @@ enum WorkspaceSnapshotBuilder {
                 },
                 parseDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.parseDuration
+                },
+                catalogCacheReadDuration: sourceMeasurements.reduce(.zero) {
+                    $0 + $1.catalogCacheReadDuration
+                },
+                catalogCacheWriteDuration: sourceMeasurements.reduce(.zero) {
+                    $0 + $1.catalogCacheWriteDuration
                 },
                 projectionDuration: searchPreparation?.projectionDuration ?? .zero,
                 cacheReadDuration: searchPreparation?.cacheReadDuration ?? .zero,

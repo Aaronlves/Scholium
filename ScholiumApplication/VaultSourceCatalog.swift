@@ -13,6 +13,7 @@ enum VaultSourceCatalogError: Error, Equatable {
 
 enum VaultSourceCatalogPreparation: Sendable {
     case fullReconcile
+    case rebuild
     case delta(upserts: Set<String>, deletions: Set<String>, refreshFolders: Bool)
     case ifNeeded
 }
@@ -24,6 +25,9 @@ struct VaultSourceCatalogMeasurement: Equatable, Sendable {
     let enumerationDuration: Duration
     let readDuration: Duration
     let parseDuration: Duration
+    var restoredCatalogProjections = 0
+    var catalogCacheReadDuration = Duration.zero
+    var catalogCacheWriteDuration = Duration.zero
 }
 
 struct VaultSourceCatalogSnapshot: Sendable {
@@ -34,7 +38,7 @@ struct VaultSourceCatalogSnapshot: Sendable {
     let sourceVersions: [String: SourceVersion]
     let fileMetadata: [String: WorkspaceFileMetadata]
     /// Storage capability only; decoded Search material is prepared by the index on demand.
-    let searchProjectionCache: SourceSearchProjectionCache?
+    let searchProjectionCache: SourceProjectionCache?
     let folders: [VaultRelativeFolderPath]
     let measurement: VaultSourceCatalogMeasurement
 }
@@ -63,6 +67,9 @@ actor VaultSourceCatalog {
         let didParse: Bool
         let readDuration: Duration
         let parseDuration: Duration
+        var didRestoreCatalog = false
+        var catalogCacheReadDuration = Duration.zero
+        var catalogCacheWriteDuration = Duration.zero
     }
 
     private struct CandidateAuthorization: Sendable {
@@ -101,7 +108,7 @@ actor VaultSourceCatalog {
     }
 
     private let repository: VaultRepository
-    private let searchProjectionCache: SourceSearchProjectionCache?
+    private let searchProjectionCache: SourceProjectionCache?
     private let processingBudget: VaultSourceProcessingBudget
     private let catalogID = UUID()
     private var stateToken = UUID()
@@ -131,7 +138,7 @@ actor VaultSourceCatalog {
 
     init(
         repository: VaultRepository,
-        searchProjectionCache: SourceSearchProjectionCache? = nil,
+        searchProjectionCache: SourceProjectionCache? = nil,
         processingBudget: VaultSourceProcessingBudget = .shared
     ) {
         self.repository = repository
@@ -145,7 +152,7 @@ actor VaultSourceCatalog {
     ) {
         self.repository = repository
         self.processingBudget = .shared
-        self.searchProjectionCache = SourceSearchProjectionCache(
+        self.searchProjectionCache = SourceProjectionCache(
             applicationSupportURL: applicationSupportURL, vaultID: vaultID, role: vaultRole
         )
     }
@@ -190,8 +197,9 @@ actor VaultSourceCatalog {
             let existingFolders = folders
             let initialized = isInitialized
             let requiresReconcile = needsFullReconcile
+            let rebuilding: Bool = if case .rebuild = preparation { true } else { false }
             let request: VaultSourceCatalogPreparation =
-                !initialized || requiresReconcile ? .fullReconcile : preparation
+                rebuilding ? .rebuild : (!initialized || requiresReconcile ? .fullReconcile : preparation)
             let clock = ContinuousClock()
             let enumerationStart = clock.now
             let candidates: [String]
@@ -199,7 +207,7 @@ actor VaultSourceCatalog {
             let enumeratedFiles: Int
             let cacheCleanup: CacheCleanup
             switch request {
-            case .fullReconcile:
+            case .fullReconcile, .rebuild:
                 let paths = try await repository.markdownRelativePaths()
                 observedFolders = try await repository.folderRelativePaths()
                 candidates = Set(paths).union(existingRecords.keys).sorted()
@@ -221,13 +229,17 @@ actor VaultSourceCatalog {
                 cacheCleanup = .none
             }
             let enumerationDuration = enumerationStart.duration(to: clock.now)
-            let authorizations = try await authorizeCandidates(candidates, existingRecords: existingRecords)
+            let authorizations = try await authorizeCandidates(
+                candidates, existingRecords: rebuilding ? [:] : existingRecords, restoreCache: !rebuilding)
             var nextRecords = existingRecords
             var changed = !initialized || observedFolders != existingFolders
             var readFiles = 0
             var parsedDocuments = 0
             var readDuration = Duration.zero
             var parseDuration = Duration.zero
+            var restoredCatalogProjections = 0
+            var catalogCacheReadDuration = Duration.zero
+            var catalogCacheWriteDuration = Duration.zero
             for path in candidates {
                 try Task.checkCancellation()
                 guard let authorized = authorizations[path] else {
@@ -235,6 +247,9 @@ actor VaultSourceCatalog {
                 }
                 readDuration += authorized.readDuration
                 parseDuration += authorized.parseDuration
+                if authorized.didRestoreCatalog { restoredCatalogProjections += 1 }
+                catalogCacheReadDuration += authorized.catalogCacheReadDuration
+                catalogCacheWriteDuration += authorized.catalogCacheWriteDuration
                 if authorized.didRead { readFiles += 1 }
                 if authorized.didParse { parsedDocuments += 1 }
                 if let record = authorized.record {
@@ -252,7 +267,10 @@ actor VaultSourceCatalog {
                 measurement: VaultSourceCatalogMeasurement(
                     enumeratedFiles: enumeratedFiles, readFiles: readFiles,
                     parsedDocuments: parsedDocuments, enumerationDuration: enumerationDuration,
-                    readDuration: readDuration, parseDuration: parseDuration),
+                    readDuration: readDuration, parseDuration: parseDuration,
+                    restoredCatalogProjections: restoredCatalogProjections,
+                    catalogCacheReadDuration: catalogCacheReadDuration,
+                    catalogCacheWriteDuration: catalogCacheWriteDuration),
                 cacheCleanup: cacheCleanup)
         } catch let error as VaultRepositoryError {
             if case .rootUnavailable = error { invalidateRootAuthority() }
@@ -404,11 +422,13 @@ actor VaultSourceCatalog {
     /// failed reconcile cannot partially replace the retained catalog.
     private func authorizeCandidates(
         _ candidates: [String],
-        existingRecords: [String: Record]
+        existingRecords: [String: Record],
+        restoreCache: Bool
     ) async throws -> [String: AuthorizedRecord] {
         guard !candidates.isEmpty else { return [:] }
         let repository = repository
         let processingBudget = processingBudget
+        let cache = searchProjectionCache
         let workerCount = min(
             candidates.count,
             max(2, ProcessInfo.processInfo.activeProcessorCount)
@@ -426,8 +446,9 @@ actor VaultSourceCatalog {
                         authorizedRecord: try await Self.authorizedRecord(
                             repository: repository,
                             processingBudget: processingBudget,
+                            cache: cache,
                             relativePath: path,
-                            existing: existing
+                            existing: existing, restoreCache: restoreCache
                         )
                     )
                 }
@@ -448,8 +469,9 @@ actor VaultSourceCatalog {
                             authorizedRecord: try await Self.authorizedRecord(
                                 repository: repository,
                                 processingBudget: processingBudget,
+                                cache: cache,
                                 relativePath: path,
-                                existing: existing
+                                existing: existing, restoreCache: restoreCache
                             )
                         )
                     }
@@ -462,8 +484,10 @@ actor VaultSourceCatalog {
     private static func authorizedRecord(
         repository: VaultRepository,
         processingBudget: VaultSourceProcessingBudget,
+        cache: SourceProjectionCache?,
         relativePath: String,
-        existing: Record?
+        existing: Record?,
+        restoreCache: Bool
     ) async throws -> AuthorizedRecord {
         if let existing {
             do {
@@ -497,14 +521,24 @@ actor VaultSourceCatalog {
                     relativePath: relativePath
                 )
                 let vaultID = await repository.identity.id
+                try Task.checkCancellation()
+                let cacheReadStart = clock.now
+                let cached = restoreCache ? cache?.loadCatalog(for: loaded.document) : nil
+                let catalogCacheReadDuration = cacheReadStart.duration(to: clock.now)
+                try Task.checkCancellation()
+                let restored = cached.flatMap { $0.linkCatalog.id.vaultID == vaultID ? $0 : nil }
                 let parseStart = clock.now
-                let semantic = MarkdownSemanticDocument(parsing: loaded.document)
-                let projection = WorkspaceSourceProjection(
-                    vaultID: vaultID,
-                    document: loaded.document,
-                    semantic: semantic
-                )
+                let projection =
+                    restored
+                    ?? WorkspaceSourceProjection(
+                        vaultID: vaultID, document: loaded.document,
+                        semantic: MarkdownSemanticDocument(parsing: loaded.document))
                 let parseDuration = parseStart.duration(to: clock.now)
+                try Task.checkCancellation()
+                let cacheWriteStart = clock.now
+                if restored == nil { cache?.storeCatalog(projection, for: loaded.document) }
+                let catalogCacheWriteDuration = cacheWriteStart.duration(to: clock.now)
+                try Task.checkCancellation()
                 return AuthorizedRecord(
                     record: Record(
                         projection: projection,
@@ -512,9 +546,12 @@ actor VaultSourceCatalog {
                         fileMetadata: loaded.fileMetadata
                     ),
                     didRead: true,
-                    didParse: true,
+                    didParse: restored == nil,
                     readDuration: loaded.readDuration,
-                    parseDuration: parseDuration
+                    parseDuration: restored == nil ? parseDuration : .zero,
+                    didRestoreCatalog: restored != nil,
+                    catalogCacheReadDuration: catalogCacheReadDuration,
+                    catalogCacheWriteDuration: catalogCacheWriteDuration
                 )
             }
         } catch VaultRepositoryError.fileDoesNotExist {
@@ -536,7 +573,10 @@ actor VaultSourceCatalog {
             parsedDocuments: pendingMeasurement.parsedDocuments + measurement.parsedDocuments,
             enumerationDuration: pendingMeasurement.enumerationDuration + measurement.enumerationDuration,
             readDuration: pendingMeasurement.readDuration + measurement.readDuration,
-            parseDuration: pendingMeasurement.parseDuration + measurement.parseDuration
+            parseDuration: pendingMeasurement.parseDuration + measurement.parseDuration,
+            restoredCatalogProjections: pendingMeasurement.restoredCatalogProjections + measurement.restoredCatalogProjections,
+            catalogCacheReadDuration: pendingMeasurement.catalogCacheReadDuration + measurement.catalogCacheReadDuration,
+            catalogCacheWriteDuration: pendingMeasurement.catalogCacheWriteDuration + measurement.catalogCacheWriteDuration
         )
     }
 

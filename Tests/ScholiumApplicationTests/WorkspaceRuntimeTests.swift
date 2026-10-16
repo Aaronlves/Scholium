@@ -1857,8 +1857,9 @@ struct ApplicationFixture: Sendable {
     static func make(registerLiveAccess: Bool = false, rootURL requestedRootURL: URL? = nil) async throws -> Self {
         let rootURL =
             requestedRootURL
-            ?? FileManager.default.temporaryDirectory
-            .appendingPathComponent("ScholiumApplicationTests-\(UUID().uuidString)", isDirectory: true)
+            ?? URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/application-runtime-tests/\(UUID().uuidString)", isDirectory: true)
         let applicationSupportURL = rootURL.appendingPathComponent("Application Support", isDirectory: true)
         let analysesURL = rootURL.appendingPathComponent("Analyses", isDirectory: true)
         let topicsURL = rootURL.appendingPathComponent("Topics", isDirectory: true)

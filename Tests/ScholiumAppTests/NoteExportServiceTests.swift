@@ -9,6 +9,8 @@ import Testing
 struct NoteExportServiceTests {
     @Test("Export presets use selected document typography or academic page spacing")
     func stylePresets() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let note = NoteDocument(relativePath: "Styles.md", rawContent: "A paragraph.")
         let appearance = DocumentAppearanceSettings(
             body: DocumentBodyAppearance(fontFamily: .georgia, lineHeight: 1.9)
@@ -16,6 +18,7 @@ struct NoteExportServiceTests {
         let document = try #require(
             String(
                 data: try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: note, title: "Styles", format: .html,
                     style: .document, textSize: 15, paperSize: .a4, appearance: appearance
                 ), encoding: .utf8))
@@ -26,6 +29,7 @@ struct NoteExportServiceTests {
             let html = try #require(
                 String(
                     data: try await NoteExportService.render(
+                        applicationSupportURL: applicationSupportURL,
                         document: note, title: "Styles", format: .html,
                         style: style, textSize: 12, paperSize: .letter
                     ), encoding: .utf8))
@@ -41,6 +45,7 @@ struct NoteExportServiceTests {
         let academic = try #require(
             String(
                 data: try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: withMetadata, title: "Paper", format: .html,
                     style: .apa7, textSize: 12, paperSize: .letter
                 ), encoding: .utf8))
@@ -49,6 +54,7 @@ struct NoteExportServiceTests {
         #expect(academic.contains("Authored title"))
 
         let wordData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: note, title: "Styles", format: .docx,
             style: .apa7, textSize: 12, paperSize: .letter
         )
@@ -64,7 +70,7 @@ struct NoteExportServiceTests {
         #expect(abs(wordFont.pointSize - 12) < 0.5)
         // This macOS AppKit reader drops standard w:firstLine while accepting
         // its writer's obsolete w:first-line. Assert the portable output schema.
-        let package = try await WorkspaceStore.unpackWordDocument(wordData)
+        let package = try await WorkspaceStore.unpackWordDocument(wordData, applicationSupportURL: applicationSupportURL)
         let wordXML = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
         let paragraph = try #require(try wordXML.nodes(forXPath: "//*[local-name()='p' and contains(., 'A paragraph.')]").first as? XMLElement)
         let indentation = try #require(paragraph.elements(forName: "w:pPr").first?.elements(forName: "w:ind").first)
@@ -75,8 +81,11 @@ struct NoteExportServiceTests {
 
     @Test("Standalone HTML escapes its title and keeps rendered source text")
     func htmlIsSelfContained() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let document = NoteDocument(relativePath: "Safe.md", rawContent: "中文 **research**")
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "A <B> & C", format: .html,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -88,8 +97,11 @@ struct NoteExportServiceTests {
 
     @Test("Native Word output retains Unicode prose")
     func docxRetainsText() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let document = NoteDocument(relativePath: "Word.md", rawContent: "# 标题\n\n中文 **重点**")
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Word", format: .docx,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -105,6 +117,8 @@ struct NoteExportServiceTests {
 
     @Test("Editable DOCX preserves repeated bilingual footnote references and link targets")
     func docxFootnotesAndLinks() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = """
             # Heading
 
@@ -116,6 +130,7 @@ struct NoteExportServiceTests {
             [^other]: Another *注释* with [footnote link](https://example.test/other).
             """
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: NoteDocument(relativePath: "Footnotes.md", rawContent: source),
             title: "Footnotes", format: .docx, style: .document, textSize: 13, paperSize: .a4
         )
@@ -189,11 +204,14 @@ struct NoteExportServiceTests {
 
     @Test("Plain DOCX normalizes native font XML while preserving editable emphasis and bilingual text")
     func plainDocxFontCompatibility() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: NoteDocument(relativePath: "Plain.md", rawContent: "A **bold** *italic* 中文."),
             title: "Plain", format: .docx, style: .apa7, textSize: 12, paperSize: .letter
         )
-        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
         let xml = try #require(package["word/document.xml"])
         let document = try XMLDocument(data: xml, options: .nodePreserveWhitespace)
         try expectCompatibleWordFontProperties(in: document)
@@ -222,11 +240,14 @@ struct NoteExportServiceTests {
 
     @Test("Repeated Word reference displays the owning note number when an earlier Markdown reference is unresolved")
     func docxRepeatNumberAfterUnresolvedReference() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: NoteDocument(relativePath: "Gap.md", rawContent: "Missing[^missing], source[^actual], again[^actual].\n\n[^actual]: 註釋."),
             title: "Gap", format: .docx, style: .apa7, textSize: 12, paperSize: .letter
         )
-        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
         let document = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
         let field = try #require(document.nodes(forXPath: "//*[local-name()='fldSimple']").first as? XMLElement)
         #expect(field.attribute(forName: "w:instr")?.stringValue?.contains("NOTEREF ScholiumFootnote2") == true)
@@ -236,6 +257,8 @@ struct NoteExportServiceTests {
 
     @Test("Academic Word indentation applies to body paragraphs, not headings or list items")
     func academicWordParagraphRoles() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let document = NoteDocument(
             relativePath: "Academic.md",
             rawContent:
@@ -243,6 +266,7 @@ struct NoteExportServiceTests {
         )
         for style in [NoteExportStyle.apa7, .mla9] {
             let data = try await NoteExportService.render(
+                applicationSupportURL: applicationSupportURL,
                 document: document, title: "Academic", format: .docx,
                 style: style, textSize: 12, paperSize: .letter
             )
@@ -251,7 +275,7 @@ struct NoteExportServiceTests {
                 options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
                 documentAttributes: nil
             )
-            let package = try await WorkspaceStore.unpackWordDocument(data)
+            let package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
             let wordXML = try XMLDocument(data: #require(package["word/document.xml"]), options: .nodePreserveWhitespace)
             #expect(try wordXML.nodes(forXPath: "//@*[local-name()='first-line']").isEmpty)
             for (text, indented) in [
@@ -284,11 +308,14 @@ struct NoteExportServiceTests {
 
     @Test("PDF includes the end of a long Note on later paper pages")
     func pdfRetainsLongDocumentTail() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = (1...140).map { index in
             "Paragraph \(index): 中文 research text and explanatory words."
         }.joined(separator: "\n\n")
         let document = NoteDocument(relativePath: "Long.md", rawContent: source)
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Long Note", format: .pdf,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -304,6 +331,8 @@ struct NoteExportServiceTests {
 
     @Test("PDF links remain clickable on both sides of a page break")
     func pdfRetainsLinkAnnotations() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let middle = (1...110).map { "Paragraph \($0): Words on a long exported page." }
             .joined(separator: "\n\n")
         let document = NoteDocument(
@@ -312,6 +341,7 @@ struct NoteExportServiceTests {
                 "[First](https://example.org/first)\n\n\(middle)\n\n[Last](https://example.org/last)"
         )
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Links", format: .pdf,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -335,9 +365,12 @@ struct NoteExportServiceTests {
 
     @Test("Requested source metadata stays visible before the body")
     func authoredYAMLIsVisible() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = "\u{FEFF}---\r\n# source comment\r\ncustom: \"A & B\"\r\n---\r\n中文 body"
         let document = NoteDocument(relativePath: "YAML.md", rawContent: source)
         let htmlData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "YAML", format: .html,
             style: .document, textSize: 13, paperSize: .a4, includeYAML: true
         )
@@ -348,6 +381,7 @@ struct NoteExportServiceTests {
         #expect(yamlRange.lowerBound < bodyRange.lowerBound)
 
         let docxData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "YAML", format: .docx,
             style: .document, textSize: 13, paperSize: .a4, includeYAML: true
         )
@@ -361,6 +395,7 @@ struct NoteExportServiceTests {
         #expect(docxText.contains("中文 body"))
 
         let pdfData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "YAML", format: .pdf,
             style: .document, textSize: 13, paperSize: .a4, includeYAML: true
         )
@@ -374,11 +409,14 @@ struct NoteExportServiceTests {
 
     @Test("An unclosed YAML opening remains visible as escaped source")
     func malformedOpeningIsLiteral() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let document = NoteDocument(
             relativePath: "Unclosed.md",
             rawContent: "---\ncustom: <script>\n中文 body"
         )
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Unclosed", format: .html,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -391,6 +429,8 @@ struct NoteExportServiceTests {
 
     @Test("An authorized local image is self-contained in HTML and decodes for PDF")
     func localImageIsEmbedded() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let png = try #require(
             Data(
                 base64Encoded:
@@ -403,6 +443,7 @@ struct NoteExportServiceTests {
         )
         let map = ["media/red dot.png": image]
         let htmlData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Image", format: .html,
             style: .document, textSize: 13, paperSize: .a4,
             embeddedImages: map
@@ -413,6 +454,7 @@ struct NoteExportServiceTests {
         #expect(!html.contains("src=\"media/red"))
 
         let pdfData = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Image", format: .pdf,
             style: .document, textSize: 13, paperSize: .a4,
             embeddedImages: map
@@ -422,6 +464,8 @@ struct NoteExportServiceTests {
 
     @Test("An unresolved local Markdown image stops export")
     func missingLocalImageFails() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         for source in [
             "![Missing](../outside.png)",
             "> ![Missing](../outside.png)",
@@ -430,6 +474,7 @@ struct NoteExportServiceTests {
             let document = NoteDocument(relativePath: "Missing.md", rawContent: source)
             do {
                 _ = try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: document, title: "Missing", format: .html,
                     style: .document, textSize: 13, paperSize: .a4
                 )
@@ -442,6 +487,8 @@ struct NoteExportServiceTests {
 
     @Test("Word export does not require an image that its format omits")
     func missingImageDoesNotBlockWord() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let document = NoteDocument(
             relativePath: "Missing.md",
             rawContent: "Before ![Missing](media/absent.png) after."
@@ -456,6 +503,7 @@ struct NoteExportServiceTests {
         #expect(preview.contains("after."))
 
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: document, title: "Missing", format: .docx,
             style: .document, textSize: 13, paperSize: .a4
         )
@@ -469,6 +517,7 @@ struct NoteExportServiceTests {
 
         do {
             _ = try await NoteExportService.render(
+                applicationSupportURL: applicationSupportURL,
                 document: document, title: "Missing", format: .html,
                 style: .document, textSize: 13, paperSize: .a4
             )
@@ -476,5 +525,12 @@ struct NoteExportServiceTests {
         } catch {
             #expect(error.localizedDescription.contains("media/absent.png"))
         }
+    }
+
+    private func makeExportStorage() throws -> URL {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/note-export-service-tests/\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
     }
 }

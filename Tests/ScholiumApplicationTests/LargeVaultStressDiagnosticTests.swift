@@ -77,7 +77,7 @@ struct LargeVaultStressDiagnosticTests {
             "peak_memory_scope":
                 "Whole diagnostic process, including source oracles and incremental/rebuilt graph comparison; not retained-app memory.",
             "storage_scope":
-                "Metadata-only logical file sizes under each application-support root; not allocated blocks or process memory. Snapshots are outside operation timers.",
+                "Metadata-only logical sizes and reported allocated bytes under each application-support root; not unique APFS physical extents or process memory. Snapshots are outside operation timers.",
             "search_sampling":
                 "Three excluded distinct-query warmups, then twenty distinct-query/immediate-repeat pairs per scenario; p50 and nearest-rank p95 are separate for each scenario and cache condition.",
         ]
@@ -148,6 +148,9 @@ struct LargeVaultStressDiagnosticTests {
                 let opening = try await handle.snapshot()
                 try #require(!opening.phase.isComplete)
                 #expect(opening.discovery.searchGeneration == nil)
+                let openingMeasurement = await handle.latestRefreshMeasurement
+                #expect(openingMeasurement.parsedDocuments == 0)
+                #expect(openingMeasurement.restoredCatalogProjections == openingMeasurement.readFiles)
                 let stream = await handle.events.events()
                 let completionStarted = ContinuousClock.now
                 await handle.openingPresentationDidComplete()
@@ -156,16 +159,22 @@ struct LargeVaultStressDiagnosticTests {
                 await handle.awaitOpeningCompletionForTesting()
                 try validateSnapshot(complete, oracle: oracle, assignment: assignment)
                 let reopened = await handle.latestRefreshMeasurement
+                #expect(reopened.parsedDocuments == 0)
+                #expect(reopened.restoredCatalogProjections == reopened.readFiles)
                 #expect(reopened.projectedDocuments == 0)
                 #expect(reopened.restoredSearchProjections == 0)
                 var reopenReport = await refreshReport(
                     handle, stage: stage, wallMilliseconds: usableMilliseconds + completionMilliseconds)
                 reopenReport["usable_open_ms"] = usableMilliseconds
                 reopenReport["completion_after_presentation_ms"] = completionMilliseconds
+                reopenReport["opening_read_files"] = openingMeasurement.readFiles
+                reopenReport["opening_parsed_documents"] = openingMeasurement.parsedDocuments
+                reopenReport["opening_restored_catalog_projections"] = openingMeasurement.restoredCatalogProjections
                 steps.append(reopenReport)
                 try checkpoint("completed")
 
                 stage = "unchanged_refresh"
+                let retainedCacheStorage = storageSummary(at: support)
                 for iteration in 0..<3 {
                     diagnosticProgress("Large vault workspace begin: \(stage), iteration \(iteration)")
                     try checkpoint("begun", iteration: iteration)
@@ -177,6 +186,13 @@ struct LargeVaultStressDiagnosticTests {
                     #expect(measurement.readFiles == 0)
                     #expect(measurement.parsedDocuments == 0)
                     #expect(measurement.projectedDocuments == 0)
+                    let currentStorage = storageSummary(at: support)
+                    for kind in ["source_projection_cache", "catalog_projection_cache"] {
+                        let before = try #require(retainedCacheStorage[kind] as? [String: Int64])
+                        let after = try #require(currentStorage[kind] as? [String: Int64])
+                        #expect(after["files"] == before["files"])
+                        #expect(after["bytes"] == before["bytes"])
+                    }
                     var sample = await refreshReport(handle, stage: stage, wallMilliseconds: elapsed)
                     sample["iteration"] = iteration
                     steps.append(sample)
@@ -330,6 +346,12 @@ struct LargeVaultStressDiagnosticTests {
             report["process_peak_rss_bytes"] = processPeakResidentBytes()
             report["closed_application_support"] = storageSummary(at: support)
             report["closed_rebuilt_application_support"] = storageSummary(at: rebuiltSupport)
+            for closedRoot in [support, rebuiltSupport] {
+                let closed = storageSummary(at: closedRoot)
+                for kind in ["sqlite_wal", "sqlite_shm"] {
+                    #expect((closed[kind] as? [String: Int64])?["files"] == 0)
+                }
+            }
             report["closed_index_storage_components"] = indexStorageComponents(at: support)
             try writeReport(report, to: reportURL)
             diagnosticProgress("LARGE_VAULT_STRESS_REPORT \(reportURL.path)")
@@ -706,10 +728,13 @@ extension LargeVaultStressDiagnosticTests {
             "workspace_generation": value.workspaceGeneration,
             "enumerated_files": value.enumeratedFiles, "read_files": value.readFiles,
             "parsed_documents": value.parsedDocuments, "projected_documents": value.projectedDocuments,
+            "restored_catalog_projections": value.restoredCatalogProjections,
             "restored_search_projections": value.restoredSearchProjections,
             "enumeration_work_ms": milliseconds(value.enumerationDuration),
             "read_work_ms": milliseconds(value.readDuration),
             "parse_work_ms": milliseconds(value.parseDuration),
+            "catalog_cache_read_work_ms": milliseconds(value.catalogCacheReadDuration),
+            "catalog_cache_write_work_ms": milliseconds(value.catalogCacheWriteDuration),
             "projection_work_ms": milliseconds(value.projectionDuration),
             "cache_read_work_ms": milliseconds(value.cacheReadDuration),
             "cache_write_work_ms": milliseconds(value.cacheWriteDuration),
@@ -922,6 +947,8 @@ extension LargeVaultStressDiagnosticTests {
     fileprivate struct StorageTotals {
         var files: Int64 = 0
         var bytes: Int64 = 0
+        var allocatedBytes: Int64 = 0
+        var allocationUnknownFiles: Int64 = 0
     }
 
     /// Metadata/aggregate byte counts only, after shutdown and outside timers.
@@ -970,7 +997,7 @@ extension LargeVaultStressDiagnosticTests {
 
     fileprivate func storageSummary(at root: URL) -> [String: Any] {
         let labels = [
-            "sqlite_database", "sqlite_wal", "sqlite_shm", "source_projection_cache", "other",
+            "sqlite_database", "sqlite_wal", "sqlite_shm", "source_projection_cache", "catalog_projection_cache", "other",
         ]
         var groups = Dictionary(uniqueKeysWithValues: labels.map { ($0, StorageTotals()) })
         var totals = StorageTotals()
@@ -981,7 +1008,7 @@ extension LargeVaultStressDiagnosticTests {
         if exists,
             let entries = FileManager.default.enumerator(
                 at: root,
-                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey],
                 errorHandler: { _, _ in
                     unreadableEntries += 1
                     return true
@@ -991,7 +1018,7 @@ extension LargeVaultStressDiagnosticTests {
             for case let url as URL in entries {
                 do {
                     let values = try url.resourceValues(forKeys: [
-                        .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+                        .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey,
                     ])
                     if values.isSymbolicLink == true {
                         symbolicLinks += 1
@@ -1013,15 +1040,21 @@ extension LargeVaultStressDiagnosticTests {
                         group = "sqlite_database"
                     } else if name.hasSuffix(".projection.plist") {
                         group = "source_projection_cache"
+                    } else if name.hasSuffix(".catalog.plist") {
+                        group = "catalog_projection_cache"
                     } else {
                         group = "other"
                     }
                     var count = groups[group]!
                     count.files += 1
                     count.bytes += Int64(size)
+                    count.allocatedBytes += Int64(values.totalFileAllocatedSize ?? 0)
+                    if values.totalFileAllocatedSize == nil { count.allocationUnknownFiles += 1 }
                     groups[group] = count
                     totals.files += 1
                     totals.bytes += Int64(size)
+                    totals.allocatedBytes += Int64(values.totalFileAllocatedSize ?? 0)
+                    if values.totalFileAllocatedSize == nil { totals.allocationUnknownFiles += 1 }
                 } catch {
                     unreadableEntries += 1
                 }
@@ -1030,11 +1063,15 @@ extension LargeVaultStressDiagnosticTests {
         var result: [String: Any] = [
             "exists": exists, "enumeration_complete": enumerated && unreadableEntries == 0,
             "files": totals.files, "bytes": totals.bytes,
+            "allocated_bytes": totals.allocatedBytes, "allocation_unknown_files": totals.allocationUnknownFiles,
             "unreadable_entries": unreadableEntries, "skipped_symbolic_links": symbolicLinks,
         ]
         for label in labels {
             let count = groups[label]!
-            result[label] = ["files": count.files, "bytes": count.bytes]
+            result[label] = [
+                "files": count.files, "bytes": count.bytes,
+                "allocated_bytes": count.allocatedBytes, "allocation_unknown_files": count.allocationUnknownFiles,
+            ]
         }
         return result
     }

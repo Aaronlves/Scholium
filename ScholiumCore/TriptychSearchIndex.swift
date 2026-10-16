@@ -26,6 +26,17 @@ public struct TriptychSearchIndexOpenResult: Sendable {
     }
 }
 
+public enum SearchIndexSynchronizationMode: Sendable, Equatable { case incremental, rebuild }
+
+public enum SearchIndexReclamationStatus: Sendable, Equatable { case completed, deferred, failed }
+
+/// Logical deletion has committed for every returned result. Reclamation may
+/// be deferred by cancellation or another live SQLite reader.
+public struct SearchIndexClearResult: Sendable, Equatable {
+    public let removedDocuments: Int
+    public let reclamation: SearchIndexReclamationStatus
+}
+
 /// Exact source authority supplied for a bounded query against a previously
 /// complete disposable generation. Candidate filtering happens inside the
 /// index before result limits and `hasMore` are computed.
@@ -90,9 +101,13 @@ public actor TriptychSearchIndex {
     /// A separate connection may publish while the actor serves last-good
     /// reads from `database`.
     private let writerDatabase: SearchSQLiteDatabase
+    private var storageLease: DerivedStateStorageLease?
+    private var shutdownTask: Task<Void, Never>?
+    private var isClosing = false
     private var currentAvailability: SearchAvailability
     private var recoveredGeneratedDatabase: Bool
     private var activeSynchronization: ActiveSynchronization?
+    private var activeClear: ActiveClear?
     private var synchronizationQueuedForTesting: (@Sendable (UInt64) async -> Void)?
     private var joinedSynchronizationWaitForTesting: (@Sendable () async -> Void)?
     private var latestWorkspaceGeneration: UInt64 = 0
@@ -113,7 +128,7 @@ public actor TriptychSearchIndex {
     /// The writer connection may be running an async transaction outside this
     /// actor. Sample its SQLite status only after that task has finished.
     var sqlitePageCacheRetention: (readerBytes: Int, writerBytes: Int)? {
-        guard activeSynchronization == nil else { return nil }
+        guard activeSynchronization == nil, activeClear == nil else { return nil }
         return (database.cacheUsedBytes, writerDatabase.cacheUsedBytes)
     }
     /// Query-local derived state is valid only for one complete Search
@@ -132,12 +147,32 @@ public actor TriptychSearchIndex {
         let preparation: SearchProjectionPreparation
     }
 
-    private struct ActiveSynchronization {
+    private struct ActiveSynchronization: Sendable {
         let id: UUID
         let previous: SearchGenerationID?
         let task: Task<SearchPublication, Error>
         let progress: ProgressDelivery?
     }
+
+    private struct ActiveClear: Sendable {
+        let id: UUID
+        let synchronization: ActiveSynchronization?
+        let task: Task<SearchIndexClearResult, Error>
+    }
+
+    #if DEBUG
+        enum ClearPhase: Sendable { case beforeCommit, afterCommit }
+        private var clearObserverForTesting: (@Sendable (ClearPhase) async throws -> Void)?
+        private var synchronizationBeforeTransactionForTesting: (@Sendable () async -> Void)?
+
+        func setClearObserverForTesting(_ observer: (@Sendable (ClearPhase) async throws -> Void)?) {
+            clearObserverForTesting = observer
+        }
+
+        func setSynchronizationBeforeTransactionForTesting(_ observer: (@Sendable () async -> Void)?) {
+            synchronizationBeforeTransactionForTesting = observer
+        }
+    #endif
 
     private struct RankedSearchCacheKey: Hashable {
         let generation: SearchGenerationID
@@ -163,43 +198,79 @@ public actor TriptychSearchIndex {
     private static let maximumCachedRankedQueries = 8
     private static let maximumCachedRankedResults = SearchContract.maximumNoteResults + 1
 
-    private struct ProgressDelivery {
+    private struct ProgressDelivery: Sendable {
         let continuation: AsyncStream<Int>.Continuation
         let task: Task<Void, Never>
     }
 
     public init(
-        databaseURL: URL,
+        applicationSupportURL: URL,
         triptychID: UUID,
-        vaults: [RegisteredVault] = [],
-        recoveredCorruption: Bool = false
+        vaults: [RegisteredVault] = []
+    ) throws {
+        let storage = DerivedStateStorage.searchStorage(applicationSupportURL: applicationSupportURL, triptychID: triptychID)
+        try storage.ensureDirectories([])
+        try self.init(
+            databaseURL: Self.databaseURL(applicationSupportURL: applicationSupportURL, triptychID: triptychID),
+            triptychID: triptychID, vaults: vaults, recoveredCorruption: false,
+            storageLease: DerivedStateStorage.searchLease(storage: storage))
+    }
+
+    /// Disposable test/diagnostic stores explicitly own their flat directory.
+    /// Production storage is always anchored at Application Support above.
+    package init(isolatedDatabaseURL: URL, triptychID: UUID, vaults: [RegisteredVault] = []) throws {
+        let storage = DerivedStateStorage.isolatedSearchStorage(isolatedDatabaseURL)
+        try storage.ensureDirectories([])
+        try self.init(
+            databaseURL: storage.directoryURL.appendingPathComponent(isolatedDatabaseURL.lastPathComponent), triptychID: triptychID, vaults: vaults,
+            recoveredCorruption: false, storageLease: DerivedStateStorage.searchLease(storage: storage))
+    }
+
+    private init(
+        databaseURL: URL, triptychID: UUID, vaults: [RegisteredVault],
+        recoveredCorruption: Bool, storageLease: DerivedStateStorageLease
     ) throws {
         self.triptychID = triptychID
         self.databaseURL = databaseURL
+        self.storageLease = storageLease
         configuredVaults = Dictionary(
             vaults.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         recoveredGeneratedDatabase = recoveredCorruption
         let manager = FileManager.default
-        try manager.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        try storageLease.validateSearchAdmission(fileName: databaseURL.lastPathComponent)
+        try storageLease.validateDatabaseFile(databaseURL.lastPathComponent, permitsMissing: true)
         let existed = manager.fileExists(atPath: databaseURL.path)
-        database = try SearchSQLiteDatabase(path: databaseURL.path)
+        for suffix in ["-wal", "-shm"] {
+            try storageLease.validateDatabaseFile(databaseURL.lastPathComponent + suffix, permitsMissing: true)
+        }
+        if existed {
+            // Incompatible policy is rejected before any read/write connection
+            // can alter durable database or WAL bytes. SQLite's shared-memory
+            // index remains volatile coordination state for the readonly reader.
+            _ = try storageLease.inspectSearchPolicy(fileName: databaseURL.lastPathComponent) {
+                try Self.validatePolicy(in: $0)
+            }
+        }
+        let databasePath = try storageLease.databasePath(fileName: databaseURL.lastPathComponent)
+        database = try SearchSQLiteDatabase(path: databasePath)
+        try storageLease.validateDatabaseFile(databaseURL.lastPathComponent, permitsMissing: false)
         if existed {
             try Self.validateSchema(in: database, triptychID: triptychID)
         } else {
             try Self.createSchema(in: database, triptychID: triptychID)
             try Self.validateSchema(in: database, triptychID: triptychID)
         }
+        try database.admitCheckpointOnClose()
         try database.execute("PRAGMA journal_mode=WAL;")
         try database.execute("PRAGMA synchronous=NORMAL;")
-        writerDatabase = try SearchSQLiteDatabase(path: databaseURL.path)
+        writerDatabase = try SearchSQLiteDatabase(path: databasePath)
+        try writerDatabase.admitCheckpointOnClose()
         try writerDatabase.execute("PRAGMA journal_mode=WAL;")
         try writerDatabase.execute("PRAGMA synchronous=NORMAL;")
         try database.execute("PRAGMA query_only=ON;")
+        try storageLease.validateCurrent()
         latestWorkspaceGeneration = try Self.readWorkspaceGeneration(
             in: database
         )
@@ -210,92 +281,292 @@ public actor TriptychSearchIndex {
         } else {
             currentAvailability = .unavailable
         }
+        try storageLease.downgrade()
     }
 
     public nonisolated static func databaseURL(
         applicationSupportURL: URL,
         triptychID: UUID
     ) -> URL {
-        applicationSupportURL
+        applicationSupportURL.resolvingSymlinksInPath()
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString.lowercased(), isDirectory: true)
             .appendingPathComponent("indexes", isDirectory: true)
             .appendingPathComponent("search-v10.sqlite", isDirectory: false)
     }
 
-    /// Replaces only a disposable generated database. The v1 files and all
-    /// research Markdown remain untouched.
+    /// Replaces only a recognized disposable generated database. Source,
+    /// recovery records and unknown or future policies remain untouched.
     public nonisolated static func openRecovering(
-        databaseURL: URL,
+        applicationSupportURL: URL,
         triptychID: UUID,
         vaults: [RegisteredVault] = []
+    ) async throws -> TriptychSearchIndexOpenResult {
+        try await openWaitingForStorage(
+            applicationSupportURL: applicationSupportURL, triptychID: triptychID,
+            vaults: vaults, waitingForLease: nil)
+    }
+
+    #if DEBUG
+        nonisolated static func openRecovering(
+            applicationSupportURL: URL, triptychID: UUID, vaults: [RegisteredVault] = [],
+            waitingForLease: @escaping @Sendable () async -> Void
+        ) async throws -> TriptychSearchIndexOpenResult {
+            try await openWaitingForStorage(
+                applicationSupportURL: applicationSupportURL, triptychID: triptychID,
+                vaults: vaults, waitingForLease: waitingForLease)
+        }
+    #endif
+
+    /// Busy maintenance/initialization is transient admission contention, not
+    /// corruption. Suspend without blocking the executor, preserving cancellation
+    /// and the same bounded three-second wait used by the SQLite connections.
+    private nonisolated static func openWaitingForStorage(
+        applicationSupportURL: URL, triptychID: UUID, vaults: [RegisteredVault],
+        waitingForLease: (@Sendable () async -> Void)?
+    ) async throws -> TriptychSearchIndexOpenResult {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        let storage = DerivedStateStorage.searchStorage(applicationSupportURL: applicationSupportURL, triptychID: triptychID)
+        let database = databaseURL(applicationSupportURL: applicationSupportURL, triptychID: triptychID)
+        while true {
+            try Task.checkCancellation()
+            do {
+                return try openRecovering(databaseURL: database, storage: storage, triptychID: triptychID, vaults: vaults)
+            } catch DerivedStateStorageError.inUse {
+                await waitingForLease?()
+                try Task.checkCancellation()
+                let remaining = clock.now.duration(to: deadline)
+                guard remaining > .zero else { throw DerivedStateStorageError.inUse }
+                try await Task.sleep(for: min(remaining, .milliseconds(25)))
+            }
+        }
+    }
+
+    package nonisolated static func openRecovering(
+        isolatedDatabaseURL: URL, triptychID: UUID, vaults: [RegisteredVault] = []
     ) throws -> TriptychSearchIndexOpenResult {
+        let storage = DerivedStateStorage.isolatedSearchStorage(isolatedDatabaseURL)
+        return try openRecovering(
+            databaseURL: storage.directoryURL.appendingPathComponent(isolatedDatabaseURL.lastPathComponent), storage: storage,
+            triptychID: triptychID, vaults: vaults)
+    }
+
+    private nonisolated static func openRecovering(
+        databaseURL: URL, storage: SecureRecordDirectory, triptychID: UUID, vaults: [RegisteredVault]
+    ) throws -> TriptychSearchIndexOpenResult {
+        try storage.ensureDirectories([])
         do {
             return TriptychSearchIndexOpenResult(
                 index: try TriptychSearchIndex(
                     databaseURL: databaseURL,
                     triptychID: triptychID,
-                    vaults: vaults
+                    vaults: vaults, recoveredCorruption: false,
+                    storageLease: DerivedStateStorage.searchLease(storage: storage)
                 ),
                 recoveredCorruption: false
             )
         } catch let error as SearchIndexError where error.permitsSearchRecovery {
-            let manager = FileManager.default
-            try manager.createDirectory(
-                at: databaseURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
+            // The failed initializer has released its own shared lease. Other
+            // live readers/writers prevent replacement of their database path.
+            let maintenance = try DerivedStateStorage.searchMaintenanceLease(storage: storage)
+            defer { withExtendedLifetime(maintenance) {} }
+            // Another process may have completed recovery before admission.
+            do {
+                let compatible = try TriptychSearchIndex(
+                    databaseURL: databaseURL, triptychID: triptychID, vaults: vaults,
+                    recoveredCorruption: false, storageLease: maintenance)
+                return .init(index: compatible, recoveredCorruption: false)
+            } catch let current as SearchIndexError where current.permitsSearchRecovery {
+                // Keep the same exclusive lease through atomic replacement.
+            }
             let stagingURL = databaseURL.deletingLastPathComponent()
                 .appendingPathComponent(".search-v10-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
-                    let staged = try SearchSQLiteDatabase(path: stagingURL.path)
+                    let staged = try SearchSQLiteDatabase(path: maintenance.databasePath(fileName: stagingURL.lastPathComponent))
                     try createSchema(in: staged, triptychID: triptychID)
                     try validateSchema(in: staged, triptychID: triptychID)
                     try staged.execute("PRAGMA wal_checkpoint(TRUNCATE);")
                     try staged.execute("PRAGMA journal_mode=DELETE;")
                 }
-                guard Darwin.rename(stagingURL.path, databaseURL.path) == 0 else {
-                    throw SearchIndexError.sqlite(
-                        "could not atomically publish a rebuilt Search v10 database"
-                    )
-                }
-                for suffix in ["-wal", "-shm"] {
-                    let sidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-                    if manager.fileExists(atPath: sidecar.path) {
-                        try? manager.removeItem(at: sidecar)
-                    }
-                }
+                try DerivedStateStorage.publishSearchRecovery(stagingURL: stagingURL, databaseURL: databaseURL, storage: storage, lease: maintenance)
                 return TriptychSearchIndexOpenResult(
                     index: try TriptychSearchIndex(
                         databaseURL: databaseURL,
                         triptychID: triptychID,
                         vaults: vaults,
-                        recoveredCorruption: true
+                        recoveredCorruption: true,
+                        storageLease: maintenance
                     ),
                     recoveredCorruption: true
                 )
             } catch {
-                for suffix in ["", "-wal", "-shm"] {
-                    let candidate = URL(fileURLWithPath: stagingURL.path + suffix)
-                    if manager.fileExists(atPath: candidate.path) {
-                        try? manager.removeItem(at: candidate)
-                    }
-                }
+                DerivedStateStorage.discardSearchStaging(storage: storage, lease: maintenance)
                 throw error
             }
         }
     }
 
     public func availability() -> SearchAvailability {
-        currentAvailability
+        if isClosing || activeClear != nil { return .unavailable }
+        if activeSynchronization != nil, case .building = currentAvailability { return currentAvailability }
+        if (try? Self.readClearedSequence(in: database)) != nil { return .unavailable }
+        return currentAvailability
+    }
+
+    public var hasDeferredRebuild: Bool {
+        get throws {
+            try requireOpen()
+            if activeClear != nil { return true }
+            return try Self.readClearedSequence(in: database) != nil
+        }
+    }
+
+    /// Clear owns the same writer as synchronization. A returned result always
+    /// means deletion committed; later compaction cannot turn it into rollback.
+    public func clear() async throws -> SearchIndexClearResult {
+        try requireOpen()
+        try Task.checkCancellation()
+        if let activeClear { return try await finishClear(activeClear, joinedWaiter: true) }
+        let synchronization = activeSynchronization
+        synchronization?.task.cancel()
+        let writer = writerDatabase
+        let triptychID = triptychID
+        let beforeCommit: @Sendable () async throws -> Void
+        let afterCommit: @Sendable () async throws -> Void
+        #if DEBUG
+            let observer = clearObserverForTesting
+            beforeCommit = { try await observer?(.beforeCommit) }
+            afterCommit = { try await observer?(.afterCommit) }
+        #else
+            beforeCommit = {}
+            afterCommit = {}
+        #endif
+        let task = Task.detached(priority: .utility) { [self] in
+            if let synchronization {
+                _ = await synchronization.task.result
+                await finishProgress(synchronization)
+            }
+            try Task.checkCancellation()
+            return try await Self.clearOwnedContent(
+                in: writer, triptychID: triptychID, beforeCommit: beforeCommit, afterCommit: afterCommit)
+        }
+        let operation = ActiveClear(id: UUID(), synchronization: synchronization, task: task)
+        activeClear = operation
+        return try await finishClear(operation)
+    }
+
+    private func finishClear(_ operation: ActiveClear, joinedWaiter: Bool = false) async throws -> SearchIndexClearResult {
+        do {
+            let result = try await withTaskCancellationHandler {
+                try await operation.task.value
+            } onCancel: {
+                if !joinedWaiter { operation.task.cancel() }
+            }
+            if activeClear?.id == operation.id {
+                activeClear = nil
+                if activeSynchronization?.id == operation.synchronization?.id { activeSynchronization = nil }
+                rankedSearchCache.removeAll()
+                rankedSearchAccessClock = 0
+                relatedPassageMemo = .init()
+                relatedBackgroundPreparation = .init()
+                currentAvailability = .unavailable
+            }
+            return result
+        } catch {
+            if activeClear?.id == operation.id {
+                activeClear = nil
+                if activeSynchronization?.id == operation.synchronization?.id { activeSynchronization = nil }
+                if !isClosing {
+                    currentAvailability = (try? Self.readGeneration(in: database, triptychID: triptychID)).map(SearchAvailability.current) ?? .unavailable
+                }
+            }
+            throw error
+        }
+    }
+
+    private nonisolated static func clearOwnedContent(
+        in database: SearchSQLiteDatabase, triptychID: UUID,
+        beforeCommit: @Sendable () async throws -> Void,
+        afterCommit: @Sendable () async throws -> Void
+    ) async throws -> SearchIndexClearResult {
+        let removedDocuments = try await database.asyncTransaction {
+            try requireCurrentStoragePolicy(in: database, triptychID: triptychID)
+            let count = Int(try database.scalarText("SELECT count(*) FROM search_documents;") ?? "") ?? 0
+            try deleteOwnedContent(in: database)
+            // Preserve the monotonic sequence so a later identical rebuild
+            // cannot revive a cursor or freshness token from before clearing.
+            try database.execute("UPDATE search_index_state SET sequence = sequence + 1, source_manifest_hash = '' WHERE singleton = 1;")
+            try await beforeCommit()
+            return count
+        }
+        let reclamation: SearchIndexReclamationStatus
+        do {
+            try await afterCommit()
+            try Task.checkCancellation()
+            reclamation = try database.compactAndCheckpoint() ? .completed : .deferred
+        } catch is CancellationError {
+            reclamation = .deferred
+        } catch {
+            reclamation = .failed
+        }
+        return SearchIndexClearResult(removedDocuments: removedDocuments, reclamation: reclamation)
+    }
+
+    private nonisolated static func deleteOwnedContent(in database: SearchSQLiteDatabase) throws {
+        for table in ["search_fts", "search_segments", "search_aliases", "search_properties", "search_documents", "search_vaults"] {
+            try database.execute("DELETE FROM \(table);")
+        }
+        // FTS5 DELETE can retain older term segments behind delete keys.
+        // Rebuild from the now-empty content table before compacting storage.
+        try database.execute("INSERT INTO search_fts(search_fts) VALUES('rebuild');")
+    }
+
+    /// Every caller joins one drain. No owner releases its storage lease while
+    /// an async writer, progress callback, statement or connection is alive.
+    public func shutdown() async {
+        if let shutdownTask {
+            await shutdownTask.value
+            return
+        }
+        isClosing = true
+        let synchronization = activeSynchronization
+        let clearing = activeClear
+        synchronization?.task.cancel()
+        clearing?.task.cancel()
+        let task = Task { [self] in
+            if let clearing { _ = await clearing.task.result }
+            if let synchronization {
+                _ = await synchronization.task.result
+                await finishProgress(synchronization)
+            }
+            activeSynchronization = nil
+            activeClear = nil
+            rankedSearchCache.removeAll()
+            relatedPassageMemo = .init()
+            relatedBackgroundPreparation = .init()
+            database.close()
+            writerDatabase.close()
+            currentAvailability = .unavailable
+            storageLease = nil
+        }
+        shutdownTask = task
+        await task.value
+    }
+
+    private func requireOpen() throws {
+        guard !isClosing else { throw SearchIndexError.sqlite("The Search index is closed.") }
     }
 
     public func generation() throws -> SearchGenerationID? {
-        try Self.readGeneration(in: database, triptychID: triptychID)
+        try requireOpen()
+        guard activeClear == nil else { return nil }
+        return try Self.readGeneration(in: database, triptychID: triptychID)
     }
 
     public func workspaceGeneration() throws -> UInt64 {
+        try requireOpen()
         let stored = try Self.readWorkspaceGeneration(in: database)
         latestWorkspaceGeneration = max(latestWorkspaceGeneration, stored)
         return latestWorkspaceGeneration
@@ -318,12 +589,22 @@ public actor TriptychSearchIndex {
     /// checks every captured SourceVersion immediately before commit.
     public func synchronizeManifest(
         _ documents: [SearchIndexManifestEntry],
-        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:],
+        sourceProjectionCaches: [UUID: SourceProjectionCache] = [:],
         workspaceGeneration: UInt64,
+        mode: SearchIndexSynchronizationMode = .incremental,
         loadChanged: @escaping @Sendable (SearchIndexManifestEntry) async throws -> SearchIndexDocument,
         validateManifest: @escaping @Sendable () async throws -> Void
     ) async throws -> TriptychSearchIndexSyncResult {
+        try requireOpen()
         try Task.checkCancellation()
+        if let activeClear {
+            guard mode == .rebuild else { throw SearchIndexError.awaitingRebuild }
+            _ = try await finishClear(activeClear, joinedWaiter: true)
+            try requireOpen()
+            try Task.checkCancellation()
+        }
+        if mode == .rebuild { try Self.requireCurrentStoragePolicy(in: database, triptychID: triptychID) }
+        let admittedClearSequence = try Self.requireSynchronizationAdmission(mode: mode, in: database)
         // Finish the one older writer before validating the new request. This
         // lets the recursive retry compare against the generation that writer
         // actually committed instead of the pre-wait watermark.
@@ -344,6 +625,7 @@ public actor TriptychSearchIndex {
                 documents,
                 sourceProjectionCaches: sourceProjectionCaches,
                 workspaceGeneration: workspaceGeneration,
+                mode: mode,
                 loadChanged: loadChanged,
                 validateManifest: validateManifest
             )
@@ -375,7 +657,7 @@ public actor TriptychSearchIndex {
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
         let desiredState = desired.mapValues(IndexedProjectionState.init)
-        let changedKeys = desired.keys.filter { stored[$0] != desiredState[$0] }
+        let changedKeys = desired.keys.filter { mode == .rebuild || stored[$0] != desiredState[$0] }
         let removedKeys = Set(stored.keys).subtracting(desired.keys)
         let delta = SearchIndexDelta(
             workspaceGeneration: workspaceGeneration,
@@ -386,13 +668,24 @@ public actor TriptychSearchIndex {
         )
         let preparationMilliseconds = Self.milliseconds(since: preparationStarted)
         let publicationStarted = ContinuousClock.now
-        if previous?.sourceManifestHash == manifestHash, stored == desiredState,
+        if mode == .incremental, previous?.sourceManifestHash == manifestHash, stored == desiredState,
             let previous
         {
             let identifier = UUID()
             let writer = writerDatabase
+            #if DEBUG
+                let beforeTransaction = synchronizationBeforeTransactionForTesting
+            #endif
             let task = Task.detached(priority: .utility) {
+                #if DEBUG
+                    await beforeTransaction?()
+                #endif
                 try await writer.asyncTransaction {
+                    if let current = try Self.requireSynchronizationAdmission(mode: mode, in: writer),
+                        current != admittedClearSequence
+                    {
+                        throw SearchIndexError.awaitingRebuild
+                    }
                     try await validateManifest()
                     try Self.requireNewerWorkspaceGeneration(
                         workspaceGeneration, in: writer)
@@ -434,6 +727,9 @@ public actor TriptychSearchIndex {
             configuredVaults.map { ($0.key, ($0.value.name, $0.value.role)) },
             uniquingKeysWith: { first, _ in first }
         )
+        #if DEBUG
+            let beforeTransaction = synchronizationBeforeTransactionForTesting
+        #endif
         let progress: ProgressDelivery?
         let progressReporter: (@Sendable (Int) -> Void)?
         if previous == nil {
@@ -458,10 +754,15 @@ public actor TriptychSearchIndex {
             progressReporter = nil
         }
         let task = Task.detached(priority: .utility) {
-            try await Self.publish(
+            #if DEBUG
+                await beforeTransaction?()
+            #endif
+            return try await Self.publish(
                 delta: delta,
                 desired: desired,
-                sourceProjectionCaches: sourceProjectionCaches,
+                sourceProjectionCaches: mode == .rebuild ? [:] : sourceProjectionCaches,
+                mode: mode,
+                admittedClearSequence: admittedClearSequence,
                 manifestHash: manifestHash,
                 previous: previous,
                 recoveredGeneratedDatabase: recovered,
@@ -591,7 +892,9 @@ public actor TriptychSearchIndex {
     private nonisolated static func publish(
         delta: SearchIndexDelta,
         desired: [Data: SearchIndexManifestEntry],
-        sourceProjectionCaches: [UUID: SourceSearchProjectionCache],
+        sourceProjectionCaches: [UUID: SourceProjectionCache],
+        mode: SearchIndexSynchronizationMode,
+        admittedClearSequence: Int?,
         manifestHash: String,
         previous: SearchGenerationID?,
         recoveredGeneratedDatabase: Bool,
@@ -604,11 +907,20 @@ public actor TriptychSearchIndex {
     ) async throws -> SearchPublication {
         let preparation = try await database.asyncTransaction {
             try Task.checkCancellation()
+            if let current = try requireSynchronizationAdmission(mode: mode, in: database),
+                current != admittedClearSequence
+            {
+                throw SearchIndexError.awaitingRebuild
+            }
             try requireNewerWorkspaceGeneration(
                 delta.workspaceGeneration,
                 in: database
             )
-            for deletion in delta.deletions.sorted(by: {
+            if mode == .rebuild {
+                try requireCurrentStoragePolicy(in: database, triptychID: triptychID)
+                try deleteOwnedContent(in: database)
+            }
+            for deletion in (mode == .rebuild ? [] : delta.deletions).sorted(by: {
                 if $0.vaultID != $1.vaultID {
                     return $0.vaultID.uuidString < $1.vaultID.uuidString
                 }
@@ -721,7 +1033,7 @@ public actor TriptychSearchIndex {
         let disposition: SearchIndexSyncDisposition
         if recoveredGeneratedDatabase {
             disposition = .recoveredAndRebuilt
-        } else if previous == nil || previous?.sequence == 0 {
+        } else if mode == .rebuild || previous == nil || previous?.sequence == 0 {
             disposition = .rebuilt
         } else {
             disposition = .incrementallyUpdated
@@ -737,7 +1049,8 @@ public actor TriptychSearchIndex {
         linkMatches: [SearchLinkQuery: SearchLinkResolution] = [:],
         eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil
     ) throws -> SearchResponse {
-        try database.readTransaction {
+        try requireOpen()
+        return try database.readTransaction {
             try Task.checkCancellation()
             let readGeneration = try generation()
             let availability = responseAvailability(for: readGeneration)
@@ -828,6 +1141,8 @@ public actor TriptychSearchIndex {
     /// The existing FTS generation admits local-writing sources across all vaults.
     /// Original current body prose, checked by Application, decides final terms.
     public func writingCompletionSources(matching query: String) throws -> [(note: VaultQualifiedNoteID, fingerprint: DocumentFingerprint)] {
+        try requireOpen()
+        guard try generation() != nil else { return [] }
         var expressions = Set<String>()
         for prefix in WritingCompletionPrefix.suffixes(in: query) {
             // One Latin letter alone is too broad; longer multiword and CJK prefixes remain eligible.
@@ -869,6 +1184,8 @@ public actor TriptychSearchIndex {
         eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil,
         limit: Int = SearchContract.maximumCompletionTerms
     ) throws -> [SearchCompletionTerm] {
+        try requireOpen()
+        guard try generation() != nil else { return [] }
         let normalizedPartial = lookup.normalizedPartial
         let boundedLimit = min(max(0, limit), SearchContract.maximumCompletionTerms)
         guard !normalizedPartial.isEmpty, boundedLimit > 0 else { return [] }
@@ -980,7 +1297,8 @@ public actor TriptychSearchIndex {
     public func relatedMaterialSourceCandidates(
         _ request: RelatedContentRequest
     ) throws -> RelatedContentResponse {
-        try database.readTransaction {
+        try requireOpen()
+        return try database.readTransaction {
             try Task.checkCancellation()
             let readGeneration = try generation()
             let availability = responseAvailability(for: readGeneration)
@@ -1673,6 +1991,11 @@ public actor TriptychSearchIndex {
     private func responseAvailability(
         for generation: SearchGenerationID?
     ) -> SearchAvailability {
+        if activeClear != nil { return .unavailable }
+        if generation == nil {
+            if case .building = currentAvailability { return currentAvailability }
+            return .unavailable
+        }
         if let generation,
             case .refreshing(let lastGood) = currentAvailability,
             generation != lastGood
@@ -2214,7 +2537,7 @@ public actor TriptychSearchIndex {
         let relatedProjection: Data
         let relatedLexical: Data
 
-        init(ordinal: Int, source: SearchIndexDocument, cache: SourceSearchProjectionCache?) throws {
+        init(ordinal: Int, source: SearchIndexDocument, cache: SourceProjectionCache?) throws {
             self.ordinal = ordinal
             document = PreparedSearchIndexDocument(source: source, cache: cache)
             try Task.checkCancellation()
@@ -2289,7 +2612,7 @@ public actor TriptychSearchIndex {
                 .blob(relatedLexical), .text(RelatedContentSourceProjection.checksum(relatedLexical)),
             ]
         )
-        let documentID = database.lastInsertRowID
+        let documentID = try database.lastInsertRowID
         for (ordinal, alias) in projection.aliases.enumerated() {
             try database.execute(
                 "INSERT INTO search_aliases(document_id, ordinal, alias, exact_key) VALUES(?, ?, ?, ?);",
@@ -2541,13 +2864,7 @@ public actor TriptychSearchIndex {
             """)
     }
 
-    private static func validateSchema(
-        in database: SearchSQLiteDatabase,
-        triptychID: UUID
-    ) throws {
-        guard try database.scalarText("PRAGMA quick_check;") == "ok" else {
-            throw SearchIndexError.corruptDatabase
-        }
+    private static func validatePolicy(in database: SearchSQLiteDatabase) throws -> (String, Int, Int, Int, Int) {
         var values: (String, Int, Int, Int, Int)?
         do {
             try database.query(
@@ -2563,11 +2880,33 @@ public actor TriptychSearchIndex {
             }
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as SearchIndexError {
+            if case .corruptDatabase = error { throw error }
+            throw DerivedStateStorageError.unrecognizedPolicy
         } catch {
-            throw SearchIndexError.incompatibleSchema
+            throw DerivedStateStorageError.unrecognizedPolicy
         }
-        guard let values,
-            values.0 == triptychID.uuidString.lowercased(),
+        guard let values else { throw DerivedStateStorageError.unrecognizedPolicy }
+        if [values.1, values.2, values.3, values.4].contains(where: { $0 < 1 }) {
+            throw DerivedStateStorageError.unrecognizedPolicy
+        }
+        if values.1 > SearchContract.schemaVersion || values.2 > SearchContract.currentVersion
+            || values.3 > SearchContract.tokenizerPolicyVersion || values.4 > SearchContract.rankingPolicyVersion
+        {
+            throw DerivedStateStorageError.futurePolicy
+        }
+        return values
+    }
+
+    private static func validateSchema(
+        in database: SearchSQLiteDatabase,
+        triptychID: UUID
+    ) throws {
+        let values = try validatePolicy(in: database)
+        guard try database.scalarText("PRAGMA quick_check;") == "ok" else {
+            throw SearchIndexError.corruptDatabase
+        }
+        guard values.0 == triptychID.uuidString.lowercased(),
             values.1 == SearchContract.schemaVersion,
             values.2 == SearchContract.currentVersion,
             values.3 == SearchContract.tokenizerPolicyVersion,
@@ -2591,12 +2930,20 @@ public actor TriptychSearchIndex {
             switch error {
             case .corruptDatabase:
                 throw error
-            case .incompatibleSchema, .invalidDocuments, .sqlite:
+            case .incompatibleSchema, .invalidDocuments, .sqlite, .awaitingRebuild:
                 throw SearchIndexError.incompatibleSchema
             }
         } catch {
             throw SearchIndexError.incompatibleSchema
         }
+    }
+
+    private static func requireCurrentStoragePolicy(in database: SearchSQLiteDatabase, triptychID: UUID) throws {
+        let policy = try validatePolicy(in: database)
+        guard policy.0 == triptychID.uuidString.lowercased(),
+            policy.1 == SearchContract.schemaVersion, policy.2 == SearchContract.currentVersion,
+            policy.3 == SearchContract.tokenizerPolicyVersion, policy.4 == SearchContract.rankingPolicyVersion
+        else { throw SearchIndexError.incompatibleSchema }
     }
 
     private static func decodeParagraphs(_ data: Data?, sourceUTF16Count: Int) throws -> [SearchParagraphProjection] {
@@ -2701,7 +3048,7 @@ public actor TriptychSearchIndex {
             """
         ) { row in
             let sequence = row.int(at: 0)
-            guard sequence > 0 else { return }
+            guard sequence > 0, let manifestHash = row.text(at: 5), !manifestHash.isEmpty else { return }
             result = SearchGenerationID(
                 triptychID: triptychID,
                 sequence: sequence,
@@ -2709,10 +3056,28 @@ public actor TriptychSearchIndex {
                 queryContractVersion: row.int(at: 2),
                 tokenizerPolicyVersion: row.int(at: 3),
                 rankingPolicyVersion: row.int(at: 4),
-                sourceManifestHash: row.text(at: 5) ?? ""
+                sourceManifestHash: manifestHash
             )
         }
         return result
+    }
+
+    private static func readClearedSequence(in database: SearchSQLiteDatabase) throws -> Int? {
+        var sequence: Int?
+        try database.query("SELECT sequence FROM search_index_state WHERE singleton = 1 AND sequence > 0 AND source_manifest_hash = '';") {
+            sequence = $0.int(at: 0)
+        }
+        return sequence
+    }
+
+    private static func requireSynchronizationAdmission(
+        mode: SearchIndexSynchronizationMode, in database: SearchSQLiteDatabase
+    ) throws -> Int? {
+        let cleared = try readClearedSequence(in: database)
+        if mode == .incremental, cleared != nil {
+            throw SearchIndexError.awaitingRebuild
+        }
+        return cleared
     }
 
     private static func readWorkspaceGeneration(
@@ -2794,6 +3159,7 @@ extension TriptychSearchIndex {
     public func beginRelatedPassagePreparation(
         _ request: RelatedContentRequest, candidates: [RelatedContentCandidate], generation: SearchGenerationID
     ) throws -> RelatedPassagePreparation {
+        try requireOpen()
         try Task.checkCancellation()
         return try database.readTransaction {
             guard currentAvailability == .current(generation),
@@ -2814,6 +3180,7 @@ extension TriptychSearchIndex {
     public func prepareRelatedPassages(
         _ preparation: RelatedPassagePreparation, sources: [RelatedContentSource]
     ) throws {
+        try requireOpen()
         try Task.checkCancellation()
         try database.readTransaction {
             guard currentAvailability == .current(preparation.generation),
@@ -2837,6 +3204,7 @@ extension TriptychSearchIndex {
     public func relatedPassages(
         _ request: RelatedContentRequest, sources: [RelatedContentSource]
     ) throws -> [RelatedContentPassage] {
+        try requireOpen()
         let protection = relatedPassageMemo.scanProtection(
             for: sources.filter { source in
                 source.candidate.note != request.seed.noteID

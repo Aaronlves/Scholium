@@ -1,6 +1,7 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Storage": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Storage"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "存储"}}}},
     "Original access settings are unavailable. Reopen Scholium and try again.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Original access settings are unavailable. Reopen Scholium and try again."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "原文访问设置不可用。请重新打开 Scholium 后重试。"}}}},
     "Original access settings cannot be read. Existing settings were preserved.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Original access settings cannot be read. Existing settings were preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法读取原文访问设置。现有设置已保留。"}}}},
     "Select an original file or its folder directly. Symbolic links are not supported.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Select an original file or its folder directly. Symbolic links are not supported."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请直接选择原文文件或其文件夹。不支持符号链接。"}}}},

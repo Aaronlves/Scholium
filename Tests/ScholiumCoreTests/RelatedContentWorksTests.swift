@@ -114,7 +114,7 @@ struct RelatedContentWorksTests {
         }
 
         func index() throws -> TriptychSearchIndex {
-            try .init(databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: [analyses, topics, works])
+            try .init(isolatedDatabaseURL: root.appendingPathComponent("search.sqlite"), triptychID: triptychID, vaults: [analyses, topics, works])
         }
 
         func request(roles: [RelatedContentCandidateRole] = RelatedContentCandidateRole.allCases) -> RelatedContentRequest {

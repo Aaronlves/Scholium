@@ -67,7 +67,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
         ]
         let databaseURL = root.appendingPathComponent("search-v10.sqlite")
         let index = try TriptychSearchIndex(
-            databaseURL: databaseURL,
+            isolatedDatabaseURL: databaseURL,
             triptychID: triptychID
         )
         var documents = makeSearchFixture(vaults: vaults)
@@ -220,7 +220,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
                     (VaultQualifiedNoteID(vaultID: $0.vaultID, relativePath: $0.relativePath), $0)
                 })
             let index = try TriptychSearchIndex(
-                databaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(), vaults: vaults)
+                isolatedDatabaseURL: root.appendingPathComponent("search.sqlite"), triptychID: UUID(), vaults: vaults)
             let coldStart = ContinuousClock.now
             let publication = try await index.synchronize(documents)
             let coldMS = seconds(coldStart.duration(to: .now)) * 1_000

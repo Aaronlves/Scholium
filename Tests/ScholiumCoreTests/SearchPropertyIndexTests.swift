@@ -387,7 +387,7 @@ struct SearchPropertyIndexTests {
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {
             try TriptychSearchIndex(
-                databaseURL: url ?? databaseURL,
+                isolatedDatabaseURL: url ?? databaseURL,
                 triptychID: triptychID
             )
         }

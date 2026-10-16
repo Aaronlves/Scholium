@@ -12,7 +12,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works])
 
@@ -93,7 +93,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID, vaults: [fixture.analyses, fixture.topics, fixture.works])
         var documents = (0..<40).map { n in
             fixture.item(vault: fixture.analyses, path: "A \(n).md", source: "# needle freedom\n\nUnrelated prose.")
@@ -122,7 +122,7 @@ struct TriptychSearchIndexTests {
         defer { fixture.remove() }
         let vaults = [fixture.analyses, fixture.topics, fixture.works]
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID, vaults: vaults)
         var documents = (0..<270).map { number in
             fixture.item(vault: fixture.analyses, path: "Body \(number).md", source: "needle ordinary")
@@ -140,7 +140,7 @@ struct TriptychSearchIndexTests {
         #expect(result.lexicalCandidates.first?.note.relativePath == "Annotated.md")
         #expect(result.lexicalHasMore)
         let reopened = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID, vaults: vaults)
         let reread = try await reopened.relatedMaterialSourceCandidates(request)
         #expect(reread.lexicalCandidates == result.lexicalCandidates)
@@ -156,7 +156,7 @@ struct TriptychSearchIndexTests {
             canonicalPath: "/fixtures/other"
         )
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
         )
@@ -309,7 +309,7 @@ struct TriptychSearchIndexTests {
                 )
             ))
         let cleanIndex = try TriptychSearchIndex(
-            databaseURL: fixture.root.appendingPathComponent("clean-related.sqlite"),
+            isolatedDatabaseURL: fixture.root.appendingPathComponent("clean-related.sqlite"),
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
         )
@@ -338,7 +338,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works]
         )
@@ -387,7 +387,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses]
         )
@@ -452,7 +452,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         _ = try await index.synchronize([
@@ -498,7 +498,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let source = """
@@ -550,7 +550,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let source = "---\ntitle: Stable Source\n---\nmetadata-refresh-term"
@@ -583,7 +583,7 @@ struct TriptychSearchIndexTests {
     func canonicalUnicodeSourcePublication() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let index = try TriptychSearchIndex(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        let index = try TriptychSearchIndex(isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         let firstSource = "---\nkeywords: [a\u{0301}\u{0327}]\n---\nBody"
         let editedSource = "---\nkeywords: [a\u{0327}\u{0301}]\n---\nBody"
         #expect(firstSource == editedSource)
@@ -603,11 +603,11 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let peerOpenedBeforePublication = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let current = fixture.item(
@@ -656,7 +656,7 @@ struct TriptychSearchIndexTests {
         #expect(unchanged.generation == published.generation)
 
         let reopened = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         await #expect(throws: SearchIndexError.self) {
@@ -673,7 +673,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         var documents = (0..<10_000).map { number in
@@ -707,7 +707,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         _ = try await index.synchronize([
@@ -728,7 +728,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works]
         )
@@ -806,7 +806,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.topics]
         )
@@ -837,7 +837,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses]
         )
@@ -883,7 +883,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let original = fixture.item(
@@ -927,7 +927,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         // The gate pauses before the second batch, so two batches suffice
@@ -1003,7 +1003,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         let original = (0..<3_000).map { number in
@@ -1082,7 +1082,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         _ = try await index.synchronize([
@@ -1110,7 +1110,7 @@ struct TriptychSearchIndexTests {
         try legacyBytes.write(to: legacyURL)
         let source = "---\ntitle: Preserved\n---\nrecoverable text"
         let opened = try TriptychSearchIndex.openRecovering(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         #expect(opened.recoveredCorruption)
@@ -1134,7 +1134,7 @@ struct TriptychSearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
-            databaseURL: fixture.databaseURL,
+            isolatedDatabaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID
         )
         _ = try await index.synchronize([

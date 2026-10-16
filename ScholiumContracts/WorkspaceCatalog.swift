@@ -146,7 +146,7 @@ public struct WorkspaceCatalogSnapshot: Codable, Sendable {
 /// Exact-revision catalog material produced while one descriptor-authorized
 /// source is in scope. Every retained string is an owned value, not a slice of
 /// the Markdown buffer; the complete semantic tree is discarded after parsing.
-package struct WorkspaceSourceProjection: Hashable, Sendable {
+package struct WorkspaceSourceProjection: Codable, Hashable, Sendable {
     package let relativePath: String
     package let fingerprint: DocumentFingerprint
     package let title: String
@@ -164,15 +164,78 @@ package struct WorkspaceSourceProjection: Hashable, Sendable {
         fingerprint = document.fingerprint
         title = ResearchNoteTitleResolver.resolve(document: document)
         validationWarnings = document.validationWarnings
-        propertyTextValues = Dictionary(
-            uniqueKeysWithValues: properties.entries.map {
-                ($0.key, $0.stringMembers.map { String(decoding: $0.value.utf8, as: UTF8.self) })
-            })
+        propertyTextValues = Self.textValues(properties)
         canonicalAliases = document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
         canonicalKeywords = document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
         linkCatalog = LinkCatalogNote(vaultID: vaultID, document: document, semantic: semantic)
         authoredLinks = semantic.links
-        inertPropertyWikilinks = properties.entries.flatMap { entry in
+        inertPropertyWikilinks = Self.inertWikilinks(properties)
+    }
+
+    /// A disposable record may provide syntax and coordinates, never source,
+    /// file facts or identity authority. Recheck its cheap source properties and
+    /// every persisted coordinate against the freshly descriptor-loaded Note.
+    package func isValid(for document: NoteDocument, vaultID: UUID) -> Bool {
+        let properties = SearchPropertyProjection(document: document)
+        let expectedTitle = ResearchNoteTitleResolver.resolve(document: document)
+        guard Data(relativePath.utf8) == Data(document.relativePath.utf8),
+            fingerprint == document.fingerprint,
+            title == expectedTitle, validationWarnings == document.validationWarnings,
+            propertyTextValues == Self.textValues(properties),
+            canonicalAliases == (document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []),
+            canonicalKeywords == (document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []),
+            linkCatalog.id.vaultID == vaultID,
+            Data(linkCatalog.id.relativePath.utf8) == Data(document.relativePath.utf8),
+            linkCatalog.title == expectedTitle,
+            linkCatalog.aliases == properties.textValues(forExactKey: "aliases"),
+            inertPropertyWikilinks == Self.inertWikilinks(properties),
+            linkCatalog.ambiguousBlockAnchors.isDisjoint(with: linkCatalog.blockAnchors.keys),
+            linkCatalog.headings.allSatisfy({ (1...6).contains($0.level) }),
+            authoredLinks.allSatisfy({ $0.resolution == .unresolved }),
+            zip(authoredLinks, authoredLinks.dropFirst()).allSatisfy({ $0.span.utf16LowerBound <= $1.span.utf16LowerBound })
+        else { return false }
+
+        let spans =
+            linkCatalog.headings.map(\.span) + Array(linkCatalog.blockAnchors.values)
+            + authoredLinks.flatMap { occurrence in
+                [occurrence.span, occurrence.linkSpan]
+                    + (occurrence.annotation.map { [$0.span, $0.contentSpan] } ?? [])
+            }
+        let coordinates = CatalogSourceCoordinates(
+            source: document.rawContent,
+            offsets: Set(
+                spans.flatMap { [$0.utf16LowerBound, $0.utf16UpperBound] }
+                    + inertPropertyWikilinks.flatMap { [$0.utf16LowerBound, $0.utf16UpperBound] }))
+        guard spans.allSatisfy(coordinates.valid), inertPropertyWikilinks.allSatisfy(coordinates.valid),
+            authoredLinks.allSatisfy({ occurrence in
+                guard occurrence.span.utf16LowerBound <= occurrence.linkSpan.utf16LowerBound,
+                    occurrence.linkSpan.utf16LowerBound < occurrence.linkSpan.utf16UpperBound,
+                    occurrence.linkSpan.utf16UpperBound <= occurrence.span.utf16UpperBound
+                else { return false }
+                guard let annotation = occurrence.annotation else { return occurrence.span == occurrence.linkSpan }
+                guard occurrence.syntax == .wikilink,
+                    occurrence.span.utf16LowerBound == occurrence.linkSpan.utf16LowerBound,
+                    annotation.span.utf16LowerBound == occurrence.linkSpan.utf16UpperBound,
+                    annotation.span.utf16UpperBound == occurrence.span.utf16UpperBound,
+                    annotation.contentSpan.utf16LowerBound - annotation.span.utf16LowerBound == 2,
+                    annotation.span.utf16UpperBound - annotation.contentSpan.utf16UpperBound == 2,
+                    annotation.contentSpan.utf16LowerBound <= annotation.contentSpan.utf16UpperBound
+                else { return false }
+                return (document.rawContent as NSString).substring(with: annotation.contentSpan.nsRange) == annotation.markdown
+            })
+        else { return false }
+        return true
+    }
+
+    private static func textValues(_ properties: SearchPropertyProjection) -> [String: [String]] {
+        Dictionary(
+            uniqueKeysWithValues: properties.entries.map {
+                ($0.key, $0.stringMembers.map { String(decoding: $0.value.utf8, as: UTF8.self) })
+            })
+    }
+
+    private static func inertWikilinks(_ properties: SearchPropertyProjection) -> [SearchSourceRange] {
+        properties.entries.flatMap { entry in
             entry.stringMembers.compactMap { member in
                 guard let open = member.value.range(of: "[["),
                     let close = member.value.range(of: "]]", range: open.upperBound..<member.value.endIndex)
@@ -183,6 +246,67 @@ package struct WorkspaceSourceProjection: Hashable, Sendable {
                     ? member.sourceRange : nil
             }
         }
+    }
+}
+
+/// Checks just the requested boundaries in one scalar pass. No retained table
+/// proportional to every source character and no semantic reparsing is needed.
+private struct CatalogSourceCoordinates {
+    private let positions: [Int: (utf8: Int, position: SourcePosition)]
+
+    init(source: String, offsets: Set<Int>) {
+        guard !offsets.isEmpty else {
+            positions = [:]
+            return
+        }
+        let requested = offsets.filter { $0 >= 0 }.sorted()
+        var requestedIndex = 0
+        var result: [Int: (utf8: Int, position: SourcePosition)] = [:]
+        var utf8 = 0
+        var utf16 = 0
+        var line = 1
+        var lineStartUTF8 = 0
+        var lineStartUTF16 = 0
+        var scalars = source.unicodeScalars.makeIterator()
+        var current = scalars.next()
+        while let scalar = current {
+            while requestedIndex < requested.count, requested[requestedIndex] <= utf16 {
+                if requested[requestedIndex] == utf16 {
+                    result[utf16] = (utf8, SourcePosition(line: line, utf8Column: utf8 - lineStartUTF8 + 1, utf16Column: utf16 - lineStartUTF16 + 1))
+                }
+                requestedIndex += 1
+            }
+            utf8 += scalar.utf8.count
+            utf16 += scalar.utf16.count
+            let next = scalars.next()
+            if scalar == "\n" || (scalar == "\r" && next != "\n") {
+                line += 1
+                lineStartUTF8 = utf8
+                lineStartUTF16 = utf16
+            }
+            current = next
+        }
+        if requestedIndex < requested.count, requested[requestedIndex] == utf16 {
+            result[utf16] = (utf8, SourcePosition(line: line, utf8Column: utf8 - lineStartUTF8 + 1, utf16Column: utf16 - lineStartUTF16 + 1))
+        }
+        positions = result
+    }
+
+    func valid(_ span: SourceSpan) -> Bool {
+        guard span.utf8LowerBound >= 0, span.utf8LowerBound <= span.utf8UpperBound,
+            span.utf16LowerBound >= 0, span.utf16LowerBound <= span.utf16UpperBound,
+            let lower = positions[span.utf16LowerBound], let upper = positions[span.utf16UpperBound]
+        else { return false }
+        return lower.utf8 == span.utf8LowerBound && upper.utf8 == span.utf8UpperBound
+            && lower.position == span.start && upper.position == span.end
+    }
+
+    func valid(_ range: SearchSourceRange) -> Bool {
+        guard range.utf16LowerBound >= 0, range.utf16LowerBound <= range.utf16UpperBound,
+            let lower = positions[range.utf16LowerBound], let upper = positions[range.utf16UpperBound]
+        else { return false }
+        return lower.position.line == range.line && lower.position.utf16Column == range.column
+            && upper.position.line == range.endLine && upper.position.utf16Column == range.endColumn
     }
 }
 

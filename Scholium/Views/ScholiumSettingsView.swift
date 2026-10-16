@@ -9,6 +9,7 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case agents
     case shortcuts
     case zotero
+    case storage
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .agents: LocalizedStringResource("settings.toolbar.agents", defaultValue: "Agents", table: "Interface", bundle: .module)
         case .shortcuts: LocalizedStringResource("Shortcuts", bundle: .module)
         case .zotero: LocalizedStringResource("Zotero", bundle: .module)
+        case .storage: LocalizedStringResource("Storage", table: "Interface", bundle: .module)
         }
     }
 
@@ -31,6 +33,7 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .agents: LocalizedStringResource("Agents & Chat", bundle: .module)
         case .shortcuts: LocalizedStringResource("Keyboard Shortcuts", bundle: .module)
         case .zotero: LocalizedStringResource("Zotero", bundle: .module)
+        case .storage: LocalizedStringResource("Storage", table: "Interface", bundle: .module)
         }
     }
 
@@ -42,6 +45,7 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
         case .agents: "point.3.connected.trianglepath.dotted"
         case .shortcuts: "keyboard"
         case .zotero: "books.vertical"
+        case .storage: "internaldrive"
         }
     }
 }
@@ -181,6 +185,7 @@ struct ScholiumSettingsView: View {
         case .agents: AgentIntegrationSettingsView(searchQuery: searchQuery)
         case .shortcuts: HotkeySettingsView()
         case .zotero: ZoteroSettingsPageView()
+        case .storage: StorageSettingsView(capabilities: settingsModel.storageCapabilities)
         }
     }
 }

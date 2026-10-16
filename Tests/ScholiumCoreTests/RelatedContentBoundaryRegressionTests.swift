@@ -205,7 +205,7 @@ struct RelatedContentBoundaryRegressionTests {
         }
 
         func index(databaseURL: URL? = nil) throws -> TriptychSearchIndex {
-            try .init(databaseURL: databaseURL ?? root.appendingPathComponent("index.sqlite"), triptychID: triptychID, vaults: [topics, analyses])
+            try .init(isolatedDatabaseURL: databaseURL ?? root.appendingPathComponent("index.sqlite"), triptychID: triptychID, vaults: [topics, analyses])
         }
 
         func evaluate(_ index: TriptychSearchIndex, focus: String, documents: [SearchIndexDocument], focused: Bool = true) async throws

@@ -88,12 +88,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             cancel: { await integration.cancelApplicationTermination() })
     }()
 
-    static func unpackWordDocument(_ data: Data) async throws -> [String: Data] {
-        try await WordDocumentArchiveOperations.unpack(data)
+    static func unpackWordDocument(_ data: Data, applicationSupportURL: URL) async throws -> [String: Data] {
+        try await WordDocumentArchiveOperations.unpack(data, applicationSupportURL: applicationSupportURL)
     }
 
-    static func packWordDocument(_ parts: [String: Data]) async throws -> Data {
-        try await WordDocumentArchiveOperations.pack(parts)
+    static func packWordDocument(_ parts: [String: Data], applicationSupportURL: URL) async throws -> Data {
+        try await WordDocumentArchiveOperations.pack(parts, applicationSupportURL: applicationSupportURL)
     }
 
     private static let publicationLogger = Logger(
@@ -117,7 +117,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         let registry = AgentChatRegistry(
             root: applicationSupportURL.appendingPathComponent("Chat"),
             workspaceDirectory: { [applicationRuntime] id in
-                let workspace = try await applicationRuntime.openWorkspace(id: id)
+                let workspace = try await applicationRuntime.workspace(id: id)
                 return try await workspace.agentChatWorkspaceURL()
             },
             displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
@@ -388,7 +388,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     func importExternalMarkdown(
         _ data: Data, filename: String, assignment: TriptychAssignment, slot: WorkspaceVaultSlot
     ) async throws -> (VaultNoteReference, WorkspaceMutationOutcome<NoteDocument>) {
-        let handle = try await workspaceHandle(id: assignment.id)
+        let handle = try await applicationRuntime.workspace(id: assignment.id)
         guard handle.assignment == assignment, let vault = handle.assignment.vault(for: slot) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
@@ -400,7 +400,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     func externalMarkdownRecoveryIsPending(_ record: TriptychMutationRecoveryRecord) async throws -> Bool {
-        let handle = try await workspaceHandle(id: record.triptychID)
+        let handle = try await applicationRuntime.workspace(id: record.triptychID)
         return try await handle.research.recoveryRecords().contains { $0.id == record.id }
     }
 
@@ -452,7 +452,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         let previous = handles[id]?.runtimeIdentity
         let assignment = try await applicationRuntime.reconcileWorkspaceIdentity(id: id)
         if let previous {
-            let replacement = try await applicationRuntime.openWorkspace(id: assignment.id)
+            let replacement = try await applicationRuntime.workspace(id: assignment.id)
             try await install(handle: replacement, replacing: previous)
         }
         return assignment
@@ -468,7 +468,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             as: stableID
         )
         if let previous {
-            let replacement = try await applicationRuntime.openWorkspace(id: assignment.id)
+            let replacement = try await applicationRuntime.workspace(id: assignment.id)
             try await install(handle: replacement, replacing: previous)
         }
         return assignment
@@ -492,7 +492,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             stableID: stableID
         )
         for previous in affected {
-            let replacement = try await applicationRuntime.openWorkspace(
+            let replacement = try await applicationRuntime.workspace(
                 id: previous.triptychID
             )
             try await install(handle: replacement, replacing: previous)
@@ -537,27 +537,13 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    private func workspaceHandle(
-        id: UUID,
-        openingVault: WorkspaceVaultSlot? = nil
-    ) async throws -> WorkspaceHandle {
-        let handle = try await applicationRuntime.openWorkspace(
-            id: id,
-            openingVault: openingVault
-        )
-        try await install(handle: handle)
-        return handle
-    }
-
     func workspaceCapabilities(
         id: UUID,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WindowWorkspaceCapabilities {
-        capabilities(
-            from: try await workspaceHandle(
-                id: id,
-                openingVault: openingVault
-            ))
+        let handle = try await applicationRuntime.openWorkspace(id: id, openingVault: openingVault)
+        try await install(handle: handle)
+        return capabilities(from: handle)
     }
 
     private func configureTriptych(
@@ -580,7 +566,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             ?? handles.values.first(where: { handle in
                 Set(handle.assignment.vaults.values.map(\.canonicalPath)) == selectedPaths
             })?.runtimeIdentity
-        let handle = try await applicationRuntime.configureTriptych(
+        let configured = try await applicationRuntime.configureTriptych(
             paperAnalysisURL: paperAnalysisURL,
             topicKnowledgeURL: topicKnowledgeURL,
             outputURL: outputURL,
@@ -589,6 +575,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             triptychName: triptychName,
             openingVault: openingVault
         )
+        let handle = try await applicationRuntime.openWorkspace(id: configured.id, openingVault: openingVault)
         try await install(handle: handle, replacing: previous)
         return handle
     }
@@ -651,7 +638,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         }
         let settingsLoadState: TriptychSettingsLoadState
         do {
-            let handle = try await workspaceHandle(id: assignment.id)
+            let handle = try await applicationRuntime.workspace(id: assignment.id)
             settingsLoadState = try await handle.research.settingsLoadState()
         } catch {
             // Registration is independently authoritative. An inaccessible
@@ -693,7 +680,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     try await settingsSnapshot(preferredTriptychID: preferredID)
                 },
                 configureWorkspace: { [self] paper, topics, works, portable, id, name in
-                    let handle = try await configureTriptych(
+                    let handle = try await applicationRuntime.configureTriptych(
                         paperAnalysisURL: paper,
                         topicKnowledgeURL: topics,
                         outputURL: works,
@@ -704,11 +691,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     return try await settingsSnapshot(preferredTriptychID: handle.id)
                 },
                 loadSettingsRecovery: { [self] id in
-                    let handle = try await workspaceHandle(id: id)
+                    let handle = try await applicationRuntime.workspace(id: id)
                     return try await handle.research.settingsRecoverySnapshot()
                 },
                 resetTriptychSettings: { [self] id, expectedRevision in
-                    let handle = try await workspaceHandle(id: id)
+                    let handle = try await applicationRuntime.workspace(id: id)
                     let outcome = try await handle.research.resetSettingsToDefaultsOutcome(
                         expectedRevision: expectedRevision
                     )
@@ -772,6 +759,20 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         retention: try await archive.retention(),
                         usage: try await archive.historyUsage()
                     )
+                }
+            ),
+            storage: StorageSettingsCapabilities(
+                inventory: { [self] in try await applicationRuntime.storageInventory() },
+                perform: { [self] action, triptychID in
+                    try await applicationRuntime.performStorageAction(action, triptychID: triptychID)
+                },
+                archivedChats: { [self] id in
+                    _ = try await applicationRuntime.documentChangeArchive(triptychID: id)
+                    return try await chatRegistry.controller(for: id).archivedChatCleanupPlan()
+                },
+                deleteArchivedChats: { [self] plan in
+                    _ = try await applicationRuntime.documentChangeArchive(triptychID: plan.triptychID)
+                    return try await chatRegistry.controller(for: plan.triptychID).deleteArchivedChats(plan)
                 }
             )
         )
@@ -980,7 +981,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             return
         }
         do {
-            let replacement = try await applicationRuntime.openWorkspace(
+            let replacement = try await applicationRuntime.workspace(
                 id: reload.runtimeIdentity.triptychID
             )
             guard replacement.runtimeIdentity == reload.runtimeIdentity else { return }

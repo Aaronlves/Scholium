@@ -111,6 +111,7 @@ struct NoteExportService {
     }
 
     static func render(
+        applicationSupportURL: URL,
         document: NoteDocument,
         title: String,
         format: NoteExportFormat,
@@ -164,7 +165,8 @@ struct NoteExportService {
             output = try await addWordFootnotes(
                 wordContent.footnotes, to: nativeDOCX, markers: wordContent.markers,
                 links: wordLinks.links, headings: wordContent.headings,
-                bibliographies: wordContent.bibliographies)
+                bibliographies: wordContent.bibliographies,
+                applicationSupportURL: applicationSupportURL)
         }
         guard !output.isEmpty else { throw NoteExportError.emptyOutput }
         if format == .docx, !output.starts(with: [0x50, 0x4B]) {
@@ -230,10 +232,10 @@ struct NoteExportService {
 
     private static func addWordFootnotes(
         _ footnotes: [(Int, NSAttributedString)], to data: Data, markers: [String: Int], links: [WordLink], headings: [String: Int],
-        bibliographies: [String: ZoteroMarkdownBibliographyStyle]
+        bibliographies: [String: ZoteroMarkdownBibliographyStyle], applicationSupportURL: URL
     ) async throws -> Data {
         do {
-            var package = try await WorkspaceStore.unpackWordDocument(data)
+            var package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
             let documentXML = try wordPart("word/document.xml", in: package)
             var relationships = try wordPart("word/_rels/document.xml.rels", in: package)
             let preparedXML = try replacingWordMarkers(
@@ -281,7 +283,7 @@ struct NoteExportService {
                     package["word/_rels/footnotes.xml.rels"] = Data(footnoteRelationships.utf8)
                 }
             }
-            return try await WorkspaceStore.packWordDocument(package)
+            return try await WorkspaceStore.packWordDocument(package, applicationSupportURL: applicationSupportURL)
         } catch {
             if Task.isCancelled { throw CancellationError() }
             throw NoteExportError.docxPackaging

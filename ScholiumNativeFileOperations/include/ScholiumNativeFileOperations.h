@@ -1,7 +1,11 @@
 #import <Foundation/Foundation.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+/// Swift cannot call SQLite's variadic connection-configuration API directly.
+FOUNDATION_EXPORT int ScholiumSQLiteSetCheckpointOnClose(sqlite3 *database, BOOL enabled);
 
 /// Keeps Apple's inode-bound NSURL intact through the native Finder operation.
 /// Swift's NSURL-to-URL bridge resolves a file reference into a path URL.

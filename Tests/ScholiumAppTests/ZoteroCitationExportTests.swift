@@ -116,10 +116,13 @@ struct ZoteroCitationExportTests {
     }
 
     private func checkHTMLFallback(_ note: NoteDocument, style: NoteExportStyle) async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = note.sourceBytes
         #expect(MarkdownSemanticDocument(parsing: note).zoteroFields.fields.count == 2)
         for data in [
             try await NoteExportService.render(
+                applicationSupportURL: applicationSupportURL,
                 document: note, title: "Synthetic", format: .html,
                 style: style, textSize: 12, paperSize: .letter),
             try await NoteExportService.renderDOCXPreviewHTML(
@@ -151,11 +154,14 @@ struct ZoteroCitationExportTests {
     }
 
     private func checkDOCXLayout(_ note: NoteDocument, style: NoteExportStyle) async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = note.sourceBytes
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: note, title: "Synthetic", format: .docx,
             style: style, textSize: 12, paperSize: .letter)
-        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
         let xml = try #require(package["word/document.xml"].flatMap { String(data: $0, encoding: .utf8) })
         let document = try XMLDocument(xmlString: xml, options: .nodePreserveWhitespace)
         for title in ["Alpha.", "Beta."] {
@@ -197,6 +203,8 @@ struct ZoteroCitationExportTests {
 
     @Test("Compact export requires a supported companion bound to the exact source revision")
     func compactCompanionAdmission() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let original = try companionFixture()
         let authority = try #require(original.citationSnapshot)
         let missing = original.withCitationSnapshot(nil)
@@ -224,12 +232,14 @@ struct ZoteroCitationExportTests {
         for format in [NoteExportFormat.html, .docx, .pdf] {
             do {
                 _ = try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: missing, title: "Synthetic", format: format,
                     style: .document, textSize: 12, paperSize: .letter)
                 Issue.record("Missing companion reached a format renderer without saved-text authorization.")
             } catch NoteExportError.citationSourceUnresolved {}
         }
         let saved = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: missing, title: "Synthetic", format: .html,
             style: .document, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
         let html = try #require(String(data: saved, encoding: .utf8))
@@ -246,6 +256,8 @@ struct ZoteroCitationExportTests {
 
     @Test("Malformed YAML with unresolved companion authority requires explicit saved-text export")
     func malformedFrontmatterCompanionAdmission() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = "\u{FEFF}---\r\nbroken: [\r\nReadable 😀 e\u{301} prose."
         for status in [ZoteroCitationSnapshot.Status.unresolved, .unsupported] {
             let note = NoteDocument(
@@ -259,12 +271,14 @@ struct ZoteroCitationExportTests {
             for format in [NoteExportFormat.html, .docx, .pdf] {
                 do {
                     _ = try await NoteExportService.render(
+                        applicationSupportURL: applicationSupportURL,
                         document: note, title: "Synthetic", format: format,
                         style: .document, textSize: 12, paperSize: .letter)
                     Issue.record("Malformed YAML bypassed citation export admission.")
                 } catch NoteExportError.citationSourceUnresolved {}
             }
             let saved = try await NoteExportService.render(
+                applicationSupportURL: applicationSupportURL,
                 document: note, title: "Synthetic", format: .html,
                 style: .document, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
             let html = try #require(String(data: saved, encoding: .utf8))
@@ -276,11 +290,14 @@ struct ZoteroCitationExportTests {
 
     @Test("Bibliography without declared layout receives no academic prose first-line indent")
     func undeclaredLayoutIsNotProse() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let note = try fixture(layout: false)
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: note, title: "Synthetic", format: .docx,
             style: .apa7, textSize: 12, paperSize: .letter)
-        let package = try await WorkspaceStore.unpackWordDocument(data)
+        let package = try await WorkspaceStore.unpackWordDocument(data, applicationSupportURL: applicationSupportURL)
         let xml = try #require(package["word/document.xml"].flatMap { String(data: $0, encoding: .utf8) })
         let document = try XMLDocument(xmlString: xml, options: .nodePreserveWhitespace)
         let entry = try #require(try document.nodes(forXPath: "//*[local-name()='p' and contains(., 'Alpha.')]").first as? XMLElement)
@@ -290,6 +307,8 @@ struct ZoteroCitationExportTests {
 
     @Test("Known stale citation exports require an explicit saved-text choice before any format renderer")
     func knownStaleExportAdmission() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let original = try fixture()
         let bibliography = try #require(MarkdownSemanticDocument(parsing: original).zoteroFields.fields.first { $0.kind == .bibliography })
         let staleSource = (original.rawContent as NSString).replacingCharacters(in: bibliography.span.nsRange, with: "")
@@ -302,12 +321,14 @@ struct ZoteroCitationExportTests {
         for format in [NoteExportFormat.html, .pdf, .docx] {
             do {
                 _ = try await NoteExportService.render(
+                    applicationSupportURL: applicationSupportURL,
                     document: stale, title: "Synthetic", format: format,
                     style: .apa7, textSize: 12, paperSize: .letter)
                 Issue.record("Known stale source reached a format renderer without saved-text authorization.")
             } catch NoteExportError.citationStateStale {}
         }
         let saved = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: stale, title: "Synthetic", format: .html,
             style: .apa7, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
         let preview = try await NoteExportService.renderDOCXPreviewHTML(
@@ -325,6 +346,8 @@ struct ZoteroCitationExportTests {
 
     @Test("Unresolved citation source has a distinct admission error and preserves explicit literal saved text")
     func unresolvedExportAdmission() async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let original = try fixture()
         let occurrence = try #require(MarkdownSemanticDocument(parsing: original).zoteroFields.fields.first { $0.kind == .citation })
         let copied = (original.rawContent as NSString).substring(with: occurrence.span.nsRange)
@@ -336,11 +359,13 @@ struct ZoteroCitationExportTests {
         }
         do {
             _ = try await NoteExportService.render(
+                applicationSupportURL: applicationSupportURL,
                 document: unresolved, title: "Synthetic", format: .html,
                 style: .document, textSize: 12, paperSize: .letter)
             Issue.record("Unresolved source exported without an explicit saved-text choice.")
         } catch NoteExportError.citationSourceUnresolved {}
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: unresolved, title: "Synthetic", format: .html,
             style: .document, textSize: 12, paperSize: .letter, allowSavedCitationText: true)
         let html = try #require(String(data: data, encoding: .utf8))
@@ -452,8 +477,11 @@ struct ZoteroCitationExportTests {
     }
 
     private func checkPDFLayout(_ note: NoteDocument, paperSize: NoteExportPaperSize) async throws {
+        let applicationSupportURL = try makeExportStorage()
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
         let source = note.sourceBytes
         let data = try await NoteExportService.render(
+            applicationSupportURL: applicationSupportURL,
             document: note, title: "Synthetic", format: .pdf,
             style: .apa7, textSize: 12, paperSize: paperSize)
         let document = try #require(PDFDocument(data: data))
@@ -483,5 +511,12 @@ struct ZoteroCitationExportTests {
             #expect(page.annotations.allSatisfy { ($0.action as? PDFActionURL)?.url == nil })
         }
         #expect(note.sourceBytes == source)
+    }
+
+    private func makeExportStorage() throws -> URL {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/zotero-citation-export-tests/\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
     }
 }

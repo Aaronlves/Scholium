@@ -163,11 +163,20 @@ struct ArchitectureBoundaryTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("private func workspaceHandle(\n        id: UUID,"))
+        let activationStart = try #require(source.range(of: "func workspaceCapabilities("))
+        let configureStart = try #require(source.range(of: "private func configureTriptych(", range: activationStart.upperBound..<source.endIndex))
+        let activation = String(source[activationStart.lowerBound..<configureStart.lowerBound])
+        #expect(activation.contains("applicationRuntime.openWorkspace("))
+        #expect(activation.contains("try await install(handle: handle)"))
         #expect(source.contains("openingVault: WorkspaceVaultSlot? = nil"))
         #expect(source.contains("openingVault: openingVault"))
         #expect(source.contains("private func configureTriptych("))
         #expect(!source.contains("func reloadTriptychCapabilities("))
+        let settingsStart = try #require(source.range(of: "func settingsSnapshot("))
+        let settingsEnd = try #require(source.range(of: "func settingsCapabilities(", range: settingsStart.upperBound..<source.endIndex))
+        let settings = String(source[settingsStart.lowerBound..<settingsEnd.lowerBound])
+        #expect(settings.contains("applicationRuntime.workspace("))
+        #expect(!settings.contains("applicationRuntime.openWorkspace(") && !settings.contains("install(handle:"))
 
         let installStart = try #require(source.range(of: "private func install("))
         let installEnd = try #require(
@@ -408,7 +417,42 @@ struct ArchitectureBoundaryTests {
         #expect(duplicateYAML.firstMatch(in: source, range: range) == nil)
         #expect(!source.contains("WorkspaceVaultProjectionService"))
         #expect(source.contains("case workspace(WorkspaceNoteSummary)"))
-        #expect(!source.localizedCaseInsensitiveContains("unclassified"))
+        for pattern in try retiredSourceProjectionPatterns() {
+            #expect(pattern.firstMatch(in: source, range: range) == nil, "Retired source projection: \(pattern.pattern)")
+        }
+    }
+
+    @Test("Retired source projection checks distinguish declarations from storage category references")
+    func retiredSourceProjectionPatternsAreScoped() throws {
+        let patterns = try retiredSourceProjectionPatterns()
+        for source in [
+            "enum Source { case unclassified(NoteDocument) }",
+            "enum Source { case `unclassified`(document: NoteDocument) }",
+            "enum Source { case workspace(WorkspaceNoteSummary), unclassified(NoteDocument) }",
+            "enum Location { case unclassified }",
+            "enum Location: String { case unclassified = \"Unclassified\" }",
+            "let coordinator = UnclassifiedClassificationCoordinator()",
+            "typealias Coordinator = UnclassifiedClassificationCoordinator",
+        ] {
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            #expect(patterns.contains { $0.firstMatch(in: source, range: range) != nil }, "Retired source owner escaped the guard: \(source)")
+        }
+        for source in [
+            "usageRow(.unclassified)",
+            "let category = ScholiumStorageCategory.unclassified",
+            "switch category { case .unclassified: showIncompleteUsage() }",
+            "enum Source { case workspace(WorkspaceNoteSummary) }",
+        ] {
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+            #expect(patterns.allSatisfy { $0.firstMatch(in: source, range: range) == nil }, "An unrelated storage category was rejected: \(source)")
+        }
+    }
+
+    private func retiredSourceProjectionPatterns() throws -> [NSRegularExpression] {
+        try [
+            #"\bcase\s+(?:`?[A-Za-z_]\w*`?(?:\s*\([^)]*\))?\s*,\s*)*`?unclassified`?(?!\w)"#,
+            #"\bUnclassifiedClassificationCoordinator\b"#,
+        ].map { try NSRegularExpression(pattern: $0) }
     }
 
     @Test("Document and property leaves receive narrow values and actions")

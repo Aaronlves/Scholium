@@ -56,9 +56,13 @@ struct SettingsSearchTarget: Identifiable, Equatable {
                 ["restore defaults", "recovery", "damaged settings", "恢复默认", "修复设置", "设置损坏"],
                 aliases: ["Restore Portable Settings Defaults…"]),
             Self(
-                "workspace.changesHistory", .workspaceChangesHistory, "Changes History",
+                "storage.changesHistory", .storageChangesHistory, "Changes History",
                 ["reviewed history", "retention", "clear reviewed history", "修改历史", "保留期限", "清除已查看历史"],
                 aliases: ["Keep Reviewed History", "Clear Reviewed History…"]),
+            Self("storage.overview", .storageOverview, "Storage", ["disk space", "size", "存储", "空间", "占用"]),
+            Self("storage.cache", .storageCache, "Caches", ["temporary files", "clear cache", "retired indexes", "缓存", "临时文件", "清理"]),
+            Self("storage.index", .storageIndex, "Search Index", ["rebuild index", "clear index", "搜索索引", "重建索引", "清除索引"]),
+            Self("storage.chatHistory", .storageChatHistory, "Archived Conversations", ["delete archived chats", "chat history", "归档对话", "聊天历史", "删除归档"]),
             Self(
                 "appearance.profile", .appearanceProfile, "Profile", ["appearance", "configuration", "repair profile", "文稿外观", "外观配置", "修复外观"],
                 aliases: ["Rename Appearance…", "Restore Default Appearance…", "Save Appearance", "Recover Default Appearance…", "Repair Saved Profile"]),

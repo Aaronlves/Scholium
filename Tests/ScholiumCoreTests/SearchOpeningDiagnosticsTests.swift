@@ -65,13 +65,13 @@ struct SearchOpeningDiagnosticsTests {
             let indexed = documents.map { vault, document in
                 SearchIndexDocument(vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, document: document)
             }
-            let index = try TriptychSearchIndex(databaseURL: databaseURL, triptychID: triptychID, vaults: vaults)
+            let index = try TriptychSearchIndex(isolatedDatabaseURL: databaseURL, triptychID: triptychID, vaults: vaults)
             _ = try await index.synchronize(indexed)
         }
         var samples: [Double] = []
         for _ in 0..<3 {
             let start = ContinuousClock.now
-            let opened = try TriptychSearchIndex.openRecovering(databaseURL: databaseURL, triptychID: triptychID, vaults: vaults)
+            let opened = try TriptychSearchIndex.openRecovering(isolatedDatabaseURL: databaseURL, triptychID: triptychID, vaults: vaults)
             let duration = start.duration(to: .now).components
             samples.append(Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15)
             #expect(!opened.recoveredCorruption)

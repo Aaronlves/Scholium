@@ -102,6 +102,9 @@ enum SourceCatalogPreparation: Sendable {
     case none
     case delta([UUID: VaultSourceCatalogDelta])
     case fullReconcile
+    case rebuild
+
+    var isRebuild: Bool { if case .rebuild = self { true } else { false } }
 
     static func inferred(from publication: RefreshPublication) -> Self {
         switch publication {
@@ -119,6 +122,7 @@ enum SourceCatalogPreparation: Sendable {
     }
 
     static func merged(_ preparations: [Self]) -> Self {
+        if preparations.contains(where: { if case .rebuild = $0 { true } else { false } }) { return .rebuild }
         guard
             !preparations.contains(where: {
                 if case .fullReconcile = $0 { true } else { false }
@@ -138,6 +142,7 @@ enum SourceCatalogPreparation: Sendable {
 enum WorkspaceRefreshCycleError: LocalizedError {
     case graphGenerationExhausted
     case sourceInventoryRevisionExhausted
+    case conflictingIndexMaintenance
 
     var errorDescription: String? {
         switch self {
@@ -145,6 +150,8 @@ enum WorkspaceRefreshCycleError: LocalizedError {
             "Workspace graph generation IDs were exhausted."
         case .sourceInventoryRevisionExhausted:
             "Workspace source inventory revision IDs were exhausted."
+        case .conflictingIndexMaintenance:
+            "Another index maintenance operation is already pending."
         }
     }
 }
@@ -161,21 +168,28 @@ struct WorkspaceSourceInventorySnapshot: Sendable {
     let fingerprints: [String: DocumentFingerprint]
 }
 
+enum WorkspaceIndexMaintenance: Hashable, Sendable {
+    case none, rebuild, clear
+}
+
 struct WorkspaceRefreshPayload: Sendable {
     let publication: RefreshPublication
     let failureDisposition: DerivedRefreshFailureDisposition
     let sourceCatalogPreparation: SourceCatalogPreparation
+    let indexMaintenance: WorkspaceIndexMaintenance
     /// Non-nil only when every merged request is a Metadata-only mutation.
     /// Values are exact committed record deltas over the last complete map.
 
     init(
         publication: RefreshPublication,
         failureDisposition: DerivedRefreshFailureDisposition,
-        sourceCatalogPreparation: SourceCatalogPreparation
+        sourceCatalogPreparation: SourceCatalogPreparation,
+        indexMaintenance: WorkspaceIndexMaintenance = .none
     ) {
         self.publication = publication
         self.failureDisposition = failureDisposition
         self.sourceCatalogPreparation = sourceCatalogPreparation
+        self.indexMaintenance = indexMaintenance
     }
 
     static func merged(_ payloads: [Self]) throws -> Self {
@@ -183,6 +197,8 @@ struct WorkspaceRefreshPayload: Sendable {
         guard payloads.count > 1 else { return first }
         var affectedVaultIDs: Set<UUID> = []
         var includesCommittedMutation = false
+        let maintenance = Set(payloads.map(\.indexMaintenance)).subtracting([.none])
+        guard maintenance.count <= 1 else { throw WorkspaceRefreshCycleError.conflictingIndexMaintenance }
         for payload in payloads {
             switch payload.failureDisposition {
             case .staleAfterCommittedMutation(let affected):
@@ -200,6 +216,7 @@ struct WorkspaceRefreshPayload: Sendable {
             sourceCatalogPreparation: .merged(
                 payloads.map(\.sourceCatalogPreparation)
             ),
+            indexMaintenance: maintenance.first ?? .none
         )
     }
 
@@ -309,7 +326,8 @@ extension WorkspaceHandle {
                 payload = WorkspaceRefreshPayload(
                     publication: payload.publication,
                     failureDisposition: payload.failureDisposition,
-                    sourceCatalogPreparation: .fullReconcile)
+                    sourceCatalogPreparation: payload.indexMaintenance == .rebuild ? .rebuild : .fullReconcile,
+                    indexMaintenance: payload.indexMaintenance)
             }
         }
     }
@@ -320,6 +338,17 @@ extension WorkspaceHandle {
     ) async throws -> WorkspaceSnapshot {
         let clock = ContinuousClock()
         let cycleStart = clock.now
+        if payload.indexMaintenance == .clear {
+            latestIndexClearResult = try await services.searchIndex.clear()
+            let prior = currentSnapshot
+            currentSnapshot = WorkspaceSnapshot(
+                triptych: prior.triptych, mode: prior.mode, phase: prior.phase,
+                generatedAt: Date(), vaults: prior.vaults,
+                discovery: .init(catalog: prior.discovery.catalog, searchGeneration: nil),
+                research: prior.research, sourceInventoryRevision: prior.sourceInventoryRevision,
+                documentChangesGeneration: prior.documentChangesGeneration)
+            await events.publishDerivedStateChanged(snapshot: currentSnapshot)
+        }
         // Reading the derived writer's watermark can wait behind a large
         // index operation. It owns no source state and must not stop saves.
         let indexedWorkspaceGeneration: UInt64
@@ -362,8 +391,8 @@ extension WorkspaceHandle {
                 catalogPreparation = cohort.preparation
             } else {
                 catalogPreparation = try await prepareSourceCatalogs(
-                    completesActivation ? .fullReconcile : payload.sourceCatalogPreparation)
-                cohort = try await capturePreparedSourceCohort()
+                    payload.sourceCatalogPreparation.isRebuild ? .rebuild : (completesActivation ? .fullReconcile : payload.sourceCatalogPreparation))
+                cohort = try await capturePreparedSourceCohort(rebuilding: payload.sourceCatalogPreparation.isRebuild)
                 catalogPreparation.merge(cohort.preparation)
             }
             sourcePreparationDuration = catalogPreparation.duration
@@ -388,6 +417,7 @@ extension WorkspaceHandle {
             nextGraphGeneration += 1
             let buildStart = clock.now
             var dependencies = services.snapshotBuilderDependencies
+            dependencies.searchSynchronizationMode = payload.indexMaintenance == .rebuild ? .rebuild : .incremental
             dependencies.sourceCaptureDidComplete = { [weak self] in
                 guard let self else { throw CancellationError() }
                 try await self.completeRefreshSourceCapture(id: authorityID)
@@ -543,7 +573,7 @@ extension WorkspaceHandle {
         publicationDuration: Duration?
     ) {
         refreshLogger.info(
-            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) restored=\(measurement.restoredSearchProjections, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) cacheRead=\(String(describing: measurement.cacheReadDuration), privacy: .public) cacheWrite=\(String(describing: measurement.cacheWriteDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) links=\(String(describing: measurement.linkCatalogProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
+            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) restored=\(measurement.restoredSearchProjections, privacy: .public) restoredCatalog=\(measurement.restoredCatalogProjections, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) cacheRead=\(String(describing: measurement.cacheReadDuration), privacy: .public) cacheWrite=\(String(describing: measurement.cacheWriteDuration), privacy: .public) catalogCacheRead=\(String(describing: measurement.catalogCacheReadDuration), privacy: .public) catalogCacheWrite=\(String(describing: measurement.catalogCacheWriteDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) links=\(String(describing: measurement.linkCatalogProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
         )
     }
 
@@ -573,7 +603,7 @@ extension WorkspaceHandle {
     ) async throws -> PreparedSourceCohort {
         let clock = ContinuousClock()
         let start = clock.now
-        var requested = mode == .snapshot ? SourceCatalogPreparation.fullReconcile : preparation
+        var requested = mode == .snapshot && !preparation.isRebuild ? SourceCatalogPreparation.fullReconcile : preparation
         var measurement = SourceCatalogPreparationMeasurement()
         var gateWaitDuration = Duration.zero
         while true {
@@ -589,6 +619,8 @@ extension WorkspaceHandle {
                     else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
                     let update: VaultSourceCatalogPreparation
                     switch requested {
+                    case .rebuild:
+                        update = .rebuild
                     case .fullReconcile:
                         update = .fullReconcile
                     case .none:
@@ -613,7 +645,7 @@ extension WorkspaceHandle {
                     tokenBeforePreparation != sourceAuthorityToken,
                     await permitsSupersededSourceRecapture(after: error)
                 {
-                    requested = .fullReconcile
+                    requested = preparation.isRebuild ? .rebuild : .fullReconcile
                     continue
                 }
                 throw error
@@ -645,7 +677,7 @@ extension WorkspaceHandle {
             try requireActive()
             try requireRootAuthoritiesAvailable()
             if superseded {
-                requested = .fullReconcile
+                requested = preparation.isRebuild ? .rebuild : .fullReconcile
                 continue
             }
             measurement.duration = start.duration(to: clock.now)
@@ -665,9 +697,9 @@ extension WorkspaceHandle {
         let clock = ContinuousClock()
         let start = clock.now
         var measurement = SourceCatalogPreparationMeasurement()
-        let effective: SourceCatalogPreparation = mode == .snapshot ? .fullReconcile : preparation
+        let effective: SourceCatalogPreparation = mode == .snapshot && !preparation.isRebuild ? .fullReconcile : preparation
         switch effective {
-        case .fullReconcile:
+        case .fullReconcile, .rebuild:
             var slots = WorkspaceVaultSlot.allCases
             if !currentSnapshot.phase.isComplete, let selected = currentSnapshot.vaults.first?.slot {
                 slots.removeAll { $0 == selected }
@@ -677,7 +709,7 @@ extension WorkspaceHandle {
                 guard let vault = assignment.vault(for: slot) else {
                     throw ScholiumApplicationError.incompleteTriptych(assignment.id)
                 }
-                measurement.merge(try await prepareSourceCatalog(vaultID: vault.id, preparation: .fullReconcile))
+                measurement.merge(try await prepareSourceCatalog(vaultID: vault.id, preparation: effective.isRebuild ? .rebuild : .fullReconcile))
             }
         case .none:
             break
@@ -705,6 +737,7 @@ extension WorkspaceHandle {
         let start = clock.now
         var measurement = SourceCatalogPreparationMeasurement()
         var requested = preparation
+        let retryPreparation: VaultSourceCatalogPreparation = if case .rebuild = preparation { .rebuild } else { .fullReconcile }
         while true {
             try Task.checkCancellation()
             try requireActive()
@@ -718,7 +751,7 @@ extension WorkspaceHandle {
                     tokenBeforePreparation != sourceAuthorityToken,
                     await permitsSupersededSourceRecapture(after: error)
                 {
-                    requested = .fullReconcile
+                    requested = retryPreparation
                     continue
                 }
                 throw error
@@ -755,7 +788,7 @@ extension WorkspaceHandle {
                 measurement.installationLeaseDuration += held
                 measurement.longestInstallationLeaseDuration = max(measurement.longestInstallationLeaseDuration, held)
                 releaseWorkspaceSourceOperation(lease)
-                requested = .fullReconcile
+                requested = retryPreparation
             } catch {
                 releaseWorkspaceSourceOperation(lease)
                 throw error
@@ -766,7 +799,7 @@ extension WorkspaceHandle {
     /// A save may have committed in a prepared Library while another one was
     /// parsing, before its watcher event arrived. Validate the installed
     /// cohort before establishing the token used by derived publication.
-    private func capturePreparedSourceCohort() async throws -> PreparedSourceCohort {
+    private func capturePreparedSourceCohort(rebuilding: Bool) async throws -> PreparedSourceCohort {
         let clock = ContinuousClock()
         var repeatedPreparation = SourceCatalogPreparationMeasurement()
         var gateWaitDuration = Duration.zero
@@ -807,7 +840,7 @@ extension WorkspaceHandle {
                 throw error
             }
             for vaultID in stale {
-                repeatedPreparation.merge(try await prepareSourceCatalog(vaultID: vaultID, preparation: .fullReconcile))
+                repeatedPreparation.merge(try await prepareSourceCatalog(vaultID: vaultID, preparation: rebuilding ? .rebuild : .fullReconcile))
             }
         }
     }

@@ -336,6 +336,7 @@ public enum SearchIndexError: LocalizedError, Sendable {
     case corruptDatabase
     case incompatibleSchema
     case invalidDocuments(String)
+    case awaitingRebuild
 
     public var errorDescription: String? {
         switch self {
@@ -343,6 +344,7 @@ public enum SearchIndexError: LocalizedError, Sendable {
         case .corruptDatabase: "The generated search index is corrupt and must be rebuilt."
         case .incompatibleSchema: "The generated search index uses an incompatible schema and must be rebuilt."
         case .invalidDocuments(let message): "The search index input is invalid: \(message)"
+        case .awaitingRebuild: "Search is paused after its local index was cleared. Rebuild it or reopen the workspace."
         }
     }
 }

@@ -638,7 +638,7 @@ extension ScholiumUITests {
 
         select("document")
         resizeSettingsToMinimumWidth(window)
-        for label in ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero"] {
+        for label in ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero", "Storage"] {
             XCTAssertTrue(window.toolbars.buttons[label].isHittable, "Every category must remain visible at minimum width")
         }
         XCTAssertTrue(window.buttons["Save Appearance"].isHittable)
@@ -663,7 +663,7 @@ extension ScholiumUITests {
         let localizedWindow = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
         XCTAssertTrue(localizedWindow.waitForExistence(timeout: 5))
         resizeSettingsToMinimumWidth(localizedWindow)
-        for label in ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero"] {
+        for label in ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero", "存储"] {
             XCTAssertTrue(localizedWindow.toolbars.buttons[label].isHittable)
         }
         selectSettingsCategory("document", in: localizedWindow)

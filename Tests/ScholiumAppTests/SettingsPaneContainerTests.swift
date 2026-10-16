@@ -58,7 +58,7 @@ struct SettingsPaneContainerTests {
         window.contentView?.layoutSubtreeIfNeeded()
         let toolbar = try #require(window.toolbar)
         let expectedIdentifiers = [
-            "workspace", "document", "writing", "agents", "shortcuts", "zotero",
+            "workspace", "document", "writing", "agents", "shortcuts", "zotero", "storage",
         ].map { NSToolbarItem.Identifier("scholium.settings.category.\($0)") }
         #expect(toolbar.delegate === controller)
         #expect(toolbar.isVisible)
@@ -71,7 +71,7 @@ struct SettingsPaneContainerTests {
         #expect(toolbar.items.map(\.itemIdentifier) == expectedIdentifiers)
         #expect(controller.toolbarSelectableItemIdentifiers(toolbar) == expectedIdentifiers)
         #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[1])
-        #expect(toolbar.items.map(\.label) == ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero"])
+        #expect(toolbar.items.map(\.label) == ["Workspace", "Document", "Writing", "Agents", "Shortcuts", "Zotero", "Storage"])
         #expect(toolbar.items.allSatisfy { $0.view == nil && $0.image != nil })
         #expect(toolbar.items[1].toolTip == "Document Appearance")
         #expect(toolbar.items[1].menuFormRepresentation?.state == .on)
@@ -135,7 +135,7 @@ struct SettingsPaneContainerTests {
         }
 
         controller.update(selection: .document, locale: Locale(identifier: "zh-Hans"))
-        #expect(toolbar.items.map(\.label) == ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero"])
+        #expect(toolbar.items.map(\.label) == ["工作区", "文稿", "写作", "智能体", "快捷键", "Zotero", "存储"])
         #expect(window.title == "文稿外观")
         #expect(toolbar.selectedItemIdentifier == expectedIdentifiers[1])
         #expect(toolbar.items[1].toolTip == "文稿外观")

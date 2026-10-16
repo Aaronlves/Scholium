@@ -260,6 +260,20 @@ its own generation, and freshness. **Building**, **Limited**, **Partial**,
 failed refresh may retain only that provider's last complete compatible
 generation. Derived indexes remain disposable and never writable authority.
 
+Compatible machine-local indexes survive App updates and reopening; source
+changes update affected entries. Known incompatible or corrupt indexes rebuild
+from authorized current source. Automatic cleanup across owners requires exclusive
+maintenance and either a known retired format or no remaining registration.
+Settings separately confirms **Clear Index…** and **Rebuild Index…** for the exact
+Triptych. Clear removes indexed content and keeps Search unavailable until explicit
+rebuilding or the next Library activation. Settings, service access and ordinary
+refresh preserve that pause. Rebuild uses
+authorized current Notes and publishes readiness only after complete generation
+commit. Clearing does not promise immediate disk reclamation; deferred reclamation
+or a later refresh failure remains distinct from a committed clear.
+Maintenance never deletes live database journals, unknown/future formats, research
+source or attachments, portable identities, review history or recovery records.
+
 The parser exposes one typed capability description used by completion, **Explain
 Query** and the MCP tool schema. Completion edits only visible query text.
 For an active lexical token, the authorized Search provider may supply a bounded

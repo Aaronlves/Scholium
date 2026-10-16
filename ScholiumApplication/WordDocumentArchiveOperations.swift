@@ -1,13 +1,15 @@
 import Foundation
+import ScholiumCore
 import Subprocess
 
 /// Ephemeral package I/O for a generated Word export. Callers format immutable
 /// part bytes; this owner never reads or writes a research Note or destination.
 public enum WordDocumentArchiveOperations {
-    public static func unpack(_ data: Data) async throws -> [String: Data] {
+    public static func unpack(_ data: Data, applicationSupportURL: URL) async throws -> [String: Data] {
         let files = FileManager.default
-        let root = files.temporaryDirectory.appendingPathComponent("Scholium-Word-\(UUID().uuidString)", isDirectory: true)
-        defer { try? files.removeItem(at: root) }
+        let temporary = try DerivedStateStorage.makeWordTemporaryDirectory(applicationSupportURL: applicationSupportURL)
+        defer { try? temporary.remove() }
+        let root = temporary.url
         let source = root.appendingPathComponent("source.docx")
         let package = root.appendingPathComponent("package", isDirectory: true)
         try files.createDirectory(at: package, withIntermediateDirectories: true)
@@ -34,10 +36,11 @@ public enum WordDocumentArchiveOperations {
         return parts
     }
 
-    public static func pack(_ parts: [String: Data]) async throws -> Data {
+    public static func pack(_ parts: [String: Data], applicationSupportURL: URL) async throws -> Data {
         let files = FileManager.default
-        let root = files.temporaryDirectory.appendingPathComponent("Scholium-Word-\(UUID().uuidString)", isDirectory: true)
-        defer { try? files.removeItem(at: root) }
+        let temporary = try DerivedStateStorage.makeWordTemporaryDirectory(applicationSupportURL: applicationSupportURL)
+        defer { try? temporary.remove() }
+        let root = temporary.url
         let package = root.appendingPathComponent("package", isDirectory: true)
         let destination = root.appendingPathComponent("document.docx")
         try files.createDirectory(at: package, withIntermediateDirectories: true)

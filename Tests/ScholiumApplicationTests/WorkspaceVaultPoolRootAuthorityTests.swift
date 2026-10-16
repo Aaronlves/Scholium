@@ -157,7 +157,7 @@ struct WorkspaceVaultPoolRootAuthorityTests {
                 catalog = VaultSourceCatalog(repository: repository)
                 pooled = PooledWorkspaceVault(
                     vault: vault, rootURL: vaultURL, repository: repository, sourceCatalog: catalog,
-                    securityScopeURL: nil, watcher: nil)
+                    cacheStorageLease: nil, securityScopeURL: nil, watcher: nil)
                 await runtime.shutdown()
             } catch {
                 await runtime.shutdown()

@@ -24,6 +24,12 @@ public actor WorkspaceRegistry {
     public let storageURL: URL
     private let registryURL: URL
     private let fileManager: FileManager
+    #if DEBUG
+        private var registrationLockAttemptForTesting: (@Sendable () -> Void)?
+        func setRegistrationLockAttemptForTesting(_ callback: (@Sendable () -> Void)?) {
+            registrationLockAttemptForTesting = callback
+        }
+    #endif
 
     public init(storageURL: URL, fileManager: FileManager = .default) {
         self.storageURL = storageURL
@@ -81,6 +87,8 @@ public actor WorkspaceRegistry {
         storageURL: URL,
         fileManager: FileManager = .default
     ) throws -> URL {
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
         let source = registryURL(storageURL: storageURL)
         let sourceData: Data
         let sourceIdentity: String
@@ -152,6 +160,11 @@ public actor WorkspaceRegistry {
         role: VaultRole,
         stableID: UUID? = nil
     ) throws -> RegisteredVault {
+        #if DEBUG
+            registrationLockAttemptForTesting?()
+        #endif
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
         let canonical = try canonicalDirectory(path)
         var registry = try writableRegistry()
         let chosenName = normalizedName(name ?? canonical.lastPathComponent)
@@ -215,6 +228,8 @@ public actor WorkspaceRegistry {
         vaultBookmarks: [WorkspaceVaultSlot: Data] = [:],
         portableControlAccess: PortableControlAccess? = nil
     ) throws -> TriptychAssignment {
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
         let canonical = try canonicalSelections(
             paperAnalysis: paperAnalysis,
             topicKnowledge: topicKnowledge,
@@ -379,6 +394,8 @@ public actor WorkspaceRegistry {
     /// and portable `.scholium` data remain untouched, and vault registrations
     /// still referenced by another Triptych remain available.
     public func removeTriptychRegistration(id: UUID) throws {
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
         var registry = try writableRegistry()
         guard let removed = registry.triptychs.first(where: { $0.id == id }) else {
             throw WorkspaceRegistryError.triptychNotFound(id)
@@ -404,6 +421,8 @@ public actor WorkspaceRegistry {
     /// Reconciles a machine-local registration with the stable portable
     /// `.scholium/manifest.json` identity without changing any vault UUID.
     public func reidentifyTriptych(id currentID: UUID, as stableID: UUID) throws -> TriptychAssignment {
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
         var registry = try writableRegistry()
         guard let current = registry.triptychs.first(where: { $0.id == currentID }) else {
             throw WorkspaceRegistryError.triptychNotFound(currentID)
@@ -445,6 +464,37 @@ public actor WorkspaceRegistry {
             if $0.canonicalPath != $1.canonicalPath { return $0.canonicalPath < $1.canonicalPath }
             return $0.id.uuidString < $1.id.uuidString
         }
+    }
+
+    /// Keep membership authority through the consequential maintenance work;
+    /// a newly registered owner cannot appear between snapshot and deletion.
+    public func maintainDerivedState(applicationSupportURL: URL) throws -> DerivedStateMaintenanceSummary {
+        try maintainDerivedState(applicationSupportURL: applicationSupportURL, admitted: {})
+    }
+
+    func maintainDerivedState(
+        applicationSupportURL: URL, admitted: @Sendable () throws -> Void
+    ) throws -> DerivedStateMaintenanceSummary {
+        try Task.checkCancellation()
+        let lease = try DerivedStateStorage.registryLease(storageURL: storageURL)
+        defer { withExtendedLifetime(lease) {} }
+        // Missing registration state is not proof of an empty reference set.
+        // The ordinary read API may synthesize a new empty registry; deletion
+        // requires existing, readable, current-schema membership bytes instead.
+        let data: Data
+        do { data = try Data(contentsOf: registryURL) } catch {
+            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(error.localizedDescription))
+        }
+        let health = Self.health(for: data)
+        guard health.isHealthy else { throw WorkspaceRegistryError.registryRecoveryRequired(health) }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let registry = try decoder.decode(RegistryFile.self, from: data)
+        try admitted()
+        try Task.checkCancellation()
+        return DerivedStateStorage.maintain(
+            applicationSupportURL: applicationSupportURL,
+            triptychIDs: Set(registry.triptychs.map(\.id)), vaultIDs: Set(registry.vaults.map(\.id)))
     }
 
     public func plannedIdentityID(

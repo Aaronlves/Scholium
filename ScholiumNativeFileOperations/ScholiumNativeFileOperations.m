@@ -2,6 +2,10 @@
 #import <AppKit/AppKit.h>
 #include <sys/stat.h>
 
+int ScholiumSQLiteSetCheckpointOnClose(sqlite3 *database, BOOL enabled) {
+    return sqlite3_db_config(database, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, enabled ? 0 : 1, NULL);
+}
+
 BOOL ScholiumRecycleItem(
     NSString *sourcePath,
     uint64_t expectedDevice,

@@ -5,9 +5,9 @@
 ## 18.2.1 Settings
 
 Settings lets the researcher find a preference, understand its current value
-and scope, and determine whether a change has taken effect. It holds durable,
-infrequently changed preferences; frequent task-local adjustments remain with
-their task. Defaults support ordinary research without mandatory customization.
+and scope, and determine whether a change has taken effect. It holds durable
+preferences and scoped App storage maintenance; frequent task-local adjustments
+remain with their task. Defaults support ordinary research without mandatory customization.
 Only settings with a distinct researcher need are exposed; system preferences
 retain their authority without redundant app controls.
 
@@ -22,13 +22,13 @@ requirements; implementation evidence remains in the Status set.
 ### Navigation, discovery and scope
 
 One native preferences window opens through the App menu and Command-Comma.
-A native preferences toolbar below the window title presents the six category
+A native preferences toolbar below the window title presents the seven category
 items with system symbols and short visible labels. It remains visible and
 cannot be customized; the native selected item identifies the current pane.
-The short labels are Workspace, Document, Writing, Agents, Shortcuts and Zotero
-(工作区、文稿、写作、Agent、快捷键、Zotero). Full category names retain their
+The short labels are Workspace, Document, Writing, Agents, Shortcuts, Zotero and
+Storage (工作区、文稿、写作、Agent、快捷键、Zotero、存储). Full category names retain their
 meaning in the window title, search results and accessible description; an
-accessible item name includes its visible label. All six items remain visible
+accessible item name includes its visible label. All seven items remain visible
 at the supported minimum width in English and Simplified Chinese. Native
 controls own toolbar geometry, material, selection, focus and adaptation.
 The content below uses the complete window width without a navigation sidebar.
@@ -38,10 +38,10 @@ Category changes do not animate window geometry or discard unsaved drafts,
 selection or scroll position in pages already opened in the settings session.
 Inactive pages have no keyboard, pointer or accessibility interaction.
 
-The toolbar presents six task categories: Workspace, Document
-Appearance, Writing Assistance, Agents & Chat, Keyboard Shortcuts and Zotero.
-Workspace owns Triptych registration,
-folder access, portable-data location and machine-local Changes history.
+The toolbar presents seven task categories: Workspace, Document Appearance,
+Writing Assistance, Agents & Chat, Keyboard Shortcuts, Zotero and Storage.
+Workspace owns Triptych registration, folder access and portable-data location.
+Storage owns machine-local App usage and cleanup, including Changes history.
 Document Appearance presents the
 complete content profile and CSS snippets in one scrolling page. Writing
 Assistance groups opt-in continuation and the shared continuation/Explain/Polish model with
@@ -179,7 +179,26 @@ and clearly distinguishes unapplied changes. Presentation preferences do not
 rewrite research source; any data-changing action names its target and effect
 under its owning workflow contract.
 
-Workspace has one **Changes History** group labelled **This Mac** and showing
+Storage shows measured logical file sizes and a total for App-owned temporary
+files, Note caches, search indexes, Chat history/materials, Changes/Review,
+recovery/operation records, configuration and other App data. Measurement names
+unreadable or skipped entries rather than presenting an incomplete total as full.
+Research folders and Agent Runtime are excluded from traversal, measurement and
+cleanup. Aggregate usage is This Mac; index, history and archived-conversation
+actions identify the exact selected Triptych before confirmation.
+
+**Clear Temporary Files**, **Clear Note Cache** and **Clean Retired Indexes and
+Caches** remove only recognized disposable generated data; needed caches can
+regenerate. **Rebuild Index…** and **Clear Index…** have separate confirmations
+and consequences under [Search](04-connect-search-and-recovery.md#13-search-and-attention).
+Cleanup preserves unknown/future formats, research source and attachments,
+portable identities, active comparison baselines, pending Changes and recovery
+records. Research-history deletion is never implied by cache cleanup.
+Operations retain progress, failure and partial results; preserved, busy or
+failed items do not count as removed. Category/target changes dismiss unconfirmed
+plans; an admitted operation retains its original target and result.
+
+Storage has one **Changes History** group labelled **This Mac** and showing
 the exact selected Triptych. Its retention choice is 30 days, 90 days (default),
 365 days, or Forever, measured from each review batch's reviewed time under
 §5.7. The group offers **Clear Reviewed History…** with confirmation naming
@@ -187,6 +206,13 @@ that Triptych and the reviewed batches removed. It does not imply deletion of
 the active comparison baseline, pending changes, or necessary Agent/recovery
 evidence. Reviewed-history storage and protected comparison/recovery usage are
 shown separately. Per-batch deletion stays in the Changes History record menu.
+
+**Delete Archived Conversations…** is a separate confirmed action naming the
+Triptych, archived cohort and estimated size. It permanently deletes that cohort
+and releases only unreferenced managed Chat-material copies; active conversations,
+research source/attachments and recovery evidence remain. A changed cohort requires
+fresh inspection and confirmation. Committed history deletion and a later material
+cleanup failure remain distinct outcomes.
 
 ### Configuration failure and recovery
 

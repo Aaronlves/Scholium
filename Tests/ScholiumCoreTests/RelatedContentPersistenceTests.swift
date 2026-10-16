@@ -81,7 +81,7 @@ struct RelatedContentPersistenceTests {
                 ? "UPDATE search_documents SET related_projection = X'00';"
                 : "UPDATE search_documents SET related_projection_hash = 'incorrect';")
         let recovered = try TriptychSearchIndex.openRecovering(
-            databaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: fixture.vaults)
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID, vaults: fixture.vaults)
         #expect(recovered.recoveredCorruption)
         let update = try await recovered.index.synchronize(documents)
         #expect(update.disposition == .recoveredAndRebuilt)
@@ -119,7 +119,7 @@ struct RelatedContentPersistenceTests {
         }
 
         func index(databaseURL: URL? = nil) throws -> TriptychSearchIndex {
-            try .init(databaseURL: databaseURL ?? self.databaseURL, triptychID: triptychID, vaults: vaults)
+            try .init(isolatedDatabaseURL: databaseURL ?? self.databaseURL, triptychID: triptychID, vaults: vaults)
         }
 
         func seed(_ documents: [SearchIndexDocument]) async throws {

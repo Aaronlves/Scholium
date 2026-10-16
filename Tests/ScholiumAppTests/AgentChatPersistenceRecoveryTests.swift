@@ -143,6 +143,107 @@ struct AgentChatPersistenceRecoveryTests {
         }
     }
 
+    @Test("Archived cleanup rejects a changed confirmation without deleting research")
+    func archivedCleanupRequiresCurrentPlan() async throws {
+        try await withController { controller, writer in
+            let archived = try #require(controller.selectedID)
+            controller.editDraft("Archived research")
+            controller.setArchived(archived, archived: true)
+            try await controller.flushPersistence()
+            let plan = try await controller.archivedChatCleanupPlan()
+            #expect(plan.conversationIDs == [archived] && plan.estimatedByteCount > 0)
+            controller.update(in: archived) { $0.draft = "Newer research" }
+            do {
+                _ = try await controller.deleteArchivedChats(plan)
+                Issue.record("Changed history must invalidate the cleanup confirmation")
+            } catch ArchivedChatCleanupError.changed {}
+            try await controller.flushPersistence()
+            #expect(controller.conversation(archived)?.draft == "Newer research")
+            #expect(writer.saved == controller.conversations && controller.runtime == nil)
+        }
+    }
+
+    @Test("Batch cleanup retains shared material until its final archived owner is durably deleted")
+    func archivedCleanupPreservesSharedMaterials() async throws {
+        try await withController { controller, writer in
+            let source = controller.runtimeHome.deletingLastPathComponent().appendingPathComponent("shared.md")
+            try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let bytes = Data("# Exact retained research\r\n".utf8)
+            try bytes.write(to: source)
+            let material = try await controller.materialStore.stage(source)
+            let first = try #require(controller.selectedID)
+            controller.update(in: first) { $0.localMaterials = [material] }
+            controller.setArchived(first, archived: true)
+            controller.newConversation()
+            let second = try #require(controller.selectedID)
+            controller.update(in: second) { $0.localMaterials = [material] }
+            controller.setArchived(second, archived: true)
+            controller.newConversation()
+            let survivor = try #require(controller.selectedID)
+            controller.update(in: survivor) { $0.localMaterials = [material] }
+            try await controller.flushPersistence()
+            let retainedURL = try await controller.materialStore.validatedURL(for: material)
+            let plan = try await controller.archivedChatCleanupPlan()
+            #expect(Set(plan.conversationIDs) == [first, second])
+            let result = try await controller.deleteArchivedChats(plan)
+            #expect(result.removedConversations == 2 && result.materialCleanupIssue == nil)
+            #expect(writer.saved == controller.conversations)
+            #expect(try Data(contentsOf: retainedURL) == bytes)
+            controller.setArchived(survivor, archived: true)
+            try await controller.flushPersistence()
+            let finalPlan = try await controller.archivedChatCleanupPlan()
+            let final = try await controller.deleteArchivedChats(finalPlan)
+            #expect(final.removedConversations == 1)
+            #expect(!FileManager.default.fileExists(atPath: retainedURL.path))
+            #expect(try Data(contentsOf: source) == bytes)
+            #expect(controller.runtime == nil)
+        }
+    }
+
+    @Test("Failed batch deletion rolls back before a queued save can commit or release its materials")
+    func archivedCleanupRollbackOrdersQueuedSaves() async throws {
+        try await withController { controller, writer in
+            let source = controller.runtimeHome.deletingLastPathComponent().appendingPathComponent("rollback.md")
+            try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let bytes = Data("Research survives a failed deletion".utf8)
+            try bytes.write(to: source)
+            let material = try await controller.materialStore.stage(source)
+            let archived = try #require(controller.selectedID)
+            controller.update(in: archived) {
+                $0.localMaterials = [material]
+                $0.draft = "Retain me"
+            }
+            controller.setArchived(archived, archived: true)
+            try await controller.flushPersistence()
+            let retainedURL = try await controller.materialStore.validatedURL(for: material)
+            let plan = try await controller.archivedChatCleanupPlan()
+            writer.pauseNextSave = true
+            writer.nextFailure = CocoaError(.fileWriteOutOfSpace)
+            let deletion = Task { try await controller.deleteArchivedChats(plan) }
+            try await wait { writer.isWaiting }
+            #expect(controller.conversation(archived) == nil)
+            // Queue a successful snapshot while the tentative deletion is held.
+            // Its captured snapshot must participate in the same rollback.
+            controller.newConversation()
+            controller.editDraft("Independent newer draft")
+            let flush = Task { try await controller.flushPersistence() }
+            try await wait { controller.pendingHistorySaveReferences.count >= 2 }
+            writer.finish()
+            do {
+                _ = try await deletion.value
+                Issue.record("The failed archive write must report retained conversations")
+            } catch ArchivedChatCleanupError.notSaved {}
+            try await flush.value
+            try await controller.flushPersistence()
+            #expect(controller.conversation(archived)?.draft == "Retain me")
+            #expect(controller.conversation(archived)?.localMaterials == [material])
+            #expect(writer.saved.contains { $0.id == archived && $0.localMaterials == [material] })
+            #expect(writer.saved.contains { $0.draft == "Independent newer draft" })
+            #expect(try Data(contentsOf: retainedURL) == bytes)
+            #expect(controller.runtime == nil)
+        }
+    }
+
     private func status(_ controller: AgentChatController) -> AgentChatConnectionStatus {
         .init(controller: controller)
     }

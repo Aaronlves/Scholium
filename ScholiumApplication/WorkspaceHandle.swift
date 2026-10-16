@@ -71,6 +71,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var currentSnapshot: WorkspaceSnapshot
     var latestRefreshMeasurement: WorkspaceRefreshMeasurement
     var latestRefreshCycleMeasurement: WorkspaceRefreshCycleMeasurement?
+    var latestIndexClearResult: SearchIndexClearResult?
+    var indexRebuildTask: Task<WorkspaceSnapshot, Error>?
     var nextGraphGeneration = 2
     var refreshCoordinator:
         WorkspaceRefreshCoordinator<
@@ -79,6 +81,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         >!
     var derivedStateRequiresRefresh = false
     var isShutDown = false
+    private var shutdownTask: Task<Void, Never>?
+    #if DEBUG
+        private(set) var shutdownJoinCountForTesting = 0
+    #endif
     var liveWatcherTask: Task<Void, Never>?
     var citationControlWatcher: WorkspaceFileEventWatcher?
     var citationControlWatcherTask: Task<Void, Never>?
@@ -318,11 +324,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             }
 
-            let openedSearchIndex = try TriptychSearchIndex.openRecovering(
-                databaseURL: TriptychSearchIndex.databaseURL(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                ),
+            let openedSearchIndex = try await TriptychSearchIndex.openRecovering(
+                applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id,
                 vaults: Array(assignment.vaults.values)
             )
@@ -595,8 +598,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     public func shutdown() async {
-        guard !isShutDown else { return }
+        if let shutdownTask {
+            #if DEBUG
+                shutdownJoinCountForTesting += 1
+            #endif
+            await shutdownTask.value
+            return
+        }
         isShutDown = true
+        let task = Task { await finishShutdown() }
+        shutdownTask = task
+        await task.value
+    }
+
+    private func finishShutdown() async {
         writingCompletionMemo.clear()
         lastWritingCompletionMeasurement = nil
         writingCompletionPostSourceReadBarrierForTesting = nil
@@ -604,7 +619,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceCommitRefreshTask = nil
         pendingSourceCommitRefreshes.removeAll()
         sourceCommitRefresh?.cancel()
-        await refreshCoordinator.shutdown()
+        let indexRebuild = indexRebuildTask
+        indexRebuildTask = nil
+        indexRebuild?.cancel()
         let watcher = liveWatcherTask
         let citationWatcher = citationControlWatcher
         let citationWatcherTask = citationControlWatcherTask
@@ -623,16 +640,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         watcher?.cancel()
         citationWatcherTask?.cancel()
         citationInvalidation?.cancel()
-        await citationWatcher?.stop()
         openingCompletion?.cancel()
         openingPresentationSignal.continuation.finish()
         refresh?.cancel()
+        // Cancel all producers before the coordinator waits for its current
+        // cycle; a producer or explicit rebuild may itself be awaiting it.
+        await refreshCoordinator.shutdown()
+        _ = try? await indexRebuild?.value
+        await citationWatcher?.stop()
         await watcher?.value
         await citationWatcherTask?.value
         await citationInvalidation?.value
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
+        await services.searchIndex.shutdown()
         await events.finish(finalSnapshot: currentSnapshot)
         await services.indexedAttachmentAccessStore.endAllAccesses()
         for lease in leases.reversed() where lease.started {

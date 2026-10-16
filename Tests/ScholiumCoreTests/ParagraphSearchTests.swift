@@ -24,8 +24,9 @@ struct ParagraphSearchTests {
             vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
             document: NoteDocument(relativePath: "Exact.md", rawContent: source))
         var index: TriptychSearchIndex? = try .init(
-            databaseURL: url, triptychID: triptychID, vaults: [vault])
+            isolatedDatabaseURL: url, triptychID: triptychID, vaults: [vault])
         _ = try await index?.synchronize([document])
+        await index?.shutdown()
         index = nil
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
@@ -34,10 +35,13 @@ struct ParagraphSearchTests {
             sqlite3_prepare_v2(database, "SELECT paragraphs FROM search_documents;", -1, &statement, nil)
                 == SQLITE_OK)
         #expect(sqlite3_step(statement) == SQLITE_ROW)
-        let stored = Data(bytes: try #require(sqlite3_column_blob(statement, 0)), count: Int(sqlite3_column_bytes(statement, 0)))
+        let stored = Data(
+            bytes: try #require(sqlite3_column_blob(statement, 0)),
+            count: Int(sqlite3_column_bytes(statement, 0)))
         sqlite3_finalize(statement)
         var paragraphs = try #require(
-            JSONSerialization.jsonObject(with: SearchProjectionBlobCodec.decode(stored)) as? [[String: Any]])
+            JSONSerialization.jsonObject(with: SearchProjectionBlobCodec.decode(stored))
+                as? [[String: Any]])
         var first = try #require(paragraphs.first)
         var segments = try #require(first["segments"] as? [[String: Any]])
         _ = try #require(segments.first?["offsetMap"] as? String)
@@ -54,16 +58,22 @@ struct ParagraphSearchTests {
         segments[0]["offsetMap"] = malformed.base64EncodedString()
         first["segments"] = segments
         paragraphs[0] = first
-        let damaged = try SearchProjectionBlobCodec.encode(JSONSerialization.data(withJSONObject: paragraphs))
-        #expect(sqlite3_prepare_v2(database, "UPDATE search_documents SET paragraphs = ?;", -1, &statement, nil) == SQLITE_OK)
+        let damaged = try SearchProjectionBlobCodec.encode(
+            JSONSerialization.data(withJSONObject: paragraphs))
+        #expect(
+            sqlite3_prepare_v2(
+                database, "UPDATE search_documents SET paragraphs = ?;", -1, &statement, nil) == SQLITE_OK)
         damaged.withUnsafeBytes { bytes in
-            #expect(sqlite3_bind_blob(statement, 1, bytes.baseAddress, Int32(bytes.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self)) == SQLITE_OK)
+            #expect(
+                sqlite3_bind_blob(
+                    statement, 1, bytes.baseAddress, Int32(bytes.count),
+                    unsafeBitCast(-1, to: sqlite3_destructor_type.self)) == SQLITE_OK)
             #expect(sqlite3_step(statement) == SQLITE_DONE)
         }
         sqlite3_finalize(statement)
         sqlite3_close(database)
         let reopened = try TriptychSearchIndex.openRecovering(
-            databaseURL: url, triptychID: triptychID, vaults: [vault])
+            isolatedDatabaseURL: url, triptychID: triptychID, vaults: [vault])
         #expect(reopened.recoveredCorruption)
         _ = try await reopened.index.synchronize([document])
         let response = try await reopened.index.testSearch(
@@ -76,12 +86,14 @@ struct ParagraphSearchTests {
         let projection = SearchDocumentProjection(document: document.document)
         #expect(result.paragraphRanges.first == projection.paragraphs.last?.range)
         #expect(Data(document.document.rawContent.utf8) == Data(source.utf8))
+        await reopened.index.shutdown()
     }
 
     @Test("Existential paragraph predicates keep containers, negation, and exact ranges distinct")
     func paragraphSemantics() async throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
-            ".build/paragraph-search-\(UUID())")
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
+                ".build/paragraph-search-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: root.path)
@@ -96,66 +108,107 @@ struct ParagraphSearchTests {
             ("Huge.md", "alpha " + String(repeating: "filler ", count: 10000) + "beta"),
             ("Unclosed.md", "---\nstatus: draft\nalpha beta"),
         ].map { path, source in
-            SearchIndexDocument(vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, document: NoteDocument(relativePath: path, rawContent: source))
+            SearchIndexDocument(
+                vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+                document: NoteDocument(relativePath: path, rawContent: source))
         }
         func index(_ name: String) throws -> TriptychSearchIndex {
-            try .init(databaseURL: root.appendingPathComponent(name), triptychID: triptych, vaults: [vault])
+            try .init(
+                isolatedDatabaseURL: root.appendingPathComponent(name, isDirectory: true)
+                    .appendingPathComponent("search.sqlite"),
+                triptychID: triptych, vaults: [vault])
         }
-        func request(_ query: String) -> SearchRequest { .init(query: query, presentationScope: .triptych, executionScope: .triptych, limit: 100) }
+        func request(_ query: String) -> SearchRequest {
+            .init(query: query, presentationScope: .triptych, executionScope: .triptych, limit: 100)
+        }
         let active = try index("index.sqlite")
         _ = try await active.synchronize(documents)
         let same = try await active.testSearch(request("paragraph:(alpha AND beta)"))
         #expect(Set(same.noteResults.map(\.relativePath)) == ["Same.md", "Annotation.md", "Huge.md"])
-        #expect(same.noteResults.allSatisfy { $0.paragraphRanges.count == 1 && !$0.highlights.isEmpty && $0.matchedField == .body })
+        #expect(
+            same.noteResults.allSatisfy {
+                $0.paragraphRanges.count == 1 && !$0.highlights.isEmpty && $0.matchedField == .body
+            })
         let annotation = try await active.testSearch(request("path:Annotation.md AND paragraph:(beta)"))
         let annotationHit = try #require(annotation.noteResults.first)
         #expect(annotationHit.matchedFields.contains(.linkAnnotation))
         let annotationOnly = try await active.testSearch(request("paragraph:(beta)"))
-        #expect(annotationOnly.noteResults.first { $0.relativePath == "Annotation.md" }?.matchedField == .linkAnnotation)
-        #expect(try await active.testSearch(request("paragraph:(missingterm)")).indeterminateDocumentCount == 1)
+        #expect(
+            annotationOnly.noteResults.first { $0.relativePath == "Annotation.md" }?.matchedField
+                == .linkAnnotation)
+        #expect(
+            try await active.testSearch(request("paragraph:(missingterm)")).indeterminateDocumentCount
+                == 1)
         let localNot = try await active.testSearch(request("paragraph:(alpha NOT beta)"))
         #expect(Set(localNot.noteResults.map(\.relativePath)) == ["Same.md", "Split.md"])
         let outerNot = try await active.testSearch(request("NOT paragraph:(alpha AND beta)"))
-        #expect(!outerNot.noteResults.contains { ["Same.md", "Huge.md", "Unclosed.md"].contains($0.relativePath) })
+        #expect(
+            !outerNot.noteResults.contains {
+                ["Same.md", "Huge.md", "Unclosed.md"].contains($0.relativePath)
+            })
         #expect(outerNot.indeterminateDocumentCount == 1)
-        #expect(try await active.testSearch(request("paragraph:(missingterm)")).indeterminateDocumentCount == 1)
-        #expect(outerNot.noteResults.allSatisfy { $0.paragraphRanges.isEmpty && $0.highlights.isEmpty && $0.sourceRange == nil })
+        #expect(
+            try await active.testSearch(request("paragraph:(missingterm)")).indeterminateDocumentCount
+                == 1)
+        #expect(
+            outerNot.noteResults.allSatisfy {
+                $0.paragraphRanges.isEmpty && $0.highlights.isEmpty && $0.sourceRange == nil
+            })
         let both = try await active.testSearch(request("paragraph:(alpha)"))
         let sameNote = try #require(both.noteResults.first { $0.relativePath == "Same.md" })
         #expect(sameNote.paragraphRanges.count == 2)
         let source = "\u{FEFF}中文😀 alpha beta\r\n\r\nalpha gamma\r\n"
         let snapshot = SearchSourceSnapshot(
-            noteID: .init(vaultID: vault.id, relativePath: "Unsaved.md"), editorSessionID: UUID(), source: source, editorRevision: 1)
+            noteID: .init(vaultID: vault.id, relativePath: "Unsaved.md"), editorSessionID: UUID(),
+            source: source, editorRevision: 1)
         let occurrence = try await active.testSearch(
-            .init(query: "paragraph:(alpha NOT beta)", presentationScope: .thisNote, executionScope: .currentNote(snapshot), limit: 100))
+            .init(
+                query: "paragraph:(alpha NOT beta)", presentationScope: .thisNote,
+                executionScope: .currentNote(snapshot), limit: 100))
         #expect(occurrence.results.count == 1)
         let span = try #require(occurrence.noteResults.first?.sourceRange)
-        #expect(span.utf16LowerBound == (source as NSString).range(of: "alpha", options: .backwards).location)
+        #expect(
+            span.utf16LowerBound == (source as NSString).range(of: "alpha", options: .backwards).location)
         let reopened = try index("index.sqlite")
-        #expect(try await reopened.testSearch(request("paragraph:(alpha)")).noteResults.map(\.paragraphRanges) == both.noteResults.map(\.paragraphRanges))
+        #expect(
+            try await reopened.testSearch(request("paragraph:(alpha)")).noteResults.map(\.paragraphRanges)
+                == both.noteResults.map(\.paragraphRanges))
         var updated = documents
         updated[0] = .init(
-            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role, document: NoteDocument(relativePath: "Same.md", rawContent: "alpha\n\nbeta"))
+            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+            document: NoteDocument(relativePath: "Same.md", rawContent: "alpha\n\nbeta"))
         _ = try await active.synchronize(updated)
         let rebuilt = try index("rebuilt.sqlite")
         _ = try await rebuilt.synchronize(updated)
         let incremental = try await active.testSearch(request("paragraph:(alpha AND beta)"))
         let clean = try await rebuilt.testSearch(request("paragraph:(alpha AND beta)"))
         #expect(incremental.noteResults.map(\.relativePath) == clean.noteResults.map(\.relativePath))
-        #expect(incremental.noteResults.map(\.paragraphRanges) == clean.noteResults.map(\.paragraphRanges))
+        #expect(
+            incremental.noteResults.map(\.paragraphRanges) == clean.noteResults.map(\.paragraphRanges))
         var corruptIndex: TriptychSearchIndex? = try index("corrupt.sqlite")
         _ = try await corruptIndex?.synchronize(updated)
+        await corruptIndex?.shutdown()
         corruptIndex = nil
         var database: OpaquePointer?
-        #expect(sqlite3_open(root.appendingPathComponent("corrupt.sqlite").path, &database) == SQLITE_OK)
-        #expect(sqlite3_exec(database, "UPDATE search_documents SET paragraphs = '[{}]';", nil, nil, nil) == SQLITE_OK)
+        #expect(
+            sqlite3_open(root.appendingPathComponent("corrupt.sqlite/search.sqlite").path, &database)
+                == SQLITE_OK)
+        #expect(
+            sqlite3_exec(database, "UPDATE search_documents SET paragraphs = '[{}]';", nil, nil, nil)
+                == SQLITE_OK)
         sqlite3_close(database)
         let recovered = try TriptychSearchIndex.openRecovering(
-            databaseURL: root.appendingPathComponent("corrupt.sqlite"), triptychID: triptych, vaults: [vault])
+            isolatedDatabaseURL: root.appendingPathComponent("corrupt.sqlite/search.sqlite"),
+            triptychID: triptych, vaults: [vault])
         #expect(recovered.recoveredCorruption)
         _ = try await recovered.index.synchronize(updated)
         #expect(
-            try await recovered.index.testSearch(request("paragraph:(alpha AND beta)")).noteResults.map(\.relativePath) == clean.noteResults.map(\.relativePath)
+            try await recovered.index.testSearch(request("paragraph:(alpha AND beta)")).noteResults.map(
+                \.relativePath) == clean.noteResults.map(\.relativePath)
         )
+        await recovered.index.shutdown()
+        await rebuilt.shutdown()
+        await reopened.shutdown()
+        await active.shutdown()
     }
 }

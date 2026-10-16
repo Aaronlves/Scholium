@@ -19,6 +19,9 @@ struct SearchProjectionPreparationTests {
         _ = try await index.synchronize(sources, sourceProjectionCaches: caches)
         let cold = try #require(await index.lastSynchronizationTimings)
         #expect(cold.projectedDocuments == 3 && cold.restoredSearchProjections == 0)
+        for source in sources {
+            #expect(cache.load(for: source.document) != nil, "Cold publication must persist each exact source projection: \(source.relativePath)")
+        }
 
         let unchanged = try await index.synchronize(sources, sourceProjectionCaches: caches)
         #expect(unchanged.disposition == .unchanged)
@@ -34,6 +37,9 @@ struct SearchProjectionPreparationTests {
         _ = try await reopened.synchronize(sources, sourceProjectionCaches: caches)
         let changed = try #require(await reopened.lastSynchronizationTimings)
         #expect(changed.changedCount == 1 && changed.projectedDocuments == 1 && changed.restoredSearchProjections == 0)
+        for source in sources {
+            #expect(cache.load(for: source.document) != nil, "Changed publication must retain every current projection: \(source.relativePath)")
+        }
         let revised = try await reopened.testSearch(fixture.request("revised"))
         #expect(revised.noteResults.map(\.relativePath) == ["Note 0.md"])
         #expect(revised.noteResults.first?.sourceRange != nil)
@@ -43,7 +49,8 @@ struct SearchProjectionPreparationTests {
         let rebuilt = try fixture.index(name: "rebuilt.sqlite")
         _ = try await rebuilt.synchronize(sources, sourceProjectionCaches: caches)
         let restored = try #require(await rebuilt.lastSynchronizationTimings)
-        #expect(restored.projectedDocuments == 0 && restored.restoredSearchProjections == 3)
+        #expect(restored.projectedDocuments == 0)
+        #expect(restored.restoredSearchProjections == 3)
         let rebuiltResults = try await rebuilt.testSearch(fixture.request("revised"))
         #expect(rebuiltResults.noteResults.map(\.relativePath) == revised.noteResults.map(\.relativePath))
         #expect(rebuiltResults.noteResults.map(\.sourceRange) == revised.noteResults.map(\.sourceRange))
@@ -166,7 +173,7 @@ struct SearchProjectionPreparationTests {
                     hasBrokenLink: broken)
                 let cacheRoot = fixture.root.appendingPathComponent("\(role.rawValue)/\(ordinal)/\(broken)")
                 try FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
-                let cache = SourceSearchProjectionCache(
+                let cache = SourceProjectionCache(
                     applicationSupportURL: cacheRoot,
                     vaultID: vaultID, role: role)
                 let fresh = PreparedSearchIndexDocument(source: source, cache: cache)
@@ -271,12 +278,12 @@ struct SearchProjectionPreparationTests {
 
         func remove() { try? FileManager.default.removeItem(at: root) }
 
-        func cache() -> SourceSearchProjectionCache {
+        func cache() -> SourceProjectionCache {
             .init(applicationSupportURL: root, vaultID: vaultID, role: .sourceCorpus)
         }
 
         func index(name: String = "search.sqlite") throws -> TriptychSearchIndex {
-            try .init(databaseURL: root.appendingPathComponent(name), triptychID: triptychID)
+            try .init(isolatedDatabaseURL: root.appendingPathComponent(name), triptychID: triptychID)
         }
 
         func source(

@@ -221,6 +221,12 @@ struct ZoteroOriginalAccessSettingsTests {
                     load: { _ in throw UnexpectedOperation() },
                     setRetention: { _, _ in throw UnexpectedOperation() },
                     clear: { _ in throw UnexpectedOperation() }
+                ),
+                storage: .init(
+                    inventory: { throw UnexpectedOperation() },
+                    perform: { _, _ in throw UnexpectedOperation() },
+                    archivedChats: { _ in throw UnexpectedOperation() },
+                    deleteArchivedChats: { _ in throw UnexpectedOperation() }
                 )
             ),
             cssSnippetStore: styles

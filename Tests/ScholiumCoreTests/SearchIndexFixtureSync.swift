@@ -8,7 +8,7 @@ import ScholiumContracts
 extension TriptychSearchIndex {
     func synchronize(
         _ documents: [SearchIndexDocument],
-        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:]
+        sourceProjectionCaches: [UUID: SourceProjectionCache] = [:]
     ) async throws -> TriptychSearchIndexSyncResult {
         let latest = try await workspaceGeneration()
         return try await synchronize(
@@ -18,7 +18,7 @@ extension TriptychSearchIndex {
 
     func synchronize(
         _ documents: [SearchIndexDocument],
-        sourceProjectionCaches: [UUID: SourceSearchProjectionCache] = [:],
+        sourceProjectionCaches: [UUID: SourceProjectionCache] = [:],
         workspaceGeneration: UInt64
     ) async throws -> TriptychSearchIndexSyncResult {
         let byPath = Dictionary(
