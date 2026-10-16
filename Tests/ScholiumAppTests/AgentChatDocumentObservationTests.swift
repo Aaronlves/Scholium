@@ -699,7 +699,9 @@ struct AgentChatDocumentObservationTests {
 
             let document = try #require(window.documentController.selectedDocument)
             let descriptor = try #require(document.workspaceDescriptor)
-            let editor = try await EditorFixture.make(source: source)
+            let savedSnapshot = try #require(window.documentController.snapshots[descriptor.sessionKey])
+            let citationSnapshot = try #require(savedSnapshot.document.citationSnapshot)
+            let editor = try await EditorFixture.make(source: source, citationSnapshot: citationSnapshot)
             defer { editor.close() }
             let session = DocumentSessionModel(key: descriptor.sessionKey, editorSession: editor.editor)
             session.suppressAutosave = true
@@ -709,11 +711,16 @@ struct AgentChatDocumentObservationTests {
             defer { session.cancelScheduledWork() }
             window.rememberPresentationMode(.source)
             window.documentController.receiveSessionTransfer(
-                .init(document: document, session: session, snapshot: window.documentController.snapshots[descriptor.sessionKey], mode: .source))
+                .init(document: document, session: session, snapshot: savedSnapshot, mode: .source))
             session.beginEditing(in: .source)
             try await wait { window.presentedDocumentMode == .source }
             editor.select([.init(anchor: 5, head: 14)])
             let context = editor.editor.context
+            // Match the hydrated note's companion authority before suspending an
+            // observation. A nil owner would invite an unrelated citation reload.
+            #expect(editor.editor.committedCitationSnapshot == citationSnapshot)
+            let initial = try await window.observeChatDocument(admitted: { true })
+            #expect(initial.activeNote?.revision == .editorSnapshot(DocumentFingerprint(content: source)))
             // The injected close flusher fails before changing the editor. The
             // close-attempt sequence itself must revoke this observation.
             window.windowCloseCoordinator = WindowCloseCoordinator(
@@ -875,14 +882,14 @@ struct AgentChatDocumentObservationTests {
         let webView: WKWebView
         let dispatcher: FakeBridge
 
-        static func make(source: String) async throws -> Self {
+        static func make(source: String, citationSnapshot: ZoteroCitationSnapshot? = nil) async throws -> Self {
             let dispatcher = FakeBridge()
             let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
             let webView = WKWebView(frame: .zero, configuration: configuration)
             editor.attach(webView)
-            editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source)
+            editor.loadDocument(source, documentID: editor.bridgeDocumentID, mode: .source, citationSnapshot: citationSnapshot)
             editor.editorBecameReady()
             let loaded = try await editor.waitUntilLoadedForSave()
             try #require(loaded)
@@ -910,6 +917,7 @@ struct AgentChatDocumentObservationTests {
 
     @MainActor private final class FakeBridge: MarkdownEditorBridgeDispatching {
         var source = ""
+        var citationSnapshot: ZoteroCitationSnapshot?
         var generation = 0
         var interactionRevision = 0
         var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
@@ -945,8 +953,9 @@ struct AgentChatDocumentObservationTests {
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             operations.append(request.operation)
-            if case .initialize(let source, _, _, let selection, _, _) = request.operation {
+            if case .initialize(let source, _, _, let selection, let citationSnapshot, _) = request.operation {
                 self.source = source
+                self.citationSnapshot = citationSnapshot
                 generation = 0
                 selections = selection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
             }
@@ -959,9 +968,13 @@ struct AgentChatDocumentObservationTests {
                 "requestID": request.requestID.uuidString, "resultingGeneration": generation,
                 "interactionRevision": interactionRevision,
                 "sourceChanged": false, "accepted": true,
+                "citationManaged": citationSnapshot != nil,
                 "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "context": try JSONSerialization.jsonObject(with: JSONEncoder().encode(context)),
             ]
+            if let citationData = citationSnapshot?.data {
+                result["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData))
+            }
             if case .documentFind = request.operation {
                 result["find"] = ["current": 0, "total": 1, "replaceable": 1, "canReplaceCurrent": true]
                 if holdFind {
