@@ -638,8 +638,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         }
         let settingsLoadState: TriptychSettingsLoadState
         do {
-            let handle = try await applicationRuntime.workspace(id: assignment.id)
-            settingsLoadState = try await handle.research.settingsLoadState()
+            settingsLoadState = try await applicationRuntime.portableSettingsRecoverySnapshot(
+                triptychID: assignment.id, expectedAssignment: assignment
+            ).loadState
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             // Registration is independently authoritative. An inaccessible
             // portable store must not erase it or disable machine-local pages.
@@ -691,8 +694,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     return try await settingsSnapshot(preferredTriptychID: handle.id)
                 },
                 loadSettingsRecovery: { [self] id in
-                    let handle = try await applicationRuntime.workspace(id: id)
-                    return try await handle.research.settingsRecoverySnapshot()
+                    try await applicationRuntime.portableSettingsRecoverySnapshot(triptychID: id)
                 },
                 resetTriptychSettings: { [self] id, expectedRevision in
                     let handle = try await applicationRuntime.workspace(id: id)

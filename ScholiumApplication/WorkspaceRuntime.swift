@@ -82,6 +82,11 @@ public actor WorkspaceRuntime {
         let task: Task<WorkspaceHandle, Error>
     }
 
+    private struct SettingsRead: Sendable {
+        let triptychID: UUID
+        let task: Task<TriptychSettingsRecoverySnapshot, Error>
+    }
+
     private struct StorageOperation: Sendable {
         let id: UUID
         let action: ScholiumStorageAction
@@ -104,6 +109,15 @@ public actor WorkspaceRuntime {
     public nonisolated let styles: StyleOperations
     private var handles: [UUID: WorkspaceHandle] = [:]
     private var openings: [UUID: Opening] = [:]
+    private var settingsReads: [UUID: SettingsRead] = [:]
+    #if DEBUG
+        private var settingsReadBarrierForTesting: (@Sendable (UUID) async -> Void)?
+        var settingsReadCountForTesting: Int { settingsReads.count }
+
+        func setSettingsReadBarrierForTesting(_ barrier: (@Sendable (UUID) async -> Void)?) {
+            settingsReadBarrierForTesting = barrier
+        }
+    #endif
     /// A failed replacement must not destroy the activation already borrowed
     /// by a delivery surface. Retained handles stay live until retry or
     /// process shutdown, even though they are no longer returned by new opens.
@@ -363,6 +377,7 @@ public actor WorkspaceRuntime {
         }
         guard handles[id] == nil,
             openings[id] == nil,
+            !settingsReads.values.contains(where: { $0.triptychID == id }),
             !retainedHandles.values.contains(where: { $0.assignment.id == id })
         else {
             throw ScholiumApplicationError.workspaceRegistrationInUse(id)
@@ -389,6 +404,11 @@ public actor WorkspaceRuntime {
                 || retainedHandles.values.contains(where: { $0.assignment.id == triptychID })
         {
             throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
+        }
+        if let read = settingsReads.values.first(where: {
+            triptychID == nil || $0.triptychID == triptychID
+        }) {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(read.triptychID)
         }
         let container = portableContainerURL.resolvingSymlinksInPath().standardizedFileURL
         let expected = worksURL.standardizedFileURL.deletingLastPathComponent()
@@ -1173,6 +1193,86 @@ public actor WorkspaceRuntime {
         return try await openWorkspace(id: match.id)
     }
 
+    /// Reads portable Settings without activating a workspace. A cached owner
+    /// remains authoritative; unopened registrations borrow only portable access.
+    public func portableSettingsRecoverySnapshot(
+        triptychID: UUID, expectedAssignment: TriptychAssignment? = nil
+    ) async throws -> TriptychSettingsRecoverySnapshot {
+        try requireActive()
+        try Task.checkCancellation()
+        let token = UUID()
+        let task = Task {
+            try await self.readPortableSettings(triptychID: triptychID, expectedAssignment: expectedAssignment)
+        }
+        settingsReads[token] = SettingsRead(triptychID: triptychID, task: task)
+        defer { settingsReads[token] = nil }
+        return try await withTaskCancellationHandler {
+            let snapshot = try await task.value
+            try requireActive()
+            try Task.checkCancellation()
+            return snapshot
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func readPortableSettings(
+        triptychID: UUID, expectedAssignment: TriptychAssignment?
+    ) async throws -> TriptychSettingsRecoverySnapshot {
+        #if DEBUG
+            await settingsReadBarrierForTesting?(triptychID)
+        #endif
+        try requireActive()
+        try Task.checkCancellation()
+        let selected = try await assignment(id: triptychID)
+        try requireActive()
+        try Task.checkCancellation()
+        // A caller composing registration and Settings must bind both reads to
+        // the same cohort, before borrowing a Handle or portable access.
+        if let expectedAssignment, expectedAssignment != selected { throw CancellationError() }
+        let snapshot: TriptychSettingsRecoverySnapshot
+        if let handle = handles[triptychID], handle.assignment == selected {
+            // No new access scope, control actor, runtime, watcher or index.
+            snapshot = try await handle.research.settingsRecoverySnapshot()
+        } else {
+            guard let works = selected.vault(for: .output) else {
+                throw ScholiumApplicationError.incompleteTriptych(triptychID)
+            }
+            let scope: SecurityScopeLease?
+            switch membership {
+            case .live:
+                scope = try WorkspaceHandle.resolvePortableControlAccess(
+                    worksVault: works, access: selected.triptych.portableControlAccess)
+            case .snapshot:
+                scope = nil
+            }
+            defer {
+                if let scope, scope.started { scope.url.stopAccessingSecurityScopedResource() }
+            }
+            let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+            let control = TriptychControlStore(worksVaultURL: worksURL)
+            do {
+                snapshot = try await control.settingsMetadataSnapshot(
+                    expectedTriptychID: selected.id,
+                    expectedVaultIDs: selected.vaults.mapValues(\.id))
+            } catch let error as TriptychControlError {
+                throw ScholiumApplicationError.portableControlRecoveryRequired(
+                    controlPath: worksURL.deletingLastPathComponent()
+                        .appendingPathComponent(".scholium", isDirectory: true).path,
+                    reason: error.localizedDescription)
+            }
+        }
+        try requireActive()
+        try Task.checkCancellation()
+        // Membership can change at any await; never publish an old target's
+        // Settings under a newer registration/access cohort.
+        let current = try await assignment(id: triptychID)
+        try requireActive()
+        try Task.checkCancellation()
+        guard current == selected else { throw CancellationError() }
+        return snapshot
+    }
+
     /// Machine-local Changes settings for a registered Triptych, without
     /// opening its vaults or changing the selected runtime.
     public func documentChangeArchive(triptychID: UUID) async throws -> DocumentChangeArchiveOperations {
@@ -1239,6 +1339,12 @@ public actor WorkspaceRuntime {
         let operation = storageOperation?.task
         let pending = openings.values.map(\.task)
         openings.removeAll()
+        let metadata = settingsReads.values.map(\.task)
+        settingsReads.removeAll()
+        metadata.forEach { $0.cancel() }
+        // Borrowed reads finish before Handle shutdown releases portable scopes.
+        // These finite tasks never join a workspace opening or source drain.
+        for task in metadata { _ = try? await task.value }
         let active = Array(handles.values) + Array(retainedHandles.values)
         handles.removeAll()
         retainedHandles.removeAll()

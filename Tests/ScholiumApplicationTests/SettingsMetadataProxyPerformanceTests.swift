@@ -7,10 +7,10 @@ import Testing
 /// Service attribution only. Run explicitly after the focused tests; never
 /// reads preferences or a user-selected path. Its only input is repo TestVaults.
 @Suite(
-    "Settings current workspace service proxy baseline", .serialized,
+    "Settings metadata service proxy", .serialized,
     .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_SETTINGS_METADATA_PROXY"] == "1"))
 struct SettingsMetadataProxyPerformanceTests {
-    @Test("Current workspace Settings route over one closed synthetic seed")
+    @Test("Full workspace read and metadata read use the same closed synthetic seed")
     func sameClosedSeed() async throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -88,14 +88,11 @@ struct SettingsMetadataProxyPerformanceTests {
             loadState: .current(.init(settings: TriptychSettings(), revision: .init(fingerprint: .init(data: settingsBytes)))),
             revision: .init(fingerprint: .init(data: settingsBytes)))
         var report: [String: Any] = [
-            "schema": "scholium-settings-workspace-service-proxy-baseline-v1", "status": "prepared",
+            "schema": "scholium-settings-metadata-service-proxy-v1", "status": "prepared",
             "measurement_scope": "Application APIs only; no Settings window, native input/paint or cold-disk claim.",
             "setup": "One complete live seed outside timers; same source paths/registration/control bytes; closed support restored to same path for every arm.",
             "fresh_runtime_definition": "Unopened snapshot runtime with identical compatible derived state; OS caches are not purged.",
-            "borrowed_definition":
-                "Existing full snapshot handle opened before timer; measures the current workspace(...).research.settingsRecoverySnapshot route only.",
-            "baseline_context":
-                "Prechange current API only, six observations. A later paired API diagnostic uses a new UUID seed; no exact paired comparison across those separate runs.",
+            "borrowed_definition": "Existing full snapshot handle opened before timer; compares existing Handle service with Runtime's metadata capability.",
             "fixture_note_count": 500, "identity_record_count": records.count,
             "source_digest": try proxyDigest(sourceAfterSeed),
             "portable_digest": try proxyDigest(portableOracle),
@@ -118,9 +115,9 @@ struct SettingsMetadataProxyPerformanceTests {
         var samples: [[String: Any]] = []
         for borrowed in [false, true] {
             for round in 0..<3 {
-                // Each observation gets the same closed support bytes at
-                // exactly the same canonical paths; no bookmark is cloned.
-                let arms = ["workspace"]
+                // Alternate order. Every arm gets the same closed support bytes
+                // at exactly the same canonical paths; no bookmark is cloned.
+                let arms = round.isMultiple(of: 2) ? ["workspace", "metadata"] : ["metadata", "workspace"]
                 for arm in arms {
                     try assertProxyClosed(support)
                     try FileManager.default.removeItem(at: support)
@@ -132,14 +129,23 @@ struct SettingsMetadataProxyPerformanceTests {
                                 applicationSupportURL: support, workspaceRegistryStorageURL: registry, assignments: [assignment])))
                     do {
                         let existing = borrowed ? try await runtime.workspace(id: assignment.id) : nil
+                        let operationTree = try settingsMetadataTree(root)
                         try #require(proxyAssignmentDigest(assignment) == assignmentOracle)
                         let clock = ContinuousClock()
                         let start = clock.now
-                        let observed = try await runtime.workspace(id: assignment.id).research.settingsRecoverySnapshot()
+                        let observed: TriptychSettingsRecoverySnapshot
+                        if arm == "workspace" {
+                            observed = try await runtime.workspace(id: assignment.id).research.settingsRecoverySnapshot()
+                        } else {
+                            observed = try await runtime.portableSettingsRecoverySnapshot(triptychID: assignment.id)
+                        }
                         let duration = start.duration(to: clock.now)
                         try #require(observed == expectedSettings)
                         let pooled = await runtime.pooledVaultRuntimeCount
-                        try #require(pooled == 3)
+                        if arm == "metadata" {
+                            try #require(settingsMetadataTree(root) == operationTree)
+                            try #require(pooled == (borrowed ? 3 : 0))
+                        }
                         if let existing {
                             try #require(try await runtime.workspace(id: assignment.id) === existing)
                         }
@@ -156,6 +162,7 @@ struct SettingsMetadataProxyPerformanceTests {
                             "pooled_vault_owners_after_api": pooled,
                             "exact_settings_revision_and_state": true,
                             "source_portable_registry_unchanged": true,
+                            "metadata_operation_tree_unchanged": arm == "metadata",
                             "closed_journals_verified": true,
                         ])
                         report["samples"] = samples
@@ -171,12 +178,12 @@ struct SettingsMetadataProxyPerformanceTests {
                 }
             }
         }
-        try #require(samples.count == 6)
+        try #require(samples.count == 12)
         try #require(proxyFileHashes(standard) == standardFiles)
         report["status"] = "completed"
         report["all_oracles_passed"] = true
         try save()
-        print("Settings service proxy completed: \(reportURL.path), 6 current-API observations; service-only, no native latency claim.")
+        print("Settings service proxy completed: \(reportURL.path), 12 API observations; service-only, no native latency claim.")
     }
 }
 

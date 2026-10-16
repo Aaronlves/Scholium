@@ -278,28 +278,31 @@ delayed keep/open checks runtime/owner identity. Kept text never persists.
 
 ### Settings authority
 
-Settings borrows capabilities, creating no workspace runtime.
-`WorkspaceSettingsModel` owns Triptych selection; refresh follows it while confirmed
-snapshots retain identity/revision. Scope/revision mismatch requires explicit reload.
-`StorageSettingsModel` retains measurements and operation feedback;
-pane/target changes retire unconfirmed plans. Native hosts retain drafts, excluding inactive input, accessibility and default actions. Background font discovery
-publishes names, coalesces invalidation and rejects stale results.
-Search, contextual links and scroll anchors share typed sections;
-search indexes static interface metadata, never research content or permission.
-AppKit owns toolbar, safe area and temporary search-result selection;
-SwiftUI owns category, query and destination.
+Settings borrows capabilities. `WorkspaceRuntime` owns finite metadata reads,
+drained before shutdown releases scopes.
+Matching Handles remain authoritative; unopened reads borrow registered portable
+access without activating vaults, watchers or indexes. Core admits the manifest
+before identities/catalog/settings through anchored no-follow reads. Recovery
+retains the Handle's revision-bound writer.
+`WorkspaceSettingsModel` owns selection and request generations; snapshot reads
+bind captured assignments, cancelling mismatches. Confirmed snapshots retain
+identity/revision; stale recovery requires reload. `StorageSettingsModel` retains
+measurements/feedback; pane/target changes retire unconfirmed plans.
+Native hosts retain drafts; inactive panes exclude input, accessibility/default actions.
+Font discovery publishes names, coalesces invalidations and rejects stale results.
+Search/links/anchors share typed sections indexing static interface metadata,
+never research content or permission. AppKit owns toolbar, safe area and temporary
+result selection; SwiftUI owns category/query/destination.
 
-Shortcuts have one command catalog/validated preference writer; menus consume it.
-The application hotkey event adapter owns hardware-event normalization, while the
-command-key-equivalent router owns native-menu transport for registered document
-shortcuts. It is reached only through the active visible document boundary,
-outside composition; the shared WebKit container supplies that boundary and guard
-but does not match shortcuts or own actions. CodeMirror retains local
-editing/history. Selection Actions have one machine-local preference owner; views
-retain unsaved drafts only.
-`ChatSidebarPreferences` owns This-Mac visibility independently of execution;
-connection settings borrow Triptych owners. External-host setup copies verified
-commands and reveals bundled resources, never executing setup or claiming success.
+One command catalog/validated preference writer feeds menus. The hotkey adapter
+normalizes hardware events; the command-equivalent router matches document
+shortcuts only at the active visible document boundary, outside composition.
+WebKit supplies that boundary/guard without matching commands. CodeMirror owns
+editing/history. Selection Actions has one machine-local preference writer;
+views retain unsaved drafts. `ChatSidebarPreferences` owns This-Mac visibility
+independently of execution; connections borrow Triptych owners. External-host
+setup copies verified commands/reveals bundled resources, never executing setup
+or claiming success.
 
 ### Interface localization
 

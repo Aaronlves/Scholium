@@ -30,7 +30,7 @@ struct WorkspaceWatcherReadinessEvidence: Equatable, Sendable {
     let activationReconciliationCompleted: Bool
 }
 
-private struct SecurityScopeLease: Sendable {
+struct SecurityScopeLease: Sendable {
     let url: URL
     let started: Bool
 }
@@ -824,7 +824,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             })
     }
 
-    private static func resolvePortableControlAccess(
+    static func resolvePortableControlAccess(
         worksVault: RegisteredVault,
         access: PortableControlAccess?
     ) throws -> SecurityScopeLease {

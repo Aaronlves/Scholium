@@ -497,6 +497,119 @@ public actor TriptychControlStore {
 
     }
 
+    /// Read-only admission for metadata consumers. Never calls bootstrap,
+    /// creates a coordination lock, or opens a Note/derived-state owner.
+    package func settingsMetadataSnapshot(
+        expectedTriptychID: UUID, expectedVaultIDs: [WorkspaceVaultSlot: UUID]
+    ) throws -> TriptychSettingsRecoverySnapshot {
+        try Task.checkCancellation()
+        let access = try VaultDescriptorAccess(rootURL: controlURL)
+        guard let manifestBytes = try metadataBytesIfPresent("manifest.json", access: access) else {
+            throw TriptychControlError.invalidManifest
+        }
+        let manifest: TriptychManifest
+        do { manifest = try decoder().decode(TriptychManifest.self, from: manifestBytes) } catch is DecodingError { throw TriptychControlError.invalidManifest }
+        guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
+            manifest.id == expectedTriptychID,
+            Set(expectedVaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+            Set(expectedVaultIDs.values).count == WorkspaceVaultSlot.allCases.count,
+            manifest.vaultIDs == expectedVaultIDs
+        else { throw TriptychControlError.invalidManifest }
+        if try metadataEntryExists("attachments/v1", access: access) {
+            throw TriptychControlError.invalidAttachmentCatalog
+        }
+        // Match registration preflight: validate existing identities strictly,
+        // but never invent a missing authority during a read.
+        if let identities = try metadataBytesIfPresent("identities.json", access: access) {
+            _ = try decodeIdentitySnapshot(identities)
+        }
+        do { _ = try metadataAttachmentRecords(access: access) } catch let error as CancellationError { throw error } catch {
+            throw TriptychControlError.invalidAttachmentCatalog
+        }
+        let settingsPath = try VaultRelativeFolderPath("settings.json")
+        let settingsBytes = try access.withParentDescriptor(settingsPath) { parent, name -> Data? in
+            let bytes: Data?
+            do { bytes = try ExactFileReplacement.read(directory: parent, name: name) } catch let error as POSIXError where error.code == .ENOENT {
+                bytes = nil
+            }
+            try access.verifyCurrentParent(settingsPath, retainedDescriptor: parent)
+            return bytes
+        }
+        try Task.checkCancellation()
+        // Reject a substituted control owner or manifest while preflight ran.
+        guard try metadataBytesIfPresent("manifest.json", access: access) == manifestBytes else {
+            throw TriptychControlError.invalidManifest
+        }
+        try access.verifyRootIdentity()
+        let settings =
+            settingsBytes.map {
+                TriptychSettingsRecoverySnapshot(
+                    loadState: decodeSettingsLoadState($0),
+                    revision: SettingsRevision(fingerprint: DocumentFingerprint(data: $0)))
+            } ?? TriptychSettingsRecoverySnapshot(loadState: .missing, revision: nil)
+        return settings
+    }
+
+    private func metadataEntryExists(_ rawPath: String, access: VaultDescriptorAccess) throws -> Bool {
+        let path = try VaultRelativeFolderPath(rawPath)
+        do {
+            return try access.withParentDescriptor(path) { parent, name in
+                switch VaultDescriptorAccess.presence(name: name, parentDescriptor: parent) {
+                case .absent: return false
+                case .present: return true
+                case .inaccessible(let code): throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+            }
+        } catch VaultRepositoryError.fileDoesNotExist { return false }
+    }
+
+    private func metadataBytesIfPresent(_ rawPath: String, access: VaultDescriptorAccess) throws -> Data? {
+        let path = try AttachmentRelativePath(rawPath)
+        var didOpen = false
+        do {
+            return try access.withOpenRegularFile(path) { descriptor, parent, name, initial in
+                didOpen = true
+                guard initial.st_size >= 0, initial.st_size <= Int.max else {
+                    throw CocoaError(.fileReadTooLarge)
+                }
+                let data = try VaultDescriptorAccess.readAll(
+                    from: descriptor, maximumByteCount: Int(initial.st_size))
+                let version = SourceVersion(fileStatus: initial, fingerprint: DocumentFingerprint(data: data))
+                var final = stat()
+                guard fstat(descriptor, &final) == 0,
+                    version.matches(fileStatus: final), data.count == version.byteCount,
+                    try VaultDescriptorAccess.identity(name: name, parentDescriptor: parent)
+                        == VaultDescriptorAccess.FileIdentity(initial)
+                else { throw VaultRepositoryError.commitUncertain("Portable control changed while being read.") }
+                try access.verifyCurrentParent(path, retainedDescriptor: parent)
+                return data
+            }
+        } catch VaultRepositoryError.fileDoesNotExist where !didOpen { return nil }
+    }
+
+    private func metadataAttachmentRecords(access: VaultDescriptorAccess) throws -> [PortableAttachmentRecord] {
+        guard try metadataEntryExists("attachments/v2", access: access) else { return [] }
+        let marker = try VaultRelativeFolderPath("attachments/v2/.metadata-enumeration")
+        return try access.withParentDescriptor(marker) { parent, _ in
+            // Enumeration alone applies no private-store mode or size policy.
+            let enumerator = SecureRecordDirectory(
+                trustedRootURL: controlURL, components: ["attachments", "v2"],
+                directoryMode: 0o700, fileMode: 0o600, maximumByteCount: Int.max)
+            let names = try enumerator.fileNames(parent: parent, includingStaging: true)
+                .filter { !$0.hasPrefix(".") && ($0 as NSString).pathExtension == "json" }
+            var records: [PortableAttachmentRecord] = []
+            for name in names {
+                try Task.checkCancellation()
+                guard let bytes = try metadataBytesIfPresent("attachments/v2/\(name)", access: access) else {
+                    throw ImageAttachmentError.invalidCatalog
+                }
+                records.append(try decodeAttachmentRecord(bytes, fileName: name))
+            }
+            try access.verifyCurrentParent(marker, retainedDescriptor: parent)
+            return try validatedAttachmentRecords(records)
+        }
+    }
+
     public func settings() throws -> TriptychSettingsSnapshot {
         let observation = try settingsRecoverySnapshot()
         switch observation.loadState {
@@ -595,18 +708,26 @@ public actor TriptychControlStore {
                 .isSymbolicLinkKey,
             ])
             guard values.isRegularFile == true,
-                values.isSymbolicLink != true,
-                let record = try? decoder().decode(
-                    PortableAttachmentRecord.self,
-                    from: Data(contentsOf: url, options: [.mappedIfSafe])
-                ),
-                url.deletingPathExtension().lastPathComponent
-                    == record.id.uuidString.lowercased()
+                values.isSymbolicLink != true
             else {
                 throw ImageAttachmentError.invalidCatalog
             }
-            records.append(record)
+            guard let bytes = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
+                throw ImageAttachmentError.invalidCatalog
+            }
+            records.append(try decodeAttachmentRecord(bytes, fileName: url.lastPathComponent))
         }
+        return try validatedAttachmentRecords(records)
+    }
+
+    private func decodeAttachmentRecord(_ data: Data, fileName: String) throws -> PortableAttachmentRecord {
+        guard let record = try? decoder().decode(PortableAttachmentRecord.self, from: data),
+            String(fileName.dropLast(5)) == record.id.uuidString.lowercased()
+        else { throw ImageAttachmentError.invalidCatalog }
+        return record
+    }
+
+    private func validatedAttachmentRecords(_ records: [PortableAttachmentRecord]) throws -> [PortableAttachmentRecord] {
         let relativeKeys = records.compactMap { record -> String? in
             guard case .vaultRelative(let path) = record.location else {
                 return nil
