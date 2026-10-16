@@ -261,6 +261,7 @@ struct WorkspaceRefreshPayload: Sendable {
 }
 extension WorkspaceHandle {
     func refresh() async throws -> WorkspaceSnapshot {
+        try await services.searchIndexOwner.retryFailedAdmission()
         let snapshot = try await refresh(publication: .explicit)
         if snapshot.phase.isComplete {
             startLiveIndexRefreshIfNeeded()
@@ -1100,6 +1101,7 @@ extension WorkspaceHandle {
         }
         guard !isShutDown, !Task.isCancelled else { return }
         do {
+            try await admitSearchForOpeningCompletion()
             if !currentSnapshot.phase.isComplete {
                 _ = try await refresh(
                     publication: .liveInventory,
@@ -1110,6 +1112,14 @@ extension WorkspaceHandle {
                 )
             }
         } catch {
+            if case .failed(let admissionError) = await services.searchIndexOwner.admissionState() {
+                await publishRefreshFailure(
+                    admissionError,
+                    payload: WorkspaceRefreshPayload(
+                        publication: .liveInventory,
+                        failureDisposition: .failed(affectedVaultIDs: Set(assignment.vaults.values.map(\.id))),
+                        sourceCatalogPreparation: .fullReconcile))
+            }
             // Retain the usable opening vault and its typed failure. Buffered
             // or later native invalidations can reconcile current source once
             // this worker releases ownership; without one, Retry remains explicit.

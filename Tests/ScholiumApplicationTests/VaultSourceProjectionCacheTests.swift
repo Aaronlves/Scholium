@@ -352,7 +352,7 @@ struct VaultSourceProjectionCacheTests {
                         assignments: [handle.assignment])))
             do {
                 let indexHandle = try await runtime.openWorkspace(id: handle.assignment.id)
-                let index = await indexHandle.services.searchIndex
+                let index = try await indexHandle.services.searchIndex
                 let repository = try #require(await handle.services.repositories[vaultID])
                 let generation = try await index.workspaceGeneration()
                 // Force the next publication to prepare the rows using the

@@ -207,7 +207,7 @@ import Testing
                         return runtimeJoins == 1 && handleJoins == 1
                     }
                     #expect(await completions.names.isEmpty)
-                    _ = try await maintenance.availableWorkspaces()
+                    _ = try await maintenance.performStorageAction(.cleanRetiredDerivedState)
                     #expect(await maintenance.latestDerivedStateMaintenanceSummary?.busyDirectories ?? 0 > 0)
                     #expect(try Data(contentsOf: retired) == retiredBytes)
                     await barrier.release()
@@ -270,7 +270,7 @@ import Testing
                         return poolJoins == 1 && libraryJoins == 1
                     }
                     #expect(await completions.names.isEmpty)
-                    _ = try await maintenance.availableWorkspaces()
+                    _ = try await maintenance.performStorageAction(.cleanRetiredDerivedState)
                     #expect(await maintenance.latestDerivedStateMaintenanceSummary?.busyDirectories ?? 0 > 0)
                     #expect(try Data(contentsOf: retired) == retiredBytes)
                     await barrier.release()

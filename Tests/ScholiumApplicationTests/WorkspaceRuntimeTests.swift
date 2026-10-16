@@ -731,6 +731,12 @@ struct WorkspaceRuntimeTests {
         #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
         #expect(await handle.ownedBackgroundTaskCount >= 2)
 
+        let services = await handle.services
+        guard case .pending = await services.searchIndexOwner.admissionState() else {
+            Issue.record("Source-ready opening unexpectedly admitted the generated index.")
+            await runtime.shutdown()
+            return
+        }
         let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
         #expect(openedDocument.rawContent.contains("Freedom enables action"))
         #expect(openedDocument.rawContent.contains("Opening source changed"))
@@ -749,7 +755,78 @@ struct WorkspaceRuntimeTests {
             ))
         #expect(!thisNoteResponse.results.isEmpty)
         #expect(thisNoteResponse.freshnessToken.rawValue.hasPrefix("note:"))
+        #expect(thisNoteResponse.availability == .unavailable)
+        #expect(Data(openedDocument.rawContent.utf8) == Data(changedOpeningSource.utf8))
 
+        let currentSource = SearchSourceSnapshot(
+            noteID: fixture.analysisNoteID,
+            stableNoteID: openingEvent.snapshot.document(id: fixture.analysisNoteID)?.stableIdentity.resolvedID,
+            editorSessionID: UUID(),
+            source: openedDocument.rawContent + "\nsourceonlyneedle is unsaved.\n",
+            editorRevision: 1)
+        let unsavedResponse = try await handle.discovery.search(
+            SearchRequest(query: "sourceonlyneedle", presentationScope: .thisNote,
+                executionScope: .currentNote(currentSource), limit: 20))
+        #expect(unsavedResponse.results.count == 1)
+        #expect(unsavedResponse.freshnessToken == .currentNote(currentSource))
+        #expect(unsavedResponse.availability == .unavailable)
+        for result in unsavedResponse.results {
+            guard case .note(let hit) = result else { continue }
+            #expect(hit.noteReference == fixture.analysisNoteID)
+            #expect(hit.fingerprint == currentSource.fingerprint)
+            #expect(hit.stableNoteID == currentSource.stableNoteID?.uuidString.lowercased())
+            let range = try #require(hit.sourceRange)
+            #expect((currentSource.source as NSString).substring(with: NSRange(
+                location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound)) == "sourceonlyneedle")
+        }
+        let currentCompletions = try await handle.discovery.searchCompletions(
+            SearchCompletionRequest(lookup: .init(partial: "sourceonly", field: .body),
+                presentationScope: .thisNote, executionScope: .currentNote(currentSource)))
+        #expect(currentCompletions.terms.map(\.id) == ["sourceonlyneedle"])
+        #expect(currentCompletions.freshnessToken == .currentNote(currentSource))
+        #expect(currentCompletions.availability == .unavailable)
+        let forgedSource = SearchSourceSnapshot(
+            noteID: .init(vaultID: fixture.analysisNoteID.vaultID, relativePath: "Not Authorized.md"),
+            editorSessionID: UUID(), source: currentSource.source, editorRevision: 1)
+        let rejectedCompletions = try await handle.discovery.searchCompletions(
+            SearchCompletionRequest(lookup: .init(partial: "sourceonly"),
+                presentationScope: .thisNote, executionScope: .currentNote(forgedSource)))
+        #expect(rejectedCompletions.terms.isEmpty)
+        let invalidQuery = try await handle.discovery.search(
+            SearchRequest(query: "\"unfinished", presentationScope: .thisNote,
+                executionScope: .currentNote(currentSource), limit: 20))
+        #expect(invalidQuery.results.isEmpty)
+        #expect(invalidQuery.diagnostics.map(\.code) == [.unclosedPhrase])
+        #expect(invalidQuery.availability == .unavailable)
+        let invalidScope = try await handle.discovery.search(
+            SearchRequest(query: "kind:unsupported", presentationScope: .currentVault,
+                executionScope: .currentVault(UUID()), limit: 20))
+        #expect(invalidScope.results.isEmpty)
+        #expect(invalidScope.diagnostics.map(\.reason) == [.vaultOutsideTriptych])
+        let pendingVaultResponse = try await handle.discovery.search(
+            SearchRequest(query: "bounded", presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID), limit: 20))
+        #expect(pendingVaultResponse.results.isEmpty && !pendingVaultResponse.hasMore)
+        #expect(pendingVaultResponse.availability == .building(.init(completed: 0, total: 0)))
+        do {
+            _ = try await handle.discovery.search(
+                SearchRequest(query: "freedom", presentationScope: .triptych, executionScope: .triptych, limit: 20))
+            Issue.record("Pending admission exposed an incomplete Triptych Search.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceStillLoading(let id) = error else { throw error }
+            #expect(id == fixture.assignment.id)
+        }
+        guard case .pending = await services.searchIndexOwner.admissionState() else {
+            Issue.record("Source-only Search, diagnostics or completion started generated-state admission.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(try Data(contentsOf: changedOpeningURL) == Data(changedOpeningSource.utf8))
+
+        // Explicitly admit the last complete compatible index before retaining
+        // the existing Limited, exact-source eligibility and stale-byte checks.
+        let admittedIndex = try await services.searchIndex
+        #expect(await services.searchIndexOwner.readyIndex() === admittedIndex)
         let thisVaultResponse = try await handle.discovery.search(
             SearchRequest(
                 query: "freedom",
@@ -1677,7 +1754,7 @@ struct WorkspaceRuntimeTests {
         #expect(first.measurement.readFiles == first.projections.count)
         #expect(cache.load(for: firstDocument) == nil)
 
-        let index = services.searchIndex
+        let index = try await services.searchIndex
         let generation = try await index.workspaceGeneration()
         _ = try await index.synchronizeManifest(
             [], workspaceGeneration: generation + 1,

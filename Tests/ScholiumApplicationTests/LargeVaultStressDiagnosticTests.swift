@@ -585,8 +585,8 @@ struct LargeVaultStressDiagnosticTests {
                 try requireClosedState()
                 let sampleRuntime = WorkspaceRuntime(configuration: configuration)
                 runtime = sampleRuntime
-                // Do not call availableWorkspaces here: it would run maintenance
-                // before the timer and invalidate the initial-usable boundary.
+                // Start the same fresh live runtime boundary. Registry listing,
+                // source probes and full oracles stay outside the usable timer.
                 let started = ContinuousClock.now
                 let handle = try await sampleRuntime.openWorkspace(id: assignment.id, openingVault: .paperAnalysis)
                 let usable = milliseconds(started.duration(to: .now))
@@ -600,6 +600,57 @@ struct LargeVaultStressDiagnosticTests {
                 try #require(initial.readFiles == selectedCount)
                 try #require(initial.parsedDocuments == 0 && initial.projectedDocuments == 0)
                 try #require(initial.restoredCatalogProjections == initial.readFiles)
+                // Probe actual source capabilities before signalling presentation.
+                // The draft is never written to disk or installed as a generation.
+                let probeNote = try #require(opening.vaults.flatMap(\.documents).first {
+                    $0.fingerprint.byteCount < 32_768
+                })
+                let loadStarted = ContinuousClock.now
+                let probeDocument = try await handle.documents.load(probeNote.id)
+                let firstSourceLoadMilliseconds = milliseconds(loadStarted.duration(to: .now))
+                try #require(probeDocument.fingerprint == probeNote.fingerprint)
+                let stableID: UUID?
+                if case .resolved(let value) = probeNote.stableIdentity { stableID = value }
+                else { stableID = nil }
+                let resolvedProbeID = try #require(stableID)
+                let probeMarker = "startupbufferfindqzv"
+                let probeBuffer = probeDocument.rawContent + "\n\n" + probeMarker + "\n"
+                let sourceRequest = SearchRequest(
+                    query: probeMarker, presentationScope: .thisNote,
+                    executionScope: .currentNote(.init(
+                        noteID: probeNote.id, stableNoteID: stableID,
+                        editorSessionID: UUID(), source: probeBuffer, editorRevision: 1)),
+                    limit: 20)
+                let findStarted = ContinuousClock.now
+                let sourceResponse = try await handle.discovery.search(sourceRequest)
+                let firstBufferFindMilliseconds = milliseconds(findStarted.duration(to: .now))
+                try #require(sourceResponse.diagnostics.isEmpty && sourceResponse.results.count == 1)
+                try #require(!sourceResponse.hasMore && sourceResponse.freshnessToken.rawValue.hasPrefix("note:"))
+                for result in sourceResponse.results {
+                    switch result {
+                    case .note(let hit):
+                        try #require(hit.fingerprint == DocumentFingerprint(content: probeBuffer))
+                        try #require(hit.stableNoteID == resolvedProbeID.uuidString.lowercased())
+                        let locator = try #require(hit.sourceRange)
+                        let range = try #require(Range(NSRange(
+                            location: locator.utf16LowerBound,
+                            length: locator.utf16UpperBound - locator.utf16LowerBound), in: probeBuffer))
+                        try #require(String(probeBuffer[range]).contains(probeMarker))
+                    }
+                }
+                let vaultResponse = try await handle.discovery.search(.init(
+                    query: probeMarker, presentationScope: .currentVault,
+                    executionScope: .currentVault(probeNote.id.vaultID), limit: 20))
+                try #require(vaultResponse.results.isEmpty)
+                let vaultSearchIsBuilding: Bool
+                if case .building = vaultResponse.availability { vaultSearchIsBuilding = true }
+                else { vaultSearchIsBuilding = false }
+                try #require(vaultSearchIsBuilding)
+                var triptychSearchBlocked = false
+                do { _ = try await handle.discovery.search(request(probeMarker, limit: 20)) }
+                catch ScholiumApplicationError.workspaceStillLoading { triptychSearchBlocked = true }
+                try #require(triptychSearchBlocked)
+                try #require(await handle.services.searchIndexOwner.readyIndex() == nil)
                 let presentationStarted = ContinuousClock.now
                 let gap = milliseconds(started.duration(to: presentationStarted)) - usable
                 await handle.openingPresentationDidComplete()
@@ -635,6 +686,15 @@ struct LargeVaultStressDiagnosticTests {
                 sample["completion_after_presentation_ms"] = completion
                 sample["initial_to_complete_wall_ms"] = initialToComplete
                 sample["validation_gap_before_presentation_ms"] = gap
+                sample["first_source_load_after_usable_ms"] = firstSourceLoadMilliseconds
+                sample["first_unsaved_buffer_find_ms"] = firstBufferFindMilliseconds
+                sample["source_ready_capabilities"] = [
+                    "exact_source_loaded": true, "unsaved_buffer_find": true,
+                    "exact_current_buffer_locator": true,
+                    "vault_search_building_without_results": true,
+                    "triptych_search_blocked": true, "derived_index_not_admitted": true
+                ]
+                sample["capability_probe_scope"] = "Backend source load and unsaved-buffer Find before presentation; no native typing, layout, paint or save timing. Probe work is reported in the pre-presentation gap."
                 sample["opening_read_files"] = initial.readFiles
                 sample["opening_parsed_documents"] = initial.parsedDocuments
                 sample["opening_restored_catalog_projections"] = initial.restoredCatalogProjections

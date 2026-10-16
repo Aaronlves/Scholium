@@ -57,7 +57,10 @@ struct WorkspaceSnapshotBuildResult: Sendable {
 
 struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let repositories: [UUID: VaultRepository]
-    let searchIndex: TriptychSearchIndex
+    let searchIndexOwner: WorkspaceSearchIndexOwner
+    var searchIndex: TriptychSearchIndex {
+        get async throws { try await searchIndexOwner.resolve() }
+    }
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
@@ -73,7 +76,7 @@ extension WorkspaceServices {
     var snapshotBuilderDependencies: WorkspaceSnapshotBuilderDependencies {
         WorkspaceSnapshotBuilderDependencies(
             repositories: repositories,
-            searchIndex: searchIndex,
+            searchIndexOwner: searchIndexOwner,
             controlStore: controlStore,
             transactionRecoveryStore: transactionRecoveryStore,
             identityRecoveryCoordinator: identityRecoveryCoordinator
@@ -566,7 +569,7 @@ enum WorkspaceSnapshotBuilder {
                     },
                     validateManifest: validatePublication
                 )
-                searchPreparation = await dependencies.searchIndex.lastSynchronizationTimings
+                searchPreparation = try await dependencies.searchIndex.lastSynchronizationTimings
             }
         } catch SearchIndexError.awaitingRebuild {
             // A peer may clear after the initial check. The fresh Graph/source

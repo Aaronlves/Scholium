@@ -44,7 +44,7 @@ struct WritingCompletionFreshnessTests {
             let snapshot = try await handle.snapshot()
             let generation = try #require(snapshot.discovery.searchGeneration)
             let vault = try #require(assignment.vault(for: .topicKnowledge))
-            let index = await handle.services.searchIndex
+            let index = try await handle.services.searchIndex
             let workspaceGeneration = try await index.workspaceGeneration()
             let noMatchQuery = "UnmatchedSyntheticCompletion"
             #expect(await index.availability() == .current(generation))

@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Runtime derived-state retention")
 struct WorkspaceDerivedStateLifecycleTests {
-    @Test("Startup retires old indexes; unregistering reclaims only the inactive owner's derived records")
+    @Test("Explicit maintenance retires old indexes; unregistering reclaims only the inactive owner's derived records")
     func registeredLifecycle() async throws {
         let root = Self.fixtureRoot()
         let fixture = try await ApplicationFixture.make(rootURL: root)
@@ -29,6 +29,7 @@ struct WorkspaceDerivedStateLifecycleTests {
         let runtime = Self.runtime(fixture)
         do {
             #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
+            _ = try await runtime.performStorageAction(.cleanRetiredDerivedState)
             #expect(!FileManager.default.fileExists(atPath: retired.path))
             #expect(try Data(contentsOf: database) == originalDatabase)
             let maintenance = try #require(await runtime.latestDerivedStateMaintenanceSummary)
@@ -80,6 +81,9 @@ struct WorkspaceDerivedStateLifecycleTests {
             to: fixture.registryStorageURL.appendingPathComponent("workspace-registration-v3.json"))
         let runtime = Self.runtime(fixture)
         await #expect(throws: (any Error).self) { try await runtime.availableWorkspaces() }
+        await #expect(throws: (any Error).self) {
+            _ = try await runtime.performStorageAction(.cleanRetiredDerivedState)
+        }
         #expect(try Data(contentsOf: database) == bytes)
         let summary = try #require(await runtime.latestDerivedStateMaintenanceSummary)
         #expect(summary.failedDirectories == 1)

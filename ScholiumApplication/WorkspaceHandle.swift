@@ -12,7 +12,10 @@ struct WorkspaceServices: Sendable {
     let manifest: TriptychManifest
     let repositories: [UUID: VaultRepository]
     let sourceCatalogs: [UUID: VaultSourceCatalog]
-    let searchIndex: TriptychSearchIndex
+    let searchIndexOwner: WorkspaceSearchIndexOwner
+    var searchIndex: TriptychSearchIndex {
+        get async throws { try await searchIndexOwner.resolve() }
+    }
     let controlStore: TriptychControlStore
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
@@ -91,6 +94,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var citationControlInvalidationTask: Task<Void, Never>?
     var citationControlInvalidationPending = false
     var openingCompletionTask: Task<Void, Never>?
+    var pendingSearchActivationToken: UUID?
     let openingPresentationSignal = AsyncStream<Void>.makeStream(
         bufferingPolicy: .bufferingNewest(1)
     )
@@ -231,6 +235,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
         var leases: [SecurityScopeLease] = []
         var citationWatcher: WorkspaceFileEventWatcher?
+        var searchIndexOwner: WorkspaceSearchIndexOwner?
+        let usesProgressiveOpening = mode == .live && openingVault != nil
         do {
             var repositories: [UUID: VaultRepository] = [:]
             var resolvedURLs: [WorkspaceVaultSlot: URL] = [:]
@@ -324,19 +330,25 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             }
 
-            let openedSearchIndex = try await TriptychSearchIndex.openRecovering(
+            let indexOwner = WorkspaceSearchIndexOwner(
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id,
-                vaults: Array(assignment.vaults.values)
-            )
-            let priorWorkspaceGeneration = try await openedSearchIndex.index
-                .workspaceGeneration()
-            guard priorWorkspaceGeneration < UInt64(Int.max) else {
-                throw SearchIndexError.invalidDocuments(
-                    "Search workspace generation IDs were exhausted."
-                )
+                vaults: Array(assignment.vaults.values))
+            searchIndexOwner = indexOwner
+            let initialWorkspaceGeneration: UInt64
+            if usesProgressiveOpening {
+                // Opening has no derived generation. Complete publication reads
+                // the persisted watermark and advances it before committing.
+                initialWorkspaceGeneration = 1
+            } else {
+                let index = try await indexOwner.resolve()
+                let priorWorkspaceGeneration = try await index.workspaceGeneration()
+                guard priorWorkspaceGeneration < UInt64(Int.max) else {
+                    throw SearchIndexError.invalidDocuments(
+                        "Search workspace generation IDs were exhausted.")
+                }
+                initialWorkspaceGeneration = priorWorkspaceGeneration + 1
             }
-            let initialWorkspaceGeneration = priorWorkspaceGeneration + 1
 
             let agentChangeStore = try AgentChangeStore(
                 applicationSupportURL: applicationSupportURL,
@@ -355,7 +367,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     uniqueKeysWithValues: pooledVaults.map {
                         ($0.key, $0.value.sourceCatalog)
                     }),
-                searchIndex: openedSearchIndex.index,
+                searchIndexOwner: indexOwner,
                 controlStore: controlStore,
                 indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
                     applicationSupportURL: applicationSupportURL,
@@ -385,7 +397,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 citationEvents = try await watcher.start()
             }
             let watchersReady = clock.now
-            let usesProgressiveOpening = mode == .live && openingVault != nil
             // Native observation is live before either inventory pass. A
             // progressive open inventories only its first usable vault; the
             // buffered stream and complete background reconcile close edits
@@ -492,6 +503,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             return handle
         } catch {
+            await searchIndexOwner?.shutdown()
             await citationWatcher?.stop()
             for lease in leases.reversed() where lease.started {
                 lease.url.stopAccessingSecurityScopedResource()
@@ -643,6 +655,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         openingCompletion?.cancel()
         openingPresentationSignal.continuation.finish()
         refresh?.cancel()
+        // Admission must be cancelled before joining a producer suspended on
+        // that same factory. The owner drains even a late successful index.
+        let indexShutdown = await services.searchIndexOwner.beginShutdown()
         // Cancel all producers before the coordinator waits for its current
         // cycle; a producer or explicit rebuild may itself be awaiting it.
         await refreshCoordinator.shutdown()
@@ -654,7 +669,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
-        await services.searchIndex.shutdown()
+        await indexShutdown.value
         await events.finish(finalSnapshot: currentSnapshot)
         await services.indexedAttachmentAccessStore.endAllAccesses()
         for lease in leases.reversed() where lease.started {

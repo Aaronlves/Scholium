@@ -1886,8 +1886,53 @@ public actor TriptychSearchIndex {
         availability: SearchAvailability,
         linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) throws -> SearchResponse {
-        let descriptor = try vaultDescriptor(source.noteID.vaultID)
-        let indexed = try indexedDocumentMetadata(source.noteID)
+        return try Self.evaluateCurrentNote(
+            source, request: request, ast: ast, limit: limit,
+            freshness: freshness, availability: availability,
+            linkMatches: linkMatches,
+            descriptor: try vaultDescriptor(source.noteID.vaultID),
+            indexed: try indexedDocumentMetadata(source.noteID))
+    }
+
+    /// Exact current-buffer Search needs no generated database. Application
+    /// supplies registered scope and trustworthy identity before admission.
+    package nonisolated static func searchCurrentSource(
+        _ request: SearchRequest, ast: SearchQueryAST,
+        vault: RegisteredVault, availability: SearchAvailability = .unavailable,
+        linkMatches: [SearchLinkQuery: SearchLinkResolution] = [:]
+    ) throws -> SearchResponse {
+        try Task.checkCancellation()
+        guard case .currentNote(let source) = request.executionScope,
+            source.noteID.vaultID == vault.id, request.hasConsistentScopes
+        else { throw SearchIndexError.invalidDocuments("Current-source Search requires one authorized Note scope.") }
+        let freshness = SearchFreshnessToken.currentNote(source)
+        if let diagnostic = ast.scopeDiagnostic(scope: request.presentationScope, queryUTF16Count: request.query.utf16.count) {
+            return SearchResponse(
+                requestID: request.id, scope: request.presentationScope,
+                explanation: ast.explanation(scope: request.presentationScope),
+                freshnessToken: freshness, availability: availability,
+                results: [], hasMore: false, diagnostics: [diagnostic])
+        }
+        guard request.limit > 0 else {
+            return SearchResponse(
+                requestID: request.id, scope: request.presentationScope,
+                explanation: ast.explanation(scope: request.presentationScope),
+                freshnessToken: freshness, availability: availability,
+                results: [], hasMore: false)
+        }
+        return try evaluateCurrentNote(
+            source, request: request, ast: ast,
+            limit: min(request.limit, SearchContract.maximumNoteResults),
+            freshness: freshness, availability: availability,
+            linkMatches: linkMatches, descriptor: (vault.name, vault.role), indexed: nil)
+    }
+
+    private nonisolated static func evaluateCurrentNote(
+        _ source: SearchSourceSnapshot, request: SearchRequest, ast: SearchQueryAST,
+        limit: Int, freshness: SearchFreshnessToken, availability: SearchAvailability,
+        linkMatches: [SearchLinkQuery: SearchLinkResolution],
+        descriptor: (name: String, role: VaultRole)?, indexed: IndexedMetadata?
+    ) throws -> SearchResponse {
         let note = NoteDocument(
             relativePath: source.noteID.relativePath,
             rawContent: source.source

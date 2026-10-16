@@ -192,7 +192,8 @@ extension WorkspaceHandle {
     func writingCompletions(matching query: String) async throws -> [String] {
         try requireActive()
         try Task.checkCancellation()
-        let availability = await services.searchIndex.availability()
+        guard currentSnapshot.phase.isComplete else { throw WritingCompletionLookupError.indexNotCurrent }
+        let availability = try await services.searchIndex.availability()
         try requireActive()
         try Task.checkCancellation()
         guard currentSnapshot.phase.isComplete,
@@ -238,7 +239,7 @@ extension WorkspaceHandle {
         }
         try requireActive()
         try Task.checkCancellation()
-        let finalAvailability = await services.searchIndex.availability()
+        let finalAvailability = try await services.searchIndex.availability()
         try requireActive()
         try Task.checkCancellation()
         guard currentSnapshot.phase.isComplete,
@@ -348,7 +349,7 @@ extension WorkspaceHandle {
         }
         try requireActive()
         try Task.checkCancellation()
-        let finalAvailability = await services.searchIndex.availability()
+        let finalAvailability = try await services.searchIndex.availability()
         try requireActive()
         try Task.checkCancellation()
         let graphIsCurrent =
@@ -454,12 +455,38 @@ extension WorkspaceHandle {
                 )
             )
         }
-        let response = try await services.searchIndex.search(
-            request,
-            ast: ast,
-            linkMatches: link.matches,
-            eligibleDocuments: openingSearchEligibility(for: request)
-        )
+        let response: SearchResponse
+        if !currentSnapshot.phase.isComplete,
+            case .currentNote(let source) = request.executionScope,
+            let vault = assignment.vaults.values.first(where: { $0.id == source.noteID.vaultID })
+        {
+            let authorizedSource = SearchSourceSnapshot(
+                noteID: source.noteID,
+                stableNoteID: source.stableNoteID
+                    ?? currentSnapshot.document(id: source.noteID)?.stableIdentity.resolvedID,
+                editorSessionID: source.editorSessionID, source: source.source,
+                editorRevision: source.editorRevision)
+            let sourceRequest = SearchRequest(
+                id: request.id, query: request.query,
+                presentationScope: request.presentationScope,
+                executionScope: .currentNote(authorizedSource),
+                limit: request.limit, offset: request.resultOffset)
+            response = try TriptychSearchIndex.searchCurrentSource(
+                sourceRequest, ast: ast, vault: vault,
+                availability: await sourceSearchAvailabilityWithoutIndex(),
+                linkMatches: link.matches)
+        } else if let index = await services.searchIndexOwner.readyIndex() {
+            response = try await index.search(
+                request, ast: ast, linkMatches: link.matches,
+                eligibleDocuments: openingSearchEligibility(for: request))
+        } else {
+            response = SearchResponse(
+                requestID: request.id, scope: request.presentationScope,
+                explanation: ast.explanation(scope: request.presentationScope),
+                freshnessToken: SearchFreshnessToken("triptych:\(id.uuidString.lowercased()):unavailable"),
+                availability: await searchAvailabilityWithoutAdmission(),
+                results: [], hasMore: false)
+        }
         return openingVaultSearchResponse(response, request: request)
     }
 
@@ -467,8 +494,15 @@ extension WorkspaceHandle {
         _ request: SearchCompletionRequest
     ) async throws -> SearchCompletionResponse {
         try requireActive()
-        let availability = await services.searchIndex.availability()
-        let generation = try await services.searchIndex.generation()
+        let usesOpeningSource: Bool
+        if !currentSnapshot.phase.isComplete, case .currentNote = request.executionScope {
+            usesOpeningSource = true
+        } else { usesOpeningSource = false }
+        let index = usesOpeningSource ? nil : await services.searchIndexOwner.readyIndex()
+        let availability = usesOpeningSource
+            ? await sourceSearchAvailabilityWithoutIndex()
+            : await searchAvailabilityWithoutAdmission()
+        let generation = try await index?.generation()
         let freshness: SearchFreshnessToken =
             switch request.executionScope {
             case .currentNote(let source):
@@ -520,7 +554,12 @@ extension WorkspaceHandle {
                 limit: request.limit
             )
         case .currentVault(let vaultID):
-            terms = try await services.searchIndex.completionTerms(
+            guard let index else {
+                return SearchCompletionResponse(
+                    requestID: request.id, scope: request.presentationScope,
+                    freshnessToken: freshness, availability: availability, terms: [])
+            }
+            terms = try await index.completionTerms(
                 for: request.lookup,
                 vaultID: vaultID,
                 eligibleDocuments: openingSearchEligibility(
@@ -535,7 +574,12 @@ extension WorkspaceHandle {
                 limit: request.limit
             )
         case .triptych:
-            terms = try await services.searchIndex.completionTerms(
+            guard currentSnapshot.phase.isComplete, let index else {
+                return SearchCompletionResponse(
+                    requestID: request.id, scope: request.presentationScope,
+                    freshnessToken: freshness, availability: availability, terms: [])
+            }
+            terms = try await index.completionTerms(
                 for: request.lookup,
                 limit: request.limit
             )
@@ -612,11 +656,38 @@ extension WorkspaceHandle {
         return nil
     }
 
+    /// Source Find remains independent even after admission while the derived
+    /// actor is busy converging. This grade never claims an unchecked generation.
+    private func sourceSearchAvailabilityWithoutIndex() async -> SearchAvailability {
+        if case .failed(let error) = await services.searchIndexOwner.admissionState() {
+            return .failed(lastGood: nil, reason: error.localizedDescription)
+        }
+        return .unavailable
+    }
+
+    /// Diagnostics and source-buffer queries must never start generated-index
+    /// admission or hide a failed admission behind an indefinite Building state.
+    private func searchAvailabilityWithoutAdmission() async -> SearchAvailability {
+        switch await services.searchIndexOwner.admissionState() {
+        case .ready(let index):
+            return await index.availability()
+        case .failed(let error):
+            return .failed(lastGood: nil, reason: error.localizedDescription)
+        case .pending, .shutDown:
+            return .unavailable
+        }
+    }
+
     private func searchDiagnosticResponse(
         request: SearchRequest,
         parsed: SearchQueryParseResult
     ) async -> SearchResponse {
-        let noteAvailability = await services.searchIndex.availability()
+        let noteAvailability: SearchAvailability
+        if !currentSnapshot.phase.isComplete, case .currentNote = request.executionScope {
+            noteAvailability = await sourceSearchAvailabilityWithoutIndex()
+        } else {
+            noteAvailability = await searchAvailabilityWithoutAdmission()
+        }
         let availability = noteAvailability
         let freshness: SearchFreshnessToken
         switch request.executionScope {

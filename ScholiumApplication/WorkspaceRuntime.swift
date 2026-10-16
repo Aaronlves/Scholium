@@ -123,28 +123,147 @@ public actor WorkspaceRuntime {
             openingLookupBarrierForTesting = barrier
         }
     #endif
+    private typealias MaintenanceResult = Result<DerivedStateMaintenanceSummary, Error>
+    private enum MaintenancePhase: Equatable { case waiting, running }
+    private struct MaintenanceWork {
+        let id: UUID
+        var phase: MaintenancePhase
+        let task: Task<MaintenanceResult?, Never>
+    }
+    private var deferredMaintenanceTask: MaintenanceWork?
     private var didMaintainDerivedState = false
     private(set) var latestDerivedStateMaintenanceSummary: DerivedStateMaintenanceSummary?
+    #if DEBUG
+        private(set) var derivedMaintenancePassCountForTesting = 0
+        private(set) var derivedMaintenanceJoinCountForTesting = 0
+        private(set) var derivedMaintenanceWaitingCancellationCountForTesting = 0
+        private var derivedMaintenanceBarrierForTesting: (@Sendable (Int) async -> Void)?
 
-    private func maintainDerivedStateIfNeeded(force: Bool = false) async {
-        guard case .live(let registry, let supportURL) = membership,
-            force || !didMaintainDerivedState
-        else { return }
-        didMaintainDerivedState = true
-        let summary: DerivedStateMaintenanceSummary
-        do {
-            summary = try await registry.maintainDerivedState(applicationSupportURL: supportURL)
-        } catch {
-            let failed = DerivedStateMaintenanceSummary(failedDirectories: 1)
-            // A failed registry read is never an empty reference set.
-            latestDerivedStateMaintenanceSummary = failed
-            Self.openLogger.error("derivedMaintenance unavailable; no membership-based deletion admitted")
-            return
+        var derivedMaintenancePhaseForTesting: String? {
+            switch deferredMaintenanceTask?.phase {
+            case .waiting: "waiting"
+            case .running: "running"
+            case nil: nil
+            }
         }
-        latestDerivedStateMaintenanceSummary = summary
-        Self.openLogger.info(
-            "derivedMaintenance removedFiles=\(summary.removedFiles) removedBytes=\(summary.removedBytes) busyDirectories=\(summary.busyDirectories) failedDirectories=\(summary.failedDirectories) failedFiles=\(summary.failedFiles) preservedFiles=\(summary.preservedFiles)"
-        )
+
+        func setDerivedMaintenanceBarrierForTesting(_ barrier: (@Sendable (Int) async -> Void)?) {
+            derivedMaintenanceBarrierForTesting = barrier
+        }
+    #endif
+
+    /// One automatic pass follows a cached Handle's complete opening. Listing
+    /// membership never waits for disposable-state scans or creates a worker.
+    private func scheduleDerivedMaintenance(after handle: WorkspaceHandle) {
+        guard case .live = membership, !isShutDown, !didMaintainDerivedState,
+            deferredMaintenanceTask == nil
+        else { return }
+        let id = UUID()
+        let source = handle.events
+        let task = Task<MaintenanceResult?, Never>(priority: .utility) { [weak self] in
+            let completed = await Self.waitForCompleteOpening(source)
+            guard completed, !Task.isCancelled, let self else {
+                await self?.finishDerivedMaintenance(id: id)
+                return nil
+            }
+            return await self.executeDerivedMaintenance(id: id)
+        }
+        deferredMaintenanceTask = MaintenanceWork(id: id, phase: .waiting, task: task)
+    }
+
+    private nonisolated static func waitForCompleteOpening(_ source: WorkspaceEventSource) async -> Bool {
+        // Keep the observer awaiting its next event after signaling readiness.
+        // Cancellation then retires its EventSource subscription explicitly.
+        let readiness = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let observer = Task {
+            let stream = await source.events()
+            var signaled = false
+            for await event in stream {
+                guard !Task.isCancelled else { break }
+                if !signaled, event.snapshot.phase.isComplete {
+                    signaled = true
+                    readiness.continuation.yield(true)
+                }
+            }
+            if !signaled { readiness.continuation.yield(false) }
+            readiness.continuation.finish()
+        }
+        let completed = await withTaskCancellationHandler {
+            var iterator = readiness.stream.makeAsyncIterator()
+            return await iterator.next() ?? false
+        } onCancel: {
+            observer.cancel()
+        }
+        observer.cancel()
+        await observer.value
+        return completed && !Task.isCancelled
+    }
+
+    private func finishDerivedMaintenance(id: UUID) {
+        if deferredMaintenanceTask?.id == id { deferredMaintenanceTask = nil }
+    }
+
+    /// The worker never calls the joining entry point, so it cannot await its
+    /// own Task. Tokens prevent a retired waiter from clearing a newer pass.
+    private func executeDerivedMaintenance(id: UUID, duringShutdown: Bool = false) async -> MaintenanceResult? {
+        guard deferredMaintenanceTask?.id == id, !Task.isCancelled,
+            !isShutDown || duringShutdown,
+            case .live(let registry, let supportURL) = membership
+        else {
+            finishDerivedMaintenance(id: id)
+            return nil
+        }
+        deferredMaintenanceTask?.phase = .running
+        didMaintainDerivedState = true
+        defer { finishDerivedMaintenance(id: id) }
+        #if DEBUG
+            derivedMaintenancePassCountForTesting += 1
+            if let derivedMaintenanceBarrierForTesting {
+                await derivedMaintenanceBarrierForTesting(derivedMaintenancePassCountForTesting)
+            }
+        #endif
+        do {
+            try Task.checkCancellation()
+            let summary = try await registry.maintainDerivedState(applicationSupportURL: supportURL)
+            latestDerivedStateMaintenanceSummary = summary
+            Self.openLogger.info(
+                "derivedMaintenance removedFiles=\(summary.removedFiles) removedBytes=\(summary.removedBytes) busyDirectories=\(summary.busyDirectories) failedDirectories=\(summary.failedDirectories) failedFiles=\(summary.failedFiles) preservedFiles=\(summary.preservedFiles)"
+            )
+            return .success(summary)
+        } catch {
+            // A failed registry read is never an empty reference set.
+            latestDerivedStateMaintenanceSummary = DerivedStateMaintenanceSummary(failedDirectories: 1)
+            Self.openLogger.error("derivedMaintenance unavailable; no membership-based deletion admitted")
+            return .failure(error)
+        }
+    }
+
+    @discardableResult
+    private func maintainDerivedStateIfNeeded(force: Bool = false, duringShutdown: Bool = false) async -> MaintenanceResult? {
+        guard case .live = membership, !isShutDown || duringShutdown else { return nil }
+        while let work = deferredMaintenanceTask {
+            #if DEBUG
+                derivedMaintenanceJoinCountForTesting += 1
+            #endif
+            if work.phase == .waiting {
+                #if DEBUG
+                    derivedMaintenanceWaitingCancellationCountForTesting += 1
+                #endif
+                work.task.cancel()
+            }
+            _ = await work.task.value
+            finishDerivedMaintenance(id: work.id)
+        }
+        guard !Task.isCancelled, !isShutDown || duringShutdown,
+            force || !didMaintainDerivedState
+        else { return nil }
+        let id = UUID()
+        let task = Task<MaintenanceResult?, Never>(priority: .utility) { [weak self] in
+            guard let self else { return nil }
+            return await self.executeDerivedMaintenance(id: id, duringShutdown: duringShutdown)
+        }
+        deferredMaintenanceTask = MaintenanceWork(id: id, phase: .running, task: task)
+        return await task.value
     }
 
     public init(
@@ -220,7 +339,6 @@ public actor WorkspaceRuntime {
 
     public func availableWorkspaces() async throws -> [TriptychAssignment] {
         try requireActive()
-        await maintainDerivedStateIfNeeded()
         let assignments: [TriptychAssignment]
         switch membership {
         case .live(let registry, _):
@@ -755,7 +873,6 @@ public actor WorkspaceRuntime {
     /// Returns the persisted default Triptych.
     public func defaultWorkspace() async throws -> TriptychAssignment {
         try requireActive()
-        await maintainDerivedStateIfNeeded()
         switch membership {
         case .live(let registry, _):
             guard let assignment = try await registry.defaultTriptych() else {
@@ -860,11 +977,17 @@ public actor WorkspaceRuntime {
             }.value
             return .init(action: action, cleanup: result)
         case .cleanRetiredDerivedState:
-            guard case .live(let registry, _) = membership else {
+            guard case .live = membership else {
                 throw ScholiumApplicationError.runtimeConfigurationUnavailable
             }
-            let summary = try await registry.maintainDerivedState(applicationSupportURL: support)
-            latestDerivedStateMaintenanceSummary = summary
+            guard let result = await maintainDerivedStateIfNeeded(force: true) else {
+                try Task.checkCancellation()
+                try requireActive()
+                throw ScholiumApplicationError.runtimeConfigurationUnavailable
+            }
+            let summary = try result.get()
+            try Task.checkCancellation()
+            try requireActive()
             return .init(
                 action: action,
                 cleanup: .init(
@@ -966,12 +1089,11 @@ public actor WorkspaceRuntime {
 
         let token = UUID()
         // Admission and registration are one actor turn. Membership lookup
-        // and storage maintenance belong to the same owned task as creation,
-        // so shutdown cannot miss an opener suspended before the factory.
+        // belongs to the same owned task as source-ready creation, so shutdown
+        // cannot miss an opener suspended before the factory.
         let task = Task {
             try Task.checkCancellation()
             try requireActive()
-            await maintainDerivedStateIfNeeded()
             try Task.checkCancellation()
             try requireActive()
             #if DEBUG
@@ -1026,6 +1148,7 @@ public actor WorkspaceRuntime {
                 return existing
             }
             handles[id] = handle
+            scheduleDerivedMaintenance(after: handle)
             return handle
         } catch {
             if openings[id]?.token == token { openings[id] = nil }
@@ -1108,6 +1231,13 @@ public actor WorkspaceRuntime {
     }
 
     private func finishShutdown() async {
+        let maintenance = deferredMaintenanceTask
+        if maintenance?.phase == .waiting {
+            #if DEBUG
+                derivedMaintenanceWaitingCancellationCountForTesting += 1
+            #endif
+        }
+        maintenance?.task.cancel()
         let operation = storageOperation?.task
         let pending = openings.values.map(\.task)
         openings.removeAll()
@@ -1129,8 +1259,10 @@ public actor WorkspaceRuntime {
                 }
             }
         }
+        _ = await maintenance?.task.value
+        if let maintenance { finishDerivedMaintenance(id: maintenance.id) }
         await vaultPool.shutdown()
-        await maintainDerivedStateIfNeeded(force: true)
+        await maintainDerivedStateIfNeeded(force: true, duringShutdown: true)
     }
 
     /// Detaches cached activations without finishing their streams. The old
