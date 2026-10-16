@@ -74,7 +74,14 @@ struct AgentIntegrationSettingsView: View {
                             Text("Chat Sidebar — This Mac", bundle: .module)
                         }
                         .id(SettingsSection.agentChatSidebar)
-                        AgentContextAccessSettingsSection(caller: .chat, preferences: contextAccessPreferences)
+                        Section {
+                            AgentChatInputSettingsControls()
+                        } header: {
+                            Text("Chat Behavior", bundle: .module)
+                        } footer: {
+                            Text("This Mac", bundle: .module)
+                        }
+                        .id(SettingsSection.agentBehavior)
                         if let chatController {
                             AgentChatConnectionSettingsView(controller: chatController)
                         } else {
@@ -83,12 +90,7 @@ struct AgentIntegrationSettingsView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Section {
-                            AgentChatInputSettingsControls()
-                        } header: {
-                            Text("Chat Behavior", bundle: .module)
-                        }
-                        .id(SettingsSection.agentBehavior)
+                        AgentContextAccessSettingsSection(caller: .chat, preferences: contextAccessPreferences)
                         if let chatController {
                             AgentChatConnectionAdvancedSettingsView(controller: chatController)
                         }
@@ -115,8 +117,8 @@ struct AgentIntegrationSettingsView: View {
                     .scholiumSettingsSearchDestination()
                 case .externalAccess:
                     Form {
-                        AgentContextAccessSettingsSection(caller: .external, preferences: contextAccessPreferences)
                         ExternalAgentHostsSettingsView(settingsModel: settingsModel)
+                        AgentContextAccessSettingsSection(caller: .external, preferences: contextAccessPreferences)
                     }
                     .scholiumSettingsFormStyle()
                     .scholiumSettingsSearchDestination()

@@ -103,8 +103,8 @@ are safely quoted in generated CSS. They never become Markdown/YAML content.
 的字体，并会在生成 CSS 时安全转义，不会写入 Markdown/YAML。
 
 Optional CSS snippets remain a separate, constrained override for ordinary
-document content. Use **CSS Snippets…** in the Appearance pane to open the
-manager. **Open CSS Folder** reveals the app-owned `Styles/Snippets` folder;
+document content. Use the **CSS Snippets** section in Document Appearance.
+**Open CSS Folder** reveals the app-owned `Styles/Snippets` folder;
 direct `.css` files are discovered automatically, watched for edits, and
 reloaded after validation. The manifest stores only order, enablement, names,
 and stable identities; CSS file bytes remain the file's responsibility. A
@@ -143,5 +143,6 @@ sanitized, scoped to document content, and projected into both Review and Edit.
 `li`、`blockquote`、`table`、`code`、`strong`、`em`、`mark` 以及公开的 Callout
 选择器；片段会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
 
-Default sizing follows a 16 CSS px body (12 pt), with Menlo at about 15.3 CSS px (11.5 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.
+Default body text is 13 pt, with Menlo at 11.5 pt for Source and Frontmatter. Heading scales remain relative to body text.
+默认正文字号为 13 pt，Source 和 Frontmatter 使用 11.5 pt 的 Menlo。标题比例仍以正文字号为基准。
 这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、

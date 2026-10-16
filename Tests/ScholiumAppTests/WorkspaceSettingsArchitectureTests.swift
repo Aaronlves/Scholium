@@ -31,7 +31,7 @@ struct WorkspaceSettingsArchitectureTests {
     func topLevelPaneOwnership() {
         #expect(
             ScholiumSettingsDestination.allCases.map(\.rawValue) == [
-                "workspace", "document", "writing", "agents", "shortcuts", "zotero", "storage",
+                "workspace", "document", "writing", "shortcuts", "agents", "zotero", "storage",
             ])
     }
 
@@ -86,7 +86,11 @@ struct WorkspaceSettingsArchitectureTests {
             #expect(!rootSource.contains(construction))
         }
         #expect(rootSource.contains("capabilities: workspaceStore.settingsCapabilities()"))
-        #expect(rootSource.contains("ScholiumSettingsView(preferences: preferences)"))
+        #expect(rootSource.contains("ScholiumSettingsView("))
+        #expect(rootSource.contains("preferences: preferences"))
+        #expect(rootSource.contains("chatControllerProvider:"))
+        #expect(rootSource.contains("workspaceStore?.chatRegistry.controller(for: triptychID)"))
+        #expect(!rootSource.contains(".agentChatSettingsController"))
     }
 
     @Test("Settings model retains only delivery-neutral capabilities")

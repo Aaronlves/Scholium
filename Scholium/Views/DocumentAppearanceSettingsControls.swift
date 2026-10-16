@@ -115,6 +115,7 @@ struct TypographySettingsView: View {
                         accessibilityUnit: nil)
                 }
             }.id(SettingsSection.appearanceBody)
+            AppearanceSourceEditor(profile: $profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts)
             Section("Heading Typography") {
                 Picker("Heading Font", selection: $profile.settings.headings.fontFamily) {
                     ForEach(DocumentHeadingFontFamily.presets, id: \.self) { Text($0.label).tag($0) }

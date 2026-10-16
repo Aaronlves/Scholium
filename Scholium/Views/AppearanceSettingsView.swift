@@ -93,8 +93,8 @@ struct AppearanceSettingsView: View {
                 "This removes the selected configuration from this Mac. Research documents are not changed."
             )
         }
-        .confirmationDialog("Restore Default Appearance?", isPresented: $confirmsAppearanceRecovery, titleVisibility: .visible) {
-            Button("Restore Defaults", role: .destructive) { store.restoreAppearanceDefaults() }
+        .confirmationDialog("Recover Default Appearance Configuration?", isPresented: $confirmsAppearanceRecovery, titleVisibility: .visible) {
+            Button("Recover Default Appearance Configuration", role: .destructive) { store.restoreAppearanceDefaults() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
@@ -154,8 +154,6 @@ struct AppearanceSettingsView: View {
                 !store.canModifyAppearance && !store.canRepairAppearance)
             TypographySettingsView(profile: profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts).disabled(
                 !store.canModifyAppearance && !store.canRepairAppearance)
-            AppearanceSourceEditor(profile: profile, fontCatalog: fontCatalog, numericDrafts: $numericDrafts).disabled(
-                !store.canModifyAppearance && !store.canRepairAppearance)
             Section("CSS Snippets") { cssSnippetsContent }.id(SettingsSection.appearanceCSS)
             configurationFileSection.id(SettingsSection.appearanceFile)
         }
@@ -170,7 +168,7 @@ struct AppearanceSettingsView: View {
         if let error = store.appearanceError {
             Section("Appearance Recovery") {
                 Label(error, systemImage: "exclamationmark.triangle").textSelection(.enabled)
-                Button("Restore Default Appearance…") { confirmsAppearanceRecovery = true }
+                Button("Recover Default Appearance Configuration…") { confirmsAppearanceRecovery = true }
                     .disabled(store.isRestoringAppearance)
                     .accessibilityIdentifier("scholium.settings.appearance.recover")
             }

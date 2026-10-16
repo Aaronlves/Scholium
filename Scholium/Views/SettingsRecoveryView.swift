@@ -64,7 +64,7 @@ struct PortableSettingsRecoverySection: View {
             Button("Cancel", role: .cancel) { request = nil }
         } message: {
             Text(
-                "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy. Unsaved reminder changes stay as a draft and must be reloaded before saving."
+                "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy."
             )
         }
         .onDisappear { cancelPreparation() }

@@ -1090,22 +1090,23 @@ private struct ScholiumSettingsRoot: View {
     }
 
     var body: some View {
-        ScholiumSettingsView(preferences: preferences)
-            .environmentObject(settingsModel)
-            .environment(
-                \.agentChatSettingsController,
-                settingsModel.selectedTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) }
-            )
-            .tint(nil)
-            .buttonStyle(.automatic)
-            .preferredColorScheme(
-                WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
-            )
-            .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
-                await settingsModel.restorePreferredWorkspaceIfNeeded(
-                    activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID
-                )
+        ScholiumSettingsView(
+            preferences: preferences,
+            chatControllerProvider: { [weak workspaceStore] triptychID in
+                workspaceStore?.chatRegistry.controller(for: triptychID)
             }
-            .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+        )
+        .environmentObject(settingsModel)
+        .tint(nil)
+        .buttonStyle(.automatic)
+        .preferredColorScheme(
+            WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
+        )
+        .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
+            await settingsModel.restorePreferredWorkspaceIfNeeded(
+                activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID
+            )
+        }
+        .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
     }
 }

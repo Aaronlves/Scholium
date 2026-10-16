@@ -65,7 +65,10 @@ struct SettingsSearchTarget: Identifiable, Equatable {
             Self("storage.chatHistory", .storageChatHistory, "Archived Conversations", ["delete archived chats", "chat history", "归档对话", "聊天历史", "删除归档"]),
             Self(
                 "appearance.profile", .appearanceProfile, "Profile", ["appearance", "configuration", "repair profile", "文稿外观", "外观配置", "修复外观"],
-                aliases: ["Rename Appearance…", "Restore Default Appearance…", "Save Appearance", "Recover Default Appearance…", "Repair Saved Profile"]),
+                aliases: [
+                    "Rename Appearance…", "Restore Default Appearance…", "Save Appearance", "Recover Default Appearance…",
+                    "Recover Default Appearance Configuration…", "Repair Saved Profile",
+                ]),
             Self(
                 "appearance.bodyFont", .appearanceReading, "Body Font", ["reading", "font", "阅读", "正文字体"]),
             Self(
@@ -170,7 +173,7 @@ struct SettingsSearchTarget: Identifiable, Equatable {
             Self(
                 "zotero.desktop", .zoteroDesktop, "Local Zotero API",
                 ["Zotero", "citation", "library", "local API", "文献", "引用", "本地 API"],
-                aliases: ["Zotero Desktop"]),
+                aliases: ["Zotero Desktop", "Clear Connection History", "Clear History"]),
             Self(
                 "zotero.chat", .zoteroChat, "Zotero in Chat",
                 ["Zotero connection", "Zotero in Chat", "聊天 Zotero"]),

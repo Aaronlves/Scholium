@@ -31,12 +31,16 @@ packaged performance campaign were omitted. G6/G7/G9 remain incomplete.
 
 ## Current feature coverage
 
-**2026-10-16 — Storage:** 244 scoped regressions plus activation/recovery checks pass.
-Native seven-category English/Chinese navigation, cache/index cleanup, Search pause
-across Settings reload, explicit rebuild/query recovery and exact source/unknown-file
-preservation pass.
-Artifact/source boundaries: `.build/index-lifecycle-management/results.md`.
-VoiceOver and researcher acceptance remain open.
+**2026-10-16 — Settings:** 500-Note Debug service proxy, three samples/arm:
+metadata median 629.55→4.44 ms, vault opens 3→0; borrowed +0.65 ms.
+106 metadata and 99 Settings regressions pass. Initial Workspace snapshot/fast
+portable lookups 2→1 each; hidden History reads 1→0, capability RPCs 3→0;
+admitted work finishes. Twenty warm observations/57 captures pass;
+layout stays comparable. `.build/performance-evidence/` comparisons:
+`settings-metadata-comparison.json`, `settings-retained-read-comparison.json`,
+`settings-native-layout-comparison.json`. Prior Storage's 244 regressions/native
+recovery remain `.build/index-lifecycle-management/results.md`. Native input/paint,
+Chinese body, VoiceOver/researcher acceptance remain open.
 
 **2026-10-10 — Retrieval:** Long-focus title/alias and identity-lifecycle
 regressions pass with exact source/highlight checks (`.build/long-focus-proof/`).
@@ -79,7 +83,7 @@ maps/logs: `.build/feature-review/RESULTS.md`, `.build/feature-review-extension/
 | Changes/Agent receipts | Pending/History, review, exact Undo | Difference/review/receipt controls | Newer revision, unknown baseline, ineligible Undo | Change/Agent suites; native update/restore/History delete/cancel |
 | Offline Chat | Conversation/draft/Find/material/queue/archive | Page/composer/selection routes | Retained drafts, sharing, failed deletion save | Fixed cleanup/native Undo lookup; native archive/restore/delete/shared copies/relaunch |
 | Runtime Chat | Models/Skills/tools/context/quota, questions/approvals/branches/Agents | Named capability/process/source controls | Unsupported/disconnect/Stop/uncertain delivery | Deterministic runtime fixtures; real provider/account breadth untested |
-| Settings | Six panes, appearance/CSS, writing, shortcuts | Toolbar/search, scoped drafts | Invalid reload, repair, cancellation | Settings suites; native navigation/recovery |
+| Settings | Seven panes, appearance/CSS, writing, shortcuts | Toolbar/search, scoped drafts | Invalid reload, repair, cancellation | Settings suites; native navigation/recovery |
 | Windows/layout | Independent/detached/external, Focus/full screen | Native menus/tabs/transfer | Close guards, transfer failure, focus restoration | Lifecycle suites; native inherited/destination mode, transfer/caret/Undo/focus |
 | Notifications/Zotero | Local queue/exact link display | Named bell/actions/references | Empty/stale, missing target, unavailable integration | Deterministic routes; actual banners/clicks and Zotero untested |
 
@@ -101,15 +105,12 @@ recovery notices retain actions at 300/520 points. Original private-Note/install
 binary reproduction and human VoiceOver remain unverified. Evidence:
 `.build/image-inline-evidence/RESULTS.md`.
 
-Complete repository gate stages pass: WebEditor 557, Core 586, performance 3,
-Contracts 107, Application 246 plus bridge 6/architecture 1, and App 1,379
-reported tests (31 conditional render/runtime/timing skips), localization,
-public API boundaries, Release and helper isolation. The final gate process stopped
-mid-App without a failure summary; complete App and remaining stages resumed against
-unchanged implementation hashes. Logs: `.build/image-inline-evidence/final-gate.log`,
-`final-app-resumed.log` and `final-gate-continuation.log`, plus `.build/verification/` and
-`.build/verification-release/`. QA runtime state is removed and all 506 standard
-fixture manifest files retain their hashes. No publishing or real-service proof.
+**2026-10-16 — Pre-Settings full gate (`7cbe3624`):** Default `verify.sh`
+passes all 14 phases, including measurement/display and WebKit integration/switching;
+declared skips remain. `.build/performance-evidence/current-performance-phase-summary.json`
+binds product summaries, source/formatting identities and sealed gate proof.
+This predates Settings changes; their final gate remains pending. No packaged,
+real-service or human acceptance.
 
 **2026-10-05 — Saving/recovery and presentation:** Prior native fixture QA preserves
 accepted bytes through switching, caret return, closure and graceful relaunch.
@@ -172,21 +173,19 @@ Evidence: `.build/two-layer-retrieval/`, `.build/retrieval-architecture/`,
 Measurements below exclude editor capture/debounce, link-action preparation and
 native publication; they are not G7 or click-to-paint acceptance.
 
-- Earlier generated 2,000-Note Release/500-Note Debug retrieval baselines and
-  scorer parity remain in the evidence below.
 - **Task-authorized 433-Note private-copy evaluation, all roles:** byte-verified
   copy with tests on a second disposable copy. Configure 24.963 s; 20 backend
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
   native optimization. All 16 private cases preserve ordered results; source
   bytes unchanged. This recorded exception is not standing private-vault authority.
 - **2026-10-16 local Release:** 5,000 Notes/57,299,729 bytes; cold/rebuild
-  166.509/165.970→154.363/153.652 s (one lifecycle/variant). Three reopens per variant from the same
-  closed compatible seed: source-ready p50 10.591676→2.378312 s; full
-  18.330073→17.893604 s. Source load 61.627 ms; exact unsaved-buffer This Note
-  Search 0.895 ms. Startup change `9f102144` returns `.opening` before validated
-  index admission; coherent `.complete` follows. Exact source, Search/Graph
-  generations and journals pass; native readiness is unmeasured.
-  `.build/performance-evidence/startup-deferred-comparison.json`.
+  166.509/165.970→154.363/153.652 s (one lifecycle/variant). Three same-seed
+  reopens/variant: source-ready p50 10.592→2.378 s; full 18.330→17.894 s.
+  Final-factor regression: three opens, source-ready/full p50 2.178/17.303 s;
+  source load 61.845 ms, exact unsaved-buffer This Note Search 0.938 ms.
+  `.opening` precedes validated index admission; `.complete` follows.
+  Exact source, Search/Graph, current generations and closed journals pass.
+  The summary binds runs/formatting; native readiness remains unmeasured.
 - **2026-10-16 Release Search presentation:** Complete-hit mixed
   2699.545→806.635 ms (1.57 MB), dense CJK 77.506→52.034 ms (1.08 MB), 20 samples/three warmups.
   Current-note API (3,822 bytes), 200 occurrences/20 returned, offsets 0/20:
@@ -204,10 +203,13 @@ native publication; they are not G7 or click-to-paint acceptance.
   `.build/performance-evidence/related-query-allocator-comparison.json`.
   This establishes neither RSS, retained memory, leaks, exact peak nor native
   latency; no practical speed gain is claimed.
-- **2026-09-16 editor reuse:** synthetic 60-paragraph Debug Edit, two warmups and
-  five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
-  including capture, pool clearing, bridge readiness and DOM layout. Throttled
-  WebKit frame delivery excludes paint/Release claims.
+- **2026-10-16 editor-state proxy:** Production TypeScript under Node/V8;
+  18 edit/position series, three warmups/20 samples. Series medians for state
+  transaction plus citation catalog: 0.247–0.518 ms (51,843-byte prose),
+  1.307–11.201 ms (1,096,763-byte CJK). Complete-tree, exact-source and
+  Undo/Redo oracles pass. The summary binds raw results. This excludes WebKit
+  plugins, native input, layout, paint and save; no paired improvement claim.
+  Historical attached-editor preparation retains its prior scope.
 
 Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
 0.601/0.641 → 0.635/0.717; material recall 0.625 → 0.688/0.750. Agent-authored cases are

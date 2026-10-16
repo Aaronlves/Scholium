@@ -66,7 +66,7 @@ struct ZoteroSettingsView: View {
         }
         Button("Check Connection") { refresh() }
             .disabled(isTesting)
-        Button("Clear History", role: .destructive) {
+        Button("Clear Connection History", role: .destructive) {
             Task {
                 try? await settingsModel.clearZoteroConnectionHistory()
                 info = await settingsModel.zoteroConnectionInfo()

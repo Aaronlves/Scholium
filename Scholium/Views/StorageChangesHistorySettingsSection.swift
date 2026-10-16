@@ -7,6 +7,17 @@ struct StorageChangesHistorySettingsSection: View {
         let name: String
     }
 
+    private struct LoadRequest: Equatable {
+        let triptychID: UUID
+        let isActive: Bool
+        let revision: UInt64
+    }
+
+    private struct MutationFailure {
+        let triptychID: UUID
+        let message: String
+    }
+
     @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     let triptychID: UUID
@@ -19,13 +30,23 @@ struct StorageChangesHistorySettingsSection: View {
     @State private var clearTarget: ClearTarget?
     @State private var loadGeneration = 0
     @State private var loadedTriptychID: UUID?
+    @State private var refreshRevision: UInt64 = 0
+    @State private var mutationFailure: MutationFailure?
 
     private var currentSnapshot: WorkspaceChangesHistorySnapshot? {
         loadedTriptychID == triptychID ? snapshot : nil
     }
 
+    private var currentErrorMessage: String? {
+        if let mutationFailure, mutationFailure.triptychID == triptychID {
+            return mutationFailure.message
+        }
+        return loadedTriptychID == triptychID ? errorMessage : nil
+    }
+
     var body: some View {
-        Section("Changes History — This Mac") {
+        let request = LoadRequest(triptychID: triptychID, isActive: isPaneActive, revision: refreshRevision)
+        return Section("Changes History — This Mac") {
             Text("For \(triptychName)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -66,12 +87,15 @@ struct StorageChangesHistorySettingsSection: View {
                 ProgressView("Loading Changes History…")
             }
 
-            if loadedTriptychID == triptychID, let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
+            if let currentErrorMessage {
+                Label(currentErrorMessage, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                Button("Retry") { Task { await load() } }
-                    .disabled(isLoading || isMutating)
+                Button("Retry") {
+                    if mutationFailure?.triptychID == triptychID { mutationFailure = nil }
+                    refreshRevision &+= 1
+                }
+                .disabled(isLoading || isMutating)
             }
 
             Button("Clear Reviewed History…", role: .destructive) {
@@ -81,12 +105,15 @@ struct StorageChangesHistorySettingsSection: View {
             .accessibilityIdentifier("scholium.settings.clearChangesHistory")
         }
         .id(SettingsSection.storageChangesHistory)
-        .task(id: triptychID) { await load() }
+        .task(id: request) {
+            guard request.isActive, !Task.isCancelled else { return }
+            await load(for: request.triptychID)
+        }
         .onChange(of: isPaneActive) { _, active in
             if !active { clearTarget = nil }
         }
         .onReceive(settingsModel.changesHistoryUpdates) { changedID in
-            if isPaneActive, changedID == triptychID { Task { await load() } }
+            if isPaneActive, changedID == triptychID { refreshRevision &+= 1 }
         }
         .onChange(of: triptychID) { _, _ in clearTarget = nil }
         .confirmationDialog(
@@ -109,25 +136,57 @@ struct StorageChangesHistorySettingsSection: View {
         }
     }
 
-    private func load() async {
-        let targetID = triptychID
+    private func isCurrentTarget(_ targetID: UUID) -> Bool {
+        loadedTriptychID == targetID && settingsModel.selectedTriptychID == targetID
+    }
+
+    private func load(for targetID: UUID) async {
+        guard settingsModel.selectedTriptychID == targetID, !Task.isCancelled else { return }
         if loadedTriptychID != targetID { snapshot = nil }
         loadedTriptychID = targetID
         loadGeneration &+= 1
         let generation = loadGeneration
         isLoading = true
         errorMessage = nil
+        defer {
+            if loadedTriptychID == targetID, loadGeneration == generation { isLoading = false }
+        }
         do {
             let loaded = try await settingsModel.changesHistory(triptychID: targetID)
-            guard triptychID == targetID, loadGeneration == generation else { return }
+            try Task.checkCancellation()
+            guard isCurrentTarget(targetID), loadGeneration == generation else { return }
             snapshot = loaded
         } catch is CancellationError {
             return
         } catch {
-            guard triptychID == targetID, loadGeneration == generation else { return }
+            guard !Task.isCancelled, isCurrentTarget(targetID), loadGeneration == generation else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func beginMutation(for targetID: UUID) {
+        isMutating = true
+        if mutationFailure?.triptychID == targetID { mutationFailure = nil }
+        if isCurrentTarget(targetID) {
+            loadGeneration &+= 1
+            isLoading = false
+            errorMessage = nil
+        }
+    }
+
+    private func installMutationSnapshot(_ changed: WorkspaceChangesHistorySnapshot, for targetID: UUID) {
+        guard isCurrentTarget(targetID) else { return }
+        // An earlier automatic read cannot replace the committed operation result.
+        loadGeneration &+= 1
         isLoading = false
+        snapshot = changed
+    }
+
+    private func recordMutationFailure(_ error: Error, for targetID: UUID) {
+        mutationFailure = MutationFailure(triptychID: targetID, message: error.localizedDescription)
+        // Reconcile through the visible pane's owned read. Failure feedback remains
+        // pinned to the operation target while that read or later navigation runs.
+        if isCurrentTarget(targetID) { refreshRevision &+= 1 }
     }
 
     private func setRetention(
@@ -135,37 +194,27 @@ struct StorageChangesHistorySettingsSection: View {
         for targetID: UUID
     ) async {
         guard targetID == triptychID, snapshot != nil, !isMutating else { return }
-        isMutating = true
-        errorMessage = nil
+        beginMutation(for: targetID)
+        defer { isMutating = false }
         do {
             let changed = try await settingsModel.setChangesHistoryRetention(
                 choice, triptychID: targetID
             )
-            if targetID == triptychID { snapshot = changed }
+            installMutationSnapshot(changed, for: targetID)
         } catch {
-            if targetID == triptychID {
-                let issue = error.localizedDescription
-                await load()
-                errorMessage = issue
-            }
+            recordMutationFailure(error, for: targetID)
         }
-        isMutating = false
     }
 
     private func clearHistory(for targetID: UUID) async {
         guard !isMutating else { return }
-        isMutating = true
-        errorMessage = nil
+        beginMutation(for: targetID)
+        defer { isMutating = false }
         do {
             let cleared = try await settingsModel.clearChangesHistory(triptychID: targetID)
-            if targetID == triptychID { snapshot = cleared }
+            installMutationSnapshot(cleared, for: targetID)
         } catch {
-            if targetID == triptychID {
-                let issue = error.localizedDescription
-                await load()
-                errorMessage = issue
-            }
+            recordMutationFailure(error, for: targetID)
         }
-        isMutating = false
     }
 }

@@ -760,7 +760,7 @@
     "This Triptych. Restoring settings preserves registered folders, research files and other preferences.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This Triptych. Restoring settings preserves registered folders, research files and other preferences."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此脉络。恢复设置会保留已注册文件夹、研究文件及其他偏好设置。"}}}},
     "Restore Portable Settings Defaults?": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Portable Settings Defaults?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复便携设置默认值？"}}}},
     "Restore Portable Settings Defaults": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore Portable Settings Defaults"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复便携设置默认值"}}}},
-    "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy. Unsaved reminder changes stay as a draft and must be reloaded before saving.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy. Unsaved reminder changes stay as a draft and must be reloaded before saving."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "将此脉络的便携设置恢复为默认值，并另存原文件副本。未保存的提醒修改会保留为草稿，保存前需重新载入。"}}}},
+    "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Replace this Triptych’s portable settings with defaults. The existing file is preserved as a separate copy."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "将此脉络的便携设置恢复为默认值，并另存原文件副本。"}}}},
     "Portable settings are missing. Default values are in use.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Portable settings are missing. Default values are in use."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "便携设置缺失，当前使用默认值。"}}}},
     "Portable settings use an older format. The existing file has been preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Portable settings use an older format. The existing file has been preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "便携设置使用较旧格式，原文件已保留。"}}}},
     "Portable settings use a newer format. The existing file has been preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Portable settings use a newer format. The existing file has been preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "便携设置使用较新格式，原文件已保留。"}}}},
@@ -39135,7 +39135,10 @@
           }
         }
       }
-    }
+    },
+    "Recover Default Appearance Configuration…" : {"extractionState": "manual", "generatesSymbol": false, "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover Default Appearance Configuration…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复默认文稿外观配置…"}}}},
+    "Recover Default Appearance Configuration?" : {"extractionState": "manual", "generatesSymbol": false, "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover Default Appearance Configuration?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复默认文稿外观配置？"}}}},
+    "Recover Default Appearance Configuration" : {"extractionState": "manual", "generatesSymbol": false, "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recover Default Appearance Configuration"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "恢复默认文稿外观配置"}}}}
   },
   "version" : "1.0"
 }

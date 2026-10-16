@@ -6,12 +6,20 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
     case workspace
     case document
     case writing
-    case agents
     case shortcuts
+    case agents
     case zotero
     case storage
 
     var id: String { rawValue }
+
+    /// These pages borrow the selected Triptych's existing Chat owner.
+    var needsChatController: Bool {
+        switch self {
+        case .writing, .agents, .zotero: true
+        case .workspace, .document, .shortcuts, .storage: false
+        }
+    }
 
     var toolbarTitle: LocalizedStringResource {
         switch self {
@@ -54,6 +62,7 @@ struct ScholiumSettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     private let preferences: SettingsPreferences
+    private let chatControllerProvider: @MainActor (UUID) -> AgentChatController?
     @AppStorage private var persistedPane: String
     @AppStorage private var navigationRevision: String
     @State private var searchRevision = 0
@@ -61,8 +70,12 @@ struct ScholiumSettingsView: View {
     @State private var destinationBeforeSearch: ScholiumSettingsDestination?
     @State private var searchQuery = ""
     @State private var searchTarget: SettingsSection?
-    init(preferences: SettingsPreferences = .standard) {
+    init(
+        preferences: SettingsPreferences = .standard,
+        chatControllerProvider: @escaping @MainActor (UUID) -> AgentChatController?
+    ) {
         self.preferences = preferences
+        self.chatControllerProvider = chatControllerProvider
         _persistedPane = AppStorage(
             wrappedValue: "workspace", "scholium.settings.selectedPane", store: preferences.defaults)
         _navigationRevision = AppStorage(
@@ -135,6 +148,12 @@ struct ScholiumSettingsView: View {
             identifier: "scholium.settings.pages"
         ) { item in
             settingsDetail(for: item)
+                .environment(
+                    \.agentChatSettingsController,
+                    item.needsChatController
+                        ? settingsModel.selectedTriptychID.flatMap { chatControllerProvider($0) }
+                        : nil
+                )
         }
         .environment(\.scholiumSettingsSearchTarget, searchTarget)
         .environment(\.scholiumSettingsSearchRevision, searchRevision)

@@ -150,7 +150,7 @@ private struct WorkspacePathEditor<Registration: View>: View {
                     )
                     WorkspaceFolderRow(
                         title: "Works",
-                        url: $outputURL
+                        url: outputURLBinding
                     )
                 }.disabled(!loadedCurrentValues)
 
@@ -223,19 +223,10 @@ private struct WorkspacePathEditor<Registration: View>: View {
         }
         .accessibilityIdentifier("scholium.triptychSetup")
         .onChange(of: targetAssignment) { _, _ in loadCurrentValuesIfNeeded() }
-        .task {
-            loadCurrentValuesIfNeeded()
-            await settingsModel.refresh()
-            loadCurrentValuesIfNeeded()
-            await loadPortableContainerIfAvailable()
-        }
-        .onChange(of: outputURL) { oldValue, newValue in
-            let oldParent = oldValue?.deletingLastPathComponent().standardizedFileURL.path
-            let newParent = newValue?.deletingLastPathComponent().standardizedFileURL.path
-            if oldParent != newParent {
-                portableContainerURL = nil
-            }
-            Task { await loadPortableContainerIfAvailable() }
+        .task { loadCurrentValuesIfNeeded() }
+        .task(id: outputURL) { [requestedOutputURL = outputURL] in
+            guard let requestedOutputURL else { return }
+            await loadPortableContainerIfAvailable(for: requestedOutputURL)
         }
     }
 
@@ -257,17 +248,25 @@ private struct WorkspacePathEditor<Registration: View>: View {
         loadedCurrentValues = true
         paperAnalysisURL = assignedURL(for: .paperAnalysis)
         topicKnowledgeURL = assignedURL(for: .topicKnowledge)
-        outputURL = assignedURL(for: .output)
+        updateOutputURL(assignedURL(for: .output))
         triptychName = targetAssignment?.triptych.name ?? ""
     }
 
-    private func loadPortableContainerIfAvailable() async {
-        guard let outputURL else {
-            portableContainerURL = nil
-            return
-        }
-        let registered = await settingsModel.portableContainerURL(for: outputURL)
-        guard self.outputURL?.standardizedFileURL == outputURL.standardizedFileURL else { return }
+    private var outputURLBinding: Binding<URL?> {
+        Binding(get: { outputURL }, set: { updateOutputURL($0) })
+    }
+
+    private func updateOutputURL(_ newValue: URL?) {
+        let oldParent = outputURL?.deletingLastPathComponent().standardizedFileURL.path
+        let newParent = newValue?.deletingLastPathComponent().standardizedFileURL.path
+        if oldParent != newParent { portableContainerURL = nil }
+        outputURL = newValue
+    }
+
+    private func loadPortableContainerIfAvailable(for requestedOutputURL: URL) async {
+        guard !Task.isCancelled else { return }
+        let registered = await settingsModel.portableContainerURL(for: requestedOutputURL)
+        guard !Task.isCancelled, outputURL == requestedOutputURL else { return }
         if let registered { portableContainerURL = registered }
     }
 

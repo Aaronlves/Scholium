@@ -25,8 +25,8 @@ One native preferences window opens through the App menu and Command-Comma.
 A native preferences toolbar below the window title presents the seven category
 items with system symbols and short visible labels. It remains visible and
 cannot be customized; the native selected item identifies the current pane.
-The short labels are Workspace, Document, Writing, Agents, Shortcuts, Zotero and
-Storage (工作区、文稿、写作、Agent、快捷键、Zotero、存储). Full category names retain their
+The short labels are Workspace, Document, Writing, Shortcuts, Agents, Zotero and
+Storage (工作区、文稿、写作、快捷键、智能体、Zotero、存储). Full category names retain their
 meaning in the window title, search results and accessible description; an
 accessible item name includes its visible label. All seven items remain visible
 at the supported minimum width in English and Simplified Chinese. Native
@@ -39,7 +39,7 @@ selection or scroll position in pages already opened in the settings session.
 Inactive pages have no keyboard, pointer or accessibility interaction.
 
 The toolbar presents seven task categories: Workspace, Document Appearance,
-Writing Assistance, Agents & Chat, Keyboard Shortcuts, Zotero and Storage.
+Writing Assistance, Keyboard Shortcuts, Agents & Chat, Zotero and Storage.
 Workspace owns Triptych registration, folder access and portable-data location.
 Storage owns machine-local App usage and cleanup, including Changes history.
 Document Appearance presents the
@@ -90,7 +90,14 @@ Choosing a toolbar category exits search and establishes a new browsing context.
 The selected pane makes its scope and any necessary target identity legible
 through its category, group and adjacent state labels before or beside the
 editable control. Group headings name related tasks or preferences, with common
-choices before optional detail. Reuse the window's category title instead of
+choices before optional detail. Workspace setup precedes portable recovery.
+Document Appearance puts Reading, Body Typography and Source Font before heading
+structure, text styles, CSS and configuration-file detail. Writing keeps the
+shared model before continuation effort and independent Selection Actions.
+Connection and Chat puts presentation, behavior and observed connection before
+read-access customization, with custom paths last. External Access puts observed
+setup status before read grants. Storage keeps each maintenance action beside its
+measured scope and distinct effect. Reuse the window's category title instead of
 adding a duplicate large heading. Short panes remain compact; each longer page
 has one primary vertical scroll plane without losing access to its scoped
 actions. Content reflows at narrow

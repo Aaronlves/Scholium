@@ -11,6 +11,12 @@ struct AgentChatCapabilitiesSettingsView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.scholiumSettingsDefaults) private var settingsDefaults
+    @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
+
+    private struct AutomaticRefreshRequest: Equatable {
+        let threadID: String?
+        let isActive: Bool
+    }
 
     @State private var pendingMethod: AgentChatMethod?
     @State private var pendingEnabled = false
@@ -221,7 +227,8 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
 
     private var statusSection: some View {
-        Section {
+        let request = AutomaticRefreshRequest(threadID: controller.selected?.threadID, isActive: isPaneActive)
+        return Section {
             HStack {
                 Text(zoteroOnly ? "Chat Connection" : "Runtime Status", bundle: .module).font(
                     .headline)
@@ -267,8 +274,9 @@ struct AgentChatCapabilitiesSettingsView: View {
                 }
             }
         }
-        .task(id: controller.selected?.threadID) {
-            capabilities.refresh(threadID: controller.selected?.threadID)
+        .task(id: request) {
+            guard request.isActive, !Task.isCancelled else { return }
+            capabilities.refresh(threadID: request.threadID)
         }
         .confirmationDialog(
             pendingAuthentication == nil

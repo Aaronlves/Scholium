@@ -29,6 +29,7 @@ pending_thread_preparations = []
 pending_interrupt_replies = []
 pending_logins = []
 pending_capability_tool_lists = []
+capability_request_records = []
 client_capabilities = {}
 tool_config_file = home / 'fixture-tool-config.json'
 
@@ -78,8 +79,20 @@ for line in sys.stdin:
                 tid = pending_questions.pop(request['id'])
                 event('serverRequest/resolved', {'threadId': tid, 'requestId': request['id']})
         continue
+    # Opt-in receipts for synthetic retained Settings consumer tests only.
+    if (home / 'record-capability-requests').exists() and method in (
+            'skills/list', 'mcpServerStatus/list', 'config/read'):
+        record = {'ordinal': len(capability_request_records) + 1,
+                  'requestID': str(request['id']), 'method': method,
+                  'threadID': params.get('threadId')}
+        capability_request_records.append(record)
+        with (home / 'capability-requests.jsonl').open('a', encoding='utf-8') as output:
+            output.write(json.dumps(record, ensure_ascii=False) + '\n')
     result = {}
-    if method == 'initialize':
+    if method == 'fixture/capabilityRequestReceipt':
+        result = {'recordCount': len(capability_request_records),
+                  'records': capability_request_records}
+    elif method == 'initialize':
         client_capabilities = params.get('capabilities', {})
     elif method == 'account/read':
         (home / 'last-account-read.json').write_text(json.dumps(params))

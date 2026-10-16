@@ -278,21 +278,22 @@ delayed keep/open checks runtime/owner identity. Kept text never persists.
 
 ### Settings authority
 
-Settings borrows capabilities. `WorkspaceRuntime` owns finite metadata reads,
-drained before shutdown releases scopes.
-Matching Handles remain authoritative; unopened reads borrow registered portable
-access without activating vaults, watchers or indexes. Core admits the manifest
-before identities/catalog/settings through anchored no-follow reads. Recovery
-retains the Handle's revision-bound writer.
-`WorkspaceSettingsModel` owns selection and request generations; snapshot reads
-bind captured assignments, cancelling mismatches. Confirmed snapshots retain
-identity/revision; stale recovery requires reload. `StorageSettingsModel` retains
-measurements/feedback; pane/target changes retire unconfirmed plans.
-Native hosts retain drafts; inactive panes exclude input, accessibility/default actions.
+Settings borrows capabilities; `WorkspaceRuntime` drains metadata reads
+before releasing scopes. Matching Handles remain authoritative. Unopened reads borrow
+registered portable access without vault/watcher/index activation;
+Core admits manifests before identities/catalog/settings through anchored
+no-follow reads. Recovery retains the Handle's revision-bound writer.
+`WorkspaceSettingsModel` owns selection/generations, captured-assignment reads and
+confirmed identity/revision; mismatches cancel, stale recovery reloads.
+Selected Writing/Agents/Zotero pages borrow the existing registry's Triptych
+controller; native hosts retain drafts. Active consumers own automatic reads;
+admitted shared work retains its owner.
+Inactive panes exclude input, accessibility/default actions. `StorageSettingsModel`
+retains measurements/feedback and retires unconfirmed plans on pane/target changes.
 Font discovery publishes names, coalesces invalidations and rejects stale results.
-Search/links/anchors share typed sections indexing static interface metadata,
-never research content or permission. AppKit owns toolbar, safe area and temporary
-result selection; SwiftUI owns category/query/destination.
+Search/links/anchors index static interface metadata, never research content or
+permission. AppKit owns toolbar/safe area/temporary result selection; SwiftUI owns
+category/query/destination.
 
 One command catalog/validated preference writer feeds menus. The hotkey adapter
 normalizes hardware events; the command-equivalent router matches document
