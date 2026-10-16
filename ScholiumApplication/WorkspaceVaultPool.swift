@@ -92,6 +92,7 @@ actor PooledWorkspaceVault {
     func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        await sourceCatalog.shutdown()
         let task = watcherTask
         watcherTask = nil
         watcherTaskToken = nil
@@ -120,10 +121,32 @@ actor PooledWorkspaceVault {
         }
         guard !rootAuthorityIsInvalid else { return }
         do {
-            try await sourceCatalog.apply(event)
-            publish(event)
+            var preparation: VaultSourceCatalogPreparation =
+                event.requiresFullRescan
+                ? .fullReconcile
+                : .delta(
+                    upserts: Set(event.added).union(event.modified), deletions: Set(event.deleted),
+                    refreshFolders: !event.added.isEmpty || !event.deleted.isEmpty)
+            while !isShutDown, !rootAuthorityIsInvalid {
+                let candidate = try await sourceCatalog.prepare(preparation)
+                guard !isShutDown, !rootAuthorityIsInvalid else { return }
+                if case .installed = try await sourceCatalog.install(candidate) {
+                    guard !isShutDown, !rootAuthorityIsInvalid else { return }
+                    publish(event)
+                    return
+                }
+                preparation = .fullReconcile
+            }
         } catch {
+            guard !Task.isCancelled, !isShutDown, !rootAuthorityIsInvalid else { return }
+            let descriptorRootIsInvalid = await repository.rootAuthorityIsInvalid
+            guard !Task.isCancelled, !isShutDown, !rootAuthorityIsInvalid else { return }
+            if descriptorRootIsInvalid || (error as? VaultSourceCatalogError) == .rootUnavailable {
+                await invalidateRootAuthority(sequence: event.sequence)
+                return
+            }
             await sourceCatalog.requireFullReconcile()
+            guard !Task.isCancelled, !isShutDown, !rootAuthorityIsInvalid else { return }
             publish(
                 .reconciliationRequired(
                     sequence: event.sequence,
@@ -146,7 +169,7 @@ actor PooledWorkspaceVault {
     private func invalidateRootAuthority(sequence: UInt64) async {
         guard !isShutDown, !rootAuthorityIsInvalid else { return }
         rootAuthorityIsInvalid = true
-        await sourceCatalog.requireFullReconcile()
+        await sourceCatalog.invalidateRootAuthority()
         publish(
             .reconciliationRequired(
                 sequence: sequence,

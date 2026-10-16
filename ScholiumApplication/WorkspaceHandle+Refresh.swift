@@ -20,6 +20,26 @@ struct WorkspaceRefreshSourceAuthority {
     var publicationStarted: ContinuousClock.Instant?
 }
 
+private struct SourceCatalogPreparationMeasurement {
+    var duration = Duration.zero
+    var installationLeaseDuration = Duration.zero
+    var longestInstallationLeaseDuration = Duration.zero
+
+    mutating func merge(_ other: Self) {
+        duration += other.duration
+        installationLeaseDuration += other.installationLeaseDuration
+        longestInstallationLeaseDuration = max(longestInstallationLeaseDuration, other.longestInstallationLeaseDuration)
+    }
+}
+
+private struct PreparedSourceCohort {
+    let snapshots: [UUID: VaultSourceCatalogSnapshot]
+    let lease: WorkspaceSourceOperationLease
+    let captureStarted: ContinuousClock.Instant
+    let gateWaitDuration: Duration
+    let preparation: SourceCatalogPreparationMeasurement
+}
+
 private enum WorkspaceRefreshPreparationError: Error {
     case superseded
 }
@@ -310,35 +330,16 @@ extension WorkspaceHandle {
             throw error
         }
         let indexGenerationWaitDuration = cycleStart.duration(to: clock.now)
-        let gateWaitStart = clock.now
-        let refreshLease = try await beginRefreshCycle()
-        let gateWaitDuration = gateWaitStart.duration(to: clock.now)
         precondition(refreshSourceAuthority == nil)
         let authorityID = UUID()
-        refreshSourceAuthority = WorkspaceRefreshSourceAuthority(
-            id: authorityID, sourceToken: sourceAuthorityToken, lease: refreshLease,
-            captureStarted: clock.now)
-        defer { endRefreshSourceAuthority(id: authorityID) }
-        if mode == .live,
-            case .liveInventory = payload.publication,
-            case .none = payload.sourceCatalogPreparation,
-            currentSnapshot.phase.isComplete,
-            !derivedStateRequiresRefresh,
-            currentSnapshot.research.healthIssues.isEmpty
-        {
-            // A live request can wait behind a source commit that already
-            // publishes its complete inputs. Revalidate while holding the
-            // existing source lease before allocating another graph generation.
-            let changed = await sourceInventoryChanges(
-                vaultIDs: Set(assignment.vaults.values.map(\.id))
-            )
-            try Task.checkCancellation()
-            try requireActive()
-            try requireRootAuthoritiesAvailable()
-            if changed.isEmpty {
-                return currentSnapshot
+        defer {
+            if refreshSourceAuthority?.id == authorityID {
+                endRefreshSourceAuthority(id: authorityID)
             }
         }
+        if try await canSkipLiveInventoryRefresh(payload) { return currentSnapshot }
+        var gateWaitDuration = Duration.zero
+        var catalogPreparation = SourceCatalogPreparationMeasurement()
         var snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
         let sourcePreparationDuration: Duration
@@ -347,24 +348,30 @@ extension WorkspaceHandle {
             guard currentSnapshot.sourceInventoryRevision < UInt64.max else {
                 throw WorkspaceRefreshCycleError.sourceInventoryRevisionExhausted
             }
-            let preparationStart = clock.now
-            if mode == .live,
-                !currentSnapshot.phase.isComplete,
-                !didCompleteActivationReconciliation
-            {
+            let completesActivation =
+                mode == .live
+                && !currentSnapshot.phase.isComplete && !didCompleteActivationReconciliation
+            if completesActivation {
                 await progressiveActivationReconciliationBarrierForTesting?()
                 try Task.checkCancellation()
                 try requireActive()
-                // Observation already owns all three Vault streams. Complete
-                // one full post-observation reconciliation before the first
-                // complete snapshot can be built or published, closing the
-                // initial-open blind interval as one completion boundary.
-                try await prepareSourceCatalogs(.fullReconcile)
-                didCompleteActivationReconciliation = true
-            } else {
-                try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
             }
-            sourcePreparationDuration = preparationStart.duration(to: clock.now)
+            let cohort: PreparedSourceCohort
+            if currentSnapshot.phase.isComplete {
+                cohort = try await prepareCompleteSourceCohort(payload.sourceCatalogPreparation)
+                catalogPreparation = cohort.preparation
+            } else {
+                catalogPreparation = try await prepareSourceCatalogs(
+                    completesActivation ? .fullReconcile : payload.sourceCatalogPreparation)
+                cohort = try await capturePreparedSourceCohort()
+                catalogPreparation.merge(cohort.preparation)
+            }
+            sourcePreparationDuration = catalogPreparation.duration
+            gateWaitDuration = cohort.gateWaitDuration
+            refreshSourceAuthority = WorkspaceRefreshSourceAuthority(
+                id: authorityID, sourceToken: sourceAuthorityToken, lease: cohort.lease,
+                captureStarted: cohort.captureStarted)
+            if completesActivation { didCompleteActivationReconciliation = true }
             guard nextGraphGeneration < Int.max else {
                 throw WorkspaceRefreshCycleError.graphGenerationExhausted
             }
@@ -396,6 +403,7 @@ extension WorkspaceHandle {
                 assignment: assignment,
                 mode: mode,
                 dependencies: dependencies,
+                sourceSnapshots: cohort.snapshots,
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration,
             )
@@ -413,7 +421,8 @@ extension WorkspaceHandle {
             // cancellation and unavailable root authority keep their meaning.
             if !Task.isCancelled, !isShutDown, unavailableRootVaultIDs.isEmpty,
                 let authority = refreshSourceAuthority, authority.id == authorityID,
-                authority.sourceToken != sourceAuthorityToken
+                authority.sourceToken != sourceAuthorityToken,
+                await permitsSupersededSourceRecapture(after: error)
             {
                 throw WorkspaceRefreshPreparationError.superseded
             }
@@ -466,6 +475,8 @@ extension WorkspaceHandle {
             indexGenerationWaitDuration: indexGenerationWaitDuration,
             gateWaitDuration: gateWaitDuration,
             sourcePreparationDuration: sourcePreparationDuration,
+            sourceCatalogInstallationLeaseDuration: catalogPreparation.installationLeaseDuration,
+            longestSourceCatalogInstallationLeaseDuration: catalogPreparation.longestInstallationLeaseDuration,
             sourceCaptureLeaseDuration: authority?.captureDuration ?? .zero,
             buildDuration: buildDuration,
             publicationGateWaitDuration: authority?.publicationGateWaitDuration ?? .zero,
@@ -536,55 +547,295 @@ extension WorkspaceHandle {
         )
     }
 
+    private func canSkipLiveInventoryRefresh(_ payload: WorkspaceRefreshPayload) async throws -> Bool {
+        guard mode == .live,
+            case .liveInventory = payload.publication,
+            case .none = payload.sourceCatalogPreparation,
+            currentSnapshot.phase.isComplete,
+            !derivedStateRequiresRefresh,
+            currentSnapshot.research.healthIssues.isEmpty
+        else { return false }
+        let lease = try await beginRefreshCycle()
+        defer { releaseWorkspaceSourceOperation(lease) }
+        let changed = await sourceInventoryChanges(vaultIDs: Set(assignment.vaults.values.map(\.id)))
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        return changed.isEmpty
+    }
+
+    /// A complete workspace has no intervening Library-readiness publication.
+    /// Prepare all candidates without source authority, then install and admit
+    /// their immutable snapshots under the one lease retained by identity
+    /// capture. No validated installation is reread through a second admission.
+    private func prepareCompleteSourceCohort(
+        _ preparation: SourceCatalogPreparation
+    ) async throws -> PreparedSourceCohort {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var requested = mode == .snapshot ? SourceCatalogPreparation.fullReconcile : preparation
+        var measurement = SourceCatalogPreparationMeasurement()
+        var gateWaitDuration = Duration.zero
+        while true {
+            try Task.checkCancellation()
+            try requireActive()
+            try requireRootAuthoritiesAvailable()
+            let tokenBeforePreparation = sourceAuthorityToken
+            var candidates: [(vaultID: UUID, catalog: VaultSourceCatalog, update: VaultSourceCatalog.PreparedUpdate)] = []
+            do {
+                for slot in WorkspaceVaultSlot.allCases {
+                    guard let vault = assignment.vault(for: slot),
+                        let catalog = services.sourceCatalogs[vault.id]
+                    else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
+                    let update: VaultSourceCatalogPreparation
+                    switch requested {
+                    case .fullReconcile:
+                        update = .fullReconcile
+                    case .none:
+                        update = .ifNeeded
+                    case .delta(let changes):
+                        if let change = changes[vault.id] {
+                            update = .delta(
+                                upserts: change.upserts, deletions: change.deletions,
+                                refreshFolders: change.refreshFolders)
+                        } else {
+                            update = .ifNeeded
+                        }
+                    }
+                    let candidate = try await catalog.prepare(update)
+                    candidates.append((vault.id, catalog, candidate))
+                    #if DEBUG
+                        await preparedSourceCatalogBarrierForTesting?(vault.id)
+                    #endif
+                }
+            } catch {
+                if !Task.isCancelled, !isShutDown, unavailableRootVaultIDs.isEmpty,
+                    tokenBeforePreparation != sourceAuthorityToken,
+                    await permitsSupersededSourceRecapture(after: error)
+                {
+                    requested = .fullReconcile
+                    continue
+                }
+                throw error
+            }
+
+            let waitStart = clock.now
+            let lease = try await beginRefreshCycle()
+            gateWaitDuration += waitStart.duration(to: clock.now)
+            let captureStarted = clock.now
+            var retainsLease = false
+            defer {
+                if !retainsLease { releaseWorkspaceSourceOperation(lease) }
+            }
+            var snapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
+            var superseded = false
+            for candidate in candidates {
+                switch try await candidate.catalog.install(candidate.update, consumePendingMeasurement: true) {
+                case .superseded:
+                    superseded = true
+                case .installed(let snapshot):
+                    snapshots[candidate.vaultID] = snapshot
+                }
+                if superseded { break }
+            }
+            let held = captureStarted.duration(to: clock.now)
+            measurement.installationLeaseDuration += held
+            measurement.longestInstallationLeaseDuration = max(measurement.longestInstallationLeaseDuration, held)
+            try Task.checkCancellation()
+            try requireActive()
+            try requireRootAuthoritiesAvailable()
+            if superseded {
+                requested = .fullReconcile
+                continue
+            }
+            measurement.duration = start.duration(to: clock.now)
+            retainsLease = true
+            return PreparedSourceCohort(
+                snapshots: snapshots, lease: lease, captureStarted: captureStarted,
+                gateWaitDuration: gateWaitDuration, preparation: measurement)
+        }
+    }
+
+    /// Semantic preparation owns only immutable candidates. Source authority
+    /// is acquired for fresh installation and the corresponding readiness
+    /// publication, so an already available Library can continue saving.
     private func prepareSourceCatalogs(
         _ preparation: SourceCatalogPreparation
-    ) async throws {
-        // Snapshot runtimes have no native watcher. Every publication must
-        // therefore stat-reconcile all three catalogs so an external addition,
-        // deletion, or unreadable source in another vault cannot be hidden by
-        // an otherwise precise local mutation. Unchanged notes are not read or
-        // reparsed because SourceVersion remains the cache gate.
-        if mode == .snapshot {
-            for catalog in services.sourceCatalogs.values {
-                try await catalog.reconcile()
-            }
-            return
-        }
-        switch preparation {
+    ) async throws -> SourceCatalogPreparationMeasurement {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var measurement = SourceCatalogPreparationMeasurement()
+        let effective: SourceCatalogPreparation = mode == .snapshot ? .fullReconcile : preparation
+        switch effective {
         case .fullReconcile:
-            for slot in WorkspaceVaultSlot.allCases {
-                guard let vault = assignment.vault(for: slot),
-                    let catalog = services.sourceCatalogs[vault.id]
-                else {
+            var slots = WorkspaceVaultSlot.allCases
+            if !currentSnapshot.phase.isComplete, let selected = currentSnapshot.vaults.first?.slot {
+                slots.removeAll { $0 == selected }
+                slots.insert(selected, at: 0)
+            }
+            for slot in slots {
+                guard let vault = assignment.vault(for: slot) else {
                     throw ScholiumApplicationError.incompleteTriptych(assignment.id)
                 }
-                try await catalog.reconcile()
-                if !currentSnapshot.phase.isComplete {
-                    let source = try await WorkspaceSnapshotBuilder.buildOpening(
-                        assignment: assignment,
-                        mode: mode,
-                        dependencies: services.snapshotBuilderDependencies,
-                        availableVault: slot,
-                        workspaceGeneration: latestRefreshMeasurement.workspaceGeneration,
-                        consumePendingMeasurement: false
-                    )
-                    try await publishOpeningSourceReadiness(source.snapshot)
-                }
+                measurement.merge(try await prepareSourceCatalog(vaultID: vault.id, preparation: .fullReconcile))
             }
         case .none:
             break
         case .delta(let changes):
-            for (vaultID, change) in changes {
-                guard let catalog = services.sourceCatalogs[vaultID] else {
-                    throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
-                }
-                try await catalog.apply(
-                    upserts: change.upserts,
-                    deletions: change.deletions,
-                    refreshFolders: change.refreshFolders
-                )
+            for vaultID in changes.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
+                guard let change = changes[vaultID] else { continue }
+                measurement.merge(
+                    try await prepareSourceCatalog(
+                        vaultID: vaultID,
+                        preparation: .delta(upserts: change.upserts, deletions: change.deletions, refreshFolders: change.refreshFolders)))
             }
         }
+        measurement.duration = start.duration(to: clock.now)
+        return measurement
+    }
+
+    private func prepareSourceCatalog(
+        vaultID: UUID,
+        preparation: VaultSourceCatalogPreparation
+    ) async throws -> SourceCatalogPreparationMeasurement {
+        guard let catalog = services.sourceCatalogs[vaultID],
+            let slot = WorkspaceVaultSlot.allCases.first(where: { assignment.vault(for: $0)?.id == vaultID })
+        else { throw ScholiumApplicationError.vaultNotInWorkspace(vaultID) }
+        let clock = ContinuousClock()
+        let start = clock.now
+        var measurement = SourceCatalogPreparationMeasurement()
+        var requested = preparation
+        while true {
+            try Task.checkCancellation()
+            try requireActive()
+            try requireRootAuthoritiesAvailable()
+            let tokenBeforePreparation = sourceAuthorityToken
+            let candidate: VaultSourceCatalog.PreparedUpdate
+            do {
+                candidate = try await catalog.prepare(requested)
+            } catch {
+                if !Task.isCancelled, !isShutDown, unavailableRootVaultIDs.isEmpty,
+                    tokenBeforePreparation != sourceAuthorityToken,
+                    await permitsSupersededSourceRecapture(after: error)
+                {
+                    requested = .fullReconcile
+                    continue
+                }
+                throw error
+            }
+            #if DEBUG
+                await preparedSourceCatalogBarrierForTesting?(vaultID)
+            #endif
+            let lease = try await beginRefreshCycle()
+            let leaseStart = clock.now
+            do {
+                switch try await catalog.install(candidate) {
+                case .superseded:
+                    break
+                case .installed(let snapshot):
+                    if mode == .live, !currentSnapshot.phase.isComplete {
+                        let opening = try await WorkspaceSnapshotBuilder.buildOpening(
+                            assignment: assignment, mode: mode,
+                            dependencies: services.snapshotBuilderDependencies,
+                            availableVault: slot, sourceSnapshot: snapshot,
+                            workspaceGeneration: latestRefreshMeasurement.workspaceGeneration)
+                        if try await catalog.validate(snapshot) == .superseded {
+                            break
+                        }
+                        try await publishOpeningSourceReadiness(opening.snapshot)
+                    }
+                    let held = leaseStart.duration(to: clock.now)
+                    measurement.installationLeaseDuration += held
+                    measurement.longestInstallationLeaseDuration = max(measurement.longestInstallationLeaseDuration, held)
+                    releaseWorkspaceSourceOperation(lease)
+                    measurement.duration = start.duration(to: clock.now)
+                    return measurement
+                }
+                let held = leaseStart.duration(to: clock.now)
+                measurement.installationLeaseDuration += held
+                measurement.longestInstallationLeaseDuration = max(measurement.longestInstallationLeaseDuration, held)
+                releaseWorkspaceSourceOperation(lease)
+                requested = .fullReconcile
+            } catch {
+                releaseWorkspaceSourceOperation(lease)
+                throw error
+            }
+        }
+    }
+
+    /// A save may have committed in a prepared Library while another one was
+    /// parsing, before its watcher event arrived. Validate the installed
+    /// cohort before establishing the token used by derived publication.
+    private func capturePreparedSourceCohort() async throws -> PreparedSourceCohort {
+        let clock = ContinuousClock()
+        var repeatedPreparation = SourceCatalogPreparationMeasurement()
+        var gateWaitDuration = Duration.zero
+        while true {
+            let waitStart = clock.now
+            let lease = try await beginRefreshCycle()
+            gateWaitDuration += waitStart.duration(to: clock.now)
+            let captureStarted = clock.now
+            var snapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
+            var stale: [UUID] = []
+            do {
+                for slot in WorkspaceVaultSlot.allCases {
+                    guard let vault = assignment.vault(for: slot),
+                        let catalog = services.sourceCatalogs[vault.id]
+                    else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
+                    do {
+                        let snapshot = try await catalog.snapshot(consumePendingMeasurement: true)
+                        if try await catalog.validate(snapshot) == .current {
+                            snapshots[vault.id] = snapshot
+                        } else {
+                            stale.append(vault.id)
+                        }
+                    } catch VaultSourceCatalogError.preparationRequired {
+                        stale.append(vault.id)
+                    }
+                }
+                try Task.checkCancellation()
+                try requireActive()
+                try requireRootAuthoritiesAvailable()
+                if stale.isEmpty {
+                    return PreparedSourceCohort(
+                        snapshots: snapshots, lease: lease, captureStarted: captureStarted,
+                        gateWaitDuration: gateWaitDuration, preparation: repeatedPreparation)
+                }
+                releaseWorkspaceSourceOperation(lease)
+            } catch {
+                releaseWorkspaceSourceOperation(lease)
+                throw error
+            }
+            for vaultID in stale {
+                repeatedPreparation.merge(try await prepareSourceCatalog(vaultID: vaultID, preparation: .fullReconcile))
+            }
+        }
+    }
+
+    /// A changed source token can supersede an uncertain old read, but cannot
+    /// retire a real authority or permission failure. Every replacement
+    /// attempt still performs fresh descriptor reads and candidate validation.
+    private func permitsSupersededSourceRecapture(after error: Error) async -> Bool {
+        if error is CancellationError { return false }
+        if let error = error as? VaultRepositoryError {
+            switch error {
+            case .rootUnavailable, .outsideVault, .invalidRelativePath, .notRegularFile, .markdownRequired:
+                return false
+            default: break
+            }
+        }
+        if let error = error as? VaultSourceCatalogError {
+            switch error {
+            case .rootUnavailable, .shutDown, .foreignPreparation: return false
+            default: break
+            }
+        }
+        if let error = error as? POSIXError, error.code == .EACCES || error.code == .EPERM { return false }
+        if let error = error as? CocoaError, error.code == .fileReadNoPermission { return false }
+        for repository in services.repositories.values {
+            if await repository.rootAuthorityIsInvalid { return false }
+        }
+        return !Task.isCancelled && !isShutDown && unavailableRootVaultIDs.isEmpty
     }
 
     static func catalogPreparation(

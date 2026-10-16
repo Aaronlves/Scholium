@@ -729,6 +729,8 @@ extension LargeVaultStressDiagnosticTests {
             record["index_generation_wait_ms"] = milliseconds(cycle.indexGenerationWaitDuration)
             record["gate_wait_ms"] = milliseconds(cycle.gateWaitDuration)
             record["source_capture_lease_ms"] = milliseconds(cycle.sourceCaptureLeaseDuration)
+            record["source_catalog_installation_leases_ms"] = milliseconds(cycle.sourceCatalogInstallationLeaseDuration)
+            record["longest_source_catalog_installation_lease_ms"] = milliseconds(cycle.longestSourceCatalogInstallationLeaseDuration)
             record["publication_gate_wait_ms"] = milliseconds(cycle.publicationGateWaitDuration)
             record["review_initialization_ms"] = milliseconds(cycle.reviewInitializationDuration)
             record["publication_lease_ms"] = milliseconds(cycle.publicationLeaseDuration)

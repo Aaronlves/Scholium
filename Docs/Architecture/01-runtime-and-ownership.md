@@ -78,16 +78,17 @@ versions before publication; readers retain committed generations. Cached projec
 require fresh changed-row reads and fingerprints. Vault preparation overlaps;
 Graph, Search synchronization and publication remain ordered.
 
-One refresh coordinator serializes derived generations. One source-operation gate
-protects source/identity capture and publication; immutable Graph/Search
-preparation holds no source lease. Source transactions advance a Handle-owned
-authority token. Final admission reacquires the gate and validates the token before
-SourceVersion checks and SQL commit, retaining it through App publication.
-Superseded work recaptures current inputs after rollback. Cohorts retain
-publication kind and requested paths; one waiter's cancellation cannot cancel
-another. Cancellation before gate acquisition removes the waiter; afterwards a
-source transaction must finish or recover. Monotonic index generations reject stale
-publication across reopen and connections. Failure retains the last complete snapshot/index.
+One coordinator serializes generations. Background catalog preparation
+produces immutable candidates outside the source-operation gate; validated
+owner-token CAS installs them. Reads never reconcile implicitly. The gate
+protects readiness, source/identity capture, explicit moves and final publication.
+Cohort validation precedes identity capture, then Graph/Search outside the gate.
+Source transactions advance a Handle-owned token; final admission
+rechecks it before SourceVersion validation and SQL commit, retaining authority
+through App publication. Superseded work recaptures after rollback. Cohorts retain
+publication kind and paths; waiter cancellation cannot cancel another caller.
+Admitted source transactions finish or recover. Monotonic generations reject stale
+reopened publication; failure retains the last complete snapshot/index.
 
 Authoritative source completion is distinct from derived publication. Autosave
 commit and direct creation return proven source/identity before background

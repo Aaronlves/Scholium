@@ -2,9 +2,19 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-private enum VaultSourceCatalogError: Error {
+enum VaultSourceCatalogError: Error, Equatable {
     case generationExhausted
     case incompleteAuthorization(String)
+    case preparationRequired
+    case rootUnavailable
+    case shutDown
+    case foreignPreparation
+}
+
+enum VaultSourceCatalogPreparation: Sendable {
+    case fullReconcile
+    case delta(upserts: Set<String>, deletions: Set<String>, refreshFolders: Bool)
+    case ifNeeded
 }
 
 struct VaultSourceCatalogMeasurement: Equatable, Sendable {
@@ -17,6 +27,8 @@ struct VaultSourceCatalogMeasurement: Equatable, Sendable {
 }
 
 struct VaultSourceCatalogSnapshot: Sendable {
+    fileprivate let catalogID: UUID
+    fileprivate let stateToken: UUID
     let generation: UInt64
     let projections: [WorkspaceSourceProjection]
     let sourceVersions: [String: SourceVersion]
@@ -39,7 +51,7 @@ struct VaultSourceCatalogPublicationInventory: Sendable {
 /// Markdown remains authority; only exact-revision compact projections remain
 /// resident after each authorized source read and semantic parse.
 actor VaultSourceCatalog {
-    private struct Record: Sendable {
+    fileprivate struct Record: Sendable {
         let projection: WorkspaceSourceProjection
         let version: SourceVersion
         let fileMetadata: WorkspaceFileMetadata
@@ -58,9 +70,42 @@ actor VaultSourceCatalog {
         let authorizedRecord: AuthorizedRecord
     }
 
+    struct PreparedUpdate: Sendable {
+        fileprivate let catalogID: UUID
+        fileprivate let stateToken: UUID
+        fileprivate let records: [String: Record]
+        fileprivate let folders: [VaultRelativeFolderPath]
+        fileprivate let changed: Bool
+        fileprivate let measurement: VaultSourceCatalogMeasurement
+        fileprivate let cacheCleanup: CacheCleanup
+    }
+
+    fileprivate enum CacheCleanup: Sendable {
+        case prune
+        case invalidate(Set<String>)
+        case none
+    }
+
+    enum Installation: Sendable {
+        case installed(VaultSourceCatalogSnapshot)
+        case superseded
+    }
+
+    enum Validation: Equatable, Sendable {
+        case current
+        case superseded
+    }
+
+    private enum Lifecycle {
+        case active, rootUnavailable, shutDown
+    }
+
     private let repository: VaultRepository
     private let searchProjectionCache: SourceSearchProjectionCache?
     private let processingBudget: VaultSourceProcessingBudget
+    private let catalogID = UUID()
+    private var stateToken = UUID()
+    private var lifecycle = Lifecycle.active
     private var records: [String: Record] = [:]
     private var folders: [VaultRelativeFolderPath] = []
     private var generation: UInt64 = 0
@@ -76,6 +121,13 @@ actor VaultSourceCatalog {
     )
     private var lastMeasurement = VaultSourceCatalog.emptyMeasurement
     private var pendingMeasurement = VaultSourceCatalog.emptyMeasurement
+    #if DEBUG
+        private var validationBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setValidationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            validationBarrierForTesting = barrier
+        }
+    #endif
 
     init(
         repository: VaultRepository,
@@ -98,208 +150,245 @@ actor VaultSourceCatalog {
         )
     }
 
-    func snapshot(
-        refreshFolders: Bool = true,
-        consumePendingMeasurement: Bool = false
-    ) async throws -> VaultSourceCatalogSnapshot {
-        try await prepareSnapshot(refreshFolders: refreshFolders)
-        let measurement =
-            consumePendingMeasurement
-            ? pendingMeasurement
-            : lastMeasurement
-        if consumePendingMeasurement {
-            pendingMeasurement = Self.emptyMeasurement
-        }
+    /// Reads only the installed complete catalog. Preparation is always an
+    /// explicit caller-owned operation and never begins behind a read API.
+    func snapshot(consumePendingMeasurement: Bool = false) throws -> VaultSourceCatalogSnapshot {
+        try requirePrepared()
+        let measurement = consumePendingMeasurement ? pendingMeasurement : lastMeasurement
+        if consumePendingMeasurement { pendingMeasurement = Self.emptyMeasurement }
         return makeSnapshot(measurement: measurement)
     }
 
-    /// The live-source checks only need path and exact revision. Keep their
-    /// projection inside the catalog so they do not construct a full snapshot
-    /// (ordered documents, source versions, file metadata, and semantics).
-    func sourceInventory(
-        refreshFolders: Bool = true
-    ) async throws -> [String: DocumentFingerprint] {
-        try await prepareSnapshot(refreshFolders: refreshFolders)
+    func sourceInventory() throws -> [String: DocumentFingerprint] {
+        try requirePrepared()
         return records.mapValues { $0.projection.fingerprint }
     }
 
-    func publicationInventory() async throws -> VaultSourceCatalogPublicationInventory {
-        try await prepareSnapshot(refreshFolders: false)
+    func publicationInventory() throws -> VaultSourceCatalogPublicationInventory {
+        try requirePrepared()
         return VaultSourceCatalogPublicationInventory(
             fingerprints: records.mapValues { $0.projection.fingerprint },
             fileMetadata: records.mapValues(\.fileMetadata),
-            folders: folders
-        )
+            folders: folders)
     }
 
-    func sourceVersion(
-        relativePath: String,
-        fingerprint: DocumentFingerprint
-    ) -> SourceVersion? {
-        guard let record = records[relativePath],
-            record.projection.fingerprint == fingerprint
+    func sourceVersion(relativePath: String, fingerprint: DocumentFingerprint) -> SourceVersion? {
+        guard case .active = lifecycle, isInitialized, !needsFullReconcile,
+            let record = records[relativePath], record.projection.fingerprint == fingerprint
         else { return nil }
         return record.version
     }
 
-    private func prepareSnapshot(refreshFolders: Bool) async throws {
-        if !isInitialized || needsFullReconcile {
-            try await reconcile()
-        } else {
-            if refreshFolders {
-                let observedFolders = try await repository.folderRelativePaths()
-                if observedFolders != folders {
-                    try advanceGeneration()
-                    folders = observedFolders
+    /// Captures the actor's base state before its first suspension. Descriptor
+    /// reads and semantic parsing produce a local immutable candidate; they
+    /// neither replace the catalog nor acquire Application source authority.
+    func prepare(_ preparation: VaultSourceCatalogPreparation) async throws -> PreparedUpdate {
+        do {
+            try requireActive()
+            let baseToken = stateToken
+            let existingRecords = records
+            let existingFolders = folders
+            let initialized = isInitialized
+            let requiresReconcile = needsFullReconcile
+            let request: VaultSourceCatalogPreparation =
+                !initialized || requiresReconcile ? .fullReconcile : preparation
+            let clock = ContinuousClock()
+            let enumerationStart = clock.now
+            let candidates: [String]
+            let observedFolders: [VaultRelativeFolderPath]
+            let enumeratedFiles: Int
+            let cacheCleanup: CacheCleanup
+            switch request {
+            case .fullReconcile:
+                let paths = try await repository.markdownRelativePaths()
+                observedFolders = try await repository.folderRelativePaths()
+                candidates = Set(paths).union(existingRecords.keys).sorted()
+                enumeratedFiles = paths.count
+                cacheCleanup = .prune
+            case .delta(let upserts, let deletions, let refreshFolders):
+                candidates = deletions.union(upserts).filter { (try? MarkdownRelativePath($0)) != nil }.sorted()
+                if refreshFolders {
+                    observedFolders = try await repository.folderRelativePaths()
+                } else {
+                    observedFolders = existingFolders
+                }
+                enumeratedFiles = 0
+                cacheCleanup = .invalidate(Set(candidates))
+            case .ifNeeded:
+                candidates = []
+                observedFolders = existingFolders
+                enumeratedFiles = 0
+                cacheCleanup = .none
+            }
+            let enumerationDuration = enumerationStart.duration(to: clock.now)
+            let authorizations = try await authorizeCandidates(candidates, existingRecords: existingRecords)
+            var nextRecords = existingRecords
+            var changed = !initialized || observedFolders != existingFolders
+            var readFiles = 0
+            var parsedDocuments = 0
+            var readDuration = Duration.zero
+            var parseDuration = Duration.zero
+            for path in candidates {
+                try Task.checkCancellation()
+                guard let authorized = authorizations[path] else {
+                    throw VaultSourceCatalogError.incompleteAuthorization(path)
+                }
+                readDuration += authorized.readDuration
+                parseDuration += authorized.parseDuration
+                if authorized.didRead { readFiles += 1 }
+                if authorized.didParse { parsedDocuments += 1 }
+                if let record = authorized.record {
+                    nextRecords[path] = record
+                    if authorized.didRead { changed = true }
+                } else {
+                    nextRecords[path] = nil
+                    if existingRecords[path] != nil { changed = true }
                 }
             }
-        }
-    }
-
-    func reconcile() async throws {
-        let clock = ContinuousClock()
-        let enumerationStart = clock.now
-        let paths = try await repository.markdownRelativePaths()
-        let observedFolders = try await repository.folderRelativePaths()
-        let enumerationDuration = enumerationStart.duration(to: clock.now)
-        let pathSet = Set(paths)
-        var changed = !isInitialized || observedFolders != folders
-        var nextRecords = records
-        var readFiles = 0
-        var parsedDocuments = 0
-        var readDuration = Duration.zero
-        var parseDuration = Duration.zero
-
-        let candidates = pathSet.union(nextRecords.keys).sorted()
-        let authorizations = try await authorizeCandidates(
-            candidates,
-            existingRecords: nextRecords
-        )
-        for path in candidates {
-            try Task.checkCancellation()
-            let existing = nextRecords[path]
-            guard let authorized = authorizations[path] else {
-                throw VaultSourceCatalogError.incompleteAuthorization(path)
-            }
-            readDuration += authorized.readDuration
-            parseDuration += authorized.parseDuration
-            if authorized.didRead { readFiles += 1 }
-            if authorized.didParse { parsedDocuments += 1 }
-            if let record = authorized.record {
-                nextRecords[path] = record
-                if authorized.didRead { changed = true }
-            } else {
-                nextRecords[path] = nil
-                if existing != nil { changed = true }
-            }
-        }
-
-        if changed { try advanceGeneration() }
-        records = nextRecords
-        folders = observedFolders
-        isInitialized = true
-        needsFullReconcile = false
-        searchProjectionCache?.prune(currentPaths: Set(nextRecords.keys))
-        record(
-            VaultSourceCatalogMeasurement(
-                enumeratedFiles: paths.count,
-                readFiles: readFiles,
-                parsedDocuments: parsedDocuments,
-                enumerationDuration: enumerationDuration,
-                readDuration: readDuration,
-                parseDuration: parseDuration
-            ))
-    }
-
-    func apply(
-        upserts: Set<String>,
-        deletions: Set<String>,
-        refreshFolders: Bool
-    ) async throws {
-        var changed = false
-        var nextRecords = records
-        var readFiles = 0
-        var parsedDocuments = 0
-        let clock = ContinuousClock()
-        var enumerationDuration = Duration.zero
-        var readDuration = Duration.zero
-        var parseDuration = Duration.zero
-        for path in deletions.union(upserts).sorted() {
-            try Task.checkCancellation()
-            guard (try? MarkdownRelativePath(path)) != nil else { continue }
-            let existing = nextRecords[path]
-            let authorized = try await authorizedRecord(
-                relativePath: path,
-                existing: existing
-            )
-            readDuration += authorized.readDuration
-            parseDuration += authorized.parseDuration
-            if authorized.didRead { readFiles += 1 }
-            if authorized.didParse { parsedDocuments += 1 }
-            if let record = authorized.record {
-                nextRecords[path] = record
-                if authorized.didRead { changed = true }
-            } else {
-                nextRecords[path] = nil
-                if existing != nil { changed = true }
-            }
-        }
-        var nextFolders = folders
-        if refreshFolders {
-            let folderStart = clock.now
-            nextFolders = try await repository.folderRelativePaths()
-            enumerationDuration = folderStart.duration(to: clock.now)
-            if nextFolders != folders { changed = true }
-        }
-        if changed { try advanceGeneration() }
-        records = nextRecords
-        folders = nextFolders
-        for path in deletions.union(upserts) where nextRecords[path] == nil {
-            searchProjectionCache?.invalidate(path: path)
-        }
-        record(
-            VaultSourceCatalogMeasurement(
-                enumeratedFiles: 0,
-                readFiles: readFiles,
-                parsedDocuments: parsedDocuments,
-                enumerationDuration: enumerationDuration,
-                readDuration: readDuration,
-                parseDuration: parseDuration
-            ))
-    }
-
-    func apply(_ event: VaultWatchEvent) async throws {
-        guard !event.rootChanged else {
-            needsFullReconcile = true
-            throw WorkspaceFileEventWatcherError.rootUnavailable(
-                await repository.vaultURL.path
-            )
-        }
-        guard isInitialized, !event.requiresFullRescan else {
-            try await reconcile()
-            return
-        }
-        do {
-            try await apply(
-                upserts: Set(event.added).union(event.modified),
-                deletions: Set(event.deleted),
-                refreshFolders: !event.added.isEmpty || !event.deleted.isEmpty
-            )
-        } catch {
-            // A partial event application is never published. The next
-            // attempt must reconcile from authority rather than treating the
-            // failed delta as complete.
-            needsFullReconcile = true
+            try requireActive()
+            return PreparedUpdate(
+                catalogID: catalogID, stateToken: baseToken,
+                records: nextRecords, folders: observedFolders, changed: changed,
+                measurement: VaultSourceCatalogMeasurement(
+                    enumeratedFiles: enumeratedFiles, readFiles: readFiles,
+                    parsedDocuments: parsedDocuments, enumerationDuration: enumerationDuration,
+                    readDuration: readDuration, parseDuration: parseDuration),
+                cacheCleanup: cacheCleanup)
+        } catch let error as VaultRepositoryError {
+            if case .rootUnavailable = error { invalidateRootAuthority() }
             throw error
         }
     }
 
+    /// Installation is the only catalog writer. The caller owns any broader
+    /// source/identity lease; this actor validates its own source cohort and
+    /// repeats the token check after every possible reentrant mutation.
+    /// Complete-cohort capture consumes measurement with this same installed
+    /// snapshot; watcher and bootstrap installations leave it for their reader.
+    func install(_ prepared: PreparedUpdate, consumePendingMeasurement: Bool = false) async throws -> Installation {
+        try requireActive()
+        guard prepared.catalogID == catalogID else { throw VaultSourceCatalogError.foreignPreparation }
+        guard prepared.stateToken == stateToken else { return .superseded }
+        let validation = try await validateContents(
+            expectedToken: prepared.stateToken,
+            versions: prepared.records.mapValues(\.version), folders: prepared.folders)
+        guard validation == .current else { return .superseded }
+        try requireActive()
+        guard prepared.stateToken == stateToken else { return .superseded }
+        if prepared.changed { try advanceGeneration() }
+        records = prepared.records
+        folders = prepared.folders
+        isInitialized = true
+        needsFullReconcile = false
+        stateToken = UUID()
+        switch prepared.cacheCleanup {
+        case .prune:
+            searchProjectionCache?.prune(currentPaths: Set(records.keys))
+        case .invalidate(let paths):
+            for path in paths where records[path] == nil {
+                searchProjectionCache?.invalidate(path: path)
+            }
+        case .none: break
+        }
+        record(prepared.measurement)
+        let measurement = consumePendingMeasurement ? pendingMeasurement : lastMeasurement
+        if consumePendingMeasurement { pendingMeasurement = Self.emptyMeasurement }
+        return .installed(makeSnapshot(measurement: measurement))
+    }
+
+    /// Validates the exact immutable installed cohort before Application
+    /// captures portable identities or publishes derived completeness.
+    func validate(_ snapshot: VaultSourceCatalogSnapshot) async throws -> Validation {
+        try requireActive()
+        guard snapshot.catalogID == catalogID else { throw VaultSourceCatalogError.foreignPreparation }
+        guard snapshot.stateToken == stateToken, isInitialized, !needsFullReconcile else { return .superseded }
+        return try await validateContents(
+            expectedToken: snapshot.stateToken, versions: snapshot.sourceVersions, folders: snapshot.folders)
+    }
+
     func requireFullReconcile() {
+        guard case .active = lifecycle else { return }
         needsFullReconcile = true
+        stateToken = UUID()
+    }
+
+    func invalidateRootAuthority() {
+        guard case .active = lifecycle else { return }
+        lifecycle = .rootUnavailable
+        needsFullReconcile = true
+        stateToken = UUID()
+    }
+
+    func shutdown() {
+        lifecycle = .shutDown
+        needsFullReconcile = true
+        stateToken = UUID()
     }
 
     func discardPendingMeasurement() {
         pendingMeasurement = Self.emptyMeasurement
+    }
+
+    private func requireActive() throws {
+        switch lifecycle {
+        case .active: break
+        case .rootUnavailable: throw VaultSourceCatalogError.rootUnavailable
+        case .shutDown: throw VaultSourceCatalogError.shutDown
+        }
+        try Task.checkCancellation()
+    }
+
+    private func requirePrepared() throws {
+        try requireActive()
+        guard isInitialized, !needsFullReconcile else { throw VaultSourceCatalogError.preparationRequired }
+    }
+
+    private func validateContents(
+        expectedToken: UUID,
+        versions: [String: SourceVersion],
+        folders expectedFolders: [VaultRelativeFolderPath]
+    ) async throws -> Validation {
+        do {
+            try requireActive()
+            if await repository.rootAuthorityIsInvalid {
+                invalidateRootAuthority()
+                throw VaultSourceCatalogError.rootUnavailable
+            }
+            let paths = try await repository.markdownRelativePaths()
+            let observedFolders = try await repository.folderRelativePaths()
+            var current = Set(paths) == Set(versions.keys) && observedFolders == expectedFolders
+            if current {
+                for path in versions.keys.sorted() {
+                    try Task.checkCancellation()
+                    do {
+                        guard let version = versions[path],
+                            try await repository.sourceVersionIsCurrent(relativePath: path, version: version)
+                        else {
+                            current = false
+                            break
+                        }
+                    } catch VaultRepositoryError.fileDoesNotExist {
+                        current = false
+                        break
+                    }
+                }
+            }
+            #if DEBUG
+                if let validationBarrierForTesting { await validationBarrierForTesting() }
+            #endif
+            try requireActive()
+            guard stateToken == expectedToken else { return .superseded }
+            guard current else {
+                // Invalidation must be visible to an if-needed retry, otherwise
+                // it could repeatedly offer the same stale installed records.
+                requireFullReconcile()
+                return .superseded
+            }
+            return .current
+        } catch let error as VaultRepositoryError {
+            if case .rootUnavailable = error { invalidateRootAuthority() }
+            throw error
+        }
     }
 
     private func advanceGeneration() throws {
@@ -368,18 +457,6 @@ actor VaultSourceCatalog {
             }
             return results
         }
-    }
-
-    private func authorizedRecord(
-        relativePath: String,
-        existing: Record?
-    ) async throws -> AuthorizedRecord {
-        try await Self.authorizedRecord(
-            repository: repository,
-            processingBudget: processingBudget,
-            relativePath: relativePath,
-            existing: existing
-        )
     }
 
     private static func authorizedRecord(
@@ -470,6 +547,8 @@ actor VaultSourceCatalog {
             $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
         return VaultSourceCatalogSnapshot(
+            catalogID: catalogID,
+            stateToken: stateToken,
             generation: generation,
             projections: ordered,
             sourceVersions: records.mapValues(\.version),

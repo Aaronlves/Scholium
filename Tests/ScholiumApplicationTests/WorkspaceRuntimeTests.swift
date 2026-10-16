@@ -1488,10 +1488,9 @@ struct WorkspaceRuntimeTests {
         )
         let catalog = VaultSourceCatalog(repository: repository)
 
-        let initial = try await catalog.sourceInventory(refreshFolders: false)
-        let firstSnapshot = try await catalog.snapshot(
-            refreshFolders: false, consumePendingMeasurement: true
-        )
+        _ = try await installedCatalog(catalog)
+        let initial = try await catalog.sourceInventory()
+        let firstSnapshot = try await catalog.snapshot(consumePendingMeasurement: true)
         #expect(
             initial
                 == Dictionary(
@@ -1504,30 +1503,30 @@ struct WorkspaceRuntimeTests {
             Data([0xEF, 0xBB, 0xBF])
             + Data("---\r\ntitle: Exact\r\nunknown: \"é\"\r\n---\r\n# Exact\r\nNo final newline".utf8)
         try bytes.write(to: noteURL)
-        try await catalog.reconcile()
-        let added = try await catalog.sourceInventory(refreshFolders: false)
+        _ = try await installedCatalog(catalog)
+        let added = try await catalog.sourceInventory()
         #expect(added.count == initial.count + 1)
         #expect(added["Exact.md"] == DocumentFingerprint(data: bytes))
-        let addedSnapshot = try await catalog.snapshot(refreshFolders: false)
+        let addedSnapshot = try await catalog.snapshot()
         #expect(addedSnapshot.projections.first { $0.relativePath == "Exact.md" }?.fingerprint == DocumentFingerprint(data: bytes))
 
         let replacement = Data("# Changed\n".utf8)
         try replacement.write(to: noteURL)
-        try await catalog.reconcile()
-        let changed = try await catalog.sourceInventory(refreshFolders: false)
+        _ = try await installedCatalog(catalog)
+        let changed = try await catalog.sourceInventory()
         #expect(changed["Exact.md"] == DocumentFingerprint(data: replacement))
         #expect(changed["Exact.md"] != added["Exact.md"])
 
         let renamedURL = fixture.analysesURL.appendingPathComponent("Renamed.md")
         try FileManager.default.moveItem(at: noteURL, to: renamedURL)
-        try await catalog.reconcile()
-        let renamed = try await catalog.sourceInventory(refreshFolders: false)
+        _ = try await installedCatalog(catalog)
+        let renamed = try await catalog.sourceInventory()
         #expect(renamed["Exact.md"] == nil)
         #expect(renamed["Renamed.md"] == DocumentFingerprint(data: replacement))
 
         try FileManager.default.removeItem(at: renamedURL)
-        try await catalog.reconcile()
-        #expect(try await catalog.sourceInventory(refreshFolders: false) == initial)
+        _ = try await installedCatalog(catalog)
+        #expect(try await catalog.sourceInventory() == initial)
         await runtime.shutdown()
     }
 
@@ -1553,68 +1552,48 @@ struct WorkspaceRuntimeTests {
         let catalog = try #require(
             services.sourceCatalogs[fixture.analysisNoteID.vaultID]
         )
-        let saveProjection = try await catalog.snapshot(refreshFolders: false)
+        let saveProjection = try await catalog.snapshot()
         #expect(saveProjection.measurement.enumeratedFiles == 6)
         #expect(saveProjection.measurement.readFiles == 1)
         #expect(saveProjection.measurement.parsedDocuments == 1)
 
-        try await catalog.apply(
-            VaultWatchEvent(
-                added: [],
-                modified: [],
-                deleted: [fixture.analysisNoteID.relativePath],
-                sequence: 0,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+        _ = try await installedCatalog(
+            catalog,
+            preparation: .delta(
+                upserts: [], deletions: [fixture.analysisNoteID.relativePath], refreshFolders: true))
         #expect(
-            try await catalog.snapshot(refreshFolders: false).projections
+            try await catalog.snapshot().projections
                 .contains { $0.relativePath == fixture.analysisNoteID.relativePath })
 
         let addedURL = fixture.analysesURL.appendingPathComponent("Added.md")
         try Data("# Added\n\n[[Missing Added]]\n".utf8).write(to: addedURL)
-        try await catalog.apply(
-            VaultWatchEvent(
-                added: ["Added.md"],
-                modified: [],
-                deleted: [],
-                sequence: 1,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
-        let addedProjection = try await catalog.snapshot(refreshFolders: false)
+        _ = try await installedCatalog(
+            catalog,
+            preparation: .delta(
+                upserts: ["Added.md"], deletions: [], refreshFolders: true))
+        let addedProjection = try await catalog.snapshot()
         #expect(addedProjection.measurement.enumeratedFiles == 0)
         #expect(addedProjection.measurement.readFiles == 1)
         #expect(addedProjection.measurement.parsedDocuments == 1)
         let renamedURL = fixture.analysesURL.appendingPathComponent("Renamed.md")
         try FileManager.default.moveItem(at: addedURL, to: renamedURL)
-        try await catalog.apply(
-            VaultWatchEvent(
-                added: ["Renamed.md"],
-                modified: [],
-                deleted: ["Added.md"],
-                sequence: 2,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+        _ = try await installedCatalog(
+            catalog,
+            preparation: .delta(
+                upserts: ["Renamed.md"], deletions: ["Added.md"], refreshFolders: true))
         try FileManager.default.removeItem(at: renamedURL)
-        try await catalog.apply(
-            VaultWatchEvent(
-                added: [],
-                modified: [],
-                deleted: ["Renamed.md"],
-                sequence: 3,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
-        try await catalog.apply(.reconciliationRequired(sequence: 4))
+        _ = try await installedCatalog(
+            catalog,
+            preparation: .delta(
+                upserts: [], deletions: ["Renamed.md"], refreshFolders: true))
+        _ = try await installedCatalog(catalog)
 
-        let incremental = try await catalog.snapshot(refreshFolders: false)
-        let clean = try await VaultSourceCatalog(
-            repository: try #require(
-                services.repositories[fixture.analysisNoteID.vaultID]
-            )
-        ).snapshot(refreshFolders: false)
+        let incremental = try await catalog.snapshot()
+        let clean = try await installedCatalog(
+            VaultSourceCatalog(
+                repository: try #require(
+                    services.repositories[fixture.analysisNoteID.vaultID]
+                )))
         #expect(
             incremental.projections.map(\.relativePath)
                 == clean.projections.map(\.relativePath))
@@ -1691,7 +1670,7 @@ struct WorkspaceRuntimeTests {
             repository: try #require(services.repositories[vaultID]), vaultRole: .sourceCorpus,
             applicationSupportURL: cacheSupport, vaultID: vaultID)
         let repository = try #require(services.repositories[vaultID])
-        let first = try await catalog.snapshot(refreshFolders: false)
+        let first = try await installedCatalog(catalog)
         let firstProjection = try #require(first.projections.first)
         let firstDocument = try await repository.load(relativePath: firstProjection.relativePath)
         let cache = try #require(first.searchProjectionCache)
@@ -1735,8 +1714,8 @@ struct WorkspaceRuntimeTests {
         _ = try await synchronize(first, generation: generation + 2)
         #expect(await index.lastSynchronizationTimings?.projectedDocuments == first.projections.count)
         #expect(cache.load(for: firstDocument) != nil)
-        try await catalog.reconcile()
-        let unchanged = try await catalog.snapshot(refreshFolders: false)
+        _ = try await installedCatalog(catalog)
+        let unchanged = try await catalog.snapshot()
         #expect(unchanged.projections == first.projections)
         #expect(unchanged.measurement.readFiles == 0)
         #expect(unchanged.measurement.parsedDocuments == 0)
@@ -1763,7 +1742,7 @@ struct WorkspaceRuntimeTests {
         let catalog = try #require(
             services.sourceCatalogs[fixture.analysisNoteID.vaultID]
         )
-        let initial = try await catalog.snapshot(refreshFolders: false)
+        let initial = try await catalog.snapshot()
         let initialGeneration = initial.generation
         let initialTarget = try #require(
             initial.projections.first {
@@ -1776,18 +1755,18 @@ struct WorkspaceRuntimeTests {
         try Data([0xFF, 0xFE, 0xFF]).write(to: failureURL)
 
         await #expect(throws: (any Error).self) {
-            try await catalog.reconcile()
+            _ = try await catalog.prepare(.fullReconcile)
         }
         try Data(failureSource.utf8).write(to: failureURL)
-        let retained = try await catalog.snapshot(refreshFolders: false)
+        let retained = try await catalog.snapshot()
         #expect(retained.generation == initialGeneration)
         #expect(
             retained.projections.first {
                 $0.relativePath == fixture.analysisNoteID.relativePath
             }?.fingerprint == initialTarget.fingerprint)
 
-        try await catalog.reconcile()
-        let repaired = try await catalog.snapshot(refreshFolders: false)
+        _ = try await installedCatalog(catalog)
+        let repaired = try await catalog.snapshot()
         #expect(repaired.generation > initialGeneration)
         #expect(
             repaired.projections.first {
@@ -1818,16 +1797,28 @@ struct WorkspaceRuntimeTests {
         _ = try #require(committed.discovery.catalog.graph)
         let committedEvidence = WorkspaceDerivedRefreshEvidence(snapshot: committed)
         let catalog = try #require(await handle.services.sourceCatalogs[fixture.analysisNoteID.vaultID])
-        let committedSourceGeneration = try await catalog.snapshot(refreshFolders: false).generation
+        let committedSourceGeneration = try await catalog.snapshot().generation
         try await Task.sleep(for: .seconds(1))
         // Delayed identity/citation invalidation may publish a newer event,
         // but it must not rebuild source, Search, graph or the snapshot.
         let delayed = try await handle.snapshot()
         #expect(WorkspaceDerivedRefreshEvidence(snapshot: delayed) == committedEvidence)
         #expect(delayed.document(id: fixture.analysisNoteID)?.fingerprint == saved.committedValue.document.fingerprint)
-        #expect(try await catalog.snapshot(refreshFolders: false).generation == committedSourceGeneration)
+        #expect(try await catalog.snapshot().generation == committedSourceGeneration)
         await runtime.shutdown()
     }
+    private func installedCatalog(
+        _ catalog: VaultSourceCatalog,
+        preparation: VaultSourceCatalogPreparation = .fullReconcile
+    ) async throws -> VaultSourceCatalogSnapshot {
+        let prepared = try await catalog.prepare(preparation)
+        guard case .installed(let snapshot) = try await catalog.install(prepared) else {
+            throw CatalogFixtureError.unexpectedSupersession
+        }
+        return snapshot
+    }
+
+    private enum CatalogFixtureError: Error { case unexpectedSupersession }
 }
 
 private actor OpeningActivationReconciliationGate {

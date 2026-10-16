@@ -11,19 +11,19 @@ struct VaultSourceProjectionCacheTests {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let catalog = try await fixture.catalog(useCache: false)
-        let original = try await catalog.snapshot(refreshFolders: false)
+        let original = try await preparedSnapshot(catalog)
         let oversizedURL = fixture.vaultURL.appendingPathComponent("Large.md")
         let oversized = Data(repeating: 0x20, count: VaultSourceReadLimits.maximumNoteByteCount + 1)
         try oversized.write(to: oversizedURL)
         await #expect {
-            try await catalog.reconcile()
+            _ = try await catalog.prepare(.fullReconcile)
         } throws: { error in
             guard let error = error as? VaultRepositoryError,
                 case .sourceTooLarge(let path, let maximum) = error
             else { return false }
             return path == "Large.md" && maximum == VaultSourceReadLimits.maximumNoteByteCount
         }
-        let retained = try await catalog.snapshot(refreshFolders: false)
+        let retained = try await catalog.snapshot()
         #expect(retained.generation == original.generation)
         #expect(retained.projections == original.projections)
         #expect(retained.sourceVersions == original.sourceVersions)
@@ -32,8 +32,8 @@ struct VaultSourceProjectionCacheTests {
         // Once the external participant makes its source processable, the
         // catalog can publish the complete new generation normally.
         try Data("Available again\n".utf8).write(to: oversizedURL)
-        try await catalog.reconcile()
-        let recovered = try await catalog.snapshot(refreshFolders: false)
+        _ = try await preparedSnapshot(catalog)
+        let recovered = try await catalog.snapshot()
         #expect(recovered.generation == original.generation + 1)
         #expect(recovered.projections.map(\.relativePath).sorted() == ["Large.md", Fixture.path])
     }
@@ -49,8 +49,8 @@ struct VaultSourceProjectionCacheTests {
         let budget = VaultSourceProcessingBudget()
         let first = try await fixture.catalog(useCache: false, processingBudget: budget)
         let second = try await fixture.catalog(useCache: false, processingBudget: budget)
-        async let firstSnapshot = first.snapshot(refreshFolders: false)
-        async let secondSnapshot = second.snapshot(refreshFolders: false)
+        async let firstSnapshot = preparedSnapshot(first)
+        async let secondSnapshot = preparedSnapshot(second)
         let snapshots = try await (firstSnapshot, secondSnapshot)
         #expect(snapshots.0.projections.count == 5)
         #expect(snapshots.1.projections == snapshots.0.projections)
@@ -67,12 +67,12 @@ struct VaultSourceProjectionCacheTests {
     func freshStartupHit() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        let first = try await fixture.catalog().snapshot(refreshFolders: false)
+        let first = try await fixture.snapshot()
         let firstSearch = try await fixture.index(first)
         #expect(firstSearch.projectedDocuments == 1)
         #expect(firstSearch.restoredSearchProjections == 0)
 
-        let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopened = try await fixture.snapshot()
         let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.measurement.readFiles == 1)
         #expect(reopened.measurement.parsedDocuments == 1)
@@ -90,7 +90,7 @@ struct VaultSourceProjectionCacheTests {
     func atomicReplacementRefreshesMetadata() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        let first = try await fixture.catalog().snapshot(refreshFolders: false)
+        let first = try await fixture.snapshot()
         _ = try await fixture.index(first)
         let oldVersion = try #require(first.sourceVersions[Fixture.path])
         try Data(fixture.source.utf8).write(to: fixture.noteURL, options: .atomic)
@@ -98,7 +98,7 @@ struct VaultSourceProjectionCacheTests {
         try FileManager.default.setAttributes(
             [.modificationDate: replacementDate], ofItemAtPath: fixture.noteURL.path)
 
-        let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopened = try await fixture.snapshot()
         let reopenedSearch = try await fixture.index(reopened)
         let newVersion = try #require(reopened.sourceVersions[Fixture.path])
         let newMetadata = try #require(reopened.fileMetadata[Fixture.path])
@@ -118,7 +118,7 @@ struct VaultSourceProjectionCacheTests {
     func sameSizeEditWithRestoredMtime() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        let first = try await fixture.catalog().snapshot(refreshFolders: false)
+        let first = try await fixture.snapshot()
         _ = try await fixture.index(first)
         let oldMetadata = try #require(first.fileMetadata[Fixture.path])
         let oldDate = try #require(oldMetadata.modificationDate)
@@ -128,7 +128,7 @@ struct VaultSourceProjectionCacheTests {
         try FileManager.default.setAttributes(
             [.modificationDate: oldDate], ofItemAtPath: fixture.noteURL.path)
 
-        let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopened = try await fixture.snapshot()
         let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.measurement.readFiles == 1)
         #expect(reopened.measurement.parsedDocuments == 1)
@@ -139,7 +139,7 @@ struct VaultSourceProjectionCacheTests {
         let projection = try #require(reopened.projections.first)
         #expect(projection.authoredLinks.map(\.target) == ["NewOne"])
 
-        let clean = try await fixture.catalog(useCache: false).snapshot(refreshFolders: false)
+        let clean = try await fixture.snapshot(useCache: false)
         #expect(reopened.projections == clean.projections)
         #expect(try await fixture.projections(in: reopened) == fixture.projections(in: clean))
     }
@@ -148,11 +148,11 @@ struct VaultSourceProjectionCacheTests {
     func missingSource() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        _ = try await fixture.index(fixture.catalog().snapshot(refreshFolders: false))
+        _ = try await fixture.index(fixture.snapshot())
         #expect(fixture.hasPersistedProjection)
         try FileManager.default.removeItem(at: fixture.noteURL)
 
-        let reopened = try await fixture.catalog().snapshot(refreshFolders: false)
+        let reopened = try await fixture.snapshot()
         let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.projections.isEmpty)
         #expect(try await fixture.projections(in: reopened).isEmpty)
@@ -163,7 +163,7 @@ struct VaultSourceProjectionCacheTests {
     func symlinkSource() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
-        _ = try await fixture.index(fixture.catalog().snapshot(refreshFolders: false))
+        _ = try await fixture.index(fixture.snapshot())
         #expect(fixture.hasPersistedProjection)
         let outside = fixture.root.appendingPathComponent("Outside.md")
         let sentinel = Data(fixture.source.utf8)
@@ -172,7 +172,7 @@ struct VaultSourceProjectionCacheTests {
         try FileManager.default.createSymbolicLink(at: fixture.noteURL, withDestinationURL: outside)
 
         let catalog = try await fixture.catalog()
-        let reopened = try await catalog.snapshot(refreshFolders: false)
+        let reopened = try await preparedSnapshot(catalog)
         let reopenedSearch = try await fixture.index(reopened)
         #expect(reopened.projections.isEmpty)
         #expect(try await fixture.projections(in: reopened).isEmpty)
@@ -180,11 +180,21 @@ struct VaultSourceProjectionCacheTests {
         // Enumeration excludes symbolic links. A later path hint still cannot
         // bypass the repository's descriptor-relative source authorization.
         await #expect(throws: (any Error).self) {
-            try await catalog.apply(upserts: [Fixture.path], deletions: [], refreshFolders: false)
+            _ = try await catalog.prepare(.delta(upserts: [Fixture.path], deletions: [], refreshFolders: false))
         }
         #expect(try Data(contentsOf: outside) == sentinel)
-        #expect(try await catalog.snapshot(refreshFolders: false).projections.isEmpty)
+        #expect(try await catalog.snapshot().projections.isEmpty)
     }
+
+    private func preparedSnapshot(_ catalog: VaultSourceCatalog) async throws -> VaultSourceCatalogSnapshot {
+        let prepared = try await catalog.prepare(.fullReconcile)
+        guard case .installed(let snapshot) = try await catalog.install(prepared) else {
+            throw FixtureError.unexpectedSupersession
+        }
+        return snapshot
+    }
+
+    private enum FixtureError: Error { case unexpectedSupersession }
 
     private struct Fixture {
         static let path = "Note.md"
@@ -249,6 +259,15 @@ struct VaultSourceProjectionCacheTests {
                     applicationSupportURL: supportURL, vaultID: vaultID)
             }
             return VaultSourceCatalog(repository: repository, processingBudget: processingBudget)
+        }
+
+        func snapshot(useCache: Bool = true) async throws -> VaultSourceCatalogSnapshot {
+            let catalog = try await catalog(useCache: useCache)
+            let prepared = try await catalog.prepare(.fullReconcile)
+            guard case .installed(let snapshot) = try await catalog.install(prepared) else {
+                throw FixtureError.unexpectedSupersession
+            }
+            return snapshot
         }
 
         func index(_ snapshot: VaultSourceCatalogSnapshot) async throws -> (projectedDocuments: Int, restoredSearchProjections: Int) {

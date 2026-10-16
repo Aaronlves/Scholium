@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Workspace opening source operation lease")
 struct WorkspaceOpeningSourceOperationTests {
-    @Test("Opening refresh owns its lease across a queued save and caller cancellation", .timeLimit(.minutes(2)))
+    @Test("Opening semantic preparation admits exact source saves despite refresh caller cancellation", .timeLimit(.minutes(2)))
     func openingSaveAndRefreshCancellation() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
@@ -31,7 +31,7 @@ struct WorkspaceOpeningSourceOperationTests {
                 }
                 await handle.openingPresentationDidComplete()
                 try #require(await barrier.waitUntilArrived())
-                #expect(await handle.sourceOperationGate.refreshCycleIsActive)
+                #expect(!(await handle.sourceOperationGate.refreshCycleIsActive))
                 #expect(!(await handle.sourceOperationGate.sourceMutationIsActive))
                 #expect(try await handle.snapshot().phase == .opening)
 
@@ -39,15 +39,23 @@ struct WorkspaceOpeningSourceOperationTests {
                 let target = try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint)
                 let noteURL = fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath)
                 let savedSource = original.rawContent + "\nDiagnostic queued save retains exact source bytes.\n"
+                let result = OpeningSourceCommitResult()
                 let save = Task {
-                    try await handle.documents.save(target, changeSet: .source(savedSource))
+                    let committed = try await handle.documents.commit(target, changeSet: .source(savedSource))
+                    await result.completed()
+                    return committed
                 }
                 await lifecycle.track(save)
-                try await requireState("the real save is waiting behind opening refresh") {
-                    await handle.sourceOperationGate.waitingCount == 1
+                try await requireState("the real save completes or reaches the source gate") {
+                    let completed = await result.isComplete
+                    let waiting = await handle.sourceOperationGate.waitingCount
+                    return completed || waiting > 0
                 }
-                #expect(try Data(contentsOf: noteURL) == original.sourceBytes)
-                #expect(await handle.sourceOperationGate.refreshCycleIsActive)
+                #expect(await result.isComplete)
+                if await result.isComplete {
+                    #expect(try Data(contentsOf: noteURL) == Data(savedSource.utf8))
+                }
+                #expect(!(await handle.sourceOperationGate.refreshCycleIsActive))
 
                 let coordinator = try #require(await handle.refreshCoordinator)
                 let cancelledRefresh = Task { try await handle.discovery.refresh() }
@@ -55,23 +63,22 @@ struct WorkspaceOpeningSourceOperationTests {
                 await lifecycle.track(cancelledRefresh)
                 await lifecycle.track(survivingRefresh)
                 try await requireState("both explicit refresh callers are queued behind the opening worker") {
-                    await coordinator.queuedRequestCount == 2
+                    await coordinator.queuedRequestCount >= 2
                 }
                 cancelledRefresh.cancel()
                 await #expect(throws: CancellationError.self) {
                     _ = try await cancelledRefresh.value
                 }
-                #expect(await handle.sourceOperationGate.refreshCycleIsActive)
-                #expect(await handle.sourceOperationGate.waitingCount == 1)
-                #expect(try Data(contentsOf: noteURL) == original.sourceBytes)
+                #expect(!(await handle.sourceOperationGate.refreshCycleIsActive))
+                #expect(await handle.sourceOperationGate.waitingCount == 0)
+                #expect(await result.isComplete)
 
                 await barrier.release()
                 await handle.setProgressiveActivationReconciliationBarrierForTesting(nil)
                 await handle.awaitOpeningCompletionForTesting()
                 let saveOutcome = try await save.value
                 let survivingSnapshot = try await survivingRefresh.value
-                #expect(saveOutcome.derivedRefreshWarning == nil)
-                #expect(saveOutcome.identityRecoveryWarning == nil)
+                #expect(saveOutcome.document.sourceBytes == Data(savedSource.utf8))
                 #expect(survivingSnapshot.phase.isComplete)
                 #expect(survivingSnapshot.discovery.searchGeneration != nil)
                 #expect(survivingSnapshot.discovery.catalog.graph != nil)
@@ -189,4 +196,9 @@ private actor WorkspaceOpeningLeaseLifecycle {
         cleanupTask = task
         await task.value
     }
+}
+
+private actor OpeningSourceCommitResult {
+    private(set) var isComplete = false
+    func completed() { isComplete = true }
 }

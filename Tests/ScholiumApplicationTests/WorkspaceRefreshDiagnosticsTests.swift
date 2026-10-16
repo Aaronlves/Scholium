@@ -125,6 +125,8 @@ struct WorkspaceRefreshDiagnosticsTests {
                     "index_generation_wait_ms": milliseconds(cycle.indexGenerationWaitDuration),
                     "source_preparation_ms": milliseconds(cycle.sourcePreparationDuration),
                     "source_capture_lease_ms": milliseconds(cycle.sourceCaptureLeaseDuration),
+                    "source_catalog_installation_leases_ms": milliseconds(cycle.sourceCatalogInstallationLeaseDuration),
+                    "longest_source_catalog_installation_lease_ms": milliseconds(cycle.longestSourceCatalogInstallationLeaseDuration),
                     "build_ms": milliseconds(cycle.buildDuration),
                     "publication_gate_wait_ms": milliseconds(cycle.publicationGateWaitDuration),
                     "review_initialization_ms": milliseconds(cycle.reviewInitializationDuration),

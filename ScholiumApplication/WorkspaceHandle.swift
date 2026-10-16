@@ -116,6 +116,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var liveInventoryPreflightBarrierForTesting: (@Sendable () async -> Void)?
         var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
         var reviewedSnapshotPublicationBarrierForTesting: (@Sendable () async -> Void)?
+        var preparedSourceCatalogBarrierForTesting: (@Sendable (UUID) async -> Void)?
+
+        func setPreparedSourceCatalogBarrierForTesting(_ barrier: (@Sendable (UUID) async -> Void)?) {
+            preparedSourceCatalogBarrierForTesting = barrier
+        }
 
         func setReviewedSnapshotPublicationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
             reviewedSnapshotPublicationBarrierForTesting = barrier
@@ -382,21 +387,34 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             // progressive open inventories only its first usable vault; the
             // buffered stream and complete background reconcile close edits
             // that race either scan.
-            let preOpenInventory =
+            let initialSlots: [WorkspaceVaultSlot]
+            if let openingVault, usesProgressiveOpening {
+                initialSlots = [openingVault]
+            } else {
+                initialSlots = WorkspaceVaultSlot.allCases
+            }
+            let sourceSnapshots = try await prepareInitialSourceSnapshots(
+                assignment: assignment, catalogs: services.sourceCatalogs, slots: initialSlots)
+            let preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]? =
                 mode == .live && !usesProgressiveOpening
-                ? try await sourceInventory(
-                    assignment: assignment,
-                    sourceCatalogs: services.sourceCatalogs
-                )
-                : nil
+                ? Dictionary(
+                    uniqueKeysWithValues: sourceSnapshots.flatMap { vaultID, snapshot in
+                        snapshot.projections.map {
+                            (VaultQualifiedNoteID(vaultID: vaultID, relativePath: $0.relativePath), $0.fingerprint)
+                        }
+                    }) : nil
             let inventoryReady = clock.now
             let initialBuild: WorkspaceSnapshotBuildResult
-            if let openingVault, usesProgressiveOpening {
+            if let openingVault, usesProgressiveOpening,
+                let vault = assignment.vault(for: openingVault),
+                let sourceSnapshot = sourceSnapshots[vault.id]
+            {
                 initialBuild = try await WorkspaceSnapshotBuilder.buildOpening(
                     assignment: assignment,
                     mode: mode,
                     dependencies: services.snapshotBuilderDependencies,
                     availableVault: openingVault,
+                    sourceSnapshot: sourceSnapshot,
                     workspaceGeneration: initialWorkspaceGeneration
                 )
             } else {
@@ -404,6 +422,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     assignment: assignment,
                     mode: mode,
                     dependencies: services.snapshotBuilderDependencies,
+                    sourceSnapshots: sourceSnapshots,
                     graphGeneration: 1,
                     workspaceGeneration: initialWorkspaceGeneration
                 )
@@ -475,6 +494,41 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 lease.url.stopAccessingSecurityScopedResource()
             }
             throw error
+        }
+    }
+
+    /// Before a Handle exists, the pooled catalog owns candidate installation.
+    /// Capture only the requested opening Library, or one fully validated
+    /// immutable cohort for an immediate complete configuration.
+    private static func prepareInitialSourceSnapshots(
+        assignment: TriptychAssignment,
+        catalogs: [UUID: VaultSourceCatalog],
+        slots: [WorkspaceVaultSlot]
+    ) async throws -> [UUID: VaultSourceCatalogSnapshot] {
+        var snapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
+        var pending = slots
+        while true {
+            for slot in pending {
+                guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id] else {
+                    throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+                }
+                while true {
+                    try Task.checkCancellation()
+                    let candidate = try await catalog.prepare(.fullReconcile)
+                    if case .installed = try await catalog.install(candidate) {
+                        snapshots[vault.id] = try await catalog.snapshot(consumePendingMeasurement: true)
+                        break
+                    }
+                }
+            }
+            pending = []
+            for slot in slots {
+                guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id],
+                    let snapshot = snapshots[vault.id]
+                else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
+                if try await catalog.validate(snapshot) == .superseded { pending.append(slot) }
+            }
+            if pending.isEmpty { return snapshots }
         }
     }
 

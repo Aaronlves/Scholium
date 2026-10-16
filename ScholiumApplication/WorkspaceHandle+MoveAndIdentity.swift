@@ -394,8 +394,15 @@ extension WorkspaceHandle {
             guard let sourceCatalog = services.sourceCatalogs[vault.id] else {
                 throw ScholiumApplicationError.vaultNotInWorkspace(vault.id)
             }
-            try await sourceCatalog.reconcile()
-            let source = try await sourceCatalog.snapshot(refreshFolders: false)
+            var captured: VaultSourceCatalogSnapshot?
+            while captured == nil {
+                try Task.checkCancellation()
+                let candidate = try await sourceCatalog.prepare(.fullReconcile)
+                if case .installed(let snapshot) = try await sourceCatalog.install(candidate) {
+                    captured = snapshot
+                }
+            }
+            guard let source = captured else { throw CancellationError() }
             for projection in source.projections {
                 let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: projection.relativePath)
                 guard let version = source.sourceVersions[projection.relativePath] else {

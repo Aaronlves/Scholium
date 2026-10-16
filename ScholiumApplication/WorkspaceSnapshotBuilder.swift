@@ -2,6 +2,8 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+/// Work carried into the accepted builder inputs. Rejected source cohorts may
+/// already have consumed catalog counters; these are not whole-cycle I/O totals.
 struct WorkspaceRefreshMeasurement: Sendable {
     let workspaceGeneration: UInt64
     let enumeratedFiles: Int
@@ -25,14 +27,17 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let snapshotSourceBytes: Int
 }
 
-/// Elapsed time for one coordinator cycle, including preparation performed
-/// before the snapshot builder starts. Catalog per-file timings are summed
-/// work durations and are not a substitute for this wall-clock measurement.
+/// One successful coordinator attempt, including preparation before the builder.
+/// Capture duration covers its accepted cohort; rejected capture holds and outer
+/// superseded attempts are excluded. Caller wall time includes those retries.
+/// Catalog per-file timings are summed work, not elapsed time.
 struct WorkspaceRefreshCycleMeasurement: Sendable {
     let workspaceGeneration: UInt64
     let indexGenerationWaitDuration: Duration
     let gateWaitDuration: Duration
     let sourcePreparationDuration: Duration
+    let sourceCatalogInstallationLeaseDuration: Duration
+    let longestSourceCatalogInstallationLeaseDuration: Duration
     let sourceCaptureLeaseDuration: Duration
     let buildDuration: Duration
     let publicationGateWaitDuration: Duration
@@ -49,7 +54,6 @@ struct WorkspaceSnapshotBuildResult: Sendable {
 
 struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let repositories: [UUID: VaultRepository]
-    let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -65,7 +69,6 @@ extension WorkspaceServices {
     var snapshotBuilderDependencies: WorkspaceSnapshotBuilderDependencies {
         WorkspaceSnapshotBuilderDependencies(
             repositories: repositories,
-            sourceCatalogs: sourceCatalogs,
             searchIndex: searchIndex,
             controlStore: controlStore,
             transactionRecoveryStore: transactionRecoveryStore,
@@ -136,7 +139,7 @@ enum WorkspaceSnapshotBuilder {
         let vault: RegisteredVault
         let pathComparisonPolicy: VaultPathComparisonPolicy
         let repository: VaultRepository
-        let catalog: VaultSourceCatalog
+        let sourceSnapshot: VaultSourceCatalogSnapshot
     }
 
     private struct LoadedSource: Sendable {
@@ -152,16 +155,15 @@ enum WorkspaceSnapshotBuilder {
         mode: WorkspaceConfigurationMode,
         dependencies: WorkspaceSnapshotBuilderDependencies,
         availableVault slot: WorkspaceVaultSlot,
-        workspaceGeneration: UInt64,
-        consumePendingMeasurement: Bool = true
+        sourceSnapshot: VaultSourceCatalogSnapshot,
+        workspaceGeneration: UInt64
     ) async throws -> WorkspaceSnapshotBuildResult {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
         guard mode == .live,
             let vault = assignment.vault(for: slot),
-            let repository = dependencies.repositories[vault.id],
-            let sourceCatalog = dependencies.sourceCatalogs[vault.id]
+            let repository = dependencies.repositories[vault.id]
         else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
         }
@@ -178,10 +180,6 @@ enum WorkspaceSnapshotBuilder {
             throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
         }
 
-        let sourceSnapshot = try await sourceCatalog.snapshot(
-            refreshFolders: false,
-            consumePendingMeasurement: consumePendingMeasurement
-        )
         let projections = sourceSnapshot.projections
 
         let identityProjectionStart = clock.now
@@ -290,6 +288,7 @@ enum WorkspaceSnapshotBuilder {
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
         dependencies: WorkspaceSnapshotBuilderDependencies,
+        sourceSnapshots: [UUID: VaultSourceCatalogSnapshot],
         graphGeneration: Int,
         workspaceGeneration: UInt64
     ) async throws -> WorkspaceSnapshotBuildResult {
@@ -308,7 +307,7 @@ enum WorkspaceSnapshotBuilder {
             try Task.checkCancellation()
             guard let vault = assignment.vault(for: slot),
                 let repository = dependencies.repositories[vault.id],
-                let sourceCatalog = dependencies.sourceCatalogs[vault.id]
+                let sourceSnapshot = sourceSnapshots[vault.id]
             else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
@@ -330,34 +329,12 @@ enum WorkspaceSnapshotBuilder {
                     vault: vault,
                     pathComparisonPolicy: pathComparisonPolicy,
                     repository: repository,
-                    catalog: sourceCatalog
+                    sourceSnapshot: sourceSnapshot
                 ))
         }
 
-        let loadedSources = try await withThrowingTaskGroup(
-            of: LoadedSource.self
-        ) { group in
-            for input in sourceInputs {
-                group.addTask {
-                    try Task.checkCancellation()
-                    // Each catalog is an independent rebuildable projection.
-                    // The refresh coordinator still owns one atomic cycle;
-                    // only preparation of the three immutable generations
-                    // overlaps.
-                    return LoadedSource(
-                        input: input,
-                        snapshot: try await input.catalog.snapshot(
-                            refreshFolders: false,
-                            consumePendingMeasurement: true
-                        )
-                    )
-                }
-            }
-            var loaded: [LoadedSource] = []
-            for try await source in group {
-                loaded.append(source)
-            }
-            return loaded.sorted { $0.input.order < $1.input.order }
+        let loadedSources = sourceInputs.map {
+            LoadedSource(input: $0, snapshot: $0.sourceSnapshot)
         }
 
         for loadedSource in loadedSources {

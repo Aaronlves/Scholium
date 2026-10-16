@@ -359,6 +359,72 @@ import Testing
             }
         }
 
+        @Test(
+            "A selected Library save overtakes catalog preparation and reaches the fresh final cohort",
+            arguments: [WorkspaceVaultSlot.paperAnalysis, .topicKnowledge])
+        func sourceSaveOvertakesCatalogPreparation(blockedSlot: WorkspaceVaultSlot) async throws {
+            let fixture = try await makeFixture()
+            defer { fixture.remove() }
+            let runtime = WorkspaceRuntime(
+                configuration: .snapshot(
+                    .init(applicationSupportURL: fixture.applicationSupportURL, assignments: [fixture.assignment])))
+            let handle: WorkspaceHandle
+            do {
+                handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+            } catch {
+                await runtime.shutdown()
+                throw error
+            }
+            let barrier = SourceDerivedPreparationBarrier()
+            let lifecycle = SourceDerivedTestLifecycle(runtime: runtime, handle: handle, barrier: barrier)
+            try await withTaskCancellationHandler {
+                do {
+                    let original = try await handle.documents.load(fixture.analysisNoteID)
+                    let target = try await capturedSaveTarget(handle, fixture.analysisNoteID, revision: original.fingerprint)
+                    let blockedVaultID = try #require(fixture.assignment.vault(for: blockedSlot)?.id)
+                    await handle.setPreparedSourceCatalogBarrierForTesting { vaultID in
+                        if vaultID == blockedVaultID { await barrier.holdOnce() }
+                    }
+                    let refresh = Task { try await handle.discovery.refresh() }
+                    await lifecycle.track(refresh)
+                    try #require(await barrier.waitUntilArrived())
+                    let result = SourceDerivedSaveResult()
+                    let source = "\u{FEFF}# Latest catalog source\r\n\r\nExact e\u{301} 😀 中文 without final newline"
+                    let save = Task {
+                        let committed = try await handle.documents.commit(target, changeSet: .source(source))
+                        await result.completed()
+                        return committed
+                    }
+                    await lifecycle.track(save)
+                    try await waitUntil("the selected Library save finishes or reaches the source gate") {
+                        let finished = await result.isComplete
+                        let waiting = await handle.sourceOperationGate.waitingCount
+                        return finished || waiting > 0
+                    }
+                    #expect(await result.isComplete)
+                    #expect(!(await handle.sourceOperationGate.refreshCycleIsActive))
+                    if await result.isComplete {
+                        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath)) == Data(source.utf8))
+                    }
+                    // Snapshot mode has no watcher. The accepted cohort must
+                    // detect this source change itself, including when an
+                    // earlier Library was already installed before the hold.
+                    await barrier.release()
+                    let committed = try await save.value
+                    let complete = try await refresh.value
+                    #expect(complete.phase.isComplete)
+                    #expect(complete.document(id: fixture.analysisNoteID)?.fingerprint == committed.document.fingerprint)
+                    #expect(try await handle.documents.load(fixture.analysisNoteID).sourceBytes == Data(source.utf8))
+                    await lifecycle.cleanup()
+                } catch {
+                    await lifecycle.cleanup()
+                    throw error
+                }
+            } onCancel: {
+                Task { await lifecycle.cleanup() }
+            }
+        }
+
         private func makeFixture() async throws -> ApplicationFixture {
             let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
                 .deletingLastPathComponent().deletingLastPathComponent()
@@ -449,6 +515,7 @@ import Testing
             let drains = drains
             let task = Task {
                 await barrier.release()
+                await handle.setPreparedSourceCatalogBarrierForTesting(nil)
                 await handle.setCapturedSearchManifestBarrierForTesting(nil)
                 await handle.setReviewedSnapshotPublicationBarrierForTesting(nil)
                 await runtime.shutdown()

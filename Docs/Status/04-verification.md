@@ -181,11 +181,11 @@ native publication; they are not G7 or click-to-paint acceptance.
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
   native optimization. All 16 private cases preserve ordered results; source
   bytes unchanged. This recorded exception is not standing private-vault authority.
-- **Expanded standard 500-Note Debug refresh, schema 19:** 6,973,820 bytes.
-  Cold configure 35.91 → 13.05 s; reopened usable state 10.94–11.03 → 2.99–3.10 s;
-  completion after presentation signal 17.33–17.45 → 4.87–4.93 s; unchanged refresh
-  2.26–2.30 → 0.750–0.756 s. All 500 projections restore without recomputation;
-  authorization/parsing remain fresh.
+- **2026-10-16 synthetic 5,000-Note Debug lifecycle:** 57,299,729 Markdown bytes.
+  Cold configure 490.49 → 275.79 s; rebuild 488.76 → 274.11 s.
+  First dense Topics Note 527.21 → 15.29 s, including XCTest waits, not paint/FPS.
+  Two-pass browsing, exact source/Undo, ordered Search/Graph rebuild
+  equivalence passed. Frozen-source evidence; human/release acceptance remains unverified.
 - **2026-09-15 Search benchmark, 2,056 Notes:** schema 18 / ranking policy 4.
   Warm query p95 97 ms, first five pages p95 466 ms, incremental publication
   p95 27 ms against unchanged 100/500/250 ms budgets. A dated measured-build
@@ -224,7 +224,7 @@ Evidence: `.build/recommendation-evaluation/`,
 `.build/recommendation-native-release-build.log`,
 `.build/semantic-multilingual-prototype/`,
 `.build/writing-references-release-harness/.build/writing-references-performance/`,
-`.build/refresh-optimization/`, `.build/search-opening-diagnostics/`,
+`.build/first-index-lifecycle-optimization/`, `.build/search-opening-diagnostics/`,
 `.build/search-performance-final-correctness.log`,
 `.build/note-switch/RESULTS.md`, `.build/settings-performance-fix/`.
 

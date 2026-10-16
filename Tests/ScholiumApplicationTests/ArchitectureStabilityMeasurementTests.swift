@@ -113,7 +113,7 @@ struct ArchitectureStabilityMeasurementTests {
             let analysesID = try #require(
                 assignment.vault(for: .paperAnalysis)?.id
             )
-            let catalog = try #require(dependencies.sourceCatalogs[analysesID])
+            let catalog = try #require(services.sourceCatalogs[analysesID])
             let relativePath = "Architecture/Delta.md"
             let renamedPath = "Architecture/Delta Renamed.md"
             let noteURL = analysesURL.appendingPathComponent(relativePath)
@@ -126,18 +126,16 @@ struct ArchitectureStabilityMeasurementTests {
             try Data("# Architecture Delta\n\nInitial delta.\n".utf8).write(
                 to: noteURL
             )
-            try await catalog.apply(
-                VaultWatchEvent(
-                    added: [relativePath],
-                    modified: [],
-                    deleted: [],
-                    sequence: 1,
-                    requiresFullRescan: false,
-                    rootChanged: false
-                ))
+            let prepared1 = try await catalog.prepare(
+                .delta(
+                    upserts: [relativePath], deletions: [], refreshFolders: true))
+            guard case .installed = try await catalog.install(prepared1) else {
+                throw CatalogFixtureError.unexpectedSupersession
+            }
             let added = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
+                catalogs: services.sourceCatalogs,
                 graphGeneration: 2
             )
 
@@ -145,50 +143,44 @@ struct ArchitectureStabilityMeasurementTests {
                 to: noteURL,
                 options: .atomic
             )
-            try await catalog.apply(
-                VaultWatchEvent(
-                    added: [],
-                    modified: [relativePath],
-                    deleted: [],
-                    sequence: 2,
-                    requiresFullRescan: false,
-                    rootChanged: false
-                ))
+            let prepared2 = try await catalog.prepare(
+                .delta(
+                    upserts: [relativePath], deletions: [], refreshFolders: false))
+            guard case .installed = try await catalog.install(prepared2) else {
+                throw CatalogFixtureError.unexpectedSupersession
+            }
             let edited = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
+                catalogs: services.sourceCatalogs,
                 graphGeneration: 3
             )
 
             try FileManager.default.moveItem(at: noteURL, to: renamedURL)
-            try await catalog.apply(
-                VaultWatchEvent(
-                    added: [renamedPath],
-                    modified: [],
-                    deleted: [relativePath],
-                    sequence: 3,
-                    requiresFullRescan: false,
-                    rootChanged: false
-                ))
+            let prepared3 = try await catalog.prepare(
+                .delta(
+                    upserts: [renamedPath], deletions: [relativePath], refreshFolders: true))
+            guard case .installed = try await catalog.install(prepared3) else {
+                throw CatalogFixtureError.unexpectedSupersession
+            }
             let renamed = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
+                catalogs: services.sourceCatalogs,
                 graphGeneration: 4
             )
 
             try FileManager.default.removeItem(at: renamedURL)
-            try await catalog.apply(
-                VaultWatchEvent(
-                    added: [],
-                    modified: [],
-                    deleted: [renamedPath],
-                    sequence: 4,
-                    requiresFullRescan: false,
-                    rootChanged: false
-                ))
+            let prepared4 = try await catalog.prepare(
+                .delta(
+                    upserts: [], deletions: [renamedPath], refreshFolders: true))
+            guard case .installed = try await catalog.install(prepared4) else {
+                throw CatalogFixtureError.unexpectedSupersession
+            }
             let deleted = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
+                catalogs: services.sourceCatalogs,
                 graphGeneration: 5
             )
 
@@ -272,18 +264,26 @@ struct ArchitectureStabilityMeasurementTests {
     private func build(
         assignment: TriptychAssignment,
         dependencies: WorkspaceSnapshotBuilderDependencies,
+        catalogs: [UUID: VaultSourceCatalog],
         graphGeneration: Int
     ) async throws -> WorkspaceRefreshMeasurement {
+        var sourceSnapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
+        for (id, catalog) in catalogs {
+            sourceSnapshots[id] = try await catalog.snapshot(consumePendingMeasurement: true)
+        }
         let indexed = try await dependencies.searchIndex.workspaceGeneration()
         let result = try await WorkspaceSnapshotBuilder.build(
             assignment: assignment,
             mode: .snapshot,
             dependencies: dependencies,
+            sourceSnapshots: sourceSnapshots,
             graphGeneration: graphGeneration,
             workspaceGeneration: indexed + 1
         )
         return result.measurement
     }
+
+    private enum CatalogFixtureError: Error { case unexpectedSupersession }
 
     private func milliseconds(_ duration: Duration) -> Double {
         let components = duration.components

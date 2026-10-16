@@ -32,7 +32,7 @@ struct WorkspaceLiveRefreshRaceTests {
                     #expect(committed.document(id: id)?.fingerprint == save.committedValue.document.fingerprint)
                     let evidence = WorkspaceDerivedRefreshEvidence(snapshot: committed)
                     let catalog = try #require(await handle.services.sourceCatalogs[id.vaultID])
-                    let sourceGeneration = try await catalog.snapshot(refreshFolders: false).generation
+                    let sourceGeneration = try await catalog.snapshot().generation
                     let externalText = "# External\n\nA later external source C.\n"
                     let committedNote = try #require(committed.document(id: id))
                     let committedGraph = try #require(committed.discovery.catalog.graph)
@@ -86,7 +86,7 @@ struct WorkspaceLiveRefreshRaceTests {
                         #expect(final.document(id: id)?.fingerprint == committedNote.fingerprint)
                     case .none:
                         #expect(WorkspaceDerivedRefreshEvidence(snapshot: final) == evidence)
-                        #expect(try await catalog.snapshot(refreshFolders: false).generation == sourceGeneration)
+                        #expect(try await catalog.snapshot().generation == sourceGeneration)
                         #expect(try Data(contentsOf: sourceURL) == Data(committedText.utf8))
                     }
                     await handle.setLiveInventoryPreflightBarrierForTesting(nil)
