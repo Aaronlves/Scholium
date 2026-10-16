@@ -86,7 +86,7 @@ struct WorkspaceSettingsArchitectureTests {
             #expect(!rootSource.contains(construction))
         }
         #expect(rootSource.contains("capabilities: workspaceStore.settingsCapabilities()"))
-        #expect(rootSource.contains("ScholiumSettingsView()"))
+        #expect(rootSource.contains("ScholiumSettingsView(preferences: preferences)"))
     }
 
     @Test("Settings model retains only delivery-neutral capabilities")

@@ -53,19 +53,30 @@ enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Hashable {
 struct ScholiumSettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @AppStorage("scholium.settings.selectedPane") private var persistedPane = "workspace"
-    @AppStorage("scholium.settings.navigationRevision") private var navigationRevision = ""
+    private let preferences: SettingsPreferences
+    @AppStorage private var persistedPane: String
+    @AppStorage private var navigationRevision: String
     @State private var searchRevision = 0
     @State private var destination = ScholiumSettingsDestination.workspace
     @State private var destinationBeforeSearch: ScholiumSettingsDestination?
     @State private var searchQuery = ""
     @State private var searchTarget: SettingsSection?
+    init(preferences: SettingsPreferences = .standard) {
+        self.preferences = preferences
+        _persistedPane = AppStorage(
+            wrappedValue: "workspace", "scholium.settings.selectedPane", store: preferences.defaults)
+        _navigationRevision = AppStorage(
+            wrappedValue: "", "scholium.settings.navigationRevision", store: preferences.defaults)
+    }
+
     private var isSearching: Bool {
         !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         ScholiumSettingsNavigationHost(selection: categorySelection, page: settingsContent)
+            .environment(\.scholiumSettingsDefaults, preferences.defaults)
+            .defaultAppStorage(preferences.defaults)
             .frame(
                 minWidth: ScholiumMetrics.Settings.minimumWindowWidth,
                 minHeight: ScholiumMetrics.Settings.minimumWindowHeight
@@ -139,7 +150,7 @@ struct ScholiumSettingsView: View {
 
     private func restoreRequestedDestination() {
         destination = ScholiumSettingsDestination(rawValue: persistedPane) ?? .workspace
-        if let target = SettingsNavigationRequest.takeRequestedSection(for: destination) {
+        if let target = SettingsNavigationRequest.takeRequestedSection(for: destination, defaults: preferences.defaults) {
             searchTarget = target
             searchRevision += 1
         } else if searchTarget?.destination != destination {
@@ -181,8 +192,15 @@ struct ScholiumSettingsView: View {
                     indicator: .symbol("doc.richtext", role: .attention)
                 ).padding(ScholiumGrid.Spacing.regionContentInset)
             }
-        case .writing: WritingSettingsView()
-        case .agents: AgentIntegrationSettingsView(searchQuery: searchQuery)
+        case .writing:
+            WritingSettingsView(
+                writingPreferences: preferences.writingAssistance,
+                selectionActionPreferences: preferences.selectionActions)
+        case .agents:
+            AgentIntegrationSettingsView(
+                searchQuery: searchQuery,
+                chatSidebarPreferences: preferences.chatSidebar,
+                contextAccessPreferences: preferences.agentContextAccess)
         case .shortcuts: HotkeySettingsView()
         case .zotero: ZoteroSettingsPageView()
         case .storage: StorageSettingsView(capabilities: settingsModel.storageCapabilities)

@@ -1059,13 +1059,17 @@ private struct ScholiumWorkspaceOpeningFailureView: View {
 }
 
 private struct ScholiumSettingsRoot: View {
-    @AppStorage(WindowColorSchemeChoice.defaultsKey)
-    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
+    private let preferences: SettingsPreferences
+    @AppStorage private var storedColorScheme: String
     @ObservedObject private var workspaceStore: WorkspaceStore
     @StateObject private var settingsModel: WorkspaceSettingsModel
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
 
-    init(workspaceStore: WorkspaceStore) {
+    init(workspaceStore: WorkspaceStore, preferences: SettingsPreferences = .standard) {
+        self.preferences = preferences
+        _storedColorScheme = AppStorage(
+            wrappedValue: WindowColorSchemeChoice.system.rawValue,
+            WindowColorSchemeChoice.defaultsKey, store: preferences.defaults)
         self.workspaceStore = workspaceStore
         _settingsModel = StateObject(
             wrappedValue: WorkspaceSettingsModel(
@@ -1086,7 +1090,7 @@ private struct ScholiumSettingsRoot: View {
     }
 
     var body: some View {
-        ScholiumSettingsView()
+        ScholiumSettingsView(preferences: preferences)
             .environmentObject(settingsModel)
             .environment(
                 \.agentChatSettingsController,

@@ -24,12 +24,22 @@ struct SettingsSearchNavigation<Category: Equatable> {
 }
 
 struct WritingSettingsView: View {
-    @StateObject private var selectionActions = SelectionActionsSettingsDraft()
+    private let writingPreferences: WritingAssistancePreferences
+    @StateObject private var selectionActions: SelectionActionsSettingsDraft
+
+    init(
+        writingPreferences: WritingAssistancePreferences,
+        selectionActionPreferences: SelectionActionPreferences
+    ) {
+        self.writingPreferences = writingPreferences
+        _selectionActions = StateObject(
+            wrappedValue: SelectionActionsSettingsDraft(preferences: selectionActionPreferences))
+    }
 
     var body: some View {
         Form {
-            WritingAssistanceModelSettingsContent()
-            WritingContinuationSettingsContent()
+            WritingAssistanceModelSettingsContent(preferences: writingPreferences)
+            WritingContinuationSettingsContent(preferences: writingPreferences)
             SelectionActionsSettingsContent(state: selectionActions)
         }
         .scholiumSettingsFormStyle()

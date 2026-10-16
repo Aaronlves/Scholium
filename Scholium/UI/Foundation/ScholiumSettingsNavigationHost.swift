@@ -6,6 +6,7 @@ import SwiftUI
 /// window boundary; the coordinator only translates selection intents.
 struct ScholiumSettingsNavigationHost<Page: View>: NSViewControllerRepresentable {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.scholiumSettingsDefaults) private var settingsDefaults
     @Environment(\.agentChatSettingsController) private var chatController
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @Environment(\.openURL) private var openURL
@@ -44,6 +45,8 @@ struct ScholiumSettingsNavigationHost<Page: View>: NSViewControllerRepresentable
         AnyView(
             view
                 .environmentObject(settingsModel)
+                .environment(\.scholiumSettingsDefaults, settingsDefaults)
+                .defaultAppStorage(settingsDefaults)
                 .environment(\.agentChatSettingsController, chatController)
                 .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
                 .environment(\.openURL, openURL)

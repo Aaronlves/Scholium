@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 extension EnvironmentValues {
+    /// Explicitly projected through every independently created Settings host.
+    @Entry var scholiumSettingsDefaults: UserDefaults = .standard
+
     /// A projection of category selection, including any containing Settings pane.
     @Entry var scholiumSettingsPaneIsActive = true
 }
@@ -27,6 +30,7 @@ private struct SettingsDefaultAction: ViewModifier {
 /// independent navigation, draft, geometry or animation policy.
 struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepresentable {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.scholiumSettingsDefaults) private var settingsDefaults
     @Environment(\.agentChatSettingsController) private var chatController
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @Environment(\.openURL) private var openURL
@@ -69,6 +73,8 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
             root: AnyView(
                 content(selection)
                     .environmentObject(settingsModel)
+                    .environment(\.scholiumSettingsDefaults, settingsDefaults)
+                    .defaultAppStorage(settingsDefaults)
                     .environment(\.agentChatSettingsController, chatController)
                     .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
                     .environment(\.openURL, openURL)

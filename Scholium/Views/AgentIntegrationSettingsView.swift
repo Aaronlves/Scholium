@@ -22,6 +22,7 @@ struct AgentIntegrationSettingsView: View {
     @ObservedObject private var contextAccessPreferences: AgentContextAccessPreferences
     private let coreProtocolURL = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.scholiumSettingsDefaults) private var settingsDefaults
     @Environment(\.agentChatSettingsController) private var chatController
     @Environment(\.scholiumSettingsSearchTarget) private var searchTarget
     @Environment(\.scholiumSettingsSearchRevision) private var searchRevision
@@ -105,7 +106,7 @@ struct AgentIntegrationSettingsView: View {
                                 Text("Open a Triptych to manage its Skills and Tools.", bundle: .module)
                                     .foregroundStyle(.secondary)
                                 Button("Open Workspace Settings") {
-                                    SettingsNavigationRequest.select(.workspace)
+                                    SettingsNavigationRequest.select(.workspace, defaults: settingsDefaults)
                                 }
                             }
                         }

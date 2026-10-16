@@ -10,6 +10,7 @@ struct AgentChatCapabilitiesSettingsView: View {
     @FocusState private var focusedToolAction: String?
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.scholiumSettingsDefaults) private var settingsDefaults
 
     @State private var pendingMethod: AgentChatMethod?
     @State private var pendingEnabled = false
@@ -244,7 +245,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Button("Open Connection and Chat") {
-                    SettingsNavigationRequest.reveal(.agentConnection)
+                    SettingsNavigationRequest.reveal(.agentConnection, defaults: settingsDefaults)
                 }
             } else if controller.hasActiveExecutions {
                 Text("Wait for the Agent to finish before changing Skills or Tools.", bundle: .module)
@@ -365,7 +366,7 @@ struct AgentChatCapabilitiesSettingsView: View {
             }
             Spacer()
             Button {
-                SettingsNavigationRequest.select(.zotero)
+                SettingsNavigationRequest.select(.zotero, defaults: settingsDefaults)
             } label: {
                 Text("Open Zotero Settings", bundle: .module)
             }

@@ -3,7 +3,11 @@ import SwiftUI
 
 struct WritingAssistanceModelSettingsContent: View {
     @Environment(\.agentChatSettingsController) private var controller
-    @ObservedObject private var preferences = WritingAssistancePreferences.shared
+    @ObservedObject private var preferences: WritingAssistancePreferences
+
+    init(preferences: WritingAssistancePreferences) {
+        self.preferences = preferences
+    }
 
     var body: some View {
         Section {
@@ -35,7 +39,11 @@ struct WritingAssistanceModelSettingsContent: View {
 
 struct WritingContinuationSettingsContent: View {
     @Environment(\.agentChatSettingsController) private var controller
-    @ObservedObject private var preferences = WritingAssistancePreferences.shared
+    @ObservedObject private var preferences: WritingAssistancePreferences
+
+    init(preferences: WritingAssistancePreferences) {
+        self.preferences = preferences
+    }
 
     var body: some View {
         Section {
