@@ -1,6 +1,5 @@
 import Foundation
 import ScholiumContracts
-import ScholiumCore
 import Testing
 
 @testable import ScholiumApplication
@@ -27,13 +26,13 @@ import Testing
                 #expect(await factory.callCount == 1)
                 #expect(await owner.readyIndex() == nil)
                 await factory.release(0)
-                #expect(try await first.value === index)
-                #expect(try await second.value === index)
-                #expect(await owner.readyIndex() === index)
+                #expect(try await first.value == index)
+                #expect(try await second.value == index)
+                #expect(await owner.readyIndex() == index)
                 guard case .ready(let admitted) = await owner.admissionState() else { throw AdmissionTestError.unexpectedState }
-                #expect(admitted === index)
+                #expect(admitted == index)
                 try await owner.retryFailedAdmission()
-                #expect(try await owner.resolve() === index)
+                #expect(try await owner.resolve() == index)
                 #expect(await factory.callCount == 1)
             }
         }
@@ -53,8 +52,8 @@ import Testing
                 cancelled.cancel()
                 await factory.release(0)
                 await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
-                #expect(try await survivor.value === index)
-                #expect(await owner.readyIndex() === index)
+                #expect(try await survivor.value == index)
+                #expect(await owner.readyIndex() == index)
                 #expect(await factory.cancelledCalls.isEmpty)
                 #expect(await factory.callCount == 1)
             }
@@ -188,12 +187,12 @@ import Testing
                 await context.track(retry)
                 try await requireState { await factory.callCount == 2 }
                 await factory.release(1)
-                #expect(try await retry.value === index)
+                #expect(try await retry.value == index)
                 await delivery.releaseAll()
                 await #expect(throws: AdmissionTestError.injected) { _ = try await first.value }
                 await #expect(throws: AdmissionTestError.injected) { _ = try await stale.value }
-                #expect(await owner.readyIndex() === index)
-                #expect(try await owner.resolve() === index)
+                #expect(await owner.readyIndex() == index)
+                #expect(try await owner.resolve() == index)
                 #expect(await factory.callCount == 2)
             }
         }
@@ -227,7 +226,7 @@ import Testing
     }
 
     private actor AdmissionFactoryProbe {
-        let outcomes: [Result<TriptychSearchIndex, AdmissionTestError>]
+        let outcomes: [Result<WorkspaceSearchIndexTestResource, AdmissionTestError>]
         let honorsCancellation: Bool
         private(set) var callCount = 0
         private(set) var cancelledCalls: Set<Int> = []
@@ -235,12 +234,12 @@ import Testing
         private var releaseEverything = false
         private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
-        init(outcomes: [Result<TriptychSearchIndex, AdmissionTestError>], honorsCancellation: Bool = true) {
+        init(outcomes: [Result<WorkspaceSearchIndexTestResource, AdmissionTestError>], honorsCancellation: Bool = true) {
             self.outcomes = outcomes
             self.honorsCancellation = honorsCancellation
         }
 
-        func run() async throws -> TriptychSearchIndex {
+        func run() async throws -> WorkspaceSearchIndexTestResource {
             let call = callCount
             callCount += 1
             await withTaskCancellationHandler {
@@ -301,8 +300,8 @@ import Testing
 
     private actor AdmissionTestContext {
         let root: URL
-        private var indexes: [TriptychSearchIndex] = []
-        private var owners: [WorkspaceSearchIndexOwner] = []
+        private var indexes: [WorkspaceSearchIndexTestResource] = []
+        private var owners: [WorkspaceSearchIndexOwnerTestProbe] = []
         private var releases: [@Sendable () async -> Void] = []
         private var drains: [@Sendable () async -> Void] = []
 
@@ -312,14 +311,14 @@ import Testing
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         }
 
-        func makeIndex() throws -> TriptychSearchIndex {
-            let index = try TriptychSearchIndex(applicationSupportURL: root, triptychID: UUID())
+        func makeIndex() throws -> WorkspaceSearchIndexTestResource {
+            let index = try WorkspaceSearchIndexTestResource(applicationSupportURL: root, triptychID: UUID())
             indexes.append(index)
             return index
         }
 
-        func makeOwner(_ factory: @escaping @Sendable () async throws -> TriptychSearchIndex) -> WorkspaceSearchIndexOwner {
-            let owner = WorkspaceSearchIndexOwner(factory: factory)
+        func makeOwner(_ factory: @escaping @Sendable () async throws -> WorkspaceSearchIndexTestResource) -> WorkspaceSearchIndexOwnerTestProbe {
+            let owner = WorkspaceSearchIndexOwnerTestProbe(factory: factory)
             owners.append(owner)
             return owner
         }

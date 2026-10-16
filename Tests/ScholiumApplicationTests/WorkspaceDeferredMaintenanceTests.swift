@@ -1,6 +1,5 @@
 import Foundation
 import ScholiumContracts
-import ScholiumCore
 import Testing
 
 @testable import ScholiumApplication
