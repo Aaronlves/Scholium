@@ -206,6 +206,20 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         SearchSourceTextProjection(document: document, profile: profile, semantic: semantic).segments
     }
 
+    /// Prepare one exact source with a body tree shared only by its semantic
+    /// and Search walks. The tree stays local; callers receive source-bound
+    /// values rather than an AST that could be paired with another document.
+    package static func prepareSourceSegments(
+        document: NoteDocument,
+        profile: SchemaProfileID = .genericMarkdown
+    ) -> (semantic: MarkdownSemanticDocument, segments: [SearchTextSegment]) {
+        let parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
+        let semantic = MarkdownSemanticParser.parse(document, parsedBody: parsedBody)
+        let source = SearchSourceTextProjection(
+            document: document, profile: profile, semantic: semantic, parsedBody: parsedBody)
+        return (semantic, source.segments)
+    }
+
     /// Reuses the source-derived visible-text and exact-offset projection when
     /// only graph state changed. Source catalog versions bind the cached
     /// projection to the exact `NoteDocument`; this copy operation updates
@@ -286,7 +300,10 @@ private struct SearchSourceTextProjection {
     let parsedBody: Document
     let segments: [SearchTextSegment]
 
-    init(document: NoteDocument, profile: SchemaProfileID, semantic: MarkdownSemanticDocument) {
+    init(
+        document: NoteDocument, profile: SchemaProfileID, semantic: MarkdownSemanticDocument,
+        parsedBody: Document? = nil
+    ) {
         title = ResearchNoteTitleResolver.resolve(document: document)
         properties = SearchPropertyProjection(document: document, profile: profile)
         let summaryMember =
@@ -445,8 +462,8 @@ private struct SearchSourceTextProjection {
         }
 
         var collector = SearchVisibleTextCollector(context: sourceContext)
-        parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
-        collector.visit(parsedBody)
+        self.parsedBody = parsedBody ?? Document(parsing: document.body, options: [.parseBlockDirectives])
+        collector.visit(self.parsedBody)
         if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             builtSegments.append(
                 SearchProjectionBuilder.segment(

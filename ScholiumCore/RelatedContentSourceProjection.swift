@@ -113,12 +113,12 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             else { continue }
             let exact = String(document.rawContent[sourceRange])
             let snippet = NoteDocument(relativePath: document.relativePath, rawContent: exact)
-            let snippetSemantic = MarkdownSemanticDocument(parsing: snippet)
+            let preparedSnippet = SearchDocumentProjection.prepareSourceSegments(document: snippet)
             let displayText = ResearchExcerptPresentation.readableText(
-                document: snippet, semantic: snippetSemantic, includingAnnotations: true)
+                document: snippet, semantic: preparedSnippet.semantic, includingAnnotations: true)
             let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
-            let segments = SearchDocumentProjection.sourceSegments(document: snippet, semantic: snippetSemantic).filter {
+            let segments = preparedSnippet.segments.filter {
                 $0.sourceRange != nil && $0.field != .title && $0.field != .alias
             }
             paragraphs.append(

@@ -442,6 +442,19 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 }
 
 public enum MarkdownSemanticParser {
+    // Compiled patterns are immutable; each match and source mapper stays local.
+    private static let highlightRegex = try? NSRegularExpression(pattern: #"(?<!\\)==([^=\r\n]+)=="#)
+    private static let calloutHeaderRegex = try? NSRegularExpression(
+        pattern: #"^(\s*(?:>\s*)+)\[!([^\]\r\n]+)\]([+-])?[ \t]*(.*)$"#
+    )
+    private static let footnoteDefinitionRegex = try? NSRegularExpression(
+        pattern: #"^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$"#
+    )
+    private static let footnoteReferenceRegex = try? NSRegularExpression(pattern: #"\[\^([^\]\r\n]+)\]"#)
+    private static let inlineFootnoteRegex = try? NSRegularExpression(pattern: #"\^\[([^\]\r\n]+)\]"#)
+    private static let wikilinkRegex = try? NSRegularExpression(pattern: #"\[\[([^\]\r\n]+)\]\]"#)
+    private static let quotePrefixRegex = try? NSRegularExpression(pattern: #"^\s*((?:>\s*)+)"#)
+
     /// Shared source-literal exclusions for derived identity and presentation planners.
     public static func commentRanges(in document: NoteDocument) -> [Range<Int>] {
         parseComments(
@@ -454,10 +467,16 @@ public enum MarkdownSemanticParser {
     }
 
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
+        parse(document, parsedBody: nil)
+    }
+
+    /// The synchronous source-preparation owner may share the exact body tree.
+    /// Standalone parsing continues to construct its own tree at this boundary.
+    static func parse(_ document: NoteDocument, parsedBody: Document?) -> MarkdownSemanticDocument {
         let sourceMapper = SemanticSourceMapper(document.rawContent)
         let bodyOffset = sourceMapper.utf16Offset(forUTF8Offset: document.bodyByteRange.lowerBound) ?? 0
         let bodyMapper = SemanticSourceMapper(document.body)
-        let parsed = Document(parsing: document.body, options: [.parseBlockDirectives])
+        let parsed = parsedBody ?? Document(parsing: document.body, options: [.parseBlockDirectives])
 
         var blocks: [MarkdownBlock] = []
         var inlines: [MarkdownInline] = []
@@ -637,7 +656,8 @@ public enum MarkdownSemanticParser {
         sourceMapper: SemanticSourceMapper,
         excluded: LiteralExclusions
     ) -> [MarkdownInline] {
-        guard let expression = try? NSRegularExpression(pattern: #"(?<!\\)==([^=\r\n]+)=="#) else {
+        guard body.utf8.contains(0x3D) else { return [] }
+        guard let expression = highlightRegex else {
             return []
         }
         let bodyLength = (body as NSString).length
@@ -685,11 +705,10 @@ public enum MarkdownSemanticParser {
         sourceMapper: SemanticSourceMapper,
         excluded: LiteralExclusions
     ) -> CalloutParseResult {
+        guard body.utf8.contains(0x3E) else { return CalloutParseResult(callouts: [], diagnostics: []) }
         let nsBody = body as NSString
         guard
-            let headerRegex = try? NSRegularExpression(
-                pattern: #"^(\s*(?:>\s*)+)\[!([^\]\r\n]+)\]([+-])?[ \t]*(.*)$"#
-            )
+            let headerRegex = calloutHeaderRegex
         else { return CalloutParseResult(callouts: [], diagnostics: []) }
 
         var callouts: [CalloutBlock] = []
@@ -834,12 +853,13 @@ public enum MarkdownSemanticParser {
         sourceMapper: SemanticSourceMapper,
         excluded: LiteralExclusions
     ) -> FootnoteParseResult {
+        guard body.utf8.contains(0x5E) else {
+            return FootnoteParseResult(definitions: [], references: [], diagnostics: [])
+        }
         let nsBody = body as NSString
-        let definitionRegex = try? NSRegularExpression(
-            pattern: #"^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$"#
-        )
-        let referenceRegex = try? NSRegularExpression(pattern: #"\[\^([^\]\r\n]+)\]"#)
-        let inlineRegex = try? NSRegularExpression(pattern: #"\^\[([^\]\r\n]+)\]"#)
+        let definitionRegex = footnoteDefinitionRegex
+        let referenceRegex = footnoteReferenceRegex
+        let inlineRegex = inlineFootnoteRegex
         guard let definitionRegex, let referenceRegex, let inlineRegex else {
             return FootnoteParseResult(definitions: [], references: [], diagnostics: [])
         }
@@ -1032,6 +1052,7 @@ public enum MarkdownSemanticParser {
         sourceMapper: SemanticSourceMapper,
         excluded: LiteralExclusions
     ) -> MathParseResult {
+        guard body.utf8.contains(0x24) else { return MathParseResult(expressions: [], diagnostics: []) }
         let source = body as NSString
         var expressions: [MathExpression] = []
         var diagnostics: [MarkdownDiagnostic] = []
@@ -1205,9 +1226,12 @@ public enum MarkdownSemanticParser {
         excluded: LiteralExclusions,
         inlines: [MarkdownInline]
     ) -> LinkParseResult {
+        guard body.utf8.contains(0x5B) || inlines.contains(where: { $0.kind == .link || $0.kind == .image }) else {
+            return LinkParseResult(links: [], diagnostics: [])
+        }
         let nsBody = body as NSString
         let fullRange = NSRange(location: 0, length: nsBody.length)
-        let wikiRegex = try? NSRegularExpression(pattern: #"\[\[([^\]\r\n]+)\]\]"#)
+        let wikiRegex = wikilinkRegex
         var links: [LinkOccurrence] = []
         var diagnostics: [MarkdownDiagnostic] = []
 
@@ -1464,7 +1488,7 @@ public enum MarkdownSemanticParser {
     }
 
     private static func quoteDepth(of line: String) -> Int {
-        guard let expression = try? NSRegularExpression(pattern: #"^\s*((?:>\s*)+)"#),
+        guard let expression = quotePrefixRegex,
             let match = expression.firstMatch(
                 in: line,
                 range: NSRange(location: 0, length: (line as NSString).length)
@@ -1485,6 +1509,9 @@ public enum MarkdownSemanticParser {
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper
     ) -> CommentParseResult {
+        guard body.utf8.contains(0x25) || body.utf8.contains(0x3C) else {
+            return CommentParseResult(ranges: [], diagnostics: [])
+        }
         let source = body as NSString
         var ranges: [NSRange] = []
         var diagnostics: [MarkdownDiagnostic] = []
@@ -1542,6 +1569,7 @@ public enum MarkdownSemanticParser {
     }
 
     private static func inlineCodeRanges(in body: String) -> [NSRange] {
+        guard body.utf8.contains(0x60) else { return [] }
         let source = body as NSString
         var ranges: [NSRange] = []
         var cursor = 0

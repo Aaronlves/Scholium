@@ -6,6 +6,32 @@ import Testing
 
 @Suite("Shared Markdown semantic document")
 struct MarkdownSemanticDocumentTests {
+    @Test("Concurrent semantic parses retain independent Unicode matches and source revisions")
+    func concurrentSemanticSourceIsolation() async {
+        let documents = (0..<24).map { number in
+            let newline = number.isMultiple(of: 2) ? "\n" : "\r\n"
+            let source = [
+                "# Note \(number)", "", "> [!note] Context \(number)", "> Quoted wording.", "",
+                "==highlight-\(number)== [[Target-\(number)|Café 😀 依据]]{{annotation \(number)}} [^n\(number)].", "",
+                "[^n\(number)]: Definition \(number).", "", "`[[literal-\(number)]]`",
+            ].joined(separator: newline)
+            return NoteDocument(relativePath: "Concurrent-\(number).md", rawContent: source)
+        }
+        let expected = documents.map { MarkdownSemanticDocument(parsing: $0) }
+        await withTaskGroup(of: (Int, MarkdownSemanticDocument).self) { group in
+            for iteration in 0..<192 {
+                let index = iteration % documents.count
+                group.addTask { (index, MarkdownSemanticDocument(parsing: documents[index])) }
+            }
+            for await (index, actual) in group {
+                #expect(actual == expected[index])
+                #expect(actual.fingerprint == documents[index].fingerprint)
+                #expect(actual.links.count == 1)
+                #expect(actual.links.first?.target == "Target-\(index)")
+            }
+        }
+    }
+
     @Test("Adjacent link annotations own exact multiline Markdown and distinct source spans")
     func annotatedLinkSourceOwnership() throws {
         let source = """
