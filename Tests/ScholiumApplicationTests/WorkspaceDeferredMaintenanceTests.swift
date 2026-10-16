@@ -133,6 +133,68 @@ import Testing
             }
         }
 
+        @Test("Configuration returns before controlled cleanup; Settings and shutdown still drain it", .timeLimit(.minutes(1)))
+        func configureReturnsBeforeControlledMaintenance() async throws {
+            try await withFixture { fixture, runtime, passes, lifetime in
+                let retired = try makeRetiredIndex(fixture)
+                let configureReturned = MaintenanceReturnProbe()
+                let configured = Task {
+                    let handle = try await runtime.configureTriptych(
+                        paperAnalysisURL: fixture.analysesURL,
+                        topicKnowledgeURL: fixture.topicsURL,
+                        outputURL: fixture.worksURL,
+                        portableContainerURL: fixture.rootURL,
+                        triptychID: fixture.assignment.id,
+                        openingVault: .paperAnalysis)
+                    await configureReturned.markReturned()
+                    return handle
+                }
+                await lifetime.track(configured)
+                try await requireState { await configureReturned.returned }
+                let handle = try await configured.value
+                let opening = MaintenanceOpeningGate()
+                await lifetime.releaseOnCleanup { await opening.release() }
+                await handle.setProgressiveActivationReconciliationBarrierForTesting { await opening.wait() }
+                #expect(try await handle.snapshot().phase == .opening)
+                #expect(try await handle.snapshot().vaults.map(\.slot) == [.paperAnalysis])
+                #expect(await passes.started.isEmpty)
+                #expect(FileManager.default.fileExists(atPath: retired.path))
+                let expected = try Data(contentsOf: fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath))
+                let loaded = try await handle.documents.load(fixture.analysisNoteID)
+                #expect(loaded.sourceBytes == expected)
+
+                let settingsReturned = MaintenanceReturnProbe()
+                let settings = Task {
+                    let result = try await runtime.performStorageAction(.cleanRetiredDerivedState)
+                    await settingsReturned.markReturned()
+                    return result
+                }
+                await lifetime.track(settings)
+                try await requireState { await passes.started.contains(1) }
+                #expect(await settingsReturned.returned == false)
+                #expect(FileManager.default.fileExists(atPath: retired.path))
+                await passes.release(1)
+                #expect(try await settings.value.action == .cleanRetiredDerivedState)
+                #expect(await settingsReturned.returned)
+                #expect(!FileManager.default.fileExists(atPath: retired.path))
+
+                let shutdownReturned = MaintenanceReturnProbe()
+                let shutdown = Task {
+                    await runtime.shutdown()
+                    await shutdownReturned.markReturned()
+                }
+                await lifetime.track(shutdown)
+                try await requireState { await passes.started.contains(2) }
+                #expect(await shutdownReturned.returned == false)
+                await passes.release(2)
+                await shutdown.value
+                #expect(await shutdownReturned.returned)
+                #expect(await runtime.derivedMaintenancePhaseForTesting == nil)
+                #expect(await runtime.derivedMaintenancePassCountForTesting == 2)
+                #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath)) == expected)
+            }
+        }
+
         private func makeRetiredIndex(_ fixture: ApplicationFixture) throws -> URL {
             let directory = fixture.applicationSupportURL
                 .appendingPathComponent("Triptychs/\(UUID().uuidString.lowercased())/indexes", isDirectory: true)
@@ -171,6 +233,11 @@ import Testing
             Issue.record("The controlled deferred-maintenance state was not reached.")
             throw MaintenanceTestError.timedOut
         }
+    }
+
+    private actor MaintenanceReturnProbe {
+        private(set) var returned = false
+        func markReturned() { returned = true }
     }
 
     private enum MaintenanceTestError: Error { case timedOut }

@@ -724,7 +724,8 @@ enum NoteSearchResultBuilder {
             presentation = snippet(
                 segment: matched.segment,
                 normalizedRange: matched.contextRange,
-                positiveClauses: snippetAST.positiveLexicalClauses
+                positiveClauses: snippetAST.positiveLexicalClauses,
+                preparedDisplayRangeMapping: matched.preparedDisplayRangeMapping
             )
         } else if let property,
             let entry = document.properties.first(where: {
@@ -780,21 +781,92 @@ enum NoteSearchResultBuilder {
         )
     }
 
-    static func occurrenceHits(
+    /// Immutable material shared by one lexical or paragraph-witness scope.
+    /// Candidates retain this request-local context until their page is selected.
+    fileprivate final class OccurrencePresentationContext {
+        let document: StoredSearchDocument
+        let positiveClauses: [SearchLexicalClause]
+        let matchedFields: [SearchMatchedField]
+        let reasons: [NoteSearchMatchReason]
+        let rankReason: SearchRankReason
+
+        init(
+            candidate: SearchCandidate, ast: SearchQueryAST,
+            linkMatches: [SearchLinkQuery: SearchLinkResolution]
+        ) {
+            document = candidate.document
+            positiveClauses = ast.positiveLexicalClauses
+            matchedFields = SearchMatcher.matchedFields(ast: ast, document: candidate.document)
+            reasons = NoteSearchResultBuilder.matchReasons(
+                ast: ast, document: candidate.document, linkMatches: linkMatches)
+            rankReason = NoteSearchResultBuilder.rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly)
+        }
+    }
+
+    struct OccurrenceCandidate {
+        let resultID: String
+        let sourceRange: SearchSourceRange?
+        fileprivate let segment: SearchTextSegment
+        fileprivate let normalizedRange: Range<Int>
+        fileprivate let clause: SearchLexicalClause
+        fileprivate let presentationContext: OccurrencePresentationContext
+    }
+
+    /// Presentation stays here; the current-note owner supplies only its page.
+    static func materializeOccurrenceCandidates(
+        _ candidates: ArraySlice<OccurrenceCandidate>, freshness: SearchFreshnessToken
+    ) -> [NoteSearchResult] {
+        var lastDisplayRangeMapping: PreparedDisplayRangeMapping?
+        return candidates.map { candidate in
+            let material = candidate.presentationContext
+            let document = material.document
+            let segment = candidate.segment
+            let sourceRange = candidate.sourceRange
+            if lastDisplayRangeMapping?.matches(in: segment.text, normalizedText: segment.normalizedText) != true {
+                // Release the prior checked array before preparing a different
+                // display. At most one cached map belongs to this page.
+                lastDisplayRangeMapping = nil
+                lastDisplayRangeMapping = .init(in: segment.text, normalizedText: segment.normalizedText)
+            }
+            let presentation = snippet(
+                segment: segment, normalizedRange: candidate.normalizedRange,
+                positiveClauses: material.positiveClauses, occurrenceClause: candidate.clause,
+                preparedDisplayRangeMapping: lastDisplayRangeMapping)
+            return NoteSearchResult(
+                resultID: candidate.resultID,
+                vaultID: document.vaultID,
+                vaultName: document.vaultName,
+                vaultRole: document.vaultRole,
+                relativePath: document.relativePath,
+                stableNoteID: document.stableNoteID,
+                title: document.title,
+                matchedField: segment.field,
+                context: context(for: segment.field),
+                sourceLine: sourceRange?.line ?? 1,
+                snippet: presentation.text,
+                highlights: presentation.highlights,
+                matchedFields: material.matchedFields,
+                rankReason: material.rankReason,
+                primaryMatchReason: material.reasons.first ?? .lexical,
+                additionalMatchReasons: Array(material.reasons.dropFirst()),
+                sourceRange: sourceRange,
+                freshnessToken: freshness,
+                fingerprint: document.fingerprint,
+                evidentialLayer: document.evidentialLayer,
+                classification: .retrievalLead)
+        }
+    }
+
+    static func occurrenceCandidates(
         candidate: SearchCandidate,
         ast: SearchQueryAST,
-        freshness: SearchFreshnessToken,
         limit: Int,
         linkMatches: [SearchLinkQuery: SearchLinkResolution]
-    ) -> [NoteSearchResult] {
+    ) -> [OccurrenceCandidate] {
         let document = candidate.document
-        let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
-        let reasons = matchReasons(
-            ast: ast,
-            document: document,
-            linkMatches: linkMatches
-        )
-        var hits: [NoteSearchResult] = []
+        let presentationContext = OccurrencePresentationContext(
+            candidate: candidate, ast: ast, linkMatches: linkMatches)
+        var candidates: [OccurrenceCandidate] = []
         for lead in ast.positiveLexicalClauses {
             for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
                 for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
@@ -803,47 +875,25 @@ enum NoteSearchResultBuilder {
                         segment: segment,
                         lineStarts: document.sourceLineStarts
                     )
-                    let presentation = snippet(
-                        segment: segment,
-                        normalizedRange: range,
-                        positiveClauses: ast.positiveLexicalClauses,
-                        occurrenceClause: lead
-                    )
-                    hits.append(
-                        NoteSearchResult(
+                    candidates.append(
+                        OccurrenceCandidate(
                             resultID:
                                 "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal):\(sourceRange?.utf16UpperBound ?? segment.ordinal)",
-                            vaultID: document.vaultID,
-                            vaultName: document.vaultName,
-                            vaultRole: document.vaultRole,
-                            relativePath: document.relativePath,
-                            stableNoteID: document.stableNoteID,
-                            title: document.title,
-                            matchedField: segment.field,
-                            context: context(for: segment.field),
-                            sourceLine: sourceRange?.line ?? 1,
-                            snippet: presentation.text,
-                            highlights: presentation.highlights,
-                            matchedFields: matchedFields,
-                            rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
-                            primaryMatchReason: reasons.first ?? .lexical,
-                            additionalMatchReasons: Array(reasons.dropFirst()),
                             sourceRange: sourceRange,
-                            freshnessToken: freshness,
-                            fingerprint: document.fingerprint,
-                            evidentialLayer: document.evidentialLayer,
-                            classification: .retrievalLead
-                        ))
+                            segment: segment,
+                            normalizedRange: range,
+                            clause: lead,
+                            presentationContext: presentationContext))
                 }
             }
         }
         for paragraph in SearchMatcher.paragraphWitnesses(ast, document: document) {
             let local = SearchCandidate(document: paragraph.document, identityPriority: 0, lexicalRank: candidate.lexicalRank)
-            hits.append(contentsOf: occurrenceHits(candidate: local, ast: paragraph.ast, freshness: freshness, limit: limit, linkMatches: linkMatches))
+            candidates.append(contentsOf: occurrenceCandidates(candidate: local, ast: paragraph.ast, limit: limit, linkMatches: linkMatches))
         }
         var seen: Set<String> = []
         return Array(
-            hits.sorted {
+            candidates.sorted {
                 ($0.sourceRange?.utf16LowerBound ?? 0, $0.sourceRange?.utf16UpperBound ?? 0) < (
                     $1.sourceRange?.utf16LowerBound ?? 0, $1.sourceRange?.utf16UpperBound ?? 0
                 )
@@ -898,6 +948,7 @@ enum NoteSearchResultBuilder {
         let range: Range<Int>
         let contextRange: Range<Int>
         let coverage: Int
+        let preparedDisplayRangeMapping: PreparedDisplayRangeMapping
     }
 
     private static func lexicalKey(_ clause: SearchLexicalClause) -> SearchLexicalClause {
@@ -955,9 +1006,9 @@ enum NoteSearchResultBuilder {
                         firstOnly: clauses.count == 1
                     ).map { (predicate, $0) })
             }
-            let displayRanges = mappedDisplayRanges(
-                in: segment.text, normalizedText: segment.normalizedText,
-                requestedRanges: occurrences.map(\.range))
+            guard !occurrences.isEmpty else { continue }
+            let mapping = PreparedDisplayRangeMapping(in: segment.text, normalizedText: segment.normalizedText)
+            let displayRanges = mapping.ranges(for: occurrences.map(\.range))
             let displayed = zip(occurrences, displayRanges).compactMap { occurrence, displayRange in
                 displayRange.map { (predicate: occurrence.predicate, range: occurrence.range, displayRange: $0) }
             }.sorted {
@@ -982,46 +1033,67 @@ enum NoteSearchResultBuilder {
                         .init(
                             segment: segment, range: anchor.range,
                             contextRange: anchor.range.lowerBound..<occurrence.range.upperBound,
-                            coverage: active.count))
+                            coverage: active.count, preparedDisplayRangeMapping: mapping))
                 } else {
                     // A long exact phrase remains a usable anchor even when it
                     // cannot share a compact window with another predicate.
-                    retain(.init(segment: segment, range: occurrence.range, contextRange: occurrence.range, coverage: 1))
+                    retain(.init(
+                        segment: segment, range: occurrence.range, contextRange: occurrence.range, coverage: 1,
+                        preparedDisplayRangeMapping: mapping))
                 }
             }
         }
         return best
     }
 
-    /// Edge whitespace may be trimmed without changing retained coordinates.
-    /// Prove whole-input normalization is otherwise byte-identical and every
-    /// retained grapheme has one UTF-16 unit; other text uses the checked mapper.
-    private static func mappedDisplayRanges(
-        in text: String,
-        normalizedText: String,
-        requestedRanges: [Range<Int>]
-    ) -> [Range<Int>?] {
-        guard !requestedRanges.isEmpty else { return [] }
-        let leadingTrimmed = text.drop(while: { $0.isWhitespace })
-        let retainedEnd = leadingTrimmed.lastIndex(where: { !$0.isWhitespace })
-            .map { leadingTrimmed.index(after: $0) } ?? leadingTrimmed.startIndex
-        let retained = leadingTrimmed[..<retainedEnd]
-        let utf16Count = retained.utf16.count
-        // Reject ordinary folded/collapsed segments before repeating canonical
-        // normalization. Stored comparison text is only a rejection filter;
-        // admission still proves normalization against the exact display text.
-        if retained == normalizedText,
-            retained.count == utf16Count,
-            SearchTextNormalization.lexicalNormalize(text).utf8.elementsEqual(retained.utf8)
-        {
-            let sourceOffset = retained.startIndex.utf16Offset(in: text)
-            return requestedRanges.map { range in
-                guard !range.isEmpty, range.lowerBound >= 0, range.upperBound <= utf16Count else { return nil }
-                return (range.lowerBound + sourceOffset)..<(range.upperBound + sourceOffset)
+    /// A winning hit or one selected page owns this checked map. Different
+    /// batches share it only for identical display and normalized UTF-8 bytes.
+    struct PreparedDisplayRangeMapping {
+        private enum Storage {
+            case linear(sourceOffset: Int, utf16Count: Int)
+            case checked(SearchTextNormalization.PreparedLexicalSourceMapping)
+        }
+
+        private let text: String
+        private let normalizedText: String
+        private let storage: Storage
+
+        init(in text: String, normalizedText: String) {
+            self.text = text
+            self.normalizedText = normalizedText
+            let leadingTrimmed = text.drop(while: { $0.isWhitespace })
+            let retainedEnd = leadingTrimmed.lastIndex(where: { !$0.isWhitespace })
+                .map { leadingTrimmed.index(after: $0) } ?? leadingTrimmed.startIndex
+            let retained = leadingTrimmed[..<retainedEnd]
+            let utf16Count = retained.utf16.count
+            // Retain the same checked linear shortcut. Canonically equal
+            // strings alone never authorize reusing a map from another input.
+            if retained == normalizedText,
+                retained.count == utf16Count,
+                SearchTextNormalization.lexicalNormalize(text).utf8.elementsEqual(retained.utf8)
+            {
+                storage = .linear(sourceOffset: retained.startIndex.utf16Offset(in: text), utf16Count: utf16Count)
+            } else {
+                storage = .checked(SearchTextNormalization.prepareOriginalUTF16RangesForLexicalNormalization(in: text))
             }
         }
-        return SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
-            in: text, requestedRanges: requestedRanges)
+
+        func matches(in text: String, normalizedText: String) -> Bool {
+            self.text.utf8.elementsEqual(text.utf8)
+                && self.normalizedText.utf8.elementsEqual(normalizedText.utf8)
+        }
+
+        func ranges(for requestedRanges: [Range<Int>]) -> [Range<Int>?] {
+            switch storage {
+            case .linear(let sourceOffset, let utf16Count):
+                return requestedRanges.map { range in
+                    guard !range.isEmpty, range.lowerBound >= 0, range.upperBound <= utf16Count else { return nil }
+                    return (range.lowerBound + sourceOffset)..<(range.upperBound + sourceOffset)
+                }
+            case .checked(let mapping):
+                return mapping.originalUTF16Ranges(for: requestedRanges)
+            }
+        }
     }
 
     static func sourceRange(
@@ -1062,7 +1134,8 @@ enum NoteSearchResultBuilder {
         segment: SearchTextSegment?,
         normalizedRange: Range<Int>?,
         positiveClauses: [SearchLexicalClause],
-        occurrenceClause: SearchLexicalClause? = nil
+        occurrenceClause: SearchLexicalClause? = nil,
+        preparedDisplayRangeMapping: PreparedDisplayRangeMapping? = nil
     ) -> (text: String, highlights: [SearchHighlight]) {
         guard let segment else { return ("", []) }
         let source = segment.text
@@ -1081,9 +1154,15 @@ enum NoteSearchResultBuilder {
                         normalizedNeedle: key.value.text))
             }
         }
-        let mappedRanges = mappedDisplayRanges(
-            in: source, normalizedText: segment.normalizedText,
-            requestedRanges: [normalizedRange ?? 0..<0] + highlightRanges)
+        let mapping: PreparedDisplayRangeMapping
+        if let preparedDisplayRangeMapping,
+            preparedDisplayRangeMapping.matches(in: source, normalizedText: segment.normalizedText)
+        {
+            mapping = preparedDisplayRangeMapping
+        } else {
+            mapping = .init(in: source, normalizedText: segment.normalizedText)
+        }
+        let mappedRanges = mapping.ranges(for: [normalizedRange ?? 0..<0] + highlightRanges)
         let targetUTF16 = mappedRanges[0] ?? 0..<0
         let boundedLower = min(max(0, targetUTF16.lowerBound), source.utf16.count)
         let boundedUpper = min(max(boundedLower, targetUTF16.upperBound), source.utf16.count)

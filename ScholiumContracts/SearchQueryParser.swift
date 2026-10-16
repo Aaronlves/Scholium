@@ -1159,11 +1159,9 @@ public enum SearchTextNormalization {
         in value: String,
         requestedRanges: [Range<Int>]
     ) -> [Range<Int>?] {
-        mappedOriginalUTF16Ranges(
-            in: value,
-            requestedRanges: requestedRanges,
-            normalizer: lexicalNormalize
-        )
+        guard !requestedRanges.isEmpty else { return [] }
+        return prepareOriginalUTF16RangesForLexicalNormalization(in: value)
+            .originalUTF16Ranges(for: requestedRanges)
     }
 
     private static func normalize(
@@ -1188,88 +1186,118 @@ public enum SearchTextNormalization {
         return result.precomposedStringWithCanonicalMapping
     }
 
-    private static func mappedOriginalUTF16Ranges(
-        in value: String,
-        requestedRanges: [Range<Int>],
-        normalizer: (String) -> String
-    ) -> [Range<Int>?] {
-        guard !requestedRanges.isEmpty else { return [] }
-        struct Offset {
+    /// A caller-owned checked mapping for repeated batches over one exact
+    /// immutable display string. It is never persisted or retained between queries.
+    package static func prepareOriginalUTF16RangesForLexicalNormalization(
+        in value: String
+    ) -> PreparedLexicalSourceMapping {
+        .init(in: value)
+    }
+
+    package struct PreparedLexicalSourceMapping: Sendable {
+        private struct Offset: Sendable {
             let normalized: Range<Int>
             let original: Range<Int>
         }
 
-        var normalized = ""
-        var normalizedUTF16Count = 0
-        var offsets: [Offset] = []
-        var originalCursor = 0
-        var pendingWhitespace: Range<Int>?
-        for character in value {
-            let originalLength = String(character).utf16.count
-            let originalRange = originalCursor..<(originalCursor + originalLength)
-            originalCursor += originalLength
-            if character.isWhitespace {
-                guard !normalized.isEmpty else { continue }
-                if let existing = pendingWhitespace {
-                    pendingWhitespace = existing.lowerBound..<originalRange.upperBound
-                } else {
-                    pendingWhitespace = originalRange
+        private let normalizedUTF16Count: Int
+        private let offsets: [Offset]?
+
+        fileprivate init(in value: String) {
+            var normalized = ""
+            var normalizedUTF16Count = 0
+            var offsets: [Offset] = []
+            var originalCursor = 0
+            var pendingWhitespace: Range<Int>?
+            // Fold identical UTF8 spellings once for this map. Bound both the
+            // entry count and retained byte payload; other Characters use the
+            // canonical normalizer below without being retained.
+            var foldedCharacters: [Data: String] = [:]
+            for character in value {
+                let characterText = String(character)
+                let originalLength = characterText.utf16.count
+                let originalRange = originalCursor..<(originalCursor + originalLength)
+                originalCursor += originalLength
+                if character.isWhitespace {
+                    guard !normalized.isEmpty else { continue }
+                    if let existing = pendingWhitespace {
+                        pendingWhitespace = existing.lowerBound..<originalRange.upperBound
+                    } else {
+                        pendingWhitespace = originalRange
+                    }
+                    continue
                 }
-                continue
-            }
-            if let pendingWhitespace {
+                if let pendingWhitespace {
+                    let lower = normalizedUTF16Count
+                    normalized.append(" ")
+                    normalizedUTF16Count += 1
+                    offsets.append(
+                        Offset(
+                            normalized: lower..<(lower + 1),
+                            original: pendingWhitespace
+                        ))
+                }
+                pendingWhitespace = nil
+                let folded: String
+                if characterText.utf8.count <= 64 {
+                    let key = Data(characterText.utf8)
+                    if let cached = foldedCharacters[key] {
+                        folded = cached
+                    } else {
+                        folded = SearchTextNormalization.lexicalNormalize(characterText)
+                        if foldedCharacters.count < 256, folded.utf8.count <= 64 {
+                            foldedCharacters[key] = folded
+                        }
+                    }
+                } else {
+                    folded = SearchTextNormalization.lexicalNormalize(characterText)
+                }
                 let lower = normalizedUTF16Count
-                normalized.append(" ")
-                normalizedUTF16Count += 1
+                normalized += folded
+                normalizedUTF16Count += folded.utf16.count
                 offsets.append(
                     Offset(
-                        normalized: lower..<(lower + 1),
-                        original: pendingWhitespace
+                        normalized: lower..<normalizedUTF16Count,
+                        original: originalRange
                     ))
             }
-            pendingWhitespace = nil
-            let folded = normalizer(String(character))
-            let lower = normalizedUTF16Count
-            normalized += folded
-            normalizedUTF16Count += folded.utf16.count
-            offsets.append(
-                Offset(
-                    normalized: lower..<normalizedUTF16Count,
-                    original: originalRange
-                ))
+
+            self.normalizedUTF16Count = normalizedUTF16Count
+            self.offsets = normalized == SearchTextNormalization.lexicalNormalize(value) ? offsets : nil
         }
 
-        guard normalized == normalizer(value) else {
-            return Array(repeating: nil, count: requestedRanges.count)
-        }
-        return requestedRanges.map { requestedRange in
-            guard !requestedRange.isEmpty,
-                requestedRange.lowerBound >= 0,
-                requestedRange.upperBound <= normalizedUTF16Count
-            else { return nil }
+        package func originalUTF16Ranges(for requestedRanges: [Range<Int>]) -> [Range<Int>?] {
+            guard !requestedRanges.isEmpty else { return [] }
+            guard let offsets else { return Array(repeating: nil, count: requestedRanges.count) }
+            return requestedRanges.map { requestedRange in
+                guard !requestedRange.isEmpty,
+                    requestedRange.lowerBound >= 0,
+                    requestedRange.upperBound <= normalizedUTF16Count
+                else { return nil }
 
-            var lower = 0
-            var upper = offsets.count
-            while lower < upper {
-                let middle = lower + (upper - lower) / 2
-                if offsets[middle].normalized.upperBound <= requestedRange.lowerBound {
-                    lower = middle + 1
-                } else {
-                    upper = middle
+                var lower = 0
+                var upper = offsets.count
+                while lower < upper {
+                    let middle = lower + (upper - lower) / 2
+                    if offsets[middle].normalized.upperBound <= requestedRange.lowerBound {
+                        lower = middle + 1
+                    } else {
+                        upper = middle
+                    }
                 }
-            }
-            let first = lower
-            upper = offsets.count
-            while lower < upper {
-                let middle = lower + (upper - lower) / 2
-                if offsets[middle].normalized.lowerBound < requestedRange.upperBound {
-                    lower = middle + 1
-                } else {
-                    upper = middle
+                let first = lower
+                upper = offsets.count
+                while lower < upper {
+                    let middle = lower + (upper - lower) / 2
+                    if offsets[middle].normalized.lowerBound < requestedRange.upperBound {
+                        lower = middle + 1
+                    } else {
+                        upper = middle
+                    }
                 }
+                guard first < lower else { return nil }
+                return offsets[first].original.lowerBound..<offsets[lower - 1].original.upperBound
             }
-            guard first < lower else { return nil }
-            return offsets[first].original.lowerBound..<offsets[lower - 1].original.upperBound
         }
     }
 }

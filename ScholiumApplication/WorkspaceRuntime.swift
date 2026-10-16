@@ -721,7 +721,6 @@ public actor WorkspaceRuntime {
         )
         let replacementsReady = clock.now
         if let replacement = replacements[assignment.id] {
-            await maintainDerivedStateIfNeeded(force: true)
             Self.logOpen(
                 portable: totalStart.duration(to: portableReady),
                 identities: portableReady.duration(to: identitiesReady),
@@ -737,7 +736,6 @@ public actor WorkspaceRuntime {
             openingVault: openingVault
         )
         let completed = clock.now
-        await maintainDerivedStateIfNeeded(force: true)
         Self.logOpen(
             portable: totalStart.duration(to: portableReady),
             identities: portableReady.duration(to: identitiesReady),

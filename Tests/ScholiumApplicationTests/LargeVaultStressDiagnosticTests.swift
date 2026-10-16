@@ -442,7 +442,7 @@ struct LargeVaultStressDiagnosticTests {
             "physical_memory_bytes": ProcessInfo.processInfo.physicalMemory,
             "processor_count": ProcessInfo.processInfo.activeProcessorCount,
             "developer_directory": environment["DEVELOPER_DIR"] ?? "not set",
-            "measurement": "Fresh live runtime; initial timer includes maintenance and membership admission. Presentation-to-complete uses the existing lifecycle boundary. Seed creation, source oracles, full Search/Graph comparison and shutdown are outside timers. No UI or paint claim.",
+            "measurement": "Fresh live runtime; initial timer includes membership and authoritative selected-library source admission. Generated-index admission and maintenance follow source readiness. Presentation-to-complete uses the existing lifecycle boundary. Seed creation, source oracles, full Search/Graph comparison and shutdown are outside timers. No UI or paint claim.",
             "cache_condition": "One retained closed compatible seed at identical paths; same source and portable identities. OS caches are not purged. Pre-sample source validation warms filesystem caches. No retained-memory claim.",
             "search_comparison": "Every result page for every fixture Search oracle; complete ordered note material except generation freshness tokens, independently checked against each current snapshot.",
         ]
@@ -623,7 +623,7 @@ struct LargeVaultStressDiagnosticTests {
                     limit: 20)
                 let findStarted = ContinuousClock.now
                 let sourceResponse = try await handle.discovery.search(sourceRequest)
-                let firstBufferFindMilliseconds = milliseconds(findStarted.duration(to: .now))
+                let firstBufferSearchMilliseconds = milliseconds(findStarted.duration(to: .now))
                 try #require(sourceResponse.diagnostics.isEmpty && sourceResponse.results.count == 1)
                 try #require(!sourceResponse.hasMore && sourceResponse.freshnessToken.rawValue.hasPrefix("note:"))
                 for result in sourceResponse.results {
@@ -687,14 +687,14 @@ struct LargeVaultStressDiagnosticTests {
                 sample["initial_to_complete_wall_ms"] = initialToComplete
                 sample["validation_gap_before_presentation_ms"] = gap
                 sample["first_source_load_after_usable_ms"] = firstSourceLoadMilliseconds
-                sample["first_unsaved_buffer_find_ms"] = firstBufferFindMilliseconds
+                sample["first_unsaved_buffer_search_ms"] = firstBufferSearchMilliseconds
                 sample["source_ready_capabilities"] = [
-                    "exact_source_loaded": true, "unsaved_buffer_find": true,
+                    "exact_source_loaded": true, "unsaved_buffer_this_note_search": true,
                     "exact_current_buffer_locator": true,
                     "vault_search_building_without_results": true,
                     "triptych_search_blocked": true, "derived_index_not_admitted": true
                 ]
-                sample["capability_probe_scope"] = "Backend source load and unsaved-buffer Find before presentation; no native typing, layout, paint or save timing. Probe work is reported in the pre-presentation gap."
+                sample["capability_probe_scope"] = "Backend source load and unsaved-buffer This Note Search before presentation; no native typing, layout, paint or save timing. Probe work is reported in the pre-presentation gap."
                 sample["opening_read_files"] = initial.readFiles
                 sample["opening_parsed_documents"] = initial.parsedDocuments
                 sample["opening_restored_catalog_projections"] = initial.restoredCatalogProjections

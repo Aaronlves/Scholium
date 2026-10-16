@@ -2002,17 +2002,21 @@ public actor TriptychSearchIndex {
             offset: resultOffset,
             limit: limit
         )
-        let candidates: [NoteSearchResult]
+        let results: [SearchResult]
+        let hasMore: Bool
         if !matchedAST.isFilterOnly {
-            candidates = NoteSearchResultBuilder.occurrenceHits(
+            let candidates = NoteSearchResultBuilder.occurrenceCandidates(
                 candidate: candidate,
                 ast: matchedAST,
-                freshness: freshness,
                 limit: requiredHitCount,
                 linkMatches: linkMatches
             )
+            let page = candidates.dropFirst(min(resultOffset, candidates.count))
+            results = NoteSearchResultBuilder.materializeOccurrenceCandidates(
+                page.prefix(limit), freshness: freshness).map(SearchResult.note)
+            hasMore = page.count > limit
         } else {
-            candidates = [
+            let candidates = [
                 NoteSearchResultBuilder.hit(
                     candidate: candidate,
                     ast: matchedAST,
@@ -2020,16 +2024,18 @@ public actor TriptychSearchIndex {
                     linkMatches: linkMatches
                 )
             ]
+            let page = candidates.dropFirst(min(resultOffset, candidates.count))
+            results = page.prefix(limit).map(SearchResult.note)
+            hasMore = page.count > limit
         }
-        let page = candidates.dropFirst(min(resultOffset, candidates.count))
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
             explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
             availability: availability,
-            results: page.prefix(limit).map(SearchResult.note),
-            hasMore: page.count > limit
+            results: results,
+            hasMore: hasMore
         )
     }
 

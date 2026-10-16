@@ -65,9 +65,10 @@ extension TriptychSearchIndex {
                 localIdentity: Bool, exactReadableText: String
             )] =
                 []
-        var scoringDocuments: [RelatedContentBM25F.Document] = []
+        let scoringTerms = focusedTerms.isEmpty ? material.combinedTerms : focusedTerms
+        var scoringCorpus = RelatedContentBM25F.PreparedCorpus(terms: scoringTerms)
         var scoringRoles: [VaultRole] = []
-        var noteDocuments: [RelatedContentBM25F.Document] = []
+        var noteCorpus = RelatedContentBM25F.PreparedCorpus(terms: scoringTerms)
         var noteRoles: [VaultRole] = []
         var noteIndices: [VaultQualifiedNoteID: Int] = [:]
         var noteRelevance: [VaultQualifiedNoteID: Double] = [:]
@@ -94,8 +95,8 @@ extension TriptychSearchIndex {
                     continue
                 }
             }
-            noteIndices[source.candidate.note] = noteDocuments.count
-            noteDocuments.append(projection.noteScoringDocument)
+            noteIndices[source.candidate.note] = noteCorpus.rows.count
+            try noteCorpus.append(projection.noteScoringDocument)
             noteRoles.append(source.candidate.vaultRole)
             for unit in projection.paragraphs {
                 try Task.checkCancellation()
@@ -105,8 +106,8 @@ extension TriptychSearchIndex {
                             location: unit.range.utf16LowerBound,
                             length: unit.range.utf16UpperBound - unit.range.utf16LowerBound), in: source.document.rawContent)
                 else { continue }
-                let documentIndex = scoringDocuments.count
-                scoringDocuments.append(unit.scoringDocument)
+                let documentIndex = scoringCorpus.rows.count
+                try scoringCorpus.append(unit.scoringDocument)
                 scoringRoles.append(source.candidate.vaultRole)
                 let normalized = unit.normalizedDisplayText
                 let matchingTerms = material.termMatcher.matchingTerms(in: normalized, index: unit.textIndex)
@@ -146,8 +147,7 @@ extension TriptychSearchIndex {
             }
         }
         let evaluation = try RelatedContentBM25F.evaluate(
-            documents: scoringDocuments,
-            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms, roles: scoringRoles)
+            prepared: scoringCorpus, roles: scoringRoles)
         let maximumScore = evaluation.scores.max() ?? 0
         ranked.removeAll { item in
             let rejected =
@@ -191,9 +191,8 @@ extension TriptychSearchIndex {
         }
         // Note and paragraph statistics have different units. Keep their
         // rankings separate instead of adding incomparable numeric scores.
-        let noteScores = try RelatedContentBM25F.scores(
-            documents: noteDocuments,
-            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms, roles: noteRoles)
+        let noteScores = try RelatedContentBM25F.evaluate(
+            prepared: noteCorpus, roles: noteRoles).scores
         let passageRelevance = Dictionary(ranked.map { ($0.passage.id, $0.score) }, uniquingKeysWith: max)
         var grouped: [VaultQualifiedNoteID: [RelatedContentPassage]] = [:]
         var seen: [VaultQualifiedNoteID: Set<String>] = [:]

@@ -52,17 +52,16 @@ Live runtimes pool vault repositories, catalogs and watchers for borrowing windo
 Snapshot runtimes load once without watchers and shut down after use. Replaced
 roots remain unavailable until explicit access restoration renews authorization.
 
-An opening workspace publishes each prepared vault's authoritative catalog
-and portable identities. Document load and exact current-buffer Search are usable;
-lexical Search may use its last complete compatible index after filtering by
-current fingerprints and stable identities. It reports Limited. Triptych-wide
-structured, property and direct-link queries fail closed while their complete
-projections are absent. No partial index becomes a complete generation.
+Live opening publishes the requested vault's catalog and portable identities
+as `.opening`; `WorkspaceSearchIndexOwner` remains lazy. Document load and exact
+unsaved-buffer This Note Search bypass indexes. Lexical This Vault Search
+filters admitted compatible results by current fingerprints and stable identities,
+reporting Limited; unprepared vaults and Triptych queries fail closed.
 
-One completion task converges after observation reconciliation.
-Initial document visible-layout readiness delays competing full
-reconcile, with a bounded fallback for Library-only or failed-renderer cases.
-Shutdown cancels and awaits completion; it never creates a second source runtime.
+One completion task awaits Document visible-layout readiness or a two-second
+fallback, then admits Search and reconciles before coherent `.complete`.
+Admission failure retains `.opening` and typed diagnostics until explicit retry.
+Shutdown cancels admission before draining producers and late indexes.
 
 Application derives Search manifests from source-free catalog metadata, links,
 descriptor facts and versions. Watchers precede reconciliation; precise events
@@ -82,13 +81,14 @@ rechecks it before SourceVersion validation and SQL commit, retaining authority
 through App publication. Superseded work recaptures after rollback. Cohorts retain
 publication kind and paths; waiter cancellation cannot cancel another caller.
 Admitted source transactions finish or recover. Monotonic generations reject stale
-reopened publication; failure retains the last complete snapshot/index.
+reopened publication; failure preserves snapshots and last good indexes.
 
-Runtime serializes Storage operations and registry-coordinated retention.
-Library activation or rebuilding resumes Search; service/metadata borrowing preserves
-its pause. Core inventories metadata; process-shared leases exclude live owners
-from maintenance. Shutdown drains operations/publication and closes both Search
-connections before release. Cleanup preserves permanent locks and Triptych/Vault roots.
+Runtime owns automatic maintenance after live `.complete`; membership listing does
+not force maintenance. Storage actions serialize forced work, preserving errors.
+Core inventories metadata; process-shared leases exclude live owners. Library
+activation or rebuild resumes Search; metadata borrowing preserves pause.
+Shutdown drains Settings and handles, then closes vault pool before cleanup,
+preserving locks and Triptych/Vault roots.
 
 Authoritative source completion is distinct from derived publication. Autosave
 commit and direct creation return proven source/identity before background

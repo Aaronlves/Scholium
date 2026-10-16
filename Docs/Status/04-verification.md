@@ -172,32 +172,38 @@ Evidence: `.build/two-layer-retrieval/`, `.build/retrieval-architecture/`,
 Measurements below exclude editor capture/debounce, link-action preparation and
 native publication; they are not G7 or click-to-paint acceptance.
 
-- **2026-09-17 2,000-Note Release harness:** generated multilingual Notes, 16
-  paragraphs each, plus Works seed. Configure 37.274 s; first query 2.883 s;
-  repeats 2.003–2.012 s versus 3.222–3.256 s immediately before normalization/
-  scan protection; varied focus 1.818–2.377 s; selected draft paragraph 2.327 s;
-  reopen 5.716 s plus first query 2.786 s. Retention estimate remains 64 MiB;
-  all candidates are checked/scored.
-- **2026-09-23 500-Note Debug harness:** generated three-role corpus, 16 paragraphs
-  per Note; Xcode 27/Swift 6.4. Identical-input warm medians after reopen:
-  0.714 → 0.649 s; selected long focus: 1.604 → 1.129 s. Two repeats per
-  workload, not p95; all 21 ordered result digests agree. Prepared-scorer medians
-  across five samples: 3 terms 101 → 40 ms; 32 terms 593 → 153 ms.
+- Earlier generated 2,000-Note Release/500-Note Debug retrieval baselines and
+  scorer parity remain in the evidence below.
 - **Task-authorized 433-Note private-copy evaluation, all roles:** byte-verified
   copy with tests on a second disposable copy. Configure 24.963 s; 20 backend
   queries median/sample p95 1.840/1.975 s versus 2.546/2.731 s immediately before
   native optimization. All 16 private cases preserve ordered results; source
   bytes unchanged. This recorded exception is not standing private-vault authority.
-- **2026-10-16 5,000-Note Release:** 57,299,729 bytes. Cold/rebuild
-  166.51/165.97 → 154.36/153.65 s (one lifecycle/variant). Three warm
-  reopens: usable median 11.726→10.592 s; generated admission 7.473→6.307 s.
-  Exact source, complete Search/Graph, generations, journals and scoped regressions pass.
-- **2026-10-16 long-Note Release:** CJK 754.37→76.72 ms (1,081,344 bytes;
-  20 samples); Review semantics 427.24→274.24 ms, fresh rendering
-  637.66→475.93 ms (520,865 bytes; three samples). Complete hashes agree.
+- **2026-10-16 local Release:** 5,000 Notes/57,299,729 bytes; cold/rebuild
+  166.509/165.970→154.363/153.652 s (one lifecycle/variant). Three reopens per variant from the same
+  closed compatible seed: source-ready p50 10.591676→2.378312 s; full
+  18.330073→17.893604 s. Source load 61.627 ms; exact unsaved-buffer This Note
+  Search 0.895 ms. Startup change `9f102144` returns `.opening` before validated
+  index admission; coherent `.complete` follows. Exact source, Search/Graph
+  generations and journals pass; native readiness is unmeasured.
+  `.build/performance-evidence/startup-deferred-comparison.json`.
+- **2026-10-16 Release Search presentation:** Complete-hit mixed
+  2699.545→806.635 ms (1.57 MB), dense CJK 77.506→52.034 ms (1.08 MB), 20 samples/three warmups.
+  Current-note API (3,822 bytes), 200 occurrences/20 returned, offsets 0/20:
+  290.192/290.199→6.988/7.338 ms (three samples/one warmup).
+  Byte-equal responses and manual UTF-16 oracles pass. Source hashes:
+  `.build/performance-evidence/search-presentation-comparison.json`.
+- **2026-10-16 Release Review preparation:** semantic/fresh medians
+  427.240/637.659→274.239/475.930 ms (520,865 bytes; three samples).
   `.build/performance-evidence/further-comparison.json` binds optimized/testable
-  builds and corrects stale Debug labels. UI/paint, packaged gates and retained
-  memory remain unverified.
+  builds and stale-label corrections. Native paint, packaged gates and retained
+  memory remain unverified; OS caches were not purged.
+- **2026-10-16 Related allocation:** One fresh query per arm (5,000 Notes plus seed)
+  shows sampled whole-process live-malloc peak increase 390,715,904→319,899,568
+  bytes (18.12% lower); three digests/six exact passages agree, without omissions.
+  `.build/performance-evidence/related-query-allocator-comparison.json`.
+  This establishes neither RSS, retained memory, leaks, exact peak nor native
+  latency; no practical speed gain is claimed.
 - **2026-09-16 editor reuse:** synthetic 60-paragraph Debug Edit, two warmups and
   five samples/path. Median attached-editor preparation 197.438 → 50.358 ms,
   including capture, pool clearing, bridge readiness and DOM layout. Throttled

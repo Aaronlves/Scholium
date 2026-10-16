@@ -1,3 +1,5 @@
+import Darwin
+import Dispatch
 import Foundation
 import ScholiumContracts
 import Testing
@@ -16,6 +18,10 @@ struct WritingReferencesPerformanceTests {
         let label = environment["SCHOLIUM_REFERENCE_MEASUREMENT_LABEL"] ?? "diagnostic"
         let threeVaults = environment["SCHOLIUM_REFERENCE_THREE_VAULTS"] == "1"
         let initialOnly = environment["SCHOLIUM_REFERENCE_INITIAL_ONLY"] == "1"
+        let measureRelatedAllocations = environment["SCHOLIUM_MEASURE_RELATED_ALLOCATIONS"] == "1"
+        if measureRelatedAllocations {
+            try #require(count == 5_000 && threeVaults && initialOnly)
+        }
         let reversePreparationOrder = environment["SCHOLIUM_REFERENCE_REVERSE_PREPARATION_ORDER"] == "1"
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -99,9 +105,31 @@ struct WritingReferencesPerformanceTests {
             FileHandle.standardOutput.write(
                 Data(
                     "Recommendation measurement phase: \(scenario), sample \(sample), pid \(ProcessInfo.processInfo.processIdentifier)\n".utf8))
+            // This optional observer owns only the actual recommendation call.
+            // Fixture/request construction, measurement retrieval and oracle work
+            // stay outside its active sampling window.
+            let allocator = measureRelatedAllocations ? RecommendationAllocationSampler() : nil
+            defer { _ = allocator?.stop() }
             let started = ContinuousClock.now
-            let response = try await handle.discovery.relatedContent(request)
-            let elapsed = seconds(started.duration(to: .now))
+            let response: RelatedContentResponse
+            do {
+                response = try await handle.discovery.relatedContent(request)
+            } catch {
+                if let observation = allocator?.stop() {
+                    let failure: [String: Any] = [
+                        "schema": "scholium-related-query-allocation-failure-v1",
+                        "request_id": request.id.uuidString, "scenario": scenario, "sample": sample,
+                        "outcome": "threw", "allocation_observation": observation,
+                    ]
+                    if let data = try? JSONSerialization.data(withJSONObject: failure, options: [.sortedKeys]) {
+                        FileHandle.standardOutput.write(Data("RELATED_QUERY_ALLOCATION_FAILURE ".utf8) + data + Data("\n".utf8))
+                    }
+                }
+                throw error
+            }
+            let finished = ContinuousClock.now
+            let allocationObservation = allocator?.stop()
+            let elapsed = seconds(started.duration(to: finished))
             let measurement = try #require(await handle.lastRelatedContentMeasurement)
             #expect(measurement.requestID == request.id)
             #expect(response.requestID == request.id)
@@ -111,6 +139,10 @@ struct WritingReferencesPerformanceTests {
             #expect(response.omittedSourceCount == 0)
             #expect(measurement.sourceCount + measurement.omittedSourceCount == measurement.candidateCount)
             #expect(measurement.omittedSourceCount == response.omittedSourceCount)
+            if let allocationObservation {
+                #expect(measurement.candidateCount == count && measurement.sourceCount == count)
+                #expect((allocationObservation["timer_sample_count"] ?? 0) > 0)
+            }
             #expect(
                 measurement.indexDuration + measurement.graphDuration + measurement.readDuration
                     + measurement.passageDuration + measurement.finalizationDuration == measurement.totalDuration)
@@ -156,7 +188,7 @@ struct WritingReferencesPerformanceTests {
             let inputDigest = DocumentFingerprint(
                 data: try JSONSerialization.data(withJSONObject: [request.seed.source, focus])
             ).sha256
-            samples.append([
+            var sampleRecord: [String: Any] = [
                 "scenario": scenario, "workload": workload, "sample": sample,
                 "phase": sample == 0 ? "first" : "repeat",
                 "input_sha256": inputDigest, "ordered_result_sha256": resultDigest,
@@ -174,7 +206,12 @@ struct WritingReferencesPerformanceTests {
                 "finalization_seconds": seconds(measurement.finalizationDuration),
                 "backend_total_seconds": seconds(measurement.totalDuration),
                 "caller_overhead_seconds": elapsed - seconds(measurement.totalDuration),
-            ])
+            ]
+            if let allocationObservation {
+                sampleRecord["allocation_observation"] = allocationObservation
+                sampleRecord["observer_enabled_timings_are_speed_evidence"] = false
+            }
+            samples.append(sampleRecord)
             print(
                 "Writing References: \(count) notes, \(scenario) sample \(sample), "
                     + "\(String(format: "%.3f", elapsed)) s, \(response.passages.count) exact passages")
@@ -378,8 +415,15 @@ struct WritingReferencesPerformanceTests {
             "corpus_source_sha256": corpusDigest,
             "preparation_order": reversePreparationOrder ? "prepared_then_unprepared" : "unprepared_then_prepared",
             "initial_scenario_only": initialOnly,
+            "allocation_sampling_enabled": measureRelatedAllocations,
+            "timing_comparison_eligible": !measureRelatedAllocations,
+            "allocation_api": "malloc_zone_statistics(nil).size_in_use",
+            "allocation_scope":
+                "Opt-in observer around only relatedContent(request). Whole-process live malloc bytes; includes query workers and other concurrent process allocations. Observed timer samples plus endpoints can miss shorter peaks; not exact peak, RSS, retained growth, leak proof, unique query allocation attribution or native UI. After-minus-before retains the response and any query memo. Observer-enabled timings are not speed evidence.",
             "measurement":
-                "Backend diagnostics only; excludes editor capture, debounce, link-action preparation and native publication; native end-to-end latency is unmeasured. Lifecycle timings reported separately.",
+                measureRelatedAllocations
+                ? "Observer-enabled backend resource run only. Recorded query and lifecycle timings are not speed-comparison evidence. Fixture generation, initial configuration and correctness/report work are outside allocation sampling; query source reads, projection decode, scoring and response construction are inside. Native end-to-end latency is unmeasured."
+                : "Backend diagnostics only; excludes editor capture, debounce, link-action preparation and native publication; native end-to-end latency is unmeasured. Lifecycle timings reported separately.",
             "stage_semantics":
                 "index + graph + read + passage + finalization = backend_total. Before schema 2, read included graph; compare old read with graph + read. seconds also includes the discovery caller boundary.",
             "oracle":
@@ -393,5 +437,72 @@ struct WritingReferencesPerformanceTests {
         ]
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: artifacts.appendingPathComponent("\(label)-\(count).json"))
+    }
+
+    /// Existing Darwin malloc statistics / DispatchSource pattern, isolated to
+    /// this opt-in test observer. No source, result or production state is kept.
+    private final class RecommendationAllocationSampler: @unchecked Sendable {
+        private let lock = NSLock()
+        private let queue: DispatchQueue
+        private let timer: any DispatchSourceTimer
+        private let before: Int
+        private var sampledPeak = 0
+        private var sampleCount = 0
+        private var active = true
+        private var completed: [String: Int]?
+
+        init() {
+            let observerQueue = DispatchQueue(label: "scholium.related.query.allocation")
+            let observerTimer = DispatchSource.makeTimerSource(queue: observerQueue)
+            queue = observerQueue
+            timer = observerTimer
+            before = Self.allocatedBytes()
+            timer.schedule(deadline: .now(), repeating: .milliseconds(1), leeway: .microseconds(100))
+            timer.setEventHandler { [weak self] in self?.sample() }
+            timer.resume()
+        }
+
+        private func sample() {
+            let bytes = Self.allocatedBytes()
+            lock.lock()
+            defer { lock.unlock() }
+            guard active else { return }
+            sampleCount += 1
+            sampledPeak = max(sampledPeak, bytes)
+        }
+
+        /// The recommendation owner calls stop on return/throw, before any
+        /// oracle work. Its defer calls it again safely if later work throws.
+        func stop() -> [String: Int] {
+            lock.lock()
+            if let completed {
+                lock.unlock()
+                return completed
+            }
+            lock.unlock()
+            let after = Self.allocatedBytes()
+            lock.lock()
+            active = false
+            let observedPeak = max(before, max(after, sampledPeak))
+            let observation = [
+                "before_bytes": before, "after_bytes": after,
+                "sampled_peak_bytes": sampledPeak, "observed_peak_bytes": observedPeak,
+                "observed_peak_delta_bytes": max(0, observedPeak - before),
+                "after_minus_before_bytes": after - before,
+                "timer_sample_count": sampleCount, "sampling_interval_ms": 1,
+                "sampling_leeway_microseconds": 100,
+            ]
+            completed = observation
+            lock.unlock()
+            timer.cancel()
+            queue.sync {}
+            return observation
+        }
+
+        private static func allocatedBytes() -> Int {
+            var statistics = malloc_statistics_t()
+            malloc_zone_statistics(nil, &statistics)
+            return Int(statistics.size_in_use)
+        }
     }
 }
