@@ -175,7 +175,9 @@ struct ArchitectureBoundaryTests {
         let settingsStart = try #require(source.range(of: "func settingsSnapshot("))
         let settingsEnd = try #require(source.range(of: "func settingsCapabilities(", range: settingsStart.upperBound..<source.endIndex))
         let settings = String(source[settingsStart.lowerBound..<settingsEnd.lowerBound])
-        #expect(settings.contains("applicationRuntime.workspace("))
+        #expect(settings.contains("applicationRuntime.portableSettingsRecoverySnapshot("))
+        #expect(settings.contains("expectedAssignment: assignment"))
+        #expect(!settings.contains("applicationRuntime.workspace("))
         #expect(!settings.contains("applicationRuntime.openWorkspace(") && !settings.contains("install(handle:"))
 
         let installStart = try #require(source.range(of: "private func install("))

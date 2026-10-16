@@ -2784,6 +2784,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         var replyEvents: [ReadReplyEvent] = []
         var imagePreviewTargets: [String] = []
         var readLinkTargets: [String] = []
+        // Observation only; no objectWillChange or readiness/action mutation.
+        var nativePreviewFailures: [String] = []
         @Published var imagePreviewsEnabled = false
         var chatPageExtension: AgentChatReadPageExtension?
         @Published var restoration: Restoration?
@@ -3061,6 +3063,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             var record: [String: Any] = [
                 "phase": formatDiagnosticPhase, "event": event, "uptime_ns": DispatchTime.now().uptimeNanoseconds,
                 "caller_ready": sourceBox.isReady, "restore_pending": sourceBox.restoration != nil,
+                "native_preview_failures": sourceBox.nativePreviewFailures,
             ]
             if let error { record["error"] = error }
             if let failure = sourceBox.failure { record["rendering_failure"] = failure }
@@ -3070,17 +3073,29 @@ extension MarkdownEditorWebViewIntegrationTests {
                 record["webview_ax_identifier"] = webView.accessibilityIdentifier()
                 if let coordinator = webView.navigationDelegate as? SafeMarkdownReadWebView.Coordinator {
                     record["coordinator_identity"] = String(describing: ObjectIdentifier(coordinator))
+                    record["surface_visibility_active"] = coordinator.surfaceVisibility.isActive
                     // Read-only diagnostic reflection avoids adding product APIs
                     // or replacing the production navigation delegate.
                     let scalars: Set<String> = [
                         "loadGeneration", "hasLoadedPage", "pageIsReady", "renderingReadinessIsAcknowledged",
                         "loadedSignature", "activeLoadSignature", "finalizedSignature",
+                        "desiredLinkPreviewRevision", "appliedLinkPreviewRevision", "loadingLinkPreviewRevision",
                     ]
                     let tasks: Set<String> = ["activeNavigation", "loadFinalizationTask", "deferredLoadTask", "presentationStyleTask", "linkPreviewUpdateTask"]
                     for child in Mirror(reflecting: coordinator).children {
                         guard let name = child.label else { continue }
                         let reflected = Mirror(reflecting: child.value)
-                        if tasks.contains(name) {
+                        if name == "floatingSurfaces", let surfaces = child.value as? DocumentFloatingSurfaceController {
+                            // Same existing read-only diagnostic path; never
+                            // replace the production owner/delegate/callback.
+                            record["native_preview_is_shown"] = surfaces.isPreviewShown
+                            record["native_preview_renderer_present"] = surfaces.previewWebView != nil
+                            if let renderer = surfaces.previewWebView {
+                                record["native_preview_renderer_loading"] = renderer.isLoading
+                                record["native_preview_renderer_bounds"] = NSStringFromRect(renderer.bounds)
+                                record["native_preview_renderer_window_visible"] = renderer.window?.isVisible ?? false
+                            }
+                        } else if tasks.contains(name) {
                             record[name + "_present"] = reflected.displayStyle != .optional || !reflected.children.isEmpty
                         } else if scalars.contains(name) {
                             let value: Any? = reflected.displayStyle == .optional ? reflected.children.first?.value : child.value
@@ -3308,18 +3323,59 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func waitForNativePreview(title: String? = nil, visible: Bool = true) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var lastNativeTitle = ""
             while ContinuousClock.now < deadline {
                 if let preview = nativePreviewWebView() {
                     let actual =
                         (try? await preview.evaluateJavaScript(
                             "document.querySelector('.scholium-preview-title')?.textContent || ''"
                         )) as? String ?? ""
+                    lastNativeTitle = actual
                     if visible && !actual.isEmpty && (title == nil || actual == title) { return }
                 } else if !visible {
                     return
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
+            // Failure-only evidence after the original deadline. No second
+            // hover, readiness retry, presentation or timeout extension.
+            let reader = try? await callBridgeJavaScript(
+                """
+                const link = document.querySelector('a.wiki-link');
+                const rect = link?.getBoundingClientRect();
+                const builder = document.getElementById('scholium-preview-popover');
+                return {
+                  readyState: document.readyState,
+                  apiInstalled: typeof window.scholiumSetLinkPreviews === 'function',
+                  scrollY: window.scrollY, width: innerWidth, height: innerHeight,
+                  configuration: typeof configuration === 'undefined' ? null : {
+                    documentID: configuration.documentID, fingerprint: configuration.fingerprint,
+                    loadGeneration: configuration.loadGeneration
+                  },
+                  link: link ? {
+                    range: [link.dataset.sourceUtf16Start, link.dataset.sourceUtf16End],
+                    rect: [rect.left, rect.top, rect.width, rect.height]
+                  } : null,
+                  builder: builder ? {
+                    hidden: builder.hidden,
+                    title: builder.querySelector('.scholium-preview-title')?.textContent || '',
+                    body: (builder.querySelector('.scholium-preview-body')?.textContent || '').slice(0, 512)
+                  } : null
+                };
+                """)
+            emitFormatDiagnostic(
+                event: "native_preview_timeout",
+                extra: [
+                    "expected_preview_title": title ?? "any", "expected_preview_visible": visible,
+                    "last_native_preview_title": lastNativeTitle,
+                    "owner_window_visible": window.isVisible, "owner_window_key": window.isKeyWindow,
+                    "owner_window_main": window.isMainWindow, "application_active": NSApp.isActive,
+                    "owner_window_frame": NSStringFromRect(window.frame),
+                    "owned_child_windows": (window.childWindows ?? []).map {
+                        ["visible": $0.isVisible, "key": $0.isKeyWindow, "frame": NSStringFromRect($0.frame)] as [String: Any]
+                    },
+                    "reader_preview_state": reader ?? NSNull(),
+                ])
             Issue.record("Native preview did not reach the expected visibility/title: \(title ?? "any"), visible=\(visible)")
             throw ReadHarnessError.timedOut
         }
@@ -4205,6 +4261,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onOpenExternalURL: { _ in },
                 onAskAgent: onAskAgent,
                 onSelectionActionPresenterReady: { sourceBox.selectionActionPresenter = $0 },
+                onPreviewFailure: { sourceBox.nativePreviewFailures.append(String(describing: $0)) },
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
                 renderingReadinessIsAcknowledged: sourceBox.isReady,
