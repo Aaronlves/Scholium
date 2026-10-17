@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 
@@ -620,7 +621,7 @@ enum SearchMatcher {
         // segment; exact source locations still come from the checked maps.
         var cursor = normalizedText.startIndex
         while cursor < normalizedText.endIndex {
-            guard var range = normalizedText.range(of: needle, options: .literal, range: cursor..<normalizedText.endIndex) else { return }
+            guard var range = literalRange(of: needle, in: normalizedText, startingAt: cursor) else { return }
             // Literal lookup can stop inside an extended grapheme such as a
             // letter plus enclosing mark. Preserve canonical search semantics
             // for that exceptional case instead of publishing a partial match.
@@ -641,6 +642,30 @@ enum SearchMatcher {
             }
             if leadingBoundary && trailingBoundary && !visit(range) { return }
             cursor = range.upperBound
+        }
+    }
+
+    /// The platform's byte search preserves literal UTF-8 equality, including
+    /// embedded NULs. Both buffers remain scoped to withUTF8; only byte offsets
+    /// leave the C call. Construct indices in the original String's view so a
+    /// bridged String's index encoding is never confused with its native copy.
+    private static func literalRange(
+        of needle: String, in text: String, startingAt cursor: String.Index
+    ) -> Range<String.Index>? {
+        let utf8 = text.utf8
+        let offset = utf8.distance(from: utf8.startIndex, to: cursor)
+        var contiguousText = text
+        var contiguousNeedle = needle
+        return contiguousText.withUTF8 { bytes in
+            contiguousNeedle.withUTF8 { query in
+                guard let base = bytes.baseAddress, let queryBase = query.baseAddress,
+                    offset >= 0, offset <= bytes.count, query.count > 0, query.count <= bytes.count - offset,
+                    let found = memmem(base + offset, bytes.count - offset, queryBase, query.count)
+                else { return nil }
+                let lowerOffset = UnsafeRawPointer(base).distance(to: UnsafeRawPointer(found))
+                let lower = utf8.index(utf8.startIndex, offsetBy: lowerOffset)
+                return lower..<utf8.index(lower, offsetBy: query.count)
+            }
         }
     }
 
