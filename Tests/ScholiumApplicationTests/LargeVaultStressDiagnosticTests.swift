@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import SQLite3
 import ScholiumContracts
+import ScholiumCore
 import Testing
 
 @testable import ScholiumApplication
@@ -14,6 +15,359 @@ import Testing
             || ProcessInfo.processInfo.environment["SCHOLIUM_STRESS_CACHED_SEED"] != nil)
 )
 struct LargeVaultStressDiagnosticTests {
+    @Test(
+        "Query-only Search and Related over the complete synthetic Stress Triptych",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_STRESS_RETRIEVAL"] == "1")
+    )
+    func queryOnlyRetrieval() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        let phases = Set((environment["SCHOLIUM_STRESS_RETRIEVAL_PHASES"] ?? "documents,search").split(separator: ",").map(String.init))
+        let relatedSeeds = Set((environment["SCHOLIUM_STRESS_RELATED_SEEDS"] ?? "short").split(separator: ",").map(String.init))
+        try #require(!phases.isEmpty && phases.isSubset(of: ["documents", "search", "related"]))
+        try #require(!relatedSeeds.isEmpty && relatedSeeds.isSubset(of: ["short", "long", "dense", "fidelity"]))
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let buildRoot = repository.appendingPathComponent(".build", isDirectory: true)
+        let fixture = URL(fileURLWithPath: try #require(environment["SCHOLIUM_STRESS_FIXTURE"]))
+            .standardizedFileURL
+        let output = URL(
+            fileURLWithPath: environment["SCHOLIUM_STRESS_OUTPUT"]
+                ?? buildRoot.appendingPathComponent("stress-audit/retrieval-diagnostics").path,
+            isDirectory: true
+        ).standardizedFileURL
+        try #require(fixture.path.hasPrefix(buildRoot.path + "/"))
+        try #require(output.path.hasPrefix(buildRoot.path + "/"))
+        try #require(output != fixture && !output.path.hasPrefix(fixture.path + "/"))
+        try #require(fixture == fixture.resolvingSymlinksInPath())
+        try #require(output == output.resolvingSymlinksInPath())
+        try requireDiagnosticTreeWithoutLinks(fixture)
+        let manifestBytes = try Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))
+        let manifest = try #require(JSONSerialization.jsonObject(with: manifestBytes) as? [String: Any])
+        try #require(manifest["synthetic_nonprivate"] as? Bool == true)
+        let counts = try #require(manifest["counts"] as? [String: Int])
+        try #require(counts["notes"] == 5_000)
+        try #require(manifest["registration_roots"] as? [String] == slots)
+        let scenarios = try #require(manifest["scenarios"] as? [String: String])
+        let searchScenarios = try searchScenarios(at: fixture)
+        try #require(searchScenarios.count == 6)
+        let shortPath = try #require(searchScenarios.first { $0.label == "rare_body" }?.expectedPaths?.first)
+        let seeds = [
+            ("short", shortPath, [#"(?m)^Record [^\r\n]+"#]),
+            ("long", try #require(scenarios["long_prose"]), [#"(?m)^Record [^\r\n]+"#]),
+            ("dense", try #require(scenarios["dense_links"]), [#"(?m)^\[\[Stress Note [^\r\n]+"#]),
+            ("fidelity", try #require(scenarios["source_fidelity"]), [#"(?m)^全部内容[^\r\n]+"#, #"(?m)^中文 English[^\r\n]+"#]),
+        ]
+        let runID = UUID().uuidString.lowercased()
+        let root = buildRoot.appendingPathComponent("stress-retrieval-runtime/\(runID)", isDirectory: true)
+        let working = root.appendingPathComponent("fixture", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try requireDiagnosticTreeWithoutLinks(output)
+        let reportURL = output.appendingPathComponent("retrieval-\(runID).json")
+        let original = try sourceOracle(at: fixture)
+        try #require(original.count == 5_000)
+        let oversizedSources = Set(
+            try original.keys.filter { path in
+                guard original[path]!.byteCount > RelatedContentContract.maximumSeedUTF16Count else { return false }
+                return try exactSource(at: fixture.appendingPathComponent(path)).utf16.count > RelatedContentContract.maximumSeedUTF16Count
+            })
+
+        func inventory(_ directory: URL) throws -> [String: DocumentFingerprint] {
+            let files = try #require(FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey]))
+            var result: [String: DocumentFingerprint] = [:]
+            for case let url as URL in files {
+                if try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+                    result[String(url.path.dropFirst(directory.path.count + 1))] = DocumentFingerprint(data: try Data(contentsOf: url))
+                }
+            }
+            return result
+        }
+        let originalInventory = try inventory(fixture)
+        try FileManager.default.copyItem(at: fixture, to: working)
+        try #require(try sourceOracle(at: working) == original)
+        var report: [String: Any] = [
+            "schema": "scholium-stress-retrieval-diagnostic-v1",
+            "label": environment["SCHOLIUM_RETRIEVAL_LABEL"] ?? "diagnostic",
+            "source_revision": environment["SCHOLIUM_RETRIEVAL_SOURCE_REVISION"] ?? "unrecorded",
+            "phases": phases.sorted(), "related_seed_selection": relatedSeeds.sorted(),
+            "fixture_manifest_sha256": DocumentFingerprint(data: manifestBytes).sha256,
+            "fixture_source_sha256": sourceDigest(original), "fixture_note_count": original.count,
+            "related_oversized_source_count": oversizedSources.count,
+            "build_configuration": buildConfiguration,
+            "operating_system": ProcessInfo.processInfo.operatingSystemVersionString,
+            "measurement":
+                "Backend APIs only; configuration, fixture copy, request construction and correctness checks are outside query timers. No native UI, scheduling debounce, visible paint, allocation tracing or release-gate claim.",
+            "search_sampling": "Three excluded distinct-query warmups, then twenty distinct-query/immediate-repeat pairs per independent manifest oracle.",
+            "search_digest_scope":
+                "Ordered response digests retain disposable vault and stable Note UUIDs. Exact repeat equality is checked within each runtime; these raw digests do not establish equivalence across independently configured Triptychs.",
+            "hydration_sampling":
+                "Long Prose and Dense Links, four facade calls each for hydrate and documentPreviewCatalog, first then three repeats. Configuration may already warm source/identity state; no cold-cache claim. DEBUG identity counters are observed outside timers.",
+            "related_sampling":
+                "Configured seed selection, two distinct exact source ranges per selected seed; first request then three identical-request repeats per context. First requests are not OS/cache cold. Changed focus follows all repeats of the first context. No background preparation is requested.",
+            "correctness_scope":
+                "Current complete generation and source fingerprints/ranges; exact same-context response equality; role-normalized ordered full response digest. After all timed requests, full Core candidate recall independently proves omitted counts equal the recalled sources exceeding the exact UTF16 capacity. Stale publication is rejected; concurrent refresh/cancellation races are not induced.",
+            "status": "configuring",
+        ]
+        func emit(_ record: [String: Any]) throws {
+            let bytes = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+            FileHandle.standardOutput.write(Data("STRESS_RETRIEVAL ".utf8) + bytes + Data([0x0A]))
+        }
+        try writeReport(report, to: reportURL)
+        try emit(["phase": "configuration_begin", "report": reportURL.path])
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: root.appendingPathComponent("state/Application Support"),
+                    workspaceRegistryStorageURL: root.appendingPathComponent("state/Registry"))))
+        do {
+            let started = ContinuousClock.now
+            let handle = try await runtime.configureTriptych(
+                paperAnalysisURL: working.appendingPathComponent(slots[0]),
+                topicKnowledgeURL: working.appendingPathComponent(slots[1]),
+                outputURL: working.appendingPathComponent(slots[2]),
+                portableContainerURL: working, triptychName: "Synthetic Stress Retrieval Diagnostic")
+            let configurationMilliseconds = milliseconds(started.duration(to: .now))
+            let snapshot = try await handle.snapshot()
+            try requireReopenSnapshot(snapshot, oracle: original, assignment: handle.assignment)
+            let generation = try #require(snapshot.discovery.searchGeneration)
+            var roles: [String: String] = [:]
+            for vault in handle.assignment.vaults.values {
+                roles[vault.id.uuidString] = vault.role.rawValue
+                roles[vault.id.uuidString.lowercased()] = vault.role.rawValue
+            }
+            report["configuration_ms"] = configurationMilliseconds
+            report["configuration"] = await refreshReport(handle, stage: "query_setup", wallMilliseconds: configurationMilliseconds)
+            report["status"] = "hydration_preview"
+            try writeReport(report, to: reportURL)
+            try emit(["phase": "configuration_complete", "milliseconds": configurationMilliseconds])
+            let services = await handle.services
+            let graph = try #require(snapshot.discovery.catalog.graph)
+            func identityCounts() async -> [String: Int] {
+                #if DEBUG
+                    return [
+                        "decodes": await services.controlStore.identitySnapshotDecodeCountForTesting,
+                        "validations": await services.controlStore.identityInventoryValidationCountForTesting,
+                        "source_reads": await services.controlStore.identityInventorySourceReadCountForTesting,
+                    ]
+                #else
+                    return [:]
+                #endif
+            }
+            var documentRecords: [[String: Any]] = []
+            for (label, path, _) in seeds where phases.contains("documents") && (label == "long" || label == "dense") {
+                let id = try noteID(path, assignment: handle.assignment)
+                let summary = try #require(snapshot.document(id: id))
+                let source = try exactSource(at: working.appendingPathComponent(path))
+                var expectedPreview: DocumentPreviewCatalog?
+                for sample in 0..<4 {
+                    let beforeHydration = await identityCounts()
+                    let hydrationStarted = ContinuousClock.now
+                    let note = try await handle.documents.hydrate(summary)
+                    let hydrationMilliseconds = milliseconds(hydrationStarted.duration(to: .now))
+                    let afterHydration = await identityCounts()
+                    try #require(note.summary == summary && note.fingerprint == original[path])
+                    try #require(Data(note.document.rawContent.utf8) == Data(source.utf8))
+                    let beforePreview = await identityCounts()
+                    let previewStarted = ContinuousClock.now
+                    let preview = try await handle.documents.documentPreviewCatalog(
+                        source: id, sourceFingerprint: summary.fingerprint, graphGeneration: graph.generation)
+                    let previewMilliseconds = milliseconds(previewStarted.duration(to: .now))
+                    let afterPreview = await identityCounts()
+                    try #require(preview.source == id && preview.sourceFingerprint == summary.fingerprint)
+                    try #require(preview.graphGeneration == graph.generation)
+                    try #require(preview.links.count <= DocumentPreviewCatalogBuilder.maximumLinkCount)
+                    let admitted = (graph.outgoing[id] ?? [])
+                        .sorted { $0.occurrence.span.utf16LowerBound < $1.occurrence.span.utf16LowerBound }
+                        .prefix(DocumentPreviewCatalogBuilder.maximumLinkCount)
+                    try #require(preview.links.count == admitted.filter { $0.destination != nil }.count)
+                    if label == "dense" { try #require(!preview.links.isEmpty) }
+                    for link in preview.links {
+                        try #require(snapshot.document(id: link.target)?.fingerprint == link.targetFingerprint)
+                        try #require(
+                            admitted.contains {
+                                $0.destination?.note == link.target && $0.occurrence.linkSpan == link.sourceSpan
+                                    && $0.occurrence.syntax == link.syntax && $0.destination?.fragment == link.fragment
+                            })
+                        try #require(Range(link.sourceSpan.nsRange, in: source) != nil)
+                    }
+                    if let expectedPreview { try #require(preview == expectedPreview) } else { expectedPreview = preview }
+                    try #require(try await handle.snapshot().discovery.searchGeneration == generation)
+                    let row: [String: Any] = [
+                        "seed": label, "sample": sample, "cache_condition": sample == 0 ? "first_facade_call" : "repeat",
+                        "hydrate_ms": hydrationMilliseconds, "preview_catalog_ms": previewMilliseconds,
+                        "preview_links": preview.links.count, "preview_unique_targets": Set(preview.links.map(\.target)).count,
+                        "hydrate_identity_delta": afterHydration.merging(beforeHydration.mapValues { -$0 }, uniquingKeysWith: +),
+                        "preview_identity_delta": afterPreview.merging(beforePreview.mapValues { -$0 }, uniquingKeysWith: +),
+                    ]
+                    documentRecords.append(row)
+                    try emit(["phase": "hydration_preview_complete", "record": row])
+                    report["hydration_preview"] = documentRecords
+                    try writeReport(report, to: reportURL)
+                }
+            }
+            report["status"] = "search"
+            try writeReport(report, to: reportURL)
+            if phases.contains("search") {
+                report["search"] = try await measureSearch(handle, scenarios: searchScenarios, oracle: original, root: working)
+            }
+            try #require(try await handle.snapshot().discovery.searchGeneration == generation)
+            report["status"] = "related"
+            try writeReport(report, to: reportURL)
+
+            // Exact UUID-valued identity fields become roles only in the comparison
+            // hash. Source text, locators, reasons, scores and ordering stay intact.
+            func normalizedIdentities(_ value: Any) -> Any {
+                if let text = value as? String { return roles[text] ?? text }
+                if let array = value as? [Any] { return array.map(normalizedIdentities) }
+                if let object = value as? [String: Any] { return object.mapValues(normalizedIdentities) }
+                return value
+            }
+            func responseDigest(_ response: RelatedContentResponse) throws -> String {
+                let encoder = JSONEncoder()
+                var object = try #require(JSONSerialization.jsonObject(with: encoder.encode(response)) as? [String: Any])
+                for key in ["requestID", "freshnessToken", "availability"] { object.removeValue(forKey: key) }
+                return DocumentFingerprint(
+                    data: try JSONSerialization.data(
+                        withJSONObject: normalizedIdentities(object), options: [.sortedKeys])
+                ).sha256
+            }
+            func validate(_ response: RelatedContentResponse, request: RelatedContentRequest) throws {
+                try #require(response.requestID == request.id && response.seedFingerprint == request.seed.fingerprint)
+                try #require(response.availability == .current(generation) && response.freshnessToken == .triptych(generation))
+                if response.omittedSourceCount > 0 {
+                    try #require(response.state == .partial)
+                } else {
+                    try #require(response.state == (response.passages.isEmpty ? .empty : .current))
+                }
+                try #require(response.passages.count <= RelatedContentContract.maximumPassages)
+                let candidates = response.identityCandidates + response.lexicalCandidates + response.graphCandidates + response.passages.map(\.candidate)
+                for candidate in candidates {
+                    let path = try sourcePath(candidate.note, assignment: handle.assignment)
+                    try #require(candidate.fingerprint == original[path])
+                    try #require(snapshot.document(id: candidate.note)?.fingerprint == candidate.fingerprint)
+                    try #require(handle.assignment.vaults.values.contains { $0.id == candidate.note.vaultID && $0.role == candidate.vaultRole })
+                    try #require(candidate.note != request.seed.noteID)
+                }
+                for passage in response.passages {
+                    let path = try sourcePath(passage.candidate.note, assignment: handle.assignment)
+                    let source = try exactSource(at: working.appendingPathComponent(path))
+                    let range = try #require(
+                        Range(
+                            NSRange(
+                                location: passage.range.utf16LowerBound,
+                                length: passage.range.utf16UpperBound - passage.range.utf16LowerBound), in: source))
+                    try #require(Data(passage.source.utf8) == Data(source[range].utf8))
+                    try #require(passage.candidate.fingerprint == DocumentFingerprint(content: source))
+                }
+            }
+            var relatedRecords: [[String: Any]] = []
+            var completedContexts: [(RelatedContentRequest, RelatedContentResponse, Int)] = []
+            for (label, path, patterns) in seeds where phases.contains("related") && relatedSeeds.contains(label) {
+                let source = try exactSource(at: working.appendingPathComponent(path))
+                try #require(Data(source.utf8).count == original[path]?.byteCount)
+                try #require(source.utf16.count <= RelatedContentContract.maximumSeedUTF16Count)
+                let id = try noteID(path, assignment: handle.assignment)
+                let fullRange = NSRange(location: 0, length: source.utf16.count)
+                let ranges = try patterns.flatMap { pattern in
+                    try NSRegularExpression(pattern: pattern).matches(in: source, range: fullRange).map(\.range)
+                }
+                let focusRanges = [try #require(ranges.first), try #require(ranges.last)]
+                try #require(focusRanges[0] != focusRanges[1])
+                for (focusIndex, focusRange) in focusRanges.enumerated() {
+                    let range = try #require(Range(focusRange, in: source))
+                    let focus = String(source[range])
+                    try #require(focus.utf16.count <= RelatedContentContract.maximumFocusUTF16Count)
+                    let request = RelatedContentRequest(seed: .init(noteID: id, source: source, focuses: [.init(kind: .selectedPassage, text: focus)]))
+                    var expected: RelatedContentResponse?
+                    var rows: [[String: Any]] = []
+                    var warmMilliseconds: [Double] = []
+                    for sample in 0..<4 {
+                        try Task.checkCancellation()
+                        try #require(try await handle.snapshot().discovery.searchGeneration == generation)
+                        try emit(["phase": "related_begin", "seed": label, "focus": focusIndex, "sample": sample])
+                        let started = ContinuousClock.now
+                        let response = try await handle.discovery.relatedContent(request)
+                        let elapsed = milliseconds(started.duration(to: .now))
+                        let measurement = try #require(await handle.lastRelatedContentMeasurement)
+                        try #require(measurement.requestID == request.id)
+                        try #require(measurement.candidateCount == measurement.sourceCount + measurement.omittedSourceCount)
+                        try #require(measurement.omittedSourceCount == response.omittedSourceCount)
+                        try #require(
+                            measurement.indexDuration + measurement.graphDuration + measurement.readDuration
+                                + measurement.passageDuration + measurement.finalizationDuration == measurement.totalDuration)
+                        try #require(milliseconds(measurement.totalDuration) <= elapsed)
+                        try #require(try await handle.snapshot().discovery.searchGeneration == generation)
+                        try validate(response, request: request)
+                        if let expected { try #require(response == expected) } else { expected = response }
+                        if sample > 0 { warmMilliseconds.append(elapsed) }
+                        let row: [String: Any] = [
+                            "seed": label, "focus": focusIndex, "sample": sample,
+                            "cache_condition": sample == 0 ? (focusIndex == 0 ? "first_context" : "changed_focus") : "identical_request_repeat",
+                            "seed_sha256": request.seed.fingerprint.sha256, "seed_utf16_count": source.utf16.count,
+                            "focus_sha256": DocumentFingerprint(content: focus).sha256,
+                            "focus_lower": focusRange.location, "focus_upper": NSMaxRange(focusRange),
+                            "ordered_response_sha256": try responseDigest(response),
+                            "milliseconds": elapsed, "backend_total_ms": milliseconds(measurement.totalDuration),
+                            "index_ms": milliseconds(measurement.indexDuration), "graph_ms": milliseconds(measurement.graphDuration),
+                            "read_ms": milliseconds(measurement.readDuration), "passage_ms": milliseconds(measurement.passageDuration),
+                            "finalization_ms": milliseconds(measurement.finalizationDuration),
+                            "candidates": measurement.candidateCount, "sources": measurement.sourceCount,
+                            "omitted_sources": measurement.omittedSourceCount, "passages": response.passages.count,
+                            "graph_used": measurement.graphUsed, "graph_candidates": measurement.graphCandidateCount,
+                            "graph_contexts": measurement.graphContextCount,
+                        ]
+                        rows.append(row)
+                        try emit(["phase": "related_complete", "record": row])
+                    }
+                    relatedRecords.append([
+                        "seed": label, "focus": focusIndex, "samples": rows,
+                        "warm_sample_count": warmMilliseconds.count, "warm_ms": distribution(warmMilliseconds),
+                    ])
+                    completedContexts.append((request, try #require(expected), try #require(rows.first?["candidates"] as? Int)))
+                    report["related"] = relatedRecords
+                    try writeReport(report, to: reportURL)
+                }
+            }
+            // Run recall again only after every timed request, so this oracle
+            // cannot warm an initial or changed-focus measurement. The response
+            // preview limit never stands in for the full recalled source set.
+            let index = try await services.searchIndex
+            for (request, response, candidateCount) in completedContexts {
+                let recall = try await index.relatedMaterialSourceCandidates(request)
+                try #require(recall.availability == .current(generation) && recall.freshnessToken == .triptych(generation))
+                let recalled = Set((recall.identityCandidates + recall.lexicalCandidates + response.graphCandidates).map(\.note))
+                try #require(recalled.count == candidateCount)
+                let expectedOmissions = try recalled.filter {
+                    oversizedSources.contains(try sourcePath($0, assignment: handle.assignment))
+                }.count
+                try #require(response.omittedSourceCount == expectedOmissions)
+            }
+            let finalSnapshot = try await handle.snapshot()
+            try requireReopenSnapshot(finalSnapshot, oracle: original, assignment: handle.assignment)
+            try #require(finalSnapshot.discovery.searchGeneration == generation)
+            await runtime.shutdown()
+            try #require(try sourceOracle(at: working) == original)
+            try #require(try inventory(fixture) == originalInventory)
+            report["status"] = "completed"
+            report["original_fixture_inventory_unchanged"] = true
+            report["copied_note_sources_unchanged"] = true
+            report["generation_unchanged"] = true
+            if phases.contains("related") { report["omission_admission_oracle_passed"] = true }
+            try writeReport(report, to: reportURL)
+            try emit(["phase": "completed", "report": reportURL.path])
+        } catch {
+            await runtime.shutdown()
+            report["status"] = "failed"
+            report["error"] = String(describing: error)
+            report["original_fixture_inventory_unchanged"] = (try? inventory(fixture)) == originalInventory
+            report["copied_note_sources_unchanged"] = (try? sourceOracle(at: working)) == original
+            try? writeReport(report, to: reportURL)
+            try? emit(["phase": "failed", "report": reportURL.path, "error": String(describing: error)])
+            throw error
+        }
+    }
+
     @Test(
         "Large mixed-content Triptych retains complete current generations through its lifecycle",
         .enabled(
