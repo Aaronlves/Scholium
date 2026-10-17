@@ -138,6 +138,7 @@ final class PerformanceProbe {
     #if DEBUG
         private let qaMemoryOwnerResultURL: URL?
         private var qaMemoryOwnerSampleCount = 0
+        private var qaEditorWorkSampleCount = 0
         private var qaReaderFailureCount = 0
         private var qaSaveStageCount = 0
     #endif
@@ -447,6 +448,7 @@ final class PerformanceProbe {
             "memory-sample", "scroll-session", "mode-toggle", "mode-toggle-work", "cached-preview",
             "cached-preview-work",
             "input-to-state", "input-to-paint", "key-to-state", "key-to-paint",
+            "projection-topology-proof", "projection-index-map", "exact-source-admission",
         ]
         let allowedObserved: Set<String> = [
             "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count",
@@ -459,6 +461,8 @@ final class PerformanceProbe {
             "selectionScoped", "viewportIncremental", "widgetReuseCount", "usedJSHeapBytes", "frameCount",
             "longestFrameMilliseconds", "droppedFrameCount", "transitionSequence", "composing",
             "literalCount", "tableCount", "calloutCount", "footnoteCount",
+            "blockCount", "inlineCount", "mapped", "localProof", "admitted",
+            "semanticMapMilliseconds", "derivedMapMilliseconds", "finalizationMilliseconds",
         ]
         guard
             samples.allSatisfy({ value in
@@ -538,6 +542,47 @@ final class PerformanceProbe {
     }
     #if DEBUG
         var measuresQAMemoryOwners: Bool { qaMemoryOwnerResultURL != nil }
+
+        /// Content-free editor phase samples share the existing synthetic QA
+        /// authorization and isolated home. They never include source or identity.
+        func recordQAEditorWork(_ samples: [MarkdownEditorPerformanceSample]) {
+            guard let qaMemoryOwnerResultURL, qaEditorWorkSampleCount < 16,
+                samples.count <= 256
+            else { return }
+            let names: Set<String> = [
+                "projection", "projection-index", "projection-topology-proof", "projection-index-map",
+                "exact-source-admission", "exact-source-update", "input-to-state", "key-to-state",
+                "input-to-paint", "key-to-paint", "scroll-session", "bridge-request",
+            ]
+            let fields: Set<String> = [
+                "documentLength", "changeCount", "blockCount", "inlineCount", "literalCount",
+                "tableCount", "calloutCount", "footnoteCount", "mapped", "localProof", "admitted",
+                "semanticMapMilliseconds", "derivedMapMilliseconds", "finalizationMilliseconds",
+                "composing", "decorationCount", "visibleRangeCount", "projectionWindowUTF16Count",
+                "frameCount", "longestFrameMilliseconds", "droppedFrameCount",
+            ]
+            let values: [[String: Any]] = samples.compactMap { sample in
+                guard names.contains(sample.name), sample.durationMilliseconds.isFinite,
+                    sample.durationMilliseconds >= 0
+                else { return nil }
+                return [
+                    "name": sample.name, "duration_ms": sample.durationMilliseconds,
+                    "observed": sample.observed.filter {
+                        fields.contains($0.key) && $0.value.isFinite && $0.value >= 0
+                    },
+                ]
+            }
+            guard !values.isEmpty else { return }
+            let result = qaMemoryOwnerResultURL.deletingLastPathComponent()
+                .appendingPathComponent("qa-editor-work.jsonl")
+            guard (try? FileManager.default.destinationOfSymbolicLink(atPath: result.path)) == nil,
+                append([
+                    "schema": "scholium-qa-editor-work-v1", "sample": qaEditorWorkSampleCount,
+                    "completed_uptime_ns": now(), "measurements": values,
+                ], to: result)
+            else { return }
+            qaEditorWorkSampleCount += 1
+        }
 
         func recordQAMemoryOwners(_ stats: DocumentController.QAMemoryOwnerStats) {
             guard let resultURL = qaMemoryOwnerResultURL,

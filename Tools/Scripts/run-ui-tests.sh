@@ -15,7 +15,7 @@ DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
 QA_PREFERENCES_CAPTURED=0
 
-if [[ "${1:-}" == "stress" ]]; then
+if [[ "${1:-}" == "stress" || "${1:-}" == "visible-editor" ]]; then
   python3 - "${ROOT}" "${SCHOLIUM_TEST_VAULTS:-}" <<'PY'
 import json
 import os
@@ -193,7 +193,7 @@ cp -R "${QA_APP}" "${REGISTERED_QA}"
 # app here would create a second window before launchEnvironment is applied.
 profile="${1:-smoke}"
 case "${profile}" in
-  smoke|complete|focused|stress)
+  smoke|complete|focused|stress|visible-editor)
     shift $(( $# > 0 ? 1 : 0 ))
     ;;
   *)
@@ -231,7 +231,37 @@ common_arguments=(
   -derivedDataPath "${UI_TEST_DERIVED}"
 )
 
-if [[ "${profile}" == "stress" ]]; then
+if [[ "${profile}" == "visible-editor" ]]; then
+  label="${SCHOLIUM_VISIBLE_EDITOR_LABEL:-baseline}"
+  [[ "${label}" == baseline || "${label}" == profile || "${label}" == candidate ]] || {
+    print -u2 "Visible editor diagnostics require baseline, profile, or candidate."
+    exit 64
+  }
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
+  base_run="$(find "${UI_TEST_DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+  visible_run="${UI_TEST_DERIVED}/Build/Products/ScholiumVisibleEditor.xctestrun"
+  python3 - "${base_run}" "${visible_run}" "${label}" <<'PY'
+import plistlib
+import sys
+source, target, label = sys.argv[1:]
+with open(source, 'rb') as stream:
+    run = plistlib.load(stream)
+run['ScholiumUITests'].setdefault('EnvironmentVariables', {})['SCHOLIUM_VISIBLE_EDITOR_LABEL'] = label
+with open(target, 'wb') as stream:
+    plistlib.dump(run, stream)
+PY
+  if (( ${#test_arguments[@]} == 0 )); then
+    test_arguments=(
+      -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testVisibleStressLongProseDiagnostic
+      -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testVisibleStressDenseLinksDiagnostic
+      -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testVisibleStressImageGalleryDiagnostic
+    )
+  fi
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+    -xctestrun "${visible_run}" -destination "platform=macOS" \
+    -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+    -derivedDataPath "${UI_TEST_DERIVED}" "${test_arguments[@]}" test-without-building
+elif [[ "${profile}" == "stress" ]]; then
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
   base_run="$(find "${UI_TEST_DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
   [[ -n "${base_run}" ]] || { print -u2 "No stress QA test driver was built."; exit 1; }

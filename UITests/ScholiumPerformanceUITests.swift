@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import Vision
 @preconcurrency import XCTest
 import notify
 
@@ -8,6 +9,187 @@ import notify
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
+    @MainActor
+    func testVisibleStressLongProseDiagnostic() throws {
+        try visibleStressEditingDiagnostic("long_prose")
+    }
+
+    @MainActor
+    func testVisibleStressDenseLinksDiagnostic() throws {
+        try visibleStressEditingDiagnostic("dense_links")
+    }
+
+    @MainActor
+    func testVisibleStressImageGalleryDiagnostic() throws {
+        try visibleStressEditingDiagnostic("image_gallery")
+    }
+
+    /// Opt-in native diagnostic. System hitch metrics, screenshot-confirmed
+    /// observation bounds, and WebKit event/post-frame-task samples are distinct.
+    @MainActor
+    private func visibleStressEditingDiagnostic(_ scenario: String) throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("Native hitch diagnostics require macOS 26 or later.")
+        }
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        guard let label = ProcessInfo.processInfo.environment["SCHOLIUM_VISIBLE_EDITOR_LABEL"] else {
+            throw XCTSkip("The opt-in isolated visible Stress Notes diagnostic is not configured.")
+        }
+        guard ["baseline", "profile", "candidate"].contains(label) else {
+            throw NSError(domain: "ScholiumUITests.VisibleEditor", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "An explicit baseline, profile, or candidate label is required."])
+        }
+        try requireQAPreferencePreservation()
+        continueAfterFailure = false
+        let fixture = repository.appendingPathComponent(".build/qa-runtime/fixtures")
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))) as? [String: Any])
+        XCTAssertEqual(manifest["synthetic_nonprivate"] as? Bool, true)
+        let paths = try XCTUnwrap(manifest["scenarios"] as? [String: String])
+        let path = try XCTUnwrap(paths[scenario])
+        let note = fixture.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
+        guard note.path.hasPrefix(fixture.standardizedFileURL.resolvingSymlinksInPath().path + "/") else {
+            throw CocoaError(.fileReadNoPermission)
+        }
+        let original = try Data(contentsOf: note)
+        let bundle = repository.appendingPathComponent(".build/qa-runtime/registered/Scholium-Codex-QA-Do-Not-Use.app")
+        XCTAssertEqual(Bundle(url: bundle)?.bundleIdentifier, "com.scholium.qa")
+        let application = XCUIApplication(url: bundle)
+        defer {
+            application.terminate()
+            if application.state == .notRunning {
+                XCTAssertNoThrow(try original.write(to: note, options: .atomic))
+            } else {
+                XCTFail("The disposable fixture is retained because QA termination was not confirmed.")
+            }
+        }
+        let sentinel = "\n\nsampletest9"
+        let prepared = original + Data(sentinel.utf8)
+        try prepared.write(to: note, options: .atomic)
+        let runID = "visible-\(label)-\(scenario)-\(UUID().uuidString)"
+        let run = repository.appendingPathComponent(".build/performance-\(runID)/app-state")
+        let raw = run.appendingPathComponent("raw")
+        let home = run.appendingPathComponent("home")
+        for directory in [raw, home] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let result = raw.appendingPathComponent("event-post-frame-proxy.jsonl")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: result.path))
+        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        application.launchEnvironment = [
+            "SCHOLIUM_HOME": home.path, "CFFIXED_USER_HOME": home.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixture.path,
+            "SCHOLIUM_UI_TEST_OPEN_SLOT": scenario == "long_prose" ? "paper_analysis" : "topic_knowledge",
+            "SCHOLIUM_UI_TEST_OPEN_NOTE": path.split(separator: "/").dropFirst().joined(separator: "/"),
+            "SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1380",
+            "SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS": "300000",
+            "SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS": "1",
+            "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+            "SCHOLIUM_PERFORMANCE_METRIC": "editor_key_to_paint",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+            "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "128",
+            "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": path.split(separator: "/").dropFirst().joined(separator: "/"),
+        ]
+        application.launch()
+        let window = application.windows.firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 30))
+        let editor = application.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 600), "The generated Stress Note must expose its actual Edit surface.")
+        XCTAssertTrue(waitUntil(timeout: 60) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor) })
+        application.typeKey(.end, modifierFlags: .command)
+        application.typeKey("x", modifierFlags: [])
+        application.typeKey(.delete, modifierFlags: [])
+        let before = window.screenshot()
+        try before.pngRepresentation.write(to: raw.appendingPathComponent("before.png"))
+        let started = DispatchTime.now().uptimeNanoseconds
+        application.typeKey("9", modifierFlags: [])
+        var observed = 0.0
+        var recognized = false
+        var observations: [[String: Any]] = []
+        for attempt in 0..<8 {
+            let screen = window.screenshot()
+            observed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+            let recognition = VNRecognizeTextRequest()
+            recognition.recognitionLanguages = ["en-US"]
+            recognition.recognitionLevel = .accurate
+            try VNImageRequestHandler(data: screen.pngRepresentation).perform([recognition])
+            let text = recognition.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+            recognized = text.lowercased().replacingOccurrences(of: " ", with: "").contains("sampletest99")
+            observations.append(["capture": attempt, "capture_return_ms": observed, "typed_pixels_recognized": recognized])
+            if attempt == 0 { try screen.pngRepresentation.write(to: raw.appendingPathComponent("first-after.png")) }
+            if recognized {
+                try screen.pngRepresentation.write(to: raw.appendingPathComponent("after.png"))
+                break
+            }
+        }
+        try JSONSerialization.data(withJSONObject: observations, options: [.prettyPrinted, .sortedKeys])
+            .write(to: raw.appendingPathComponent("screen-observations.json"), options: .atomic)
+        XCTAssertTrue(recognized, "Screen pixels must show the typed result within eight native captures; AX state alone is insufficient.")
+        application.typeKey(.delete, modifierFlags: [])
+        editor.swipeDown(velocity: .slow)
+        editor.swipeDown(velocity: .slow)
+        try window.screenshot().pngRepresentation.write(to: raw.appendingPathComponent("scroll-content.png"))
+        application.typeKey(.end, modifierFlags: .command)
+        var gesture = 0
+        let options = XCTMeasureOptions()
+        options.iterationCount = label == "profile" ? 1 : 3
+        measure(metrics: [XCTHitchMetric(application: application), XCTClockMetric()], options: options) {
+            for _ in 0..<4 {
+                application.typeKey("x", modifierFlags: [])
+                application.typeKey(.delete, modifierFlags: [])
+            }
+            application.typeKey(.upArrow, modifierFlags: .shift)
+            application.typeKey(.rightArrow, modifierFlags: [])
+            for _ in 0..<3 { application.typeKey(.upArrow, modifierFlags: []) }
+            for _ in 0..<3 { application.typeKey(.downArrow, modifierFlags: []) }
+            editor.swipeDown(velocity: .slow)
+            editor.swipeDown(velocity: .slow)
+            editor.swipeUp(velocity: .slow)
+            editor.swipeUp(velocity: .slow)
+            application.typeKey(.end, modifierFlags: .command)
+            gesture += 1
+        }
+        XCTAssertEqual(notify_post("com.scholium.qa.performance-memory-owner-snapshot"), UInt32(NOTIFY_STATUS_OK))
+        let work = home.appendingPathComponent("qa-editor-work.jsonl")
+        XCTAssertTrue(waitUntil(timeout: 15) { FileManager.default.fileExists(atPath: work.path) })
+        try Data(contentsOf: work).write(to: raw.appendingPathComponent("editor-work.jsonl"))
+        application.typeKey("9", modifierFlags: [])
+        let edited = prepared + Data("9".utf8)
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited }, "A nonzero edit must reach the revision-checked save path with every other byte unchanged.")
+        application.typeKey("z", modifierFlags: .command)
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == prepared }, "Undo must restore every prepared byte.")
+        application.typeKey("z", modifierFlags: [.command, .shift])
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited }, "Redo must restore the exact saved edit.")
+        application.typeKey("z", modifierFlags: .command)
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == prepared })
+        let proxyLines = try String(contentsOf: result, encoding: .utf8).split(separator: "\n")
+        XCTAssertGreaterThanOrEqual(proxyLines.count, options.iterationCount * 8 + 4, "The current run must capture its actual native key events, rather than silently omitting WebKit proxy evidence.")
+        let proxies = try proxyLines.map { line in
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        }
+        XCTAssertTrue(proxies.allSatisfy { ($0["run_id"] as? String) == runID && ($0["metric"] as? String) == "editor_key_to_paint" })
+        let report: [String: Any] = [
+            "scenario": scenario, "label": label, "source_bytes": original.count,
+            "source_sha256": SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined(),
+            "screen_observation_upper_bound_ms": observed, "typed_pixels_recognized": true,
+            "screen_capture_count": observations.count,
+            "screen_timing_boundary": "Before XCTest key action to recognized screenshot return, including event transport, XCTest idle waits, capture and any earlier OCR/write work. Upper bound only; not physical key-to-display latency.",
+            "web_timing_boundary": "DOM event to animation frame followed by timer task; browser service proxy without display acknowledgement.",
+            "system_metric": "XCTHitchMetric targeted at the isolated QA application; retained in xcresult and test log. WebContent process coverage must be checked before attributing WebKit stalls.",
+            "measured_iterations": gesture, "nonzero_save_undo_redo_exact": true,
+            "key_post_frame_proxy_count": proxies.count,
+            "typing_location": "Ordinary appended prose at the end of the unchanged Stress Note; caret traversal and native wheel input also cross preceding content. Screen coverage is limited to retained viewports.",
+            "qa_binary_sha256": SHA256.hash(data: try Data(contentsOf: bundle.appendingPathComponent("Contents/MacOS/Scholium"))).map { String(format: "%02x", $0) }.joined(),
+            "unverified": ["physical typing latency", "installed Chinese IME", "human accessibility acceptance"],
+        ]
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+            .write(to: raw.appendingPathComponent("observations.json"), options: .atomic)
+        print("VISIBLE_STRESS_DIAGNOSTIC scenario=\(scenario) label=\(label) screen_bound_ms=\(observed) exact_source=true")
+    }
+
     override func setUpWithError() throws {
         if let path = ProcessInfo.processInfo.environment["SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH"],
             Bundle(path: path)?.bundleIdentifier == "com.scholium.qa"

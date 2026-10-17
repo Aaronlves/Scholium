@@ -32954,11 +32954,18 @@ ${blankRow(table.position.columnCount)}`;
   var exactSourceHistory = [
     exactSourceState,
     EditorState.transactionFilter.of((transaction) => {
+      const startedAt = performance.now();
       const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
       const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
         transaction.startState,
         transactionChanges(transaction, transaction.startState.field(exactSourceState))
       );
+      if (detachedHistoryDepth === 0 && (transaction.docChanged || replacement)) {
+        recordEditorMetric("exact-source-admission", startedAt, {
+          documentLength: transaction.newDoc.length,
+          admitted: admitted ? 1 : 0
+        });
+      }
       return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
     }),
     EditorState.transactionExtender.of((transaction) => {
@@ -33438,9 +33445,13 @@ ${blankRow(table.position.columnCount)}`;
     });
     return index;
   }
-  function mapLiveProjectionIndex(index, transaction) {
+  function mapLiveProjectionIndex(index, transaction, recordMetric) {
+    const startedAt = performance.now();
+    const semanticStartedAt = performance.now();
     const map = (position) => transaction.changes.mapPos(position);
     const syntax = mapSemanticProjectionRanges(index.syntax, map);
+    const semanticMapMilliseconds = performance.now() - semanticStartedAt;
+    const derivedStartedAt = performance.now();
     const footnotes = {
       definitions: index.footnotes.definitions.map((definition) => ({
         ...definition,
@@ -33479,36 +33490,52 @@ ${blankRow(table.position.columnCount)}`;
       from: map(index.frontmatterRange.from),
       to: map(index.frontmatterRange.to)
     };
-    return finalizedLiveProjectionIndex(
+    const excluded = index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) }));
+    const codeBlocks = index.literals.codeBlocks.map((range) => ({
+      from: map(range.from),
+      to: map(range.to),
+      fenced: range.fenced,
+      markerRanges: range.markerRanges.map((marker) => ({ from: map(marker.from), to: map(marker.to) }))
+    }));
+    const inlineRanges = index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) }));
+    const listPrefixRanges = index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) }));
+    const taskItemRanges = index.taskItemRanges.map((range) => ({
+      from: map(range.from),
+      to: map(range.to),
+      markerFrom: map(range.markerFrom),
+      markerTo: map(range.markerTo)
+    }));
+    const referenceDefinitionRanges = index.referenceDefinitionRanges.map((range) => ({ from: map(range.from), to: map(range.to) }));
+    const derivedMapMilliseconds = performance.now() - derivedStartedAt;
+    const finalizationStartedAt = performance.now();
+    const result = finalizedLiveProjectionIndex(
       transaction.state,
       index.topologyIdentity,
       syntax,
-      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.literals.codeBlocks.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        fenced: range.fenced,
-        markerRanges: range.markerRanges.map((marker) => ({
-          from: map(marker.from),
-          to: map(marker.to)
-        }))
-      })),
-      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.taskItemRanges.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        markerFrom: map(range.markerFrom),
-        markerTo: map(range.markerTo)
-      })),
+      excluded,
+      codeBlocks,
+      inlineRanges,
+      listPrefixRanges,
+      taskItemRanges,
       footnotes,
       tables,
       callouts,
       mathExpressions,
       frontmatterRange,
       index.hasUnclosedFrontmatter,
-      index.referenceDefinitionRanges.map((range) => ({ from: map(range.from), to: map(range.to) }))
+      referenceDefinitionRanges
     );
+    const finalizationMilliseconds = performance.now() - finalizationStartedAt;
+    recordMetric("projection-index-map", startedAt, {
+      documentLength: transaction.newDoc.length,
+      semanticMapMilliseconds,
+      derivedMapMilliseconds,
+      finalizationMilliseconds,
+      blockCount: syntax.blocks.length,
+      inlineCount: syntax.inlines.length,
+      literalCount: syntax.literals.length
+    });
+    return result;
   }
   function createLiveProjectionIndexController(options) {
     const build = (state) => buildLiveProjectionIndex(
@@ -33523,15 +33550,26 @@ ${blankRow(table.position.columnCount)}`;
           return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData)) ? build(transaction.state) : previous;
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
-        if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
-          return mapLiveProjectionIndex(previous, transaction);
+        const topologyStartedAt = performance.now();
+        let localProof = false;
+        let mapped = previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker);
+        if (!mapped) {
+          localProof = true;
+          mapped = transactionCanMapProjectionTopology(
+            transaction,
+            structuralMarker,
+            previous.mutationSensitiveRanges,
+            previous.syntax
+          );
         }
-        return transactionCanMapProjectionTopology(
-          transaction,
-          structuralMarker,
-          previous.mutationSensitiveRanges,
-          previous.syntax
-        ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
+        options.recordMetric("projection-topology-proof", topologyStartedAt, {
+          documentLength: transaction.newDoc.length,
+          mapped: mapped ? 1 : 0,
+          localProof: localProof ? 1 : 0,
+          blockCount: previous.syntax.blocks.length,
+          inlineCount: previous.syntax.inlines.length
+        });
+        return mapped ? mapLiveProjectionIndex(previous, transaction, options.recordMetric) : build(transaction.state);
       }
     });
     const index = (state) => state.field(field);

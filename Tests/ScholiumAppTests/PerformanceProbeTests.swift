@@ -12,6 +12,51 @@ import Testing
 @MainActor
 struct PerformanceProbeTests {
     #if DEBUG
+        @Test("Editor phase exports require QA isolation and remain bounded and content-free")
+        func qaEditorWorkIsolationAndBounds() throws {
+            let fixture = try makeQAReaderFailureFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let result = fixture.home.appendingPathComponent("qa-editor-work.jsonl")
+            let sample = MarkdownEditorPerformanceSample(
+                name: "projection-index-map", durationMilliseconds: 1.25,
+                observed: ["documentLength": 500, "semanticMapMilliseconds": 0.5,
+                    "private-field": 12, "inlineCount": .infinity])
+            var disabled = fixture.environment
+            disabled["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = nil
+            for (environment, identity) in [
+                (disabled, ScholiumRuntimeIsolation.qaBundleIdentifier),
+                (fixture.environment, ScholiumRuntimeIsolation.productionBundleIdentifier),
+            ] {
+                PerformanceProbe(environment: environment, bundleID: identity, bundleURL: fixture.bundle)
+                    .recordQAEditorWork([sample])
+                #expect(!FileManager.default.fileExists(atPath: result.path))
+            }
+            let probe = PerformanceProbe(environment: fixture.environment,
+                bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier, bundleURL: fixture.bundle)
+            probe.recordQAEditorWork(Array(repeating: sample, count: 257))
+            probe.recordQAEditorWork([.init(name: "untrusted source text", durationMilliseconds: 1, observed: [:])])
+            #expect(!FileManager.default.fileExists(atPath: result.path))
+            for _ in 0..<20 { probe.recordQAEditorWork([sample]) }
+            let data = try Data(contentsOf: result)
+            let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
+            #expect(lines.count == 16)
+            for line in lines {
+                let object = try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+                let values = try #require(object["measurements"] as? [[String: Any]])
+                let observed = try #require(values.first?["observed"] as? [String: Double])
+                #expect(observed == ["documentLength": 500, "semanticMapMilliseconds": 0.5])
+            }
+            try FileManager.default.removeItem(at: result)
+            let protected = fixture.root.appendingPathComponent("untouched.jsonl")
+            let original = Data("unchanged".utf8)
+            try original.write(to: protected)
+            try FileManager.default.createSymbolicLink(at: result, withDestinationURL: protected)
+            let fresh = PerformanceProbe(environment: fixture.environment,
+                bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier, bundleURL: fixture.bundle)
+            fresh.recordQAEditorWork([sample])
+            #expect(try Data(contentsOf: protected) == original)
+        }
+
         @Test("Save stage diagnostics require the existing synthetic QA authorization")
         func qaSaveStagesRequireExistingIsolation() throws {
             let fixture = try makeQAReaderFailureFixture()

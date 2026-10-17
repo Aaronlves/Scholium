@@ -16,6 +16,13 @@ extension WindowModel {
             guard PerformanceProbe.shared.measuresQAMemoryOwners else { return }
             let stats = await documentController.qaMemoryOwnerStats()
             PerformanceProbe.shared.recordQAMemoryOwners(stats)
+            guard let descriptor = currentDocumentDescriptor else { return }
+            let session = documentController.session(for: descriptor)
+            guard let samples = try? await session.editorSession.queryPerformanceSamples(),
+                currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                documentController.retainsSession(session, for: .workspace(descriptor.sessionKey))
+            else { return }
+            PerformanceProbe.shared.recordQAEditorWork(samples)
         }
     #endif
 

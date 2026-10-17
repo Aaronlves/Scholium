@@ -91,10 +91,16 @@ export const exactSourceState = StateField.define<ExactSourceMirror>({
 
 export const exactSourceHistory: Extension = [exactSourceState,
   EditorState.transactionFilter.of(transaction => {
+    const startedAt = performance.now();
     const replacement = transaction.effects.find(effect => effect.is(setExactSource));
     const admitted = replacement ? exactSourceFits(replacement.value)
       : !transaction.docChanged || exactSourceFitsChanges(transaction.startState,
           transactionChanges(transaction, transaction.startState.field(exactSourceState)));
+    if (detachedHistoryDepth === 0 && (transaction.docChanged || replacement)) {
+      recordEditorMetric("exact-source-admission", startedAt, {
+        documentLength: transaction.newDoc.length, admitted: admitted ? 1 : 0,
+      });
+    }
     // Refusal preserves text, selection and history as one atomic boundary.
     return admitted ? transaction : {effects: sourceCapacityExceeded.of(null)};
   }),
