@@ -36821,8 +36821,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       };
       const applyScrollEffect = () => {
         if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
-        editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
-        editor2.coordsAtPos(blockProbe);
+        if (blockProbe < editor2.viewport.from || blockProbe > editor2.viewport.to) {
+          editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
+          editor2.coordsAtPos(blockProbe);
+        }
         editor2.scrollDOM.scrollLeft = scrollLeft;
       };
       editor2.scrollDOM.scrollTop = requestedScrollTop(anchor);

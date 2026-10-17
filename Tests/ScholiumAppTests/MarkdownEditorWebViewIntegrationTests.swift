@@ -9799,6 +9799,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
             initialSourceRange: Range<Int>? = nil,
+            initialScrollAnchor: EditorScrollAnchor? = nil,
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
             laysOutForPointerTesting: Bool = false,
@@ -9834,6 +9835,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentTitle: documentTitle
             )
             sourceBox.presentationCSS = initialPresentationCSS
+            sourceBox.scrollAnchor = initialScrollAnchor
             sourceBox.linkCompletionQuery = linkCompletionQuery
             sourceBox.writingContinuationEnabled = writingContinuationEnabled
             sourceBox.writingContinuationQuery = writingContinuationQuery

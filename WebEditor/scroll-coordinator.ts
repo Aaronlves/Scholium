@@ -311,10 +311,15 @@ export function createEditorScrollCoordinator(
     };
     const applyScrollEffect = () => {
       if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
-      editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
-      // This operation restores vertical context. Finish CodeMirror's pending
-      // scroll before preserving the independent horizontal viewport.
-      editor.coordsAtPos(blockProbe);
+      // Materialize a distant source block before measuring it. Once it is in
+      // the viewport, a new start-alignment fights the fractional anchor below
+      // and can repeatedly evict an image at the viewport boundary.
+      if (blockProbe < editor.viewport.from || blockProbe > editor.viewport.to) {
+        editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
+        // Finish CodeMirror's pending scroll before preserving the independent
+        // horizontal viewport. Measured correction owns the final position.
+        editor.coordsAtPos(blockProbe);
+      }
       editor.scrollDOM.scrollLeft = scrollLeft;
     };
     editor.scrollDOM.scrollTop = requestedScrollTop(anchor);

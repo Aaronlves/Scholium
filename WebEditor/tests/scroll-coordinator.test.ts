@@ -20,7 +20,7 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
   };
   let blockTop = 300;
   const editor = {
-    state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+    state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM, viewport: {from: 0, to: 2_000},
     get documentTop() { return -scrollDOM.scrollTop; },
     lineBlockAtHeight: (height: number) => ({from: height, to: height + 1, top: height, height: 20}),
     lineBlockAt: () => ({from: 300, to: 320, top: blockTop, height: 20}),
@@ -44,6 +44,49 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
 }
 
 describe("scroll coordination across runtime reuse", () => {
+  it("materializes a distant anchor once and keeps its fractional position through geometry retries", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16), cancelAnimationFrame: clearTimeout});
+    let finishFonts!: () => void;
+    vi.stubGlobal("document", {fonts: {ready: new Promise<void>(resolve => { finishFonts = resolve; })}});
+    let viewport = {from: 0, to: 100};
+    const scrollDOM = {scrollTop: 0, scrollLeft: 80, scrollHeight: 2_000, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 0}), addEventListener() {}};
+    const block = {from: 300, to: 320, top: 300, height: 20};
+    const materialize = vi.fn(() => {
+      viewport = {from: 280, to: 340};
+      // CodeMirror's start alignment competes with the fractional anchor.
+      scrollDOM.scrollTop = 300;
+    });
+    const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+      get viewport() { return viewport; },
+      get documentTop() { return -scrollDOM.scrollTop; },
+      lineBlockAt: () => block, lineBlockAtHeight: () => block,
+      dispatch: materialize, coordsAtPos() { return null; },
+      requestMeasure: (request: {read(): number; write(value: number): void}) => request.write(request.read()),
+    } as unknown as EditorView;
+    const coordinator = createEditorScrollCoordinator(editor, {
+      onViewportInput() {}, onScroll() {}, post() {}, flushPresentationGeometry() {},
+    });
+    const anchor = {sourceUTF16Offset: 307, blockUTF16LowerBound: 300, blockUTF16UpperBound: 320,
+      relativeBlockPosition: 0.35, fallbackFraction: 0.2};
+    coordinator.setAnchor(anchor);
+    vi.advanceTimersByTime(100);
+    finishFonts();
+    await Promise.resolve();
+    for (let repeat = 0; repeat < 3; repeat++) coordinator.setAnchor(anchor);
+    vi.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(materialize).toHaveBeenCalledOnce();
+    expect(scrollDOM.scrollTop).toBe(299);
+    expect(scrollDOM.scrollLeft).toBe(80);
+    viewport = {from: 0, to: 100};
+    coordinator.setAnchor(anchor);
+    expect(materialize).toHaveBeenCalledTimes(2);
+    expect(scrollDOM.scrollTop).toBe(299);
+  });
+
   it.each([0, 0.0001, 0.9999, 1])("retains the requested source block at quantized boundaries (%s)", async relativeBlockPosition => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {setTimeout, clearTimeout,
@@ -53,7 +96,7 @@ describe("scroll coordination across runtime reuse", () => {
       const scrollDOM = {scrollTop: 0, scrollLeft: 0, scrollHeight: 2_000, clientHeight: 100,
         getBoundingClientRect: () => ({top: 0}), addEventListener() {}};
       const block = {from: 300, to: 320, top: 300, height: 20};
-      const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+      const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM, viewport: {from: 0, to: 2_000},
         get documentTop() { return inset - scrollDOM.scrollTop; },
         lineBlockAt: () => block,
         lineBlockAtHeight: (height: number) => height <= block.top
@@ -84,7 +127,7 @@ describe("scroll coordination across runtime reuse", () => {
       getBoundingClientRect: () => ({top: 10}), addEventListener() {}};
     const block = () => ({from: 300, to: 320, top: 300, height});
     let writingMeasure = false;
-    const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+    const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM, viewport: {from: 0, to: 2_000},
       get documentTop() { return 10 + inset - scrollDOM.scrollTop; },
       lineBlockAtHeight: () => {
         if (writingMeasure) throw new Error("Layout read inside a measure write");
