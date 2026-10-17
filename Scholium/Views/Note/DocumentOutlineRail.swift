@@ -91,42 +91,47 @@ struct DocumentOutlineRail: View {
     var body: some View {
         let interactionRow = self.interactionRow
         GeometryReader { proxy in
-            ScrollView(.vertical) {
-                VStack(spacing: 0) {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        markerButton(for: entry, at: index, interactionRow: interactionRow)
+            ScrollViewReader { outlineScroll in
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            markerButton(for: entry, at: index, interactionRow: interactionRow)
+                        }
+                    }
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            updatePointer(at: location.y)
+                        case .ended:
+                            pointerRow = nil
+                            hapticRow = nil
+                        }
+                    }
+                    .padding(.vertical, ScholiumMetrics.Document.outlineRailVerticalInset)
+                    .frame(minHeight: proxy.size.height)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .onScrollGeometryChange(for: DocumentOutlineScrollEdges.self) { geometry in
+                    DocumentOutlineScrollEdges(
+                        visibleRect: geometry.visibleRect,
+                        contentHeight: geometry.contentSize.height
+                    )
+                } action: { _, edges in
+                    scrollEdges = edges
+                }
+                .overlay(alignment: .top) {
+                    if scrollEdges.hasAbove {
+                        overflowFade(at: .top)
                     }
                 }
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let location):
-                        updatePointer(at: location.y)
-                    case .ended:
-                        pointerRow = nil
-                        hapticRow = nil
+                .overlay(alignment: .bottom) {
+                    if scrollEdges.hasBelow {
+                        overflowFade(at: .bottom)
                     }
                 }
-                .padding(.vertical, ScholiumMetrics.Document.outlineRailVerticalInset)
-                .frame(minHeight: proxy.size.height)
-            }
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
-            .onScrollGeometryChange(for: DocumentOutlineScrollEdges.self) { geometry in
-                DocumentOutlineScrollEdges(
-                    visibleRect: geometry.visibleRect,
-                    contentHeight: geometry.contentSize.height
-                )
-            } action: { _, edges in
-                scrollEdges = edges
-            }
-            .overlay(alignment: .top) {
-                if scrollEdges.hasAbove {
-                    overflowFade(at: .top)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if scrollEdges.hasBelow {
-                    overflowFade(at: .bottom)
+                .onChange(of: focusedEntryID) { _, id in
+                    if let id { outlineScroll.scrollTo(id) }
                 }
             }
         }
@@ -223,9 +228,8 @@ struct DocumentOutlineRail: View {
         }
         .buttonStyle(DocumentOutlineMarkerButtonStyle(reduceMotion: reduceMotion))
         .scholiumActivationPointer()
-        // Activation-only focus follows keyboard navigation, rather than a
-        // pointer press. SwiftUI owns the keyboard focus effect.
-        .focusable(interactions: .activate)
+        // Bind the native Button's activation focus directly so keyboard
+        // traversal and previews share the same control.
         .focused($focusedEntryID, equals: entry.id)
         .anchorPreference(key: DocumentOutlineMarkerBounds.self, value: .bounds) {
             [entry.id: $0]
