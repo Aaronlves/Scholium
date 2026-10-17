@@ -4,6 +4,8 @@ import type {EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
 
+const anchorViewportInset = 8;
+
 // Native geometry publishes only the portion actually covered by the toolbar.
 // Keep caret scrolling clear without changing manual scroll or restored anchors.
 export const documentToolbarScrollMargin = EditorView.scrollMargins.of(view => {
@@ -60,7 +62,7 @@ export function createEditorScrollCoordinator(
     const scrollRect = editor.scrollDOM.getBoundingClientRect();
     const probeHeight = Math.max(
       0,
-      scrollRect.top + 8 - editor.documentTop,
+      scrollRect.top + anchorViewportInset - editor.documentTop,
     );
     const block = editor.lineBlockAtHeight(probeHeight);
     const relativeBlockPosition = block.height > 0
@@ -84,6 +86,13 @@ export function createEditorScrollCoordinator(
     if (lastPostedAnchor && sameAnchor(lastPostedAnchor, anchor)) return;
     lastPostedAnchor = anchor;
     options.post(anchor);
+  }
+
+  function postAfterMeasure(documentSnapshot: Text, revision: number) {
+    // Public CodeMirror geometry reads cannot run inside a measure write.
+    queueMicrotask(() => {
+      if (editor.state.doc === documentSnapshot && revision === scrollRevision) postCurrent();
+    });
   }
 
   const scrollReports = new AnimationFrameCoalescer(
@@ -181,9 +190,11 @@ export function createEditorScrollCoordinator(
     const block = editor.lineBlockAt(blockProbe);
     const scrollRect = editor.scrollDOM.getBoundingClientRect();
     const documentInset = editor.documentTop - scrollRect.top + editor.scrollDOM.scrollTop;
+    // WebKit quantizes scrollTop. Nearest-pixel projection avoids a biased
+    // truncation accumulating as differently sized mode blocks round-trip.
     return Math.max(
       0,
-      documentInset + block.top + block.height * relativePosition - 4,
+      Math.round(documentInset + block.top + block.height * relativePosition - anchorViewportInset),
     );
   }
 
@@ -213,7 +224,7 @@ export function createEditorScrollCoordinator(
         write: (scrollTop) => {
           if (scrollTop === undefined || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
           if (scrollTop !== null) editor.scrollDOM.scrollTop = scrollTop;
-          postCurrent();
+          postAfterMeasure(documentSnapshot, revision);
         },
       });
     });
@@ -247,6 +258,7 @@ export function createEditorScrollCoordinator(
 
   function setAnchor(anchor: EditorScrollAnchor) {
     const revision = ++scrollRevision;
+    const scrollLeft = editor.scrollDOM.scrollLeft;
     revealedScroll = null;
     options.flushPresentationGeometry();
     lastPostedAnchor = null;
@@ -265,7 +277,7 @@ export function createEditorScrollCoordinator(
           write: (isCurrentDocument) => {
             if (!isCurrentDocument || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             editor.scrollDOM.scrollTop = 0;
-            postCurrent();
+            postAfterMeasure(documentSnapshot, revision);
           },
         });
       };
@@ -287,13 +299,18 @@ export function createEditorScrollCoordinator(
         write: (scrollTop) => {
           if (scrollTop === null || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
           editor.scrollDOM.scrollTop = scrollTop;
-          postCurrent();
+          editor.scrollDOM.scrollLeft = scrollLeft;
+          postAfterMeasure(documentSnapshot, revision);
         },
       });
     };
     const applyScrollEffect = () => {
       if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
       editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
+      // This operation restores vertical context. Finish CodeMirror's pending
+      // scroll before preserving the independent horizontal viewport.
+      editor.coordsAtPos(blockProbe);
+      editor.scrollDOM.scrollLeft = scrollLeft;
     };
     editor.scrollDOM.scrollTop = requestedScrollTop(anchor);
     postCurrent();

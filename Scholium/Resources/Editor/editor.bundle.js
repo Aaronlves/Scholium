@@ -36605,6 +36605,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   };
 
   // scroll-coordinator.ts
+  var anchorViewportInset = 8;
   var documentToolbarScrollMargin = EditorView.scrollMargins.of((view) => {
     const inset = parseFloat(getComputedStyle(view.dom).getPropertyValue("--scholium-document-toolbar-inset"));
     return Number.isFinite(inset) && inset > 0 ? { top: inset * view.scaleY } : null;
@@ -36622,7 +36623,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const scrollRect = editor2.scrollDOM.getBoundingClientRect();
       const probeHeight = Math.max(
         0,
-        scrollRect.top + 8 - editor2.documentTop
+        scrollRect.top + anchorViewportInset - editor2.documentTop
       );
       const block = editor2.lineBlockAtHeight(probeHeight);
       const relativeBlockPosition = block.height > 0 ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height)) : 0;
@@ -36642,6 +36643,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (lastPostedAnchor && sameAnchor(lastPostedAnchor, anchor)) return;
       lastPostedAnchor = anchor;
       options.post(anchor);
+    }
+    function postAfterMeasure(documentSnapshot, revision) {
+      queueMicrotask(() => {
+        if (editor2.state.doc === documentSnapshot && revision === scrollRevision) postCurrent();
+      });
     }
     const scrollReports = new AnimationFrameCoalescer(
       (callback) => window.requestAnimationFrame(callback),
@@ -36717,7 +36723,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const documentInset = editor2.documentTop - scrollRect.top + editor2.scrollDOM.scrollTop;
       return Math.max(
         0,
-        documentInset + block.top + block.height * relativePosition - 4
+        Math.round(documentInset + block.top + block.height * relativePosition - anchorViewportInset)
       );
     }
     let geometryReportScheduled = false;
@@ -36744,7 +36750,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           write: (scrollTop) => {
             if (scrollTop === void 0 || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             if (scrollTop !== null) editor2.scrollDOM.scrollTop = scrollTop;
-            postCurrent();
+            postAfterMeasure(documentSnapshot, revision);
           }
         });
       });
@@ -36770,6 +36776,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     function setAnchor(anchor) {
       const revision = ++scrollRevision;
+      const scrollLeft = editor2.scrollDOM.scrollLeft;
       revealedScroll = null;
       options.flushPresentationGeometry();
       lastPostedAnchor = null;
@@ -36788,7 +36795,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             write: (isCurrentDocument) => {
               if (!isCurrentDocument || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
               editor2.scrollDOM.scrollTop = 0;
-              postCurrent();
+              postAfterMeasure(documentSnapshot, revision);
             }
           });
         };
@@ -36805,13 +36812,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           write: (scrollTop) => {
             if (scrollTop === null || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             editor2.scrollDOM.scrollTop = scrollTop;
-            postCurrent();
+            editor2.scrollDOM.scrollLeft = scrollLeft;
+            postAfterMeasure(documentSnapshot, revision);
           }
         });
       };
       const applyScrollEffect = () => {
         if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
         editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
+        editor2.coordsAtPos(blockProbe);
+        editor2.scrollDOM.scrollLeft = scrollLeft;
       };
       editor2.scrollDOM.scrollTop = requestedScrollTop(anchor);
       postCurrent();
@@ -44280,13 +44290,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const transitionSequence = ++modeTransitionSequence;
       const attachment = documentAttachment;
       previewPopover.hide();
-      const scrollSnapshot = editor.scrollSnapshot();
+      const scrollAnchor = scrollCoordinator.captureGeometry().anchor;
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
       if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
       editor.dispatch({
         effects: [
-          modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
-          scrollSnapshot
+          modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode)
         ]
       });
       const appliedMode = configuredEditorMode(editor.state);
@@ -44307,6 +44316,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         if (attachment === documentAttachment) scrollCoordinator.postCurrent();
       }, 0);
       if (appliedMode === "livePreview") convergeLivePreviewProjection();
+      scrollCoordinator.setAnchor(scrollAnchor);
+      editor.coordsAtPos(scrollAnchor.sourceUTF16Offset);
       flushPresentationStyleAndGeometry();
     },
     setPresentationCSS(css2) {

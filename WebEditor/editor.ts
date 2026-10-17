@@ -3085,13 +3085,12 @@ const editorOperations = {
     const transitionSequence = ++modeTransitionSequence;
     const attachment = documentAttachment;
     previewPopover.hide();
-    const scrollSnapshot = editor.scrollSnapshot();
+    const scrollAnchor = scrollCoordinator.captureGeometry().anchor;
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
     if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
     editor.dispatch({
       effects: [
         modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
-        scrollSnapshot,
       ],
     });
     const appliedMode = configuredEditorMode(editor.state);
@@ -3112,6 +3111,10 @@ const editorOperations = {
       if (attachment === documentAttachment) scrollCoordinator.postCurrent();
     }, 0);
     if (appliedMode === "livePreview") convergeLivePreviewProjection();
+    // Modes change the document inset and block heights. Restore the same
+    // source block through the shared geometry owner before native reveals it.
+    scrollCoordinator.setAnchor(scrollAnchor);
+    editor.coordsAtPos(scrollAnchor.sourceUTF16Offset);
     // The typed response is the native visibility boundary. Ensure the
     // compartment, semantic projection, cascade, and representative geometry
     // belong to the same completed configuration before acknowledging it.

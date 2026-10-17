@@ -14,7 +14,7 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
   vi.stubGlobal("document", {fonts: {ready: fontsReady}});
   const listeners = new Map<string, () => void>();
   const scrollDOM = {
-    scrollTop: 0, scrollHeight: 2_000, clientHeight: 100,
+    scrollTop: 0, scrollLeft: 0, scrollHeight: 2_000, clientHeight: 100,
     getBoundingClientRect: () => ({top: 0}),
     addEventListener: (event: string, callback: () => void) => { listeners.set(event, callback); },
   };
@@ -26,6 +26,7 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
     lineBlockAt: () => ({from: 300, to: 320, top: blockTop, height: 20}),
     requestMeasure: (request: {read(): number; write(value: number): void}) => request.write(request.read()),
     dispatch: () => {},
+    coordsAtPos: () => null,
   } as unknown as EditorView;
   const coordinator = createEditorScrollCoordinator(editor, {
       onViewportInput() {},
@@ -43,6 +44,47 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
 }
 
 describe("scroll coordination across runtime reuse", () => {
+  it("round-trips source geometry across reflow without vertical or horizontal drift", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16), cancelAnimationFrame: clearTimeout});
+    vi.stubGlobal("document", {fonts: {ready: Promise.resolve()}});
+    let inset = 120, height = 20;
+    const scrollDOM = {scrollTop: 417, scrollLeft: 80, scrollHeight: 2_000, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 10}), addEventListener() {}};
+    const block = () => ({from: 300, to: 320, top: 300, height});
+    let writingMeasure = false;
+    const editor = {state: EditorState.create({doc: "x".repeat(2_000)}), scrollDOM,
+      get documentTop() { return 10 + inset - scrollDOM.scrollTop; },
+      lineBlockAtHeight: () => {
+        if (writingMeasure) throw new Error("Layout read inside a measure write");
+        return block();
+      }, lineBlockAt: block,
+      dispatch() {}, coordsAtPos() { scrollDOM.scrollLeft = 0; return null; },
+      requestMeasure: (request: {read(): number; write(value: number): void}) => {
+        const value = request.read();
+        writingMeasure = true;
+        try { request.write(value); } finally { writingMeasure = false; }
+      },
+    } as unknown as EditorView;
+    const coordinator = createEditorScrollCoordinator(editor, {
+      onViewportInput() {}, onScroll() {}, post() {}, flushPresentationGeometry() {},
+    });
+    for (let cycle = 0; cycle < 20; cycle++) {
+      const anchor = coordinator.captureGeometry().anchor;
+      expect(anchor.relativeBlockPosition).toBe(0.25);
+      inset = cycle % 2 === 0 ? 30 : 120;
+      height = cycle % 2 === 0 ? 40 : 20;
+      coordinator.setAnchor(anchor);
+      expect(scrollDOM.scrollTop).toBe(inset + 300 + height * 0.25 - 8);
+      expect(scrollDOM.scrollLeft).toBe(80);
+    }
+    vi.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(scrollDOM.scrollTop).toBe(417);
+    expect(scrollDOM.scrollLeft).toBe(80);
+  });
+
   it("a completed explicit reveal survives its own scroll receipt but yields to user input and changed geometry", () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {
@@ -91,7 +133,7 @@ describe("scroll coordination across runtime reuse", () => {
     const harness = anchorRestorationHarness(new Promise<void>(resolve => { finishFonts = resolve; }));
     harness.restore();
     await Promise.resolve();
-    expect(harness.scrollDOM.scrollTop).toBe(296);
+    expect(harness.scrollDOM.scrollTop).toBe(292);
 
     harness.emit(input);
     harness.scrollDOM.scrollTop = 700;
@@ -110,13 +152,13 @@ describe("scroll coordination across runtime reuse", () => {
     harness.restore();
     harness.emit("scroll");
     vi.advanceTimersByTime(100);
-    expect(harness.scrollDOM.scrollTop).toBe(296);
+    expect(harness.scrollDOM.scrollTop).toBe(292);
 
     harness.setBlockTop(500);
     finishFonts();
     await Promise.resolve();
 
-    expect(harness.scrollDOM.scrollTop).toBe(496);
+    expect(harness.scrollDOM.scrollTop).toBe(492);
   });
 
   it("updates and clears the covered caret region when native toolbar overlap changes", () => {
@@ -273,6 +315,8 @@ describe("scroll coordination across runtime reuse", () => {
     await Promise.resolve();
     const current = measurements.pop()!;
     current.write!(current.read(editor), editor);
+    expect(post).not.toHaveBeenCalled();
+    await Promise.resolve();
     expect(post).toHaveBeenCalledOnce();
   });
 });
