@@ -286,10 +286,16 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
             guard snapshot.status == .absent,
                 snapshot.data == nil, snapshot.revision == nil, snapshot.sourceFingerprint == nil
             else { return true }
-            // A managed Note can contain a link whose decoded destination is
-            // reserved even when the raw scheme is encoded or escaped. Keep
-            // link and HTML syntax on the existing parser path for that case.
-            if document.rawContent.contains("[") || document.rawContent.contains("<") { return true }
+            // A reserved destination absent from the raw source can only be
+            // introduced by entity, backslash or percent decoding. Retain the
+            // semantic path whenever link/HTML syntax can use those forms;
+            // ordinary links and YAML arrays do not require a Markdown parse.
+            let source = document.rawContent
+            if (source.contains("[") || source.contains("<"))
+                && (source.contains("&") || source.contains("\\") || source.contains("%"))
+            {
+                return true
+            }
         }
         return hasSourceMarkers(document.rawContent)
     }

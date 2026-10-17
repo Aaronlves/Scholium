@@ -54,7 +54,7 @@ struct ZoteroMarkdownFieldsTests {
     @Test("Checked absence still parses encoded reserved link destinations")
     func encodedCitationWithAbsentCompanion() {
         let companion = ZoteroCitationSnapshot(noteID: UUID(), vaultID: UUID(), status: .absent)
-        for source in ["[x](c&#105;te:field)", "[x](cite\\:field)"] {
+        for source in ["[x](c&#105;te:field)", "[x](cite\\:field)", "[x](%63ite%3Afield)", "[x](scholium%2Dzotero:1:AAAA)"] {
             let document = NoteDocument(relativePath: "Encoded.md", rawContent: source, citationSnapshot: companion)
             let result = ZoteroMarkdownFields(parsing: document)
             // The complete semantic path retains its independent admission
@@ -62,6 +62,24 @@ struct ZoteroMarkdownFieldsTests {
             #expect(result == MarkdownSemanticDocument(parsing: document).zoteroFields)
             #expect(result.fields.isEmpty)
         }
+    }
+
+    @Test(
+        "Checked absence matches semantic parsing for ordinary source syntax",
+        arguments: [
+            "---\nkeywords: [draft, 中文]\n---\n\n# Prose\n\nPlain text.\n",
+            "---\r\nkeywords: [draft, 中文]\r\n---\r\n\r\n[[Neutral connection|别名]].\r\n",
+            "[Link](https://example.invalid/path) and ![image](image.png).",
+            "[Reference][note]\n\n[note]: https://example.invalid/",
+            "<https://example.invalid/> and <span>ordinary HTML</span>.",
+            "> [!note]\n> A [[connection]] with **emphasis**.",
+            "`[x](cite:field)`\n\n```markdown\n[x](cite:field)\n```",
+        ])
+    func ordinarySyntaxWithAbsentCompanion(_ source: String) {
+        let companion = ZoteroCitationSnapshot(noteID: UUID(), vaultID: UUID(), status: .absent)
+        let document = NoteDocument(relativePath: "Ordinary.md", rawContent: source, citationSnapshot: companion)
+        #expect(ZoteroMarkdownFields(parsing: document) == MarkdownSemanticDocument(parsing: document).zoteroFields)
+        #expect(document.sourceBytes == Data(source.utf8))
     }
 
     private func encoded(_ object: [String: Any]) throws -> String {
