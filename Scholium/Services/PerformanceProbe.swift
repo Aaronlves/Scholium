@@ -576,10 +576,11 @@ final class PerformanceProbe {
             let result = qaMemoryOwnerResultURL.deletingLastPathComponent()
                 .appendingPathComponent("qa-editor-work.jsonl")
             guard (try? FileManager.default.destinationOfSymbolicLink(atPath: result.path)) == nil,
-                append([
-                    "schema": "scholium-qa-editor-work-v1", "sample": qaEditorWorkSampleCount,
-                    "completed_uptime_ns": now(), "measurements": values,
-                ], to: result)
+                append(
+                    [
+                        "schema": "scholium-qa-editor-work-v1", "sample": qaEditorWorkSampleCount,
+                        "completed_uptime_ns": now(), "measurements": values,
+                    ], to: result)
             else { return }
             qaEditorWorkSampleCount += 1
         }

@@ -19,8 +19,10 @@ struct PerformanceProbeTests {
             let result = fixture.home.appendingPathComponent("qa-editor-work.jsonl")
             let sample = MarkdownEditorPerformanceSample(
                 name: "projection-index-map", durationMilliseconds: 1.25,
-                observed: ["documentLength": 500, "semanticMapMilliseconds": 0.5,
-                    "private-field": 12, "inlineCount": .infinity])
+                observed: [
+                    "documentLength": 500, "semanticMapMilliseconds": 0.5,
+                    "private-field": 12, "inlineCount": .infinity,
+                ])
             var disabled = fixture.environment
             disabled["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = nil
             for (environment, identity) in [
@@ -31,7 +33,8 @@ struct PerformanceProbeTests {
                     .recordQAEditorWork([sample])
                 #expect(!FileManager.default.fileExists(atPath: result.path))
             }
-            let probe = PerformanceProbe(environment: fixture.environment,
+            let probe = PerformanceProbe(
+                environment: fixture.environment,
                 bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier, bundleURL: fixture.bundle)
             probe.recordQAEditorWork(Array(repeating: sample, count: 257))
             probe.recordQAEditorWork([.init(name: "untrusted source text", durationMilliseconds: 1, observed: [:])])
@@ -51,7 +54,8 @@ struct PerformanceProbeTests {
             let original = Data("unchanged".utf8)
             try original.write(to: protected)
             try FileManager.default.createSymbolicLink(at: result, withDestinationURL: protected)
-            let fresh = PerformanceProbe(environment: fixture.environment,
+            let fresh = PerformanceProbe(
+                environment: fixture.environment,
                 bundleID: ScholiumRuntimeIsolation.qaBundleIdentifier, bundleURL: fixture.bundle)
             fresh.recordQAEditorWork([sample])
             #expect(try Data(contentsOf: protected) == original)

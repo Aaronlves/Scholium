@@ -36,13 +36,15 @@ final class ScholiumPerformanceUITests: XCTestCase {
             throw XCTSkip("The opt-in isolated visible Stress Notes diagnostic is not configured.")
         }
         guard ["baseline", "profile", "candidate"].contains(label) else {
-            throw NSError(domain: "ScholiumUITests.VisibleEditor", code: 1,
+            throw NSError(
+                domain: "ScholiumUITests.VisibleEditor", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "An explicit baseline, profile, or candidate label is required."])
         }
         try requireQAPreferencePreservation()
         continueAfterFailure = false
         let fixture = repository.appendingPathComponent(".build/qa-runtime/fixtures")
-        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))) as? [String: Any])
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture.appendingPathComponent("stress-manifest.json"))) as? [String: Any])
         XCTAssertEqual(manifest["synthetic_nonprivate"] as? Bool, true)
         let paths = try XCTUnwrap(manifest["scenarios"] as? [String: String])
         let path = try XCTUnwrap(paths[scenario])
@@ -155,7 +157,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application.typeKey("9", modifierFlags: [])
         let edited = prepared + Data("9".utf8)
         application.typeKey("s", modifierFlags: .command)
-        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited }, "A nonzero edit must reach the revision-checked save path with every other byte unchanged.")
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited },
+            "A nonzero edit must reach the revision-checked save path with every other byte unchanged.")
         application.typeKey("z", modifierFlags: .command)
         application.typeKey("s", modifierFlags: .command)
         XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == prepared }, "Undo must restore every prepared byte.")
@@ -166,7 +170,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application.typeKey("s", modifierFlags: .command)
         XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == prepared })
         let proxyLines = try String(contentsOf: result, encoding: .utf8).split(separator: "\n")
-        XCTAssertGreaterThanOrEqual(proxyLines.count, options.iterationCount * 8 + 4, "The current run must capture its actual native key events, rather than silently omitting WebKit proxy evidence.")
+        XCTAssertGreaterThanOrEqual(
+            proxyLines.count, options.iterationCount * 8 + 4,
+            "The current run must capture its actual native key events, rather than silently omitting WebKit proxy evidence.")
         let proxies = try proxyLines.map { line in
             try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
         }
@@ -176,13 +182,18 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "source_sha256": SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined(),
             "screen_observation_upper_bound_ms": observed, "typed_pixels_recognized": true,
             "screen_capture_count": observations.count,
-            "screen_timing_boundary": "Before XCTest key action to recognized screenshot return, including event transport, XCTest idle waits, capture and any earlier OCR/write work. Upper bound only; not physical key-to-display latency.",
+            "screen_timing_boundary":
+                "Before XCTest key action to recognized screenshot return, including event transport, XCTest idle waits, capture and any earlier OCR/write work. Upper bound only; not physical key-to-display latency.",
             "web_timing_boundary": "DOM event to animation frame followed by timer task; browser service proxy without display acknowledgement.",
-            "system_metric": "XCTHitchMetric targeted at the isolated QA application; retained in xcresult and test log. WebContent process coverage must be checked before attributing WebKit stalls.",
+            "system_metric":
+                "XCTHitchMetric targeted at the isolated QA application; retained in xcresult and test log. WebContent process coverage must be checked before attributing WebKit stalls.",
             "measured_iterations": gesture, "nonzero_save_undo_redo_exact": true,
             "key_post_frame_proxy_count": proxies.count,
-            "typing_location": "Ordinary appended prose at the end of the unchanged Stress Note; caret traversal and native wheel input also cross preceding content. Screen coverage is limited to retained viewports.",
-            "qa_binary_sha256": SHA256.hash(data: try Data(contentsOf: bundle.appendingPathComponent("Contents/MacOS/Scholium"))).map { String(format: "%02x", $0) }.joined(),
+            "typing_location":
+                "Ordinary appended prose at the end of the unchanged Stress Note; caret traversal and native wheel input also cross preceding content. Screen coverage is limited to retained viewports.",
+            "qa_binary_sha256": SHA256.hash(data: try Data(contentsOf: bundle.appendingPathComponent("Contents/MacOS/Scholium"))).map {
+                String(format: "%02x", $0)
+            }.joined(),
             "unverified": ["physical typing latency", "installed Chinese IME", "human accessibility acceptance"],
         ]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
