@@ -153,7 +153,16 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
         return fields.flatMap(\.markerSpans) + (documentState.flatMap { $0.span.utf16Range.isEmpty ? nil : [$0.span] } ?? [])
     }
 
-    public init(parsing document: NoteDocument) { self = MarkdownSemanticDocument(parsing: document).zoteroFields }
+    public init(parsing document: NoteDocument) {
+        // Most manuscripts have no citation carriers or companion authority.
+        // Prove that absence before building the complete Markdown projection
+        // on callers such as native mode presentation.
+        guard Self.requiresSemanticParsing(document) else {
+            self = .empty(fingerprint: document.fingerprint)
+            return
+        }
+        self = MarkdownSemanticDocument(parsing: document).zoteroFields
+    }
 
     /// Reserved even when the carrier or companion is malformed or missing.
     public static func isCitationDestination(_ destination: String) -> Bool {
@@ -272,15 +281,31 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
         return .init(source: projected, segments: segments)
     }
 
+    private static func requiresSemanticParsing(_ document: NoteDocument) -> Bool {
+        if let snapshot = document.citationSnapshot {
+            guard snapshot.status == .absent,
+                snapshot.data == nil, snapshot.revision == nil, snapshot.sourceFingerprint == nil
+            else { return true }
+            // A managed Note can contain a link whose decoded destination is
+            // reserved even when the raw scheme is encoded or escaped. Keep
+            // link and HTML syntax on the existing parser path for that case.
+            if document.rawContent.contains("[") || document.rawContent.contains("<") { return true }
+        }
+        return hasSourceMarkers(document.rawContent)
+    }
+
+    private static func hasSourceMarkers(_ source: String) -> Bool {
+        source.range(of: citationScheme, options: .caseInsensitive) != nil
+            || source.range(of: compactCitationScheme, options: .caseInsensitive) != nil
+            || source.contains(bibliographyPrefix)
+            || source.contains(bibliographyClose)
+            || source.contains(ZoteroMarkdownFieldParser.fieldPrefix)
+            || source.contains(ZoteroMarkdownFieldParser.documentPrefix)
+            || source.contains(ZoteroMarkdownFieldParser.fieldClose)
+    }
+
     static func parse(_ document: NoteDocument, semantic: MarkdownSemanticDocument, inlineHTMLSpans: [SourceSpan]) -> Self {
-        let hasSourceMarkers =
-            document.rawContent.range(of: citationScheme, options: .caseInsensitive) != nil
-            || document.rawContent.range(of: compactCitationScheme, options: .caseInsensitive) != nil
-            || document.rawContent.contains(bibliographyPrefix)
-            || document.rawContent.contains(bibliographyClose)
-            || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldPrefix)
-            || document.rawContent.contains(ZoteroMarkdownFieldParser.documentPrefix)
-            || document.rawContent.contains(ZoteroMarkdownFieldParser.fieldClose)
+        let hasSourceMarkers = Self.hasSourceMarkers(document.rawContent)
         guard hasSourceMarkers || document.citationSnapshot != nil else { return .empty(fingerprint: document.fingerprint) }
         if document.frontmatterState == .malformed {
             let hasCompanionAuthority =

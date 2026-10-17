@@ -376,6 +376,35 @@ struct MarkdownEditorCitationStateTests {
         #expect(session.generation == 0)
     }
 
+    @Test("Absent companion payloads still invalidate citation results through exact source changes")
+    @MainActor
+    func absentPayloadCatalogFollowsSource() throws {
+        let original = "\u{FEFF}# 中文 😀 e\u{301}\r\n\r\nPlain prose.\r\n"
+        let marker = "[(Author, 2020)](cite:cfixture)\r\n"
+        let normalizedMarker = marker.replacingOccurrences(of: "\r\n", with: "\n")
+        let session = MarkdownEditorSession()
+        session.loadDocument(
+            original, documentID: session.bridgeDocumentID, mode: .source,
+            citationSnapshot: .init(noteID: noteID, vaultID: vaultID, status: .absent))
+        let empty = try #require(session.citationFields(forDocumentID: session.documentID))
+        #expect(empty.canMutate && empty.fields.isEmpty)
+        let end = EditorSourceOffsetMap(source: original).editorUTF16Length
+        #expect(
+            session.acceptEditorChanges(
+                [.init(from: end, to: end, insert: normalizedMarker, exactInsert: marker)],
+                baseGeneration: 0, resultingGeneration: 1, citationManaged: true))
+        let unresolved = try #require(session.citationFields(forDocumentID: session.documentID))
+        #expect(!unresolved.canMutate && !unresolved.diagnostics.isEmpty)
+        #expect(unresolved.fingerprint == DocumentFingerprint(content: original + marker))
+        #expect(
+            session.acceptEditorChanges(
+                [.init(from: end, to: end + normalizedMarker.utf16.count, insert: "", exactInsert: "")],
+                baseGeneration: 1, resultingGeneration: 2, citationManaged: true))
+        #expect(session.checkedCitationData == nil)
+        #expect(session.citationFields(forDocumentID: session.documentID) == empty)
+        #expect(Data(session.checkedSource.utf8) == Data(original.utf8))
+    }
+
     @Test(
         "Citation catalog identity, companion status and detached reset follow the exact source owner",
         arguments: [ZoteroCitationSnapshot.Status.absent, .available, .unresolved, .unsupported])

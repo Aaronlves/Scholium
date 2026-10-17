@@ -171,7 +171,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         didSet { cachedCitationFields = nil }
     }
     private(set) var checkedCitationData: ZoteroCitationData? {
-        didSet { cachedCitationFields = nil }
+        didSet {
+            // A checked snapshot with the same absent payload does not change
+            // citation authority. Source changes already have an exact-byte
+            // fingerprint in the catalog key. Nonempty assignments still
+            // invalidate opaque bytes even under canonical Unicode equality.
+            if oldValue != nil || checkedCitationData != nil { cachedCitationFields = nil }
+        }
     }
 
     /// Checked in-memory state uses current source coordinates; the committed

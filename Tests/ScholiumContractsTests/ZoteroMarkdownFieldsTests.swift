@@ -6,6 +6,64 @@ import Testing
 struct ZoteroMarkdownFieldsTests {
     private let citationCode = #"ITEM CSL_CITATION {"citationItems":[{"id":"http://zotero.org/users/1/items/ABCDEFGH"}],"properties":{"plainCitation":"Fang"}}"#
 
+    @Test(
+        "Citation-free source admits only checked companion absence",
+        arguments: [
+            "", "\u{FEFF}# 中文 😀 e\u{301}\r\n\r\nOrdinary **prose**.\r\n", "---\nunknown: [unclosed\n",
+            "---\r\nunknown: 'preserve' # comment\r\n---\r\nA [[neutral connection]].\r\n",
+        ])
+    func citationFreeSource(_ source: String) {
+        let noteID = UUID()
+        let vaultID = UUID()
+        for companion: ZoteroCitationSnapshot? in [nil, .init(noteID: noteID, vaultID: vaultID, status: .absent)] {
+            let document = NoteDocument(relativePath: "Ordinary.md", rawContent: source, citationSnapshot: companion)
+            let fields = ZoteroMarkdownFields(parsing: document)
+            #expect(fields.fingerprint == DocumentFingerprint(content: source))
+            #expect(fields.fields.isEmpty && fields.documentState == nil && fields.diagnostics.isEmpty)
+            #expect(fields.canMutate && !fields.citationStateStale)
+            #expect(document.sourceBytes == Data(source.utf8))
+        }
+    }
+
+    @Test("Citation-free source retains companion state and failures")
+    func citationFreeCompanionAuthority() {
+        let source = "# 中文 😀 e\u{301}\r\n\r\nOrdinary prose.\r\n"
+        let noteID = UUID()
+        let vaultID = UUID()
+        let fingerprint = DocumentFingerprint(content: source)
+        let data = ZoteroCitationData(fields: [], documentData: "<data>opaque</data>")
+        let available = ZoteroCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint, data: data, status: .available)
+        let fields = ZoteroMarkdownFields(parsing: .init(relativePath: "Companion.md", rawContent: source, citationSnapshot: available))
+        #expect(fields.documentState?.data == data.documentData)
+        #expect(fields.canMutate)
+        let failures: [ZoteroCitationSnapshot] = [
+            .init(noteID: noteID, vaultID: vaultID, status: .unresolved),
+            .init(noteID: noteID, vaultID: vaultID, status: .unsupported),
+            .init(noteID: noteID, vaultID: vaultID, status: .available),
+            .init(noteID: noteID, vaultID: vaultID, data: data, status: .absent),
+            .init(noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint, status: .absent),
+            .init(noteID: noteID, vaultID: vaultID, revision: fingerprint, status: .absent),
+        ]
+        for companion in failures {
+            let result = ZoteroMarkdownFields(parsing: .init(relativePath: "Companion.md", rawContent: source, citationSnapshot: companion))
+            #expect(!result.canMutate && !result.diagnostics.isEmpty)
+        }
+    }
+
+    @Test("Checked absence still parses encoded reserved link destinations")
+    func encodedCitationWithAbsentCompanion() {
+        let companion = ZoteroCitationSnapshot(noteID: UUID(), vaultID: UUID(), status: .absent)
+        for source in ["[x](c&#105;te:field)", "[x](cite\\:field)"] {
+            let document = NoteDocument(relativePath: "Encoded.md", rawContent: source, citationSnapshot: companion)
+            let result = ZoteroMarkdownFields(parsing: document)
+            // The complete semantic path retains its independent admission
+            // check; normalization must not change shortcut results.
+            #expect(result == MarkdownSemanticDocument(parsing: document).zoteroFields)
+            #expect(result.fields.isEmpty)
+        }
+    }
+
     private func encoded(_ object: [String: Any]) throws -> String {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]).base64EncodedString()
     }
