@@ -18589,7 +18589,7 @@
     const blocks = previous.blocks.map((block) => ({
       ...block,
       from: mapPosition(block.from),
-      to: mapPosition(block.to),
+      to: mapPosition(block.to, block.kind === "paragraph" ? 1 : void 0),
       parent: block.parent ? {
         kind: block.parent.kind,
         from: mapPosition(block.parent.from),
@@ -19140,7 +19140,10 @@
   function mappedBlock(block, transaction) {
     return {
       ...block,
-      ...mappedRange(block, transaction),
+      from: transaction.changes.mapPos(block.from),
+      // Plain input at the paragraph's end belongs to that paragraph. Other
+      // block ends retain the conservative boundary used by the topology proof.
+      to: transaction.changes.mapPos(block.to, block.kind === "paragraph" ? 1 : -1),
       parent: block.parent ? {
         kind: block.parent.kind,
         ...mappedRange(block.parent, transaction)
@@ -33448,7 +33451,7 @@ ${blankRow(table.position.columnCount)}`;
   function mapLiveProjectionIndex(index, transaction, recordMetric) {
     const startedAt = performance.now();
     const semanticStartedAt = performance.now();
-    const map = (position) => transaction.changes.mapPos(position);
+    const map = (position, association = -1) => transaction.changes.mapPos(position, association);
     const syntax = mapSemanticProjectionRanges(index.syntax, map);
     const semanticMapMilliseconds = performance.now() - semanticStartedAt;
     const derivedStartedAt = performance.now();

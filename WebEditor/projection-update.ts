@@ -258,7 +258,10 @@ function mappedBlock(
 ): SemanticBlockProjection {
   return {
     ...block,
-    ...mappedRange(block, transaction),
+    from: transaction.changes.mapPos(block.from),
+    // Plain input at the paragraph's end belongs to that paragraph. Other
+    // block ends retain the conservative boundary used by the topology proof.
+    to: transaction.changes.mapPos(block.to, block.kind === "paragraph" ? 1 : -1),
     parent: block.parent ? {
       kind: block.parent.kind,
       ...mappedRange(block.parent, transaction),

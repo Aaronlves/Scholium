@@ -1,8 +1,12 @@
-import {EditorState} from "@codemirror/state";
+import {EditorSelection, EditorState} from "@codemirror/state";
+import {ensureSyntaxTree} from "@codemirror/language";
 import {describe, expect, it} from "vitest";
 import {scholiumNoteLanguage} from "../language";
 import {createLiveProjectionIndexController} from "../live-projection-index";
 import type {MarkdownEditingDialect} from "../protocol";
+import {createMarkdownDocumentState} from "../bootstrap";
+import {exactSourceHistory, exactSourceState} from "../exact-source-history";
+import {normalizedDocumentText} from "../state";
 
 const dialect: MarkdownEditingDialect = {
   version: 6,
@@ -31,6 +35,36 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it.each(["\n", "\r\n"])("maps successive mixed-script paragraph-end input with exact %j separators", newline => {
+    let builds = 0;
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+      recordMetric: name => {if (name === "projection-index") builds++;}});
+    let expected = ["# Earlier", "", "A *claim* with [[Target]] and 中文 e\u0301 🧭.", "", "sampletest9"].join(newline);
+    let state = createMarkdownDocumentState(expected,
+      [scholiumNoteLanguage, exactSourceHistory, controller.extension],
+      {selection: EditorSelection.single(normalizedDocumentText(expected).length)});
+    const topology = controller.index(state).topologyIdentity;
+    for (const insert of Array.from("Latin中文 e\u0301 🧭")) {
+      const end = state.doc.length;
+      const transaction = state.update({changes: {from: end, insert}, selection: {anchor: end + insert.length}});
+      state = transaction.state;
+      expected += insert;
+      expect(controller.topologyWasMapped(transaction)).toBe(true);
+      expect(controller.index(state).topologyIdentity).toBe(topology);
+      expect(state.doc.toString()).toBe(normalizedDocumentText(expected));
+      expect(state.field(exactSourceState).text).toBe(expected);
+      expect(state.selection.main.anchor).toBe(state.doc.length);
+      expect(state.selection.main.head).toBe(state.doc.length);
+      const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+      const fresh = createMarkdownDocumentState(expected,
+        [scholiumNoteLanguage, exactSourceHistory, oracle.extension], {selection: state.selection});
+      expect(ensureSyntaxTree(fresh, fresh.doc.length, 5_000)).not.toBeNull();
+      expect(controller.index(state)).toEqual(oracle.index(fresh));
+      expect(controller.index(state).syntax.blocks.at(-1)?.to).toBe(state.doc.length);
+    }
+    expect(builds).toBe(1);
+  });
+
   it("reuses one semantic index for repeated reads in a Source state", () => {
     let builds = 0;
     const controller = createLiveProjectionIndexController({editingDialect: () => dialect,

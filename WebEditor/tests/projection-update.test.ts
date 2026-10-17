@@ -273,6 +273,20 @@ describe("local projection-topology proof", () => {
     )).toBe(true);
   });
 
+  it.each(["ordinary", "中文", "e\u0301 🧭"])("maps ordinary paragraph-end input: %s", insert => {
+    const state = parsedState("A paragraph beside **strong** and [[Target]].");
+    const transaction = state.update({changes: {from: state.doc.length, insert}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], syntaxFor(state))).toBe(true);
+  });
+
+  it("still rebuilds when input grows a heading rather than a paragraph", () => {
+    const state = parsedState("## Heading");
+    const transaction = state.update({changes: {from: state.doc.length, insert: " text"}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], syntaxFor(state))).toBe(false);
+  });
+
   it("rebuilds when plain text completes latent inline or Callout syntax", () => {
     const emphasisSource = "Before **** after";
     const emphasis = parsedState(emphasisSource);

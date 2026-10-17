@@ -72,7 +72,7 @@ export interface SemanticProjectionRanges {
 
 export function mapSemanticProjectionRanges(
   previous: SemanticProjectionRanges,
-  mapPosition: (position: number) => number,
+  mapPosition: (position: number, association?: number) => number,
 ) {
   const mapRange = (range: SemanticSourceRange) => ({
     from: mapPosition(range.from),
@@ -81,7 +81,7 @@ export function mapSemanticProjectionRanges(
   const blocks = previous.blocks.map((block): SemanticBlockProjection => ({
     ...block,
     from: mapPosition(block.from),
-    to: mapPosition(block.to),
+    to: mapPosition(block.to, block.kind === "paragraph" ? 1 : undefined),
     parent: block.parent ? {
       kind: block.parent.kind,
       from: mapPosition(block.parent.from),

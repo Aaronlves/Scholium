@@ -542,7 +542,7 @@ function mapLiveProjectionIndex(
 ): LiveProjectionIndex {
   const startedAt = performance.now();
   const semanticStartedAt = performance.now();
-  const map = (position: number) => transaction.changes.mapPos(position);
+  const map = (position: number, association = -1) => transaction.changes.mapPos(position, association);
   const syntax = mapSemanticProjectionRanges(index.syntax, map);
   const semanticMapMilliseconds = performance.now() - semanticStartedAt;
   const derivedStartedAt = performance.now();

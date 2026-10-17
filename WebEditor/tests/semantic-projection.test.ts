@@ -156,7 +156,8 @@ describe("Lezer-backed semantic projection", () => {
 
     const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
     const transaction = state.update({changes: {from: 0, insert: "Prefix.\n\n"}});
-    const mapped = mapSemanticProjectionRanges(projection, position => transaction.changes.mapPos(position, 1));
+    const mapped = mapSemanticProjectionRanges(projection,
+      (position, association = 1) => transaction.changes.mapPos(position, association));
     const mappedImage = mapped.inlines.find(inline => inline.kind === "image");
     expect(mappedImage && transaction.state.doc.sliceString(mappedImage.from, mappedImage.to)).toBe(imageSource);
     expect(mappedImage?.targetRange && transaction.state.doc.sliceString(mappedImage.targetRange.from, mappedImage.targetRange.to))
@@ -309,7 +310,7 @@ describe("Lezer-backed semantic projection", () => {
     const transaction = state.update({changes: {from: 0, insert: "A "}});
     const mapped = mapSemanticProjectionRanges(
       projection,
-      (position) => transaction.changes.mapPos(position),
+      (position, association = -1) => transaction.changes.mapPos(position, association),
     );
 
     const strong = mapped.inlines.find((inline) => inline.kind === "strong");
