@@ -351,7 +351,7 @@ final class DocumentSessionModel: ObservableObject {
     /// flight, so an external publication may replace the buffer only when
     /// both agree that the session is clean.
     var hasUnsavedChanges: Bool {
-        editorSession.isDirty || !editingSource.utf8.elementsEqual(originalEditingSource.utf8)
+        editorSession.isDirty || !ScholiumExactUTF8.equal(editingSource, originalEditingSource)
     }
 
     /// Presentation readiness does not determine source ownership. A detached

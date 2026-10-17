@@ -2204,12 +2204,13 @@ final class DocumentController: ObservableObject {
         let editorSnapshot = try await session.editorSession.persistenceSnapshot(
             expectedRevision: revision)
         let sourceBeingSaved = editorSnapshot.text
+        let exactMatchesCommitted = ScholiumExactUTF8.equal(sourceBeingSaved, session.originalEditingSource)
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
                 .controllerSnapshot, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
                 flags: [
                     .dirty: session.hasUnsavedChanges,
-                    .sourceMatchesCommitted: sourceBeingSaved.utf8.elementsEqual(session.originalEditingSource.utf8),
+                    .sourceMatchesCommitted: exactMatchesCommitted,
                 ],
                 counts: [.generation: session.editorSession.generation, .snapshotGeneration: editorSnapshot.generation])
         #endif
@@ -2221,7 +2222,7 @@ final class DocumentController: ObservableObject {
         session.editingSource = sourceBeingSaved
         defer { session.suppressAutosave = false }
         guard
-            !sourceBeingSaved.utf8.elementsEqual(session.originalEditingSource.utf8)
+            !exactMatchesCommitted
                 || session.editorSession.isDirty
         else {
             if editingDocumentPath == path { editingDocumentPath = nil }

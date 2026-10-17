@@ -8,6 +8,65 @@ import Testing
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Byte-distinct drafts pin an unleased session until its exact committed source is restored")
+    func exactDraftBytesPinUnleasedSession() {
+        let sources = [
+            ("# Café\r\n", "# Cafe\u{301}\r\n"),
+            ("\u{FEFF}# Note\r\n", "# Note\r\n"),
+            ("# Note\r\n\r\n中文 😀\r\n", "# Note\n\n中文 😀\n"),
+            ("# Note\n", "# Note"),
+            ("A\u{0}B", "A\u{0}C"),
+        ]
+        // Swift's canonical equality cannot establish a clean source revision.
+        #expect(sources[0].0 == sources[0].1)
+        for (committed, draft) in sources {
+            let store = DocumentSessionStore()
+            let target = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
+            let session = store.session(for: target)
+            session.originalEditingSource = committed
+            session.editingSource = draft
+            #expect(!session.editorSession.isDirty)
+            #expect(session.hasUnsavedChanges)
+
+            store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+
+            #expect(store.retainedSession(for: target) === session)
+            #expect(Data(session.editingSource.utf8) == Data(draft.utf8))
+            session.editingSource = committed
+            #expect(!session.hasUnsavedChanges)
+
+            store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+
+            #expect(store.retainedSession(for: target) == nil)
+        }
+    }
+
+    @Test("A checked editor delta pins a session while commit-paced native copies still match")
+    func editorDirtyStatePinsEqualNativeCopies() {
+        let store = DocumentSessionStore()
+        let target = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
+        let session = store.session(for: target)
+        let committed = "Saved"
+        session.originalEditingSource = committed
+        session.editingSource = committed
+        let editor = session.editorSession
+        editor.loadDocument(committed, documentID: "Synthetic.md", mode: .source)
+        #expect(!session.hasUnsavedChanges)
+        let generation = editor.generation
+        #expect(
+            editor.acceptEditorChanges(
+                [.init(from: committed.utf16.count, to: committed.utf16.count, insert: "!", exactInsert: "!")],
+                baseGeneration: generation, resultingGeneration: generation + 1))
+        #expect(editor.isDirty)
+        #expect(session.editingSource == session.originalEditingSource)
+        #expect(session.hasUnsavedChanges)
+
+        store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+
+        #expect(store.retainedSession(for: target) === session)
+        #expect(editor.checkedSource == "Saved!")
+    }
+
     @Test("Read and editor viewport observations remain isolated until an explicit handoff")
     func readAndEditorScrollPositionsDoNotInterfere() {
         let session = DocumentSessionModel(key: nil)
