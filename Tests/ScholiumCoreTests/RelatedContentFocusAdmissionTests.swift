@@ -6,6 +6,187 @@ import Testing
 
 @Suite("Related content focus admission")
 struct RelatedContentFocusAdmissionTests {
+    @Test("Early focused identity filtering preserves the all-segments oracle and ordinary source mentions")
+    func focusedIdentityEarlyFilterParity() {
+        let seed = NoteDocument(
+            relativePath: "Draft.md",
+            rawContent:
+                "\u{FEFF}---\r\nsummary: Source Only and façade\r\nunknown: retained\r\n---\r\n\r\nFree Will, 自由agency and Source Only occur in surrounding source. café e\u{301} 🧭\r\n"
+        )
+        let projection = SearchDocumentProjection(document: seed)
+        let focusCases: [[RelatedContentSeedFocus]] = [
+            [],
+            [.init(kind: .selectedPassage, text: "Compare FREE WILL with façade and 自由agency.")],
+            [.init(kind: .researchRequest, text: "Free Will 自由agency", literalAlternatives: ["Free", "Will", "自由agency"])],
+            [.init(kind: .selectedPassage, text: "Free Will"), .init(kind: .researchRequest, text: "façade")],
+        ]
+        let candidates = [
+            NoteDocument(relativePath: "Free Will.md", rawContent: "---\naliases: [façade, 自由agency]\n---\n\nFree Will is locally named."),
+            NoteDocument(relativePath: "Source Only.md", rawContent: "Source Only occurs here."),
+            NoteDocument(relativePath: "Only.md", rawContent: "---\naliases: [only, never]\n---\n\nUnrelated text."),
+            NoteDocument(relativePath: "Malformed.md", rawContent: "---\naliases: [broken\n---\n\nFree Will remains authored."),
+        ]
+        for focuses in focusCases {
+            let material = RelatedContentSeedMaterial(projection: projection, focuses: focuses)
+            for candidate in candidates {
+                let aliases = SearchPropertyProjection(document: candidate).textValues(forExactKey: "aliases")
+                let title = ResearchNoteTitleResolver.resolve(document: candidate)
+                let all = material.identityMentionReason(title: title, aliases: aliases, includingSourceNote: true)?.mentions ?? []
+                let reference = all.filter(RelatedContentRecommendationPolicy.isFocusedIdentity)
+                let focused = material.identityMentionReason(title: title, aliases: aliases, includingSourceNote: false)?.mentions ?? []
+                #expect(focused.filter(RelatedContentRecommendationPolicy.isFocusedIdentity) == reference)
+                #expect(focused.allSatisfy { $0.seedKind != .sourceNote })
+                #expect(RelatedContentRecommendationPolicy.focusedIdentityMentions(in: candidate, material: material) == reference)
+            }
+        }
+        let sourceOnly = RelatedContentSeedMaterial(projection: projection, focuses: [])
+        #expect(
+            sourceOnly.identityMentionReason(title: "Source Only", aliases: [], includingSourceNote: true)?.mentions.contains { $0.seedKind == .sourceNote }
+                == true)
+        #expect(sourceOnly.identityMentionReason(title: "Source Only", aliases: [], includingSourceNote: false) == nil)
+    }
+
+    @Test(
+        "Opt-in paired focused identity scan over actual Stress sources",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_FOCUSED_IDENTITY"] == "1"))
+    func measureFocusedIdentityEarlyFilter() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let buildRoot = repository.appendingPathComponent(".build", isDirectory: true)
+        let fixture = URL(fileURLWithPath: try #require(environment["SCHOLIUM_STRESS_FIXTURE"])).standardizedFileURL
+        try #require(fixture.path.hasPrefix(buildRoot.path + "/") && fixture == fixture.resolvingSymlinksInPath())
+        let manifestURL = fixture.appendingPathComponent("stress-manifest.json")
+        let manifestBytes = try Data(contentsOf: manifestURL)
+        let manifest = try #require(JSONSerialization.jsonObject(with: manifestBytes) as? [String: Any])
+        try #require(manifest["synthetic_nonprivate"] as? Bool == true)
+        let inventory = try #require(manifest["files"] as? [String: [String: Any]])
+        let scenarios = try #require(manifest["scenarios"] as? [String: String])
+        let searchOracles = try #require(manifest["search_oracles"] as? [[String: Any]])
+        let namedTarget = try #require((searchOracles.first { $0["label"] as? String == "rare_body" }?["expected_paths"] as? [String])?.first)
+        let paths = inventory.keys.filter { path in
+            path.lowercased().hasSuffix(".md")
+                && ["01-analyses/", "02-topics/", "03-works/"].contains { path.hasPrefix($0) }
+        }.sorted()
+        try #require(paths.count == 5_000 && paths.contains(namedTarget))
+        let targetCount = try #require(Int(environment["SCHOLIUM_FOCUS_IDENTITY_TARGET_COUNT"] ?? "256"))
+        try #require((1...5_000).contains(targetCount))
+        // Stable quantiles cover all three roles; the selected Dense Links
+        // paragraph's first named destination remains a positive control.
+        var targetPaths = [namedTarget]
+        var chosen = Set(targetPaths)
+        for index in 0..<targetCount {
+            let path = paths[index * paths.count / targetCount]
+            if targetPaths.count < targetCount, chosen.insert(path).inserted { targetPaths.append(path) }
+        }
+        for path in paths where targetPaths.count < targetCount {
+            if chosen.insert(path).inserted { targetPaths.append(path) }
+        }
+        try #require(targetPaths.count == targetCount)
+        func readChecked(_ path: String) throws -> Data {
+            let url = fixture.appendingPathComponent(path).standardizedFileURL
+            try #require(url.path.hasPrefix(fixture.path + "/") && url == url.resolvingSymlinksInPath())
+            let bytes = try Data(contentsOf: url)
+            try #require(bytes.count == inventory[path]?["bytes"] as? Int)
+            try #require(DocumentFingerprint(data: bytes).sha256 == inventory[path]?["sha256"] as? String)
+            return bytes
+        }
+        var targets: [(title: String, aliases: [String])] = []
+        var inputRecords: [[String: Any]] = []
+        for path in targetPaths {
+            let bytes = try readChecked(path)
+            let text = String(decoding: bytes, as: UTF8.self)
+            try #require(Data(text.utf8) == bytes)
+            let document = NoteDocument(relativePath: path, rawContent: text)
+            let title = ResearchNoteTitleResolver.resolve(document: document)
+            let aliases = SearchPropertyProjection(document: document).textValues(forExactKey: "aliases")
+            targets.append((title, aliases))
+            inputRecords.append(["path": path, "source_sha256": document.fingerprint.sha256, "title": title, "aliases": aliases])
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let targetHash = DocumentFingerprint(data: try JSONSerialization.data(withJSONObject: inputRecords, options: [.sortedKeys])).sha256
+        var records: [[String: Any]] = []
+        for scenario in ["long_prose", "dense_links"] {
+            let path = try #require(scenarios[scenario])
+            let bytes = try readChecked(path)
+            let text = String(decoding: bytes, as: UTF8.self)
+            try #require(Data(text.utf8) == bytes)
+            let document = NoteDocument(relativePath: path, rawContent: text)
+            let projection = SearchDocumentProjection(document: document)
+            let pattern = scenario == "long_prose" ? #"(?m)^Record [^\r\n]+"# : #"(?m)^\[\[Stress Note [^\r\n]+"#
+            let match = try #require(
+                try NSRegularExpression(pattern: pattern).firstMatch(
+                    in: text, range: NSRange(location: 0, length: text.utf16.count)))
+            let focusRange = try #require(Range(match.range, in: text))
+            let focus = String(text[focusRange])
+            let material = RelatedContentSeedMaterial(projection: projection, focuses: [.init(kind: .selectedPassage, text: focus)])
+            func scan(includingSourceNote: Bool) -> [[RelatedContentIdentityMention]] {
+                targets.map { target in
+                    (material.identityMentionReason(
+                        title: target.title, aliases: target.aliases, includingSourceNote: includingSourceNote)?.mentions ?? [])
+                        .filter(RelatedContentRecommendationPolicy.isFocusedIdentity)
+                }
+            }
+            var samples: [[String: Any]] = []
+            var reference: [[RelatedContentIdentityMention]]?
+            var expectedHash: String?
+            for pair in 0..<4 {
+                for includesSource in (pair.isMultiple(of: 2) ? [true, false] : [false, true]) {
+                    let mode = includesSource ? "all_then_filter" : "early_filter"
+                    let marker: [String: Any] = ["phase": "begin", "scenario": scenario, "pair": pair, "mode": mode, "targets": targets.count]
+                    FileHandle.standardOutput.write(
+                        Data("FOCUS_IDENTITY ".utf8)
+                            + (try JSONSerialization.data(withJSONObject: marker, options: [.sortedKeys])) + Data([0x0A]))
+                    let started = ContinuousClock.now
+                    let result = scan(includingSourceNote: includesSource)
+                    let duration = started.duration(to: .now).components
+                    let milliseconds = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
+                    if let reference { try #require(result == reference) } else { reference = result }
+                    let hash = DocumentFingerprint(data: try encoder.encode(result)).sha256
+                    if let expectedHash { try #require(hash == expectedHash) } else { expectedHash = hash }
+                    let row: [String: Any] = [
+                        "scenario": scenario, "pair": pair, "mode": mode, "excluded_warmup": pair == 0,
+                        "milliseconds": milliseconds, "ordered_mentions_sha256": hash,
+                        "mention_count": result.reduce(0) { $0 + $1.count }, "target_count": targets.count,
+                    ]
+                    samples.append(row)
+                    FileHandle.standardOutput.write(
+                        Data("FOCUS_IDENTITY ".utf8)
+                            + (try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])) + Data([0x0A]))
+                }
+            }
+            if scenario == "dense_links" {
+                try #require(reference?.contains { !$0.isEmpty } == true)
+            }
+            try #require(try readChecked(path) == bytes)
+            records.append([
+                "scenario": scenario, "source_sha256": document.fingerprint.sha256,
+                "source_utf16_count": text.utf16.count, "focus_sha256": DocumentFingerprint(content: focus).sha256,
+                "focus_lower": match.range.location, "focus_upper": NSMaxRange(match.range), "samples": samples,
+            ])
+        }
+        for path in targetPaths { _ = try readChecked(path) }
+        try #require(try Data(contentsOf: manifestURL) == manifestBytes)
+        let output = buildRoot.appendingPathComponent("stress-audit/focus-identity", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let report: [String: Any] = [
+            "schema": "scholium-focused-identity-causal-diagnostic-v1",
+            "fixture_manifest_sha256": DocumentFingerprint(data: manifestBytes).sha256,
+            "target_input_sha256": targetHash, "target_count": targets.count,
+            "sampling":
+                "One excluded warmup pair, three measured pairs, alternating execution order. Same compiled API receives true then filters versus false then filters.",
+            "scope":
+                "Identity matching only; fixture reads, Note/YAML/title/alias/source projection preparation, output encoding and equality checks are outside timers. No complete Related, cache, native UI or release-gate claim.",
+            "configuration": _isDebugAssertConfiguration() ? "SwiftPM Debug" : "SwiftPM Release",
+            "selected_sources_unchanged": true, "records": records,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys, .prettyPrinted])
+        let url = output.appendingPathComponent("focused-identity-\(UUID().uuidString.lowercased()).json")
+        try data.write(to: url, options: .atomic)
+        FileHandle.standardOutput.write(Data("FOCUS_IDENTITY_REPORT \(url.path)\n".utf8))
+    }
+
     @Test("The selected concept Being remains retrievable without quotation marks")
     func selectedBeing() async throws {
         let result = try await evaluate(
@@ -89,10 +270,10 @@ struct RelatedContentFocusAdmissionTests {
         let projection = SearchDocumentProjection(document: .init(relativePath: "Draft.md", rawContent: "unrelated"))
         let ordinary = RelatedContentSeedMaterial(projection: projection, focuses: [.init(kind: .researchRequest, text: "free will")])
         #expect(ordinary.termGroups.first?.terms == ["free", "will"])
-        #expect(ordinary.identityMentionReason(title: "Free Will", aliases: [])?.mentions.first?.seedKind == .researchRequest)
+        #expect(ordinary.identityMentionReason(title: "Free Will", aliases: [], includingSourceNote: true)?.mentions.first?.seedKind == .researchRequest)
         let alternatives = RelatedContentSeedMaterial(
             projection: projection, focuses: [.init(kind: .researchRequest, text: "free will", literalAlternatives: ["free", "will"])])
-        #expect(alternatives.identityMentionReason(title: "Free Will", aliases: []) == nil)
+        #expect(alternatives.identityMentionReason(title: "Free Will", aliases: [], includingSourceNote: true) == nil)
     }
 
     @Test("A locally repeated named concept survives a longer writing request", arguments: [0, 500])
@@ -151,7 +332,7 @@ struct RelatedContentFocusAdmissionTests {
             projection: projection, focuses: [.init(kind: .selectedPassage, text: "Please compare free will and defeasibility.")])
         let original = material.termGroups.map(\.terms)
         material.includeUnsampledFocusedIdentities(
-            try #require(material.identityMentionReason(title: "Free Will", aliases: ["Defeasibility"])).mentions)
+            try #require(material.identityMentionReason(title: "Free Will", aliases: ["Defeasibility"], includingSourceNote: true)).mentions)
         #expect(material.termGroups.map(\.terms) == original)
     }
 

@@ -14,7 +14,8 @@ enum RelatedContentRecommendationPolicy {
         // bounded identity candidate channel must not decide paragraph admission.
         let properties = SearchPropertyProjection(document: document)
         let reason = material.identityMentionReason(
-            title: ResearchNoteTitleResolver.resolve(document: document), aliases: properties.textValues(forExactKey: "aliases"))
+            title: ResearchNoteTitleResolver.resolve(document: document), aliases: properties.textValues(forExactKey: "aliases"),
+            includingSourceNote: false)
         return (reason?.mentions ?? []).filter(isFocusedIdentity)
     }
 

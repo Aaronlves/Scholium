@@ -209,10 +209,10 @@ struct RelatedContentSeedMaterial {
     func identityMentionReason(
         for document: StoredSearchDocument
     ) -> RelatedContentIdentityMentionReason? {
-        identityMentionReason(title: document.title, aliases: document.aliases)
+        identityMentionReason(title: document.title, aliases: document.aliases, includingSourceNote: true)
     }
 
-    func identityMentionReason(title: String, aliases: [String]) -> RelatedContentIdentityMentionReason? {
+    func identityMentionReason(title: String, aliases: [String], includingSourceNote: Bool) -> RelatedContentIdentityMentionReason? {
         var identities: [(RelatedContentIdentityKind, String)] = []
         identities.append((.title, title))
         identities.append(contentsOf: aliases.map { (.alias, $0) })
@@ -222,10 +222,12 @@ struct RelatedContentSeedMaterial {
             let value = SearchLexicalValue.phrase(identity)
             let needle = SearchTextNormalization.lexicalNormalize(identity)
             for segment in segments
-            where SearchMatcher.containsOccurrence(
-                of: value,
-                in: segment.normalizedText, normalizedNeedle: needle
-            ) {
+            where (includingSourceNote || segment.kind != .sourceNote)
+                && SearchMatcher.containsOccurrence(
+                    of: value,
+                    in: segment.normalizedText, normalizedNeedle: needle
+                )
+            {
                 let mention = RelatedContentIdentityMention(
                     seedKind: segment.kind,
                     identityKind: identityKind,
