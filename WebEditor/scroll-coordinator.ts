@@ -190,12 +190,17 @@ export function createEditorScrollCoordinator(
     const block = editor.lineBlockAt(blockProbe);
     const scrollRect = editor.scrollDOM.getBoundingClientRect();
     const documentInset = editor.documentTop - scrollRect.top + editor.scrollDOM.scrollTop;
-    // WebKit quantizes scrollTop. Nearest-pixel projection avoids a biased
-    // truncation accumulating as differently sized mode blocks round-trip.
-    return Math.max(
-      0,
-      Math.round(documentInset + block.top + block.height * relativePosition - anchorViewportInset),
-    );
+    // WebKit quantizes scrollTop. Round interior anchors without bias, but
+    // keep endpoint probes inside their source block: a shared line boundary
+    // can resolve to the neighboring block in CodeMirror's height lookup.
+    const blockStart = documentInset + block.top - anchorViewportInset;
+    const firstInteriorPixel = Math.floor(blockStart) + 1;
+    const lastInteriorPixel = Math.ceil(blockStart + block.height) - 1;
+    const rounded = Math.round(blockStart + block.height * relativePosition);
+    const projected = lastInteriorPixel >= firstInteriorPixel
+      ? Math.max(firstInteriorPixel, Math.min(lastInteriorPixel, rounded))
+      : rounded;
+    return Math.max(0, projected);
   }
 
   let geometryReportScheduled = false;

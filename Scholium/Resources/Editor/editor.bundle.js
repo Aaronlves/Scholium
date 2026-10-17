@@ -36721,10 +36721,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const block = editor2.lineBlockAt(blockProbe);
       const scrollRect = editor2.scrollDOM.getBoundingClientRect();
       const documentInset = editor2.documentTop - scrollRect.top + editor2.scrollDOM.scrollTop;
-      return Math.max(
-        0,
-        Math.round(documentInset + block.top + block.height * relativePosition - anchorViewportInset)
-      );
+      const blockStart = documentInset + block.top - anchorViewportInset;
+      const firstInteriorPixel = Math.floor(blockStart) + 1;
+      const lastInteriorPixel = Math.ceil(blockStart + block.height) - 1;
+      const rounded = Math.round(blockStart + block.height * relativePosition);
+      const projected = lastInteriorPixel >= firstInteriorPixel ? Math.max(firstInteriorPixel, Math.min(lastInteriorPixel, rounded)) : rounded;
+      return Math.max(0, projected);
     }
     let geometryReportScheduled = false;
     let geometryReportGeneration = 0;
