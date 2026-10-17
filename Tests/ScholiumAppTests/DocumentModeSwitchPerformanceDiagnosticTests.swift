@@ -17,7 +17,7 @@ import WebKit
     @Suite("Native document mode switching diagnostics", .serialized)
     struct DocumentModeSwitchPerformanceDiagnosticTests {
         enum FixtureKind: String, CaseIterable, Sendable {
-            case small, large, complex
+            case small, large, complex, short
 
             static var selected: [Self] {
                 guard let value = ProcessInfo.processInfo.environment["SCHOLIUM_MODE_FIXTURE"],
@@ -33,9 +33,9 @@ import WebKit
             arguments: FixtureKind.selected)
         func sixDirectedTransitions(kind: FixtureKind) async throws {
             if let value = ProcessInfo.processInfo.environment["SCHOLIUM_MODE_FIXTURE"] {
-                try #require(FixtureKind(rawValue: value) != nil, "SCHOLIUM_MODE_FIXTURE must be small, large or complex.")
+                try #require(FixtureKind(rawValue: value) != nil, "SCHOLIUM_MODE_FIXTURE must be small, large, complex or short.")
             }
-            let harness = Harness(kind: kind)
+            let harness = try Harness(kind: kind)
             do {
                 try await harness.run()
                 await harness.closeAndDrain()
@@ -45,14 +45,46 @@ import WebKit
             }
         }
 
-        private struct FixtureData {
-            let kind: FixtureKind
+        struct FixtureData {
+            let name: String
             let source: String
             let viewportRange: NSRange
             let viewportText: String
+            let editorViewportTexts: [String]
+            let expectedVisibleImageWidth: Int?
+            let expectedVisibleImageDestination: String?
+            let expectedVisibleImageSourceRange: NSRange?
+
+            init(
+                name: String, source: String, viewportRange: NSRange, viewportText: String,
+                editorViewportTexts: [String], expectedVisibleImageWidth: Int? = nil,
+                expectedVisibleImageDestination: String? = nil, expectedVisibleImageSourceRange: NSRange? = nil
+            ) {
+                self.name = name
+                self.source = source
+                self.viewportRange = viewportRange
+                self.viewportText = viewportText
+                self.editorViewportTexts = editorViewportTexts
+                self.expectedVisibleImageWidth = expectedVisibleImageWidth
+                self.expectedVisibleImageDestination = expectedVisibleImageDestination
+                self.expectedVisibleImageSourceRange = expectedVisibleImageSourceRange
+            }
 
             init(kind: FixtureKind) {
-                self.kind = kind
+                if kind == .short {
+                    let viewport = "中文 English café e\u{301} 🧭; no final newline."
+                    let source = [
+                        "\u{FEFF}---", "summary: Synthetic nonprivate stress fixture; no scholarly claims.",
+                        "keywords: [stress-fixture, 压力测试, stress-900000]", "stress_sequence: 900000", "fixture_only: true", "---", "",
+                        "# Stress Source Fidelity", "", "全部内容为合成测试材料，不是引文、文献分析或研究结论。", "",
+                        "<!-- Source bytes must remain authoritative. -->", "", viewport,
+                    ].joined(separator: "\r\n")
+                    self.init(
+                        name: kind.rawValue, source: source,
+                        viewportRange: (source as NSString).range(of: viewport), viewportText: viewport,
+                        editorViewportTexts: [viewport])
+                    return
+                }
                 let paragraph = "Synthetic paragraph preserves ordinary manuscript layout, 中文, 😀 and e\u{301}; its exact source remains unchanged."
                 let viewport = "Diagnostic viewport paragraph preserves a known source-bound position across all three document modes. 中文 😀 e\u{301}."
                 let targetBytes = kind == .large ? 524_288 : 4_096
@@ -79,13 +111,14 @@ import WebKit
                     }.joined()
                     source += constructs + "\r\n$$\r\na^2 + b^2 = c^2\r\n$$\r\n\r\n```mermaid\r\nflowchart LR\r\n  A[Source] --> B[Projection]\r\n```\r\n"
                 }
-                self.source = source
-                viewportRange = (source as NSString).range(of: viewport)
-                viewportText = viewport
+                self.init(
+                    name: kind.rawValue, source: source,
+                    viewportRange: (source as NSString).range(of: viewport), viewportText: viewport,
+                    editorViewportTexts: [viewport])
             }
         }
 
-        private struct Endpoint {
+        struct Endpoint {
             let layout: ContinuousClock.Instant
             let restored: ContinuousClock.Instant?
             let geometryReads: Int
@@ -96,24 +129,31 @@ import WebKit
         }
 
         @MainActor
-        private final class Projection: ObservableObject {
+        final class Projection: ObservableObject {
             private(set) var errorCount = 0
+            @Published var workspace: WorkspaceSnapshot?
             func reportError() { errorCount += 1 }
         }
 
-        private struct FeatureFixture: View {
+        struct FeatureFixture: View {
             @ObservedObject var controller: DocumentController
             @ObservedObject var projection: Projection
             let note: WorkspaceNoteSnapshot
 
             var body: some View {
+                let workspace = projection.workspace
+                let vault = workspace?.vaults.first { $0.vault.id == note.id.vaultID }
+                let identities = Dictionary(
+                    uniqueKeysWithValues: (vault?.documents ?? [note.summary]).compactMap { summary in
+                        summary.stableIdentity.resolvedID.map { (summary.id.relativePath, $0) }
+                    })
                 let state = DocumentFeatureState(
                     activeNote: controller.activeSnapshot,
                     selectedDocumentPath: controller.selectedDocumentPath,
                     ordinarySearchScope: .triptych, currentVaultID: note.id.vaultID,
-                    vaultRole: .sourceCorpus,
-                    noteIdentityByPath: [note.id.relativePath: note.stableIdentity.resolvedID!],
-                    workspaceCatalog: nil, canEdit: true, documentTextScale: 1,
+                    vaultRole: vault?.vault.role ?? .sourceCorpus,
+                    noteIdentityByPath: identities,
+                    workspaceCatalog: workspace?.discovery.catalog, canEdit: true, documentTextScale: 1,
                     documentAppearance: .defaultSettings, appearanceCSS: "", readCSS: "", livePreviewCSS: "",
                     initialScrollFraction: 0,
                     requestedPresentationMode: controller.requestedPresentationMode,
@@ -138,7 +178,7 @@ import WebKit
         }
 
         @MainActor
-        private final class Harness {
+        final class Harness {
             let data: FixtureData
             let note: WorkspaceNoteSnapshot
             let controller: DocumentController
@@ -151,22 +191,61 @@ import WebKit
             private var expectedSelection: [MarkdownEditorSelectionRange]?
             private var editorIdentity: ObjectIdentifier?
             private var readerIdentities = Set<ObjectIdentifier>()
+            private let sourceFile: URL?
+            private let seedHistory: Bool
+            private let workspaceAfterCommit: (@MainActor (Int) async throws -> WorkspaceSnapshot)?
+            private let expectedEditorImageRange: NSRange?
+            private let initialPresentationStarted: ContinuousClock.Instant
+            private var expectedGeneration = 0
+            private var expectedUndoLabel: String?
+            private var expectedRedoLabel: String?
+            private let historyProbe = " · Stress history probe 中文 e\u{301} 🧭"
 
-            init(kind: FixtureKind) {
+            convenience init(kind: FixtureKind) throws {
+                try self.init(data: FixtureData(kind: kind))
+            }
+
+            init(
+                data: FixtureData, note: WorkspaceNoteSnapshot? = nil, workspace: WorkspaceSnapshot? = nil,
+                documents: (any DocumentUseCases)? = nil, sourceFile: URL? = nil, seedHistory: Bool = false,
+                workspaceAfterCommit: (@MainActor (Int) async throws -> WorkspaceSnapshot)? = nil
+            ) throws {
+                initialPresentationStarted = .now
                 _ = NSApplication.shared
-                let data = FixtureData(kind: kind)
                 self.data = data
-                let vaultID = UUID()
-                let noteID = UUID()
-                let document = NoteDocument(
-                    relativePath: "Synthetic.md", rawContent: data.source,
-                    citationSnapshot: ZoteroCitationSnapshot(noteID: noteID, vaultID: vaultID, status: .absent))
-                let snapshot = WorkspaceNoteSnapshot(
-                    id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath),
-                    stableIdentity: .resolved(noteID), document: document,
-                    fileMetadata: WorkspaceFileMetadata(byteCount: document.sourceBytes.count, creationDate: nil, modificationDate: nil),
-                    graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0))
-                note = snapshot
+                self.sourceFile = sourceFile
+                self.seedHistory = seedHistory
+                self.workspaceAfterCommit = workspaceAfterCommit
+                try #require(!seedHistory || workspaceAfterCommit != nil, "History setup requires the current post-commit workspace snapshot.")
+                if data.expectedVisibleImageWidth != nil {
+                    _ = try #require(data.expectedVisibleImageDestination)
+                    let range = try #require(data.expectedVisibleImageSourceRange)
+                    let map = EditorSourceOffsetMap(source: data.source)
+                    let lower = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location))
+                    let upper = try #require(map.editorUTF16Offset(forSourceUTF16Offset: NSMaxRange(range)))
+                    expectedEditorImageRange = NSRange(location: lower, length: upper - lower)
+                } else {
+                    expectedEditorImageRange = nil
+                }
+                let snapshot: WorkspaceNoteSnapshot
+                if let note {
+                    try #require(note.document.rawContent.utf8.elementsEqual(data.source.utf8))
+                    snapshot = note
+                } else {
+                    let vaultID = UUID()
+                    let noteID = UUID()
+                    let document = NoteDocument(
+                        relativePath: "Synthetic.md", rawContent: data.source,
+                        citationSnapshot: ZoteroCitationSnapshot(noteID: noteID, vaultID: vaultID, status: .absent))
+                    snapshot = WorkspaceNoteSnapshot(
+                        id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath),
+                        stableIdentity: .resolved(noteID), document: document,
+                        fileMetadata: WorkspaceFileMetadata(byteCount: document.sourceBytes.count, creationDate: nil, modificationDate: nil),
+                        graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0))
+                }
+                self.note = snapshot
+                let vaultID = snapshot.id.vaultID
+                let noteID = try #require(snapshot.stableIdentity.resolvedID)
                 let anchor = EditorScrollAnchor(
                     sourceFingerprint: snapshot.fingerprint.sha256,
                     sourceUTF16Offset: data.viewportRange.location,
@@ -176,8 +255,11 @@ import WebKit
                 viewportAnchor = anchor
                 let owner = DocumentController()
                 controller = owner
+                if let documents { owner.bind(to: documents, snapshot: workspace) }
                 owner.rememberPresentationMode(.read)
-                owner.installOpenedDocument(snapshot, vaultName: "Synthetic", vaultRole: .sourceCorpus)
+                owner.installOpenedDocument(
+                    snapshot, vaultName: workspace == nil ? "Synthetic" : "Generated Stress Notes",
+                    vaultRole: workspace == nil ? .sourceCorpus : snapshot.vaultRole)
                 let model = owner.session(for: .workspace(.init(vaultID: vaultID, noteID: noteID)))
                 session = model
                 model.requestReadScrollRestore(
@@ -187,7 +269,9 @@ import WebKit
                     contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
                     styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
-                let host = NSHostingController(rootView: FeatureFixture(controller: controller, projection: projection, note: note))
+                projection.workspace = workspace
+                let host = NSHostingController(
+                    rootView: FeatureFixture(controller: controller, projection: projection, note: snapshot))
                 host.sizingOptions = []
                 hosting = host
                 window.contentViewController = host
@@ -198,7 +282,16 @@ import WebKit
             }
 
             func run() async throws {
-                _ = try await awaitDestination(.read)
+                let opening = try await awaitDestination(.read)
+                if sourceFile != nil {
+                    try emitRecord([
+                        "metric": "native-feature-initial-review-restored", "fixture": data.name,
+                        "sourceUTF8Bytes": data.source.utf8.count,
+                        "milliseconds": Self.milliseconds(initialPresentationStarted.duration(to: opening.restored ?? opening.layout)),
+                        "restorationAcknowledged": opening.restored != nil,
+                        "boundary": "Fresh hidden feature after workspace configuration and note hydration; not cold OS or visible paint",
+                    ])
+                }
                 if ProcessInfo.processInfo.environment["SCHOLIUM_MODE_ROUNDTRIP_ONLY"] == "1" {
                     try await verifyRepeatedAndPendingModes()
                     return
@@ -208,12 +301,13 @@ import WebKit
                 // retain that exact session, source and history.
                 let route: [NotePresentationMode] = [.read, .livePreview, .source, .read, .source, .livePreview, .read]
                 for cycle in 0..<4 {
+                    if cycle == 1, seedHistory { try await prepareNonemptyHistory() }
                     for edge in 0..<(route.count - 1) {
                         let from = route[edge]
                         let to = route[edge + 1]
                         try await prepareViewport(in: from)
                         let before = try await performanceSamples()
-                        try emitProgress("DocumentModeDiagnostic fixture=\(data.kind.rawValue) cycle=\(cycle) from=\(from.rawValue) to=\(to.rawValue)\n")
+                        try emitProgress("DocumentModeDiagnostic fixture=\(data.name) cycle=\(cycle) from=\(from.rawValue) to=\(to.rawValue)\n")
                         let start = ContinuousClock.now
                         // Published controller intent is consumed by the real
                         // NoteContentView selectPresentationMode route.
@@ -237,7 +331,7 @@ import WebKit
                         }
                         let record: [String: Any] = [
                             "metric": "native-feature-source-restored", "units": "milliseconds",
-                            "fixture": data.kind.rawValue, "sourceUTF8Bytes": data.source.utf8.count,
+                            "fixture": data.name, "sourceUTF8Bytes": data.source.utf8.count,
                             "cycle": cycle, "phase": cycle == 0 ? "first" : "warm",
                             "from": from.rawValue, "to": to.rawValue, "milliseconds": restoredMilliseconds,
                             "sourceRestoredMilliseconds": restoredMilliseconds,
@@ -254,8 +348,7 @@ import WebKit
                             "readProjectionEntries": stats.readProjectionEntries,
                             "readProjectionHTMLUTF8Bytes": stats.readProjectionHTMLUTF8Bytes,
                         ]
-                        let json = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
-                        print(String(decoding: json, as: UTF8.self))
+                        try emitRecord(record)
                         // Check the frame/font retry boundary independently of
                         // the initial native mode acknowledgement.
                         try await Task.sleep(for: .milliseconds(120))
@@ -263,6 +356,8 @@ import WebKit
                     }
                 }
                 try await verifyRepeatedAndPendingModes()
+                if seedHistory { try await verifyHistoryRoundTrip() }
+                if let sourceFile { #expect(try Data(contentsOf: sourceFile) == Data(data.source.utf8)) }
             }
 
             private func verifyRepeatedAndPendingModes() async throws {
@@ -278,7 +373,7 @@ import WebKit
                         try await Task.sleep(for: .milliseconds(120))
                         let endpoint = try await awaitDestination(mode)
                         print(
-                            "ModeRoundTrip fixture=\(data.kind.rawValue) cycle=\(cycle) mode=\(mode.rawValue) top=\(endpoint.targetGeometry["targetTop"] ?? 0) anchor=\(endpoint.observedAnchor)"
+                            "ModeRoundTrip fixture=\(data.name) cycle=\(cycle) mode=\(mode.rawValue) top=\(endpoint.targetGeometry["targetTop"] ?? 0) anchor=\(endpoint.observedAnchor)"
                         )
                         try await verifyExactCleanState()
                     }
@@ -293,6 +388,106 @@ import WebKit
                     _ = try await awaitDestination(mode)
                     try await verifyExactCleanState()
                 }
+            }
+
+            private var editingTarget: DocumentEditingTarget {
+                .workspace(.init(vaultID: note.id.vaultID, noteID: note.stableIdentity.resolvedID!))
+            }
+
+            private func prepareNonemptyHistory() async throws {
+                controller.requestedPresentationMode = .source
+                _ = try await awaitDestination(.source)
+                let editor = session.editorSession
+                let web = try #require(editor.webView)
+                session.suppressAutosave = true
+                session.cancelAutosave()
+                let end = EditorSourceOffsetMap(source: data.source).editorUTF16Length
+                _ = try await editor.send(.revealSourceRange(fromUTF16: end, toUTF16: end), in: web)
+                try await editor.perform(.pastePlain, argument: historyProbe)
+                try await waitForCheckedSource(data.source + historyProbe)
+                _ = try await editor.send(
+                    .revealSourceRange(fromUTF16: end, toUTF16: end + historyProbe.utf16.count), in: web)
+                try await editor.perform(.pastePlain, argument: "")
+                try await waitForCheckedSource(data.source)
+                try await flushHistorySource()
+                expectedGeneration = editor.generation
+                let result = try await editor.send(.queryContext, in: web)
+                let context = try #require(result.context)
+                expectedUndoLabel = context.undoLabel
+                expectedRedoLabel = context.redoLabel
+                try #require(expectedUndoLabel != nil && expectedRedoLabel == nil)
+                expectedSelection = nil
+                try await prepareViewport(in: .source)
+                controller.requestedPresentationMode = .read
+                _ = try await awaitDestination(.read)
+                try await verifyExactCleanState()
+            }
+
+            private func verifyHistoryRoundTrip() async throws {
+                controller.requestedPresentationMode = .source
+                _ = try await awaitDestination(.source)
+                let editor = session.editorSession
+                let web = try #require(editor.webView)
+                session.suppressAutosave = true
+                session.cancelAutosave()
+                for redo in [false, true] {
+                    let handled =
+                        try await web.callAsyncJavaScript(
+                            """
+                            const event = new KeyboardEvent('keydown', {
+                              key: redo ? 'Z' : 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                              metaKey: true, shiftKey: redo, bubbles: true, cancelable: true,
+                            });
+                            document.querySelector('.cm-content').dispatchEvent(event);
+                            return event.defaultPrevented;
+                            """,
+                            arguments: ["redo": redo], in: nil, contentWorld: .page) as? Bool
+                    try #require(handled == true)
+                    let expected = redo ? data.source : data.source + historyProbe
+                    try await waitForCheckedSource(expected)
+                    let response = try await editor.send(.queryText, in: web, observingOnly: true)
+                    #expect(response.text?.utf8.elementsEqual(expected.utf8) == true)
+                    let context = try #require(try await editor.send(.queryContext, in: web).context)
+                    #expect(context.undoLabel == expectedUndoLabel)
+                    #expect(redo ? context.redoLabel == expectedRedoLabel : context.redoLabel != nil)
+                }
+                try await flushHistorySource()
+                expectedGeneration = editor.generation
+                expectedSelection = nil
+                try await prepareViewport(in: .source)
+                try await verifyExactCleanState()
+            }
+
+            private func flushHistorySource() async throws {
+                let previousGraph = projection.workspace?.discovery.catalog.graph?.generation
+                let started = ContinuousClock.now
+                try emitRecord(["metric": "stress-mode-history-flush-start", "fixture": data.name, "setupExcludedFromModeTimers": true])
+                try await controller.flushForExternalOperation(session: session, target: editingTarget)
+                guard let workspaceAfterCommit else { return }
+                let workspace = try await workspaceAfterCommit(try #require(previousGraph))
+                try #require(workspace.phase.isComplete)
+                try #require(workspace.document(id: note.id)?.fingerprint == note.fingerprint)
+                _ = controller.receive(workspace)
+                await controller.waitForPendingHydrations()
+                projection.workspace = workspace
+                await Task.yield()
+                hosting?.view.layoutSubtreeIfNeeded()
+                try emitRecord([
+                    "metric": "stress-mode-history-flush", "fixture": data.name,
+                    "milliseconds": Self.milliseconds(started.duration(to: .now)),
+                    "graphGeneration": workspace.discovery.catalog.graph?.generation as Any? ?? NSNull(),
+                    "setupExcludedFromModeTimers": true,
+                ])
+            }
+
+            private func waitForCheckedSource(_ expected: String) async throws {
+                let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+                while !session.editorSession.checkedSource.utf8.elementsEqual(expected.utf8),
+                    ContinuousClock.now < deadline
+                {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                try #require(session.editorSession.checkedSource.utf8.elementsEqual(expected.utf8))
             }
 
             private func prepareViewport(in mode: NotePresentationMode) async throws {
@@ -313,13 +508,13 @@ import WebKit
                     let aligned =
                         try await web.callAsyncJavaScript(
                             """
-                            const line = Array.from(document.querySelectorAll('.cm-line')).find(line => line.textContent === text);
+                            const line = Array.from(document.querySelectorAll('.cm-line')).find(line => texts.includes(line.textContent));
                             const scroller = document.querySelector('.cm-scroller');
                             if (!line || !scroller) return false;
                             scroller.scrollTop += line.getBoundingClientRect().top - scroller.getBoundingClientRect().top + 8;
                             return true;
                             """,
-                            arguments: ["text": data.viewportText], in: nil, contentWorld: .page) as? Bool
+                            arguments: ["texts": data.editorViewportTexts], in: nil, contentWorld: .page) as? Bool
                     try #require(aligned == true)
                 }
                 // Setup includes the coordinator's deferred restoration and
@@ -378,12 +573,17 @@ import WebKit
                                 // unique plain fixture line is also recognizable
                                 // within CodeMirror's mounted (bounded) line DOM.
                                 const target = read
-                                  ? node?.querySelector('p[data-source-utf16-start="' + from + '"]')
-                                  : Array.from(node?.querySelectorAll('.cm-line') ?? []).find(line => line.textContent === text);
-                                const targetIsExact = target?.textContent === text
+                                  ? node?.querySelector('[data-source-utf16-start="' + from + '"]')
+                                  : Array.from(node?.querySelectorAll('.cm-line') ?? []).find(line => editorTexts.includes(line.textContent));
+                                const targetIsExact = (read ? target?.textContent === text : editorTexts.includes(target?.textContent))
                                   && (!read || Number(target.getAttribute('data-source-utf16-end')) >= to);
                                 const targetRect = targetIsExact ? target.getBoundingClientRect() : null;
-                                const scroller = read ? null : node?.querySelector('.cm-scroller')?.getBoundingClientRect();
+                                const scrollElement = read ? document.scrollingElement : node?.querySelector('.cm-scroller');
+                                const scroller = read ? null : scrollElement?.getBoundingClientRect();
+                                const documentFitsViewport = !!scrollElement
+                                  && scrollElement.scrollHeight <= scrollElement.clientHeight + 1;
+                                const scrollClampedAtEnd = !!scrollElement
+                                  && scrollElement.scrollTop >= scrollElement.scrollHeight - scrollElement.clientHeight - 1;
                                 const viewportTop = Math.max(0, scroller?.top ?? 0);
                                 const viewportBottom = Math.min(innerHeight, scroller?.bottom ?? innerHeight);
                                 const visibleHeight = targetRect
@@ -391,9 +591,30 @@ import WebKit
                                 const targetVisible = !!targetRect && targetRect.height > 0
                                   && targetRect.right > 0 && targetRect.left < innerWidth
                                   && visibleHeight >= Math.min(12, targetRect.height);
+                                const selectedImages = !imageWidth || sourceMode ? [] : read
+                                  ? Array.from(node?.querySelectorAll('img[data-scholium-image-target]') ?? [])
+                                    .filter(image => image.getAttribute('data-scholium-image-target') === imageDestination)
+                                  : Array.from(node?.querySelectorAll('.cm-live-image[data-scholium-source-from]') ?? [])
+                                    .filter(shell => Number(shell.getAttribute('data-scholium-source-from')) === imageFrom
+                                      && Number(shell.getAttribute('data-scholium-source-to')) === imageTo)
+                                    .flatMap(shell => Array.from(shell.querySelectorAll('img')));
+                                const imageReady = !imageWidth || sourceMode || selectedImages.some(image => {
+                                  const bounds = image.getBoundingClientRect();
+                                  return image.complete && image.naturalWidth === imageWidth && bounds.bottom > viewportTop
+                                    && bounds.top < viewportBottom && bounds.height > 0;
+                                });
+                                const imageDecoded = !imageWidth || sourceMode || selectedImages
+                                  .some(image => image.complete && image.naturalWidth === imageWidth);
                                 return {
                                   nonzero: !!rect && rect.width > 0 && rect.height > 0 && !!node?.textContent?.length,
-                                  targetVisible, targetFound: targetIsExact ? 1 : 0,
+                                  targetVisible: targetVisible && imageReady, targetFound: targetIsExact ? 1 : 0,
+                                  imageReady: imageReady ? 1 : 0,
+                                  imageDecoded: imageDecoded ? 1 : 0,
+                                  documentFitsViewport,
+                                  scrollClampedAtEnd,
+                                  scrollTop: scrollElement?.scrollTop ?? 0,
+                                  maximumScrollTop: scrollElement ? Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight) : 0,
+                                  selectedImageCount: selectedImages.length,
                                   targetTop: targetRect?.top ?? 0, targetBottom: targetRect?.bottom ?? 0,
                                   viewportTop, viewportBottom, visibleHeight,
                                 };
@@ -401,7 +622,11 @@ import WebKit
                                 arguments: [
                                     "selector": selector, "read": mode == .read,
                                     "from": data.viewportRange.location, "to": data.viewportRange.location + data.viewportRange.length,
-                                    "text": data.viewportText,
+                                    "text": data.viewportText, "editorTexts": data.editorViewportTexts,
+                                    "imageWidth": data.expectedVisibleImageWidth ?? 0, "sourceMode": mode == .source,
+                                    "imageDestination": data.expectedVisibleImageDestination ?? "",
+                                    "imageFrom": expectedEditorImageRange?.location ?? -1,
+                                    "imageTo": expectedEditorImageRange.map { NSMaxRange($0) } ?? -1,
                                 ],
                                 in: nil, contentWorld: .page) as? [String: Any]
                         lastGeometry = Self.numericValues(geometry ?? [:])
@@ -449,7 +674,13 @@ import WebKit
                             let anchorOverlapsTarget = anchorOverlapsViewport(
                                 lower: lastAnchor["blockUTF16LowerBound"].map(Int.init),
                                 upper: lastAnchor["blockUTF16UpperBound"].map(Int.init))
-                            if validAnchor && lastTargetVisible && (!requireTargetTopAnchor || anchorOverlapsTarget) {
+                            // End clamping can prevent a visible final paragraph
+                            // from reaching the viewport top, including short
+                            // documents whose layout includes bottom padding.
+                            if validAnchor && lastTargetVisible
+                                && (!requireTargetTopAnchor || anchorOverlapsTarget || geometry?["documentFitsViewport"] as? Bool == true
+                                    || geometry?["scrollClampedAtEnd"] as? Bool == true)
+                            {
                                 if mode == .read { readerIdentities.insert(ObjectIdentifier(web)) }
                                 #expect(!window.isVisible)
                                 return Endpoint(
@@ -458,13 +689,13 @@ import WebKit
                                     targetGeometry: lastGeometry, observedAnchor: lastAnchor,
                                     anchorOverlapsTarget: anchorOverlapsTarget)
                             }
-                            if validAnchor, !requireTargetTopAnchor, let firstLayout,
+                            if validAnchor, !requireTargetTopAnchor, geometry?["imageDecoded"] as? Int == 1, let firstLayout,
                                 firstLayout.duration(to: .now) >= .seconds(1)
                             {
                                 Issue.record(
                                     Comment(
                                         rawValue:
-                                            "Mode ready but source target was not restored fixture=\(data.kind.rawValue) target=\(mode.rawValue) geometry=\(lastGeometry) anchor=\(lastAnchor)"
+                                            "Mode ready but source target was not restored fixture=\(data.name) target=\(mode.rawValue) geometry=\(lastGeometry) anchor=\(lastAnchor)"
                                     ))
                                 return Endpoint(
                                     layout: firstLayout, restored: nil,
@@ -476,10 +707,28 @@ import WebKit
                     }
                     try await Task.sleep(for: .milliseconds(10))
                 }
+                if let web = session.editorSession.webView, session.editorSession.isReady {
+                    do {
+                        let response = try await session.editorSession.send(.queryPerformance, in: web, observingOnly: true)
+                        try emitRecord([
+                            "metric": "native-feature-timeout-web-performance", "fixture": data.name,
+                            "mode": mode.rawValue, "accepted": response.accepted,
+                            "editorError": session.editorSession.errorMessage as Any? ?? NSNull(),
+                            "samples": (response.performanceSamples ?? []).map {
+                                ["name": $0.name, "milliseconds": $0.durationMilliseconds] as [String: Any]
+                            },
+                        ])
+                    } catch {
+                        try emitRecord([
+                            "metric": "native-feature-timeout-web-performance", "fixture": data.name,
+                            "mode": mode.rawValue, "queryError": String(describing: error),
+                        ])
+                    }
+                }
                 Issue.record(
                     Comment(
                         rawValue:
-                            "Native mode diagnostic timed out fixture=\(data.kind.rawValue) target=\(mode.rawValue) requireTargetTopAnchor=\(requireTargetTopAnchor) editing=\(session.isEditing) loaded=\(session.editorSession.isLoaded) ready=\(session.editorSession.isReady) geometryReads=\(geometryReads) restorationReads=\(restorationReads) expectedLower=\(data.viewportRange.location) expectedUpper=\(data.viewportRange.location + data.viewportRange.length) targetVisible=\(lastTargetVisible) geometry=\(lastGeometry) anchor=\(lastAnchor) pendingReadRestore=\(session.scrollRestoreRequest != nil)"
+                            "Native mode diagnostic timed out fixture=\(data.name) target=\(mode.rawValue) requireTargetTopAnchor=\(requireTargetTopAnchor) editing=\(session.isEditing) loaded=\(session.editorSession.isLoaded) ready=\(session.editorSession.isReady) editorError=\(session.editorSession.errorMessage ?? "none") featureErrors=\(projection.errorCount) geometryReads=\(geometryReads) restorationReads=\(restorationReads) expectedLower=\(data.viewportRange.location) expectedUpper=\(data.viewportRange.location + data.viewportRange.length) targetVisible=\(lastTargetVisible) geometry=\(lastGeometry) anchor=\(lastAnchor) pendingReadRestore=\(session.scrollRestoreRequest != nil)"
                     ))
                 throw MarkdownEditorSession.SessionError.unavailable
             }
@@ -504,6 +753,11 @@ import WebKit
                 defer { try? file.close() }
                 try file.seekToEnd()
                 try file.write(contentsOf: data)
+            }
+
+            private func emitRecord(_ record: [String: Any]) throws {
+                let json = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+                try FileHandle.standardOutput.write(contentsOf: json + Data([0x0A]))
             }
 
             private static func numericValues(_ values: [String: Any]) -> [String: Double] {
@@ -556,14 +810,14 @@ import WebKit
                 let source = try #require(response.text)
                 let exact = source.utf8.elementsEqual(data.source.utf8)
                 #expect(exact)
-                #expect(editor.generation == 0 && !editor.isDirty)
+                #expect(editor.generation == expectedGeneration && !editor.isDirty)
                 let ranges = try await selection()
                 if let expectedSelection { #expect(ranges == expectedSelection) }
                 let result = try await editor.send(.queryContext, in: web)
                 let context = try #require(result.context)
-                // Clean synthetic notes start with no history; a mode change
-                // must not add text commands or discard source authority.
-                #expect(context.undoLabel == nil && context.redoLabel == nil && !context.composing)
+                #expect(context.undoLabel == expectedUndoLabel)
+                #expect(context.redoLabel == expectedRedoLabel)
+                #expect(!context.composing)
                 #expect(!window.isVisible)
             }
 
