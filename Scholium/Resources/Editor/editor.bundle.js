@@ -19283,6 +19283,12 @@
     get text() {
       return this.exact.toString();
     }
+    /** Compare exact source without materializing snapshots. Unchanged editor
+     * states share the same rope; independently installed save/recovery sources
+     * still compare by value, including their original line endings. */
+    eq(other) {
+      return this.exact.eq(other.exact);
+    }
     get utf8ByteCount() {
       return this.byteCount;
     }
@@ -36923,6 +36929,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   }
 
   // input-suggestions.ts
+  function sameExactSource(left, right) {
+    const source = left.field(exactSourceState, false);
+    const other = right.field(exactSourceState, false);
+    return source === other || source !== void 0 && other !== void 0 && source.eq(other);
+  }
   function writingContinuationPhaseLabel(phase) {
     switch (phase) {
       case "preparing":
@@ -37454,7 +37465,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return this.view.hasFocus && !this.view.composing && isWritingSuggestionContext(options, this.view.state);
       }
       samePoint(proof) {
-        return this.view.state.doc === proof.doc && this.view.state.selection.eq(proof.selection) && this.view.state.field(exactSourceState, false)?.text === proof.field(exactSourceState, false)?.text;
+        return this.view.state.doc === proof.doc && this.view.state.selection.eq(proof.selection) && sameExactSource(this.view.state, proof);
       }
       current(proof) {
         return this.isValidContext() && this.samePoint(proof);
@@ -37857,7 +37868,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           return;
         }
         const selectionChanged = update.selectionSet && !update.state.selection.eq(update.startState.selection);
-        const sourceChanged = update.state.field(exactSourceState, false)?.text !== update.startState.field(exactSourceState, false)?.text;
+        const sourceChanged = !sameExactSource(update.state, update.startState);
         if (update.focusChanged && !this.view.hasFocus && !update.docChanged && !selectionChanged && !sourceChanged) {
           this.suspend();
           return;

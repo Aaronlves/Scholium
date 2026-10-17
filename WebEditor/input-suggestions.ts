@@ -69,6 +69,12 @@ interface SourceRange {
   readonly to: number;
 }
 
+function sameExactSource(left: EditorState, right: EditorState) {
+  const source = left.field(exactSourceState, false);
+  const other = right.field(exactSourceState, false);
+  return source === other || source !== undefined && other !== undefined && source.eq(other);
+}
+
 export type WritingContinuationCancellationReason = "superseded" | "typing" | "deletion" | "source" | "caret"
   | "focus" | "composition" | "configuration" | "mode" | "context" | "dismissed" | "accepted" | "lifecycle" | "watchdog";
 
@@ -739,7 +745,7 @@ export function createEditorInputSuggestions(
     private samePoint(proof: EditorState) {
       return this.view.state.doc === proof.doc
         && this.view.state.selection.eq(proof.selection)
-        && this.view.state.field(exactSourceState, false)?.text === proof.field(exactSourceState, false)?.text;
+        && sameExactSource(this.view.state, proof);
     }
     private current(proof: EditorState) { return this.isValidContext() && this.samePoint(proof); }
     private contextReady() {
@@ -1035,7 +1041,7 @@ export function createEditorInputSuggestions(
       const mode = options.mode(update.state), modeChanged = mode !== this.mode; this.mode = mode;
       if (modeChanged || !isWritingSuggestionContext(options, update.state)) { this.clear(modeChanged ? "mode" : options.isComposing() ? "composition" : "context"); return; }
       const selectionChanged = update.selectionSet && !update.state.selection.eq(update.startState.selection);
-      const sourceChanged = update.state.field(exactSourceState, false)?.text !== update.startState.field(exactSourceState, false)?.text;
+      const sourceChanged = !sameExactSource(update.state, update.startState);
       if (update.focusChanged && !this.view.hasFocus && !update.docChanged && !selectionChanged && !sourceChanged) {
         this.suspend(); return;
       }

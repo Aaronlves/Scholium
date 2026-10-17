@@ -92,6 +92,11 @@ export class ExactSourceMirror {
    */
   get text() { return this.exact.toString(); }
 
+  /** Compare exact source without materializing snapshots. Unchanged editor
+   * states share the same rope; independently installed save/recovery sources
+   * still compare by value, including their original line endings. */
+  eq(other: ExactSourceMirror) { return this.exact.eq(other.exact); }
+
   get utf8ByteCount() { return this.byteCount; }
 
   get usesCRLF() { return this.crlfLineBreakCount > 0; }

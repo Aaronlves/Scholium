@@ -27,7 +27,7 @@ import {writingCaretIsReadable} from "../writing-readable-context";
 import {localizationTesting} from "../localization";
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
-import {normalizedDocumentText} from "../state";
+import {ExactSourceMirror, normalizedDocumentText} from "../state";
 import type {NativeSuggestionPort} from "../native-floating";
 
 function inlineContinuationHarness(source = "A claim about res", options: {
@@ -101,6 +101,82 @@ describe("Coordinated local and AI writing previews", () => {
       changes: transaction.changes, docChanged: true, selectionSet: true, focusChanged: false,
       transactions: [transaction]} as unknown as ViewUpdate);
   }
+
+  it.each([16_384, 1_048_576])("checks writing updates without full source snapshots (%i UTF-16 units)", size => {
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]});
+    const line = "Research 中文 😀 e\u0301.\r\n";
+    const source = "\uFEFF" + line.repeat(Math.ceil(size / line.length)) + "A claim about res";
+    const h = inlineContinuationHarness(source, {aiEnabled: false});
+    const snapshots = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+    try {
+      for (const action of ["idle", "caret", "typing"] as const) {
+        snapshots.mockClear();
+        const samples: number[] = [];
+        for (let index = 0; index < 80; index++) {
+          const previous = h.state();
+          const head = previous.selection.main.head;
+          const startedAt = performance.now();
+          const transaction = previous.update(action === "typing"
+            ? {changes: {from: head, insert: "x"}, selection: {anchor: head + 1}, annotations: Transaction.userEvent.of("input.type")}
+            : action === "caret" ? {selection: {anchor: head + (index % 2 === 0 ? -1 : 1)}} : {});
+          h.view.dispatch(transaction);
+          h.plugin.update({view: h.view, state: h.state(), startState: previous,
+            docChanged: transaction.docChanged, selectionSet: transaction.selection !== undefined,
+            focusChanged: false, geometryChanged: action === "idle", viewportChanged: action === "idle",
+            changes: transaction.changes, transactions: [transaction]} as unknown as ViewUpdate);
+          samples.push(performance.now() - startedAt);
+        }
+        const count = snapshots.mock.calls.length;
+        samples.sort((left, right) => left - right);
+        if (process.env.SCHOLIUM_WRITING_DIAGNOSTIC === "1") console.log(JSON.stringify({
+          metric: "writing-update-proxy", units: "milliseconds", sourceUTF16: source.length, action,
+          iterations: samples.length, fullSnapshots: count,
+          median: samples[Math.floor(samples.length / 2)], p95: samples[Math.floor(samples.length * 0.95)],
+        }));
+        expect.soft(count).toBe(0);
+      }
+      snapshots.mockRestore();
+      expect(h.state().field(exactSourceState).text).toBe(source + "x".repeat(80));
+      expect(h.state().selection.main.head).toBe(normalizedDocumentText(source).length + 80);
+    } finally { snapshots.mockRestore(); h.plugin.destroy(); vi.useRealTimers(); }
+  });
+
+  it.each([true, false].flatMap(ai => ["pending", "preview"].map(stage => ({ai, stage}))))(
+    "retains $stage writing candidates across an equal exact-source reinstall (AI $ai)", async ({ai, stage}) => {
+      vi.useFakeTimers();
+      const source = "\uFEFFEarlier 😀 e\u0301.\r\nA claim about res";
+      const h = inlineContinuationHarness(source, {aiEnabled: ai});
+      const snapshots = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+      const publish = async () => {
+        if (ai) h.suggestions.resolveWritingContinuation(h.requests[0], {text: "ponsibility"});
+        else h.suggestions.resolveLinkCompletionQuery(h.terms[0], {state: "current", candidates: [{
+          label: "responsibility", insertion: "", detail: "", availability: "available",
+          writingAction: "term", replacementUTF16Count: 3,
+        }]});
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      try {
+        await vi.advanceTimersByTimeAsync(800);
+        if (stage === "preview") await publish();
+        const previous = h.state();
+        const transaction = previous.update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)});
+        h.view.dispatch(transaction);
+        expect(h.state().field(exactSourceState)).not.toBe(previous.field(exactSourceState));
+        h.plugin.update({view: h.view, state: h.state(), startState: previous,
+          docChanged: false, selectionSet: false, focusChanged: false,
+          changes: transaction.changes, transactions: [transaction]} as unknown as ViewUpdate);
+        if (stage === "pending") await publish();
+        expect(h.cancelled).toEqual([]);
+        expect(h.plugin.accept()).toBe(true);
+        expect(snapshots).not.toHaveBeenCalled();
+        snapshots.mockRestore();
+        expect(h.state().field(exactSourceState).text).toBe(source + "ponsibility");
+        expect(undo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(source);
+        expect(redo({state: h.state(), dispatch: transaction => h.view.dispatch(transaction)})).toBe(true);
+        expect(h.state().field(exactSourceState).text).toBe(source + "ponsibility");
+      } finally { snapshots.mockRestore(); h.plugin.destroy(); vi.useRealTimers(); }
+    });
 
   it.each((["present", "update", "next"] as const).flatMap(action => [true, false].map(aiEnabled => ({action, aiEnabled}))))(
     "Find $action and save preserve current candidates or reject departed ones (AI $aiEnabled)", async ({action, aiEnabled}) => {

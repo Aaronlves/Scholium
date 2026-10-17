@@ -30,6 +30,25 @@ function referenceApply(
 }
 
 describe("exact source mirror", () => {
+  it("compares exact ropes across independent construction, edits and replacement", () => {
+    const source = "\uFEFFEarlier 😀 e\u0301.\r\n研究\n";
+    const original = new ExactSourceMirror(source);
+    const copy = original.copy();
+    expect(original.eq(copy)).toBe(true);
+    expect(original.eq(new ExactSourceMirror(source))).toBe(true);
+    for (const changed of [source.replaceAll("\r\n", "\n"), source.slice(1),
+      source.normalize("NFC"), source.slice(0, -1), source.replace("研究", "究研")]) {
+      expect(original.eq(new ExactSourceMirror(changed))).toBe(false);
+    }
+    expect(copy.apply([{from: 0, to: 0, insert: "x"}])).toBe(true);
+    expect(original.eq(copy)).toBe(false);
+    expect(copy.apply([{from: 0, to: 1, insert: ""}])).toBe(true);
+    expect(original.eq(copy)).toBe(true);
+    copy.replace("different");
+    expect(original.eq(copy)).toBe(false);
+    expect(original.text).toBe(source);
+  });
+
   it("maps normalized CodeMirror offsets across mixed line endings", () => {
     const source = "one\r\ntwo\nthree\r\n";
     expect(normalizedDocumentText(source)).toBe("one\ntwo\nthree\n");
