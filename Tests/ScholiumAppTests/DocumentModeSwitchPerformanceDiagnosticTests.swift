@@ -709,13 +709,29 @@ import WebKit
                 }
                 if let web = session.editorSession.webView, session.editorSession.isReady {
                     do {
-                        let response = try await session.editorSession.send(.queryPerformance, in: web, observingOnly: true)
+                        let response = try await session.editorSession.send(.queryPerformance, in: web)
+                        let imageGeometry = try await web.callAsyncJavaScript(
+                            """
+                            const root = document.querySelector('.cm-content');
+                            const viewport = document.querySelector('.cm-scroller')?.getBoundingClientRect();
+                            const images = Array.from(root?.querySelectorAll('img') ?? []);
+                            const visible = images.filter(image => {
+                              const bounds = image.getBoundingClientRect();
+                              return viewport && bounds.bottom >= viewport.top && bounds.top <= viewport.bottom;
+                            });
+                            return {fonts: document.fonts.status, images: images.length, visible: visible.length,
+                              pending: visible.filter(image => !image.complete).length,
+                              geometry: visible.slice(0, 8).map(image => ({complete: image.complete,
+                                width: image.naturalWidth, height: image.naturalHeight,
+                                bounds: image.getBoundingClientRect().toJSON()}))};
+                            """, arguments: [:], in: nil, contentWorld: .page)
                         try emitRecord([
                             "metric": "native-feature-timeout-web-performance", "fixture": data.name,
                             "mode": mode.rawValue, "accepted": response.accepted,
                             "editorError": session.editorSession.errorMessage as Any? ?? NSNull(),
+                            "imageGeometry": imageGeometry ?? NSNull(),
                             "samples": (response.performanceSamples ?? []).map {
-                                ["name": $0.name, "milliseconds": $0.durationMilliseconds] as [String: Any]
+                                ["name": $0.name, "milliseconds": $0.durationMilliseconds, "observed": $0.observed] as [String: Any]
                             },
                         ])
                     } catch {
