@@ -2,7 +2,6 @@ import Darwin
 import Foundation
 import SQLite3
 import ScholiumContracts
-import ScholiumCore
 import Testing
 
 @testable import ScholiumApplication
