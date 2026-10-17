@@ -53,32 +53,52 @@ extension WorkspaceHandle {
     func documentWithCitationSnapshot(
         _ document: NoteDocument,
         id: VaultQualifiedNoteID,
-        expectedNoteID: UUID? = nil
+        expectedNoteID: UUID? = nil,
+        identityInventory suppliedInventory: TriptychIdentityInventorySnapshot? = nil
     ) async throws -> NoteDocument {
-        guard
-            let identity = try await services.controlStore.identityRecord(
-                vaultID: id.vaultID, relativePath: id.relativePath)
-        else {
+        // Standalone hydration reaches this point only after its exact-source
+        // read. Preview batches may instead supply one operation-local revision.
+        let inventory: TriptychIdentityInventorySnapshot
+        if let suppliedInventory {
+            inventory = suppliedInventory
+        } else {
+            inventory = try await services.controlStore.identityInventorySnapshot()
+        }
+        try Task.checkCancellation()
+        try requireActive()
+        try await services.controlStore.validateIdentityInventory(inventory)
+        let identity: NoteIdentityRecord?
+        if let expectedNoteID {
+            identity = inventory.recordsByID[expectedNoteID]
+        } else {
+            identity = inventory.recordsByID.values.first {
+                $0.vaultID == id.vaultID && $0.relativePath.utf8.elementsEqual(id.relativePath.utf8)
+            }
+        }
+        guard let identity else {
             if expectedNoteID != nil { throw WorkspaceHydrationError.staleSnapshot }
             return document
         }
-        if let expectedNoteID, identity.id != expectedNoteID {
-            throw WorkspaceHydrationError.staleSnapshot
-        }
+        guard identity.vaultID == id.vaultID,
+            identity.relativePath.utf8.elementsEqual(id.relativePath.utf8)
+        else { throw WorkspaceHydrationError.staleSnapshot }
         let snapshot: ZoteroCitationSnapshot
         do {
             snapshot = try await services.controlStore.citationSnapshot(
                 noteID: identity.id, vaultID: id.vaultID,
-                sourceFingerprint: document.fingerprint)
+                sourceFingerprint: document.fingerprint, identity: identity, inventory: inventory)
+        } catch TriptychControlError.identitiesRevisionConflict {
+            throw WorkspaceHydrationError.staleSnapshot
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
-            return document.withCitationSnapshot(
-                .init(
-                    noteID: identity.id, vaultID: id.vaultID, status: .unresolved))
+            snapshot = .init(noteID: identity.id, vaultID: id.vaultID, status: .unresolved)
         }
-        guard
-            try await services.controlStore.identityRecord(
-                vaultID: id.vaultID, relativePath: id.relativePath)?.id == identity.id
-        else { throw WorkspaceHydrationError.staleSnapshot }
+        // This await is outside companion fallback handling. No fallback may
+        // admit changed identity authority or publish after shutdown/cancel.
+        try await services.controlStore.validateIdentityInventory(inventory)
+        try Task.checkCancellation()
+        try requireActive()
         return document.withCitationSnapshot(snapshot)
     }
 

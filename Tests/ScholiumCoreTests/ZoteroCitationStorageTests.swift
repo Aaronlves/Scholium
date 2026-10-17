@@ -6,6 +6,83 @@ import Testing
 
 @Suite("Portable citation authority and paired saves")
 struct ZoteroCitationStorageTests {
+    @Test(
+        "Inventory citation admission preserves public companion states without another identity decode",
+        arguments: ["absent", "required_missing", "present_mismatch", "malformed", "unsupported"])
+    func inventoryCitationStates(state: String) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let document = try await fixture.note("\u{FEFF}Research\r\nExact source")
+        if state != "absent" {
+            _ = try await fixture.coordinator().save(
+                target: fixture.target(document), source: document.rawContent,
+                edit: .init(expectedRevision: nil, data: .init(documentData: "style")))
+        }
+        switch state {
+        case "required_missing": try FileManager.default.removeItem(at: fixture.companionURL)
+        case "malformed": try Data("{".utf8).write(to: fixture.companionURL)
+        case "unsupported":
+            var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.companionURL)) as? [String: Any])
+            object["futureAuthority"] = true
+            try JSONSerialization.data(withJSONObject: object).write(to: fixture.companionURL)
+        default: break
+        }
+        let fingerprint = state == "present_mismatch" ? DocumentFingerprint(content: "Newer source") : document.fingerprint
+        let inventory = try await fixture.control.identityInventorySnapshot()
+        let identity = try #require(inventory.recordsByID[fixture.noteID])
+        let expected = try await fixture.control.citationSnapshot(
+            noteID: fixture.noteID, vaultID: fixture.vaultID, sourceFingerprint: fingerprint)
+        #if DEBUG
+            let decodes = await fixture.control.identitySnapshotDecodeCountForTesting
+        #endif
+        let actual = try await fixture.control.citationSnapshot(
+            noteID: fixture.noteID, vaultID: fixture.vaultID, sourceFingerprint: fingerprint,
+            identity: identity, inventory: inventory)
+        #expect(actual == expected)
+        #expect(actual.status == (state == "absent" ? .absent : state == "unsupported" ? .unsupported : .unresolved))
+        #expect(try await fixture.repository.load(relativePath: "Note.md").sourceBytes == document.sourceBytes)
+        #if DEBUG
+            #expect(await fixture.control.identitySnapshotDecodeCountForTesting == decodes)
+        #endif
+        if state == "present_mismatch" {
+            // Public companion reads deliberately do not consult identities
+            // when the companion exists. The specialized path still must.
+            try FileManager.default.removeItem(at: fixture.identityURL)
+            #expect(
+                try await fixture.control.citationSnapshot(
+                    noteID: fixture.noteID, vaultID: fixture.vaultID, sourceFingerprint: fingerprint) == expected)
+            await #expect(throws: TriptychControlError.self) {
+                try await fixture.control.citationSnapshot(
+                    noteID: fixture.noteID, vaultID: fixture.vaultID, identity: identity, inventory: inventory)
+            }
+        }
+    }
+
+    @Test(
+        "Inventory citation admission rejects borrowed records and changed portable revisions",
+        arguments: ["foreign_record", "wrong_vault", "revision_changed", "same_bytes_replaced"])
+    func inventoryCitationOwnership(change: String) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let document = try await fixture.note("Research\n")
+        let inventory = try await fixture.control.identityInventorySnapshot()
+        var identity = try #require(inventory.recordsByID[fixture.noteID])
+        if change == "foreign_record" { identity.relativePath = "Other.md" }
+        if change == "revision_changed" {
+            _ = try await fixture.control.identity(
+                forVaultID: fixture.vaultID, relativePath: "Note.md", fingerprint: .init(content: "Changed"))
+        }
+        if change == "same_bytes_replaced" {
+            try Data(contentsOf: fixture.identityURL).write(to: fixture.identityURL, options: .atomic)
+        }
+        let requestedVault = change == "wrong_vault" ? UUID() : fixture.vaultID
+        await #expect(throws: TriptychControlError.self) {
+            try await fixture.control.citationSnapshot(
+                noteID: fixture.noteID, vaultID: requestedVault, sourceFingerprint: document.fingerprint,
+                identity: identity, inventory: inventory)
+        }
+    }
+
     @Test("Metadata-only CAS preserves Markdown and rejects a stale companion")
     func metadataOnlyCAS() async throws {
         let fixture = try await Fixture()

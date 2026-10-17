@@ -181,7 +181,14 @@ struct WorkspaceHydrationTests {
             vault.documents.first {
                 $0.id.relativePath.utf8.elementsEqual(relativePath.utf8)
             })
+        let services = await handle.services
+        #if DEBUG
+            let decodes = await services.controlStore.identitySnapshotDecodeCountForTesting
+        #endif
         let hydrated = try await handle.documents.hydrate(summary)
+        #if DEBUG
+            #expect(await services.controlStore.identitySnapshotDecodeCountForTesting == decodes + 1)
+        #endif
         #expect(hydrated.document.sourceBytes == bytes)
         #expect(hydrated.summary.validationWarnings == hydrated.document.validationWarnings)
         #expect(!hydrated.summary.validationWarnings.isEmpty)
@@ -248,14 +255,87 @@ struct WorkspaceHydrationTests {
         await closeGate.release()
         await #expect(throws: ScholiumApplicationError.self) { try await closingRead.value }
     }
+    @Test("Preview hydration shares one identity decode and rejects replacement between targets")
+    func previewIdentityInventoryIsOperationLocal() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        try Data("# Agency\n\n[[Freedom]] and [[Chapter]]\n".utf8)
+            .write(to: fixture.analysesURL.appendingPathComponent("Agency.md"))
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL)
+        let handle: WorkspaceHandle
+        do { handle = try await runtime.openWorkspace(id: fixture.assignment.id) } catch {
+            await runtime.shutdown()
+            throw error
+        }
+        let gate = HydrationReadGate()
+        var pending: Task<DocumentPreviewCatalog, Error>?
+        do {
+            let snapshot = try await handle.snapshot()
+            let graph = try #require(snapshot.discovery.catalog.graph)
+            let source = try #require(snapshot.document(id: fixture.analysisNoteID))
+            let services = await handle.services
+            #if DEBUG
+                let decodes = await services.controlStore.identitySnapshotDecodeCountForTesting
+            #endif
+            let unlinked = try #require(snapshot.vaults.flatMap(\.documents).first { $0.id.relativePath == "Chapter.md" })
+            #expect(
+                try await handle.documents.documentPreviewCatalog(
+                    source: unlinked.id, sourceFingerprint: unlinked.fingerprint, graphGeneration: graph.generation
+                ).links.isEmpty)
+            #if DEBUG
+                #expect(await services.controlStore.identitySnapshotDecodeCountForTesting == decodes)
+            #endif
+            let catalog = try await handle.documents.documentPreviewCatalog(
+                source: source.id, sourceFingerprint: source.fingerprint, graphGeneration: graph.generation)
+            try #require(catalog.links.count == 2)
+            #expect(Set(catalog.links.map(\.title)) == ["Freedom", "Chapter"])
+            #if DEBUG
+                #expect(await services.controlStore.identitySnapshotDecodeCountForTesting == decodes + 1)
+            #endif
+            let identitiesURL = fixture.rootURL.appendingPathComponent(".scholium/identities.json")
+            let original = try Data(contentsOf: identitiesURL)
+            await handle.setHydrationPostReadBarrierForTesting { await gate.holdSecondRead() }
+            pending = Task {
+                try await handle.documents.documentPreviewCatalog(
+                    source: source.id, sourceFingerprint: source.fingerprint, graphGeneration: graph.generation)
+            }
+            try await gate.waitUntilEntered(timeout: .seconds(10))
+            // The first target has completed; identical bytes at a replaced
+            // identity file must not admit the remaining target from that batch.
+            try original.write(to: identitiesURL, options: .atomic)
+            await gate.release()
+            let operation = try #require(pending)
+            await #expect(throws: (any Error).self) { try await operation.value }
+            pending = nil
+            await handle.setHydrationPostReadBarrierForTesting(nil)
+            await runtime.shutdown()
+        } catch {
+            await handle.setHydrationPostReadBarrierForTesting(nil)
+            await gate.release()
+            pending?.cancel()
+            _ = try? await pending?.value
+            await runtime.shutdown()
+            throw error
+        }
+    }
 }
 
 private actor HydrationReadGate {
+    private var readCount = 0
     private var entered = false
+    private var released = false
     private var arrival: CheckedContinuation<Void, Never>?
     private var releaseContinuation: CheckedContinuation<Void, Never>?
 
+    func holdSecondRead() async {
+        readCount += 1
+        if readCount == 2 { await hold() }
+    }
+
     func hold() async {
+        guard !released else { return }
         entered = true
         arrival?.resume()
         arrival = nil
@@ -267,7 +347,16 @@ private actor HydrationReadGate {
         await withCheckedContinuation { arrival = $0 }
     }
 
+    func waitUntilEntered(timeout: Duration) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !entered && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(entered, "Preview hydration did not reach its second target.")
+    }
+
     func release() {
+        released = true
         releaseContinuation?.resume()
         releaseContinuation = nil
     }

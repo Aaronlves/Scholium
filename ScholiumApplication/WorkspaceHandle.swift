@@ -590,12 +590,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 .compactMap {
                     $0.destination?.note
                 })
+        let identityInventory: TriptychIdentityInventorySnapshot?
+        if targetIDs.isEmpty {
+            identityInventory = nil
+        } else {
+            identityInventory = try await services.controlStore.identityInventorySnapshot()
+        }
         var targetDocuments: [VaultQualifiedNoteID: NoteDocument] = [:]
         for id in targetIDs.sorted() {
             try Task.checkCancellation()
             guard let summary = currentSnapshot.document(id: id) else { continue }
-            targetDocuments[id] = try await hydrate(summary).document
+            targetDocuments[id] = try await hydrate(summary, identityInventory: identityInventory).document
         }
+        if let identityInventory { try await services.controlStore.validateIdentityInventory(identityInventory) }
+        try Task.checkCancellation()
+        try requireActive()
         guard currentSnapshot.discovery.catalog.graph?.generation == graphGeneration,
             currentSnapshot.document(id: source)?.fingerprint == sourceFingerprint
         else { throw WorkspaceHydrationError.staleSnapshot }
@@ -684,7 +693,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return try await documentWithCitationSnapshot(document, id: id)
     }
 
-    func hydrate(_ expected: WorkspaceNoteSummary) async throws -> WorkspaceNoteSnapshot {
+    func hydrate(
+        _ expected: WorkspaceNoteSummary,
+        identityInventory: TriptychIdentityInventorySnapshot? = nil
+    ) async throws -> WorkspaceNoteSnapshot {
         try requireActive()
         guard let version = await hydrationSourceVersion(for: expected)
         else { throw WorkspaceHydrationError.staleSnapshot }
@@ -702,7 +714,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 relativePath: expected.id.relativePath, version: version)
         else { throw WorkspaceHydrationError.staleSnapshot }
         let document = try await documentWithCitationSnapshot(
-            loaded.document, id: expected.id, expectedNoteID: expected.stableIdentity.resolvedID)
+            loaded.document, id: expected.id, expectedNoteID: expected.stableIdentity.resolvedID,
+            identityInventory: identityInventory)
         try requireActive()
         guard await hydrationSourceVersion(for: expected) == version,
             try await repository.sourceVersionIsCurrent(

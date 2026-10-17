@@ -1012,8 +1012,44 @@ public actor TriptychControlStore {
         vaultID: UUID,
         sourceFingerprint: DocumentFingerprint? = nil
     ) throws -> ZoteroCitationSnapshot {
+        try readCitationSnapshot(
+            noteID: noteID, vaultID: vaultID, sourceFingerprint: sourceFingerprint,
+            missingCompanionIsRequired: { try identityRecord(id: noteID)?.citationCompanionRequired == true })
+    }
+
+    /// Reuses only this operation's admitted identity bytes. Companion bytes
+    /// remain fresh, and a changed inventory cannot become an absent companion.
+    package func citationSnapshot(
+        noteID: UUID,
+        vaultID: UUID,
+        sourceFingerprint: DocumentFingerprint? = nil,
+        identity: NoteIdentityRecord,
+        inventory: TriptychIdentityInventorySnapshot
+    ) throws -> ZoteroCitationSnapshot {
+        try validateIdentityInventory(inventory)
+        guard identity.id == noteID, identity.vaultID == vaultID,
+            let admitted = inventory.recordsByID[noteID], admitted == identity,
+            admitted.relativePath.utf8.elementsEqual(identity.relativePath.utf8)
+        else { throw TriptychControlError.identitiesRevisionConflict }
+        let result = Result {
+            try readCitationSnapshot(
+                noteID: noteID, vaultID: vaultID, sourceFingerprint: sourceFingerprint,
+                missingCompanionIsRequired: { identity.citationCompanionRequired == true })
+        }
+        // Revalidate even if a companion read failed. Its fallback must never
+        // hide replacement or corruption of the admitted identity inventory.
+        try validateIdentityInventory(inventory)
+        return try result.get()
+    }
+
+    private func readCitationSnapshot(
+        noteID: UUID,
+        vaultID: UUID,
+        sourceFingerprint: DocumentFingerprint?,
+        missingCompanionIsRequired: () throws -> Bool
+    ) throws -> ZoteroCitationSnapshot {
         guard let bytes = try citationCompanionBytes(noteID: noteID) else {
-            let required = try identityRecord(id: noteID)?.citationCompanionRequired == true
+            let required = try missingCompanionIsRequired()
             return ZoteroCitationSnapshot(noteID: noteID, vaultID: vaultID, status: required ? .unresolved : .absent)
         }
         let revision = DocumentFingerprint(data: bytes)
