@@ -473,7 +473,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 self.packagedSourceAccessibilityMatches(originalSource, in: editor)
             })
         selectPackagedMode("Review", in: application, control: mode)
-        XCTAssertTrue(application.images[imageAlt].firstMatch.waitForExistence(timeout: 10))
+        let reviewImage = application.buttons["Preview image \(imageAlt) (\(imageURL.lastPathComponent))"]
+        XCTAssertTrue(reviewImage.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(reviewImage.frame.width, 0)
+        XCTAssertGreaterThan(reviewImage.frame.height, 0)
         selectPackagedMode("Source", in: application, control: mode)
         XCTAssertTrue(
             waitUntil(timeout: 20) {
