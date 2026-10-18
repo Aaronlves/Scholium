@@ -300,6 +300,16 @@ final class SidebarOutlineView: NSOutlineView {
     private(set) var primaryMouseDownNanoseconds: UInt64?
     private var primaryMouseDownModifiers: NSEvent.ModifierFlags?
 
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
+        let nativeFrame = super.frameOfOutlineCell(atRow: row)
+        guard !nativeFrame.isEmpty else { return nativeFrame }
+        // Give the item symbol breathing room without moving its content
+        // track or resizing the native disclosure target.
+        return nativeFrame.offsetBy(
+            dx: userInterfaceLayoutDirection == .rightToLeft ? 2 : -2, dy: 0
+        )
+    }
+
     override func mouseDown(with event: NSEvent) {
         primaryMouseDownNanoseconds = DispatchTime.now().uptimeNanoseconds
         isHandlingPrimaryMouseDown = true

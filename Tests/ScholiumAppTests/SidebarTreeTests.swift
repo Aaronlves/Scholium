@@ -584,6 +584,76 @@ struct SidebarTreeTests {
     }
 
     @MainActor
+    @Test("Disclosure spacing preserves native target size, content tracks and hierarchy geometry")
+    func nativeDisclosureSpacing() throws {
+        let notes = ["A/First.md", "A/B/Second.md", "Root.md"].map {
+            WindowDocumentLocation.syntheticPreview(relativePath: $0, rawContent: "# Note\n")
+        }
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: LibraryTreeProjection(preorderedNotes: notes).roots, notes: notes,
+            scope: .init(vaultID: UUID(), sourceScope: .library),
+            expandedFolderIDs: ["A", "A/B"], revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {}
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
+        coordinator.apply(configuration: configuration)
+        fixture.window.contentView?.layoutSubtreeIfNeeded()
+        let outline = fixture.outlineView
+        outline.indentationPerLevel = ScholiumMetrics.Library.hierarchyIndent
+        let native = NSOutlineView(frame: outline.frame)
+        native.style = .sourceList
+        native.intercellSpacing = .zero
+        native.usesAutomaticRowHeights = outline.usesAutomaticRowHeights
+        native.indentationPerLevel = outline.indentationPerLevel
+        let column = NSTableColumn(identifier: .init("reference"))
+        column.width = outline.tableColumns[0].width
+        native.addTableColumn(column)
+        native.outlineTableColumn = column
+        native.dataSource = coordinator
+        native.delegate = coordinator
+        let nativeScroll = NSScrollView(frame: fixture.scrollView.frame)
+        nativeScroll.documentView = native
+        let nativeWindow = NSWindow(
+            contentRect: fixture.scrollView.frame, styleMask: [.titled], backing: .buffered, defer: false
+        )
+        nativeWindow.isReleasedWhenClosed = false
+        nativeWindow.contentView = nativeScroll
+        defer { nativeWindow.close() }
+        nativeWindow.contentView?.layoutSubtreeIfNeeded()
+
+        for style: NSTableView.RowSizeStyle in [.small, .medium, .large] {
+            for direction: NSUserInterfaceLayoutDirection in [.leftToRight, .rightToLeft] {
+                for view in [outline, native] {
+                    view.rowSizeStyle = style
+                    view.userInterfaceLayoutDirection = direction
+                    view.reloadData()
+                    view.expandItem(nil, expandChildren: true)
+                    view.layoutSubtreeIfNeeded()
+                }
+                #expect(outline.numberOfRows == native.numberOfRows)
+                for row in 0..<outline.numberOfRows {
+                    #expect(outline.frameOfCell(atColumn: 0, row: row) == native.frameOfCell(atColumn: 0, row: row))
+                    #expect(outline.rect(ofRow: row) == native.rect(ofRow: row))
+                    let expected = native.frameOfOutlineCell(atRow: row)
+                    let actual = outline.frameOfOutlineCell(atRow: row)
+                    if expected.isEmpty {
+                        #expect(actual == expected)
+                    } else {
+                        #expect(actual.size == expected.size)
+                        #expect(actual == expected.offsetBy(dx: direction == .rightToLeft ? 2 : -2, dy: 0))
+                        #expect(actual.minX >= outline.bounds.minX && actual.maxX <= outline.bounds.maxX)
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
     @Test("A canonically equivalent rename refreshes exact row identity and label bytes")
     func nativeCellExactPathRefresh() throws {
         let cell = SidebarOutlineCell(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
