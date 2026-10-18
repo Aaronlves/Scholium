@@ -251,7 +251,7 @@ struct DocumentControllerConvergenceTests {
         let accepted = "Accepted disk revision\n"
         let later = "Newer external revision\n"
         let file = vaults[1].appendingPathComponent("Source.md")
-        try Data(accepted.utf8).write(to: file)
+        try Data(base.utf8).write(to: file)
         let store = try WorkspaceStore(
             applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
         do {
@@ -263,25 +263,30 @@ struct DocumentControllerConvergenceTests {
                 try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
             let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
             let snapshot = try await capabilities.documents.hydrate(summary)
+            let diskDocument = try await capabilities.documents.save(
+                NoteMutationTarget(
+                    documentID: snapshot.id, stableNoteID: try #require(snapshot.stableIdentity.resolvedID),
+                    revision: snapshot.fingerprint), changeSet: .source(accepted)
+            ).committedValue.document
             let controller = DocumentController()
+            controller.rememberPresentationMode(.source)
             controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
             let descriptor = try #require(controller.activeDocument)
             let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
             let session = controller.session(for: descriptor)
             defer { session.cancelScheduledWork() }
-            controller.beginEditing(
-                session: session, target: target, source: base,
-                revision: DocumentFingerprint(content: base), mode: .source)
             try acceptCheckedDraft(draft, in: session)
             session.conflict = .init(
                 relativePath: "Source.md", editorSource: draft,
                 diskSource: accepted, baseRevision: DocumentFingerprint(content: base),
-                diskCitationSnapshot: snapshot.document.citationSnapshot)
-            session.presentConflictComparison()
+                baseCitationSnapshot: snapshot.document.citationSnapshot,
+                diskCitationSnapshot: diskDocument.citationSnapshot)
+            session.presentConflictComparison(try #require(session.conflict))
             let newerConflict = DocumentConflictSnapshot(
                 relativePath: "Source.md", editorSource: draft,
                 diskSource: later, baseRevision: DocumentFingerprint(content: base),
-                diskCitationSnapshot: snapshot.document.citationSnapshot)
+                baseCitationSnapshot: snapshot.document.citationSnapshot,
+                diskCitationSnapshot: diskDocument.citationSnapshot)
             controller.bind(
                 to: capabilities.documents,
                 documentDidCommit: { _ in

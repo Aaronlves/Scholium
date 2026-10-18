@@ -11,15 +11,9 @@ import {
   selectionIntersectsPhysicalLine,
   transactionCanMapProjectionTopology,
   transactionChangedSyntaxTree,
-  transactionMayCreateProjection,
 } from "../projection-update";
 import {scholiumNoteLanguage} from "../language";
 import {semanticProjectionRanges} from "../semantic-projection";
-
-function insertion(text: string) {
-  const state = EditorState.create({doc: "研究文本"});
-  return state.update({changes: {from: state.doc.length, insert: text}});
-}
 
 describe("frontmatter envelope presentation rebuilds", () => {
   const envelope = "---\ntitle: Claim\nkeywords: [a]\n---\n\n";
@@ -87,7 +81,7 @@ describe("frontmatter envelope presentation rebuilds", () => {
   });
 });
 
-describe("empty projection update fast path", () => {
+describe("projection update neighborhoods", () => {
   it("refreshes distant delimiters of a long active construct within mounted coverage", () => {
     const doc = EditorState.create({doc: "x\n".repeat(50_000)}).doc;
     const caret = (head: number) => ({from: head, to: head, head, empty: true});
@@ -177,37 +171,6 @@ describe("empty projection update fast path", () => {
       expect(affectedUTF16Count).toBeLessThanOrEqual(4_002);
       state = transaction.state;
     }
-  });
-
-  it("reuses an empty projection for ordinary mixed-script insertion", () => {
-    const transaction = insertion("继续 argument 🧭");
-
-    expect(transactionMayCreateProjection(transaction, /\|/)).toBe(false);
-    expect(transactionMayCreateProjection(transaction, /[>\[\]!]/)).toBe(false);
-    expect(transactionMayCreateProjection(transaction, /[\[\]\^:]/)).toBe(false);
-  });
-
-  it("rebuilds when plain letters complete syntax beside structural markers", () => {
-    const callout = EditorState.create({doc: "> [!] Claim"});
-    const calloutInsertion = callout.update({changes: {from: 4, insert: "state"}});
-    expect(transactionMayCreateProjection(calloutInsertion, /[>\[\]!]/)).toBe(true);
-
-    const footnote = EditorState.create({doc: "[^]: Definition"});
-    const footnoteInsertion = footnote.update({changes: {from: 2, insert: "note"}});
-    expect(transactionMayCreateProjection(footnoteInsertion, /[\[\]\^:]/)).toBe(true);
-  });
-
-  it("rebuilds for syntax markers, deletions, and unbounded insertions", () => {
-    expect(transactionMayCreateProjection(insertion("|"), /\|/)).toBe(true);
-    expect(transactionMayCreateProjection(insertion("[!state]"), /[>\[\]!]/)).toBe(true);
-    expect(transactionMayCreateProjection(insertion("[^note]:"), /[\[\]\^:]/)).toBe(true);
-
-    const state = EditorState.create({doc: "a|b"});
-    expect(transactionMayCreateProjection(
-      state.update({changes: {from: 1, to: 2}}),
-      /\|/,
-    )).toBe(true);
-    expect(transactionMayCreateProjection(insertion("x".repeat(8_193)), /\|/)).toBe(true);
   });
 });
 

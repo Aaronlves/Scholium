@@ -777,6 +777,10 @@ struct DocumentDetachedPersistenceTests {
                     "dirty": recovery.dirty,
                     "focusTarget": "editor",
                 ]
+                if case .suspendForDetachment = request.operation {
+                    payload["undoHistoryPreserved"] = true
+                    payload["stateJSON"] = "{}"
+                }
                 if let citationSnapshot = recovery.citationSnapshot {
                     payload["citationSnapshot"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationSnapshot))
                 }

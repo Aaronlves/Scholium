@@ -1594,12 +1594,17 @@ struct ExternalMarkdownWindowLifecycleTests {
             if let text { result["text"] = text }
             if let superseded { result["commitSuperseded"] = superseded }
             if let recovery {
-                result["recovery"] = [
+                var payload: [String: Any] = [
                     "documentID": recovery.documentID, "fingerprint": recovery.fingerprint,
                     "generation": recovery.generation, "ranges": recovery.ranges.map { ["anchor": $0.anchor, "head": $0.head] },
                     "source": recovery.source, "undoHistoryPreserved": false,
                     "dirty": recovery.dirty, "focusTarget": "editor",
                 ]
+                if case .suspendForDetachment = request.operation {
+                    payload["undoHistoryPreserved"] = true
+                    payload["stateJSON"] = "{}"
+                }
+                result["recovery"] = payload
             }
             return result
         }

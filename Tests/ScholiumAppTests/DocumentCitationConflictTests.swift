@@ -69,7 +69,7 @@ struct DocumentCitationConflictTests {
                 relativePath: "Citation.md", editorSource: source, diskSource: source,
                 baseRevision: hydrated.fingerprint, baseCitationSnapshot: base,
                 editorCitationData: localData, diskCitationSnapshot: compared)
-            session.presentConflictComparison()
+            session.presentConflictComparison(try #require(session.conflict))
             #expect(session.conflictComparison?.hasCitationConflict == true)
             #expect(session.conflictComparison?.editorRevision == session.conflictComparison?.diskRevision)
 

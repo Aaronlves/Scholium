@@ -28224,18 +28224,18 @@
         }
       }
     },
-    "The exact editor buffer was recovered, but its pre-crash undo history was unavailable." : {
+    "The exact editor buffer was recovered, but its previous undo history was unavailable." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The exact editor buffer was recovered, but its pre-crash undo history was unavailable."
+            "value" : "The exact editor buffer was recovered, but its previous undo history was unavailable."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确切的编辑器缓冲区已恢复，但其崩溃前的撤消历史记录不可用。"
+            "value" : "确切的编辑器缓冲区已恢复，但其先前的撤消历史记录不可用。"
           }
         }
       }

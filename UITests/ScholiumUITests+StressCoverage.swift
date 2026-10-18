@@ -123,15 +123,20 @@ extension ScholiumUITests {
             XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: url)) == Data(expected.utf8) })
             selectDocumentMode("Review", in: window)
             if malformed {
-                let diagnostic = window.staticTexts.matching(NSPredicate(
-                    format: "label CONTAINS %@ OR value CONTAINS %@",
-                    "unsupported or could not be rendered", "unsupported or could not be rendered"
-                )).firstMatch
+                let diagnostic = window.staticTexts.matching(
+                    NSPredicate(
+                        format: "label CONTAINS %@ OR value CONTAINS %@",
+                        "unsupported or could not be rendered", "unsupported or could not be rendered"
+                    )
+                ).firstMatch
                 XCTAssertTrue(diagnostic.waitForExistence(timeout: 10))
                 XCTAssertFalse(diagram("Updated").exists)
-                XCTAssertTrue(window.staticTexts.matching(NSPredicate(
-                    format: "label CONTAINS %@ OR value CONTAINS %@", "unterminated", "unterminated"
-                )).firstMatch.exists)
+                XCTAssertTrue(
+                    window.staticTexts.matching(
+                        NSPredicate(
+                            format: "label CONTAINS %@ OR value CONTAINS %@", "unterminated", "unterminated"
+                        )
+                    ).firstMatch.exists)
             } else {
                 XCTAssertTrue(diagram(label).waitForExistence(timeout: 10))
                 XCTAssertFalse(diagram(label == "Updated" ? "Original" : "Updated").exists)

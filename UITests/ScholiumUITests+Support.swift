@@ -395,9 +395,13 @@ extension ScholiumUITests {
             return
         }
         app.activate()
-        guard waitUntil(timeout: 5, condition: {
-            self.app.state == .runningForeground
-        }) else {
+        guard
+            waitUntil(
+                timeout: 5,
+                condition: {
+                    self.app.state == .runningForeground
+                })
+        else {
             XCTFail("The isolated QA application did not become active before window focus routing.")
             return
         }

@@ -18581,23 +18581,35 @@
   }
 
   // semantic-projection.ts
+  function semanticBlockEndAssociation(kind) {
+    return kind === "paragraph" || kind === "listItem" || kind === "unorderedList" || kind === "orderedList" || kind === "blockQuote" ? 1 : -1;
+  }
+  function mapSemanticBlockProjection(block, mapPosition) {
+    const mapRange2 = (range) => ({
+      from: mapPosition(range.from),
+      to: mapPosition(range.to)
+    });
+    return {
+      ...block,
+      from: mapPosition(block.from),
+      // Prose at a paragraph end also extends its list/quotation ancestors.
+      // The parser comparison rejects this mapping when the syntax differs.
+      to: mapPosition(block.to, semanticBlockEndAssociation(block.kind)),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        from: mapPosition(block.parent.from),
+        to: mapPosition(block.parent.to, semanticBlockEndAssociation(block.parent.kind))
+      } : null,
+      markerRanges: block.markerRanges.map(mapRange2),
+      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
+    };
+  }
   function mapSemanticProjectionRanges(previous, mapPosition) {
     const mapRange2 = (range) => ({
       from: mapPosition(range.from),
       to: mapPosition(range.to)
     });
-    const blocks = previous.blocks.map((block) => ({
-      ...block,
-      from: mapPosition(block.from),
-      to: mapPosition(block.to, block.kind === "paragraph" ? 1 : void 0),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        from: mapPosition(block.parent.from),
-        to: mapPosition(block.parent.to)
-      } : null,
-      markerRanges: block.markerRanges.map(mapRange2),
-      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
-    }));
+    const blocks = previous.blocks.map((block) => mapSemanticBlockProjection(block, mapPosition));
     const inlines = previous.inlines.map((inline) => ({
       ...inline,
       from: mapPosition(inline.from),
@@ -19096,30 +19108,6 @@
     }
     return signature !== previousSignature;
   }
-  function changedContextContainsMarker(transaction, from, to, marker) {
-    const doc2 = transaction.state.doc;
-    const boundedFrom = Math.max(0, Math.min(from, doc2.length));
-    const boundedTo = Math.max(boundedFrom, Math.min(to, doc2.length));
-    const firstLine = doc2.lineAt(boundedFrom);
-    const lastLine = doc2.lineAt(boundedTo);
-    const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
-    const contextTo = Math.min(lastLine.to, boundedTo + 256);
-    marker.lastIndex = 0;
-    return marker.test(doc2.sliceString(contextFrom, contextTo));
-  }
-  function transactionMayCreateProjection(transaction, marker) {
-    let mayCreate = false;
-    transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-      if (mayCreate) return;
-      if (toA > fromA || inserted.length > 8192) {
-        mayCreate = true;
-        return;
-      }
-      marker.lastIndex = 0;
-      mayCreate = marker.test(inserted.toString()) || changedContextContainsMarker(transaction, fromB, toB, marker);
-    });
-    return mayCreate;
-  }
   function rangesOverlap(left, right) {
     return left.from < right.to && left.to > right.from;
   }
@@ -19135,21 +19123,6 @@
     return {
       from: transaction.changes.mapPos(range.from),
       to: transaction.changes.mapPos(range.to)
-    };
-  }
-  function mappedBlock(block, transaction) {
-    return {
-      ...block,
-      from: transaction.changes.mapPos(block.from),
-      // Plain input at the paragraph's end belongs to that paragraph. Other
-      // block ends retain the conservative boundary used by the topology proof.
-      to: transaction.changes.mapPos(block.to, block.kind === "paragraph" ? 1 : -1),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        ...mappedRange(block.parent, transaction)
-      } : null,
-      markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
-      taskMarkerRange: block.taskMarkerRange ? mappedRange(block.taskMarkerRange, transaction) : null
     };
   }
   function mappedInline(inline, transaction) {
@@ -19215,16 +19188,22 @@
     }
     const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
     const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+    const tree = ensureSyntaxTree(transaction.state, newNeighborhood.to, 0);
+    if (!tree) return false;
     const previousLocal = {
       ...previousSyntax,
-      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mappedBlock(block, transaction)),
+      blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mapSemanticBlockProjection(
+        block,
+        (position, association = -1) => transaction.changes.mapPos(position, association)
+      )),
       inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
       literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
     };
     const nextLocal = semanticProjectionRanges(
       transaction.state,
       [newNeighborhood],
-      0
+      0,
+      tree
     );
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
@@ -30560,6 +30539,7 @@ ${blankRow(table.position.columnCount)}`;
     "AI continuation could not be generated. Library completion remains available.",
     "The edited Markdown document exceeds the supported editor size.",
     "Finish editing the note title before switching documents.",
+    "The editor history could not be retained. Keep this document open and try again.",
     "The insertion position changed. Confirm the cursor again.",
     "The reference is too large.",
     "Insert Citation\u2026",
@@ -32559,9 +32539,12 @@ ${blankRow(table.position.columnCount)}`;
   };
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 51;
+  var EDITOR_PROTOCOL_VERSION = 52;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
+  var MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
+  var MAX_RECOVERY_ACTION_LABEL_BYTES = 1024;
+  var MAX_RECOVERY_ENVELOPE_BYTES = MAX_SOURCE_ENVELOPE_BYTES + MAX_RECOVERY_HISTORY_BYTES * 2 + maximumCitationDataBytes * 3;
   var MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12e6 + MAX_INBOUND_BYTES + 512e3;
   function admitPresentationSources(value, generation, previous) {
     return {
@@ -32679,7 +32662,7 @@ ${blankRow(table.position.columnCount)}`;
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || [snapshot.undoLabel, snapshot.redoLabel].some((label) => label !== void 0 && (typeof label !== "string" || new TextEncoder().encode(label).byteLength > MAX_RECOVERY_ACTION_LABEL_BYTES)) || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_RECOVERY_HISTORY_BYTES)) return false;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
@@ -32817,7 +32800,7 @@ ${blankRow(table.position.columnCount)}`;
     if (!validOperation(request.operation)) return false;
     try {
       const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : type === "restoreRecovery" ? MAX_RECOVERY_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
       return encodedByteLength(value) <= maximum;
     } catch {
       return false;
@@ -33029,107 +33012,240 @@ ${blankRow(table.position.columnCount)}`;
     }
     return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
   }
-  function lineEndings(source) {
-    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
+  var historyError = () => new Error("Incompatible exact history metadata");
+  var ownKeys = (value, keys2) => {
+    const actual = Object.keys(value).sort(), expected = [...keys2].sort();
+    return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+  };
+  function checkedGrouping(value) {
+    if (!value || typeof value !== "object" || !ownKeys(value, ["time"]) && !ownKeys(value, ["time", "userEvent"])) throw historyError();
+    const grouping = value;
+    if (!Number.isFinite(grouping.time) || grouping.userEvent !== void 0 && typeof grouping.userEvent !== "string") throw historyError();
+    return grouping;
   }
-  function sourceWithEndings(source, endings) {
-    let index = 0;
-    const exact = source.replace(/\n/g, () => {
-      const ending = endings[index++];
-      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
-      return ending === "c" ? "\r\n" : "\n";
-    });
-    if (index !== endings.length) throw new Error("Invalid history line ending count");
-    return exact;
+  function jsonEqual(left, right) {
+    if (left === right) return true;
+    if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+    if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((item, index) => jsonEqual(item, right[index]));
+    const a = left, b = right;
+    const keys2 = Object.keys(a).filter((key) => a[key] !== void 0);
+    return keys2.length === Object.keys(b).filter((key) => b[key] !== void 0).length && keys2.every((key) => Object.hasOwn(b, key) && jsonEqual(a[key], b[key]));
   }
-  var maximumRecoveryEvents = 512;
-  function captureExactHistory(state) {
-    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
-    const capture = (command2) => {
-      let detached = state;
-      const endings = [];
-      const citations = [];
-      for (let index = 0; ; index++) {
-        let changed = false;
-        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
-          changed = transaction.docChanged || transaction.effects.some((effect) => effect.is(setCitationData));
-          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
-            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
-          });
-          if (remainingBytes < 0) throw new Error("History is too large");
-          detached = transaction.state;
-        } }))) break;
-        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
-        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
-        remainingBytes -= value?.length ?? 0;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        endings.push(value);
-        const companion = detached.field(citationState, false)?.data ?? null;
-        remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        citations.push(companion);
-      }
-      return { endings, citations };
-    };
-    try {
-      if (remainingBytes < 0) return void 0;
-      const undo2 = capture(undoSelection);
-      const redo2 = capture(redoSelection);
-      const serialized = JSON.stringify({
-        state: state.toJSON(state.field(citationState, false) ? { history: historyField, citations: citationState } : { history: historyField }),
-        undoLineEndings: undo2.endings,
-        redoLineEndings: redo2.endings,
-        undoCitations: undo2.citations,
-        redoCitations: redo2.citations
+  function validChangeJSON(value, mapping) {
+    if (!Array.isArray(value)) return false;
+    if (mapping) return value.length % 2 === 0 && value.every((part, index) => Number.isSafeInteger(part) && part >= (index % 2 ? -1 : 0));
+    return value.every((part) => Number.isSafeInteger(part) && part >= 0 || Array.isArray(part) && part.length > 0 && Number.isSafeInteger(part[0]) && part[0] >= 0 && part.slice(1).every((text) => typeof text === "string"));
+  }
+  function checkedHistory(state) {
+    const value = state.field(historyField);
+    if (!value || !ownKeys(value, ["done", "undone", "prevTime", "prevUserEvent"]) || !Array.isArray(value.done) || !Array.isArray(value.undone) || !Number.isFinite(value.prevTime) || value.prevUserEvent !== void 0 && typeof value.prevUserEvent !== "string") throw historyError();
+    const prototype = Object.getPrototypeOf(value);
+    if (!prototype || prototype.constructor === Object || prototype.constructor.length !== 2 || !["isolate", "addChanges", "addSelection", "addMapping", "pop"].every((key) => typeof prototype[key] === "function")) throw historyError();
+    let eventPrototype;
+    for (const branch of [value.done, value.undone]) for (const event of branch) {
+      const eventProto = Object.getPrototypeOf(event);
+      if (!eventProto || eventProto.constructor === Object || eventProto.constructor.length !== 5 || typeof eventProto.toJSON !== "function" || typeof eventProto.setSelAfter !== "function" || typeof eventProto.constructor.fromJSON !== "function" || eventPrototype && eventProto !== eventPrototype || !ownKeys(event, ["changes", "effects", "mapped", "startSelection", "selectionsAfter"]) || !Array.isArray(event.effects) || !Array.isArray(event.selectionsAfter) || !event.selectionsAfter.every((selection) => selection instanceof EditorSelection) || event.changes !== void 0 && !(event.changes instanceof ChangeSet) || event.mapped !== void 0 && !(event.mapped instanceof ChangeDesc) || event.startSelection !== void 0 && !(event.startSelection instanceof EditorSelection) || !event.changes && (event.effects.length > 0 || event.mapped || event.startSelection) || event.changes && !event.startSelection) throw historyError();
+      if (event.changes && (!validChangeJSON(event.changes.toJSON(), false) || !Number.isSafeInteger(event.changes.length) || !Number.isSafeInteger(event.changes.newLength) || event.changes.length < 0 || event.changes.newLength < 0) || event.mapped && (!validChangeJSON(event.mapped.toJSON(), true) || !Number.isSafeInteger(event.mapped.length) || !Number.isSafeInteger(event.mapped.newLength) || event.mapped.length < 0 || event.mapped.newLength < 0)) throw historyError();
+      eventPrototype = eventProto;
+      const decoded = eventProto.constructor.fromJSON(event.toJSON());
+      if (!jsonEqual(decoded.toJSON(), event.toJSON())) throw historyError();
+    }
+    return value;
+  }
+  function historyJSON(value) {
+    return { done: value.done.map((event) => event.toJSON()), undone: value.undone.map((event) => event.toJSON()) };
+  }
+  function attachInverseEffects(state, effects, citationTable, expectedHistory, grouping) {
+    const original = checkedHistory(state);
+    const branches = {};
+    for (const branch of ["done", "undone"]) {
+      if (!Array.isArray(effects[branch]) || effects[branch].length !== original[branch].length) throw historyError();
+      branches[branch] = original[branch].map((event, index) => {
+        const metadata = effects[branch][index];
+        if (!Array.isArray(metadata)) throw historyError();
+        const restored = [];
+        for (const record of metadata) {
+          if (!record || typeof record !== "object") throw historyError();
+          if (ownKeys(record, ["lineEndings"])) {
+            const run = record.lineEndings;
+            if (!Array.isArray(run) || run.length !== 2 || !Array.isArray(run[0]) || run[0].length === 0 || typeof run[1] !== "string" || !/^[cl]+$/.test(run[1]) || run[1].length !== run[0].length || !event.changes) throw historyError();
+            let at = 0;
+            run[0].forEach((delta, index2) => {
+              if (!Number.isSafeInteger(delta)) throw historyError();
+              at += delta;
+              if (!Number.isSafeInteger(at) || at < 0 || at > event.changes.newLength) throw historyError();
+              restored.push(restoreLineEnding.of({ at, ending: run[1][index2] === "c" ? "\r\n" : "\n" }));
+            });
+          } else if (ownKeys(record, ["citation"])) {
+            const index2 = record.citation;
+            if (!Number.isSafeInteger(index2) || index2 < 0 || index2 >= citationTable.length || !state.field(citationState, false)) throw new Error("Invalid citation history");
+            restored.push(setCitationData.of(citationTable[index2] ?? void 0));
+          } else throw historyError();
+        }
+        const positions = new Set(restored.filter((effect) => effect.is(restoreLineEnding)).map((effect) => effect.value.at));
+        event.changes?.iterChanges((_from, _to, fromB, _toB, inserted) => {
+          let at = fromB;
+          for (let line = 1; line < inserted.lines; line++) {
+            at += inserted.line(line).length;
+            if (!positions.has(at)) throw historyError();
+            at++;
+          }
+        });
+        for (const effect of restored) {
+          if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, event.changes.desc);
+        }
+        const result2 = Reflect.construct(
+          Object.getPrototypeOf(event).constructor,
+          [event.changes, restored, event.mapped, event.startSelection, event.selectionsAfter]
+        );
+        if (!jsonEqual(result2.toJSON(), event.toJSON())) throw historyError();
+        return result2;
       });
-      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
+    }
+    const result = Reflect.construct(
+      Object.getPrototypeOf(original).constructor,
+      [branches.done, branches.undone, grouping.time, grouping.userEvent]
+    );
+    if (result.prevTime !== grouping.time || result.prevUserEvent !== grouping.userEvent || !jsonEqual(historyJSON(result), expectedHistory)) throw historyError();
+    return result;
+  }
+  function validateHistoryBranches(state, history2, source) {
+    const companion = state.field(citationState, false);
+    const detached = EditorState.create({ doc: state.doc, selection: state.selection, extensions: [
+      historyField.init(() => history2),
+      exactSourceHistory,
+      ...companion ? [citationHistory, citationState.init(() => companion)] : [],
+      EditorState.allowMultipleSelections.of(true),
+      EditorState.lineSeparator.of("\n")
+    ] }).update({ effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false) }).state;
+    const stepCount = (events) => events.reduce((count2, event) => count2 + event.selectionsAfter.length + (event.changes ? 1 : 0), 0);
+    for (const [side, command2] of [["done", undoSelection], ["undone", redoSelection]]) {
+      let branch = detached;
+      const maximumSteps = stepCount(history2[side]);
+      if (!Number.isSafeInteger(maximumSteps)) throw historyError();
+      for (let steps = 0; ; steps++) {
+        const before = branch.field(historyField);
+        const remaining = stepCount(before[side]);
+        let dispatched = false;
+        const handled = detachedHistory(() => command2({ state: branch, dispatch: (transaction) => {
+          dispatched = true;
+          if (transaction.effects.some((effect) => effect.is(sourceCapacityExceeded))) throw historyError();
+          const next = transaction.state;
+          const after = next.field(historyField);
+          if (next === branch || after === before || stepCount(after[side]) >= remaining) throw historyError();
+          branch = next;
+        } }));
+        if (!handled) {
+          if (dispatched || remaining !== 0) throw historyError();
+          break;
+        }
+        if (!dispatched || steps >= maximumSteps) throw historyError();
+      }
+    }
+  }
+  function captureExactHistory(state, maximumBytes = MAX_RECOVERY_HISTORY_BYTES) {
+    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > MAX_RECOVERY_HISTORY_BYTES) return void 0;
+    const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    try {
+      const history2 = checkedHistory(state);
+      const citationFields = state.field(citationState, false) ? { citations: citationState } : void 0;
+      const base2 = state.toJSON(citationFields);
+      const grouping = checkedGrouping({ time: history2.prevTime, userEvent: history2.prevUserEvent });
+      let remainingBytes = maximumBytes - jsonBytes(base2) - jsonBytes(grouping);
+      const citationTable = [];
+      const citationIndices = /* @__PURE__ */ new Map();
+      const citationIndex = (companion) => {
+        if (companion !== null && !validCitationData(companion)) throw new Error("Invalid citation history");
+        const serialized2 = JSON.stringify(companion);
+        const existing = citationIndices.get(serialized2);
+        if (existing !== void 0) return existing;
+        remainingBytes -= new TextEncoder().encode(serialized2).byteLength;
+        if (remainingBytes < 0) throw historyError();
+        const index = citationTable.length;
+        citationIndices.set(serialized2, index);
+        citationTable.push(companion);
+        return index;
+      };
+      const effects = {};
+      const encodedHistory = { done: [], undone: [] };
+      for (const branch of ["done", "undone"]) {
+        effects[branch] = [];
+        for (const event of history2[branch]) {
+          const encoded = event.toJSON();
+          remainingBytes -= jsonBytes(encoded);
+          if (remainingBytes < 0) return void 0;
+          encodedHistory[branch].push(encoded);
+          const metadata = [];
+          let positions = [], endings = "", previous = 0;
+          const finishRun = () => {
+            if (positions.length) metadata.push({ lineEndings: [positions, endings] });
+            positions = [];
+            endings = "";
+            previous = 0;
+          };
+          for (const effect of event.effects) {
+            if (effect.is(restoreLineEnding)) {
+              if (!Number.isSafeInteger(effect.value.at) || effect.value.at < 0 || effect.value.ending !== "\n" && effect.value.ending !== "\r\n") throw historyError();
+              positions.push(effect.value.at - previous);
+              previous = effect.value.at;
+              endings += effect.value.ending === "\r\n" ? "c" : "l";
+            } else if (effect.is(setCitationData)) {
+              finishRun();
+              metadata.push({ citation: citationIndex(effect.value ?? null) });
+            } else throw historyError();
+          }
+          finishRun();
+          remainingBytes -= jsonBytes(metadata);
+          if (remainingBytes < 0) return void 0;
+          effects[branch].push(metadata);
+        }
+      }
+      const serializedState = { ...base2, history: encodedHistory };
+      const fields = { history: historyField };
+      if (citationFields) fields.citations = citationState;
+      const decoded = EditorState.fromJSON(serializedState, { extensions: [
+        historyField,
+        citationState,
+        EditorState.allowMultipleSelections.of(true),
+        EditorState.lineSeparator.of("\n")
+      ] }, fields);
+      if (!jsonEqual(decoded.toJSON(fields), serializedState)) throw historyError();
+      const roundtrip = attachInverseEffects(decoded, effects, citationTable, encodedHistory, grouping);
+      for (const branch of ["done", "undone"]) for (let index = 0; index < history2[branch].length; index++) {
+        const original = history2[branch][index].effects, restored = roundtrip[branch][index].effects;
+        if (original.length !== restored.length || original.some((effect, index2) => {
+          const other = restored[index2];
+          return effect.is(restoreLineEnding) ? !other.is(restoreLineEnding) || !jsonEqual(effect.value, other.value) : !effect.is(setCitationData) || !other.is(setCitationData) || !jsonEqual(effect.value, other.value);
+        })) throw historyError();
+      }
+      validateHistoryBranches(state, roundtrip, state.field(exactSourceState).text);
+      const serialized = JSON.stringify({ state: serializedState, effects, citationTable, grouping });
+      return new TextEncoder().encode(serialized).byteLength <= maximumBytes ? serialized : void 0;
     } catch {
       return void 0;
     }
   }
   function restoreExactHistory(serialized, source, extensions) {
     if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+    if (new TextEncoder().encode(serialized).byteLength > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
     const payload = JSON.parse(serialized);
-    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
-    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
-      throw new Error("Invalid history line endings");
-    }
-    const validCitations = (value, count2) => Array.isArray(value) && value.length === count2 && value.every((snapshot) => snapshot === null || validCitationData(snapshot));
-    if (!validCitations(payload.undoCitations, payload.undoLineEndings.length) || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
-    let state = EditorState.fromJSON(payload.state, { extensions }, payload.state.citations ? { history: historyField, citations: citationState } : { history: historyField });
-    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
-      throw new Error("History does not match the recovered source");
-    }
-    const recovery = new Compartment();
-    let targetEndings;
-    let targetCitation;
-    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 && targetCitation === void 0 ? null : {
-        effects: [
-          ...targetEndings === void 0 ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))],
-          ...targetCitation === void 0 || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation) ? [] : [setCitationData.of(targetCitation ?? void 0)]
-        ]
-      })
-    ))], annotations: Transaction.addToHistory.of(false) }).state;
-    function replay(command2, endings, citation) {
-      targetEndings = endings ?? void 0;
-      targetCitation = citation;
-      try {
-        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
-          state = transaction.state;
-        } }))) throw new Error("History could not be restored");
-      } finally {
-        targetEndings = void 0;
-        targetCitation = void 0;
-      }
-    }
-    payload.redoLineEndings.forEach((endings, index) => replay(redoSelection, endings, payload.redoCitations[index]));
-    for (const _ of payload.redoLineEndings) replay(undoSelection);
-    payload.undoLineEndings.forEach((endings, index) => replay(undoSelection, endings, payload.undoCitations[index]));
-    for (const _ of payload.undoLineEndings) replay(redoSelection);
-    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
-    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+    if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"]) || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"]) || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
+    if (!Array.isArray(payload.citationTable) || !payload.citationTable.every((snapshot) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
+    const grouping = checkedGrouping(payload.grouping);
+    const fields = { history: historyField };
+    if (payload.state.citations) fields.citations = citationState;
+    const original = EditorState.fromJSON(payload.state, { extensions }, fields);
+    if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
+    if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
+    const history2 = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
+    const state = EditorState.fromJSON(
+      payload.state,
+      { extensions: [historyField.init(() => history2), extensions] },
+      payload.state.citations ? { citations: citationState } : void 0
+    ).update({ effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false) }).state;
+    checkedHistory(state);
+    if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
+    validateHistoryBranches(state, history2, source);
     return state;
   }
 
@@ -33243,7 +33359,7 @@ ${blankRow(table.position.columnCount)}`;
     }
     return { from: range.from, to };
   }
-  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
+  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, syntaxComplete, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
     const doc2 = state.doc;
     if (syntax.inlines.some((inline) => inline.kind === "citation")) {
       const catalog = projectFieldsForState(state);
@@ -33264,7 +33380,7 @@ ${blankRow(table.position.columnCount)}`;
       footnotes.references.map(({ from, to }) => ({ from, to }))
     );
     const immutableCommandProtectedRanges = commandProtectionRanges(
-      immutableExcluded,
+      syntaxComplete ? immutableExcluded : [...immutableExcluded, { from: 0, to: doc2.length }],
       immutableFrontmatter ?? void 0
     );
     const immutableStructuralRanges = immutableProjectionRanges([
@@ -33281,6 +33397,7 @@ ${blankRow(table.position.columnCount)}`;
       get zoteroFields() {
         return projectFieldsForState(state);
       },
+      syntaxComplete,
       topologyIdentity,
       syntax,
       quoteRanges: immutableQuoteRanges,
@@ -33360,7 +33477,8 @@ ${blankRow(table.position.columnCount)}`;
   }
   function buildLiveProjectionIndex(state, dialect, recordMetric) {
     const startedAt = performance.now();
-    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+    const completeTree = ensureSyntaxTree(state, state.doc.length);
+    const tree = completeTree ?? syntaxTree(state);
     const syntax = semanticProjectionRanges(
       state,
       [{ from: 0, to: state.doc.length }],
@@ -33426,6 +33544,7 @@ ${blankRow(table.position.columnCount)}`;
       state,
       Object.freeze({}),
       syntax,
+      completeTree !== null,
       excluded,
       codeBlocks,
       inlineRanges,
@@ -33504,7 +33623,7 @@ ${blankRow(table.position.columnCount)}`;
     const listPrefixRanges = index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) }));
     const taskItemRanges = index.taskItemRanges.map((range) => ({
       from: map(range.from),
-      to: map(range.to),
+      to: map(range.to, 1),
       markerFrom: map(range.markerFrom),
       markerTo: map(range.markerTo)
     }));
@@ -33515,6 +33634,7 @@ ${blankRow(table.position.columnCount)}`;
       transaction.state,
       index.topologyIdentity,
       syntax,
+      index.syntaxComplete,
       excluded,
       codeBlocks,
       inlineRanges,
@@ -33554,21 +33674,16 @@ ${blankRow(table.position.columnCount)}`;
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         const topologyStartedAt = performance.now();
-        let localProof = false;
-        let mapped = previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker);
-        if (!mapped) {
-          localProof = true;
-          mapped = transactionCanMapProjectionTopology(
-            transaction,
-            structuralMarker,
-            previous.mutationSensitiveRanges,
-            previous.syntax
-          );
-        }
+        const mapped = previous.syntaxComplete && transactionCanMapProjectionTopology(
+          transaction,
+          structuralMarker,
+          previous.mutationSensitiveRanges,
+          previous.syntax
+        );
         options.recordMetric("projection-topology-proof", topologyStartedAt, {
           documentLength: transaction.newDoc.length,
           mapped: mapped ? 1 : 0,
-          localProof: localProof ? 1 : 0,
+          localProof: previous.syntaxComplete ? 1 : 0,
           blockCount: previous.syntax.blocks.length,
           inlineCount: previous.syntax.inlines.length
         });
@@ -43495,6 +43610,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       citationSnapshot: editor.state.field(citationState)?.baseline,
       citationData: editor.state.field(citationState)?.data,
       undoHistoryPreserved: stateJSON !== void 0,
+      undoLabel: lastUndoLabel,
+      redoLabel: lastRedoLabel,
       dirty,
       focusTarget: lastDocumentFocusTarget
     };
@@ -43759,6 +43876,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         citationInsertionRevision++;
         editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
         const recovery = captureRecovery();
+        if (!recovery.undoHistoryPreserved) {
+          editor.dispatch({ effects: setEditorSuspension.of(null) });
+          return rejected2(request.requestID, documentVersion, localized("The editor history could not be retained. Keep this document open and try again."));
+        }
         return { ...successfulResult(request.requestID), text: recovery.source, recovery };
       }
       case "resumeAfterDetachment": {
@@ -43775,7 +43896,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
         let restoredHistory = false;
         let recoveredState = null;
-        if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
+        if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_RECOVERY_HISTORY_BYTES) {
           try {
             const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
             const citations = restored.field(citationState);
@@ -43807,11 +43928,18 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         }
         const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
+        lastUndoLabel = restoredHistory ? snapshot.undoLabel : void 0;
+        lastRedoLabel = restoredHistory ? snapshot.redoLabel : void 0;
         lastDocumentFocusTarget = snapshot.focusTarget;
         editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
-        return { ...successfulResult(request.requestID), recovery: { ...snapshot, undoHistoryPreserved: restoredHistory } };
+        return { ...successfulResult(request.requestID), recovery: {
+          ...snapshot,
+          undoHistoryPreserved: restoredHistory,
+          undoLabel: lastUndoLabel,
+          redoLabel: lastRedoLabel
+        } };
       }
       case "acknowledgeCommittedSnapshot": {
         if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {

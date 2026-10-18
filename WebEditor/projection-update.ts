@@ -1,9 +1,9 @@
 import type {Text, Transaction} from "@codemirror/state";
-import {syntaxTree} from "@codemirror/language";
+import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
 import {
   boundedProjectionRanges,
+  mapSemanticBlockProjection,
   semanticProjectionRanges,
-  type SemanticBlockProjection,
   type SemanticInlineProjection,
   type SemanticProjectionRanges,
   type SemanticSourceRange,
@@ -192,43 +192,6 @@ export function frontmatterPresentationNeedsRebuild(
   return signature !== previousSignature;
 }
 
-function changedContextContainsMarker(
-  transaction: Transaction,
-  from: number,
-  to: number,
-  marker: RegExp,
-) {
-  const doc = transaction.state.doc;
-  const boundedFrom = Math.max(0, Math.min(from, doc.length));
-  const boundedTo = Math.max(boundedFrom, Math.min(to, doc.length));
-  const firstLine = doc.lineAt(boundedFrom);
-  const lastLine = doc.lineAt(boundedTo);
-  const contextFrom = Math.max(firstLine.from, boundedFrom - 256);
-  const contextTo = Math.min(lastLine.to, boundedTo + 256);
-  marker.lastIndex = 0;
-  return marker.test(doc.sliceString(contextFrom, contextTo));
-}
-
-/**
- * Conservative fast-path guard for a projection whose current index is known
- * to contain no constructs. Deletions can join latent marker fragments and a
- * large insertion must not be truncated, so both require a full rebuild.
- */
-export function transactionMayCreateProjection(transaction: Transaction, marker: RegExp) {
-  let mayCreate = false;
-  transaction.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
-    if (mayCreate) return;
-    if (toA > fromA || inserted.length > 8_192) {
-      mayCreate = true;
-      return;
-    }
-    marker.lastIndex = 0;
-    mayCreate = marker.test(inserted.toString())
-      || changedContextContainsMarker(transaction, fromB, toB, marker);
-  });
-  return mayCreate;
-}
-
 function rangesOverlap(left: ProjectionSourceRange, right: ProjectionSourceRange) {
   return left.from < right.to && left.to > right.from;
 }
@@ -249,27 +212,6 @@ function mappedRange(
   return {
     from: transaction.changes.mapPos(range.from),
     to: transaction.changes.mapPos(range.to),
-  };
-}
-
-function mappedBlock(
-  block: SemanticBlockProjection,
-  transaction: Transaction,
-): SemanticBlockProjection {
-  return {
-    ...block,
-    from: transaction.changes.mapPos(block.from),
-    // Plain input at the paragraph's end belongs to that paragraph. Other
-    // block ends retain the conservative boundary used by the topology proof.
-    to: transaction.changes.mapPos(block.to, block.kind === "paragraph" ? 1 : -1),
-    parent: block.parent ? {
-      kind: block.parent.kind,
-      ...mappedRange(block.parent, transaction),
-    } : null,
-    markerRanges: block.markerRanges.map((range) => mappedRange(range, transaction)),
-    taskMarkerRange: block.taskMarkerRange
-      ? mappedRange(block.taskMarkerRange, transaction)
-      : null,
   };
 }
 
@@ -359,11 +301,16 @@ export function transactionCanMapProjectionTopology(
 
   const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
   const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+  // Use the parser's ready context, which can be ahead of the published
+  // LanguageState tree. A missing neighborhood cannot prove unchanged syntax.
+  const tree = ensureSyntaxTree(transaction.state, newNeighborhood.to, 0);
+  if (!tree) return false;
   const previousLocal: SemanticProjectionRanges = {
     ...previousSyntax,
     blocks: previousSyntax.blocks
       .filter((block) => rangesOverlap(block, oldNeighborhood))
-      .map((block) => mappedBlock(block, transaction)),
+      .map((block) => mapSemanticBlockProjection(block,
+        (position, association = -1) => transaction.changes.mapPos(position, association))),
     inlines: previousSyntax.inlines
       .filter((inline) => rangesOverlap(inline, oldNeighborhood))
       .map((inline) => mappedInline(inline, transaction)),
@@ -375,6 +322,7 @@ export function transactionCanMapProjectionTopology(
     transaction.state,
     [newNeighborhood],
     0,
+    tree,
   );
   return projectionTopologySignature(previousLocal)
     === projectionTopologySignature(nextLocal);

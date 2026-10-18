@@ -1,10 +1,10 @@
-import {ChangeSet, Compartment, EditorState, StateEffect, StateField, Transaction, type ChangeDesc, type Extension} from "@codemirror/state";
-import {historyField, invertedEffects, redo, redoDepth, redoSelection, undo, undoDepth, undoSelection} from "@codemirror/commands";
+import {ChangeDesc, ChangeSet, EditorSelection, EditorState, StateEffect, StateField, Transaction, type Extension} from "@codemirror/state";
+import {historyField, invertedEffects, redo, redoSelection, undo, undoSelection} from "@codemirror/commands";
 import {ExactSourceMirror, normalizedDocumentText, type NormalizedSourceChange} from "./state";
-import {MAX_INBOUND_BYTES} from "./protocol";
+import {MAX_RECOVERY_HISTORY_BYTES} from "./protocol";
 import {MAX_SOURCE_UTF8_BYTES, exactSourceFits, sourceCapacityMessage} from "./source-capacity";
 export {exactSourceFits, sourceCapacityMessage} from "./source-capacity";
-import {citationState, setCitationData, validCitationData, type ZoteroCitationData} from "./zotero-citation-state";
+import {citationHistory, citationState, setCitationData, validCitationData, type ZoteroCitationData} from "./zotero-citation-state";
 import {recordEditorMetric} from "./performance";
 
 /** Exact bytes are part of the retained editor state, alongside its history. */
@@ -165,119 +165,305 @@ export function exactSourceFitsChanges(state: EditorState, changes: readonly Nor
     && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
 }
 
-function lineEndings(source: string) {
-  return Array.from(source.matchAll(/\r?\n/g), match => match[0] === "\r\n" ? "c" : "l").join("");
+/** The only private CodeMirror boundary in recovery. Verified against pinned
+ * @codemirror/commands 6.10.4 and @codemirror/state 6.7.1. CodeMirror's JSON
+ * preserves its complete history except inverse effects. Replaying commands to
+ * restore those effects changes selection trails and lazy mappings, so retain
+ * the original events and attach only our explicitly supported effects.
+ * Every constructor, shape, codec and complete JSON roundtrip is checked before
+ * a live state may be detached. Dependency upgrades must revalidate this adapter.
+ */
+interface HistoryEvent {
+  changes?: ChangeSet;
+  effects: readonly StateEffect<unknown>[];
+  mapped?: ChangeDesc;
+  startSelection?: EditorSelection;
+  selectionsAfter: readonly EditorSelection[];
+  toJSON(): unknown;
 }
-
-function sourceWithEndings(source: string, endings: string) {
-  let index = 0;
-  const exact = source.replace(/\n/g, () => {
-    const ending = endings[index++];
-    if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
-    return ending === "c" ? "\r\n" : "\n";
-  });
-  if (index !== endings.length) throw new Error("Invalid history line ending count");
-  return exact;
+interface HistoryValue {
+  done: readonly HistoryEvent[];
+  undone: readonly HistoryEvent[];
+  prevTime: number;
+  prevUserEvent?: string;
 }
-
-const maximumRecoveryEvents = 512;
-
-/** CodeMirror omits custom effects from its JSON. Capture exact separators and
- * semantic citation data through public Undo/Redo on detached immutable states.
- * The current disk baseline is serialized once and never traverses history. */
-export function captureExactHistory(state: EditorState): string | undefined {
-  let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
-  const capture = (command: typeof undo) => {
-    let detached = state;
-    const endings: (string | null)[] = [];
-    const citations: (ZoteroCitationData | null)[] = [];
-    for (let index = 0; ; index++) {
-      let changed = false;
-      if (!detachedHistory(() => command({state: detached, dispatch: transaction => {
-        changed = transaction.docChanged || transaction.effects.some(effect => effect.is(setCitationData));
-        // Inverse insertions are the source material serialized by history.
-        // Bound it before constructing CodeMirror's full JSON object.
-        transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
-          remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
-        });
-        if (remainingBytes < 0) throw new Error("History is too large");
-        detached = transaction.state;
-      }}))) break;
-      if (index >= maximumRecoveryEvents) throw new Error("History is too large");
-      const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
-      remainingBytes -= value?.length ?? 0;
-      if (remainingBytes < 0) throw new Error("History is too large");
-      endings.push(value);
-      const companion = detached.field(citationState, false)?.data ?? null;
-      remainingBytes -= new TextEncoder().encode(JSON.stringify(companion)).byteLength;
-      if (remainingBytes < 0) throw new Error("History is too large");
-      citations.push(companion);
-    }
-    return {endings, citations};
-  };
-  try {
-    if (remainingBytes < 0) return undefined;
-    const undo = capture(undoSelection);
-    const redo = capture(redoSelection);
-    const serialized = JSON.stringify({
-      state: state.toJSON(state.field(citationState, false) ? {history: historyField, citations: citationState} : {history: historyField}),
-      undoLineEndings: undo.endings,
-      redoLineEndings: redo.endings,
-      undoCitations: undo.citations,
-      redoCitations: redo.citations,
+interface HistoryGrouping {time: number; userEvent?: string}
+type HistoryBranch = "done" | "undone";
+type InverseEffects = ({lineEndings: [number[], string]} | {citation: number})[];
+const historyError = () => new Error("Incompatible exact history metadata");
+const ownKeys = (value: object, keys: readonly string[]) => {
+  const actual = Object.keys(value).sort(), expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+};
+function checkedGrouping(value: unknown): HistoryGrouping {
+  if (!value || typeof value !== "object"
+      || !ownKeys(value, ["time"]) && !ownKeys(value, ["time", "userEvent"])) throw historyError();
+  const grouping = value as HistoryGrouping;
+  if (!Number.isFinite(grouping.time) || grouping.userEvent !== undefined && typeof grouping.userEvent !== "string") throw historyError();
+  return grouping;
+}
+function jsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length && left.every((item, index) => jsonEqual(item, right[index]));
+  const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+  const keys = Object.keys(a).filter(key => a[key] !== undefined);
+  return keys.length === Object.keys(b).filter(key => b[key] !== undefined).length
+    && keys.every(key => Object.hasOwn(b, key) && jsonEqual(a[key], b[key]));
+}
+function validChangeJSON(value: unknown, mapping: boolean) {
+  if (!Array.isArray(value)) return false;
+  if (mapping) return value.length % 2 === 0 && value.every((part, index) => Number.isSafeInteger(part)
+    && part >= (index % 2 ? -1 : 0));
+  return value.every(part => Number.isSafeInteger(part) && part >= 0
+    || Array.isArray(part) && part.length > 0 && Number.isSafeInteger(part[0]) && part[0] >= 0
+      && part.slice(1).every(text => typeof text === "string"));
+}
+function checkedHistory(state: EditorState): HistoryValue {
+  const value = state.field(historyField) as HistoryValue;
+  if (!value || !ownKeys(value, ["done", "undone", "prevTime", "prevUserEvent"])
+      || !Array.isArray(value.done) || !Array.isArray(value.undone)
+      || !Number.isFinite(value.prevTime) || value.prevUserEvent !== undefined && typeof value.prevUserEvent !== "string") throw historyError();
+  const prototype = Object.getPrototypeOf(value);
+  if (!prototype || prototype.constructor === Object || prototype.constructor.length !== 2
+      || !["isolate", "addChanges", "addSelection", "addMapping", "pop"].every(key => typeof prototype[key] === "function")) throw historyError();
+  let eventPrototype: object | undefined;
+  for (const branch of [value.done, value.undone]) for (const event of branch) {
+    const eventProto = Object.getPrototypeOf(event);
+    if (!eventProto || eventProto.constructor === Object || eventProto.constructor.length !== 5
+        || typeof eventProto.toJSON !== "function" || typeof eventProto.setSelAfter !== "function"
+        || typeof eventProto.constructor.fromJSON !== "function"
+        || eventPrototype && eventProto !== eventPrototype
+        || !ownKeys(event, ["changes", "effects", "mapped", "startSelection", "selectionsAfter"])
+        || !Array.isArray(event.effects) || !Array.isArray(event.selectionsAfter)
+        || !event.selectionsAfter.every((selection: unknown) => selection instanceof EditorSelection)
+        || event.changes !== undefined && !(event.changes instanceof ChangeSet)
+        || event.mapped !== undefined && !(event.mapped instanceof ChangeDesc)
+        || event.startSelection !== undefined && !(event.startSelection instanceof EditorSelection)
+        || !event.changes && (event.effects.length > 0 || event.mapped || event.startSelection)
+        || event.changes && !event.startSelection) throw historyError();
+    if (event.changes && (!validChangeJSON(event.changes.toJSON(), false)
+        || !Number.isSafeInteger(event.changes.length) || !Number.isSafeInteger(event.changes.newLength)
+        || event.changes.length < 0 || event.changes.newLength < 0)
+        || event.mapped && (!validChangeJSON(event.mapped.toJSON(), true)
+          || !Number.isSafeInteger(event.mapped.length) || !Number.isSafeInteger(event.mapped.newLength)
+          || event.mapped.length < 0 || event.mapped.newLength < 0)) throw historyError();
+    eventPrototype = eventProto;
+    const decoded = eventProto.constructor.fromJSON(event.toJSON()) as HistoryEvent;
+    if (!jsonEqual(decoded.toJSON(), event.toJSON())) throw historyError();
+  }
+  return value;
+}
+function historyJSON(value: HistoryValue) {
+  return {done: value.done.map(event => event.toJSON()), undone: value.undone.map(event => event.toJSON())};
+}
+function attachInverseEffects(state: EditorState, effects: Record<HistoryBranch, InverseEffects[]>,
+    citationTable: readonly (ZoteroCitationData | null)[], expectedHistory: unknown, grouping: HistoryGrouping) {
+  const original = checkedHistory(state);
+  const branches = {} as Record<HistoryBranch, HistoryEvent[]>;
+  for (const branch of ["done", "undone"] as const) {
+    if (!Array.isArray(effects[branch]) || effects[branch].length !== original[branch].length) throw historyError();
+    branches[branch] = original[branch].map((event, index) => {
+      const metadata = effects[branch][index];
+      if (!Array.isArray(metadata)) throw historyError();
+      const restored: StateEffect<unknown>[] = [];
+      for (const record of metadata) {
+        if (!record || typeof record !== "object") throw historyError();
+        if (ownKeys(record, ["lineEndings"])) {
+          const run = (record as {lineEndings: unknown}).lineEndings;
+          if (!Array.isArray(run) || run.length !== 2 || !Array.isArray(run[0]) || run[0].length === 0
+              || typeof run[1] !== "string" || !/^[cl]+$/.test(run[1]) || run[1].length !== run[0].length || !event.changes) throw historyError();
+          let at = 0;
+          run[0].forEach((delta, index) => {
+            if (!Number.isSafeInteger(delta)) throw historyError();
+            at += delta;
+            if (!Number.isSafeInteger(at) || at < 0 || at > event.changes!.newLength) throw historyError();
+            restored.push(restoreLineEnding.of({at, ending: run[1][index] === "c" ? "\r\n" : "\n"}));
+          });
+        } else if (ownKeys(record, ["citation"])) {
+          const index = (record as {citation: number}).citation;
+          if (!Number.isSafeInteger(index) || index < 0 || index >= citationTable.length
+              || !state.field(citationState, false)) throw new Error("Invalid citation history");
+          restored.push(setCitationData.of(citationTable[index] ?? undefined));
+        } else throw historyError();
+      }
+      // Every newline inserted by this inverse must carry explicit fidelity
+      // metadata. Lazy mappings may leave additional effects at collapsed ranges.
+      const positions = new Set(restored.filter(effect => effect.is(restoreLineEnding)).map(effect => effect.value.at));
+      event.changes?.iterChanges((_from, _to, fromB, _toB, inserted) => {
+        let at = fromB;
+        for (let line = 1; line < inserted.lines; line++) {
+          at += inserted.line(line).length;
+          if (!positions.has(at)) throw historyError();
+          at++;
+        }
+      });
+      for (const effect of restored) {
+        if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, event.changes!.desc);
+      }
+      const result = Reflect.construct(Object.getPrototypeOf(event).constructor,
+        [event.changes, restored, event.mapped, event.startSelection, event.selectionsAfter]) as HistoryEvent;
+      if (!jsonEqual(result.toJSON(), event.toJSON())) throw historyError();
+      return result;
     });
-    return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : undefined;
+  }
+  const result = Reflect.construct(Object.getPrototypeOf(original).constructor,
+    [branches.done, branches.undone, grouping.time, grouping.userEvent]) as HistoryValue;
+  if (result.prevTime !== grouping.time || result.prevUserEvent !== grouping.userEvent
+      || !jsonEqual(historyJSON(result), expectedHistory)) throw historyError();
+  return result;
+}
+
+/** Shape validation cannot establish a historical selection's document size
+ * or the dimensions of a lazy mapping chain. Execute both branches through
+ * public commands on independent detached states, without writing the resulting
+ * normalized events back into the original history. Only fidelity/history
+ * extensions participate; view presentation and application callbacks do not.
+ */
+function validateHistoryBranches(state: EditorState, history: HistoryValue, source: string) {
+  const companion = state.field(citationState, false);
+  const detached = EditorState.create({doc: state.doc, selection: state.selection, extensions: [
+    historyField.init(() => history), exactSourceHistory,
+    ...(companion ? [citationHistory, citationState.init(() => companion)] : []),
+    EditorState.allowMultipleSelections.of(true), EditorState.lineSeparator.of("\n"),
+  ]}).update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+  const stepCount = (events: readonly HistoryEvent[]) => events.reduce((count, event) =>
+    count + event.selectionsAfter.length + (event.changes ? 1 : 0), 0);
+  for (const [side, command] of [["done", undoSelection], ["undone", redoSelection]] as const) {
+    let branch = detached;
+    const maximumSteps = stepCount(history[side]);
+    if (!Number.isSafeInteger(maximumSteps)) throw historyError();
+    for (let steps = 0; ; steps++) {
+      const before = branch.field(historyField) as HistoryValue;
+      const remaining = stepCount(before[side]);
+      let dispatched = false;
+      const handled = detachedHistory(() => command({state: branch, dispatch: transaction => {
+        dispatched = true;
+        if (transaction.effects.some(effect => effect.is(sourceCapacityExceeded))) throw historyError();
+        const next = transaction.state;
+        const after = next.field(historyField) as HistoryValue;
+        if (next === branch || after === before || stepCount(after[side]) >= remaining) throw historyError();
+        branch = next;
+      }}));
+      if (!handled) {
+        if (dispatched || remaining !== 0) throw historyError();
+        break;
+      }
+      // The limit follows the actual retained event/selection count. Refusal or
+      // a command that stops consuming history cannot make validation hang.
+      if (!dispatched || steps >= maximumSteps) throw historyError();
+    }
+  }
+}
+
+/** Retain CodeMirror's original JSON and only the effects it omits. Budget each
+ * event before building the complete payload; selection trails count as bytes,
+ * without an unrelated step limit. No live state is mutated during validation. */
+export function captureExactHistory(state: EditorState, maximumBytes = MAX_RECOVERY_HISTORY_BYTES): string | undefined {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > MAX_RECOVERY_HISTORY_BYTES) return undefined;
+  const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  try {
+    const history = checkedHistory(state);
+    const citationFields = state.field(citationState, false) ? {citations: citationState} : undefined;
+    const base = state.toJSON(citationFields);
+    // These two scalars control typing/selection grouping but are omitted by
+    // CodeMirror's JSON codec. Retain them alongside the inverse effects.
+    const grouping = checkedGrouping({time: history.prevTime, userEvent: history.prevUserEvent});
+    let remainingBytes = maximumBytes - jsonBytes(base) - jsonBytes(grouping);
+    const citationTable: (ZoteroCitationData | null)[] = [];
+    const citationIndices = new Map<string, number>();
+    const citationIndex = (companion: ZoteroCitationData | null) => {
+      if (companion !== null && !validCitationData(companion)) throw new Error("Invalid citation history");
+      const serialized = JSON.stringify(companion);
+      const existing = citationIndices.get(serialized);
+      if (existing !== undefined) return existing;
+      remainingBytes -= new TextEncoder().encode(serialized).byteLength;
+      if (remainingBytes < 0) throw historyError();
+      const index = citationTable.length;
+      citationIndices.set(serialized, index);
+      citationTable.push(companion);
+      return index;
+    };
+    const effects = {} as Record<HistoryBranch, InverseEffects[]>;
+    const encodedHistory = {done: [] as unknown[], undone: [] as unknown[]};
+    for (const branch of ["done", "undone"] as const) {
+      effects[branch] = [];
+      for (const event of history[branch]) {
+        const encoded = event.toJSON();
+        remainingBytes -= jsonBytes(encoded);
+        if (remainingBytes < 0) return undefined;
+        encodedHistory[branch].push(encoded);
+        const metadata: InverseEffects = [];
+        let positions: number[] = [], endings = "", previous = 0;
+        const finishRun = () => {
+          if (positions.length) metadata.push({lineEndings: [positions, endings]});
+          positions = []; endings = ""; previous = 0;
+        };
+        for (const effect of event.effects) {
+          if (effect.is(restoreLineEnding)) {
+            if (!Number.isSafeInteger(effect.value.at) || effect.value.at < 0
+                || effect.value.ending !== "\n" && effect.value.ending !== "\r\n") throw historyError();
+            positions.push(effect.value.at - previous);
+            previous = effect.value.at;
+            endings += effect.value.ending === "\r\n" ? "c" : "l";
+          } else if (effect.is(setCitationData)) {
+            finishRun();
+            metadata.push({citation: citationIndex(effect.value ?? null)});
+          } else throw historyError();
+        }
+        finishRun();
+        remainingBytes -= jsonBytes(metadata);
+        if (remainingBytes < 0) return undefined;
+        effects[branch].push(metadata);
+      }
+    }
+    // This proof also runs before ordinary suspension, while the actual editor
+    // still owns its complete history. Runtime codec drift refuses departure.
+    const serializedState = {...base, history: encodedHistory};
+    const fields: Record<string, typeof historyField | typeof citationState> = {history: historyField};
+    if (citationFields) fields.citations = citationState;
+    const decoded = EditorState.fromJSON(serializedState, {extensions: [historyField, citationState,
+      EditorState.allowMultipleSelections.of(true), EditorState.lineSeparator.of("\n")]}, fields);
+    if (!jsonEqual(decoded.toJSON(fields), serializedState)) throw historyError();
+    const roundtrip = attachInverseEffects(decoded, effects, citationTable, encodedHistory, grouping);
+    for (const branch of ["done", "undone"] as const) for (let index = 0; index < history[branch].length; index++) {
+      const original = history[branch][index].effects, restored = roundtrip[branch][index].effects;
+      if (original.length !== restored.length || original.some((effect, index) => {
+        const other = restored[index];
+        return effect.is(restoreLineEnding) ? !other.is(restoreLineEnding) || !jsonEqual(effect.value, other.value)
+          : !effect.is(setCitationData) || !other.is(setCitationData) || !jsonEqual(effect.value, other.value);
+      })) throw historyError();
+    }
+    validateHistoryBranches(state, roundtrip, state.field(exactSourceState).text);
+    const serialized = JSON.stringify({state: serializedState, effects, citationTable, grouping});
+    return new TextEncoder().encode(serialized).byteLength <= maximumBytes ? serialized : undefined;
   } catch { return undefined; }
 }
 
-/** Rebuild both branches using public history transactions, keeping their
- * original grouping. The temporary extender exists only during restoration. */
 export function restoreExactHistory(serialized: string, source: string, extensions: Extension): EditorState {
   if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-  if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+  if (new TextEncoder().encode(serialized).byteLength > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
   const payload = JSON.parse(serialized);
-  const validEndings = (value: unknown): value is (string | null)[] => Array.isArray(value)
-    && value.length <= maximumRecoveryEvents && value.every(item => item === null || typeof item === "string" && /^[cl]*$/.test(item));
-  if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
-    throw new Error("Invalid history line endings");
-  }
-  const validCitations = (value: unknown, count: number): value is (ZoteroCitationData | null)[] => Array.isArray(value)
-    && value.length === count && value.every(snapshot => snapshot === null || validCitationData(snapshot));
-  if (!validCitations(payload.undoCitations, payload.undoLineEndings.length)
-      || !validCitations(payload.redoCitations, payload.redoLineEndings.length)) throw new Error("Invalid citation history");
-  let state = EditorState.fromJSON(payload.state, {extensions}, payload.state.citations
-    ? {history: historyField, citations: citationState} : {history: historyField});
-  if (state.doc.toString() !== normalizedDocumentText(source)
-      || undoDepth(state) !== payload.undoLineEndings.filter((value: string | null) => value !== null).length
-      || redoDepth(state) !== payload.redoLineEndings.filter((value: string | null) => value !== null).length) {
-    throw new Error("History does not match the recovered source");
-  }
-  const recovery = new Compartment();
-  let targetEndings: string | undefined;
-  let targetCitation: ZoteroCitationData | null | undefined;
-  state = state.update({effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-    EditorState.transactionExtender.of(transaction => targetEndings === undefined && targetCitation === undefined ? null : {
-      effects: [
-        ...(targetEndings === undefined ? [] : [setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))]),
-        ...(targetCitation === undefined || JSON.stringify(transaction.startState.field(citationState, false)?.data ?? null) === JSON.stringify(targetCitation)
-          ? [] : [setCitationData.of(targetCitation ?? undefined)]),
-      ],
-    }),
-  ))], annotations: Transaction.addToHistory.of(false)}).state;
-  function replay(command: typeof undo, endings?: string | null, citation?: ZoteroCitationData | null) {
-    targetEndings = endings ?? undefined;
-    targetCitation = citation;
-    try {
-      if (!detachedHistory(() => command({state, dispatch: transaction => { state = transaction.state; }}))) throw new Error("History could not be restored");
-    } finally { targetEndings = undefined; targetCitation = undefined; }
-  }
-  // Redo creates exact inverses for the existing undone branch; undo it back
-  // before rebuilding the done branch in the same way.
-  payload.redoLineEndings.forEach((endings: string | null, index: number) => replay(redoSelection, endings, payload.redoCitations[index]));
-  for (const _ of payload.redoLineEndings) replay(undoSelection);
-  payload.undoLineEndings.forEach((endings: string | null, index: number) => replay(undoSelection, endings, payload.undoCitations[index]));
-  for (const _ of payload.undoLineEndings) replay(redoSelection);
-  state = state.update({effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false)}).state;
-  if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+  if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"])
+      || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"])
+      || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
+  if (!Array.isArray(payload.citationTable)
+      || !payload.citationTable.every((snapshot: unknown) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
+  const grouping = checkedGrouping(payload.grouping);
+  const fields: Record<string, typeof historyField | typeof citationState> = {history: historyField};
+  if (payload.state.citations) fields.citations = citationState;
+  const original = EditorState.fromJSON(payload.state, {extensions}, fields);
+  if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
+  if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
+  const history = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
+  // Public field initialization installs the validated CodeMirror value. No
+  // additional field becomes a second owner of text, selections or history.
+  const state = EditorState.fromJSON(payload.state, {extensions: [historyField.init(() => history), extensions]},
+    payload.state.citations ? {citations: citationState} : undefined)
+    .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+  checkedHistory(state);
+  if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
+  validateHistoryBranches(state, history, source);
   return state;
 }

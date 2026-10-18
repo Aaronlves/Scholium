@@ -55,7 +55,7 @@ struct MarkdownEditorCitationStateTests {
                 expectedCitationData: updated.data, committedCitationSnapshot: updated
             ),
         ]
-        #expect(markdownEditorProtocolVersion == 51)
+        #expect(markdownEditorProtocolVersion == 52)
         for operation in operations {
             let encoded = try JSONEncoder().encode(operation)
             #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)
@@ -78,6 +78,7 @@ struct MarkdownEditorCitationStateTests {
             documentID: "synthetic-citation-note", fingerprint: DocumentFingerprint(content: source).sha256,
             generation: 2, ranges: [.init(anchor: 0, head: 0)], source: restoredSource,
             stateJSON: nil, undoHistoryPreserved: false, dirty: true, focusTarget: .editor,
+            undoLabel: "Undo Paste", redoLabel: "Redo Paste",
             citationSnapshot: latestBaseline, citationData: nil
         )
         let restored = try JSONDecoder().decode(

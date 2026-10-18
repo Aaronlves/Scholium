@@ -1,6 +1,6 @@
-export const EDITOR_PROTOCOL_VERSION = 51;
+export const EDITOR_PROTOCOL_VERSION = 52;
 export const MAX_INBOUND_BYTES = 2_500_000;
-import {validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
+import {maximumCitationDataBytes, validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
 import {validZoteroCallback, type ZoteroCallback, type ZoteroCallbackReply, type ZoteroTransactionCommand} from "./zotero-transaction";
 import type {EditorCitationSuggestionIntent} from "./input-suggestions";
@@ -8,6 +8,14 @@ import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
 export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
 // Two exact source fields, each with worst-case JSON escaping, plus metadata.
 export const MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512_000;
+// History owns one current document plus a source-sized inverse, each allowing
+// six JSON bytes per source byte. It does not share the small message budget.
+export const MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
+export const MAX_RECOVERY_ACTION_LABEL_BYTES = 1_024;
+// stateJSON is already JSON: encoding it as a string can double its bytes.
+// Recovery responses also carry two source fields and up to three companions.
+export const MAX_RECOVERY_ENVELOPE_BYTES = MAX_SOURCE_ENVELOPE_BYTES
+  + MAX_RECOVERY_HISTORY_BYTES * 2 + maximumCitationDataBytes * 3;
 
 export const MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12_000_000 + MAX_INBOUND_BYTES + 512_000;
 
@@ -42,6 +50,8 @@ export interface RecoverySnapshot extends SelectionSnapshot {
   citationData?: ZoteroCitationData;
   stateJSON?: string;
   undoHistoryPreserved: boolean;
+  undoLabel?: string;
+  redoLabel?: string;
   dirty: boolean;
   focusTarget?: EditorFocusTarget;
 }
@@ -250,13 +260,15 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
       || (snapshot.citationSnapshot !== undefined && !validCitationSnapshot(snapshot.citationSnapshot))
       || (snapshot.citationData !== undefined && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)))
       || typeof snapshot.undoHistoryPreserved !== "boolean"
+      || [snapshot.undoLabel, snapshot.redoLabel].some(label => label !== undefined
+        && (typeof label !== "string" || new TextEncoder().encode(label).byteLength > MAX_RECOVERY_ACTION_LABEL_BYTES))
       || typeof snapshot.dirty !== "boolean"
       || (snapshot.focusTarget !== undefined
         && snapshot.focusTarget !== "title"
         && snapshot.focusTarget !== "editor")
       || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0
       || snapshot.ranges.length > 256
-      || (snapshot.stateJSON !== undefined && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES))) return false;
+      || (snapshot.stateJSON !== undefined && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_RECOVERY_HISTORY_BYTES))) return false;
   const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
   return snapshot.ranges.every((range) => Boolean(range)
     && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength
@@ -489,6 +501,7 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
     const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
     const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES
       : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES
+      : type === "restoreRecovery" ? MAX_RECOVERY_ENVELOPE_BYTES
       : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
     return encodedByteLength(value) <= maximum;
   } catch { return false; }

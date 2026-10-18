@@ -20,6 +20,21 @@ enum EditorSaveOutcome: Equatable {
     case changedDuringSave
 }
 
+/// A failed resumption authorizes retrying only this short operation's freeze.
+/// Navigation suspensions never acquire this recovery record.
+struct DocumentInputResumeFailure: Equatable {
+    let suspensionID: String
+    let sessionID: UUID
+    let documentID: String
+    let message: String
+
+    @MainActor
+    func matches(_ editor: MarkdownEditorSession) -> Bool {
+        editor.sessionID == sessionID && editor.documentID == documentID
+            && editor.detachmentSuspensionID == suspensionID
+    }
+}
+
 struct ObservedScrollPosition: Equatable, Sendable {
     var fraction: Double
     var anchor: EditorScrollAnchor?
@@ -76,6 +91,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var originalEditingSource = ""
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
+    @Published var inputResumeFailure: DocumentInputResumeFailure?
     @Published var isSavingEdit = false
     /// Review and the retained editor have independent viewport observations.
     /// A mode handoff copies one position explicitly; an ordinary report from
@@ -129,7 +145,24 @@ final class DocumentSessionModel: ObservableObject {
         self.editorSession = editorSession
         editorCancellable = editorSession.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
+            guard self?.inputResumeFailure != nil else { return }
+            // Published readiness arrives before its setter. Reattachment or a
+            // source load can revoke the old token in this same actor turn.
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                self?.discardInvalidInputResumeFailure()
+            }
         }
+    }
+
+    var inputResumeError: String? {
+        guard let inputResumeFailure, inputResumeFailure.matches(editorSession) else { return nil }
+        return inputResumeFailure.message
+    }
+
+    func discardInvalidInputResumeFailure() {
+        guard let inputResumeFailure, !inputResumeFailure.matches(editorSession) else { return }
+        self.inputResumeFailure = nil
     }
 
     var isEditing: Bool { presentation.isEditing }
@@ -164,9 +197,14 @@ final class DocumentSessionModel: ObservableObject {
     var editorScrollFraction: Double { editorScrollPosition.fraction }
     var editorScrollAnchor: EditorScrollAnchor? { editorScrollPosition.anchor }
 
-    func presentConflictComparison() {
-        guard let conflict else { return }
-        conflictComparison = conflict
+    func presentConflictComparison(_ comparison: DocumentConflictSnapshot) {
+        guard conflict?.baseRevision == comparison.baseRevision,
+            conflict?.baseCitationSnapshot == comparison.baseCitationSnapshot,
+            conflict?.diskRevision == comparison.diskRevision,
+            conflict?.diskCitationSnapshot == comparison.diskCitationSnapshot
+        else { return }
+        conflict = comparison
+        conflictComparison = comparison
         showConflictComparison = true
     }
 
@@ -341,6 +379,7 @@ final class DocumentSessionModel: ObservableObject {
         conflict = nil
         conflictComparison = nil
         editError = nil
+        inputResumeFailure = nil
         canRetrySave = false
         managedCreationBodyStartUTF16 = nil
         hasBeenActivated = false
@@ -491,7 +530,7 @@ final class DocumentSessionModel: ObservableObject {
         let retainsSourceWork =
             hasUnsavedChanges || isSavingEdit
             || activeSaveTask != nil || pendingEditorCommit != nil
-            || conflict != nil || canRetrySave || editorSession.isComposing
+            || conflict != nil || canRetrySave || inputResumeError != nil || editorSession.isComposing
         editorSession.endClosedPresentation(preservingSourceWork: retainsSourceWork)
         hasBeenActivated = false
     }
@@ -615,6 +654,7 @@ final class DocumentSessionStore {
         }
         if session.detachmentPreparationTask != nil { reasons.insert(.saveInFlight) }
         if session.canRetrySave { reasons.insert(.retryableRecovery) }
+        if session.inputResumeError != nil { reasons.insert(.retryableRecovery) }
         if session.editorSession.hasRecoverableBuffer { reasons.insert(.recoveryBuffer) }
         return reasons
     }

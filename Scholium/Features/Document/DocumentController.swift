@@ -189,9 +189,9 @@ final class DocumentController: ObservableObject {
     private let writingSuggestions = EditorWritingSuggestions()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
     /// Workspace publications are invalidations, not a second source owner.
-    /// While one session is saving, retain only its latest complete snapshot
-    /// and reconcile it immediately after the save releases ownership.
-    private var deferredWorkspaceSnapshotsDuringSave: [DocumentSessionKey: WorkspaceNoteSnapshot] =
+    /// Save and navigation freezes retain their source authority until release.
+    /// Reconcile only the latest complete publication after that boundary.
+    private var deferredWorkspaceSnapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] =
         [:]
     private struct PendingHydration {
         let token: UUID
@@ -199,6 +199,11 @@ final class DocumentController: ObservableObject {
         let task: Task<Void, Never>
     }
     private var pendingHydrations: [DocumentEditingTarget: PendingHydration] = [:]
+    private struct PendingEditorReconciliation {
+        let token: UUID
+        let task: Task<Void, Never>
+    }
+    private var pendingEditorReconciliations: [DocumentEditingTarget: PendingEditorReconciliation] = [:]
     private var publishedSummaries: [DocumentEditingTarget: WorkspaceNoteSummary] = [:]
     private var hydrationEpoch: UInt64 = 0
     private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] =
@@ -212,7 +217,7 @@ final class DocumentController: ObservableObject {
 
     var retainedSessionCount: Int { sessions.retainedSessions.count }
     var retainedFullSnapshotCount: Int { snapshots.count + (unavailableSnapshot == nil ? 0 : 1) }
-    var pendingHydrationCount: Int { pendingHydrations.count }
+    var pendingHydrationCount: Int { pendingHydrations.count + pendingEditorReconciliations.count }
 
     #if DEBUG
         struct QAMemoryOwnerStats: Sendable {
@@ -254,8 +259,8 @@ final class DocumentController: ObservableObject {
     #endif
 
     func waitForPendingHydrations() async {
-        while !pendingHydrations.isEmpty {
-            let tasks = pendingHydrations.values.map(\.task)
+        while !pendingHydrations.isEmpty || !pendingEditorReconciliations.isEmpty {
+            let tasks = pendingHydrations.values.map(\.task) + pendingEditorReconciliations.values.map(\.task)
             for task in tasks { await task.value }
         }
     }
@@ -635,6 +640,7 @@ final class DocumentController: ObservableObject {
                 guard let self else { return }
                 self.pendingChromeRefreshes.remove(identifier)
                 guard let session else { return }
+                self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
                 self.refreshChromeProjection(ifOwnedBy: session)
             }
         }
@@ -982,6 +988,7 @@ final class DocumentController: ObservableObject {
                     let acknowledgedPendingCommit = session.pendingEditorCommit != nil
                     try await self.acknowledgePendingEditorCommit(session: session)
                     try await session.editorSession.resumeAfterDetachment(suspensionID: suspensionID)
+                    session.discardInvalidInputResumeFailure()
                     if acknowledgedPendingCommit, session.conflict == nil {
                         session.editError = nil
                         session.canRetrySave = false
@@ -989,6 +996,7 @@ final class DocumentController: ObservableObject {
                             self.setSaveError(nil)
                         }
                     }
+                    self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
                     self.scheduleAutosave(session: session, target: document.editingTarget)
                 } catch {
                     await self.presentSaveFailure(error, session: session, target: document.editingTarget)
@@ -1007,6 +1015,24 @@ final class DocumentController: ObservableObject {
         // Retain the admitted save before serialized preparation yields. Its
         // completion can clear the session slot without clearing its failure.
         let admittedSave = session.activeSaveTask
+        try await withSerializedEditorPreparation(session: session) {
+            try await self.performSessionTransferPreparation(
+                document, session: session, admittedSave: admittedSave)
+            try onSuspended(session.editorSession.detachmentSuspensionID)
+            // Navigation can recapture the same token after a short operation's
+            // failed resume. Its successful handoff revokes that old retry's
+            // authority without releasing the now navigation-owned freeze.
+            session.inputResumeFailure = nil
+        }
+    }
+
+    /// Short source replacements and navigation share one acquisition owner.
+    /// A navigation cannot borrow a freeze while another operation is about
+    /// to resume it, and cancellation drains that operation's cleanup first.
+    private func withSerializedEditorPreparation(
+        session: DocumentSessionModel,
+        operation: @escaping @MainActor () async throws -> Void
+    ) async throws {
         // A cancelled close can still be awaiting a bounded WebKit capture.
         // Drain that acquisition before another close/navigation can reuse its
         // suspension; the old catch must never release the new attempt's input.
@@ -1020,13 +1046,7 @@ final class DocumentController: ObservableObject {
         }
         try Task.checkCancellation()
         let token = UUID()
-        let preparation = Task { @MainActor in
-            try await self.performSessionTransferPreparation(
-                document, session: session, admittedSave: admittedSave)
-            // Ownership handoff belongs inside the serialized acquisition;
-            // a retry cannot reuse its token before close retains its release.
-            try onSuspended(session.editorSession.detachmentSuspensionID)
-        }
+        let preparation = Task { @MainActor in try await operation() }
         session.detachmentPreparationToken = token
         session.detachmentPreparationTask = preparation
         defer {
@@ -1039,6 +1059,106 @@ final class DocumentController: ObservableObject {
             try await preparation.value
         } onCancel: {
             preparation.cancel()
+        }
+    }
+
+    /// Capture and freeze the live buffer before making a replacement decision.
+    /// An existing navigation suspension remains owned by that navigation.
+    func withFrozenEditor(
+        session: DocumentSessionModel,
+        operation: @escaping @MainActor () async throws -> Void
+    ) async throws {
+        try await withSerializedEditorPreparation(session: session) {
+            if let resume = session.detachmentResumeTask { await resume.value }
+            try Task.checkCancellation()
+            session.discardInvalidInputResumeFailure()
+            let existingSuspension = session.editorSession.detachmentSuspensionID
+            guard !session.editorSession.hasAttachedWebView || existingSuspension == nil else {
+                throw DocumentControllerError.editorUnavailable
+            }
+            let captureSessionID = session.editorSession.sessionID
+            let captureDocumentID = session.editorSession.documentID
+            let wasSuppressingAutosave = session.suppressAutosave
+            session.suppressAutosave = true
+            session.cancelAutosave()
+            defer { session.suppressAutosave = wasSuppressingAutosave }
+            var acquiredSuspension: (id: String, sessionID: UUID, documentID: String)?
+            do {
+                if session.editorSession.hasAttachedWebView {
+                    try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+                    if existingSuspension == nil, let id = session.editorSession.detachmentSuspensionID {
+                        acquiredSuspension = (id, session.editorSession.sessionID, session.editorSession.documentID)
+                    }
+                }
+                try Task.checkCancellation()
+                try await operation()
+            } catch {
+                // Capture can freeze WebKit before rejecting its reply. If its
+                // own cleanup also failed, this acquisition still owns the new
+                // pending token; no preexisting navigation token is admitted.
+                if acquiredSuspension == nil, existingSuspension == nil,
+                    session.editorSession.sessionID == captureSessionID,
+                    session.editorSession.documentID == captureDocumentID,
+                    let id = session.editorSession.detachmentSuspensionID
+                {
+                    acquiredSuspension = (id, captureSessionID, captureDocumentID)
+                }
+                if let acquiredSuspension {
+                    try await self.resumeShortEditorSuspension(
+                        session: session, suspensionID: acquiredSuspension.id,
+                        sessionID: acquiredSuspension.sessionID, documentID: acquiredSuspension.documentID)
+                }
+                throw error
+            }
+            if let acquiredSuspension {
+                try await self.resumeShortEditorSuspension(
+                    session: session, suspensionID: acquiredSuspension.id,
+                    sessionID: acquiredSuspension.sessionID, documentID: acquiredSuspension.documentID)
+            }
+        }
+    }
+
+    private func resumeShortEditorSuspension(
+        session: DocumentSessionModel, suspensionID: String, sessionID: UUID, documentID: String
+    ) async throws {
+        let editor = session.editorSession
+        do {
+            try await Task { @MainActor in
+                guard editor.sessionID == sessionID, editor.documentID == documentID,
+                    editor.detachmentSuspensionID == suspensionID
+                else { return }
+                try await editor.resumeAfterDetachment(suspensionID: suspensionID)
+                guard editor.detachmentSuspensionID == nil else { throw DocumentControllerError.editorUnavailable }
+            }.value
+            session.discardInvalidInputResumeFailure()
+        } catch {
+            if editor.sessionID == sessionID, editor.documentID == documentID,
+                editor.detachmentSuspensionID == suspensionID
+            {
+                session.inputResumeFailure = DocumentInputResumeFailure(
+                    suspensionID: suspensionID, sessionID: sessionID, documentID: documentID,
+                    message: ScholiumErrorLocalization.message(error))
+            }
+            throw error
+        }
+    }
+
+    /// The visible Retry Edit action can release only a failed short operation,
+    /// after sharing navigation's acquisition queue and rechecking its owner.
+    func retryEditorInput(session: DocumentSessionModel, target: DocumentEditingTarget) async throws {
+        session.discardInvalidInputResumeFailure()
+        guard let failure = session.inputResumeFailure else { return }
+        try await withSerializedEditorPreparation(session: session) {
+            try Task.checkCancellation()
+            session.discardInvalidInputResumeFailure()
+            guard self.retainsSession(session, for: target), self.selectedDocument?.editingTarget == target,
+                session.inputResumeFailure == failure, failure.matches(session.editorSession)
+            else { return }
+            try await self.resumeShortEditorSuspension(
+                session: session, suspensionID: failure.suspensionID,
+                sessionID: failure.sessionID, documentID: failure.documentID)
+            self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
+            self.scheduleAutosave(session: session, target: target)
         }
     }
 
@@ -1109,6 +1229,7 @@ final class DocumentController: ObservableObject {
         if let descriptor = document.workspaceDescriptor {
             retainedReferences[descriptor.sessionKey] = descriptor.reference
             snapshots[descriptor.sessionKey] = transfer.snapshot
+            if let snapshot = transfer.snapshot { reconcile(session: transfer.session, with: snapshot) }
         } else {
             unavailableSnapshot = transfer.snapshot
         }
@@ -1543,7 +1664,7 @@ final class DocumentController: ObservableObject {
         if !retainingSessions {
             sessions.removeAll()
             retainedReferences.removeAll()
-            deferredWorkspaceSnapshotsDuringSave.removeAll()
+            deferredWorkspaceSnapshots.removeAll()
             restoredPresentationsByVault = [:]
             restoredUnqualifiedPresentations = [:]
             sessionCancellables.removeAll()
@@ -1564,7 +1685,7 @@ final class DocumentController: ObservableObject {
         retainedReferences = retainedReferences.filter {
             sessions.retainedSession(for: .workspace($0.key)) != nil
         }
-        deferredWorkspaceSnapshotsDuringSave = deferredWorkspaceSnapshotsDuringSave.filter {
+        deferredWorkspaceSnapshots = deferredWorkspaceSnapshots.filter {
             sessions.retainedSession(for: .workspace($0.key)) != nil
         }
         snapshots = snapshots.filter {
@@ -1979,73 +2100,136 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// Comparison owns an immutable, fully captured editor/disk pair. A conflict
+    /// notification may predate later typing, including deltas still in WebKit.
+    func presentConflictComparison(
+        session: DocumentSessionModel,
+        target: DocumentEditingTarget
+    ) async throws {
+        guard let conflict = session.conflict,
+            let revision = session.editingRevision,
+            retainsSession(session, for: target), selectedDocument?.editingTarget == target,
+            !session.isSavingEdit, session.activeSaveTask == nil,
+            !session.editorSession.isComposing
+        else { throw DocumentControllerError.changedDuringSave }
+        let editor = session.editorSession
+        let documentID = editor.documentID
+        let transportSessionID = editor.sessionID
+        let path = relativePath(for: target)
+        let source: String
+        let citationData: ZoteroCitationData?
+        let generation: Int
+        if editor.hasAttachedWebView || editor.hasDetachedPersistenceSnapshot {
+            let snapshot = try await editor.persistenceSnapshot(expectedRevision: revision)
+            source = snapshot.text
+            citationData = snapshot.citationData
+            generation = snapshot.generation
+        } else {
+            source = session.retainedExactSource
+            citationData = editor.checkedCitationData
+            generation = editor.generation
+        }
+        try Task.checkCancellation()
+        guard retainsSession(session, for: target), selectedDocument?.editingTarget == target,
+            editor.documentID == documentID, editor.sessionID == transportSessionID,
+            relativePath(for: target).utf8.elementsEqual(path.utf8),
+            session.editingRevision == revision, session.conflict == conflict,
+            !session.isSavingEdit, session.activeSaveTask == nil, !editor.isComposing,
+            editor.generation == generation,
+            session.retainedExactSource.utf8.elementsEqual(source.utf8),
+            editor.checkedCitationData == citationData,
+            editor.committedCitationSnapshot == conflict.baseCitationSnapshot
+        else { throw DocumentControllerError.changedDuringSave }
+        session.presentConflictComparison(
+            DocumentConflictSnapshot(
+                relativePath: path, editorSource: source, diskSource: conflict.diskSource,
+                baseRevision: revision, baseCitationSnapshot: conflict.baseCitationSnapshot,
+                editorCitationData: citationData, diskCitationSnapshot: conflict.diskCitationSnapshot))
+    }
+
     func reloadFromDisk(
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) async throws {
-        guard let conflict = session.conflict else { return }
-        let comparedConflict = session.conflictComparison ?? conflict
+        guard let conflict = session.conflict,
+            let comparedConflict = session.conflictComparison
+        else { throw DocumentControllerError.changedDuringSave }
+        let editor = session.editorSession
+        let documentID = editor.documentID
+        let transportSessionID = editor.sessionID
         let attemptedPath = relativePath(for: target)
-        let sourceBeforeReload = session.retainedExactSource
-        let generationBeforeReload = session.editorSession.generation
-        let citationsBeforeReload = session.editorSession.checkedCitationData
+        func stillOwnsComparedPair() -> Bool {
+            retainsSession(session, for: target) && selectedDocument?.editingTarget == target
+                && editor.documentID == documentID && editor.sessionID == transportSessionID
+                && relativePath(for: target).utf8.elementsEqual(attemptedPath.utf8)
+                && session.editingRevision == comparedConflict.baseRevision
+                && session.conflict == conflict
+                && session.conflictComparison == comparedConflict
+                && conflict.diskRevision == comparedConflict.diskRevision
+                && conflict.diskCitationSnapshot == comparedConflict.diskCitationSnapshot
+                && editor.committedCitationSnapshot == comparedConflict.baseCitationSnapshot
+                && editor.checkedCitationData == comparedConflict.editorCitationData
+                && session.retainedExactSource.utf8.elementsEqual(comparedConflict.editorSource.utf8)
+                && !editor.isComposing && !session.isSavingEdit && session.activeSaveTask == nil
+        }
         do {
-            let document = try await loadDocument(for: target)
-            guard document.fingerprint == comparedConflict.diskRevision else {
-                throw VaultRepositoryError.conflict(
-                    expected: comparedConflict.diskRevision,
-                    current: document.fingerprint
+            try await withFrozenEditor(session: session) {
+                try Task.checkCancellation()
+                guard stillOwnsComparedPair() else { throw DocumentControllerError.changedDuringSave }
+                let generationBeforeReload = editor.generation
+                let document = try await self.loadDocument(for: target)
+                try Task.checkCancellation()
+                guard document.fingerprint == comparedConflict.diskRevision else {
+                    throw VaultRepositoryError.conflict(
+                        expected: comparedConflict.diskRevision,
+                        current: document.fingerprint
+                    )
+                }
+                guard document.citationSnapshot == comparedConflict.diskCitationSnapshot else {
+                    throw ZoteroCitationSaveError.companionConflict
+                }
+                await self.documentDidCommit(SaveResult(document: document))
+                try Task.checkCancellation()
+                guard stillOwnsComparedPair(), editor.generation == generationBeforeReload
+                else {
+                    if let currentConflict = self.repositoryConflict(for: session) { throw currentConflict }
+                    throw DocumentControllerError.changedDuringSave
+                }
+                session.suppressAutosave = true
+                session.editingSource = document.rawContent
+                session.originalEditingSource = document.rawContent
+                session.editingRevision = document.fingerprint
+                session.pendingEditorCommit = nil
+                session.editorSession.loadDocument(
+                    document.rawContent,
+                    documentID: session.editorSession.bridgeDocumentID,
+                    mode: session.retainedEditorMode,
+                    citationSnapshot: document.citationSnapshot
                 )
+                session.suppressAutosave = false
+                // The displayed pair alone authorizes replacement. No suspension
+                // separates its final validation, replacement and completion.
+                session.conflict = nil
+                session.dismissConflictComparison()
+                session.editError = nil
+                self.setSaveError(nil)
+                try self.finishEditing(session: session, target: target)
             }
-            guard document.citationSnapshot == comparedConflict.diskCitationSnapshot else {
-                throw ZoteroCitationSaveError.companionConflict
-            }
-            await documentDidCommit(SaveResult(document: document))
-            let currentSource = session.retainedExactSource
-            guard session.conflict == conflict,
-                conflict.diskRevision == comparedConflict.diskRevision,
-                conflict.diskCitationSnapshot == comparedConflict.diskCitationSnapshot,
-                session.editorSession.generation == generationBeforeReload,
-                session.editorSession.checkedCitationData == citationsBeforeReload,
-                currentSource.utf8.elementsEqual(sourceBeforeReload.utf8),
-                relativePath(for: target) == attemptedPath,
-                !session.editorSession.isComposing, !session.isSavingEdit, session.activeSaveTask == nil
-            else {
-                if let currentConflict = repositoryConflict(for: session) { throw currentConflict }
-                throw DocumentControllerError.changedDuringSave
-            }
-            session.suppressAutosave = true
-            session.editingSource = document.rawContent
-            session.originalEditingSource = document.rawContent
-            session.editingRevision = document.fingerprint
-            session.pendingEditorCommit = nil
-            session.editorSession.loadDocument(
-                document.rawContent,
-                documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode,
-                citationSnapshot: document.citationSnapshot
-            )
-            session.suppressAutosave = false
-            // The exact conflict accepted by this reload has been resolved.
-            // No suspension separates the validation, replacement and completion.
-            session.conflict = nil
-            session.dismissConflictComparison()
-            session.editError = nil
-            setSaveError(nil)
-            try finishEditing(session: session, target: target)
         } catch {
-            session.dismissConflictComparison()
-            if let latestConflict = session.conflict, latestConflict != conflict {
+            if session.conflictComparison == comparedConflict { session.dismissConflictComparison() }
+            if !(error is CancellationError), retainsSession(session, for: target),
+                let latestConflict = session.conflict
+            {
                 // A publication during reload already installed a newer conflict;
                 // an older callback must neither clear nor reconstruct that state.
                 session.editError = ScholiumErrorLocalization.message(
-                    VaultRepositoryError.conflict(
-                        expected: latestConflict.baseRevision, current: latestConflict.diskRevision
-                    )
+                    latestConflict != conflict
+                        ? VaultRepositoryError.conflict(
+                            expected: latestConflict.baseRevision, current: latestConflict.diskRevision
+                        ) : error
                 )
+                session.canRetrySave = false
                 if selectedDocument?.editingTarget == target { setSaveError(session.editError) }
-            } else {
-                await presentSaveFailure(error, session: session, target: target)
             }
             throw error
         }
@@ -2161,12 +2345,19 @@ final class DocumentController: ObservableObject {
         for session: DocumentSessionModel
     ) -> VaultRepositoryError? {
         guard let key = session.key,
-            let snapshot = deferredWorkspaceSnapshotsDuringSave.removeValue(
+            let snapshot = deferredWorkspaceSnapshots.removeValue(
                 forKey: key
             )
         else { return nil }
         reconcile(session: session, with: snapshot)
         return repositoryConflict(for: session)
+    }
+
+    private func reconcileDeferredWorkspaceSnapshotIfAvailable(for session: DocumentSessionModel) {
+        guard !session.isSavingEdit, !session.editorSession.isComposing,
+            !session.editorSession.hasAttachedWebView || session.editorSession.detachmentSuspensionID == nil
+        else { return }
+        _ = reconcileLatestDeferredWorkspaceSnapshot(for: session)
     }
 
     private func performEditingSave(
@@ -2738,6 +2929,8 @@ final class DocumentController: ObservableObject {
         hydrationEpoch &+= 1
         for pending in pendingHydrations.values { pending.task.cancel() }
         pendingHydrations.removeAll()
+        for pending in pendingEditorReconciliations.values { pending.task.cancel() }
+        pendingEditorReconciliations.removeAll()
         publishedSummaries.removeAll()
     }
 
@@ -2772,7 +2965,7 @@ final class DocumentController: ObservableObject {
                 publishedSummaries[document.editingTarget] = nil
                 snapshots[key] = nil
                 retainedReferences[key] = nil
-                deferredWorkspaceSnapshotsDuringSave[key] = nil
+                deferredWorkspaceSnapshots[key] = nil
             }
             guard
                 let session = sessions.retainedSession(
@@ -2799,7 +2992,8 @@ final class DocumentController: ObservableObject {
 
     private func reconcile(
         session: DocumentSessionModel,
-        with snapshot: WorkspaceNoteSnapshot
+        with snapshot: WorkspaceNoteSnapshot,
+        editorIsFrozen: Bool = false
     ) {
         let diskSource = snapshot.document.rawContent
         guard let baseRevision = session.editingRevision else {
@@ -2817,7 +3011,21 @@ final class DocumentController: ObservableObject {
         // returned bytes; if it fails, conflict recovery reloads the then
         // current disk revision through the same Application capability.
         if session.isSavingEdit, let key = session.key {
-            deferredWorkspaceSnapshotsDuringSave[key] = snapshot
+            deferredWorkspaceSnapshots[key] = snapshot
+            return
+        }
+
+        if !editorIsFrozen, session.editorSession.hasAttachedWebView,
+            session.editorSession.detachmentSuspensionID != nil, let key = session.key
+        {
+            deferredWorkspaceSnapshots[key] = snapshot
+            return
+        }
+
+        if !editorIsFrozen, session.editorSession.hasAttachedWebView,
+            !session.hasUnsavedChanges, !session.editorSession.isComposing
+        {
+            scheduleEditorReconciliation(session: session, snapshot: snapshot)
             return
         }
 
@@ -2882,6 +3090,69 @@ final class DocumentController: ObservableObject {
                 citationSnapshot: snapshot.document.citationSnapshot
             )
         }
+    }
+
+    private func scheduleEditorReconciliation(
+        session: DocumentSessionModel,
+        snapshot: WorkspaceNoteSnapshot
+    ) {
+        guard let key = session.key else { return }
+        let target = DocumentEditingTarget.workspace(key)
+        pendingEditorReconciliations[target]?.task.cancel()
+        let token = UUID()
+        let epoch = hydrationEpoch
+        let baseRevision = session.editingRevision
+        let editorID = session.editorSession.documentID
+        let task = Task { @MainActor [weak self, weak session] in
+            guard let self, let session else { return }
+            defer {
+                if self.pendingEditorReconciliations[target]?.token == token {
+                    self.pendingEditorReconciliations[target] = nil
+                }
+            }
+            do {
+                try await self.withFrozenEditor(session: session) {
+                    try Task.checkCancellation()
+                    guard self.hydrationEpoch == epoch,
+                        self.pendingEditorReconciliations[target]?.token == token,
+                        self.sessions.retainedSession(for: target) === session,
+                        session.editingRevision == baseRevision,
+                        session.editorSession.documentID == editorID,
+                        self.snapshots[key]?.summary.hasSameSourceBinding(as: snapshot.summary) == true,
+                        self.snapshots[key]?.fingerprint == snapshot.fingerprint,
+                        self.snapshots[key]?.document.citationSnapshot == snapshot.document.citationSnapshot
+                    else { return }
+                    self.reconcile(session: session, with: snapshot, editorIsFrozen: true)
+                    if self.selectedDocument?.editingTarget == target {
+                        if !session.isEditing { self.applyCurrentPresentationMode(to: session, target: target) }
+                        if session.editError == nil { self.setSaveError(nil) }
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.hydrationEpoch == epoch,
+                    self.pendingEditorReconciliations[target]?.token == token,
+                    self.sessions.retainedSession(for: target) === session,
+                    session.editingRevision == baseRevision,
+                    session.editorSession.documentID == editorID,
+                    self.snapshots[key]?.summary.hasSameSourceBinding(as: snapshot.summary) == true,
+                    self.snapshots[key]?.fingerprint == snapshot.fingerprint,
+                    self.snapshots[key]?.document.citationSnapshot == snapshot.document.citationSnapshot
+                else { return }
+                if session.editorSession.hasAttachedWebView, session.editorSession.detachmentSuspensionID != nil {
+                    self.deferredWorkspaceSnapshots[key] = snapshot
+                    return
+                }
+                if session.hasUnsavedChanges || session.editorSession.isComposing {
+                    self.reconcile(session: session, with: snapshot)
+                    return
+                }
+                session.editError = ScholiumErrorLocalization.message(error)
+                if self.selectedDocument?.editingTarget == target { self.setSaveError(session.editError) }
+            }
+        }
+        pendingEditorReconciliations[target] = PendingEditorReconciliation(token: token, task: task)
     }
 
 }

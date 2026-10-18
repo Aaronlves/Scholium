@@ -1,12 +1,13 @@
 import {EditorSelection, EditorState} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {scholiumNoteLanguage} from "../language";
 import {createLiveProjectionIndexController} from "../live-projection-index";
 import type {MarkdownEditingDialect} from "../protocol";
 import {createMarkdownDocumentState} from "../bootstrap";
 import {exactSourceHistory, exactSourceState} from "../exact-source-history";
 import {normalizedDocumentText} from "../state";
+import {transformMarkdown} from "../transformations";
 
 const dialect: MarkdownEditingDialect = {
   version: 6,
@@ -35,6 +36,95 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it.each(["    ", "\t", "- ", "+ ", "1. ", "1) "])(
+    "reclassifies a newly inserted structural prefix %j from the parser",
+    prefix => {
+      const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+      const state = EditorState.create({doc: "code", extensions: [scholiumNoteLanguage, controller.extension]});
+      const transaction = state.update({changes: {from: 0, insert: prefix}});
+      const changed = controller.index(transaction.state);
+      const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+      const fresh = EditorState.create({doc: transaction.newDoc, extensions: [scholiumNoteLanguage, oracle.extension]});
+
+      expect(controller.topologyWasMapped(transaction)).toBe(false);
+      expect(changed).toEqual(oracle.index(fresh));
+      if (prefix === "    " || prefix === "\t") {
+        expect(changed.literals.codeBlocks).toHaveLength(1);
+        expect(transformMarkdown(transaction.newDoc.toString(), [{anchor: prefix.length, head: transaction.newDoc.length}],
+          "bold", {protectedRanges: changed.commandProtectedRanges})).toBeNull();
+      } else {
+        expect(changed.syntax.blocks.some(block => block.kind === "listItem")).toBe(true);
+        expect(changed.listPrefixRanges).toEqual([{from: 0, to: prefix.length}]);
+      }
+    },
+  );
+
+  it("reclassifies indentation typed one space at a time without granting code formatting", () => {
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    let state = EditorState.create({doc: "code", extensions: [scholiumNoteLanguage, controller.extension]});
+    for (let spaces = 1; spaces <= 4; spaces++) {
+      state = state.update({changes: {from: 0, insert: " "}}).state;
+      expect(controller.index(state).literals.codeBlocks.length).toBe(spaces === 4 ? 1 : 0);
+    }
+    expect(transformMarkdown(state.doc.toString(), [{anchor: 4, head: state.doc.length}], "bold",
+      {protectedRanges: controller.index(state).commandProtectedRanges})).toBeNull();
+    state = state.update({changes: {from: 0, to: 1}}).state;
+    expect(controller.index(state).literals.codeBlocks).toHaveLength(0);
+    expect(transformMarkdown(state.doc.toString(), [{anchor: 3, head: state.doc.length}], "bold",
+      {protectedRanges: controller.index(state).commandProtectedRanges})).not.toBeNull();
+  });
+
+  it.each(["- root\n  - nested", "1. root\n   1. nested", "- [ ] Task", "> Outer\n> > Quote"])(
+    "maps repeated mixed-script input and every container endpoint in %j",
+    source => {
+      let builds = 0;
+      const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+        recordMetric: name => { if (name === "projection-index") builds++; }});
+      let state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage, controller.extension]});
+      for (const insert of Array.from(" 中文 e\u0301 🧭")) {
+        const transaction = state.update({changes: {from: state.doc.length, insert}});
+        state = transaction.state;
+        expect(controller.topologyWasMapped(transaction)).toBe(true);
+        const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+        const fresh = EditorState.create({doc: state.doc, extensions: [scholiumNoteLanguage, oracle.extension]});
+        expect(controller.index(state)).toEqual(oracle.index(fresh));
+      }
+      expect(builds).toBe(1);
+    },
+  );
+
+  it("withholds semantic commands during an incomplete parse and restores them after parse publication", () => {
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const source = "Plain paragraph.\n\n".repeat(400) + "```ts\nprotected_target\n```\n\nAfter.";
+    let now = 0;
+    // Advance the actual parser deadline on each read. This deterministically
+    // exercises budget exhaustion without relying on document size or CPU speed.
+    const deadline = vi.spyOn(Date, "now").mockImplementation(() => now += 100);
+    let state: EditorState;
+    try {
+      state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage, controller.extension]});
+    } finally {
+      deadline.mockRestore();
+    }
+    const pending = controller.index(state);
+    expect(pending.syntaxComplete).toBe(false);
+    const target = source.indexOf("protected_target");
+    for (const [anchor, head] of [[0, 5], [target, target + 16], [source.length, source.length]]) {
+      expect(transformMarkdown(source, [{anchor, head}], "bold",
+        {protectedRanges: pending.commandProtectedRanges})).toBeNull();
+    }
+    expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+    state = state.update({selection: {anchor: target}}).state;
+    const complete = controller.index(state);
+    expect(complete.syntaxComplete).toBe(true);
+    expect(complete.topologyIdentity).not.toBe(pending.topologyIdentity);
+    expect(transformMarkdown(source, [{anchor: 0, head: 5}], "bold",
+      {protectedRanges: complete.commandProtectedRanges})).not.toBeNull();
+    expect(transformMarkdown(source, [{anchor: target, head: target + 16}], "bold",
+      {protectedRanges: complete.commandProtectedRanges})).toBeNull();
+    expect(state.doc.toString()).toBe(source);
+  });
+
   it.each(["\n", "\r\n"])("maps successive mixed-script paragraph-end input with exact %j separators", newline => {
     let builds = 0;
     const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
@@ -224,6 +314,9 @@ describe("live projection index component", () => {
     });
     const mapped = controller.index(transaction.state);
     expect(mapped.topologyIdentity).toBe(initial.topologyIdentity);
+    const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const fresh = EditorState.create({doc: transaction.newDoc, extensions: [scholiumNoteLanguage, oracle.extension]});
+    expect(mapped).toEqual(oracle.index(fresh));
     expect(mapped.listPrefixRanges.map((range) =>
       transaction.state.doc.sliceString(range.from, range.to)))
       .toEqual(["- ", "  - ", "10. ", "- [ ] ", "* [x] "]);

@@ -1,5 +1,5 @@
 import {EditorState, Transaction} from "@codemirror/state";
-import {history, redo, undo, undoDepth} from "@codemirror/commands";
+import {history, historyField, isolateHistory, redo, redoDepth, redoSelection, undo, undoDepth, undoSelection} from "@codemirror/commands";
 import {DOMParser} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
 import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "../exact-source-history";
@@ -121,6 +121,76 @@ describe("managed Zotero citation companions", () => {
     expect(undone.field(exactSourceState).text).toBe(source);
     const redoRecovery = restoreExactHistory(captureExactHistory(undone)!, source, extensions);
     expect(perform(redoRecovery, redo).field(citationState)?.data).toEqual(after.field(citationState)?.data);
+  });
+
+  it("keeps exact metadata-only Undo and Redo snapshots in a validated companion table", () => {
+    const composed = {...data, documentData: "<data>é</data>"};
+    const decomposed = {...data, documentData: "<data>e\u0301</data>"};
+    const last = {...data, documentData: "<data>last</data>"};
+    let state = initial(source, snapshot(composed));
+    for (const companion of [decomposed, last]) {
+      state = state.update({effects: setCitationData.of(companion), annotations: isolateHistory.of("full")}).state;
+    }
+    state = perform(state, undo);
+    const serialized = captureExactHistory(state)!;
+    const restored = restoreExactHistory(serialized, source, extensions);
+    expect(undoDepth(restored)).toBe(1);
+    expect(redoDepth(restored)).toBe(1);
+    expect(restored.field(citationState)?.data?.documentData).toBe(decomposed.documentData);
+    expect(perform(restored, undo).field(citationState)?.data?.documentData).toBe(composed.documentData);
+    expect(perform(restored, redo).field(citationState)?.data?.documentData).toBe(last.documentData);
+    const payload = JSON.parse(serialized);
+    payload.effects.done[0][0].citation = payload.citationTable.length;
+    expect(() => restoreExactHistory(JSON.stringify(payload), source, extensions)).toThrow("Invalid citation history");
+    payload.effects.done[0][0].citation = -1;
+    expect(() => restoreExactHistory(JSON.stringify(payload), source, extensions)).toThrow("Invalid citation history");
+  });
+
+  it("preserves metadata-only events and selection trails across nonhistory mappings on both branches", () => {
+    const companions = ["first", "second", "third"].map(documentData => ({...data, documentData}));
+    let state = initial();
+    for (let index = 0; index < companions.length; index++) {
+      state = state.update({effects: setCitationData.of(companions[index]), annotations: isolateHistory.of("full")}).state;
+      for (let selection = 0; selection < 4; selection++) {
+        state = state.update({selection: {anchor: selection + 1}, userEvent: "select.pointer",
+          annotations: Transaction.time.of((index * 4 + selection + 1) * 1000)}).state;
+      }
+    }
+    for (let index = 0; index < 6; index++) state = perform(state, undoSelection);
+    const restored = restoreExactHistory(captureExactHistory(state)!, source, extensions);
+    expect(restored.toJSON({history: historyField, citations: citationState}))
+      .toEqual(state.toJSON({history: historyField, citations: citationState}));
+    const map = (value: EditorState) => value.update({changes: {from: 0, insert: "x"},
+      annotations: Transaction.addToHistory.of(false)}).state;
+    for (const command of [undo, redo, undoSelection, redoSelection]) {
+      let left = map(state), right = map(restored);
+      while (command({state: left, dispatch: transaction => { left = transaction.state; }})) {
+        right = perform(right, command);
+        expect(right.field(exactSourceState).text).toBe(left.field(exactSourceState).text);
+        expect(right.field(citationState)?.data).toEqual(left.field(citationState)?.data);
+        expect(right.selection.eq(left.selection)).toBe(true);
+      }
+      expect(command({state: right, dispatch: () => {}})).toBe(false);
+    }
+  });
+
+  it("stores an unchanged companion once across ordinary text history events", () => {
+    const companion = {...data, documentData: "<data>" + "x".repeat(100_000) + "</data>"};
+    let state = initial(source, snapshot(companion));
+    for (let index = 0; index < 40; index++) {
+      state = state.update({changes: {from: state.doc.length, insert: "x"}, annotations: isolateHistory.of("full")}).state;
+    }
+    state = perform(state, undo);
+    const serialized = captureExactHistory(state)!;
+    const payload = JSON.parse(serialized);
+    expect(payload.citationTable).toHaveLength(0);
+    expect([...payload.effects.done, ...payload.effects.undone].every((effects: unknown[]) => effects.length === 0)).toBe(true);
+    expect(new TextEncoder().encode(serialized).byteLength).toBeLessThan(400_000);
+    const restored = restoreExactHistory(serialized, state.field(exactSourceState).text, extensions);
+    expect(undoDepth(restored)).toBe(39);
+    expect(redoDepth(restored)).toBe(1);
+    expect(perform(restored, undo).field(citationState)?.data).toEqual(companion);
+    expect(perform(restored, redo).field(citationState)?.data).toEqual(companion);
   });
 
   it("groups source and vendor metadata edits and preserves mixed newline/BOM/Unicode through recovery", () => {

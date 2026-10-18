@@ -1581,6 +1581,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard self.webView === webView,
                         pendingDetachmentSuspensionID == suspensionID,
                         let snapshot = result.recovery,
+                        snapshot.undoHistoryPreserved,
+                        snapshot.stateJSON?.isEmpty == false,
                         snapshot.documentID == documentID,
                         snapshot.fingerprint == startingFingerprint,
                         snapshot.generation == generation,
@@ -1729,6 +1731,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             source: recovered.source, stateJSON: recovered.stateJSON,
             undoHistoryPreserved: recovered.undoHistoryPreserved, dirty: superseded,
             focusTarget: recovered.focusTarget,
+            undoLabel: recovered.undoLabel,
+            redoLabel: recovered.redoLabel,
             citationSnapshot: committedCitationSnapshot,
             citationData: checkedCitationData
         )
@@ -2572,6 +2576,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 undoHistoryPreserved: snapshot.undoHistoryPreserved,
                 dirty: isDirty,
                 focusTarget: preferredDocumentFocusTarget,
+                undoLabel: snapshot.undoLabel,
+                redoLabel: snapshot.redoLabel,
                 citationSnapshot: committedCitationSnapshot,
                 citationData: checkedCitationData
             )
@@ -2688,12 +2694,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         updatePresentation {
                             $0.report(
                                 String(
-                                    localized: "The exact editor buffer was recovered, but its pre-crash undo history was unavailable.", table: "Localizable",
+                                    localized: "The exact editor buffer was recovered, but its previous undo history was unavailable.", table: "Localizable",
                                     bundle: .module))
                         }
                         _ = try await send(
                             .announceStatus(
-                                "The exact editor buffer was recovered. Pre-crash undo history is unavailable."
+                                "The exact editor buffer was recovered. Previous undo history is unavailable."
                             ),
                             in: webView,
                             requiringRequestEpoch: intendedRequestEpoch
@@ -3123,7 +3129,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
                 let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
-                resultData.count <= markdownEditorMaximumSourceEnvelopeBytes,
+                resultData.count <= operation.maximumResultEnvelopeBytes,
                 let result = try? JSONDecoder().decode(MarkdownEditorCommandResult.self, from: resultData),
                 result.requestID == request.requestID
             else {
@@ -3143,7 +3149,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard result.text.map({ $0.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes }) ?? true,
                 result.recovery.map({
                     $0.source.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes
-                        && ($0.stateJSON?.utf8.count ?? 0) <= markdownEditorMaximumInboundBytes
+                        && ($0.stateJSON?.utf8.count ?? 0) <= markdownEditorMaximumRecoveryHistoryBytes
+                        && ($0.undoLabel?.utf8.count ?? 0) <= 1_024
+                        && ($0.redoLabel?.utf8.count ?? 0) <= 1_024
                 }) ?? true,
                 !result.sourceChanged || result.text != nil
             else { throw SessionError.invalidResult }

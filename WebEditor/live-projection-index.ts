@@ -19,7 +19,6 @@ import {
 import {
   transactionCanMapProjectionTopology,
   transactionChangedSyntaxTree,
-  transactionMayCreateProjection,
   type ProjectionSourceRange,
 } from "./projection-update";
 import {
@@ -106,6 +105,8 @@ export interface LiveQuoteProjectionRange extends ProjectionSourceRange {
 
 export interface LiveProjectionIndex {
   readonly zoteroFields: FieldProjection;
+  /** Incomplete parser catalogs never authorize semantic source commands. */
+  readonly syntaxComplete: boolean;
   /** Stable only while local Markdown topology is proven unchanged. */
   readonly topologyIdentity: object;
   readonly syntax: SemanticProjectionRanges;
@@ -273,6 +274,7 @@ function finalizedLiveProjectionIndex(
   state: EditorState,
   topologyIdentity: object,
   syntax: SemanticProjectionRanges,
+  syntaxComplete: boolean,
   excluded: readonly ProjectionSourceRange[],
   codeBlocks: readonly SemanticCodeBlockRange[],
   inlineRanges: readonly ProjectionSourceRange[],
@@ -308,8 +310,12 @@ function finalizedLiveProjectionIndex(
   const footnoteRanges = immutableProjectionRanges(
     footnotes.references.map(({from, to}) => ({from, to})),
   );
+  // Commands may also alter source outside their initial selection (for
+  // example, appending a footnote). A partial catalog cannot prove those
+  // destinations safe, so retain exact typing while withholding semantic
+  // commands until the parser proves a complete note topology.
   const immutableCommandProtectedRanges = commandProtectionRanges(
-    immutableExcluded,
+    syntaxComplete ? immutableExcluded : [...immutableExcluded, {from: 0, to: doc.length}],
     immutableFrontmatter ?? undefined,
   );
   const immutableStructuralRanges = immutableProjectionRanges([
@@ -324,6 +330,7 @@ function finalizedLiveProjectionIndex(
   ].map(({from, to}) => ({from, to})));
   return Object.freeze({
     get zoteroFields() { return projectFieldsForState(state); },
+    syntaxComplete,
     topologyIdentity,
     syntax,
     quoteRanges: immutableQuoteRanges,
@@ -424,7 +431,8 @@ function buildLiveProjectionIndex(
   // whole-note topology, so give CodeMirror's incremental parser its bounded
   // completion opportunity before reading the catalog. Oversized documents
   // retain the current tree and are rebuilt by the later parser transaction.
-  const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+  const completeTree = ensureSyntaxTree(state, state.doc.length);
+  const tree = completeTree ?? syntaxTree(state);
   const syntax = semanticProjectionRanges(
     state,
     [{from: 0, to: state.doc.length}],
@@ -512,6 +520,7 @@ function buildLiveProjectionIndex(
     state,
     Object.freeze({}),
     syntax,
+    completeTree !== null,
     excluded,
     codeBlocks,
     inlineRanges,
@@ -595,13 +604,13 @@ function mapLiveProjectionIndex(
   const inlineRanges = index.inlineRanges.map((range) => ({from: map(range.from), to: map(range.to)}));
   const listPrefixRanges = index.listPrefixRanges.map((range) => ({from: map(range.from), to: map(range.to)}));
   const taskItemRanges = index.taskItemRanges.map((range) => ({
-    from: map(range.from), to: map(range.to), markerFrom: map(range.markerFrom), markerTo: map(range.markerTo),
+    from: map(range.from), to: map(range.to, 1), markerFrom: map(range.markerFrom), markerTo: map(range.markerTo),
   }));
   const referenceDefinitionRanges = index.referenceDefinitionRanges.map(range => ({from: map(range.from), to: map(range.to)}));
   const derivedMapMilliseconds = performance.now() - derivedStartedAt;
   const finalizationStartedAt = performance.now();
   const result = finalizedLiveProjectionIndex(
-    transaction.state, index.topologyIdentity, syntax, excluded, codeBlocks,
+    transaction.state, index.topologyIdentity, syntax, index.syntaxComplete, excluded, codeBlocks,
     inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts,
     mathExpressions, frontmatterRange, index.hasUnclosedFrontmatter, referenceDefinitionRanges,
   );
@@ -633,17 +642,11 @@ export function createLiveProjectionIndexController(
       }
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
       const topologyStartedAt = performance.now();
-      let localProof = false;
-      let mapped = previous.mutationSensitiveRanges.length === 0
-        && !transactionMayCreateProjection(transaction, structuralMarker);
-      if (!mapped) {
-        localProof = true;
-        mapped = transactionCanMapProjectionTopology(
-          transaction, structuralMarker, previous.mutationSensitiveRanges, previous.syntax,
-        );
-      }
+      const mapped = previous.syntaxComplete && transactionCanMapProjectionTopology(
+        transaction, structuralMarker, previous.mutationSensitiveRanges, previous.syntax,
+      );
       options.recordMetric("projection-topology-proof", topologyStartedAt, {
-        documentLength: transaction.newDoc.length, mapped: mapped ? 1 : 0, localProof: localProof ? 1 : 0,
+        documentLength: transaction.newDoc.length, mapped: mapped ? 1 : 0, localProof: previous.syntaxComplete ? 1 : 0,
         blockCount: previous.syntax.blocks.length, inlineCount: previous.syntax.inlines.length,
       });
       return mapped

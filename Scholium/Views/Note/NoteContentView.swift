@@ -338,9 +338,7 @@ struct NoteContentView<ShellNotices: View>: View {
     private var showConflictComparison: Bool {
         get { documentSession.showConflictComparison }
         nonmutating set {
-            if newValue {
-                documentSession.presentConflictComparison()
-            } else {
+            if !newValue {
                 documentSession.dismissConflictComparison()
             }
         }
@@ -536,6 +534,10 @@ struct NoteContentView<ShellNotices: View>: View {
             guard let presentation = documentIntegrityPresentation else { return }
             AccessibilityNotification.Announcement(presentation.announcement).post()
         }
+        .task(id: documentSession.inputResumeError) {
+            guard let error = documentSession.inputResumeError else { return }
+            AccessibilityNotification.Announcement(error).post()
+        }
         .onChange(of: state.requestedPresentationMode) { _, requested in
             guard let requested else { return }
             selectPresentationMode(requested)
@@ -706,6 +708,7 @@ struct NoteContentView<ShellNotices: View>: View {
         state.identityAmbiguity != nil
             || state.pendingIdentityRebinding != nil
             || documentIntegrityPresentation != nil
+            || documentSession.inputResumeError != nil
             || citationPresentation.isVisible
     }
 
@@ -748,6 +751,30 @@ struct NoteContentView<ShellNotices: View>: View {
             }
         }
 
+        if let error = documentSession.inputResumeError {
+            ScholiumDocumentStatusNotice(
+                String(localized: "Edit Unavailable", table: "Localizable", bundle: .module),
+                detail: String(localized: "Your edits are still available. \(error)", table: "Localizable", bundle: .module),
+                kind: .destructive
+            ) {
+                Button("Retry Edit") {
+                    Task { @MainActor in
+                        do {
+                            try await controller.retryEditorInput(session: documentSession, target: target)
+                            focusEditorIfPresented()
+                        } catch is CancellationError {
+                            return
+                        } catch {
+                            actions.notify(ScholiumErrorLocalization.message(error), .error)
+                        }
+                    }
+                }
+                .scholiumActivationPointer()
+                .controlSize(.small)
+            }
+            .accessibilityIdentifier("scholium.documentStatus.inputResumeFailed")
+        }
+
         if let presentation = documentIntegrityPresentation {
             ScholiumDocumentStatusNotice(
                 presentation.title,
@@ -775,7 +802,15 @@ struct NoteContentView<ShellNotices: View>: View {
             }
         case .conflict:
             Button("Compare Changes") {
-                showConflictComparison = true
+                Task { @MainActor in
+                    do {
+                        try await controller.presentConflictComparison(session: documentSession, target: target)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        actions.notify(ScholiumErrorLocalization.message(error), .error)
+                    }
+                }
             }
             .scholiumActivationPointer()
             .controlSize(.small)

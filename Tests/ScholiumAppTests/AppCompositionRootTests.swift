@@ -1452,6 +1452,11 @@ struct AppCompositionRootTests {
 
         // Model the researcher accepting the published disk revision before
         // testing path migration through the conflict recovery owner.
+        try await firstWindow!.documentController.presentConflictComparison(
+            session: firstSession, target: .workspace(sessionKey))
+        let comparison = try #require(firstSession.conflictComparison)
+        #expect(comparison.editorSource.utf8.elementsEqual(exactDirtyBuffer.utf8))
+        #expect(comparison.diskRevision == externalCommit.document.fingerprint)
         try await firstWindow!.documentController.reloadFromDisk(
             session: firstSession, target: .workspace(sessionKey))
         #expect(!firstSession.hasUnsavedChanges)

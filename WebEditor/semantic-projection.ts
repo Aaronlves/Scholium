@@ -70,6 +70,36 @@ export interface SemanticProjectionRanges {
   literals: Array<SemanticSourceRange & {nodeName: string}>;
 }
 
+function semanticBlockEndAssociation(kind: PresentationBlockKind) {
+  return kind === "paragraph" || kind === "listItem" || kind === "unorderedList"
+    || kind === "orderedList" || kind === "blockQuote" ? 1 : -1;
+}
+
+/** Shared by the local parser proof and the complete mapped catalog. */
+export function mapSemanticBlockProjection(
+  block: SemanticBlockProjection,
+  mapPosition: (position: number, association?: number) => number,
+): SemanticBlockProjection {
+  const mapRange = (range: SemanticSourceRange) => ({
+    from: mapPosition(range.from),
+    to: mapPosition(range.to),
+  });
+  return {
+    ...block,
+    from: mapPosition(block.from),
+    // Prose at a paragraph end also extends its list/quotation ancestors.
+    // The parser comparison rejects this mapping when the syntax differs.
+    to: mapPosition(block.to, semanticBlockEndAssociation(block.kind)),
+    parent: block.parent ? {
+      kind: block.parent.kind,
+      from: mapPosition(block.parent.from),
+      to: mapPosition(block.parent.to, semanticBlockEndAssociation(block.parent.kind)),
+    } : null,
+    markerRanges: block.markerRanges.map(mapRange),
+    taskMarkerRange: block.taskMarkerRange ? mapRange(block.taskMarkerRange) : null,
+  };
+}
+
 export function mapSemanticProjectionRanges(
   previous: SemanticProjectionRanges,
   mapPosition: (position: number, association?: number) => number,
@@ -78,18 +108,7 @@ export function mapSemanticProjectionRanges(
     from: mapPosition(range.from),
     to: mapPosition(range.to),
   });
-  const blocks = previous.blocks.map((block): SemanticBlockProjection => ({
-    ...block,
-    from: mapPosition(block.from),
-    to: mapPosition(block.to, block.kind === "paragraph" ? 1 : undefined),
-    parent: block.parent ? {
-      kind: block.parent.kind,
-      from: mapPosition(block.parent.from),
-      to: mapPosition(block.parent.to),
-    } : null,
-    markerRanges: block.markerRanges.map(mapRange),
-    taskMarkerRange: block.taskMarkerRange ? mapRange(block.taskMarkerRange) : null,
-  }));
+  const blocks = previous.blocks.map(block => mapSemanticBlockProjection(block, mapPosition));
   const inlines = previous.inlines.map((inline): SemanticInlineProjection => ({
     ...inline,
     from: mapPosition(inline.from),

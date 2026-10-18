@@ -5,30 +5,27 @@ document ownership, exact-source transport, and nonauthorizing rendering.
 
 ## Documents and CodeMirror
 
-Document owns vault/Note-keyed sessions. Transfer moves the same owner; document
-identity survives attachment while transport identity rotates. Dirty, composing,
-conflicted, saving and recovery states pin sessions. Destination leases precede
-release; close flushes before membership removal. Clean unleased sessions discard
-source, Undo, rendered content and previews without a closed-Note presentation
-cache. Window navigation visits own revision-bound return positions separately
-from open document sessions. Equal paths across vaults remain distinct.
+Document owns vault/Note-keyed sessions; transfer retains ownership and document
+identity while rotating transport identity. Dirty/composing/conflicted/saving/recovery
+states pin sessions. Destination leases precede release; close flushes before removal.
+Clean unleased sessions discard source, Undo, rendering and previews. Window visits
+separately own revision-bound return positions. Equal paths across vaults remain distinct.
 
 `DocumentController` owns persisted window mode. Sessions retain
 editor/flush identity, checked exact mirror, committed revision, presentation/
-pending intent, allocation/configuration, source-bound scroll, save and conflict/
-retry/comparison state across mode/layout/theme changes. Only active hosts receive
-input/accessibility; preparation measures layout behind an opaque native skeleton.
-Mount committed Review only for Review/read
-recovery; reconstruct after Edit/Source. Mode presentation awaits acknowledgment;
-unsafe Review retains editor/recovery.
-
-The document host owns one visible native surface. Review and editor keep
-separate viewport observations; mode handoff alone copies anchors or fallback
-fractions. Unmount Review outside Review or read recovery; restore its saved
-position when Review returns.
+intent, configuration, source-bound scroll and save/conflict/retry state across
+mode/layout/theme changes. Visible hosts alone receive input/accessibility;
+preparation measures behind a native skeleton. Mount committed Review
+only for Review/read recovery; reconstruct after Edit/Source. Mode presentation
+awaits acknowledgment; unsafe Review retains editor/recovery. Review and editor
+observe separate viewports; mode handoff alone copies anchors or fallback fractions.
+Returning Review restores its saved position.
 
 Detachment atomically freezes input and captures exact source, selection and
-history. Frozen saves reuse unchanged document/revision/generation proof;
+history; incomplete capture retains the live editor. Source-bounded history records
+insertion line endings/citations; a pinned CodeMirror adapter verifies source/history/
+selection binding, including inverse effects and grouping.
+Frozen saves reuse unchanged document/revision/generation proof;
 cancelled transitions resume only their matching suspension. Committed snapshots
 update clean detached sessions atomically. Dirty sessions retain exact bytes for
 conflict comparison. External events reconcile all tabs by stable identity before
@@ -37,12 +34,14 @@ their buffers.
 
 Opening atomically installs exact source, mode and intent before mounting.
 Mapped selection and measured geometry precede handoff; failure preserves source
-behind retry/Source. Clean external publication replaces source/boundary together.
-Hydration failures recheck source binding, retained session and revision before
-publication, preserving owner errors. Stale-snapshot failures join any active save
-before revalidation. Revision changes invalidate stale readiness; Review/recovery
-HTML caches source and authorized local-image revisions. Document owns position/focus,
-not another writable path-mapped presentation record.
+behind retry/Source. External replacement/Reload serialize with navigation and freeze
+live input before deciding; navigation's freeze defers publications. Comparison
+captures current source/citations; Reload revalidates that displayed pair while frozen.
+Clean external publication replaces source/boundary together.
+Hydration failures recheck source binding, retained session and revision without
+clearing owner errors; stale snapshots join active saves before revalidation.
+Revision changes invalidate readiness. Review/recovery HTML caches source and
+authorized local-image revisions. Document alone owns writable position/focus.
 
 ### Editor boundary contract
 
@@ -71,10 +70,10 @@ A save acknowledges one immutable committed snapshot. Newer input stays dirty
 and schedules another save rather than being overwritten. Proven commits remain
 retained until editor acknowledgment; lost acknowledgments replay idempotently
 against that exact commit, not by reissuing an uncertain filesystem write.
-Full-buffer reconciliation precedes save/departure. Clean external source may enter
-through generation-checked non-history replacement; dirty source enters Conflict.
-Review handoff relinquishes focus and requires a clean, noncomposing, conflict-free
-final flush. Close/quit cannot classify a dirty Review session as clean.
+Full-buffer reconciliation precedes save/departure. Generation-checked non-history
+replacement admits clean external source; dirty source enters Conflict. Review
+handoff relinquishes focus and requires a clean, noncomposing, conflict-free flush;
+close/quit recheck dirty Review.
 
 Replacement navigation captures the selected flush/reconstruction policy once;
 it does not duplicate history/position capture. Content-process termination reloads
@@ -120,7 +119,7 @@ Review selection maps only source-identical complete blocks. Formatted/synthesiz
 content remains unmappable rather than searched back into source. Document-bound
 locations recheck revisions and generations before selection/reveal. Superseded
 requests fail; unmappable editable passage requests may use Source. Current-Note
-Search consumes an immutable checked editor snapshot without flush, save or index
+Search consumes an immutable checked snapshot without flush, save or index
 publication; navigation validates freshness before a non-history reveal.
 
 Previews/completion/Find retain originating session/window, request and geometry
@@ -191,8 +190,9 @@ semantically parse, repair, authorize or edit metadata.
 Graph publishes directed authored occurrences; incoming/outgoing are projections
 of the same exact occurrence, not deduplicated philosophical meaning.
 
-One semantic/topology index supplies literal/construct ranges without parallel
-regex invalidation. Proved topology-safe prose edits may map ranges incrementally;
+One semantic/topology index supplies literal/construct ranges with explicit parse
+completeness. Incomplete catalogs withhold semantic command authority. Only a
+local parser topology proof permits incremental range mapping for prose edits;
 structural/uncertain edits rebuild. Viewport trees cannot prove whole-Note topology.
 CodeMirror fields own block/line geometry; viewport plugins own inline projection.
 Authored separators remain exact rows. Widgets, selection, pointer mapping and

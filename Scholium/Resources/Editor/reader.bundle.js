@@ -4683,6 +4683,7 @@
     "AI continuation could not be generated. Library completion remains available.",
     "The edited Markdown document exceeds the supported editor size.",
     "Finish editing the note title before switching documents.",
+    "The editor history could not be retained. Keep this document open and try again.",
     "The insertion position changed. Confirm the cursor again.",
     "The reference is too large.",
     "Insert Citation\u2026",

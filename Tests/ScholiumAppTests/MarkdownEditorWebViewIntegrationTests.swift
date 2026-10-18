@@ -10,6 +10,144 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Incomplete history replies refuse native detachment and resume the live buffer", arguments: [false, true])
+    func incompleteHistoryRefusesDetachment(reportsPreserved: Bool) async throws {
+        let source = "\u{FEFF}Original cafe\u{301} 中文 🦉\r\n"
+        let dispatcher = IncompleteDetachmentHistoryDispatcher(reportsPreserved: reportsPreserved)
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher, initialMode: .source, initialSourceRange: 1..<1)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        await #expect(throws: MarkdownEditorSession.SessionError.self) {
+            try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        }
+        #expect(harness.session.detachmentSuspensionID == nil)
+        #expect(try await harness.session.currentText() == source)
+        try await harness.session.perform(.pastePlain, argument: "Resumed ")
+        #expect(try await harness.session.currentText() == "\u{FEFF}Resumed Original cafe\u{301} 中文 🦉\r\n")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class IncompleteDetachmentHistoryDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private let reportsPreserved: Bool
+        init(reportsPreserved: Bool) { self.reportsPreserved = reportsPreserved }
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let raw = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            guard case .suspendForDetachment = request.operation,
+                var result = raw as? [String: Any], var recovery = result["recovery"] as? [String: Any]
+            else { return raw }
+            recovery["undoHistoryPreserved"] = reportsPreserved
+            if reportsPreserved { recovery.removeValue(forKey: "stateJSON") }
+            result["recovery"] = recovery
+            return result
+        }
+    }
+
+    @Test("A supported source larger than the small-message budget retains Undo across departure")
+    func largeSourceDeparturePreservesHistory() async throws {
+        let source = "\u{FEFF}" + String(repeating: String(repeating: "x", count: 29_999) + "\r\n", count: 100)
+        #expect(source.utf8.count > markdownEditorMaximumInboundBytes)
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.goToLine(101)
+        try await harness.waitUntilSelection(head: source.utf16.count - 100)
+        try await harness.session.perform(.pastePlain, argument: "Cafe\u{301} 中文 🦉")
+        let before = try await harness.session.currentText()
+        let expectedFingerprint = DocumentFingerprint(content: before)
+        let selections = try #require(harness.session.context?.selections)
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(harness.session.detachmentSuspensionID != nil)
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        #expect(harness.session.context?.selections == selections)
+        #expect(DocumentFingerprint(content: try await harness.session.currentText()) == expectedFingerprint)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        #expect(DocumentFingerprint(content: try await harness.session.currentText()) == DocumentFingerprint(content: source))
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Z', code: 'KeyZ', keyCode: 90, which: 90, shiftKey: true, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        #expect(DocumentFingerprint(content: try await harness.session.currentText()) == expectedFingerprint)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Ordinary departure preserves long selection history through editor reconstruction")
+    func departurePreservesLongSelectionHistory() async throws {
+        let harness = EditorHarness(source: "a\nb\nc\n", initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let session = harness.session
+        _ = try await harness.callPageJavaScript(
+            """
+            let generation = initialGeneration, sequence = 0;
+            const send = async operation => {
+              const result = await window.scholiumEditor.dispatch({
+                protocolVersion, sessionID, documentID, startingFingerprint,
+                requestID: `history-budget-${++sequence}`, knownGeneration: generation,
+                expiresAt: Date.now() + 30_000, operation
+              });
+              if (!result.accepted) throw new Error(result.error);
+              generation = result.resultingGeneration;
+            };
+            for (let group = 0; group < 3; group++) {
+              await send({type: 'command', command: 'pastePlain', argument: 'x'});
+              for (let selection = 0; selection < 190; selection++) {
+                await send({type: 'goToLine', line: selection % 2 + 1, focusesEditor: false});
+              }
+            }
+            return true;
+            """,
+            arguments: [
+                "protocolVersion": markdownEditorProtocolVersion,
+                "sessionID": session.sessionID.uuidString, "documentID": session.documentID,
+                "startingFingerprint": session.startingFingerprint, "initialGeneration": session.generation,
+            ])
+        let before = try await session.currentText()
+        let selections = try #require(session.context?.selections)
+        let undoLabel = try #require(session.context?.undoLabel)
+        func selectionHistory(redo: Bool) async throws -> [MarkdownEditorSelectionRange] {
+            _ = try await harness.callPageJavaScript(
+                "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: redo ? 'U' : 'u', code: 'KeyU', keyCode: 85, which: 85, metaKey: true, shiftKey: redo, bubbles: true, cancelable: true}));",
+                arguments: ["redo": redo])
+            #expect(try await session.currentText() == before)
+            return try #require(session.context?.selections)
+        }
+        let previousSelections = try await selectionHistory(redo: false)
+        #expect(previousSelections != selections)
+        #expect(try await selectionHistory(redo: true) == selections)
+        try await session.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(session.detachmentSuspensionID != nil)
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        #expect(session.isReady && session.isLoaded)
+        #expect(session.detachmentSuspensionID == nil)
+        #expect(session.context?.undoLabel == undoLabel)
+        #expect(session.context?.selections == selections)
+        #expect(try await session.currentText() == before)
+        #expect(try await selectionHistory(redo: false) == previousSelections)
+        #expect(try await selectionHistory(redo: true) == selections)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        let undone = try await session.currentText()
+        #expect(undone != before)
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Z', code: 'KeyZ', keyCode: 90, which: 90, shiftKey: true, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        let redone = try await session.currentText()
+        #expect(redone == before)
+        await harness.closeAndDrain()
+    }
+
     @Test("An unmounted coordinator cannot steal a mounted editor's commit, Undo or Save callbacks", arguments: [false, true])
     func speculativeCoordinatorPreservesMountedSaveOwnership(dismantlesSpeculative: Bool) async throws {
         let source = "\u{FEFF}# Synthetic\r\n\r\nOriginal e\u{301} 中文 🦉 without final newline"
@@ -3706,7 +3844,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Mermaid edits publish the latest SVG, recover syntax errors and bound active typing work", arguments: [2, 128])
     func mermaidContinuousEditingAndErrorRecovery(nodeCount: Int) async throws {
         let edges = (1..<(nodeCount - 1)).map { "N\($0) --> N\($0 + 1)[Node\($0 + 1)]" }.joined(separator: "\n")
-        let source = "# Diagram\n\n```mermaid\nflowchart LR\naccTitle: Synthetic editing\naccDescr: Source editing and recovery.\nN0[中文 e\u{301} 🧭] --> N1[Round000]\n\(edges)\n```\n\nTail"
+        let source =
+            "# Diagram\n\n```mermaid\nflowchart LR\naccTitle: Synthetic editing\naccDescr: Source editing and recovery.\nN0[中文 e\u{301} 🧭] --> N1[Round000]\n\(edges)\n```\n\nTail"
         let lower = try #require(source.range(of: "Round000")?.lowerBound).utf16Offset(in: source)
         let lastLine = source.components(separatedBy: "\n").count
         let harness = EditorHarness(source: source, initialSourceRange: lower..<lower, laysOutForPointerTesting: true)
@@ -3716,20 +3855,21 @@ struct MarkdownEditorWebViewIntegrationTests {
         func waitForProjection(_ label: String, malformed: Bool = false) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
             while ContinuousClock.now < deadline {
-                let ready = try await harness.callPageJavaScript(
-                    """
-                    const widgets = [...document.querySelectorAll('.cm-live-mermaid-widget')];
-                    const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
-                    if (widgets.length !== 1) return false;
-                    if (malformed) return outputs.length === 0
-                      && !!widgets[0].querySelector('.scholium-mermaid-error .scholium-mermaid-diagnostic')
-                      && widgets[0].querySelector('.scholium-mermaid-source code')?.textContent.includes(label);
-                    const svg = outputs[0]?.shadowRoot?.querySelector('svg');
-                    return outputs.length === 1 && !!svg && svg.classList.contains('pele')
-                      && [...svg.querySelectorAll('text')].some(text => text.textContent.trim() === label)
-                      && svg.getBoundingClientRect().width > 0
-                      && !widgets[0].querySelector('.scholium-mermaid-error');
-                    """, arguments: ["label": label, "malformed": malformed]) as? Bool
+                let ready =
+                    try await harness.callPageJavaScript(
+                        """
+                        const widgets = [...document.querySelectorAll('.cm-live-mermaid-widget')];
+                        const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
+                        if (widgets.length !== 1) return false;
+                        if (malformed) return outputs.length === 0
+                          && !!widgets[0].querySelector('.scholium-mermaid-error .scholium-mermaid-diagnostic')
+                          && widgets[0].querySelector('.scholium-mermaid-source code')?.textContent.includes(label);
+                        const svg = outputs[0]?.shadowRoot?.querySelector('svg');
+                        return outputs.length === 1 && !!svg && svg.classList.contains('pele')
+                          && [...svg.querySelectorAll('text')].some(text => text.textContent.trim() === label)
+                          && svg.getBoundingClientRect().width > 0
+                          && !widgets[0].querySelector('.scholium-mermaid-error');
+                        """, arguments: ["label": label, "malformed": malformed]) as? Bool
                 if ready == true { return }
                 try await Task.sleep(for: .milliseconds(5))
             }
@@ -3775,8 +3915,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             harness.session.goToLine(lastLine)
             try await waitForProjection(label, malformed: malformed)
             let previewDuration = previewStart.duration(to: .now).components
-            let runtime = try #require(try await harness.callPageJavaScript(
-                "return window.__mermaidEditing.renders.at(-1);") as? [String: Any])
+            let runtime = try #require(
+                try await harness.callPageJavaScript(
+                    "return window.__mermaidEditing.renders.at(-1);") as? [String: Any])
             #expect(runtime["ok"] as? Bool == !malformed)
             if malformed { #expect(runtime["reason"] as? String == "render-failed") }
             samples.append([
@@ -3790,30 +3931,31 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.revealEditorRange(fromUTF16: lower + previousLabel.utf16.count, toUTF16: lower + previousLabel.utf16.count)
         try await harness.waitUntilSelection(head: lower + previousLabel.utf16.count, stage: "continuous Mermaid typing")
         try await harness.session.focusAndWait()
-        let typing = try #require(try await harness.callPageJavaScript(
-            """
-            const stats = window.__mermaidEditing;
-            const rendersBefore = stats.renders.length, mountsBefore = stats.mounts;
-            const dispatch = [];
-            document.querySelector('.cm-content').focus();
-            for (let index = 0; index < 3; index++) {
-              if (!document.execCommand('insertText', false, 'x') || !document.execCommand('delete', false))
-                throw new Error('Warmup input was not handled');
-            }
-            const began = performance.now();
-            for (let index = 0; index < 60; index++) {
-              const action = index < 40 ? 'insertText' : 'delete';
-              const start = performance.now();
-              if (!document.execCommand(action, false, action === 'insertText' ? 'x' : null))
-                throw new Error('Continuous input was not handled');
-              dispatch.push({action, ms: performance.now() - start});
-              if (index % 10 === 9) await new Promise(resolve => setTimeout(resolve, 0));
-            }
-            return {dispatch, total_ms: performance.now() - began, warmup_events: 6,
-              render_delta: stats.renders.length - rendersBefore, mount_delta: stats.mounts - mountsBefore,
-              widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
-              visibility: document.visibilityState};
-            """) as? [String: Any])
+        let typing = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const stats = window.__mermaidEditing;
+                const rendersBefore = stats.renders.length, mountsBefore = stats.mounts;
+                const dispatch = [];
+                document.querySelector('.cm-content').focus();
+                for (let index = 0; index < 3; index++) {
+                  if (!document.execCommand('insertText', false, 'x') || !document.execCommand('delete', false))
+                    throw new Error('Warmup input was not handled');
+                }
+                const began = performance.now();
+                for (let index = 0; index < 60; index++) {
+                  const action = index < 40 ? 'insertText' : 'delete';
+                  const start = performance.now();
+                  if (!document.execCommand(action, false, action === 'insertText' ? 'x' : null))
+                    throw new Error('Continuous input was not handled');
+                  dispatch.push({action, ms: performance.now() - start});
+                  if (index % 10 === 9) await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                return {dispatch, total_ms: performance.now() - began, warmup_events: 6,
+                  render_delta: stats.renders.length - rendersBefore, mount_delta: stats.mounts - mountsBefore,
+                  widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
+                  visibility: document.visibilityState};
+                """) as? [String: Any])
         #expect(typing["render_delta"] as? Int == 0)
         #expect(typing["mount_delta"] as? Int == 0)
         #expect(typing["widgets"] as? Int == 0)
@@ -3830,7 +3972,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let diagnostic: [String: Any] = [
             "nodes": nodeCount, "source_utf8_bytes": source.utf8.count,
             "samples": samples, "typing": typing, "native_surface_hidden": surface.isHidden,
-            "boundary": "Debug native EditorHarness; runtime includes validation, Pele and SVG sanitization. DOM-ready polling includes bridge and polling overhead, not display paint. Continuous inputs use DOM editing commands, not OS keyboard timing.",
+            "boundary":
+                "Debug native EditorHarness; runtime includes validation, Pele and SVG sanitization. DOM-ready polling includes bridge and polling overhead, not display paint. Continuous inputs use DOM editing commands, not OS keyboard timing.",
         ]
         let data = try JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys])
         print("PELE_EDIT_DIAGNOSTIC " + String(decoding: data, as: UTF8.self))

@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
-  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, MAX_SOURCE_ENVELOPE_BYTES, MAX_PRESENTATION_ENVELOPE_BYTES, encodedByteLength, isEditorRequest,
+  EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, MAX_SOURCE_ENVELOPE_BYTES, MAX_RECOVERY_ENVELOPE_BYTES,
+  MAX_RECOVERY_HISTORY_BYTES, MAX_RECOVERY_ACTION_LABEL_BYTES, MAX_PRESENTATION_ENVELOPE_BYTES, encodedByteLength, isEditorRequest,
   admitPresentationSources, generationCanExecuteEditorRequest, recoveryGenerationCanReplaceCurrent, rejected,
 } from "../protocol";
 
@@ -37,6 +38,36 @@ const dialect = {
 };
 
 describe("editor protocol", () => {
+  it("transports escaped recovery history independently of ordinary message limits", () => {
+    const stateJSON = JSON.stringify({doc: "\u0000\"\\".repeat(300_000)});
+    expect(new TextEncoder().encode(stateJSON).byteLength).toBeGreaterThan(MAX_INBOUND_BYTES);
+    const envelope = {...request, operation: {type: "restoreRecovery", snapshot: {
+      documentID: "document", fingerprint: "fingerprint", generation: 4,
+      ranges: [{anchor: 0, head: 0}], source: "", stateJSON, undoHistoryPreserved: true, dirty: true,
+    }}};
+    expect(encodedByteLength(envelope)).toBeLessThan(MAX_RECOVERY_ENVELOPE_BYTES);
+    expect(MAX_RECOVERY_ENVELOPE_BYTES).toBeGreaterThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_RECOVERY_HISTORY_BYTES * 2);
+    expect(isEditorRequest(envelope)).toBe(true);
+  });
+
+  it("admits only bounded UTF-8 recovery action labels", () => {
+    const snapshot = {
+      documentID: "document", fingerprint: "fingerprint", generation: 4,
+      ranges: [{anchor: 0, head: 0}], source: "", undoHistoryPreserved: true, dirty: true,
+    };
+    const admitted = (labels: Record<string, unknown>) => isEditorRequest({...request,
+      operation: {type: "restoreRecovery", snapshot: {...snapshot, ...labels}}});
+    expect(admitted({})).toBe(true);
+    expect(admitted({undoLabel: "Paste", redoLabel: "Citation Operation"})).toBe(true);
+    const bounded = "😀".repeat(MAX_RECOVERY_ACTION_LABEL_BYTES / 4);
+    expect(admitted({undoLabel: bounded, redoLabel: bounded})).toBe(true);
+    for (const field of ["undoLabel", "redoLabel"]) {
+      for (const invalid of [null, 1, {}, "a".repeat(MAX_RECOVERY_ACTION_LABEL_BYTES + 1), bounded + "x"]) {
+        expect(admitted({[field]: invalid})).toBe(false);
+      }
+    }
+  });
+
   it("admits the complete existing image budget alongside independently bounded initial presentation", () => {
     const data = "A".repeat(4 * Math.ceil(10 * 1_024 * 1_024 / 3) - 2) + "==";
     const imageResources = Object.fromEntries(Array.from({length: 8}, (_, index) => [`${index}.png`, `data:image/png;base64,${data}`]));
@@ -76,8 +107,8 @@ describe("editor protocol", () => {
   });
 
   it("uses the source-free continuation cancellation protocol and rejects its predecessor", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(51);
-    expect(isEditorRequest({...request, protocolVersion: 50})).toBe(false);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(52);
+    expect(isEditorRequest({...request, protocolVersion: 51})).toBe(false);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};

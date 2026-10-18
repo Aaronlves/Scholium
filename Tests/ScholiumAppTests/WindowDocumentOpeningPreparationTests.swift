@@ -89,7 +89,8 @@ struct WindowDocumentOpeningPreparationTests {
         session.suppressAutosave = true
         let editor = MarkdownEditorWebViewIntegrationTests.EditorHarness(
             source: OpeningFixture.source, usesSessionDocumentIdentity: true,
-            suppliedSession: session.editorSession, initialMode: .source
+            suppliedSession: session.editorSession,
+            citationSnapshot: committedSnapshot.document.citationSnapshot, initialMode: .source
         )
         var release: CheckedContinuation<Void, Never>?
         defer {
@@ -99,13 +100,11 @@ struct WindowDocumentOpeningPreparationTests {
         }
         do {
             try await editor.waitUntilReady()
-            // The shared harness defaults to a standalone document. A managed
-            // Note starts with its repository-owned citation identity, even
-            // when the companion is absent, before accepting any input.
-            session.editorSession.loadDocument(
-                committedSnapshot.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
-                mode: .source, citationSnapshot: committedSnapshot.document.citationSnapshot)
+            // Fixture publications may reconcile the newly attached editor.
+            // Finish that setup before testing departure's freeze ownership.
+            await window.documentController.waitForPendingHydrations()
             try #require(try await session.editorSession.waitUntilLoadedForSave())
+            try #require(session.editorSession.detachmentSuspensionID == nil)
             try await session.editorSession.perform(.pastePlain, argument: "Saved edit 中文 😀.\r\n")
             let saved = try await session.editorSession.currentText()
             let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
@@ -158,7 +157,7 @@ struct WindowDocumentOpeningPreparationTests {
     private final class CloseCommitDispatcher: MarkdownEditorBridgeDispatching {
         var failNextCommit = false
         var failCaptureNumber: Int?
-        var onFirstCapture: (@MainActor () throws -> Void)?
+        var onNextCapture: (@MainActor () throws -> Void)?
         private(set) var captureCount = 0
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
 
@@ -171,7 +170,9 @@ struct WindowDocumentOpeningPreparationTests {
             if case .suspendForDetachment = request.operation {
                 captureCount += 1
                 let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
-                if captureCount == 1 { try onFirstCapture?() }
+                let onCapture = onNextCapture
+                onNextCapture = nil
+                try onCapture?()
                 if captureCount == failCaptureNumber {
                     // The input freeze succeeded but its reply was lost. The
                     // ordinary failure path must retain and resume this Note.
@@ -208,26 +209,28 @@ struct WindowDocumentOpeningPreparationTests {
         session.suppressAutosave = true
         let editor = MarkdownEditorWebViewIntegrationTests.EditorHarness(
             source: OpeningFixture.source, usesSessionDocumentIdentity: true,
-            suppliedSession: session.editorSession, initialMode: .source)
+            suppliedSession: session.editorSession,
+            citationSnapshot: committedSnapshot.document.citationSnapshot, initialMode: .source)
         defer {
             session.cancelScheduledWork()
             editor.close()
         }
         do {
             try await editor.waitUntilReady()
-            session.editorSession.loadDocument(
-                committedSnapshot.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
-                mode: .source, citationSnapshot: committedSnapshot.document.citationSnapshot)
+            await window.documentController.waitForPendingHydrations()
             try #require(try await session.editorSession.waitUntilLoadedForSave())
+            try #require(session.editorSession.detachmentSuspensionID == nil)
             try await session.editorSession.perform(.pastePlain, argument: "Retained draft 中文 😀.\r\n")
             let exactDraft = try await session.editorSession.currentText()
             let externalSource = "External source 中文 😀.\r\n"
+            // Fault stages belong to this departure, after fixture reconciliation.
+            let initialCaptureCount = dispatcher.captureCount
             switch failure {
-            case .initialCapture: dispatcher.failCaptureNumber = 1
+            case .initialCapture: dispatcher.failCaptureNumber = initialCaptureCount + 1
             case .saveAcknowledgement: dispatcher.failNextCommit = true
-            case .finalCapture: dispatcher.failCaptureNumber = 2
+            case .finalCapture: dispatcher.failCaptureNumber = initialCaptureCount + 2
             case .saveConflict:
-                dispatcher.onFirstCapture = {
+                dispatcher.onNextCapture = {
                     try Data(externalSource.utf8).write(to: fixture.works.appendingPathComponent("Origin.md"))
                 }
             }
@@ -267,7 +270,7 @@ struct WindowDocumentOpeningPreparationTests {
                 #expect(session.originalEditingSource.utf8.elementsEqual(exactDraft.utf8))
                 #expect(session.pendingEditorCommit == nil)
             }
-            if failure == .finalCapture { #expect(dispatcher.captureCount == 2) }
+            if failure == .finalCapture { #expect(dispatcher.captureCount == initialCaptureCount + 2) }
             await editor.closeAndDrain()
             await fixture.store.shutdownApplicationRuntime()
         } catch {

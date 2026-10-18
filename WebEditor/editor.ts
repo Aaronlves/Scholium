@@ -73,7 +73,7 @@ import {
 import {
   EDITOR_PROTOCOL_VERSION,
   type EditorPresentationConfiguration, admitPresentationSources,
-  MAX_INBOUND_BYTES,
+  MAX_RECOVERY_HISTORY_BYTES,
   type EditorCommandResult,
   type EditorContext,
   type EditorFocusTarget,
@@ -2248,7 +2248,8 @@ function captureRecovery(): RecoverySnapshot {
   return {
     documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion,
     ranges: editorSelections(), source: exactEditorSource(), stateJSON, citationSnapshot: editor.state.field(citationState)?.baseline, citationData: editor.state.field(citationState)?.data,
-    undoHistoryPreserved: stateJSON !== undefined, dirty, focusTarget: lastDocumentFocusTarget,
+    undoHistoryPreserved: stateJSON !== undefined, undoLabel: lastUndoLabel, redoLabel: lastRedoLabel,
+    dirty, focusTarget: lastDocumentFocusTarget,
   };
 }
 const frozenReadableOperations = new Set<EditorRequest["operation"]["type"]>([
@@ -2472,6 +2473,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // Freezing and capturing share one turn, including input that arrived
     // after the native request was created or composition finished.
     const recovery = captureRecovery();
+    if (!recovery.undoHistoryPreserved) {
+      // Ordinary navigation must retain the live EditorState when bounded
+      // serialization cannot preserve it. Crash recovery can still use source.
+      editor.dispatch({effects: setEditorSuspension.of(null)});
+      return rejected(request.requestID, documentVersion, localized("The editor history could not be retained. Keep this document open and try again."));
+    }
     return {...successfulResult(request.requestID), text: recovery.source, recovery};
   }
   case "resumeAfterDetachment": {
@@ -2495,7 +2502,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       EditorSelection.range(range.anchor, range.head)));
     let restoredHistory = false;
     let recoveredState: EditorState | null = null;
-    if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
+    if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_RECOVERY_HISTORY_BYTES) {
       try {
         const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
         const citations = restored.field(citationState);
@@ -2527,11 +2534,14 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // stateJSON or selection validation path.
     const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
+    lastUndoLabel = restoredHistory ? snapshot.undoLabel : undefined;
+    lastRedoLabel = restoredHistory ? snapshot.redoLabel : undefined;
     lastDocumentFocusTarget = snapshot.focusTarget;
     editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
-    return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
+    return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory,
+      undoLabel: lastUndoLabel, redoLabel: lastRedoLabel}};
   }
   case "acknowledgeCommittedSnapshot": {
     // Equal expected/committed snapshots only advance the disk base: they

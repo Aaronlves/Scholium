@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 51
+let markdownEditorProtocolVersion = 52
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -12,6 +12,12 @@ let markdownEditorMaximumSelectionRangeCount = 128
 // Two exact-source strings may each require six JSON bytes per source byte.
 // Transport size is distinct from the source capacity enforced on each field.
 let markdownEditorMaximumSourceEnvelopeBytes = MarkdownEditorDeltaApplier.maximumResultUTF8Bytes * 12 + 512_000
+// One current document and one source-sized inverse, including worst-case JSON escaping.
+let markdownEditorMaximumRecoveryHistoryBytes = MarkdownEditorDeltaApplier.maximumResultUTF8Bytes * 12 + markdownEditorMaximumInboundBytes
+// Nested stateJSON can double in size; recovery also carries source and companion snapshots.
+let markdownEditorMaximumRecoveryEnvelopeBytes =
+    markdownEditorMaximumSourceEnvelopeBytes
+    + markdownEditorMaximumRecoveryHistoryBytes * 2 + ZoteroCitationData.maximumEncodedByteCount * 3
 // Admitted local images use their own outbound-only capacity; source and
 // inbound envelopes retain the ordinary limits above.
 let markdownEditorMaximumImageResourceBytes = 80 * 1_024 * 1_024
@@ -96,6 +102,8 @@ struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
     let undoHistoryPreserved: Bool
     let dirty: Bool
     let focusTarget: WindowDocumentFocusTarget?
+    var undoLabel: String? = nil
+    var redoLabel: String? = nil
     var citationSnapshot: ZoteroCitationSnapshot? = nil
     var citationData: ZoteroCitationData? = nil
 }
@@ -316,6 +324,14 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         switch self {
         case .initialize: markdownEditorMaximumSourceEnvelopeBytes + markdownEditorMaximumPresentationEnvelopeBytes
         case .setPresentation: markdownEditorMaximumPresentationEnvelopeBytes
+        case .restoreRecovery: markdownEditorMaximumRecoveryEnvelopeBytes
+        default: markdownEditorMaximumSourceEnvelopeBytes
+        }
+    }
+
+    var maximumResultEnvelopeBytes: Int {
+        switch self {
+        case .captureRecovery, .suspendForDetachment, .restoreRecovery: markdownEditorMaximumRecoveryEnvelopeBytes
         default: markdownEditorMaximumSourceEnvelopeBytes
         }
     }
