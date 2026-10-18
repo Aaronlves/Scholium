@@ -584,7 +584,7 @@ struct SidebarTreeTests {
     }
 
     @MainActor
-    @Test("Disclosure spacing preserves native target size, content tracks and hierarchy geometry")
+    @Test("Item spacing retains exact native disclosure geometry and the label track")
     func nativeDisclosureSpacing() throws {
         let notes = ["A/First.md", "A/B/Second.md", "Root.md"].map {
             WindowDocumentLocation.syntheticPreview(relativePath: $0, rawContent: "# Note\n")
@@ -641,14 +641,26 @@ struct SidebarTreeTests {
                     #expect(outline.rect(ofRow: row) == native.rect(ofRow: row))
                     let expected = native.frameOfOutlineCell(atRow: row)
                     let actual = outline.frameOfOutlineCell(atRow: row)
-                    if expected.isEmpty {
-                        #expect(actual == expected)
-                    } else {
-                        #expect(actual.size == expected.size)
-                        #expect(actual == expected.offsetBy(dx: direction == .rightToLeft ? 2 : -2, dy: 0))
+                    #expect(actual == expected)
+                    if !actual.isEmpty {
                         #expect(actual.minX >= outline.bounds.minX && actual.maxX <= outline.bounds.maxX)
                     }
                 }
+            }
+            // English and Simplified Chinese use the app's LTR content
+            // layout; local outline direction is not a mirrored app launch.
+            outline.userInterfaceLayoutDirection = .leftToRight
+            outline.reloadData()
+            outline.expandItem(nil, expandChildren: true)
+            outline.layoutSubtreeIfNeeded()
+            for row in 0..<outline.numberOfRows {
+                let cell = try #require(outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? SidebarOutlineCell)
+                cell.layoutSubtreeIfNeeded()
+                let symbol = cell.itemImageView.alignmentRect(forFrame: cell.itemImageView.frame)
+                let label = cell.titleLabel.alignmentRect(forFrame: cell.titleLabel.frame)
+                let labelTrack = ScholiumMetrics.Library.leadingSlotWidth + ScholiumGrid.Spacing.inlineControlGap
+                #expect(symbol.minX == cell.bounds.minX + 2)
+                #expect(label.minX == cell.bounds.minX + labelTrack)
             }
         }
     }

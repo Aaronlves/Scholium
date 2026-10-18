@@ -144,13 +144,16 @@ final class SidebarOutlineCell: NSTableCellView {
         addSubview(itemImageView)
         addSubview(titleLabel)
         NSLayoutConstraint.activate([
-            itemImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            // Add disclosure-to-symbol space inside the existing content
+            // gutter; native disclosure geometry and the label track stay fixed.
+            itemImageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             // Keep the symbol at its intrinsic height so AppKit's baseline
             // follows the symbol metrics rather than a padded square box.
             itemImageView.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
             itemImageView.widthAnchor.constraint(equalToConstant: ScholiumMetrics.Library.leadingSlotWidth),
             titleLabel.leadingAnchor.constraint(
-                equalTo: itemImageView.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap
+                equalTo: leadingAnchor,
+                constant: ScholiumMetrics.Library.leadingSlotWidth + ScholiumGrid.Spacing.inlineControlGap
             ),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(
@@ -299,16 +302,6 @@ final class SidebarOutlineView: NSOutlineView {
     private(set) var isHandlingPrimaryMouseDown = false
     private(set) var primaryMouseDownNanoseconds: UInt64?
     private var primaryMouseDownModifiers: NSEvent.ModifierFlags?
-
-    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
-        let nativeFrame = super.frameOfOutlineCell(atRow: row)
-        guard !nativeFrame.isEmpty else { return nativeFrame }
-        // Give the item symbol breathing room without moving its content
-        // track or resizing the native disclosure target.
-        return nativeFrame.offsetBy(
-            dx: userInterfaceLayoutDirection == .rightToLeft ? 2 : -2, dy: 0
-        )
-    }
 
     override func mouseDown(with event: NSEvent) {
         primaryMouseDownNanoseconds = DispatchTime.now().uptimeNanoseconds
