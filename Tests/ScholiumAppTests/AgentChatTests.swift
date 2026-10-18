@@ -1068,26 +1068,46 @@ struct AgentChatTests {
         controller.editDraft("hold-queue original")
         controller.send()
         try await eventually { controller.currentTurnID != nil && controller.selected?.pendingMessageID == nil }
+        let originalTurn = try #require(controller.currentTurnID)
+        let owner = try #require(controller.selectedID)
+        let runtime = try #require(controller.runtime)
         let firstText = completionFirst ? "defer-input-ack first" : "hold-queue first"
         controller.editDraft(firstText)
         #expect(controller.queue())
         controller.editDraft("hold second")
         #expect(controller.queue())
         let queued = controller.queuedMessages
-        try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
+        // Fixture releases must work even while the real quota request is in flight.
+        // Quota refresh coalesces; it cannot serve as a fixture-control acknowledgement.
+        try await eventually { !controller.isRefreshingQuota }
+        _ = try await runtime.request("fixture/holdNextQuotaReply")
         controller.refreshQuota()
+        let heldQuota = controller.runtimeHome.appendingPathComponent("entered-held-quota-reply")
+        try await eventually { FileManager.default.fileExists(atPath: heldQuota.path) }
+        #expect(controller.isRefreshingQuota)
+        let completed = try await runtime.request("fixture/releaseQueuedTurn", params: ["turnId": .string(originalTurn)])
+        #expect(completed.objectValue?["releasedTurnIds"]?.arrayValue?.compactMap(\.stringValue) == [originalTurn])
+        let releasedQuota = try await runtime.request("fixture/releaseQuotaReply")
+        #expect(releasedQuota.objectValue?["releasedRequestIds"]?.arrayValue?.count == 1)
         try await eventually {
             controller.selected?.messages.contains { $0.id == queued[0].id } == true
                 && (completionFirst
                     ? controller.state == .ready && controller.selected?.pendingMessageID != nil
+                        && controller.executions[owner]?.pendingQueueAdvanceTurnID != nil
                     : controller.state == .working && controller.selected?.pendingMessageID == nil)
                 && !controller.isRefreshingQuota
         }
         #expect(controller.queuedMessages.map(\.id) == [queued[1].id])
         #expect(controller.error == nil)
-        let release = completionFirst ? "release-input-ack" : "release-queued-turn"
-        try Data().write(to: controller.runtimeHome.appendingPathComponent(release))
-        controller.refreshQuota()
+        if completionFirst {
+            let completedQueuedTurn = try #require(controller.executions[owner]?.pendingQueueAdvanceTurnID)
+            let acknowledged = try await runtime.request("fixture/releaseInputAck")
+            #expect(acknowledged.objectValue?["releasedTurnIds"]?.arrayValue?.compactMap(\.stringValue) == [completedQueuedTurn])
+        } else {
+            let firstQueuedTurn = try #require(controller.currentTurnID)
+            let completed = try await runtime.request("fixture/releaseQueuedTurn", params: ["turnId": .string(firstQueuedTurn)])
+            #expect(completed.objectValue?["releasedTurnIds"]?.arrayValue?.compactMap(\.stringValue) == [firstQueuedTurn])
+        }
         try await eventually {
             controller.queuedMessages.isEmpty && controller.selected?.pendingMessageID == nil && controller.state == .working
         }

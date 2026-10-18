@@ -25,6 +25,8 @@ oauth_signed_in = False
 pending_questions = {}
 pending_approvals = {}
 pending_turn_acks = []
+pending_quota_replies = []
+hold_next_quota_reply = False
 pending_thread_preparations = []
 pending_interrupt_replies = []
 pending_logins = []
@@ -57,6 +59,31 @@ def event(method, params):
 
 def save():
     archive.write_text(json.dumps(threads))
+
+def release_input_acks():
+    released = [response['result'].get('turn', {}).get('id', response['result'].get('turnId'))
+        for response in pending_turn_acks]
+    for response in pending_turn_acks:
+        write(response)
+    pending_turn_acks.clear()
+    return released
+
+def release_queued_turns(turn_id=None):
+    released = []
+    for tid, thread in threads.items():
+        for turn in thread['turns']:
+            if (turn.get('releaseQueuedFixture') and turn.get('status') == 'inProgress'
+                    and (turn_id is None or turn['id'] == turn_id)):
+                mid = str(uuid.uuid4())
+                reply = {'type': 'agentMessage', 'id': mid, 'text': 'Queued fixture reply'}
+                turn['items'].append(reply)
+                event('item/agentMessage/delta', {'threadId': tid, 'turnId': turn['id'], 'itemId': mid,
+                    'delta': reply['text']})
+                event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': reply})
+                turn['status'] = 'completed'
+                event('turn/completed', {'threadId': tid, 'turn': turn})
+                released.append(turn['id'])
+    return released
 
 for line in sys.stdin:
     request = json.loads(line)
@@ -236,6 +263,19 @@ for line in sys.stdin:
             continue
         result = {'authorizationUrl': 'file:///fixture' if (home / 'unsafe-auth-url').exists()
             else 'https://auth.example.test/authorize?state=fixture'}
+    elif method == 'fixture/releaseQueuedTurn':
+        result = {'releasedTurnIds': release_queued_turns(params['turnId'])}
+    elif method == 'fixture/releaseInputAck':
+        result = {'releasedTurnIds': release_input_acks()}
+    elif method == 'fixture/holdNextQuotaReply':
+        hold_next_quota_reply = True
+        result = {}
+    elif method == 'fixture/releaseQuotaReply':
+        released = [response['id'] for response in pending_quota_replies]
+        for response in pending_quota_replies:
+            write(response)
+        pending_quota_replies.clear()
+        result = {'releasedRequestIds': released}
     elif method == 'account/rateLimits/read':
         preparation_release = home / 'release-thread-preparation'
         if preparation_release.exists():
@@ -255,23 +295,11 @@ for line in sys.stdin:
             pending_interrupt_replies.clear()
         if (home / 'release-input-ack').exists():
             (home / 'release-input-ack').unlink()
-            for response in pending_turn_acks:
-                write(response)
-            pending_turn_acks.clear()
+            release_input_acks()
         release = home / 'release-queued-turn'
         if release.exists():
             release.unlink()
-            for tid, thread in threads.items():
-                for turn in thread['turns']:
-                    if turn.get('releaseQueuedFixture') and turn.get('status') == 'inProgress':
-                        mid = str(uuid.uuid4())
-                        reply = {'type': 'agentMessage', 'id': mid, 'text': 'Queued fixture reply'}
-                        turn['items'].append(reply)
-                        event('item/agentMessage/delta', {'threadId': tid, 'turnId': turn['id'], 'itemId': mid,
-                            'delta': reply['text']})
-                        event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': reply})
-                        turn['status'] = 'completed'
-                        event('turn/completed', {'threadId': tid, 'turn': turn})
+            release_queued_turns()
         completion = home / 'complete-background-activity'
         if completion.exists():
             exit_code = int(completion.read_text())
@@ -294,6 +322,11 @@ for line in sys.stdin:
         result = {'rateLimitsByLimitId': {'fixture': {'limitName': 'Fixture',
             'primary': {'usedPercent': 25, 'windowDurationMins': 300, 'resetsAt': 1800000000},
             'secondary': None}}, 'rateLimits': {}}
+        if hold_next_quota_reply:
+            hold_next_quota_reply = False
+            pending_quota_replies.append({'id': request['id'], 'result': result})
+            (home / 'entered-held-quota-reply').write_text(str(request['id']))
+            continue
     elif method == 'thread/loaded/list':
         (home / 'settings-idle-probes').write_text('checked')
         if (home / 'settings-probe-hold').exists():
