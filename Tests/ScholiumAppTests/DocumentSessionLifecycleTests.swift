@@ -635,9 +635,6 @@ struct DocumentSessionLifecycleTests {
 
         #expect(controller.retainedSessionCount == 0)
         #expect(controller.presentationSnapshot(vaultID: vaultID).documents.isEmpty)
-        controller.handleMemoryPressure(.warning)
-        controller.handleMemoryPressure(.critical)
-        #expect(controller.presentationSnapshot(vaultID: vaultID).documents.isEmpty)
     }
 
     @Test("A renamed stable document reopens at top and reapplies the Workspace mode")

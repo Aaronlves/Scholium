@@ -661,7 +661,7 @@ struct WindowControllerArchitectureTests {
             invalidationCount += 1
         }
 
-        session.observeScrollFraction(0.41)
+        session.observeScrollFraction(0.41, on: .read)
         session.observeScrollAnchor(
             EditorScrollAnchor(
                 sourceFingerprint: "scroll-fixture",
@@ -670,22 +670,22 @@ struct WindowControllerArchitectureTests {
                 blockUTF16UpperBound: 16,
                 relativeBlockPosition: 0.25,
                 fallbackFraction: 0.41
-            ))
+            ), on: .read)
 
         #expect(session.scrollRestoreRequest == nil)
         #expect(invalidationCount == 0)
         #expect(session.scrollFraction == 0.41)
 
-        let first = session.requestScrollRestore(
+        let first = session.requestReadScrollRestore(
             fingerprint: "scroll-fixture",
             reason: .documentLoad
         )
         let invalidationsAfterRequest = invalidationCount
-        session.observeScrollFraction(0.73)
+        session.observeScrollFraction(0.73, on: .read)
 
         #expect(session.scrollRestoreRequest == first)
         #expect(invalidationCount == invalidationsAfterRequest)
-        let second = session.requestScrollRestore(
+        let second = session.requestReadScrollRestore(
             fingerprint: "scroll-fixture",
             reason: .modeHandoff
         )

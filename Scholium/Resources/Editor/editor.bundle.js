@@ -33414,7 +33414,6 @@ ${blankRow(table.position.columnCount)}`;
       mathExpressions: immutableMathExpressions,
       frontmatterRange: immutableFrontmatter,
       commandProtectedRanges: immutableCommandProtectedRanges,
-      structuralRanges: immutableStructuralRanges,
       mutationSensitiveRanges: immutableProjectionRanges([
         ...immutableCommandProtectedRanges,
         ...immutableStructuralRanges,

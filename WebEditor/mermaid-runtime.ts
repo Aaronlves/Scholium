@@ -284,7 +284,6 @@ export function renderMermaid(request: ScholiumMermaidRenderRequest): Promise<Sc
   if (request?.signal?.aborted) return Promise.resolve({ok: false, reason: "cancelled"});
   const validation = validateMermaidSource(request?.source);
   if (!validation.ok) return Promise.resolve(validation);
-  if (!request) return Promise.resolve({ok: false, reason: "invalid-source"});
   const themeRoot = request.themeRoot
     ?? (typeof document === "undefined" ? null : document.documentElement);
   const theme = themeRoot

@@ -21,12 +21,6 @@ actor EditorLinkCompletionIndex {
     private var notes: [IndexedNote] = []
     private var resolution = LinkResolutionCatalog(catalog: [])
 
-    func removeAll() {
-        generation = -1
-        notes.removeAll(keepingCapacity: false)
-        resolution = LinkResolutionCatalog(catalog: [])
-    }
-
     func replace(notes catalogNotes: [WorkspaceCatalogNote], generation: Int) {
         guard generation != self.generation else { return }
         self.generation = generation

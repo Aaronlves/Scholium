@@ -115,10 +115,6 @@ actor DocumentReadProjectionCache {
         return html
     }
 
-    func removeAll() {
-        entries.removeAll(keepingCapacity: false)
-    }
-
     func entryCount(workspaceID: UUID?) -> Int {
         entries.keys.filter { $0.workspaceID == workspaceID }.count
     }
@@ -128,6 +124,10 @@ actor DocumentReadProjectionCache {
     }
 
     #if DEBUG
+        func removeAll() {
+            entries.removeAll(keepingCapacity: false)
+        }
+
         func qaDiagnosticStats() -> QADiagnosticStats {
             QADiagnosticStats(
                 entryCount: entries.count,

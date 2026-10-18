@@ -121,7 +121,6 @@ export interface LiveProjectionIndex {
   readonly mathExpressions: readonly MathProjection[];
   readonly frontmatterRange: Readonly<ProjectionSourceRange> | null;
   readonly commandProtectedRanges: readonly Readonly<ProjectionSourceRange>[];
-  readonly structuralRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly mutationSensitiveRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly referenceDefinitionRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly blockRanges: readonly Readonly<LiveBlockProjectionRange>[];
@@ -347,7 +346,6 @@ function finalizedLiveProjectionIndex(
     mathExpressions: immutableMathExpressions,
     frontmatterRange: immutableFrontmatter,
     commandProtectedRanges: immutableCommandProtectedRanges,
-    structuralRanges: immutableStructuralRanges,
     mutationSensitiveRanges: immutableProjectionRanges([
       ...immutableCommandProtectedRanges,
       ...immutableStructuralRanges,

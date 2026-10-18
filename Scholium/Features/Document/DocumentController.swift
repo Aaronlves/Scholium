@@ -88,11 +88,6 @@ struct DocumentPresentationSnapshot: Equatable, Sendable {
     let documents: [String: WindowDocumentPresentationSnapshot]
 }
 
-enum DocumentMemoryPressureLevel: Sendable {
-    case warning
-    case critical
-}
-
 enum DocumentChromeDirtyState: Equatable, Sendable {
     case clean
     case dirty
@@ -1853,12 +1848,6 @@ final class DocumentController: ObservableObject {
                 session.preparePresentationMode(currentPresentationMode)
             }
         }
-    }
-
-    func handleMemoryPressure(_: DocumentMemoryPressureLevel) {
-        sessions.editorWebViewPool.removeAll()
-        Task { await readProjectionCache.removeAll() }
-        Task { await linkCompletionIndex.removeAll() }
     }
 
     func relativePath(for target: DocumentEditingTarget) -> String {

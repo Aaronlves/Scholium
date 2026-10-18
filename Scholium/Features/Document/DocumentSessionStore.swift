@@ -421,16 +421,6 @@ final class DocumentSessionModel: ObservableObject {
         }
     }
 
-    /// Observes the active presentation surface. New surface callbacks should
-    /// use the overload that names the surface explicitly.
-    func observeScrollFraction(_ fraction: Double) {
-        observeScrollFraction(fraction, on: activeScrollSurface)
-    }
-
-    func observeScrollAnchor(_ anchor: EditorScrollAnchor?) {
-        observeScrollAnchor(anchor, on: activeScrollSurface)
-    }
-
     func observeScrollFraction(_ fraction: Double, on surface: DocumentScrollSurface) {
         guard !presentationIsClosed else { return }
         switch surface {
@@ -453,19 +443,6 @@ final class DocumentSessionModel: ObservableObject {
             editorScrollPosition.anchor = anchor
         }
         readScrollPosition = editorScrollPosition
-    }
-
-    @discardableResult
-    func requestScrollRestore(
-        fingerprint: String,
-        reason: ScrollRestoreReason,
-        position: ObservedScrollPosition? = nil
-    ) -> ScrollRestoreRequest {
-        requestReadScrollRestore(
-            fingerprint: fingerprint,
-            reason: reason,
-            position: position ?? activeScrollPosition
-        )
     }
 
     @discardableResult
