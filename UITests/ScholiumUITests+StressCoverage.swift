@@ -35,7 +35,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { self.app.state == .notRunning })
         let path = "01-analyses/QA Autosave A.md"
         let source =
-            "\u{FEFF}---\r\nsummary: Synthetic nonprivate exact-source fixture.\r\nunknown: 'KEEP: 原始'\r\n---\r\n\r\n# Exact source\r\n\r\n中文 English café e\u{301} 🧭; no final newline."
+            "\u{FEFF}---\r\nsummary: Synthetic nonprivate exact-source fixture.\r\nunknown: 'KEEP: 原始'\r\n---\r\n\r\n# Exact source\r\n\r\n```mermaid\r\nflowchart LR\r\naccTitle: QA Source diagram\r\naccDescr: Synthetic source survives mode changes and Undo.\r\nA[中文 e\u{301} 🧭] --> B[Retain]\r\n```\r\n\r\n中文 English café e\u{301} 🧭; no final newline."
         try Data(source.utf8).write(to: triptychDirectory.appendingPathComponent(path))
         sessionID = UUID()
         app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
@@ -43,11 +43,125 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        selectDocumentMode("Review", in: window)
+        let diagram = window.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "QA Source diagram")
+        ).firstMatch
+        XCTAssertTrue(diagram.waitForExistence(timeout: 10))
+        // An AX Raise alone cannot supply the key-window context that SwiftUI
+        // commands consume. Exercise the real QA focus route from that state.
+        let windowIdentifier = window.identifier
+        app.typeKey("m", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.app.windows[windowIdentifier].exists })
+        focusWorkspaceWindow(identifier: windowIdentifier)
+        selectDocumentMode("Source", in: window, timeout: 45)
+        let sourceImage = XCTAttachment(screenshot: window.screenshot())
+        sourceImage.name = "Source menu after restoring the QA window"
+        sourceImage.lifetime = .keepAlways
+        add(sourceImage)
         try exerciseStressSelectionAndUndo(
-            path: path, in: stableWorkspaceWindow(app.windows.firstMatch))
+            path: path, in: window)
+        XCTAssertTrue(diagram.waitForExistence(timeout: 10))
+        let image = XCTAttachment(screenshot: window.screenshot())
+        image.name = "Source menu restores Review after exact-source Undo"
+        image.lifetime = .keepAlways
+        add(image)
         app.terminate()
         XCTAssertEqual(
             try Data(contentsOf: triptychDirectory.appendingPathComponent(path)), Data(source.utf8))
+    }
+
+    @MainActor
+    func testMermaidSourceChangesRecoverAndRenderLatestTyping() throws {
+        app.terminate()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.state == .notRunning })
+        let url = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        func source(_ label: String, malformed: Bool = false) -> String {
+            "# Diagram editing\n\n```mermaid\nflowchart LR\naccTitle: Diagram \(label)\naccDescr: Synthetic source editing fixture.\n"
+                + (malformed ? "A[\"unterminated" : "A[Start] --> B[\(label)]")
+                + "\n```\n\nTail"
+        }
+        try Data(source("Original").utf8).write(to: url)
+        sessionID = UUID()
+        app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let raw = repository.appendingPathComponent(".build/performance-pele-edit-followup/app-state/raw")
+        try FileManager.default.createDirectory(at: raw, withIntermediateDirectories: true)
+        let measurements = raw.appendingPathComponent("typing-\(sessionID.uuidString).jsonl")
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = measurements.path
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] = "editor_key_to_paint"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = "pele-edit-followup"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE"] = "0"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"] = "100"
+        app.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "QA Autosave A.md"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        func diagram(_ label: String) -> XCUIElement {
+            window.descendants(matching: .any).matching(
+                NSPredicate(format: "label == %@", "Diagram \(label)")
+            ).firstMatch
+        }
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: window.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        selectDocumentMode("Review", in: window)
+        XCTAssertTrue(diagram("Original").waitForExistence(timeout: 10))
+        for (label, malformed) in [("Updated", false), ("Broken", true), ("Recovered", false)] {
+            selectDocumentMode("Source", in: window)
+            let editor = window.descendants(matching: .any)["Markdown source editor"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 10))
+            let expected = source(label, malformed: malformed)
+            try paste(expected, into: editor)
+            app.typeKey("s", modifierFlags: [.command])
+            XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: url)) == Data(expected.utf8) })
+            selectDocumentMode("Review", in: window)
+            if malformed {
+                let diagnostic = window.staticTexts.matching(NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@",
+                    "unsupported or could not be rendered", "unsupported or could not be rendered"
+                )).firstMatch
+                XCTAssertTrue(diagnostic.waitForExistence(timeout: 10))
+                XCTAssertFalse(diagram("Updated").exists)
+                XCTAssertTrue(window.staticTexts.matching(NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@", "unterminated", "unterminated"
+                )).firstMatch.exists)
+            } else {
+                XCTAssertTrue(diagram(label).waitForExistence(timeout: 10))
+                XCTAssertFalse(diagram(label == "Updated" ? "Original" : "Updated").exists)
+            }
+            capture("Mermaid source \(label)")
+        }
+        selectDocumentMode("Source", in: window)
+        let editor = window.descendants(matching: .any)["Markdown source editor"].firstMatch
+        let earlierSamples = (try? String(contentsOf: measurements, encoding: .utf8))?.split(separator: "\n").count ?? 0
+        window.webViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).click()
+        editor.typeKey(.end, modifierFlags: [.command])
+        for _ in 0..<3 { editor.typeKey(.upArrow, modifierFlags: []) }
+        editor.typeKey(.rightArrow, modifierFlags: [.command])
+        editor.typeKey(.leftArrow, modifierFlags: [])
+        let typing = "012345678901234567890123"
+        editor.typeText(typing)
+        let expected = source("Recovered").replacingOccurrences(of: "B[Recovered]", with: "B[Recovered\(typing)]")
+        app.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: url)) == Data(expected.utf8) })
+        selectDocumentMode("Review", in: window)
+        XCTAssertTrue(diagram("Recovered").waitForExistence(timeout: 10))
+        capture("Mermaid latest native continuous typing")
+        app.terminate()
+        XCTAssertEqual(try Data(contentsOf: url), Data(expected.utf8))
+        if let data = try? Data(contentsOf: measurements) {
+            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+            attachment.name = "Mermaid native typing paint proxy; exclude first \(earlierSamples) samples"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     /// An opt-in scale diagnostic over a disposable generated Triptych. XCTest

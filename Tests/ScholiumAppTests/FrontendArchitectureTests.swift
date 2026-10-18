@@ -4028,7 +4028,7 @@ struct FrontendArchitectureTests {
         let css = ScholiumMermaidAssets.css
 
         #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("scholiumMermaid"))
-        #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("securityLevel"))
+        #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("--pele-bg"))
         #expect(ScholiumMermaidAssets.runtimeJavaScript.contains("attachShadow"))
         #expect(css.contains(".scholium-mermaid-output"))
         #expect(css.contains("overflow-x: auto"))

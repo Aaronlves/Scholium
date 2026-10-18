@@ -9,14 +9,14 @@ check_only=false
 output=""
 reader_output=""
 math_output=""
-mermaid_output=""
-mermaid_notices_output=""
+pele_output=""
+pele_notices_output=""
 streaming_output=""
 streaming_notices_output=""
 math_assets=""
 
 usage() {
-  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --streaming-output <absolute-path> --streaming-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --pele-output <absolute-path> --pele-notices-output <absolute-path> --streaming-output <absolute-path> --streaming-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
   print -u2 "       ${script_name} --check-only"
   exit 64
 }
@@ -38,14 +38,14 @@ while (( $# > 0 )); do
       math_output="$2"
       shift 2
       ;;
-    --mermaid-output)
+    --pele-output)
       (( $# >= 2 )) || usage
-      mermaid_output="$2"
+      pele_output="$2"
       shift 2
       ;;
-    --mermaid-notices-output)
+    --pele-notices-output)
       (( $# >= 2 )) || usage
-      mermaid_notices_output="$2"
+      pele_notices_output="$2"
       shift 2
       ;;
     --math-assets)
@@ -78,16 +78,16 @@ while (( $# > 0 )); do
 done
 
 if $check_only; then
-  if [[ -n "$output" || -n "$reader_output" || -n "$math_output" || -n "$mermaid_output" \
-    || -n "$mermaid_notices_output" || -n "$streaming_output" || -n "$streaming_notices_output" || -n "$math_assets" ]] || $run_tests; then
+  if [[ -n "$output" || -n "$reader_output" || -n "$math_output" || -n "$pele_output" \
+    || -n "$pele_notices_output" || -n "$streaming_output" || -n "$streaming_notices_output" || -n "$math_assets" ]] || $run_tests; then
     usage
   fi
 else
   [[ -n "$output" && "$output" == /* ]] || usage
   [[ -n "$reader_output" && "$reader_output" == /* ]] || usage
   [[ -n "$math_output" && "$math_output" == /* ]] || usage
-  [[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
-  [[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
+  [[ -n "$pele_output" && "$pele_output" == /* ]] || usage
+  [[ -n "$pele_notices_output" && "$pele_notices_output" == /* ]] || usage
   [[ -n "$streaming_output" && "$streaming_output" == /* ]] || usage
   [[ -n "$streaming_notices_output" && "$streaming_notices_output" == /* ]] || usage
   [[ -n "$math_assets" && "$math_assets" == /* ]] || usage
@@ -103,12 +103,12 @@ else
     print -u2 "The mathematics bundle output directory does not exist: ${math_output:h}"
     exit 66
   }
-  [[ -d "${mermaid_output:h}" ]] || {
-    print -u2 "The Mermaid bundle output directory does not exist: ${mermaid_output:h}"
+  [[ -d "${pele_output:h}" ]] || {
+    print -u2 "The Pele bundle output directory does not exist: ${pele_output:h}"
     exit 66
   }
-  [[ -d "${mermaid_notices_output:h}" ]] || {
-    print -u2 "The Mermaid notice output directory does not exist: ${mermaid_notices_output:h}"
+  [[ -d "${pele_notices_output:h}" ]] || {
+    print -u2 "The Pele notice output directory does not exist: ${pele_notices_output:h}"
     exit 66
   }
   [[ -d "$math_assets" ]] || {
@@ -180,17 +180,17 @@ fi
   --target=safari17 \
   --outfile="$math_output"
 
-mermaid_metafile="$stage/.build/mermaid-metafile.json"
-mkdir -p "${mermaid_metafile:h}"
+pele_metafile="$stage/.build/pele-metafile.json"
+mkdir -p "${pele_metafile:h}"
 ./node_modules/.bin/esbuild mermaid-runtime.ts \
   --bundle \
   --minify \
   --format=iife \
   --platform=browser \
   --target=safari17 \
-  --metafile="$mermaid_metafile" \
-  --outfile="$mermaid_output"
-node generate-mermaid-notices.mjs "$mermaid_metafile" "$mermaid_notices_output"
+  --metafile="$pele_metafile" \
+  --outfile="$pele_output"
+node generate-pele-notices.mjs "$pele_metafile" "$pele_notices_output"
 
 ./node_modules/.bin/esbuild chat-streaming-markdown.ts \
   --bundle \

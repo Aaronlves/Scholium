@@ -1,7 +1,7 @@
 import Foundation
 
 enum ScholiumMermaidAssets {
-    static let runtimeJavaScript: String = loadTextResource("mermaid.bundle", extension: "js")
+    static let runtimeJavaScript: String = loadTextResource("pele.bundle", extension: "js")
     static let css: String = loadTextResource("mermaid", extension: "css")
 
     private static func loadTextResource(_ name: String, extension fileExtension: String) -> String {

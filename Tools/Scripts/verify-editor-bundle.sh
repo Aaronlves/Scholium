@@ -15,17 +15,17 @@ renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
 live_callouts="$repo_root/WebEditor/live-structured-block-projections.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
 committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
-committed_mermaid="$repo_root/Scholium/Resources/Editor/mermaid.bundle.js"
+committed_pele="$repo_root/Scholium/Resources/Editor/pele.bundle.js"
 committed_mermaid_css="$repo_root/Scholium/Resources/Editor/mermaid.css"
-committed_mermaid_notices="$repo_root/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
+committed_pele_notices="$repo_root/Tools/Packaging/Licenses/Pele-NOTICES.txt"
 committed_streaming="$repo_root/Scholium/Resources/Editor/chat-streaming-markdown.bundle.js"
 committed_streaming_notices="$repo_root/Tools/Packaging/Licenses/Remend-NOTICE.txt"
 temporary_root="$repo_root/.build/editor-verification-$$"
 temporary="$temporary_root/editor.bundle.js"
 temporary_reader="$temporary_root/reader.bundle.js"
 temporary_math="$temporary_root/math.bundle.js"
-temporary_mermaid="$temporary_root/mermaid.bundle.js"
-temporary_mermaid_notices="$temporary_root/Mermaid-and-transitive-NOTICES.txt"
+temporary_pele="$temporary_root/pele.bundle.js"
+temporary_pele_notices="$temporary_root/Pele-NOTICES.txt"
 temporary_streaming="$temporary_root/chat-streaming-markdown.bundle.js"
 temporary_streaming_notices="$temporary_root/Remend-NOTICE.txt"
 trap 'rm -rf "$temporary_root"' EXIT INT TERM
@@ -63,8 +63,8 @@ if [[ ! -s "$committed_mermaid_css" ]] || \
   print -u2 "The shared Mermaid stylesheet is missing or incomplete: $committed_mermaid_css"
   exit 1
 fi
-if [[ ! -s "$committed_mermaid_notices" ]]; then
-  print -u2 "The bundled Mermaid runtime notices are missing: $committed_mermaid_notices"
+if [[ ! -s "$committed_pele_notices" ]]; then
+  print -u2 "The bundled Pele runtime notices are missing: $committed_pele_notices"
   exit 1
 fi
 
@@ -104,8 +104,8 @@ fi
   --output "$temporary" \
   --reader-output "$temporary_reader" \
   --math-output "$temporary_math" \
-  --mermaid-output "$temporary_mermaid" \
-  --mermaid-notices-output "$temporary_mermaid_notices" \
+  --pele-output "$temporary_pele" \
+  --pele-notices-output "$temporary_pele_notices" \
   --streaming-output "$temporary_streaming" \
   --streaming-notices-output "$temporary_streaming_notices" \
   --math-assets "$temporary_root" \
@@ -121,8 +121,8 @@ if ! cmp -s "$temporary_reader" "$committed_reader"; then
   exit 1
 fi
 
-if ! cmp -s "$temporary_mermaid" "$committed_mermaid"; then
-  print -u2 "The committed shared Mermaid bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
+if ! cmp -s "$temporary_pele" "$committed_pele"; then
+  print -u2 "The committed shared Pele bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
   exit 1
 fi
 
@@ -132,8 +132,8 @@ if ! cmp -s "$temporary_streaming" "$committed_streaming" || \
   exit 1
 fi
 
-if ! cmp -s "$temporary_mermaid_notices" "$committed_mermaid_notices"; then
-  print -u2 "The committed Mermaid runtime notices are stale. Run Tools/Scripts/build-editor.sh and commit the result."
+if ! cmp -s "$temporary_pele_notices" "$committed_pele_notices"; then
+  print -u2 "The committed Pele runtime notices are stale. Run Tools/Scripts/build-editor.sh and commit the result."
   exit 1
 fi
 

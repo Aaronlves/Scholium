@@ -1,8 +1,7 @@
 import AppKit
 
 enum ScholiumPreviewStyles {
-    /// Mermaid's theme parser requires concrete opaque colors. Resolve native
-    /// roles against the preview canvas rather than inheriting workspace Paper.
+    /// Resolve protected diagram colors against the native preview canvas.
     @MainActor static func diagramColorCSS(dark: Bool, increasedContrast: Bool) -> String {
         let appearance: NSAppearance.Name =
             increasedContrast

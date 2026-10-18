@@ -3703,6 +3703,140 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(!(try await harness.session.testingAccessibilitySnapshot().isFocused))
     }
 
+    @Test("Mermaid edits publish the latest SVG, recover syntax errors and bound active typing work", arguments: [2, 128])
+    func mermaidContinuousEditingAndErrorRecovery(nodeCount: Int) async throws {
+        let edges = (1..<(nodeCount - 1)).map { "N\($0) --> N\($0 + 1)[Node\($0 + 1)]" }.joined(separator: "\n")
+        let source = "# Diagram\n\n```mermaid\nflowchart LR\naccTitle: Synthetic editing\naccDescr: Source editing and recovery.\nN0[中文 e\u{301} 🧭] --> N1[Round000]\n\(edges)\n```\n\nTail"
+        let lower = try #require(source.range(of: "Round000")?.lowerBound).utf16Offset(in: source)
+        let lastLine = source.components(separatedBy: "\n").count
+        let harness = EditorHarness(source: source, initialSourceRange: lower..<lower, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func waitForProjection(_ label: String, malformed: Bool = false) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while ContinuousClock.now < deadline {
+                let ready = try await harness.callPageJavaScript(
+                    """
+                    const widgets = [...document.querySelectorAll('.cm-live-mermaid-widget')];
+                    const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
+                    if (widgets.length !== 1) return false;
+                    if (malformed) return outputs.length === 0
+                      && !!widgets[0].querySelector('.scholium-mermaid-error .scholium-mermaid-diagnostic')
+                      && widgets[0].querySelector('.scholium-mermaid-source code')?.textContent.includes(label);
+                    const svg = outputs[0]?.shadowRoot?.querySelector('svg');
+                    return outputs.length === 1 && !!svg && svg.classList.contains('pele')
+                      && [...svg.querySelectorAll('text')].some(text => text.textContent.trim() === label)
+                      && svg.getBoundingClientRect().width > 0
+                      && !widgets[0].querySelector('.scholium-mermaid-error');
+                    """, arguments: ["label": label, "malformed": malformed]) as? Bool
+                if ready == true { return }
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            Issue.record("Mermaid did not publish the expected current projection (nodes: \(nodeCount), malformed: \(malformed)).")
+            throw MarkdownEditorSession.SessionError.unavailable
+        }
+        harness.session.goToLine(lastLine)
+        try await waitForProjection("Round000")
+        _ = try await harness.callPageJavaScript(
+            """
+            const original = window.scholiumMermaid;
+            window.__mermaidEditing = {renders: [], mounts: 0};
+            window.scholiumMermaid = {...original,
+              async render(request) {
+                const start = performance.now();
+                const result = await original.render(request);
+                window.__mermaidEditing.renders.push({ms: performance.now() - start,
+                  ok: result.ok, reason: result.reason || null});
+                return result;
+              },
+              mount(host, svg) {
+                window.__mermaidEditing.mounts++;
+                return original.mount(host, svg);
+              }
+            };
+            """)
+        var current = source
+        var samples: [[String: Any]] = []
+        var previousLabel = "Round000"
+        for iteration in 0..<36 {
+            let malformed = iteration >= 30 && iteration.isMultiple(of: 2)
+            let label = malformed ? "\"unterminated" : String(format: "Round%03d", iteration + 1)
+            harness.revealEditorRange(fromUTF16: lower, toUTF16: lower + previousLabel.utf16.count)
+            try await harness.waitUntilSelection(head: lower + previousLabel.utf16.count, stage: "Mermaid label editing")
+            try #require(try await harness.callPageJavaScript("return document.querySelector('.cm-live-mermaid-widget') === null;") as? Bool == true)
+            let editStart = ContinuousClock.now
+            try await harness.session.perform(.pastePlain, argument: label)
+            let editDuration = editStart.duration(to: .now).components
+            current = source.replacingOccurrences(of: "Round000", with: label)
+            #expect(try await harness.session.currentText(for: harness.documentID) == current)
+            #expect(harness.session.checkedSource == current)
+            let previewStart = ContinuousClock.now
+            harness.session.goToLine(lastLine)
+            try await waitForProjection(label, malformed: malformed)
+            let previewDuration = previewStart.duration(to: .now).components
+            let runtime = try #require(try await harness.callPageJavaScript(
+                "return window.__mermaidEditing.renders.at(-1);") as? [String: Any])
+            #expect(runtime["ok"] as? Bool == !malformed)
+            if malformed { #expect(runtime["reason"] as? String == "render-failed") }
+            samples.append([
+                "iteration": iteration, "kind": iteration < 30 ? "update" : (malformed ? "syntax-error" : "recovery"),
+                "native_edit_ms": Double(editDuration.seconds) * 1000 + Double(editDuration.attoseconds) / 1e15,
+                "exit_to_matching_DOM_ms": Double(previewDuration.seconds) * 1000 + Double(previewDuration.attoseconds) / 1e15,
+                "runtime": runtime,
+            ])
+            previousLabel = label
+        }
+        harness.revealEditorRange(fromUTF16: lower + previousLabel.utf16.count, toUTF16: lower + previousLabel.utf16.count)
+        try await harness.waitUntilSelection(head: lower + previousLabel.utf16.count, stage: "continuous Mermaid typing")
+        try await harness.session.focusAndWait()
+        let typing = try #require(try await harness.callPageJavaScript(
+            """
+            const stats = window.__mermaidEditing;
+            const rendersBefore = stats.renders.length, mountsBefore = stats.mounts;
+            const dispatch = [];
+            document.querySelector('.cm-content').focus();
+            for (let index = 0; index < 3; index++) {
+              if (!document.execCommand('insertText', false, 'x') || !document.execCommand('delete', false))
+                throw new Error('Warmup input was not handled');
+            }
+            const began = performance.now();
+            for (let index = 0; index < 60; index++) {
+              const action = index < 40 ? 'insertText' : 'delete';
+              const start = performance.now();
+              if (!document.execCommand(action, false, action === 'insertText' ? 'x' : null))
+                throw new Error('Continuous input was not handled');
+              dispatch.push({action, ms: performance.now() - start});
+              if (index % 10 === 9) await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            return {dispatch, total_ms: performance.now() - began, warmup_events: 6,
+              render_delta: stats.renders.length - rendersBefore, mount_delta: stats.mounts - mountsBefore,
+              widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
+              visibility: document.visibilityState};
+            """) as? [String: Any])
+        #expect(typing["render_delta"] as? Int == 0)
+        #expect(typing["mount_delta"] as? Int == 0)
+        #expect(typing["widgets"] as? Int == 0)
+        current = current.replacingOccurrences(of: previousLabel, with: previousLabel + String(repeating: "x", count: 20))
+        let mirrorDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while harness.session.checkedSource != current, ContinuousClock.now < mirrorDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(harness.session.checkedSource == current)
+        #expect(try await harness.session.currentText(for: harness.documentID) == current)
+        harness.session.goToLine(lastLine)
+        try await waitForProjection(previousLabel + String(repeating: "x", count: 20))
+        let surface = try await harness.nativePreparationSnapshot()
+        let diagnostic: [String: Any] = [
+            "nodes": nodeCount, "source_utf8_bytes": source.utf8.count,
+            "samples": samples, "typing": typing, "native_surface_hidden": surface.isHidden,
+            "boundary": "Debug native EditorHarness; runtime includes validation, Pele and SVG sanitization. DOM-ready polling includes bridge and polling overhead, not display paint. Continuous inputs use DOM editing commands, not OS keyboard timing.",
+        ]
+        let data = try JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys])
+        print("PELE_EDIT_DIAGNOSTIC " + String(decoding: data, as: UTF8.self))
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit renders Mermaid only after the caret leaves its exact fenced source")
     func mermaidRendersAtFencedBlockExit() async throws {
         let source = """

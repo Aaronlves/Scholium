@@ -1,4 +1,4 @@
-import mermaid from "mermaid";
+import {detectType, parse as parsePele, PeleError, render as renderPele} from "pele";
 
 export type ScholiumMermaidDiagramKind = string;
 
@@ -36,9 +36,9 @@ export interface ScholiumMermaidRuntime {
 const maximumSourceLength = 32_768;
 const maximumLineCount = 512;
 let renderSequence = 0;
-let renderQueue: Promise<void> = Promise.resolve();
 
-const deniedStatement = /(?:^|[;\r\n])\s*(?:click|href|class|classDef|style|linkStyle)\b/i;
+const deniedStatement = /(?:^|[;\r\n])\s*(?:click|href|class|classDef|style|linkStyle|UpdateElementStyle|UpdateRelStyle)\b/i;
+const deniedTodayMarkerStyle = /(?:^|[;\r\n])\s*todayMarker\b(?![ \t]+off[ \t]*(?:[;\r\n]|$))/i;
 const deniedResourceSyntax = /(?:icon\s*::|img\s*:|image\s*:)/i;
 const deniedEmbeddedResourceElement = /<\s*\/?\s*(?:a|audio|embed|iframe|image|img|link|object|picture|source|video)\b/i;
 const deniedClassSyntax = /:::[A-Za-z_]/;
@@ -91,6 +91,8 @@ export function validateMermaidSource(source: unknown):
   if (/^\s*---(?:\r?\n|\r)/.test(source)
       || /%%\s*\{/.test(source)
       || deniedStatement.test(source)
+      || deniedTodayMarkerStyle.test(source)
+      || (detectType(source) === "sequence" && /(?:^|[;\r\n])\s*rect\b/i.test(source))
       || deniedClassSyntax.test(source)
       || deniedResourceSyntax.test(source)
       || deniedEmbeddedResourceElement.test(source)) {
@@ -156,7 +158,6 @@ export function copyMermaidSVG(svg: SVGSVGElement, parser: DOMParser = new DOMPa
 }
 
 interface ScholiumMermaidTheme {
-  readonly darkMode: boolean;
   readonly fontFamily: string;
   readonly variables: Readonly<Record<string, string>>;
 }
@@ -166,9 +167,8 @@ type MermaidThemeStyle = Pick<CSSStyleDeclaration, "getPropertyValue">;
 function semanticColor(style: MermaidThemeStyle, name: string, systemAccent?: string) {
   const value = style.getPropertyValue(name).trim();
   if (/^#[0-9a-f]{6}$/i.test(value)) return value;
-  // The macOS WKWebView document contract deliberately keeps Accent as a
-  // live system color. Resolve it only for Mermaid's generated SVG, whose
-  // theme parser needs a concrete color; arbitrary CSS values remain rejected.
+  // The document keeps Accent live. Resolve it for the admitted SVG so all
+  // diagram colors still come from the protected native semantic palette.
   if (name === "--scholium-color-accent" && value === "-apple-system-control-accent") {
     return systemAccent ?? value;
   }
@@ -204,12 +204,6 @@ function resolvedSystemAccent(themeRoot: Element) {
   return resolved;
 }
 
-function relativeLuminance(hex: string) {
-  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
-    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-}
-
 export function mermaidThemeFromStyle(
   style: MermaidThemeStyle,
   systemAccent?: string,
@@ -221,110 +215,68 @@ export function mermaidThemeFromStyle(
   const separator = semanticColor(style, "--scholium-color-separator");
   const fontFamily = style.getPropertyValue("--scholium-document-body-font-family").trim();
   if (!background || !surface || !text || !accent || !separator || !fontFamily) return null;
-  const diagramScale = Object.fromEntries(Array.from({length: 12}, (_, index) => [
-    [`cScale${index}`, index % 2 === 0 ? surface : background],
-    [`cScaleLabel${index}`, text],
-    [`cScaleInv${index}`, separator],
-    [`lineColor${index}`, accent],
-  ]).flat());
-  return {
-    darkMode: relativeLuminance(background) < 0.5,
-    fontFamily,
-    variables: {
-      background,
-      primaryColor: surface,
-      primaryTextColor: text,
-      primaryBorderColor: accent,
-      secondaryColor: background,
-      secondaryTextColor: text,
-      secondaryBorderColor: separator,
-      tertiaryColor: surface,
-      tertiaryTextColor: text,
-      tertiaryBorderColor: separator,
-      lineColor: separator,
-      textColor: text,
-      mainBkg: surface,
-      nodeBkg: surface,
-      nodeBorder: accent,
-      clusterBkg: background,
-      clusterBorder: separator,
-      edgeLabelBackground: background,
-      noteBkgColor: surface,
-      noteTextColor: text,
-      noteBorderColor: separator,
-      ...diagramScale,
-    },
+  // Series may carry inverse text in Pele. Document ink against the document
+  // background preserves contrast without importing a second diagram palette.
+  const series = Object.fromEntries(Array.from({length: 8}, (_, index) => [
+    `--pele-series-${index + 1}`, text,
+  ]));
+  const variables = {
+    "--pele-bg": background,
+    "--pele-fg": text,
+    "--pele-muted": semanticColor(style, "--scholium-color-secondary-text") ?? text,
+    "--pele-line": separator,
+    "--pele-surface": surface,
+    "--pele-surface-alt": background,
+    "--pele-border": accent,
+    "--pele-accent": accent,
+    "--pele-critical": accent,
+    "--pele-font": fontFamily,
+    "--pele-font-mono": style.getPropertyValue("--scholium-document-source-font-family").trim() || "monospace",
+    ...series,
   };
+  if (Object.values(variables).some(value => valueHasUnsafeURL(value) || deniedCSSControl.test(value))) return null;
+  return {fontFamily, variables};
 }
 
-function protectedMermaidThemeCSS(theme: ScholiumMermaidTheme) {
-  const surface = theme.variables.primaryColor;
-  const text = theme.variables.primaryTextColor;
-  const accent = theme.variables.primaryBorderColor;
-  const separator = theme.variables.lineColor;
-  return `
-.mindmap-node rect,
-.mindmap-node path,
-.mindmap-node circle,
-.mindmap-node polygon {
-  fill: ${surface} !important;
-  stroke: ${accent} !important;
-}
-.mindmap-node text,
-.mindmap-node .nodeLabel,
-.mindmap-node-label {
-  fill: ${text} !important;
-  color: ${text} !important;
-}
-.mindmapDiagram .edge,
-.mindmapDiagram .flowchart-link {
-  stroke: ${separator} !important;
-}
-`;
-}
-
-async function renderValidatedMermaid(
+function renderValidatedMermaid(
   request: ScholiumMermaidRenderRequest,
   validation: Extract<ReturnType<typeof validateMermaidSource>, {ok: true}>,
   theme: ScholiumMermaidTheme,
-): Promise<ScholiumMermaidRenderResult> {
+): ScholiumMermaidRenderResult {
   if (request.signal?.aborted) return {ok: false, reason: "cancelled"};
   try {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      secure: ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"],
-      htmlLabels: false,
-      suppressErrorRendering: true,
-      maxTextSize: maximumSourceLength,
+    const model = parsePele(request.source, {limit: maximumSourceLength, maxEdges: 512});
+    // Preserve uncolored sequence groups while refusing authored box colors.
+    if (model.type === "sequence" && model.boxes.some(box => box.fill && box.fill !== "transparent")) {
+      return {ok: false, reason: "unsafe-syntax"};
+    }
+    const rendered = renderPele(model, {
+      idPrefix: `scholium-mermaid-${++renderSequence}`,
+      fontFamily: theme.fontFamily,
+      fontFamilyMono: theme.variables["--pele-font-mono"],
+      // Source direction stays authoritative; the host owns bounded scaling.
+      autoDirection: false,
+      links: false,
+      images: false,
+      limit: maximumSourceLength,
+      outputLimit: 2_000_000,
       maxEdges: 512,
-      deterministicIds: true,
-      deterministicIDSeed: "scholium",
-      theme: "base",
-      themeCSS: protectedMermaidThemeCSS(theme),
-      themeVariables: {
-        darkMode: theme.darkMode,
-        ...theme.variables,
-        fontFamily: theme.fontFamily,
-      },
-      flowchart: {useMaxWidth: false},
     });
-    const parsed = await mermaid.parse(request.source, {suppressErrors: true});
-    if (!parsed) return {ok: false, reason: "unsupported-diagram"};
-    if (request.signal?.aborted) return {ok: false, reason: "cancelled"};
-    const identifier = `scholium-mermaid-${++renderSequence}`;
-    const rendered = await mermaid.render(identifier, request.source);
     if (request.signal?.aborted) return {ok: false, reason: "cancelled"};
     const sanitized = sanitizeMermaidSVG(rendered.svg);
     if (!sanitized) return {ok: false, reason: "unsafe-output"};
+    for (const [name, value] of Object.entries(theme.variables)) {
+      sanitized.style.setProperty(name, value);
+    }
     return {
       ok: true,
       svg: sanitized,
-      kind: parsed.diagramType,
+      kind: rendered.type,
       accessibilityWarning: validation.accessibilityWarning,
     };
-  } catch {
-    return {ok: false, reason: "render-failed"};
+  } catch (error) {
+    return {ok: false, reason: error instanceof PeleError && error.code === "unsupported-diagram"
+      ? "unsupported-diagram" : "render-failed"};
   }
 }
 
@@ -339,11 +291,9 @@ export function renderMermaid(request: ScholiumMermaidRenderRequest): Promise<Sc
     ? mermaidThemeFromStyle(getComputedStyle(themeRoot), resolvedSystemAccent(themeRoot) ?? undefined)
     : null;
   if (!theme) return Promise.resolve({ok: false, reason: "invalid-theme"});
-  const result = renderQueue
-    .catch(() => {})
-    .then(() => renderValidatedMermaid(request, validation, theme));
-  renderQueue = result.then(() => {}, () => {});
-  return result;
+  // Keep the shared asynchronous contract and a cancellation boundary, without
+  // Mermaid.js's runtime-global initialization or serialized render queue.
+  return Promise.resolve().then(() => renderValidatedMermaid(request, validation, theme));
 }
 
 export const scholiumMermaidRuntime: ScholiumMermaidRuntime = Object.freeze({

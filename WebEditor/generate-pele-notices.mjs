@@ -3,7 +3,7 @@ import path from "node:path";
 
 const [metafilePath, outputPath] = process.argv.slice(2);
 if (!metafilePath || !outputPath) {
-  throw new Error("Usage: node generate-mermaid-notices.mjs <esbuild-metafile> <output>");
+  throw new Error("Usage: node generate-pele-notices.mjs <esbuild-metafile> <output>");
 }
 
 function packageRootForInput(input) {
@@ -57,8 +57,8 @@ for (const packageRoot of packageRoots) {
 }
 packages.sort((left, right) =>
   left.name.localeCompare(right.name, "en") || left.version.localeCompare(right.version, "en"));
-if (!packages.some((entry) => entry.name === "mermaid")) {
-  throw new Error("The Mermaid runtime metafile did not include the Mermaid package.");
+if (!packages.some((entry) => entry.name === "pele")) {
+  throw new Error("The Pele runtime metafile did not include the Pele package.");
 }
 
 const uniquePackages = packages.filter((entry, index) =>
@@ -73,10 +73,10 @@ const sections = uniquePackages.map((entry) => [
   ...entry.files.flatMap((file) => ["", `--- ${file.name} ---`, "", file.text]),
 ].join("\n"));
 const notice = [
-  "Scholium bundled Mermaid runtime notices",
+  "Scholium bundled Pele runtime notices",
   "",
   "This deterministic file covers the packages that esbuild includes in",
-  "Scholium's offline Mermaid runtime. Regenerate it with build-editor.sh.",
+  "Scholium's offline Pele runtime. Regenerate it with build-editor.sh.",
   "",
   ...sections,
   "",

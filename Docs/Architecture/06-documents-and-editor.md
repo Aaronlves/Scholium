@@ -226,11 +226,11 @@ allowlisted read-only fonts. It renders bounded untrusted input with trust disab
 and HTML/MathML output, no remote resources; failure retains escaped source and
 diagnostics. Only original delimiter spans are editable.
 
-Mermaid is pinned/local and loaded lazily by a versioned document-bound bridge
+Pinned/local Pele renders Mermaid through a lazy, versioned document-bound bridge
 request. Review begins with escaped source-located fences; inactive Edit uses
 source-backed block projections. Source installs none. Activation reveals the exact
-fence; cancellation/teardown aborts stale rendering. Serialized calls protect
-runtime-global configuration.
+fence; cancellation/teardown rejects stale rendering. Render calls share no
+mutable theme configuration.
 
 The diagram adapter bounds source/lines/edges and permits strict static local
 rendering only: no authored initialization, HTML labels, links/callbacks, external

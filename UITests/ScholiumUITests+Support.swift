@@ -377,7 +377,11 @@ extension ScholiumUITests {
             XCTFail("The requested workspace must exist before focus routing.")
             return
         }
-        let targetIdentifier = window.identifier
+        focusWorkspaceWindow(identifier: window.identifier)
+    }
+
+    @MainActor
+    func focusWorkspaceWindow(identifier targetIdentifier: String) {
         guard !targetIdentifier.isEmpty else {
             XCTFail("The requested workspace must expose a stable window identifier.")
             return
@@ -390,13 +394,20 @@ extension ScholiumUITests {
             XCTFail("The requested workspace must expose its native scene identity.")
             return
         }
-        let stableWindow = app.windows[targetIdentifier]
+        app.activate()
+        guard waitUntil(timeout: 5, condition: {
+            self.app.state == .runningForeground
+        }) else {
+            XCTFail("The isolated QA application did not become active before window focus routing.")
+            return
+        }
         XCTAssertEqual(
             notify_post("com.scholium.qa.focus-workspace.\(windowID.uuidString)"),
             UInt32(NOTIFY_STATUS_OK),
             "The QA workspace focus request could not be posted."
         )
         RunLoop.current.run(until: Date().addingTimeInterval(1))
+        let stableWindow = app.windows[targetIdentifier]
 
         // The notification makes the native window key, but macOS can still
         // leave an overlapping workspace as XCUITest's event target. A
@@ -407,8 +418,11 @@ extension ScholiumUITests {
         let titlebar = stableWindow.coordinate(
             withNormalizedOffset: CGVector(dx: 0.42, dy: 0)
         ).withOffset(CGVector(dx: 0, dy: 3))
+        guard waitUntil(timeout: 5, condition: { stableWindow.isHittable }) else {
+            XCTFail("The requested QA workspace did not become available for native input.")
+            return
+        }
         titlebar.click()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     @MainActor
@@ -755,6 +769,10 @@ extension ScholiumUITests {
             documentModeMenu.hover()
             let source = documentModeMenu.menuItems["Source"].firstMatch
             XCTAssertTrue(source.waitForExistence(timeout: 3))
+            guard waitUntil(timeout: 5, condition: { source.isEnabled }) else {
+                XCTFail("Source requires the target workspace's native command focus before selection.")
+                return
+            }
             source.click()
         default:
             XCTFail("Unsupported Document mode: \(title)")

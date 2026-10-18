@@ -855,6 +855,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 return {
                   runtime: window.scholiumMermaid?.version || 0,
                   staticFamilyCount,
+                  pele: shadowRoots.every(root => !!root.querySelector("svg.pele")),
                   architectureSecuritySettled: typeof architectureSecurityResult?.ok === 'boolean',
                   prototypePolluted,
                   rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
@@ -869,6 +870,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             ) as? [String: Any])
         #expect(result["runtime"] as? Int == 3)
         #expect(result["staticFamilyCount"] as? Int == 5)
+        #expect(result["pele"] as? Bool == true)
         #expect(result["architectureSecuritySettled"] as? Bool == true)
         #expect(result["prototypePolluted"] as? Bool == false)
         #expect(result["rendered"] as? Int == 1)

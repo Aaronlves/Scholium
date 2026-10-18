@@ -9,9 +9,9 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
 - Remend 1.4.0 (Vercel, Inc.), used only for display-time completion of streaming
   Markdown: Apache License 2.0. Its license and upstream notice are retained in
   `Tools/Packaging/Licenses/Remend-Apache-2.0.txt` and `Remend-NOTICE.txt`.
-- Mermaid 11.16.1 and the runtime packages included in its offline browser
-  bundle: permissive licenses reproduced package-by-package in
-  `Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt`.
+- Pele 1.6.0, used to render Mermaid syntax locally: MIT License, with
+  incorporated icon attribution retained in
+  `Tools/Packaging/Licenses/Pele-NOTICES.txt`.
 - Yams 6.2.2: MIT License.
 - ThinkingOrbs 1.1.0 (Haplo LLC; original designs and engine by Jakub Antalik): MIT License.
 - Swift Markdown 0.8.0: Apache License 2.0, including its notice and bundled

@@ -20,9 +20,9 @@ The shared mathematics runtime, stylesheet, and fonts are built from KaTeX
 `math.bundle.js`, `katex.min.css`, and the `KaTeX_*.woff2` files are generated
 from the exact package version locked in `WebEditor/package-lock.json`.
 
-The offline `mermaid.bundle.js` uses Mermaid 11.16.1 and its bundled runtime
-dependencies. Their full notices ship in the App’s
-`Licenses/Mermaid-and-transitive-NOTICES.txt`. Exact versions are locked in
+The offline `pele.bundle.js` renders Mermaid syntax using Pele 1.6.0 (MIT).
+Its full license and incorporated icon attribution ship in the App’s
+`Licenses/Pele-NOTICES.txt`. The exact version is locked in
 `WebEditor/package-lock.json`.
 
 The standalone `chat-streaming-markdown.bundle.js` is built from Remend 1.4.0

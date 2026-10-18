@@ -37,8 +37,8 @@ SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
 LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
 python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
   "${ROOT}/Tools/Packaging/Scholium.entitlements"
-[[ -s "${LICENSE_SOURCE}/Mermaid-and-transitive-NOTICES.txt" ]] || {
-  print -u2 "Missing bundled Mermaid runtime notices. Run Tools/Scripts/build-editor.sh."
+[[ -s "${LICENSE_SOURCE}/Pele-NOTICES.txt" ]] || {
+  print -u2 "Missing bundled Pele runtime notices. Run Tools/Scripts/build-editor.sh."
   exit 66
 }
 [[ -s "${LICENSE_SOURCE}/Remend-NOTICE.txt" && -s "${LICENSE_SOURCE}/Remend-Apache-2.0.txt" ]] || {
@@ -123,7 +123,7 @@ EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js reader.bundle.js chat-streaming-markdown.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
+for editor_resource in index.html editor.bundle.js reader.bundle.js chat-streaming-markdown.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css pele.bundle.js mermaid.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66

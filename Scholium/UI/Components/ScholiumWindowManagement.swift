@@ -897,10 +897,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let window = self?.window else { return }
-                    window.orderFrontRegardless()
+                    if window.isMiniaturized { window.deminiaturize(nil) }
                     NSApp.activate(ignoringOtherApps: true)
-                    window.makeKey()
-                    window.orderFrontRegardless()
+                    window.makeKeyAndOrderFront(nil)
                 }
             }
             if status == NOTIFY_STATUS_OK {

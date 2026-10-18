@@ -1,6 +1,6 @@
 import WebKit
 
-/// Installs the large, app-owned Mermaid runtime only after a validated page
+/// Installs the app-owned Pele renderer for Mermaid syntax only after a validated page
 /// bridge request. Assets remain immutable resources; each WebView coordinator
 /// owns request identity, cancellation, and page lifetime.
 enum ScholiumMermaidRuntimeLoader {
