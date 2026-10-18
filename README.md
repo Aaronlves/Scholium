@@ -104,8 +104,8 @@ Workspace in Finder** and **Refresh**. Codex authentication and runtime settings
 use a shared machine-local configuration; selecting an existing configuration
 inherits its tools and settings.
 
-**External hosts:** open **Settings → Integrations → Agents & Chat → External
-Agent Hosts**, then copy and run the command for your host. It uses the installed
+**External hosts:** open **Settings → Agents → External Access**, then copy and
+run the command for your host. It uses the installed
 App's exact helper path. After moving the App, copy and run the command again;
 updating in place retains the path. Scholium copies commands without editing
 host configuration. External conversations stay in their host.

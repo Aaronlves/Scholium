@@ -94,8 +94,8 @@ Scholium 将来源分析、概念研究与持续写作放在同一个研究环�
 **Refresh**。Codex 登录与运行时设置使用共享的本机配置；选择已有配置会继承其中的
 工具和设置。
 
-<strong>外部 host：</strong>打开 **Settings → Integrations → Agents & Chat → External Agent
-Hosts**，复制并运行相应 host 的设置命令。命令使用已安装应用中连接组件的准确路径。
+<strong>外部 host：</strong>打开 **Settings → Agents → External Access**，复制并运行相应
+host 的设置命令。命令使用已安装应用中连接组件的准确路径。
 移动应用后需重新复制并运行；原位置更新可保留路径。Scholium 只复制命令，不修改
 host 配置。外部对话始终留在其 host 中。
 

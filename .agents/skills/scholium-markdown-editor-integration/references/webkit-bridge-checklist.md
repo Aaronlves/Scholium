@@ -29,7 +29,7 @@ adapter symbols from the implementation architecture and live protocol.
 - Centralize handler names and remove them during dismantle or coordinator teardown.
 - Cancel startup, focus, save, and synchronization work when vault, document, fingerprint, or session changes.
 - Require delayed callbacks to match the active session and document before changing Swift or JavaScript state.
-- Keep Source and Live Preview on one persistent CodeMirror state; do not reload the page to switch modes.
+- Keep Source and Edit on one persistent CodeMirror state; do not reload the page to switch modes.
 
 ## Message validation
 
@@ -48,13 +48,13 @@ adapter symbols from the implementation architecture and live protocol.
 
 ## Projection and interaction
 
-- Limit Live Preview decoration work to visible ranges plus required structural context.
+- Limit Edit decoration work to visible ranges plus required structural context.
 - Reveal exact syntax when the insertion point or selection enters a projected construct.
 - Exclude literal, escaped, comment, code, HTML, and frontmatter regions
   consistently with the live semantic Markdown projection.
 - Preserve CodeMirror selection, scroll, history, marked text, focus, find/replace, and completion behavior.
 - Give semantic widgets accurate accessible labels and keep the underlying source reachable for editing.
-- Keep Read output fingerprint-bound and source-located; never allow Read JavaScript to mutate Markdown.
+- Keep Review output fingerprint-bound and source-located; never allow Review JavaScript to mutate Markdown.
 
 ## Navigation and content security
 
@@ -76,7 +76,7 @@ focus claims, preserve the native runtime evidence requirement.
 - dropped, repeated, out-of-order, oversized, and stale-session messages;
 - full-buffer reconciliation before manual and debounced saves;
 - rapid A -> B -> A switching and teardown/recreation;
-- Source, Live Preview, and Read transitions with pending edits;
+- Source, Edit, and Review transitions with pending edits;
 - cursor, multi-range selection, scroll, undo, focus, find, and IME composition;
 - internal, external, broken, and malicious links and navigation;
 - failed save and external conflict without buffer loss;

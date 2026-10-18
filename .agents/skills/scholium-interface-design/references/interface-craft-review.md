@@ -131,9 +131,10 @@ and restrained motion remain controlling.
 5. Select one coherent correction slice. Reuse, adapt, translate, minimally
    customize, or reject according to the restrained-design protocol. Multiple
    findings do not justify unrelated cleanup or a new component system.
-6. Update canonical product or visual-language text only within an authorized
-   Decision-recording or Implementation scope when the target itself changes;
-   implementation evidence belongs in the status hierarchy.
+6. Update the owning feature contract only when an authorized target decision
+   changes. A global Design charter change needs the explicit researcher scope
+   required by `AGENTS.md`; routine craft or implementation does not supply it.
+   Implementation evidence belongs in the status hierarchy.
 7. Run the smallest proof capable of disproving the correction. Keep static
    inspection, compilation, deterministic tests, isolated QA, accessibility
    inspection, performance measurement, and human acceptance distinct.

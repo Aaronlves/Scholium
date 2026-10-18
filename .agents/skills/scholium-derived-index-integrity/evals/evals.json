@@ -46,7 +46,7 @@
     },
     {
       "id": 4,
-      "prompt": "让候选 Swift index 在单一 boundary 后 shadow 当前 backend，比较 GUI/CLI 结果、恢复和测量成本。",
+      "prompt": "让候选 Swift index 在单一 boundary 后 shadow 当前 backend，比较 App/MCP 结果、恢复和测量成本。",
       "expected_output": "Performs explicitly requested shadow comparison; the baseline remains the production result while comparing.",
       "files": [],
       "assertions": [

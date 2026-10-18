@@ -5,9 +5,9 @@ description: "Implement, diagnose, or test Scholium MCP/App operations and Agent
 
 # Scholium Agent Collaboration
 
-Own the functional boundary between an external Agent and the running App,
-including guarded mutations and their exact-source evidence. Conversation and
-research method remain with the external host and researcher.
+Own the functional boundary between Agent hosts and the running App, including
+guarded mutations and their exact-source evidence. Follow the live contract
+for external-host and in-app Chat scope; research method remains researcher-owned.
 
 Use the specification's Agent collaboration route for operation contracts,
 architecture for transport and state ownership, and status for implementation
@@ -34,9 +34,9 @@ from the contract; a client timeout alone locates no failed write.
 
 For a mutation, distinguish three questions: did admission succeed, did source
 or record state commit, and did the caller receive confirmation? Inspect exact
-current state and retained evidence before proposing replay. Source and portable
-record revisions are separate inputs; a matching Note fingerprint does not
-prove an attachment relationship or Metadata record is unchanged.
+current state and retained evidence before proposing replay. Authored properties
+and attachment relationships share the Note source revision. A catalog entry or
+bookmark grants access; it does not prove a current authored attachment link.
 
 For a stale or misdirected request, follow captured workspace, document,
 conversation or operation identity across each suspension. Recheck at the

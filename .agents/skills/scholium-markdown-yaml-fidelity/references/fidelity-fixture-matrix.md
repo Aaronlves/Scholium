@@ -20,11 +20,11 @@ acceptance and rejection rules; these fixtures do not redefine them.
 | Collections | block/flow sequences and mappings | Preserve style for untouched values |
 | Graph | anchors, aliases, explicit tags, merge keys | Validate the complete result; preserve untouched syntax |
 | Schema | unknown nested mapping or heterogeneous sequence | Display read-only if unsupported; never flatten or drop it |
-| Role/profile | every currently registered role and default profile | Resolve from registered identity and the live schema contract, not from a folder guess |
-| Role/profile | unsupported pre-production metadata | Preserve bytes exactly, expose no current role or workflow authority, and do not retain a decoder or write path |
-| Role/profile | every role/profile for which missing frontmatter is valid | Keep the complete file valid and YAML-free unless the submitted source explicitly authors frontmatter |
+| Note role | all three registered Note roles | Resolve role from registered vault identity; authored properties do not assign a managed profile or method |
+| Unsupported data | unsupported pre-production metadata | Preserve bytes exactly without restoring its decoder or workflow authority; ordinary authored YAML retains its current source-edit contract |
+| YAML-free source | Analysis, Topic, and Work without frontmatter | Keep the complete file valid and YAML-free unless the submitted source explicitly authors frontmatter |
 | Projection | every nested or otherwise unsupported property shape | Expose only as permitted by the live projection contract; never flatten a read-only projection into writable YAML |
-| Body | callouts, footnotes, math, HTML, comments, embeds, wikilinks | Preserve exact source through read/live/source transitions |
+| Body | callouts, footnotes, math, HTML, comments, embeds, wikilinks | Preserve exact source through Review/Edit/Source transitions |
 | Unicode | emoji, combining marks, non-Latin scripts, NUL-like controls | Keep UTF-8 bytes and range calculations valid |
 | Failure | malformed quote, bracket, indentation, alias, or delimiter | Keep note readable; reject metadata mutation with a useful error |
 
@@ -54,8 +54,8 @@ Select the assertion group from the actual submitted mutation payload. A complet
 - The active editor boundary's complete exact-source snapshot is the candidate; do not substitute normalized editor text, a parsed model, or a render tree.
 - Reject malformed frontmatter before entering the write phase.
 - Bind the save to the document identity and starting fingerprint.
-- For any profile that permits YAML-free source, preserve the absence of
-  delimiters unless the submitted source explicitly authored frontmatter.
+- Preserve the absence of delimiters in YAML-free source unless the submitted
+  source explicitly authored frontmatter.
 
 ## Differential checks
 

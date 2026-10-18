@@ -14,7 +14,7 @@
     },
     {
       "id": 1,
-      "prompt": "修改 ScholiumCore/Resources/Skills 中的 Development Workflow shipped skill。",
+      "prompt": "修改 ScholiumCore/Resources/Skills 中的 Scholium Core Protocol shipped skill。",
       "expected_output": "Stops at the release-shipped product-skill boundary and routes the request to its separately authorized workflow; toolkit maintenance does not edit it.",
       "files": [],
       "assertions": [

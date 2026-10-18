@@ -37,8 +37,8 @@ state the accepted profile; an unaccepted optional profile is labelled
   partial recovery, Finder restoration, interrupted saves, and multiple-window
   dirty-peer behavior.
 
-**Agent Collaboration Beta/1.0** additionally covers applicable Research
-Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
+**Agent Collaboration Beta/1.0** additionally covers the Triptych Guide and
+applicable Settings, Core Protocol discovery, user-scope Codex and Claude
 configuration, the knowledge-base MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
 incoming/outgoing authored link occurrences and annotations, managed Zotero MCP read/write/unavailable behavior, and

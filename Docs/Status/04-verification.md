@@ -14,20 +14,20 @@ reports the complete performance gate, 13/13 affected UI journeys, and mounted/
 copied clean-account save/readback smoke; VoiceOver, input, adaptation, icon,
 and Finder-restoration human acceptance remain open.
 
-**2026-10-13 — `v0.4.0-beta` published:** Exact clean tag
-`7a6fee4aaeba85dea1b94e570bc9902481e97d74` produced arm64 ad-hoc DMG
-(version `0.4.0`/build `18`; macOS `26.0`, SDK `27.0`), SHA-256
-`1c3d7a1a8725adb18d299935ef51cc01d0a08dafe6b0745e5deaf7813d5a1245`; the
-[public release](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.0-beta)
-includes the DMG and checksum. Local `verify.sh` passed WebEditor (1,228), Core
-(690), Contracts (173), Application (345), App Swift Testing (1,876), and
-Release/helper checks; display-gated checks and the fresh-query microbenchmark
-were skipped. Full-profile [GitHub Verify](https://github.com/Aaronlves/Scholium/actions/runs/38292093172)
-failed with three issues across two App tests: Chat toolbar retained-resize
-timed out with its window not key; External Markdown had `canSave == false`,
-leaving `save()` unevaluated. CI was not rerun at researcher direction.
-Package integrity passed; XCTest/XCUITest, mounted/copied first-launch smoke and
-packaged performance campaign were omitted. G6/G7/G9 remain incomplete.
+**2026-10-18 — `v0.4.2-beta.2` published:** The
+[release record](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2)
+binds commit `374b90b3d68d9a8909c29ebbbde4129e7e6e386b`, version `0.4.2`/build
+`22`, arm64/macOS `26.0` ad-hoc DMG, SHA-256
+`a81179f640dab869337389c545a2920805eecd794a7d51d0aa1ace647117a2e9`.
+It reports package integrity and mounted/copied Core Bootstrap/save/relaunch
+journeys passed. [Exact-commit daily CI](https://github.com/Aaronlves/Scholium/actions/runs/39123508509)
+passed with 114 declared skips. Publication reused full-gate baseline `4d846397`
+(109 declared skips) under a researcher-approved release-specific exception,
+plus 16 focused queue/fixture checks; no exact-tag full execution is claimed.
+Human accessibility/input/adaptations/icon review, native Trash/restore,
+exact-package performance, additional Search/Related Material/Recovery journeys,
+and a separate clean account remained uncompleted. Agent Collaboration and
+optional Chat remain Preview; those omissions are not passes or future waivers.
 
 ## Current feature coverage
 

@@ -63,7 +63,10 @@ The research object and scope control what the result is entitled to claim. The 
 
 Use a Research Unit when a durable note needs an explicit epistemic scope: what object or domain the note concerns and what its claims apply to.
 
-Keep the concept minimal. In a Scholium-like system it may be stored in YAML and presented as **Research Status**, but the scholarly idea is independent of that representation.
+Keep the concept minimal and independent of representation. Record the needed
+scope in the research artifact or user-selected convention; do not invent a
+managed field, profile, or interface to store it. Resolve any application
+representation from that application's current contract.
 
 Examples:
 
@@ -153,7 +156,10 @@ Do not normalize an entire file, reorder frontmatter, rename headings, or “cle
 
 ## Use links without fabricating relations
 
-Treat links as possible scholarly relations, not mere navigation. Require a warranted relation before adding one.
+Distinguish navigation from an asserted scholarly relation. An ordinary link
+may supply a locator or neutral connection without claiming support, criticism,
+or participation in a debate. When the surrounding prose or annotation asserts
+a scholarly relation, require evidence for that assertion.
 
 Examples include:
 
@@ -164,7 +170,10 @@ Examples include:
 - Analysis **contributes to** Topic;
 - Topic **informs** Work.
 
-Store the primary relation once when bidirectional indexing can derive the inverse. Do not encode both directions as independent claims. Do not infer a strong relation from keyword overlap, co-occurrence, or an existing backlink alone.
+Use the host's declared link model rather than inventing relation types or
+inverse writes. A derived Incoming view does not author another claim at its
+destination. Do not infer a strong relation from keyword overlap, co-occurrence,
+an existing backlink, or transitive connectivity alone.
 
 ## Keep Dialogue scholarly
 

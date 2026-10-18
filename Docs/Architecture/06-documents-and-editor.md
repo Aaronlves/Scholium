@@ -37,10 +37,11 @@ their buffers.
 
 Opening atomically installs exact source, mode and intent before mounting.
 Mapped selection and measured geometry precede handoff; failure preserves source
-behind retry/Source. Clean external publication
-replaces pending source/boundary together. Revision changes invalidate stale
-readiness; Review/recovery HTML caches source and authorized local-image revisions.
-Document owns position/focus,
+behind retry/Source. Clean external publication replaces source/boundary together.
+Hydration failures recheck source binding, retained session and revision before
+publication, preserving owner errors. Stale-snapshot failures join any active save
+before revalidation. Revision changes invalidate stale readiness; Review/recovery
+HTML caches source and authorized local-image revisions. Document owns position/focus,
 not another writable path-mapped presentation record.
 
 ### Editor boundary contract
@@ -84,7 +85,7 @@ silently normalize or repair source.
 
 One atomic CodeMirror configuration owns Edit/Source facets and all projection
 extensions/listeners. Initialization or absent facet fails closed to Source.
-Source has no semantic widgets or Live Preview overlays, while keeping shared
+Source has no semantic widgets or Edit overlays, while keeping shared
 exact navigation/editing. Pending native input cannot independently toggle DOM
 mode. Lezer topology completion is bounded; incomplete parsing remains incomplete
 until the parser transaction, with no regex fallback or second Markdown parser.
@@ -184,29 +185,25 @@ Review and Edit use one YAML presentation contract, with representative roles an
 CSS classes pinned by the shared frontmatter parity fixture. `FrontmatterPresentation`
 is Review's bounded lexical projection for already bounded authored YAML lines; Edit
 uses the equivalent CodeMirror projection and rejects implicit bare keys that Review
-does not present as keys. `NoteDocument`/Yams remains the sole semantic parser and
-source authority; neither presentation adapter can parse, repair, authorize or edit
-metadata.
+does not present as keys. Contracts models and planners use Yams for semantic YAML
+parsing; exact Markdown remains source authority. Presentation adapters cannot
+semantically parse, repair, authorize or edit metadata.
 Graph publishes directed authored occurrences; incoming/outgoing are projections
 of the same exact occurrence, not deduplicated philosophical meaning.
 
-One central semantic/topology index owns literal and construct ranges. Components
-derive projections from it, not parallel regex invalidation. Proved topology-safe
-prose changes may map ranges incrementally; structural or uncertain changes rebuild
-conservatively. Complete whole-Note topology cannot be assumed from a viewport tree.
-Direct CodeMirror fields own block/line geometry; viewport plugins own inline
-projection only. Authored separators remain exact rows, not source-less duplicate
-spacing. Semantic widgets, selection, pointer mapping and scrolling share native
-measurement. One Live Presentation Layout coordinator owns presentation-only
-geometry continuity: projection owners mark an affected source range with a
-typed effect, and the coordinator captures a stable source-line viewport anchor
-before decoration exchange from CodeMirror's logical line-block measurement,
-then corrects it in a later read/write measure cycle. Callout fold state remains
-session-local in its projection field, but it does not own scroll or pointer
-state. No decoration state is mutated by an independent geometry cache, and no
-projection owner performs a second scroll correction.
+One semantic/topology index supplies literal/construct ranges without parallel
+regex invalidation. Proved topology-safe prose edits may map ranges incrementally;
+structural/uncertain edits rebuild. Viewport trees cannot prove whole-Note topology.
+CodeMirror fields own block/line geometry; viewport plugins own inline projection.
+Authored separators remain exact rows. Widgets, selection, pointer mapping and
+scrolling share native measurement. One Live Presentation Layout coordinator
+captures a source-line viewport anchor from CodeMirror's logical line-block
+measurement before decoration exchange, then corrects it in a later read/write
+cycle. Projection owners supply typed affected-range effects, never independent
+geometry mutation or scroll correction. Callout folding stays session-local,
+without scroll/pointer ownership.
 
-Read/Edit share semantic components/presentation. Application owns byte-checked
+Review/Edit share semantic components/presentation. Application owns byte-checked
 Appearance/snippet storage and explicit reload. Stale/invalid external edits preserve
 loaded state and reject stale GUI saves. Both hosts transport protected components,
 dynamic presentation and sanitized user CSS in distinct ordered layers. Document-bound

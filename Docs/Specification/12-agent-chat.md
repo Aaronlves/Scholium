@@ -663,7 +663,8 @@ grants permission. A missing conversation is reported without selecting another
 as a substitute. Notification payloads retain only opaque Triptych/conversation
 identities and event category; source text, runtime prompts and credentials never
 enter the system notification store. The shared macOS notification policy in
-§18.2 owns authorization and foreground suppression.
+[§18.3](06-interface-shell-and-library.md#183-library-and-search) owns
+authorization and foreground suppression.
 
 Scheduled work requires an explicit researcher instruction naming scope,
 timing and permission. Its runtime-owned schedule can be inspected, paused and

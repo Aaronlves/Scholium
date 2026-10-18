@@ -34,10 +34,12 @@ startup reconciliation at its exact location. Expected, candidate and displaced
 bytes survive uncertainty even when candidate bytes are canonical. Proven saves
 retain no history.
 
-Recovery inspection grants no writes. Explicit restore binds vault/path/revisions
-and retained creation identity, flushes Triptych editors, then uses the repository
-writer only against expected source. Window/Research owners borrow projections;
-unsupported records remain unchanged and nonauthorizing.
+Research borrows recovery projections; inspection grants no writes. Pending
+transactions, interrupted-save candidates and retained citation-pair copies have
+separate read paths. Completed retained pairs remain inspectable without recreating
+pending work. Explicit restore binds vault/path/revisions and creation identity,
+flushes Triptych editors, then uses the repository writer against expected source.
+Unsupported records remain unchanged and nonauthorizing.
 
 Core `DocumentReviewStore` keeps source baselines, captures, batches and
 receipt-version coverage outside vaults. Application `DocumentChangeOperations`
@@ -94,8 +96,8 @@ source ranges and refuses ambiguity.
 One source-projection cache owns compact catalog and Search records under independent
 parser/projection and Search policies. Fresh descriptor reads supply exact fingerprints,
 facts and versions; validated catalog hits skip semantic parsing. Restoration validates
-path, role/profile, coordinates and payload digest; unusable records recompute. Caches
-contain no source or identity authority. Coordinated path deletion clears both kinds;
+path, role/profile, coordinates and payload digest; unusable records recompute.
+Cached text and syntax never authorize identity or writes. Path deletion clears both kinds;
 policy retirement and abandoned staging share that owner.
 Search index publication transactionally binds complete paragraph/offset maps and
 lexical preparation to exact source revisions. Negation cannot evaluate cropped

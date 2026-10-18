@@ -1,13 +1,13 @@
 # Document appearance configuration / 文稿外观配置
 
-In Settings → Appearance, choose **Show in Finder…** to locate `appearances.json`.
+In Settings → Document, choose **Show in Finder…** to locate `appearances.json`.
 The same pane contains the structured reading, hyphenation, heading, Bold Font,
 and Italic Font controls for the selected appearance profile.
 The generated file is a complete, editable example. Copy it before experimenting,
 edit it with a text editor, then choose **Reload** in Scholium. You can replace it
 with another complete configuration of the same format.
 
-在“设置 → 外观”中选择“在 Finder 中显示…”，找到 `appearances.json`。
+在“设置 → 文稿”中选择“在 Finder 中显示…”，找到 `appearances.json`。
 同一页面提供正文、标题、粗体和斜体字体控件，编辑当前外观配置。
 当前文件本身就是完整示例。可以先复制一份，再用文本编辑器修改或替换，
 然后回到 Scholium 选择“重新载入”。
@@ -52,10 +52,10 @@ unsplit by automatic hyphenation.
 `alignment`: `start`, `center`, `justify`.
 
 These fields control paragraph spacing, indentation and alignment. Fine
-typesetting remains available through the Advanced CSS surface described below
+typesetting remains available through the CSS Snippets section described below
 for letter spacing, word spacing, kerning and ligatures.
 这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、
-字偶距与连字等其他细致排版请使用下面的 Advanced CSS。
+字偶距与连字等其他细致排版请使用下面的 CSS Snippets（CSS 片段）。
 
 ## Headings
 
@@ -103,7 +103,7 @@ are safely quoted in generated CSS. They never become Markdown/YAML content.
 的字体，并会在生成 CSS 时安全转义，不会写入 Markdown/YAML。
 
 Optional CSS snippets remain a separate, constrained override for ordinary
-document content. Use the **CSS Snippets** section in Document Appearance.
+document content. Use the **CSS Snippets** section in Settings → Document.
 **Open CSS Folder** reveals the app-owned `Styles/Snippets` folder;
 direct `.css` files are discovered automatically, watched for edits, and
 reloaded after validation. The manifest stores only order, enablement, names,
@@ -115,9 +115,12 @@ applied after the generated appearance CSS, so they can refine the selected
 profile without creating a second appearance owner. They do not replace
 structured appearance defaults or style native controls. The public Callout
 surface uses `.callout`, `.callout-title`, `.callout-body`, `.callout-content`,
-and `.callout-<role>` (for example `.callout-state .callout-title`); Scholium
-maps these names separately for Review and Edit and does not expose its
-internal projection classes.
+and the role selectors `.callout-orient`, `.callout-cite`, `.callout-connect`,
+`.callout-state`, `.callout-illustrate`, `.callout-quote`, `.callout-flag`, and
+`.callout-neutral`. These selector names differ from the configuration role
+keys above; for example, `statement` uses `.callout-state`. The shared quotation
+wrapper is `.callout-quotation`. Scholium maps public selectors separately for
+Review and Edit without exposing internal projection classes.
 
 For example, an imported snippet can contain:
 
@@ -145,4 +148,3 @@ sanitized, scoped to document content, and projected into both Review and Edit.
 
 Default body text is 13 pt, with Menlo at 11.5 pt for Source and Frontmatter. Heading scales remain relative to body text.
 默认正文字号为 13 pt，Source 和 Frontmatter 使用 11.5 pt 的 Menlo。标题比例仍以正文字号为基准。
-这些字段只控制段间距、首行缩进和对齐。断词由 `hyphenation` 字段控制；字距、词距、

@@ -114,8 +114,8 @@ Protected constructs follow these rules:
   `accTitle` and `accDescr` provide its nonvisual account; absent descriptions
   are diagnosed.
 - A Note embed is a bounded, read-only projection of the target's committed
-  body with an explicit open route. It is not recursively transcluded, editable,
-  and adds no authored link annotation.
+  body with an explicit open route. It is neither recursively transcluded nor
+  editable and adds no authored link annotation.
 - Link and footnote previews are bounded read-only projections with keyboard,
   pointer, accessibility, dismissal, and source-navigation routes. Missing or
   ambiguous destinations remain exact source.

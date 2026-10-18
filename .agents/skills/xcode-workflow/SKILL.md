@@ -35,9 +35,11 @@ Unit-only execution does not require app launch or the interaction references.
 ## Bind the intended toolchain and project
 
 Before executing builds or tests, run `scripts/preflight.sh` from this skill
-directory with the selected Xcode app or developer directory. Without an
-explicit selection, inspect the active
-`xcode-select` result; do not assume a beta installation. Carry the resolved
+directory with the selected Xcode app or developer directory. For Scholium,
+resolve that selection through `Tools/Scripts/resolve-xcode-developer-dir.sh`
+rather than implementing a second selection policy in the skill. For another
+project without a resolver or explicit selection, inspect `xcode-select` and
+verify the installation. Carry the resolved
 `DEVELOPER_DIR` on shell build/test commands. Do not change the machine-wide
 selection or install/repair tooling without authorization.
 

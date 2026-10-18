@@ -7,12 +7,13 @@ MCP delivery, conversation admission, and runtime-owned capabilities.
 
 The App-bundled helper owns incremental stdio framing, JSON-RPC initialization,
 fixed discovery, closed schemas and error envelopes, then calls the authenticated
-current-user App endpoint. Shared bounds cover complete JSON envelopes.
-Oversized request/read refusals differ from uncertain mutation delivery.
-It cannot launch the App, construct
-a workspace runtime or independently read/write Triptych files. The App router
-uses only currently open workspace capabilities; multiple open Triptychs require
-an exact stable workspace identity.
+current-user App endpoint. It cannot launch the App, construct a workspace runtime
+or independently access Triptych files. The router serves only open workspace
+capabilities; multiple Triptychs require an exact stable workspace identity.
+Complete-envelope bounds apply at both transports. Contracts' `mayHaveSideEffects`
+classifies source, receipt, navigation and runtime-setting operations. Lost or
+oversized replies after their admission remain uncertain and forbid automatic
+replay; failed reads permit fresh requests with current revisions and coverage.
 
 External clients and in-app Chat use the same Application research-operation
 owners. Chat adds a connection-bound conversation route and exact runtime

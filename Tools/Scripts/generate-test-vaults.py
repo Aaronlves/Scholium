@@ -90,7 +90,7 @@ def generate(root):
     put('attachment-samples/说明.txt', '合成的非私人附件。通过应用的附件入口复制或引用此文件。\n')
     put('README.md', '''# Scholium 手动测试 Triptych
 
-三个库：01-analyses、02-topics、03-works。通过当前应用的新建 Triptych 流程选择这三个目录；不要把父目录注册成一个库。建议先复制整个目录后测试。
+三个库：01-analyses、02-topics、03-works。通过当前应用的新建 Triptych 流程选择这三个目录；不要把父目录注册成一个库。测试必须使用仓库 `.build/` 下的一次性完整副本，不得直接修改此源夹具。
 
 总计 500 篇库内笔记：Analyses 160、Topics 220、Works 120（本说明不计入）。格式与检索目录轮换覆盖 12 类格式：标题与分隔线、行内格式、列表、引用与 Callout、代码、表格、脚注、数学、Mermaid、链接、图片、HTML 与转义。HTML 是源码保留样本，不要求执行或原样渲染。图片使用本地生成的 PNG，无网络依赖。
 

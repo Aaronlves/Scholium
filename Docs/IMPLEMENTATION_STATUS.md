@@ -32,15 +32,15 @@ updates version-checked items with Zotero authorization. Original reads use
 App-mediated read-only file/folder grants; indexed text has revision-bound
 UTF-8 continuation. Agent imports remain
 unavailable without prewrite target binding; native service owns status. Reports,
-access and receipts remain distinct from evidence. There is no Research Action,
-Reading Lead, passage Discussion or
-Review Comment lifecycle or MCP research-result API.
+access and receipts remain distinct from evidence. No research-result lifecycle
+or API is exposed. Storage reaches inspected cleanup of unused Chat copies;
+citation Recovery exposes retained copies for inspection without applying them.
 
 The public release profile is Core App Beta. External Agent Collaboration and
 optional in-app Chat remain Preview; reachability is not implicit acceptance.
-The distribution is an App with bundled helpers. The dated artifact proof below
-is limited to its stated tags; source reachability does
-not establish packaged external-host, managed-Zotero, physical-input or release acceptance.
+The distribution is an App with bundled helpers. Verification's artifact proof
+is tag-specific; source reachability does not establish packaged external-host,
+managed-Zotero, physical-input or release acceptance.
 
 ## Status chapters
 

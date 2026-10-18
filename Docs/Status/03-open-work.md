@@ -87,11 +87,10 @@
 
 ## Gate and release boundary
 
-- `v0.4.0-beta` was published after its exact-tag local gate and package checks
-  passed, although full-profile GitHub Verify failed with three App-test issues.
-  Per researcher direction, CI was not rerun; XCTest/XCUITest, first-launch
-  smoke and packaged performance proof were omitted. G6/G7/G9 remain incomplete.
-  See [Verification Evidence](04-verification.md).
+- `v0.4.2-beta.2` retains release-specific exceptions for uncompleted human,
+  exact-package performance, additional journeys, native Trash/restore and
+  separate-account checks. [Verification](04-verification.md) binds the exact
+  artifact and reused gate scope; future candidates inherit no waiver.
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
 - Run affected packaged performance series when §21.3's change-trigger rule

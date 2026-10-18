@@ -1,7 +1,7 @@
 # Markdown editor third-party notices
 
 The bundled editor was built with CodeMirror 6 (`state` 6.7.1, `view` 6.43.6,
-`language` 6.12.4, `lang-markdown` 6.5.0, `commands` 6.10.4,
+`language` 6.12.4, `lang-markdown` 6.5.0, `lang-yaml` 6.1.3, `commands` 6.10.4,
 `autocomplete` 6.20.3, and `search` 6.7.1) and their Lezer parsing packages.
 These packages are distributed under the MIT License. Source and license
 information:
@@ -19,6 +19,11 @@ The shared mathematics runtime, stylesheet, and fonts are built from KaTeX
 
 `math.bundle.js`, `katex.min.css`, and the `KaTeX_*.woff2` files are generated
 from the exact package version locked in `WebEditor/package-lock.json`.
+
+The offline `mermaid.bundle.js` uses Mermaid 11.16.1 and its bundled runtime
+dependencies. Their full notices ship in the App’s
+`Licenses/Mermaid-and-transitive-NOTICES.txt`. Exact versions are locked in
+`WebEditor/package-lock.json`.
 
 The standalone `chat-streaming-markdown.bundle.js` is built from Remend 1.4.0
 (Vercel, Inc.), under Apache License 2.0. It completes display-only Markdown

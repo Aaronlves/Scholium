@@ -99,8 +99,9 @@ a Works parent because `.scholium/` sits beside Works.
 
 A configured window belongs to one Triptych and presents Analyses, Topics, and
 Works as peer workspaces, not workflow stages. Each window retains workspace-
-specific Library state, Document tabs, selected document, live Document mode,
-and Inspector mode. A document transition completes source-safety checks before
+specific Library state and Inspector mode, with one window-owned Document tab
+collection, selected document, and live Document mode across all three roles.
+A document transition completes source-safety checks before
 selecting its destination; failure retains the origin buffer and context.
 
 Library role browsing preserves the active Document. Explicit document opening,

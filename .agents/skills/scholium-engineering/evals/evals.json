@@ -3,12 +3,12 @@
   "evals": [
     {
       "id": 0,
-      "prompt": "把同一个新查询合同接通 Application、GUI 和 CLI，沿用现有存储与索引机制。",
+      "prompt": "把同一个新查询合同接通 Application、App 和 MCP，沿用现有存储与索引机制。",
       "expected_output": "Cross-layer-integration mode: one typed vertical slice through current owners with service and end-to-end proof.",
       "files": [],
       "assertions": [
         "Selects Cross-layer Integration rather than Architecture Cutover.",
-        "Uses the backend integration loop and avoids a second GUI or CLI policy owner."
+        "Uses the backend integration loop and avoids a second App or MCP policy owner."
       ]
     },
     {

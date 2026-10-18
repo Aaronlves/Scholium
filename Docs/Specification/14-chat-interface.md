@@ -398,8 +398,9 @@ viewport; arrows scroll to the selected item, and refresh preserves its identity
 or resets to a valid item. Availability is checked again before accepting a
 candidate; an unavailable action preserves the query. Expanding a request or
 leaving Chat dismisses suggestions without editing the retained draft.
-Interaction > Chat chooses whether Return during work adds to the current turn
-or queues the next one. The send button follows the same preference and exposes
+Settings → Agents → Connection and Chat → Chat Behavior chooses whether Return
+during work adds to the current turn or queues the next one. The send button
+follows the same preference and exposes
 its effective action. Idle Return sends normally; newline and IME behavior remain
 unchanged. The default is immediate input. Queue is not an Add-menu action.
 Queued input appears in a native Liquid Glass surface behind the input surface.

@@ -23,7 +23,7 @@
     },
     {
       "id": 2,
-      "prompt": "重新设计 Actions，让它更安静、更适合研究工作；先不要写规范或代码。",
+      "prompt": "重新设计检查器，让它更安静、更适合研究工作；先不要写规范或代码。",
       "expected_output": "Design mode: one unapproved behavior and presentation contract grounded in live authority and precedent.",
       "files": [],
       "assertions": [

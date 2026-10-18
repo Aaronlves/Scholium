@@ -48,7 +48,7 @@ adopted contract.
   through ranking and merging.
 - Define one federation policy; do not merge raw backend scores from independent
   corpora as directly comparable values.
-- Return the complete owned result contract required by both GUI and CLI.
+- Return the complete owned result contract required by the App and Scholium MCP.
 - Derive visible source context from current exact documents unless a separately
   adopted revision-bound representation proves equivalent.
 
@@ -70,5 +70,5 @@ For one frozen authorized snapshot and contract version, compare a clean rebuild
 with every supported mutation history and with the active engine when shadowing.
 Verify result identity and order, filters, fields, phrases, positions, snippets,
 Unicode validity, source revisions, generation manifests, privacy exclusions,
-failure recovery, and GUI/CLI parity. Record every intentional semantic change
+failure recovery, and App/MCP parity. Record every intentional semantic change
 in the owning authorities before cutover.

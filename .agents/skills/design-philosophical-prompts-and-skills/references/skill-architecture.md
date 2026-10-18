@@ -215,9 +215,14 @@ When composing Practices:
 
 ## Package application workflows responsibly
 
-An application such as Scholium should package its own complete, project-neutral workflow skills. The designer's personal global skills may inform their creation, but the application must not scan, reference, or require those private packages at runtime.
+Derive the application's actual instruction surface from its current contract.
+Do not prescribe a bundled philosophical method library merely because an
+application provides an Agent adapter. Scholium's live specification owns the
+boundary between its thin Core Protocol and optional runtime-owned Skills.
+The designer's personal global skills may inform an explicitly requested
+package, but cannot become an undeclared runtime dependency.
 
-Use three conceptual layers when suitable:
+When a requested host actually provides these layers, keep their responsibilities distinct:
 
 - protected System Skills for universal platform behavior and safe adapters;
 - official Workflow Skills for complete philosophical operations in the application;

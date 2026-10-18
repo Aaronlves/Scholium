@@ -22,10 +22,6 @@ Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
-The system toolbar keeps scrolling Document text out of its controls; initial
-content remains unobscured. System background, selection, focus, Undo,
-composition and restoration remain unchanged.
-
 Edit selection remains unobscured without a formatting toolbar. Nonempty body
 selection offers Explain, Polish and More Actions (ellipsis) in Review/Edit/Source.
 Explain/Polish use text labels; More retains its accessible name and Help, with
@@ -361,9 +357,7 @@ Toolbar placement and available commands belong to §18.2. Document Text Size
 is per-window and source-neutral.
 
 Properties remain in the document's source-located YAML. There is no About,
-Overview, Metadata form, or dedicated attachment Inspector. Native controls,
-quiet hierarchy and system semantic colors follow Design; reference images do
-not prescribe copied card geometry or decorative glass.
+Overview, Metadata form, or dedicated attachment Inspector.
 
 ### 18.4.1 Advanced CSS boundary
 
@@ -608,11 +602,12 @@ disclosure, and reading position in window-local state. Returning restores that 
 without creating another graph or source owner.
 
 External-host MCP retrieval creates no persistent activity UI. Confirmed
-mutations add their Agent Change to Notifications without activating the App
-or moving focus. External hosts add no App approval sheet; in-app Chat activity
-and permission follow §8.7. Dismissal hides the notification
-but does not delete exact recovery evidence or imply reading, acceptance,
-adoption or Undo. The Inspector, Document mode, projection
+mutations retain exact Agent Change receipts under §8.4. Notifications reflects
+pending Note Changes under §5.7 without activating the App or moving focus.
+External hosts add no App approval sheet; in-app Chat activity and permission
+follow §8.7. Closing Notifications does not mark Changes reviewed or delete
+operation or recovery evidence, and implies no reading, acceptance, adoption
+or Undo. The Inspector, Document mode, projection
 refresh, and pane visibility never replace the retained editor host or state.
 
 ## 18.6 Document-owned state and action meanings

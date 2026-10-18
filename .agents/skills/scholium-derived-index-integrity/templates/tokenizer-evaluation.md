@@ -43,7 +43,7 @@
 | Prefixes and phrases | | | | |
 | Filters and ranking | | | | |
 | Snippets, highlights, and source lines | | | | |
-| Stable ties and GUI/CLI parity | | | | |
+| Stable ties and App/MCP parity | | | | |
 | Recovery and rebuild | | | | |
 
 ## Measurements

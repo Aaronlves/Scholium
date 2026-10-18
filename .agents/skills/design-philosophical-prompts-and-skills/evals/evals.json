@@ -41,6 +41,28 @@
         "Loads the target and necessary context, not every methodological reference.",
         "Preserves evidence, permission, method, and output semantics."
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "Audit and rewrite this linking instruction for the supplied host contract. Instruction: Every Wikilink asserts a scholarly relation; require evidence before adding any link, classify its argumentative type, then write the inverse into the destination note. Host contract: ordinary Wikilinks are directed authored occurrences; an optional source Markdown annotation belongs to that occurrence; Incoming is a derived read-only projection; links and paths are retrieval aids. Remain read-only and return only the corrected reusable instruction with a brief reason.",
+      "expected_output": "Allows neutral navigation while requiring evidence for an asserted scholarly relation and preserves source-owned occurrence semantics.",
+      "files": [],
+      "assertions": [
+        "Does not turn ordinary navigation into an evidential assertion or require proof of support for every link.",
+        "Does not invent relationship types, inverse writes, or destination mutations.",
+        "Requires available source support before attributing a stronger philosophical relation."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Design one researcher-owned paper-analysis Skill for an Agent runtime connected to Scholium. It should provide a complete project-neutral analysis method and keep exact source claims distinct from reconstruction. Do not change the Core Protocol, application code, product specification, or any research note. Return the proposed package contract only.",
+      "expected_output": "Designs the requested optional methodological Skill without prescribing an application-managed method library or expanding effects.",
+      "files": [],
+      "assertions": [
+        "Permits a complete researcher-owned method without confusing it with the thin Core Protocol.",
+        "Preserves source fidelity, partial-access disclosure and researcher-controlled note writes.",
+        "Does not invent Research Status fields, managed profiles, official Workflow registration, or application changes."
+      ]
     }
   ]
 }

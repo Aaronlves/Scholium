@@ -25,8 +25,9 @@ Each configured window contains one native split view:
 2. **Document**: the selected Note or the restrained no-document state.
 3. **Apparatus**: the Inspector's Links and Related Material pages.
 
-Native split behavior governs resizing and collapse. Scholium requests the
-initial Inspector reveal but never continuously reasserts divider positions.
+Native split behavior governs resizing and collapse. Scholium offers an initial
+width on the first explicit Inspector reveal but never continuously reasserts
+divider positions.
 The main/auxiliary color and material boundary follows §19.1. Native safe areas
 protect Sidebar, Apparatus, and the initial readable Document content
 through window zoom, full screen and resize. Content backgrounds continue behind
@@ -262,7 +263,7 @@ disabled; one persistent progress status names remaining work. Search follows
 §13's explicit opening grades: current-buffer This Note Search is exact, and
 source-fingerprint-validated This Vault lexical results may remain usable under
 a nonblocking **Limited** notice. Triptych Search, Graph, Attention totals,
-relations, and cross-Triptych Search remain unavailable until their complete
+and relations remain unavailable until their complete
 authoritative generation exists. Completion must not replace usable Library
 content or move focus.
 

@@ -8,7 +8,9 @@ reference.
 
 ## Build and package
 
-1. Record the clean worktree or exact uncommitted state being released.
+1. Verify the source cleanliness, tag, and provenance required by the active
+   release contract; keep a diagnostic working tree distinct from a releasable
+   candidate.
 2. Run the repository's current verification and packaging entry points with
    the intended toolchain and signing identity.
 3. Confirm every artifact and embedded resource required by the current
