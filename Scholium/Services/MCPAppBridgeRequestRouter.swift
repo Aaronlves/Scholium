@@ -756,7 +756,9 @@ final class MCPAppBridgeRequestRouter {
         let handle = try await currentWorkspace(id: triptychID)
         let source = try await handle.agentCollaboration.currentNoteSource(noteID: noteID)
         if let expected, source.fingerprint != expected {
-            throw AgentCollaborationError.staleRevision(expected: expected, current: source.fingerprint)
+            throw ScholiumMCPFailure(
+                code: .staleRevision, message: "The Note changed since the supplied read revision.",
+                recovery: "Discard earlier pages and restart at start_line 1 without expected_fingerprint. Keep the new fingerprint for subsequent pages; never combine source from different revisions.")
         }
         let slice = try Self.exactLineSlice(
             source.source,

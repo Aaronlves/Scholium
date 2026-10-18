@@ -128,6 +128,46 @@ struct ScholiumAppBridgeTests {
         #expect(unavailable.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue?["code"] == .string("app_unavailable"))
     }
 
+    @Test("Lost or mismatched read confirmations permit a fresh read without uncertain-write recovery", arguments: [false, true])
+    func readLosesConfirmation(mismatched: Bool) async throws {
+        let root = try makeRoot("lost-read-confirmation")
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let gate = BridgeOperationGate()
+        let server = try ScholiumAppBridgeServer(applicationSupportURL: root) { request in
+            await gate.enterAndWait()
+            return try ScholiumMCPBridgeResponse(
+                requestID: mismatched ? UUID() : request.requestID, result: .object(["source": .string("Exact read fixture.")]))
+        }
+        defer { server.stop() }
+        let bridge = try MCPBridgeOperations(applicationSupportURL: root)
+        let call = Task { try await Self.callTool(.readNote, server: ScholiumMCPServer(bridge: bridge)) }
+        let releaseDeadline = Task {
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
+            await gate.release()
+            await gate.expireEntryWait()
+        }
+        await gate.waitForEntry()
+        let entered = await gate.didEnter()
+        if !mismatched { server.stop() }
+        await gate.release()
+        let response: MCPJSONValue
+        do {
+            response = try await call.value
+        } catch {
+            releaseDeadline.cancel()
+            await releaseDeadline.value
+            _ = await server.stopAndWait(timeout: 1)
+            throw error
+        }
+        releaseDeadline.cancel()
+        await releaseDeadline.value
+        #expect(entered)
+        #expect(await server.stopAndWait(timeout: 1))
+        let failure = try #require(response.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue)
+        #expect(failure["code"] == .string("app_unavailable"))
+        #expect(failure["recovery"]?.stringValue?.contains("Do not retry automatically") == false)
+    }
+
     private static func callTool(_ tool: ScholiumMCPToolName, server: ScholiumMCPServer) async throws -> MCPJSONValue {
         let request: MCPJSONValue = .object([
             "jsonrpc": .string("2.0"), "id": .integer(1), "method": .string("tools/call"),

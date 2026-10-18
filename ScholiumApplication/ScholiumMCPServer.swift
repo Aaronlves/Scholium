@@ -98,7 +98,7 @@ public actor ScholiumMCPServer {
             let response = encodeUnbounded(responseResult(id: id, result: result))
             if let response, response.count <= ScholiumMCPContract.maximumEncodedMessageByteCount { return response }
             let tool = request.params?.objectValue?["name"]?.stringValue.flatMap(ScholiumMCPToolName.init(rawValue:))
-            let mayHaveChangedState = tool?.mayMutatePersistentState == true
+            let mayHaveChangedState = Self.deliveryMayHaveEffects(for: tool)
             let failure = ScholiumMCPFailure(
                 code: mayHaveChangedState ? .operationUncertain : .invalidRequest,
                 message: "The complete MCP result exceeds its encoded reply limit.",
@@ -192,12 +192,20 @@ public actor ScholiumMCPServer {
                     message: "The Scholium App bridge is unavailable.",
                     recovery: "Launch Scholium, open a Triptych, and call workspace status again."
                 )
-            case .outcomeUnknown:
-                failure = ScholiumMCPFailure(
-                    code: .operationUncertain,
-                    message: "The App bridge could not determine the operation outcome.",
-                    recovery: "Do not retry automatically. Recheck workspace status and the target identity, path, and fingerprint."
-                )
+            case .outcomeUnknown, .invalidResponse:
+                if Self.deliveryMayHaveEffects(for: requestedTool) {
+                    failure = ScholiumMCPFailure(
+                        code: .operationUncertain,
+                        message: "The App bridge could not determine the operation outcome.",
+                        recovery: "Do not retry automatically. Recheck workspace status and the target identity, path, and fingerprint."
+                    )
+                } else {
+                    failure = ScholiumMCPFailure(
+                        code: .appUnavailable,
+                        message: "The App bridge could not confirm the read result.",
+                        recovery: "Check the App connection and request current data again if still needed. Use the new result's revisions and coverage."
+                    )
+                }
             default:
                 failure = ScholiumMCPFailure(
                     code: .internalError,
@@ -215,6 +223,12 @@ public actor ScholiumMCPServer {
                         recovery: "Restart Scholium and begin again with workspace status."
                     ), for: requestedTool), isError: true)
         }
+    }
+
+    private static func deliveryMayHaveEffects(for tool: ScholiumMCPToolName?) -> Bool {
+        guard let tool else { return true }
+        // Navigation can have occurred even though it changes no durable source.
+        return tool.mayMutatePersistentState || tool == .showNote
     }
 
     private func toolResult(_ value: MCPJSONValue, isError: Bool, includesImage: Bool = false) -> MCPJSONValue {

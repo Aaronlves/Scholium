@@ -488,6 +488,34 @@ struct ScholiumMCPServerTests {
         #expect(structured["recovery"] as? String == "Open one Triptych.")
     }
 
+    @Test("Unconfirmed read results and unconfirmed side effects have distinct recovery", arguments: ScholiumMCPToolName.allCases, [false, true])
+    func unconfirmedToolDelivery(tool: ScholiumMCPToolName, invalidResponse: Bool) async throws {
+        let recorder = MCPRequestRecorder()
+        let server = ScholiumMCPServer(conversationToken: UUID()) { request in
+            await recorder.record(request)
+            if invalidResponse { throw ScholiumAppBridgeError.invalidResponse }
+            throw ScholiumAppBridgeError.outcomeUnknown
+        }
+        let listed = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let definitions = try #require(object(listed["result"])["tools"] as? [[String: Any]])
+        let definition = try #require(definitions.first { $0["name"] as? String == tool.rawValue })
+        let readOnly = try #require(object(definition["annotations"])["readOnlyHint"] as? Bool)
+        let response = try await rpc(server, id: 2, method: "tools/call", params: ["name": tool.rawValue, "arguments": [:]])
+        let result = try object(response["result"])
+        let failure = try object(result["structuredContent"])
+        #expect(result["isError"] as? Bool == true)
+        #expect(failure["code"] as? String == (readOnly ? "app_unavailable" : "operation_uncertain"))
+        #expect((failure["recovery"] as? String)?.contains("Do not retry automatically") == !readOnly)
+        #expect(await recorder.requests().count == 1)
+    }
+
+    @Test("Pre-delivery transport timeouts retain definite unavailable guidance", arguments: [ScholiumMCPToolName.readNote, .updateNote])
+    func preDeliveryTimeout(tool: ScholiumMCPToolName) async throws {
+        let server = ScholiumMCPServer { _ in throw ScholiumAppBridgeError.timeout }
+        let response = try await rpc(server, id: 1, method: "tools/call", params: ["name": tool.rawValue, "arguments": [:]])
+        #expect(try object(object(response["result"])["structuredContent"])["code"] as? String == "app_unavailable")
+    }
+
     private func rpc(
         _ server: ScholiumMCPServer,
         id: Int,

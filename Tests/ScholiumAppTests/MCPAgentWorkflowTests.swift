@@ -93,13 +93,18 @@ extension MCPAppBridgeRequestRouterTests {
             ])
             print("MCP_LINK_PAYLOAD source_utf8=\(source.utf8.count) occurrences=100 structured_utf8=\(try encoder.encode(structured).count) wire_utf8=\(try encoder.encode(wire).count)")
             try await withAgentWorkflowBridge(fixture) { handler in
-                let page = try await agentWorkflowCall(handler, tool: .listLinks, arguments: args)
+                let (delivered, result) = try await agentWorkflowRPC(
+                    handler, method: "tools/call", params: ["name": .string(ScholiumMCPToolName.listLinks.rawValue), "arguments": .object(args)])
+                #expect(result["isError"] == .bool(false))
+                let page = try #require(result["structuredContent"]?.objectValue)
+                print("MCP_LINK_DELIVERED wire_utf8=\(delivered.count)")
                 let links = try #require(page["links"]?.arrayValue)
                 #expect(links.count == 100 && page["has_more"] == .bool(false))
                 for (index, link) in links.enumerated() {
                     let row = try #require(link.objectValue)
                     let context = try #require(row["local_context"]?.stringValue)
                     #expect(context.utf8.count <= 512 && !context.contains("\u{fffd}"))
+                    #expect(context.contains(index == 0 ? "[[Topic]]{{原文" : "[[Topic]]{{" + annotations[index] + "}}"))
                     #expect(row["local_context_truncated"] == .bool(true))
                     #expect(row["link_markup"] == .string("[[Topic]]"))
                     #expect(row["annotation_text"] == .string(annotations[index]))
@@ -135,8 +140,15 @@ extension MCPAppBridgeRequestRouterTests {
             try Data(changed.utf8).write(to: file)
             let stale = await router.handle(.init(tool: .readNote, arguments: continuation))
             #expect(stale.error?.code == .staleRevision)
+            #expect(stale.error?.recovery.contains("start_line 1 without expected_fingerprint") == true)
             #expect(stale.result == nil)
             continuation["expected_fingerprint"] = nil
+            continuation["start_line"] = .integer(1)
+            continuation["line_count"] = .integer(4)
+            let restarted = try result(await router.handle(.init(tool: .readNote, arguments: continuation)))
+            #expect(restarted["source"] == first["source"] && restarted["fingerprint"] != fingerprint)
+            continuation["start_line"] = restarted["next_line"]
+            continuation["expected_fingerprint"] = restarted["fingerprint"]
             let fresh = try result(await router.handle(.init(tool: .readNote, arguments: continuation)))
             #expect(fresh["source"] == .string("Concurrent revision.\r\n"))
             continuation["expected_fingerprint"] = fresh["fingerprint"]
@@ -150,7 +162,12 @@ extension MCPAppBridgeRequestRouterTests {
     @Test("Malformed read fingerprints fail before workspace reconciliation")
     func malformedReadFingerprints() async throws {
         var reconciliations = 0
-        let runtime = WorkspaceRuntime(configuration: .live(.init(applicationSupportURL: URL(fileURLWithPath: "/nonexistent"))))
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/app-unit-state/invalid-read-\(UUID())")
+        defer {
+            if FileManager.default.fileExists(atPath: root.path) { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(applicationSupportURL: root)))
         let router = MCPAppBridgeRequestRouter(
             runtime: runtime, flushEditors: { _ in reconciliations += 1 }, openTriptychs: { [] })
         for value: MCPJSONValue in [

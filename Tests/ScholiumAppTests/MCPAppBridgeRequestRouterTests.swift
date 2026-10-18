@@ -937,6 +937,8 @@ struct MCPAppBridgeRequestRouterTests {
             #expect(occurrence["link_markup"]?.stringValue == "[[Topic]]")
             #expect(occurrence["annotation_markup"]?.stringValue == "{{A scoped reason.}}")
             #expect(occurrence["annotation_text"]?.stringValue == "A scoped reason.")
+            #expect(occurrence["local_context"]?.stringValue == "[[Topic]]{{A scoped reason.}}")
+            #expect(occurrence["local_context_truncated"] == .bool(false))
             #expect(occurrence["source_note_id"]?.stringValue == fixture.analysisNoteID.uuidString.lowercased())
             #expect(occurrence["destination_note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
         }
