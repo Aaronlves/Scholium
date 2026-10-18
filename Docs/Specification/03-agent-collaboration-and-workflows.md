@@ -157,6 +157,12 @@ retain the source Note's fingerprint and locators. They do not add an inferred
 predicate, convert a transitive path into evidence, or reinterpret annotation
 prose.
 
+`local_context` is a discovery snippet of at most 512 UTF-8 bytes, cropped at
+scalar boundaries near the occurrence. `local_context_truncated` distinguishes
+cropping from the complete containing lines. Full occurrence and annotation
+markup and their locators remain exact; a snippet does not establish full-source
+reading coverage. Use a revision-bound Note read for broader context.
+
 Create accepts one exact relative `.md` path inside the selected role vault.
 Absolute paths, traversal, collision, and automatic renaming are invalid. It
 accepts complete exact Markdown `content`, including optional authored YAML.

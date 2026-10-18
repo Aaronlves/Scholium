@@ -890,6 +890,7 @@ final class MCPAppBridgeRequestRouter {
                 range: edge.occurrence.linkSpan.utf8Range
             )
             let destinationNote = edge.destination?.note
+            let context = Self.localContext(in: sourceDocument.rawContent, containing: edge.occurrence.span)
             values.append(
                 .object([
                     "occurrence_direction": .string("outgoing"),
@@ -916,11 +917,8 @@ final class MCPAppBridgeRequestRouter {
                     } ?? .null,
                     "annotation_text": edge.occurrence.annotation.map { .string($0.text) } ?? .null,
                     "authored_target": .string(edge.occurrence.target),
-                    "local_context": .string(
-                        Self.localContext(
-                            in: sourceDocument.rawContent,
-                            containing: edge.occurrence.span
-                        )),
+                    "local_context": .string(context.text),
+                    "local_context_truncated": .bool(context.truncated),
                     "source_fingerprint": fingerprintValue(sourceDocument.fingerprint),
                     "source_locator": Self.locatorValue(edge.occurrence.span),
                     "link_locator": Self.locatorValue(edge.occurrence.linkSpan),
@@ -1471,7 +1469,7 @@ final class MCPAppBridgeRequestRouter {
         ])
     }
 
-    private static func localContext(in source: String, containing span: SourceSpan) -> String {
+    private static func localContext(in source: String, containing span: SourceSpan) -> (text: String, truncated: Bool) {
         let nsSource = source as NSString
         let start = min(max(0, span.utf16LowerBound), nsSource.length)
         let upper = min(max(start, span.utf16UpperBound), nsSource.length)
@@ -1480,8 +1478,22 @@ final class MCPAppBridgeRequestRouter {
         let endLine = nsSource.lineRange(for: NSRange(location: endLocation, length: 0))
         let lower = startLine.location
         let end = NSMaxRange(endLine)
-        return nsSource.substring(with: NSRange(location: lower, length: end - lower))
+        let context = nsSource.substring(with: NSRange(location: lower, length: end - lower))
             .trimmingCharacters(in: .newlines)
+        // Context is a discovery snippet; exact occurrence markup and locators
+        // are returned separately. Repeating an entire long line per link can
+        // otherwise exceed the complete MCP envelope even for a modest Note.
+        let maximumBytes = 512
+        let bytes = Array(context.utf8)
+        guard bytes.count > maximumBytes else { return (context, false) }
+        let occurrenceStart = nsSource.substring(with: NSRange(location: lower, length: start - lower)).utf8.count
+        var first = max(0, occurrenceStart - maximumBytes / 2)
+        var last = min(bytes.count, first + maximumBytes)
+        first = max(0, last - maximumBytes)
+        // Crop only at Unicode scalar boundaries, preserving the snippet bytes.
+        while first < last, bytes[first] & 0xC0 == 0x80 { first += 1 }
+        while last < bytes.count, last > first, bytes[last] & 0xC0 == 0x80 { last -= 1 }
+        return (String(decoding: bytes[first..<last], as: UTF8.self), true)
     }
 
     private static func exactLineSlice(

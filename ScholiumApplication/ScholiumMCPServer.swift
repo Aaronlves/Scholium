@@ -417,7 +417,7 @@ public actor ScholiumMCPServer {
             required: ["triptych_id", "note_id", "attachment_id", "expected_note_fingerprint", "mode"], readOnly: true, destructive: false, idempotent: true),
         tool(
             .listLinks,
-            description: "List authored incoming or outgoing link occurrences with source-owned annotations and exact locators.",
+            description: "List authored incoming or outgoing link occurrences with complete exact markup, source-owned annotations, fingerprints and locators. local_context is a bounded discovery snippet; local_context_truncated reports cropping. Read the source Note at its returned revision for broader context or exact edits.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
@@ -1155,6 +1155,7 @@ public actor ScholiumMCPServer {
                                         "annotation_text": nullable(simpleSchema("string")),
                                         "authored_target": simpleSchema("string"),
                                         "local_context": simpleSchema("string"),
+                                        "local_context_truncated": booleanSchema,
                                         "source_fingerprint": fingerprintSchema,
                                         "source_locator": locatorSchema,
                                         "link_locator": locatorSchema,
@@ -1167,7 +1168,7 @@ public actor ScholiumMCPServer {
                                         "destination_role", "destination_relative_path",
                                         "occurrence_markup", "link_markup",
                                         "annotation_markup", "annotation_text",
-                                        "authored_target", "local_context",
+                                        "authored_target", "local_context", "local_context_truncated",
                                         "source_fingerprint", "source_locator",
                                         "link_locator", "annotation_locator",
                                     ]
