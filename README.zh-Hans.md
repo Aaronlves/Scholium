@@ -1,249 +1,216 @@
-# Scholium
+<p align="center">
+  <img src="Docs/Assets/scholium-icon.svg" width="128" height="128" alt="Scholium 应用图标：指向书页的手">
+</p>
 
-[English](README.md) | [简体中文](README.zh-Hans.md)
+<h1 align="center">Scholium</h1>
 
-> 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
+<p align="center">
+  <strong>面向哲学与人文研究的原生 macOS 研究环境。</strong><br>
+  研读来源，发展议题，写出自己的论证。<br>
+  以本地 Markdown 保存研究，也可邀请 Agent 参与协作。
+</p>
 
-**当前 Core App Beta：**[v0.4.2-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.1) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.4.2-beta.1/Scholium-v0.4.2-beta.1-macos-arm64.dmg)
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.2-beta.2/Scholium-v0.4.2-beta.2-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="下载适用于 Apple 芯片 Mac 的 Scholium Beta"></a>
+</p>
 
-这是当前的 App 单一发行 Beta。UI 与辅助功能验收由发布负责人另行完成；本次发布准备
-不将这些检查声明为自动化证据。
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/actions/workflows/verify.yml"><img src="https://github.com/Aaronlves/Scholium/actions/workflows/verify.yml/badge.svg?branch=main" alt="main 分支仓库验证状态"></a>
+  <a href="https://github.com/Aaronlves/Scholium/releases"><img src="https://img.shields.io/github/v/release/Aaronlves/Scholium?include_prereleases&amp;label=beta&amp;color=8B613E" alt="最新公开 Beta 版本"></a>
+  <a href="Package.swift"><img src="https://img.shields.io/badge/macOS-26%2B-555555?logo=apple&amp;logoColor=white" alt="需要 macOS 26 或更高版本"></a>
+  <a href="Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&amp;logoColor=white" alt="Swift tools 6.2"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-587549" alt="许可证：GPL-3.0-or-later"></a>
+</p>
 
-Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
-一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
-维护的学术研究知识库。研究文档——而不是仪表盘、任务板、Agent 对话或记忆存储
-——始终是主要界面对象。一个研究领域以**脉络（Triptych）**组织：**分析**保存
-来源研究，**议题**汇集概念与争论，**写作**承载研究者自己的论证。
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/releases">版本发布</a> ·
+  <a href="#开始使用">开始使用</a> ·
+  <a href="Docs/SCHOLIUM_SPEC.md">项目文档</a> ·
+  <a href="README.md">English</a>
+</p>
 
-Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅读、写作、搜索、关联、
-评审与恢复不依赖 Agent。研究者邀请外部 Agent 时，对话留在 MCP host；Scholium
-只通过本机 MCP adapter 提供当前检索与准确 Note 变更，并为已确认变更保存本机
-Agent Change 证据。
+---
 
-Core App Beta 的验收结论只覆盖本地人工研究环境。外部 Agent 协作保持为单独的 Preview，直到它们通过自己的验收 profile。
+## 从研究文档出发
 
-## 产品定位
+Scholium 将来源分析、概念研究与持续写作放在同一个研究环境中。文档始终是你所选
+文件夹里的普通 Markdown。人工研究核心无需 Obsidian、Zotero 或 Agent 即可使用。
 
-Scholium 是学术研究知识库与研究工作台，不是聊天外壳或独立的 Agent 记忆产品。
-不同 Agent、不同会话之间的研究连续性来自同一套可检查的文档、来源与研究者明确
-判断，而不是隐藏的模型状态或平行的私有数据库。
+每个研究领域以一个<strong>脉络（Triptych）</strong>组织：
 
-来源、解释、Agent 重构与研究者判断保持可区分。派生索引与呈现不能取代准确
-Markdown，写入权限也不等于接受。
+| 工作区 | 保存什么 |
+| --- | --- |
+| **分析 · Analyses** | 对论文及其他来源的细读与可复用分析。 |
+| **议题 · Topics** | 跨来源的概念、区分、争论、反驳与综合。 |
+| **写作 · Works** | 你自己的计划、论证、草稿、评估与完成稿。 |
 
-Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目管理、文献管理、
-永久 AI 聊天工具或完整的 Obsidian 替代品。
+在<strong>审阅（Review）</strong>、<strong>编辑（Edit）</strong>与<strong>源码（Source）</strong>之间切换，搜索研究材料，
+沿作者写下的链接及注释继续阅读，也可在写作时查阅 Writing References。
+检索帮助你找到材料；材料是否支持一个主张，仍需判断。
 
-## 文档
+准确的 Markdown 是内容权威。自动保存、Changes 比较、冲突处理与恢复支持你和其他
+编辑器共同处理文件。来源、解释、Agent 贡献与你的判断保持各自角色；由你决定哪些
+内容进入自己的研究。
 
-- [规格](Docs/SCHOLIUM_SPEC.md)：目标产品行为、界面、辅助功能与发布契约，
-  包括 [Design](Design.md)。
-- [架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)：模块、状态所有者、事务与编辑器
-  边界，不是源码目录册。
-- [实现状态](Docs/IMPLEMENTATION_STATUS.md)：简短实现范围、剩余工作和注明日期的
-  证据。可达不等于已验收。
-- [AGENTS.md](AGENTS.md)：开发与验证规则。
+## 开始使用
 
-各入口路由到对应章节。README 提供设置方法，不再维护另一份功能清单；被取代的
-决策和修改经过由 Git 保存。
+**需要 macOS 26 或更高版本，以及 Apple 芯片 Mac。** 运行打包应用无需安装 Xcode。
 
-## 环境要求
+1. 从 [v0.4.2-beta.2](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2)
+   下载 DMG 及对应 SHA-256 文件。运行
+   `shasum -a 256 Scholium-v0.4.2-beta.2-macos-arm64.dmg`，与校验文件中的结果比较。
+2. 打开 DMG，将 **Scholium** 拖到**应用程序**，然后推出 DMG。
+3. 尝试启动 Scholium。当前 Beta 采用 ad-hoc 签名，尚无 Developer ID 签名或公证。
+   若被 macOS 阻止，打开**系统设置 → 隐私与安全性 → 仍要打开**，完成认证并确认
+   **打开**。保持 Gatekeeper 启用。
+4. 分别选择脉络的**分析**、**议题**与**写作**文件夹。可以放在同一父目录下，也可
+   分别存放。为了访问“写作”旁边的便携式 `.scholium/` 控制数据，macOS 还会请求
+   访问“写作”所在的文件夹。
 
-运行打包构建需要 macOS 26 或更高版本。当前公开 Beta 仅提供 Apple 芯片
-（`arm64`）版本。测试者不需要 Xcode。
+使用**文件 → 新建脉络…**配置另一个研究领域，使用**文件 → 打开脉络**打开已注册
+脉络，或通过**文件 → 新建窗口**为当前脉络再开一个窗口。两个脉络不能共享同一个
+“写作”侧控制目录。
 
-构建 Scholium 需要完整 Xcode，以及 `Package.swift` 要求的编译器与 SDK。仓库
-解析器会采用明确且有效的 `DEVELOPER_DIR`、完整的 `xcode-select` 选择，或常规
-位置中的 Beta/正式版 Xcode。只有重新构建 TypeScript 编辑器 bundle 时才需要
-Node.js。
+当前公开发行属于 **Core App Beta**。外部 Agent 协作与可选的应用内 Chat 仍处于
+**Preview**。打包发行证据及尚未完成的人类 UI、辅助功能与性能验收，见
+[实现状态](Docs/IMPLEMENTATION_STATUS.md)与
+[发行说明](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2)。
 
-## 构建与测试
+## 可选集成
 
-请从仓库根目录运行命令。完整仓库门禁为：
+### Agents 与 Chat · Preview
+
+可以在应用内 Chat 中使用兼容的官方 Codex 可执行文件，也可以通过 Scholium MCP
+连接外部 Agent host。应用内随附的连接组件需要 Scholium 正在运行，并打开预期脉络。
+
+<strong>应用内 Chat：</strong>将左侧边栏切换到 **Chat**，选择 Codex 可执行文件和随附连接组件，
+再通过 Codex 连接并登录。发送请求前选择 **Ask for Approval** 或 **Full Access**。
+在 Edit 或 Source 中，通过 **View → Add Selection to Chat**（`⇧⌘L`）添加选中文字；
+添加材料不会直接发送。Operation History 保留实际 MCP 变更和符合条件的 Undo。
+中断或结果不确定的请求不会自动重发。
+
+每个脉络的 `.scholium/` 是其 Chat 工作目录。将本地指令写入 `AGENTS.md`，将 Skills
+放入 `skills/<name>/SKILL.md`。设置提供 **Open Chat Workspace in Finder** 和
+**Refresh**。Codex 登录与运行时设置使用共享的本机配置；选择已有配置会继承其中的
+工具和设置。
+
+<strong>外部 host：</strong>打开 **Settings → Integrations → Agents & Chat → External Agent
+Hosts**，复制并运行相应 host 的设置命令。命令使用已安装应用中连接组件的准确路径。
+移动应用后需重新复制并运行；原位置更新可保留路径。Scholium 只复制命令，不修改
+host 配置。外部对话始终留在其 host 中。
+
+Scholium MCP 提供检索、来源附件、受保护的笔记操作与 Agent Change 比较和恢复。
+应用或目标脉络不可用时，连接组件会明确失败。当前支持范围见
+[工具契约](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract)。
+
+### Zotero
+
+在 **Zotero 设置 → 高级**中启用**允许本机其他应用与 Zotero 通信**。Chat 使用随附的
+`scholium-zotero` 连接搜索和读取文献库材料、导出引用，并在明确确认且获得 Zotero
+本地 API 授权后修改条目。BibTeX 与 RIS 仍在 Zotero 中导入，无需另装社区服务或
+Python 运行时。
+
+读取原始 PDF 时，打开 **Scholium Settings → Zotero → Original File Access →
+Choose Zotero Library Folder…**，确认 **Allow Read Access**。也可授权访问链接文件
+所在的文件夹或单个原始文件。访问权限只读、保存在 This Mac 中，并可在设置中撤销。
+
+Zotero 始终是文献库权威；Scholium 不直接访问其私有数据库。支持的操作与引用行为见
+[Zotero 集成](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
+
+## 项目文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [规格](Docs/SCHOLIUM_SPEC.md) | 产品工作流、界面、辅助功能与发行要求。 |
+| [Design](Design.md) | 全局设计理念与视觉身份。 |
+| [架构](Docs/IMPLEMENTATION_ARCHITECTURE.md) | 模块、状态归属、事务与编辑器边界。 |
+| [实现状态](Docs/IMPLEMENTATION_STATUS.md) | 当前可达能力、未完成工作与注明日期的验证证据。 |
+| [开发规则](AGENTS.md) | 修改范围、验证与一次性测试数据要求。 |
+
+## 开发
+
+需要完整 Xcode，以及 [Package.swift](Package.swift) 要求的编译器与 SDK。
+重建 TypeScript 编辑器 bundle 时需要 Node.js。从仓库根目录运行：
 
 ```bash
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
-DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
-```
-
-日常推送与 PR 的 CI 使用 `verify.sh --ci`，保留仓库与可复现 Editor 检查、
-Core／Contracts／Application、bridge 及其余 App 测试；仅将两个昂贵的
-`MarkdownEditorWebViewIntegrationTests`、`MarkdownEditorReuseTests` 套件和
-优化版 Release 构建留给完整门禁。日常检查验证 Debug helper；完整门禁还验证
-Release helper。Editor 类型检查与测试在 bundle 检查中只运行一次。
-
-发布 Beta 前，在 `Verify` workflow 中为准确候选 ref 手动选择 **full**，并在适当
-开发机器上运行默认完整门禁，再完成适用的打包启动、artifact 与性能检查。
-标签推送不重复触发 CI；日常检查通过不等于发布门禁通过。
-
-常用开发命令：
-
-```bash
-developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
-DEVELOPER_DIR="$developer_dir" swift build
-DEVELOPER_DIR="$developer_dir" swift test
-./Tools/Scripts/lint.sh
-./Tools/Scripts/lint.sh --fix
+export DEVELOPER_DIR="$developer_dir"
+swift build
 ./Tools/Scripts/run-debug-app.sh
-./Tools/Scripts/run-ui-tests.sh smoke
-./Tools/Scripts/run-ui-tests.sh complete
 ```
 
-`lint.sh` 使用仓库的 `swift-format` 配置检查 Swift 源码，并在隔离的临时依赖目录中
-对 WebEditor 执行类型检查。`--fix` 会先原地格式化 Swift 源码，再执行检查。
+解析器支持有效的 `DEVELOPER_DIR`、完整的 `xcode-select` 选择，以及常规位置中的
+Beta 或正式版 Xcode。仓库须位于 Desktop、Documents、CloudStorage 等 File Provider
+管理目录之外。构建缓存、QA 状态、测试数据副本与日志均保存在仓库内被忽略的
+`.build/` 下。测试只使用一次性、非私密数据。
 
-UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状态。`smoke`
-运行规范旅程；`complete` 构建一次后串行运行保留的关键 UI 测试。两者都不等于
-人类视觉或辅助技术验收。每次任务所需的 scoped checks 由 AGENTS.md 规定，
-完整门禁不是所有修改的默认步骤。
+<details>
+<summary><strong>验证与开发工具</strong></summary>
 
-修改 `WebEditor/` 后，请重建并验证已检入的 bundle：
+依据 [AGENTS.md](AGENTS.md) 为修改选择适当检查。
+
+| 任务 | 命令 |
+| --- | --- |
+| Swift 测试 | `swift test` |
+| Swift 格式检查与编辑器类型检查 | `./Tools/Scripts/lint.sh` |
+| 应用 Swift 格式后检查 | `./Tools/Scripts/lint.sh --fix` |
+| 日常仓库门禁 | `./Tools/Scripts/verify.sh --ci` |
+| 完整仓库门禁 | `./Tools/Scripts/verify.sh` |
+| 规范 UI 旅程 | `./Tools/Scripts/run-ui-tests.sh smoke` |
+| 保留的关键 UI 套件 | `./Tools/Scripts/run-ui-tests.sh complete` |
+| 重建编辑器 bundle | `./Tools/Scripts/build-editor.sh` |
+| 验证已检入的编辑器 bundle | `./Tools/Scripts/verify-editor-bundle.sh` |
+| 验证文档权威与链接 | `python3 Tools/Scripts/validate-documentation-authority.py` |
+
+推送与 PR 的 CI 报告 **Repository verification**。经过验证、属于已有 Markdown
+白名单的修改使用 `verify.sh --docs`；其他修改使用日常门禁。日常门禁省略两个昂贵的
+WebView 套件与 Release 构建及其 helper 检查，这些检查保留在完整门禁中。
+日志、计时、摘要与跳过项保存在 `.build/ci-verification/runs/` 下。
+
+发布 Beta 前，在本机运行完整门禁，并在手动 **Verify** workflow 中为准确候选 ref
+选择 **full**，同时完成适用的打包启动、产物与性能门禁。CI 通过
+`SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE` 与 `SCHOLIUM_SKIP_DISPLAY_EVIDENCE`
+跳过校准计时和依赖显示环境的证据；这些检查需要开发用 Mac。自动化检查不能代表
+人类视觉或辅助技术验收。发行要求归[规格](Docs/Specification/10-release-and-open-decisions.md)所有。
+
+UI runner 将标准 500 笔记 [TestVaults](TestVaults/README.md) 复制到隔离的 `.build/`
+状态中。三个研究库须分别注册；不要修改源测试数据，也不要使用真实研究库测试。
+
+按需运行规模诊断：
 
 ```bash
-./Tools/Scripts/build-editor.sh
-./Tools/Scripts/verify-editor-bundle.sh
+python3 Tools/Scripts/generate-stress-vaults.py .build/stress-fixture
+SCHOLIUM_STRESS_FIXTURE="$PWD/.build/stress-fixture" \
+  swift test --filter LargeVaultStressDiagnosticTests
+SCHOLIUM_TEST_VAULTS="$PWD/.build/stress-fixture" ./Tools/Scripts/run-ui-tests.sh stress
 ```
 
-修改文档清单、规范性章节或 README 链接后，请验证闭合权威集合与本地链接：
+生成器默认创建 5,000 个合成笔记（`--notes` 接受 500–20,000）；完整诊断至少需要
+508 个。两项诊断都会复制测试数据。场景测量不能代表打包性能门禁。
 
-```bash
-python3 Tools/Scripts/validate-documentation-authority.py
-```
+在 Finder 中使用 `Manage Scholium Development Storage.command`，或运行
+`./Tools/Scripts/manage-development-storage.sh report` 检查存储。`clean-stale`、
+`clean-all`、`clean-editor` 默认为 dry run；审查允许清理的目标后才添加 `--delete`。
+编辑器依赖只由 `clean-editor` 移除。
 
-所有 SwiftPM scratch、Xcode DerivedData、QA 应用、fixture 副本、索引、日志与结果
-bundle 都放在仓库内被忽略的 `.build/` 路径下。仓库本身必须位于 Desktop、
-Documents、CloudStorage 和其他 File Provider 管理路径之外。
+</details>
 
-可在 Finder 中使用 `Manage Scholium Development Storage.command`，也可从命令行
-检查和清理可重建状态：
+## 文件与本机状态
 
-```bash
-./Tools/Scripts/manage-development-storage.sh report
-./Tools/Scripts/manage-development-storage.sh clean-stale
-./Tools/Scripts/manage-development-storage.sh clean-all
-```
-
-清理命令默认为 dry run；审查准确的 allowlist 目标后才添加 `--delete`。它们不会
-删除源码、应用状态、打包构建、脉络文件或便携式 `.scholium/` 数据。
-
-打包性能采用严格的 G7 基线门禁。规格 §21.3 规定何时需要完整 campaign；影响性能的
-Beta 只运行受影响的 packaged series。规范性阈值、fixture、采样、provenance 与证据
-要求位于
-[规格 §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate)；当前结果和缺口
-位于实现状态。
-
-## 源码优先的 Beta 分发
-
-Scholium.app 是唯一受支持的安装主体。发行从准确且干净的 tag 生成注明架构的
-应用 DMG、SHA-256 校验文件、GPL-3.0-or-later 源码和许可声明。签名的连接组件与
-Core Protocol 随应用一起更新，不再发行或支持独立 CLI、安装器或自更新程序。
-
-打开 DMG 后，将 Scholium 拖入“应用程序”别名即可安装。安装前核对对应校验文件。
-当前源码修改不会改变先前发布的产物；验收范围与产物证据以
-[实现状态](Docs/IMPLEMENTATION_STATUS.md)为准。
-
-便利版应用没有 Developer ID 签名，也未经过公证。DMG 版本从可信的项目 release
-下载并核对校验值后：
-
-1. 打开 DMG；
-2. 把 **Scholium** 拖到**应用程序**别名上，然后推出 DMG；
-3. 从“应用程序”尝试启动 Scholium 一次；
-4. 打开**系统设置 → 隐私与安全性**，选择**仍要打开**；
-5. 完成认证并确认**打开**。
-
-不要关闭 Gatekeeper，也不要递归移除 quarantine。准确发布门禁、产物内容、干净
-账户验证与未来签名渠道规则维护在
-[规格 §21.5](Docs/Specification/10-release-and-open-decisions.md#215-source-first-beta-distribution)。
-
-## 脉络设置
-
-首次启动会要求研究者分别选择**分析**、**议题**和**写作**文件夹。便携式
-`.scholium/` 数据位于“写作”旁边，因此 macOS 还会请求访问“写作”所在文件夹；
-该访问边界不是第四个研究库。建议三者位于同一父目录，但不作强制要求。
-
-使用**文件 → 新建脉络…**配置另一个研究领域，使用**文件 → 打开脉络**在独立
-窗口打开已注册脉络，使用**文件 → 新建窗口**为当前脉络打开另一个独立窗口。
-两个脉络不能共享同一个“写作”侧控制目录。
-
-## Scholium MCP 设置
-
-打开**设置 → 集成 → Agents & Chat → External Agent Hosts**，可检查应用、bridge 与随附连接组件 的可用状态，
-复制对应 host 的设置命令，或在 Finder 中显示捆绑的 Core Protocol Skill。Scholium
-只复制命令，不修改 host 配置，也不宣称安装成功。
-
-使用设置中复制的命令，它包含当前应用内连接组件的准确绝对路径，无需单独安装。
-原位置更新应用可保留配置；移动应用后，需要重新复制并执行设置命令。
-
-应用必须已经运行，并打开预期脉络。stdio helper 通过只限当前用户且经过认证的本机
-bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明确失败，绝不回退到直接
-文件系统或无界面 workspace 访问。
-
-当前工具范围以[Agent 协作 §8.3](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract)
-为准，覆盖检索、来源附件、受控笔记操作和 Agent Changes 比较与恢复。
-研究问题与讨论使用普通笔记和明确授权，不具有自动记录生命周期。
-
-普通双链可携带由源 Note 拥有的多行 Markdown 注释：
-`[[目标]]{{注释}}`。Connect、Search 与 `scholium_list_links` 都保留每次
-链接出现的方向、注释、局部上下文与来源位置；它们只公开作者写下的
-链接出现，不为其指定关系类别。
-
-## Chat 中使用 Zotero（可选集成）
-
-在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。Chat 使用随
-Scholium 提供的 `scholium-zotero` 连接搜索、读取和导出 Zotero 内容；在明确确认后，
-也可以通过 Zotero 本地 API 修改条目。BibTeX 和 RIS 仍由研究者在 Zotero 中导入。
-不需要安装社区 Zotero
-服务、Python 运行时或单独的依赖包。
-
-Zotero 仍是文献库的唯一权威。条目修改必须指定准确的文献库、提供当前 Zotero 版本，
-并取得 Zotero 本地写入授权。Scholium 不直接访问 Zotero 私有数据库。完整范围
-与引用规则见[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
-
-## 存储与安全
-
-权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
-便携式 `.scholium/` 控制结构只保存
-[§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)列出的控制状态。
-研究正文和评析均保持为普通 Markdown，保存恢复数据留在本机。
-
-Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、本机 bridge 认证、
-准确 Agent Change 证据与未知预发布字节保存在本机：
+研究正文与评估始终是所选文件夹中的普通 Markdown。便携式控制数据保存在“写作”
+旁边、范围受限的 `.scholium/` 结构中。Bookmark、绝对路径、会话、索引、保存的查询、
+恢复、本机 bridge 认证与准确 Agent Change 证据保存在这台 Mac 上：
 
 ```text
 ~/Library/Application Support/Scholium/State-v1/
 ```
 
-写入保持准确来源；并发编辑冲突不会丢弃未保存文本。安全与恢复契约归
-[保存与恢复 §14](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery)，
-机制归架构，尚未验收的边界归实现状态。
-
-开发测试绝不能使用真实研究库。
+详见[存储边界](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)与
+[保存和恢复](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery)。
+应用、随附连接组件与 Core Protocol 一同更新；不单独发行 CLI，也不提供自更新程序。
 
 ## 许可证
 
 除非另有说明，Scholium 原创源码采用
-[GNU General Public License, version 3 or later](LICENSE)
-（`GPL-3.0-or-later`）。第三方组件保留各自许可证；详见
-[第三方声明](THIRD_PARTY_NOTICES.md)。
-
-## 仓库结构
-
-```text
-ScholiumContracts/         不可变值、协议与源码语义
-ScholiumCore/              内部仓储、索引、监听与 I/O
-ScholiumApplication/       应用与随附组件共享的应用能力
-Scholium/                  原生 macOS 应用与面向人的交互
-WebEditor/                 TypeScript 与 CodeMirror 源码
-Tests/                     Contracts、Core、Application 与 App 测试
-UITests/                   隔离的一次性 macOS UI 旅程
-Docs/SCHOLIUM_SPEC.md      目标权威清单与阅读路由
-Docs/Specification/       规范性产品、界面、辅助功能与发布章节
-Docs/IMPLEMENTATION_ARCHITECTURE.md
-                           从属架构清单与阅读路由
-Docs/Architecture/        模块、运行时、状态、编辑器、呈现与边界章节
-Docs/IMPLEMENTATION_STATUS.md
-                           当前证据清单与阅读路由
-Docs/Status/              剩余工作与当前证据
-Tools/Scripts/             构建、验证、QA、性能与发布工具
-```
+[GNU General Public License, version 3 or later](LICENSE)（`GPL-3.0-or-later`）。
+第三方组件保留各自许可证；详见[第三方声明](THIRD_PARTY_NOTICES.md)。

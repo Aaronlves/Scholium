@@ -1,363 +1,245 @@
-# Scholium
+<p align="center">
+  <img src="Docs/Assets/scholium-icon.svg" width="128" height="128" alt="Scholium app icon: a hand pointing to a written page">
+</p>
 
-[English](README.md) | [简体中文](README.zh-Hans.md)
+<h1 align="center">Scholium</h1>
 
-> A local-first, document-authoritative research environment for philosophy
-> and the humanities.
+<p align="center">
+  <strong>A native macOS research environment for philosophy and the humanities.</strong><br>
+  Read sources, develop ideas, and write your own arguments.<br>
+  Keep your research in local Markdown, with optional Agent collaboration.
+</p>
 
-**Current Core App Beta:** [v0.4.2-beta.2](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.4.2-beta.2/Scholium-v0.4.2-beta.2-macos-arm64.dmg)
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.2-beta.2/Scholium-v0.4.2-beta.2-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Scholium Beta for macOS, Apple silicon"></a>
+</p>
 
-This is the current App-only Beta distribution. The release owner performs UI
-and accessibility acceptance separately; this release preparation does not
-claim those checks as automated evidence.
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/actions/workflows/verify.yml"><img src="https://github.com/Aaronlves/Scholium/actions/workflows/verify.yml/badge.svg?branch=main" alt="Repository verification on main"></a>
+  <a href="https://github.com/Aaronlves/Scholium/releases"><img src="https://img.shields.io/github/v/release/Aaronlves/Scholium?include_prereleases&amp;label=beta&amp;color=8B613E" alt="Latest published beta release"></a>
+  <a href="Package.swift"><img src="https://img.shields.io/badge/macOS-26%2B-555555?logo=apple&amp;logoColor=white" alt="Requires macOS 26 or later"></a>
+  <a href="Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&amp;logoColor=white" alt="Swift tools 6.2"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-587549" alt="License: GPL-3.0-or-later"></a>
+</p>
 
-Scholium is a native macOS research environment for sustained work in
-philosophy and the humanities. Its content core is a researcher-governed,
-document-authoritative scholarly knowledge base that one researcher and
-invited external Agents may maintain together. The research document—not a
-dashboard, task board, Agent conversation, or memory store—remains the primary
-interface object. A field of inquiry takes shape as a **Triptych**:
-**Analyses** of sources, **Topics** that gather concepts and debates, and
-**Works** in which the researcher develops arguments of their own.
+<p align="center">
+  <a href="https://github.com/Aaronlves/Scholium/releases">Releases</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="Docs/SCHOLIUM_SPEC.md">Documentation</a> ·
+  <a href="README.zh-Hans.md">简体中文</a>
+</p>
 
-Markdown remains ordinary, inspectable text in folders selected by the
-researcher. Reading, writing, Search, Connections, review, and recovery do not
-depend on an Agent. When an external Agent is invited, the conversation remains
-in its MCP host. Scholium exposes current retrieval and exact Note mutations
-through the local MCP adapter, and records only machine-local Agent Change
-evidence for confirmed mutations.
+---
 
-The Core App Beta verdict covers the local manual research environment. External
-Agent collaboration remains a separate
-Preview until their own acceptance profile passes.
+## Research begins with the document
 
-## Product position
+Scholium brings source analysis, conceptual work, and sustained writing into one
+research environment. Your documents remain ordinary Markdown in folders you
+choose. The manual research core works without Obsidian, Zotero, or an Agent.
 
-Scholium is a scholarly knowledge base and research workbench, not a chat
-wrapper or a standalone Agent-memory product. Across Agents and sessions,
-research continuity comes from the same inspectable documents, sources, and
-explicit researcher judgments—not from hidden model state or a parallel
-private database.
+Each field of inquiry takes the form of a **Triptych**:
 
-Sources, interpretations, Agent reconstructions and researcher judgments remain
-distinct. Derived indexes and renderings never replace exact Markdown or turn
-permission to write into acceptance.
+| Workspace | What belongs here |
+| --- | --- |
+| **Analyses** | Close readings and reusable analyses of papers and other sources. |
+| **Topics** | Concepts, distinctions, debates, objections, and syntheses across sources. |
+| **Works** | Your plans, arguments, drafts, assessments, and finished writing. |
 
-The manual core works without Obsidian, Zotero, or Agents. Scholium is not
-project management, reference management, a general Agent harness, or a full
-Obsidian replacement.
+Move between **Review**, **Edit**, and **Source** as you read and write. Search
+across your research, follow authored links and their annotations, and consult
+Writing References while developing a draft. Retrieval helps you find material;
+it does not establish evidence for a claim.
+
+Exact Markdown remains authoritative. Autosave, Changes, conflict handling, and
+recovery support work alongside other editors. Sources, interpretations, Agent
+contributions, and your own judgments retain distinct roles. You decide what
+becomes part of your research.
+
+## Getting started
+
+**Requires macOS 26 or later and an Apple silicon Mac.** You do not need Xcode
+to run the packaged app.
+
+1. Download the DMG and its SHA-256 file from
+   [v0.4.2-beta.2](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2).
+   Run `shasum -a 256 Scholium-v0.4.2-beta.2-macos-arm64.dmg` and compare the
+   result with the accompanying checksum.
+2. Open the DMG, drag **Scholium** to **Applications**, and eject the DMG.
+3. Open Scholium once. This Beta is ad-hoc signed and is not Developer ID signed
+   or notarized. If macOS blocks it, open **System Settings → Privacy & Security →
+   Open Anyway**, authenticate, and confirm **Open**. Keep Gatekeeper enabled.
+4. Choose the **Analyses**, **Topics**, and **Works** folders for your Triptych.
+   A common parent is convenient; independently located folders are supported.
+   macOS also requests access to the folder containing Works for the portable
+   `.scholium/` control data beside it.
+
+Use **File → New Triptych…** for another research domain, **File → Open Triptych**
+to open a registered Triptych, or **File → New Window** for another window on the
+current one. Two Triptychs cannot share the same Works-side control directory.
+
+The public distribution is **Core App Beta**. External Agent collaboration and
+optional in-app Chat remain **Preview**. Packaged-release evidence and outstanding
+human UI, accessibility, and performance acceptance are recorded in
+[Implementation Status](Docs/IMPLEMENTATION_STATUS.md) and the
+[release notes](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2).
+
+## Optional integrations
+
+### Agents and Chat · Preview
+
+Use the in-app Chat with a compatible official Codex executable, or connect an
+external Agent host through Scholium MCP. The App-bundled helper requires
+Scholium to be running with the intended Triptych open.
+
+**In-app Chat:** switch the left sidebar to **Chat**, select the Codex executable
+and bundled connection helper, then connect and sign in through Codex. Choose
+**Ask for Approval** or **Full Access** before sending a request. Add selected
+text from Edit or Source with **View → Add Selection to Chat** (`⇧⌘L`); adding
+material does not send it. Operation History retains actual MCP changes and
+eligible Undo. An interrupted or uncertain request is never automatically resent.
+
+Each Triptych's `.scholium/` is its Chat working directory. Put local instructions
+in `AGENTS.md` and Skills in `skills/<name>/SKILL.md`. Settings offers **Open Chat
+Workspace in Finder** and **Refresh**. Codex authentication and runtime settings
+use a shared machine-local configuration; selecting an existing configuration
+inherits its tools and settings.
+
+**External hosts:** open **Settings → Integrations → Agents & Chat → External
+Agent Hosts**, then copy and run the command for your host. It uses the installed
+App's exact helper path. After moving the App, copy and run the command again;
+updating in place retains the path. Scholium copies commands without editing
+host configuration. External conversations stay in their host.
+
+Scholium MCP provides retrieval, source-linked attachments, guarded Note
+operations, and Agent Change comparison/recovery. The helper fails explicitly
+when the App or selected Triptych is unavailable. See the
+[tool contract](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract)
+for the supported surface.
+
+### Zotero
+
+Enable **Allow other applications on this computer to communicate with Zotero**
+in **Zotero Settings → Advanced**. Chat uses the bundled `scholium-zotero`
+connection to search and read library material, export citations, and modify
+items when explicitly confirmed and authorized by Zotero's local API. BibTeX
+and RIS imports remain in Zotero. No separate community server or Python runtime
+is required.
+
+To read original PDFs, open **Scholium Settings → Zotero → Original File Access →
+Choose Zotero Library Folder…**, then confirm **Allow Read Access**. You can also
+grant access to linked-file folders or individual originals. Access is read-only,
+stored on This Mac, and removable in Settings.
+
+Zotero remains the library authority; Scholium does not access its private
+database directly. See [Zotero integration](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
+for supported operations and citation behavior.
 
 ## Documentation
 
-- [Specification](Docs/SCHOLIUM_SPEC.md): target product behavior, interface,
-  accessibility and release contracts; includes [Design](Design.md).
-- [Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md): module, state-owner,
-  transaction and editor boundaries, not a source-code inventory.
-- [Implementation Status](Docs/IMPLEMENTATION_STATUS.md): compact implementation
-  scope, remaining work and dated proof. Reachability is not acceptance.
-- [AGENTS.md](AGENTS.md): development and verification rules.
+| Read | For |
+| --- | --- |
+| [Specification](Docs/SCHOLIUM_SPEC.md) | Product workflows, interface, accessibility, and release requirements. |
+| [Design](Design.md) | Global design philosophy and visual identity. |
+| [Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) | Modules, state ownership, transactions, and editor boundaries. |
+| [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) | Current reachability, open work, and dated verification evidence. |
+| [Development rules](AGENTS.md) | Contribution scope, verification, and disposable-fixture requirements. |
 
-Each entry routes to its owning chapter. This README provides setup, not another
-maintained feature list; Git preserves superseded decisions and change history.
+## Development
 
-## Requirements
-
-Running a packaged build requires macOS 26 or later. The current public Beta is
-for Apple silicon (`arm64`). Testers do not need Xcode.
-
-Building Scholium requires a complete Xcode installation with the compiler and
-SDK required by `Package.swift`. The repository resolver honors an explicit
-valid `DEVELOPER_DIR`, a complete `xcode-select` selection, or a conventional
-beta or release Xcode bundle. Node.js is needed only when rebuilding the
-TypeScript editor bundle.
-
-## Build and test
-
-Run commands from the repository root. The complete repository gate is:
+Build with a complete Xcode installation providing the compiler and SDK required
+by [Package.swift](Package.swift). Node.js is needed when rebuilding the
+TypeScript editor bundle. Run commands from the repository root:
 
 ```bash
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
-DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
-```
-
-Push and pull-request CI always reports `Repository verification`. Verified
-edits to a closed list of existing Markdown documents run the documentation,
-structural and RDF-1 fixture guards (`verify.sh --docs`). Unknown paths, missing
-history, renames, mode changes, code, scripts and build configuration use the
-daily gate (`verify.sh --ci`); manual runs retain their selected daily/full scope.
-
-Daily verification retains the reproducible-editor guards, Core/Contracts/
-Application and bridge tests, and all App tests except
-`MarkdownEditorWebViewIntegrationTests` and `MarkdownEditorReuseTests`. It
-validates the Debug helper; the default full gate also runs those suites, builds
-Release and validates the Release helper. Editor typecheck and tests run once
-within the reproducible-bundle check.
-
-Daily Swift build/dependency state is partitioned by the actual toolchain, SDK,
-architecture, host, checkout path and locked package graph. PRs only restore
-trusted main caches; tests rebuild/check current source and execute every run.
-A failed reused build gets one clean fallback. Full builds remain clean.
-Per-run logs, phase timings, test summaries and declared skips stay under
-`.build/ci-verification/runs/` and are collected on success and failure.
-
-Before publishing a beta, select **full** in the `Verify` workflow's manual run
-for the exact candidate ref, and run the default full gate locally. Then complete
-the applicable packaged smoke, artifact and performance gates. Tag pushes start
-no duplicate CI run. The daily result alone does not authorize publication.
-
-CI declares two things it cannot witness, and both come back as skips rather
-than passes:
-
-- `SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE=1` — the measurement suites assert
-  absolute durations calibrated on a development Mac, and a three-core shared
-  runner would report its own size rather than a regression.
-- `SCHOLIUM_SKIP_DISPLAY_EVIDENCE=1` — display-dependent App tests need a
-  display of a working size, the bundled typefaces registered with the font
-  server, and scroll bars set the way a Mac with a pointing device sets them.
-
-The full CI profile runs the remaining checks. Those two kinds of evidence are only real when
-`verify.sh` runs on a development Mac, so run it there before a release.
-
-Common development commands:
-
-```bash
-developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
-DEVELOPER_DIR="$developer_dir" swift build
-DEVELOPER_DIR="$developer_dir" swift test
-./Tools/Scripts/lint.sh
-./Tools/Scripts/lint.sh --fix
+export DEVELOPER_DIR="$developer_dir"
+swift build
 ./Tools/Scripts/run-debug-app.sh
-./Tools/Scripts/run-ui-tests.sh smoke
-./Tools/Scripts/run-ui-tests.sh complete
 ```
 
-`lint.sh` checks Swift source with the repository's `swift-format` configuration
-and type-checks the WebEditor in isolated temporary dependencies. `--fix`
-formats Swift source in place before checking it.
+The resolver honors a valid `DEVELOPER_DIR`, a complete `xcode-select` selection,
+or a conventional beta or release Xcode bundle. Keep the checkout outside
+Desktop, Documents, CloudStorage, and other File Provider-managed locations.
+All build caches, QA state, fixture copies, and logs belong under ignored
+repository-local `.build/` paths. Test only disposable, nonprivate fixtures.
 
-The UI runner uses a disposable TestVault copy and isolated state beneath the
-ignored repository `.build/` directory. `smoke` runs the canonical journey;
-`complete` runs the retained critical UI suite serially after one build. Neither
-establishes human visual or assistive-technology acceptance. Use AGENTS.md to
-select the scoped checks required for a change; the complete gate is not the
-default for every task.
+<details>
+<summary><strong>Verification and development tools</strong></summary>
 
-For opt-in scale diagnostics, the [stress generator](Tools/Scripts/generate-stress-vaults.py)
-creates 5,000 synthetic Notes by default (`--notes` accepts 500–20,000), including
-large source, dense links, nested Callouts and local images. Complete diagnostics
-require at least 508 Notes. Keep the generated source unchanged; both diagnostics make disposable copies. These scenario
-measurements do not establish the release performance gate.
+Choose checks appropriate to the change under [AGENTS.md](AGENTS.md).
+
+| Task | Command |
+| --- | --- |
+| Swift tests | `swift test` |
+| Swift formatting and editor typecheck | `./Tools/Scripts/lint.sh` |
+| Apply Swift formatting, then check | `./Tools/Scripts/lint.sh --fix` |
+| Daily repository gate | `./Tools/Scripts/verify.sh --ci` |
+| Complete repository gate | `./Tools/Scripts/verify.sh` |
+| Canonical UI journey | `./Tools/Scripts/run-ui-tests.sh smoke` |
+| Retained critical UI suite | `./Tools/Scripts/run-ui-tests.sh complete` |
+| Rebuild the editor bundle | `./Tools/Scripts/build-editor.sh` |
+| Verify the checked-in editor bundle | `./Tools/Scripts/verify-editor-bundle.sh` |
+| Validate documentation authority and links | `python3 Tools/Scripts/validate-documentation-authority.py` |
+
+Push and pull-request CI reports **Repository verification**. Verified edits to
+an allowlist of existing Markdown files use `verify.sh --docs`; other changes
+use the daily gate. Daily verification omits two expensive WebView suites and
+the Release build/helper checks, which remain in the full gate. Logs, timings,
+summaries, and skips are retained under `.build/ci-verification/runs/`.
+
+Before publishing a beta, run the full gate locally and select **full** in the
+manual **Verify** workflow for the exact candidate ref. Complete the applicable
+packaged smoke, artifact, and performance gates as well. CI skips calibrated
+measurement and display-dependent evidence through
+`SCHOLIUM_SKIP_MEASUREMENT_EVIDENCE` and `SCHOLIUM_SKIP_DISPLAY_EVIDENCE`;
+those checks require a development Mac. Automated checks do not establish human
+visual or assistive-technology acceptance. Release requirements belong to
+[the specification](Docs/Specification/10-release-and-open-decisions.md).
+
+The UI runner copies the standard 500-note [TestVaults](TestVaults/README.md)
+fixture into isolated `.build/` state. Register its three vaults separately;
+never mutate the source fixture or test against a real research vault.
+
+For opt-in scale diagnostics:
 
 ```bash
 python3 Tools/Scripts/generate-stress-vaults.py .build/stress-fixture
-DEVELOPER_DIR="$developer_dir" SCHOLIUM_STRESS_FIXTURE="$PWD/.build/stress-fixture" \
+SCHOLIUM_STRESS_FIXTURE="$PWD/.build/stress-fixture" \
   swift test --filter LargeVaultStressDiagnosticTests
 SCHOLIUM_TEST_VAULTS="$PWD/.build/stress-fixture" ./Tools/Scripts/run-ui-tests.sh stress
 ```
 
-When `WebEditor/` changes, rebuild and verify its checked-in bundle:
+The stress generator defaults to 5,000 synthetic Notes (`--notes` accepts
+500–20,000); complete diagnostics require at least 508. Both diagnostics copy
+the fixture. Scenario measurements do not establish the packaged performance gate.
 
-```bash
-./Tools/Scripts/build-editor.sh
-./Tools/Scripts/verify-editor-bundle.sh
-```
+Use `Manage Scholium Development Storage.command` in Finder or
+`./Tools/Scripts/manage-development-storage.sh report` to inspect storage.
+`clean-stale`, `clean-all`, and `clean-editor` default to dry runs; add `--delete`
+only after reviewing the allowlisted targets. Editor dependencies are removed
+only by `clean-editor`.
 
-When a documentation manifest, canonical chapter, or README link changes,
-validate the closed authority sets and local links:
+</details>
 
-```bash
-python3 Tools/Scripts/validate-documentation-authority.py
-```
+## Your files and local state
 
-All SwiftPM scratch, Xcode DerivedData, QA apps, fixture copies, indexes, logs,
-and result bundles stay under repository-local ignored `.build/` paths. The
-checkout itself must remain outside Desktop, Documents, CloudStorage, and other
-File Provider-managed locations.
-
-Use `Manage Scholium Development Storage.command` in Finder, or inspect and
-clean rebuildable state from the command line:
-
-```bash
-./Tools/Scripts/manage-development-storage.sh report
-./Tools/Scripts/manage-development-storage.sh clean-stale
-./Tools/Scripts/manage-development-storage.sh clean-all
-./Tools/Scripts/manage-development-storage.sh clean-editor
-```
-
-Clean commands are dry runs unless `--delete` is supplied after reviewing the
-exact allowlisted targets. They never remove source, app state, packaged builds,
-Triptych files, or portable `.scholium/` data. Editor dependencies are removed
-only by the separate `clean-editor` command.
-
-Packaged performance uses a strict G7 baseline gate. Specification §21.3
-defines when a complete campaign is required; a performance-affecting Beta runs
-the affected packaged series. Normative thresholds, fixture, sampling,
-provenance, and evidence requirements are in
-[Specification §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
-current results and gaps are in Implementation Status.
-
-## Source-first Beta distribution
-
-Scholium.app is the sole supported installation. Packaging produces an
-architecture-labelled App DMG and SHA-256 checksum from an exact clean tag,
-with corresponding GPL-3.0-or-later source and notices. The signed connection
-helper and Core Protocol ship inside the App and update with it. There is no
-standalone CLI distribution, installer or self-updater.
-
-Opening the DMG presents Scholium beside an Applications alias. Verify the
-adjacent SHA-256 file before installing. Current source changes do not alter
-previously published artifacts; release acceptance and exact artifact evidence
-remain in [Implementation Status](Docs/IMPLEMENTATION_STATUS.md).
-
-The convenience app is not Developer ID signed or notarized. For a DMG release,
-after downloading it from the trusted project release and verifying the
-checksum:
-
-1. open the DMG;
-2. drag **Scholium** onto the **Applications** alias and eject the DMG;
-3. try to open Scholium from Applications once;
-4. open **System Settings → Privacy & Security** and choose **Open Anyway**;
-5. authenticate and confirm **Open**.
-
-Never disable Gatekeeper or recursively remove quarantine. Exact release gates,
-artifact contents, clean-account verification, and future signed-channel rules
-are maintained in
-[Specification §21.5](Docs/Specification/10-release-and-open-decisions.md#215-source-first-beta-distribution).
-
-## Triptych setup
-
-First launch asks the researcher to choose independently located **Analyses**,
-**Topics**, and **Works** folders. Portable `.scholium/` data sits beside Works,
-so macOS also requests access to the folder containing Works; that access
-boundary is not a fourth vault. Co-location under one parent is recommended but
-not required.
-
-Use **File → New Triptych…** for another research domain, **File → Open
-Triptych** for a registered Triptych in a separate window, and **File → New
-Window** for another independent window on the focused Triptych. Two
-Triptychs may not share the same Works-side control directory.
-
-## Scholium MCP setup
-
-Open **Settings → Integrations → Agents & Chat → External Agent Hosts** to inspect App,
-bridge, and bundled-helper availability, copy a host-specific setup command, or reveal the
-bundled Core Protocol Skill. Scholium copies commands but never edits host
-configuration or claims installation succeeded.
-
-Use the copied command for the installed App. It names that App's absolute
-helper path; no separate installation is needed. After moving the App, copy and
-run its setup command again. Updating in place retains the configured path.
-
-The App must already be running with the intended Triptych open. The stdio
-helper uses a current-user-authenticated local bridge and fails explicitly when
-the App, bridge, selected Triptych, or current state is unavailable. It never
-falls back to direct filesystem or headless workspace access.
-
-The collaboration surface exposes the current bounded Note tools documented in
-[Agent Collaboration §8.3](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract).
-It covers retrieval, source-linked attachments, guarded Note operations and
-Agent Change comparison/recovery; capability controls remain in-app only.
-
-An ordinary Wikilink may carry multiline, source-owned Markdown annotation as
-`[[Target]]{{annotation}}`. Connect, Search, and `scholium_list_links` preserve
-each occurrence's direction, annotation, local context, and source location;
-they expose only the authored occurrence and never assign a relationship class.
-
-## Storage and safety
-
-Authoritative research remains in the selected Markdown folders. The small
-portable `.scholium/` control structure beside Works contains the bounded
-control state listed in
-[§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state).
-Research prose and assessments remain ordinary Markdown; save recovery is machine-local.
-
-Bookmarks, absolute paths, window sessions, indexes, saved queries, recovery,
-local bridge authentication, exact Agent Change evidence, and unsupported
-pre-production bytes remain machine-local under:
+Research prose and assessments remain ordinary Markdown in your selected
+folders. Portable control data stays in the bounded `.scholium/` structure beside
+Works. Bookmarks, absolute paths, sessions, indexes, saved queries, recovery,
+bridge authentication, and exact Agent Change evidence stay on this Mac under:
 
 ```text
 ~/Library/Application Support/Scholium/State-v1/
 ```
 
-Writes preserve exact source and report concurrent-edit conflicts without
-discarding unsaved text. Safety and recovery contracts belong to
-[Save and Recovery §14](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery);
-their mechanisms belong to Architecture and acceptance gaps to Status.
-
-Never use real research vaults for development tests.
+See [storage boundaries](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)
+and [save and recovery](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery).
+The App, bundled helpers, and Core Protocol update together; there is no
+standalone CLI distribution or self-updater.
 
 ## License
 
-Unless otherwise noted, Scholium's original source code is licensed under the
-[GNU General Public License, version 3 or later](LICENSE)
-(`GPL-3.0-or-later`). Third-party components retain their own licenses; see
-[Third-Party Notices](THIRD_PARTY_NOTICES.md).
-
-## Repository map
-
-```text
-ScholiumContracts/         Immutable values, protocols, and source semantics
-ScholiumCore/              Internal repositories, indexes, watchers, and I/O
-ScholiumApplication/       Application capabilities shared by App and helper
-Scholium/                  Native macOS app and human-facing interaction
-WebEditor/                 TypeScript and CodeMirror source
-Tests/                     Contract, Core, Application, and App tests
-UITests/                   Isolated disposable macOS UI journeys
-Docs/SCHOLIUM_SPEC.md      Canonical target-authority manifest and reading routes
-Docs/Specification/       Normative product, interface, accessibility, and release chapters
-Docs/IMPLEMENTATION_ARCHITECTURE.md
-                           Subordinate architecture manifest and reading routes
-Docs/Architecture/        Module, runtime, state, editor, presentation, and boundary chapters
-Docs/IMPLEMENTATION_STATUS.md
-                           Current-evidence manifest and reading routes
-Docs/Status/              Remaining work and current proof
-Tools/Scripts/             Build, verification, QA, performance, and release tools
-```
-
-### In-app Codex Chat (development integration)
-
-The left sidebar switches between Library and Chat; the right document Inspector
-switches between Links and Related Material. Chat uses native macOS text and controls; replies may
-be full research discussions, while operation activity remains expandable.
-In Chat, choose a compatible official Codex executable
-and the App-bundled connection helper. Connect and sign in through Codex.
-Login and runtime state use a shared machine-local Codex configuration directory;
-choosing an existing configuration inherits that environment's tools and settings.
-Each Triptych's `.scholium` is its Chat working directory. Edit `AGENTS.md` there
-for local instructions and place Skills in `skills/<name>/SKILL.md`; Codex discovers
-them automatically. Settings offers Open Chat Workspace in Finder and Refresh,
-with no Skill-folder path setup. Existing files are preserved on reconnect.
-
-Use View → Add Selection to Chat (Command-Shift-L) from Edit or Source. Adding
-material does not send it. Select Ask for Approval or Full Access, then Send.
-Note references open in the central document region. Operation History retains
-actual MCP changes and eligible Undo. A disconnected or uncertain request is
-never automatically resent. Provider authentication, account availability,
-cloud execution and signed-distribution acceptance require their own checks.
-
-### Zotero in Chat (optional integration)
-
-Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
-applications on this computer to communicate with Zotero**. Chat uses the
-bundled `scholium-zotero` connection to search, inspect and read Zotero
-material, export citations, and—when explicitly confirmed—modify an item
-through Zotero's local API. BibTeX and RIS imports remain in Zotero itself.
-No community Zotero server,
-Python runtime or separate dependency installation is required.
-
-For original PDFs, open **Scholium Settings → Zotero → Original File Access**
-and choose **Choose Zotero Library Folder…**. Scholium locates the data folder
-through Zotero and opens it in the native chooser; confirm **Allow Read Access**.
-If it cannot locate the folder, choose it manually. In Zotero Settings
-→ Advanced → Files and Folders, **Show Data Directory** reveals the folder.
-You can also select a folder containing linked originals or specific original
-files. Access is read-only, stored on This Mac, and removable there.
-The running App reads only originals identified by Zotero. Indexed text supports
-bounded continuation; PDF reads identify physical pages and their actual text
-or image coverage.
-
-Zotero remains the library authority. Item updates require the exact library,
-current Zotero version and Zotero's local write authorization.
-Scholium never accesses Zotero's private database directly. The supported
-scope and exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).
+Scholium's original source code is licensed under the
+[GNU General Public License, version 3 or later](LICENSE) (`GPL-3.0-or-later`),
+unless otherwise noted. Third-party components retain their own licenses;
+see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
