@@ -503,7 +503,7 @@ struct SidebarTreeTests {
         #expect(cell.titleLabel.font?.pointSize == NSFont.systemFontSize(for: .large))
         let expectedLargeImage = try #require(
             NSImage(systemSymbolName: ScholiumSidebarItem.folder.symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: large.textPointSize, weight: .regular)))
+                .withSymbolConfiguration(.init(pointSize: large.symbolPointSize, weight: .regular)))
         #expect(cell.itemImageView.image?.size == expectedLargeImage.size)
         folder.children = []
         cell.configure(item: folder, isExpanded: true, nativeStrings: chinese, presentation: large)
@@ -518,20 +518,20 @@ struct SidebarTreeTests {
     }
 
     @MainActor
-    @Test("Attached source-list item symbols keep equal geometry at every hierarchy depth")
+    @Test("Attached source-list symbols retain intrinsic height and text baselines across sizes, selection and depth")
     func nativeItemSymbolsDoNotReceiveSectionIconSizing() throws {
         let notes = ["Root.md", "A/First.md", "A/B/Second.md", "A/B/C/Third.md", "A/B/C/D/Fourth.md"].map {
             WindowDocumentLocation.syntheticPreview(relativePath: $0, rawContent: "# Note\n")
         }
         let roots = LibraryTreeProjection(preorderedNotes: notes.sorted { $0.relativePath < $1.relativePath }).roots
-        for enlarged in [false, true] {
+        for rowSizeStyle: NSTableView.RowSizeStyle in [.small, .medium, .large] {
             let configuration = makeSidebarCoordinatorConfiguration(
                 roots: roots, notes: notes,
                 scope: .init(vaultID: UUID(), sourceScope: .library),
                 expandedFolderIDs: ["A", "A/B", "A/B/C", "A/B/C/D"],
                 revealRequest: nil, requestedFocusPath: nil,
                 onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
-                usesAccessibilitySize: enlarged
+                usesAccessibilitySize: rowSizeStyle == .large
             )
             let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
             let fixture = makeSidebarCoordinatorOutline(coordinator)
@@ -540,6 +540,8 @@ struct SidebarTreeTests {
                 fixture.window.close()
             }
             coordinator.apply(configuration: configuration)
+            fixture.outlineView.rowSizeStyle = rowSizeStyle
+            fixture.outlineView.reloadData()
             fixture.window.contentView?.layoutSubtreeIfNeeded()
             var folderSizes: [NSSize] = []
             var noteSizes: [NSSize] = []
@@ -547,6 +549,24 @@ struct SidebarTreeTests {
                 let item = try #require(fixture.outlineView.item(atRow: row) as? SidebarOutlineItem)
                 let cell = try #require(fixture.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? SidebarOutlineCell)
                 cell.layoutSubtreeIfNeeded()
+                let image = try #require(cell.itemImageView.image)
+                let imageCell = try #require(cell.itemImageView.cell as? NSImageCell)
+                let imageRect = imageCell.imageRect(forBounds: cell.itemImageView.bounds)
+                let imageBaseline = cell.convert(
+                    NSPoint(x: 0, y: cell.itemImageView.isFlipped ? imageRect.maxY - image.alignmentRect.minY : imageRect.minY + image.alignmentRect.minY),
+                    from: cell.itemImageView
+                ).y
+                let textBaseline = cell.convert(
+                    NSPoint(x: 0, y: cell.titleLabel.isFlipped ? cell.titleLabel.firstBaselineOffsetFromTop : cell.titleLabel.lastBaselineOffsetFromBottom),
+                    from: cell.titleLabel
+                ).y
+                #expect(abs(imageBaseline - textBaseline) <= 0.5, "Symbol baseline drift: \(item.id), \(rowSizeStyle)")
+                #expect(abs(cell.itemImageView.bounds.height - image.size.height) <= 0.5)
+                #expect(cell.itemImageView.frame.minY >= cell.bounds.minY && cell.itemImageView.frame.maxY <= cell.bounds.maxY)
+                let restingFrame = cell.itemImageView.frame
+                fixture.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                cell.layoutSubtreeIfNeeded()
+                #expect(cell.itemImageView.frame == restingFrame)
                 if item.node.isFolder { folderSizes.append(cell.itemImageView.frame.size) } else { noteSizes.append(cell.itemImageView.frame.size) }
                 let components = cell.draggingImageComponents
                 #expect(components.filter { $0.key == .icon }.count == 1)

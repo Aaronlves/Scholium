@@ -17,6 +17,7 @@ func sidebarControlSize(
 
 struct SidebarSourceListRowPresentation: Equatable {
     let textPointSize: CGFloat
+    var symbolPointSize: CGFloat { textPointSize + 1 }
 
     init(effectiveRowSizeStyle: NSTableView.RowSizeStyle) {
         textPointSize = NSFont.systemFontSize(
@@ -144,9 +145,10 @@ final class SidebarOutlineCell: NSTableCellView {
         addSubview(titleLabel)
         NSLayoutConstraint.activate([
             itemImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            itemImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            // Keep the symbol at its intrinsic height so AppKit's baseline
+            // follows the symbol metrics rather than a padded square box.
+            itemImageView.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
             itemImageView.widthAnchor.constraint(equalToConstant: ScholiumMetrics.Library.leadingSlotWidth),
-            itemImageView.heightAnchor.constraint(equalToConstant: ScholiumMetrics.Library.leadingSlotWidth),
             titleLabel.leadingAnchor.constraint(
                 equalTo: itemImageView.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap
             ),
@@ -208,7 +210,7 @@ final class SidebarOutlineCell: NSTableCellView {
                 itemImageView.image = NSImage(
                     systemSymbolName: content.isFolder ? ScholiumSidebarItem.folder.symbol : ScholiumSidebarItem.note.symbol,
                     accessibilityDescription: nil
-                )?.withSymbolConfiguration(.init(pointSize: presentation.textPointSize, weight: .regular))
+                )?.withSymbolConfiguration(.init(pointSize: presentation.symbolPointSize, weight: .regular))
             }
         }
         updateForeground()
