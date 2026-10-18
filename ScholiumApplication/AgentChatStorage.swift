@@ -11,22 +11,27 @@ public actor AgentChatStorage {
     public init(root: URL) { self.root = root }
 
     public func load() throws -> [AgentChatConversation] {
+        try loadSnapshot().conversations
+    }
+
+    public func loadSnapshot() throws -> AgentChatHistorySnapshot {
         try prepare()
         let url = root.appendingPathComponent("conversations.json")
-        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard FileManager.default.fileExists(atPath: url.path) else { return .init(conversations: [], fingerprint: nil) }
         let values = try url.resourceValues(forKeys: [
             .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
         ])
         guard values.isRegularFile == true, values.isSymbolicLink != true,
             (values.fileSize ?? 0) <= 64 * 1_024 * 1_024
         else { throw CocoaError(.fileReadCorruptFile) }
-        let archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        let archive = try JSONDecoder().decode(Archive.self, from: data)
         guard archive.version == 12,
             Set(archive.conversations.map(\.id)).count == archive.conversations.count
         else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        return archive.conversations
+        return .init(conversations: archive.conversations, fingerprint: .init(data: data))
     }
 
     public func save(_ conversations: [AgentChatConversation]) throws {

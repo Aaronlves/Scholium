@@ -114,19 +114,19 @@ generation independently of the visible page.
 
 ### Materials and source observations
 
-The conversation-scoped material owner prepares bounded immutable copies and
-cancellation. Whole-Note/selection capture uses exact saved source or a checked
-editor snapshot; an unavailable dirty editor cannot fall back to disk. Note/file
-pickers, accepted Paste/drop and PDF-page derivatives share preparation, validation
-and disposal. Drag entry inspects types without reading bytes. Clipboard/drop
-origin is typed rather than an invented file path. Encoding conversion retains
-original and converted representations with independent fingerprints.
+The material owner serializes bounded immutable file/Paste/drop copies, PDF-page
+derivatives, validation and disposal. Drag entry reads no bytes. Clipboard/drop
+origin is typed; conversions retain original and prepared fingerprints.
+Note/selection capture uses exact saved source or a checked editor snapshot;
+an unavailable dirty editor cannot fall back to disk.
 
-Retained files are validated before sending and never reread from originals at
-delivery. Failed preparation remains explicit. Removed unpublished copies are
-discarded; referenced copies survive branch/history retention. Replacement/removal
-releases unused copies only after successful history save and reference checks.
-Physical PDF page identity stays paired with each selected image input.
+Delivery checks retained fingerprints without rereading originals. Failed
+preparation stays inspectable. Published-copy removal follows successful history
+save and reference checks; references survive branches. Explicit cleanup protects
+live, pending-save and exact persisted-history references. Core binds previews to
+directory/file identity, bytes and history revision, then verifies native Trash receipts.
+Settings retains partial/uncertain results. PDF page identity stays paired with
+each selected image.
 
 Public source observations retain exact returned ranges, fingerprint, extent and
 representation on existing activities. Sources matches preceding observations in

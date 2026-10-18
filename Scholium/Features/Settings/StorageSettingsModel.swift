@@ -14,6 +14,11 @@ struct ArchivedChatCleanupResult: Equatable, Sendable {
     let materialCleanupIssue: String?
 }
 
+struct UnusedChatMaterialCleanupPlan: Equatable, Sendable {
+    let triptychID: UUID
+    let files: AgentChatMaterialCleanupPlan
+}
+
 /// The Settings page receives scoped operations, never a runtime or arbitrary
 /// filesystem root. Agent Runtime storage is outside this capability.
 @MainActor
@@ -22,12 +27,15 @@ struct StorageSettingsCapabilities {
     let perform: (ScholiumStorageAction, UUID?) async throws -> ScholiumStorageOperationResult
     let archivedChats: (UUID) async throws -> ArchivedChatCleanupPlan
     let deleteArchivedChats: (ArchivedChatCleanupPlan) async throws -> ArchivedChatCleanupResult
+    let unusedChatMaterials: (UUID) async throws -> UnusedChatMaterialCleanupPlan
+    let trashUnusedChatMaterials: (UnusedChatMaterialCleanupPlan) async throws -> AgentChatMaterialCleanupResult
 }
 
 struct StorageSettingsConfirmation: Identifiable, Equatable {
     enum Intent: Equatable {
         case index(ScholiumStorageAction, UUID)
         case archivedChats(ArchivedChatCleanupPlan)
+        case unusedChatMaterials(UnusedChatMaterialCleanupPlan)
     }
 
     let id = UUID()
@@ -38,6 +46,7 @@ struct StorageSettingsConfirmation: Identifiable, Equatable {
         switch intent {
         case .index(_, let id): id
         case .archivedChats(let plan): plan.triptychID
+        case .unusedChatMaterials(let plan): plan.triptychID
         }
     }
 }
@@ -49,6 +58,7 @@ enum StorageSettingsActivityScope: Equatable {
 enum StorageSettingsCompletedOperation: Equatable {
     case storage(ScholiumStorageOperationResult, triptychName: String?)
     case archivedChats(ArchivedChatCleanupResult, triptychName: String)
+    case unusedChatMaterials(AgentChatMaterialCleanupResult, triptychName: String)
 }
 
 /// One retained page owns measurement, confirmation and operation feedback.
@@ -61,6 +71,7 @@ final class StorageSettingsModel: ObservableObject {
     @Published private(set) var isMeasuring = false
     @Published private(set) var isPreparing = false
     @Published private(set) var isPerforming = false
+    @Published private(set) var canStopCleanup = false
     @Published private(set) var confirmation: StorageSettingsConfirmation?
     @Published private(set) var completedOperation: StorageSettingsCompletedOperation?
     @Published private(set) var errorMessage: String?
@@ -69,6 +80,7 @@ final class StorageSettingsModel: ObservableObject {
     private let capabilities: StorageSettingsCapabilities?
     private var inventoryTask: Task<Void, Never>?
     private var preparationTask: Task<Void, Never>?
+    private var cleanupTask: Task<Void, Never>?
     private var preparationGeneration: UInt64 = 0
     private var isPaneActive = false
     private var selectedTriptychID: UUID?
@@ -184,6 +196,44 @@ final class StorageSettingsModel: ObservableObject {
         confirmation = nil
     }
 
+    func prepareUnusedChatMaterialCleanup() async {
+        guard isPaneActive, !isBusy, !isMeasuring, let selectedTriptychID, let capabilities else { return }
+        dismissConfirmation()
+        let generation = preparationGeneration
+        let targetName = selectedTriptychName
+        isPreparing = true
+        activityScope = .chat
+        errorMessage = nil
+        notice = nil
+        let task = Task { [self] in
+            defer {
+                if generation == preparationGeneration {
+                    isPreparing = false
+                    preparationTask = nil
+                }
+            }
+            do {
+                let plan = try await capabilities.unusedChatMaterials(selectedTriptychID)
+                try Task.checkCancellation()
+                guard isPaneActive, generation == preparationGeneration,
+                    self.selectedTriptychID == selectedTriptychID, plan.triptychID == selectedTriptychID
+                else { return }
+                guard plan.files.fileCount > 0 else {
+                    notice = ScholiumL10n.string("No unused Chat-material files to move to Trash.")
+                    return
+                }
+                confirmation = StorageSettingsConfirmation(intent: .unusedChatMaterials(plan), triptychName: targetName)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isPaneActive, generation == preparationGeneration, self.selectedTriptychID == selectedTriptychID else { return }
+                errorMessage = ScholiumErrorLocalization.message(error)
+            }
+        }
+        preparationTask = task
+        await task.value
+    }
+
     @discardableResult
     func confirm(_ request: StorageSettingsConfirmation) -> Task<Void, Never>? {
         guard confirmation?.id == request.id, isPaneActive, !isBusy,
@@ -195,10 +245,15 @@ final class StorageSettingsModel: ObservableObject {
         notice = nil
         switch request.intent {
         case .index: activityScope = .index
-        case .archivedChats: activityScope = .chat
+        case .archivedChats, .unusedChatMaterials: activityScope = .chat
         }
-        return Task { [self] in
-            defer { isPerforming = false }
+        if case .unusedChatMaterials = request.intent { canStopCleanup = true }
+        let task = Task { [self] in
+            defer {
+                isPerforming = false
+                canStopCleanup = false
+                cleanupTask = nil
+            }
             do {
                 switch request.intent {
                 case .index(let action, let id):
@@ -207,12 +262,31 @@ final class StorageSettingsModel: ObservableObject {
                 case .archivedChats(let plan):
                     let result = try await capabilities.deleteArchivedChats(plan)
                     completedOperation = .archivedChats(result, triptychName: request.triptychName)
+                case .unusedChatMaterials(let plan):
+                    let result = try await capabilities.trashUnusedChatMaterials(plan)
+                    completedOperation = .unusedChatMaterials(result, triptychName: request.triptychName)
+                    canStopCleanup = false
                 }
                 await refreshInventory()
+            } catch is CancellationError {
+                if case .unusedChatMaterials = request.intent {
+                    completedOperation = nil
+                    notice = ScholiumL10n.string("Cleanup stopped before any files were moved.")
+                } else {
+                    errorMessage = ScholiumErrorLocalization.message(CancellationError())
+                }
             } catch {
                 errorMessage = ScholiumErrorLocalization.message(error)
             }
         }
+        if canStopCleanup { cleanupTask = task }
+        return task
+    }
+
+    func stopCleanup() {
+        guard canStopCleanup else { return }
+        canStopCleanup = false
+        cleanupTask?.cancel()
     }
 
     func performSafeAction(_ action: ScholiumStorageAction) async {

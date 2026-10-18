@@ -775,6 +775,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 deleteArchivedChats: { [self] plan in
                     _ = try await applicationRuntime.documentChangeArchive(triptychID: plan.triptychID)
                     return try await chatRegistry.controller(for: plan.triptychID).deleteArchivedChats(plan)
+                },
+                unusedChatMaterials: { [self] id in
+                    _ = try await applicationRuntime.documentChangeArchive(triptychID: id)
+                    return try await chatRegistry.controller(for: id).unusedChatMaterialCleanupPlan()
+                },
+                trashUnusedChatMaterials: { [self] plan in
+                    _ = try await applicationRuntime.documentChangeArchive(triptychID: plan.triptychID)
+                    return try await chatRegistry.controller(for: plan.triptychID).moveUnusedChatMaterialsToTrash(plan)
                 }
             )
         )

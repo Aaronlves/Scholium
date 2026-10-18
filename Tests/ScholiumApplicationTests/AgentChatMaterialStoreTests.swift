@@ -2,13 +2,34 @@ import CoreGraphics
 import CoreText
 import Foundation
 import ImageIO
-import ScholiumApplication
 import ScholiumContracts
 import Testing
 import UniformTypeIdentifiers
 
+@testable import ScholiumApplication
+
 @Suite("Local research material snapshots")
 struct AgentChatMaterialStoreTests {
+    @Test("A failed snapshot preparation retains an inspectable material without abandoning its copy")
+    func failedPreparationDoesNotAbandonCopy() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.md")
+        let bytes = Data("Exact synthetic source\r\n".utf8)
+        try bytes.write(to: source)
+        let materials = root.appendingPathComponent("Materials")
+        let retained = AgentChatMaterialStore(root: materials)
+        let existing = try await retained.stage(source)
+        let existingURL = try await retained.validatedURL(for: existing)
+        let store = AgentChatMaterialStore(root: materials, afterSnapshotWrite: { throw CocoaError(.fileWriteNoPermission) })
+        let failed = try await store.stage(source)
+        #expect(failed.issue == .unreadable)
+        let failedName = try #require(failed.storedFileName)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: materials.path).count == 2)
+        #expect(try Data(contentsOf: materials.appendingPathComponent(failedName)) == bytes)
+        #expect(try Data(contentsOf: source) == bytes)
+        #expect(try Data(contentsOf: existingURL) == bytes)
+    }
     private func root() throws -> URL {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/agent-chat-evolution/local-material-\(UUID())")

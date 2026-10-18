@@ -221,6 +221,14 @@ research source/attachments and recovery evidence remain. A changed cohort requi
 fresh inspection and confirmation. Committed history deletion and a later material
 cleanup failure remain distinct outcomes.
 
+**Move Unused Chat Materials to Trash…** inspects the selected Triptych's
+unreferenced managed copies and confirms their file count and logical size.
+Retained drafts, queued/sent messages, pending saves and active preparation
+protect their copies. Source files and recovery evidence remain untouched.
+Changed references, history or files require fresh inspection. Only verified
+Trash moves count as moved; failures and uncertain outcomes remain inspectable,
+with Finder owning restoration before Trash is emptied.
+
 ### Configuration failure and recovery
 
 A failed preference or configuration group does not disable unrelated settings

@@ -95,7 +95,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     let runtimeHome: URL
     let workspaceDirectory: @MainActor () async throws -> URL
     var connectedHome: URL?
-    private let storage: AgentChatStorage
+    let loadHistory: @MainActor () async throws -> AgentChatHistorySnapshot
     let saveHistory: @MainActor ([AgentChatConversation]) async throws -> Void
     // References provisional history messages only; the live draft stays editable
     // until its write-ahead snapshot has been saved and input dispatch begins.
@@ -120,6 +120,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var pendingDeletionMaterials: [UUID: AgentChatLocalMaterial] = [:]
     var pendingHistorySaveReferences: [UUID: Set<UUID>] = [:]
     var archivedChatCleanup: ArchivedChatCleanupTransaction?
+    var isCleaningUnusedMaterials = false
     // Each mounted Chat owns one token; closing one window cannot mark a
     // conversation unread while another window still displays its transcript.
     var transcriptReaders: [UUID: UUID] = [:]
@@ -147,6 +148,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         methodDefaults: UserDefaults = .standard,
         contextAccessPreferences: AgentContextAccessPreferences = .shared,
         saveHistory: (@MainActor ([AgentChatConversation]) async throws -> Void)? = nil,
+        loadHistory: (@MainActor () async throws -> AgentChatHistorySnapshot)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
         observeCurrentState: @escaping @MainActor (AgentChatDisplayScope, UUID, @escaping @MainActor () -> Bool) async throws -> AgentChatDocumentObservation =
             { _, _, _ in
@@ -171,7 +173,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         runtimeHome = root.appendingPathComponent("Codex", isDirectory: true)
         let storage = AgentChatStorage(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true))
-        self.storage = storage
+        self.loadHistory = loadHistory ?? { try await storage.loadSnapshot() }
         self.saveHistory = saveHistory ?? { try await storage.save($0) }
         materialStore = AgentChatMaterialStore(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true)
@@ -735,7 +737,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private func load() async {
         defer { isLoadingLocalHistory = false }
         do {
-            let loaded = try await storage.load()
+            let loaded = try await loadHistory().conversations
             guard loaded.allSatisfy({ $0.triptychID == triptychID }) else {
                 throw CocoaError(.fileReadCorruptFile)
             }

@@ -496,7 +496,9 @@ private final class RootFixtureState {
                 },
                 perform: { [self] _, _ in throw reject("storage.perform") },
                 archivedChats: { [self] _ in throw reject("storage.archivedChats") },
-                deleteArchivedChats: { [self] _ in throw reject("storage.deleteArchivedChats") })
+                deleteArchivedChats: { [self] _ in throw reject("storage.deleteArchivedChats") },
+                unusedChatMaterials: { [self] _ in throw reject("storage.unusedChatMaterials") },
+                trashUnusedChatMaterials: { [self] _ in throw reject("storage.trashUnusedChatMaterials") })
         )
     }
 }

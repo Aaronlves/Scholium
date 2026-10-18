@@ -1,4 +1,5 @@
 import Foundation
+import ScholiumApplication
 import ScholiumContracts
 import Testing
 
@@ -156,6 +157,139 @@ struct StorageSettingsModelTests {
         #expect(model.completedOperation == .archivedChats(result, triptychName: "Archive Target"))
     }
 
+    @Test("Navigation or target changes cancel an unconfirmed unused-material inspection", arguments: [false, true])
+    func unusedMaterialPreparationCannotCrossScope(changeTarget: Bool) async throws {
+        let target = UUID()
+        try await withMaterialPlan(triptychID: target) { plan in
+            let backend = StorageSettingsTestBackend()
+            let gate = StorageSettingsTestGate()
+            defer { gate.release() }
+            var entered = gate.entries.makeAsyncIterator()
+            backend.unused = { _ in
+                await gate.wait()
+                return plan
+            }
+            let model = StorageSettingsModel(capabilities: backend.capabilities)
+            model.setPaneActive(true)
+            model.selectTriptych(id: target, name: "Inspected Target")
+            let preparation = Task { await model.prepareUnusedChatMaterialCleanup() }
+            _ = await entered.next()
+            if changeTarget {
+                model.selectTriptych(id: UUID(), name: "Successor")
+            } else {
+                model.setPaneActive(false)
+                model.setPaneActive(true)
+            }
+            gate.release()
+            await preparation.value
+            #expect(model.confirmation == nil && !model.isBusy)
+            #expect(backend.unusedInspections == [target])
+            #expect(backend.trashedPlans.isEmpty)
+        }
+    }
+
+    @Test("Unused-material confirmation requires the inspected Triptych and explicit admission")
+    func unusedMaterialConfirmationKeepsExactTarget() async throws {
+        let target = UUID()
+        try await withMaterialPlan(triptychID: target) { plan in
+            let backend = StorageSettingsTestBackend()
+            let model = StorageSettingsModel(capabilities: backend.capabilities)
+            model.setPaneActive(true)
+            model.selectTriptych(id: target, name: "Material Target")
+            backend.unused = { _ in .init(triptychID: UUID(), files: plan.files) }
+            await model.prepareUnusedChatMaterialCleanup()
+            #expect(model.confirmation == nil && backend.trashedPlans.isEmpty)
+            backend.unused = { _ in plan }
+            await model.prepareUnusedChatMaterialCleanup()
+            let request = try #require(model.confirmation)
+            #expect(request.intent == .unusedChatMaterials(plan))
+            #expect(request.triptychID == target && backend.trashedPlans.isEmpty)
+            model.dismissConfirmation()
+            #expect(model.confirm(request) == nil && backend.trashedPlans.isEmpty)
+        }
+    }
+
+    @Test("An admitted unused-material cleanup retains its target and partial outcome after navigation and measurement failure")
+    func unusedMaterialPartialResultSurvivesNavigation() async throws {
+        let target = UUID()
+        try await withMaterialPlan(triptychID: target, count: 3) { plan in
+            let backend = StorageSettingsTestBackend()
+            let gate = StorageSettingsTestGate()
+            defer { gate.release() }
+            var entered = gate.entries.makeAsyncIterator()
+            let result = AgentChatMaterialCleanupResult(
+                movedFiles: 1, movedBytes: 7, preservedFiles: 2, failedFiles: 1, uncertainFiles: 1,
+                retainedFileNames: ["retained-synthetic-copy.txt"],
+                resultingTrashURLs: [URL(fileURLWithPath: "/synthetic-trash/confirmed-copy.txt")])
+            backend.unused = { _ in plan }
+            backend.trash = { _ in
+                await gate.wait()
+                return result
+            }
+            backend.inventoryRead = { throw StorageSettingsTestFailure() }
+            let model = StorageSettingsModel(capabilities: backend.capabilities)
+            model.setPaneActive(true)
+            model.selectTriptych(id: target, name: "Original Material Target")
+            await model.prepareUnusedChatMaterialCleanup()
+            let request = try #require(model.confirmation)
+            let operation = try #require(model.confirm(request))
+            _ = await entered.next()
+            model.setPaneActive(false)
+            model.selectTriptych(id: UUID(), name: "Different Target")
+            model.setPaneActive(true)
+            await model.prepareUnusedChatMaterialCleanup()
+            await model.prepareArchivedChatDeletion()
+            #expect(model.isPerforming && model.confirmation == nil)
+            #expect(backend.unusedInspections == [target])
+            #expect(backend.trashedPlans == [plan] && backend.deletedPlans.isEmpty)
+            gate.release()
+            await operation.value
+            #expect(model.completedOperation == .unusedChatMaterials(result, triptychName: "Original Material Target"))
+            #expect(model.errorMessage != nil)
+            #expect(!model.isPerforming && model.activityScope == .chat)
+            #expect(backend.trashedPlans == [plan])
+        }
+    }
+
+    @Test("Stopping an admitted cleanup is idempotent and retains its confirmed partial result")
+    func stopUnusedMaterialCleanupKeepsPartialResult() async throws {
+        let target = UUID()
+        try await withMaterialPlan(triptychID: target, count: 2) { plan in
+            let backend = StorageSettingsTestBackend()
+            let gate = StorageSettingsTestGate()
+            defer { gate.release() }
+            var entered = gate.entries.makeAsyncIterator()
+            var observedCancellation = false
+            let result = AgentChatMaterialCleanupResult(
+                movedFiles: 1, movedBytes: 7, preservedFiles: 1, wasCancelled: true,
+                retainedFileNames: ["remaining-synthetic-copy.txt"],
+                resultingTrashURLs: [URL(fileURLWithPath: "/synthetic-trash/confirmed-copy.txt")])
+            backend.unused = { _ in plan }
+            backend.trash = { _ in
+                await gate.wait()
+                observedCancellation = Task.isCancelled
+                return result
+            }
+            let model = StorageSettingsModel(capabilities: backend.capabilities)
+            model.setPaneActive(true)
+            model.selectTriptych(id: target, name: "Stopped Target")
+            await model.prepareUnusedChatMaterialCleanup()
+            let request = try #require(model.confirmation)
+            let operation = try #require(model.confirm(request))
+            _ = await entered.next()
+            #expect(model.canStopCleanup && model.isPerforming)
+            model.stopCleanup()
+            model.stopCleanup()
+            #expect(!model.canStopCleanup && model.isPerforming)
+            await operation.value
+            #expect(observedCancellation)
+            #expect(model.completedOperation == .unusedChatMaterials(result, triptychName: "Stopped Target"))
+            #expect(!model.canStopCleanup && !model.isPerforming)
+            #expect(model.errorMessage == nil && model.notice == nil)
+            #expect(backend.trashedPlans == [plan])
+        }
+    }
+
     @Test("Safe cleanup has machine scope and errors never become a success result")
     func safeCleanupScopeAndFailure() async throws {
         let backend = StorageSettingsTestBackend()
@@ -170,6 +304,25 @@ struct StorageSettingsModelTests {
         #expect(model.errorMessage != nil && !model.isPerforming)
         await model.performSafeAction(.clearIndex)
         #expect(backend.performed.count == 1)
+    }
+
+    private func withMaterialPlan(
+        triptychID: UUID, count: Int = 1,
+        operation: @MainActor (UnusedChatMaterialCleanupPlan) async throws -> Void
+    ) async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/storage-plan-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let materials = root.appendingPathComponent("Chat/\(triptychID.uuidString)/Materials")
+        try FileManager.default.createDirectory(at: materials, withIntermediateDirectories: true)
+        for index in 0..<count {
+            try Data("Synthetic unused material \(index)".utf8)
+                .write(to: materials.appendingPathComponent("\(UUID().uuidString).txt"))
+        }
+        let store = AgentChatMaterialStore(root: materials)
+        let files = try await store.unusedMaterialCleanupPlan(referencedMaterialIDs: [], expectedHistoryFingerprint: nil)
+        try await operation(.init(triptychID: triptychID, files: files))
     }
 }
 
@@ -192,10 +345,14 @@ private final class StorageSettingsTestBackend {
     var inventoryReads = 0
     var performed: [Performed] = []
     var deletedPlans: [ArchivedChatCleanupPlan] = []
+    var unusedInspections: [UUID] = []
+    var trashedPlans: [UnusedChatMaterialCleanupPlan] = []
     var inventoryRead: (() async throws -> ScholiumStorageInventory)?
     var operation: ((ScholiumStorageAction, UUID?) async throws -> ScholiumStorageOperationResult)?
     var archives: ((UUID) async throws -> ArchivedChatCleanupPlan)?
     var delete: ((ArchivedChatCleanupPlan) async throws -> ArchivedChatCleanupResult)?
+    var unused: ((UUID) async throws -> UnusedChatMaterialCleanupPlan)?
+    var trash: ((UnusedChatMaterialCleanupPlan) async throws -> AgentChatMaterialCleanupResult)?
 
     var capabilities: StorageSettingsCapabilities {
         .init(
@@ -217,6 +374,16 @@ private final class StorageSettingsTestBackend {
                 deletedPlans.append(plan)
                 if let delete { return try await delete(plan) }
                 return .init(removedConversations: plan.conversationIDs.count, materialCleanupIssue: nil)
+            },
+            unusedChatMaterials: { [self] id in
+                unusedInspections.append(id)
+                guard let unused else { throw StorageSettingsTestFailure() }
+                return try await unused(id)
+            },
+            trashUnusedChatMaterials: { [self] plan in
+                trashedPlans.append(plan)
+                guard let trash else { throw StorageSettingsTestFailure() }
+                return try await trash(plan)
             })
     }
 }

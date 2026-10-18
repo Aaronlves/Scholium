@@ -181,7 +181,7 @@ struct StorageSettingsView: View {
     }
 
     private var chats: some View {
-        Section("Archived Conversations") {
+        Section("Chat History and Materials") {
             usageRow(.chatHistory, "All Chat History")
             usageRow(.chatMaterials, "Chat Materials")
             if selectedAssignment != nil {
@@ -195,6 +195,15 @@ struct StorageSettingsView: View {
             }
             .disabled(model.isBusy || model.isMeasuring || selectedAssignment == nil)
             .accessibilityIdentifier("scholium.settings.storage.deleteArchivedChats")
+            Text(
+                "Unused managed copies can remain after interrupted preparation or cleanup. Inspect their current count and size before moving them to Trash. Retained conversations and their materials stay available."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+            Button("Move Unused Chat Materials to Trash…", role: .destructive) {
+                Task { await model.prepareUnusedChatMaterialCleanup() }
+            }
+            .disabled(model.isBusy || model.isMeasuring || selectedAssignment == nil)
+            .accessibilityIdentifier("scholium.settings.storage.trashUnusedChatMaterials")
             feedback(for: .chat)
         }
         .id(SettingsSection.storageChatHistory)
@@ -217,8 +226,12 @@ struct StorageSettingsView: View {
             if model.isPerforming {
                 ProgressView("Updating App Storage…")
                     .accessibilityIdentifier("scholium.settings.storage.progress")
+                if model.canStopCleanup {
+                    Button("Stop Cleanup") { model.stopCleanup() }
+                        .accessibilityIdentifier("scholium.settings.storage.stopCleanup")
+                }
             } else {
-                ProgressView("Inspecting Archived Conversations…")
+                ProgressView("Inspecting Chat Storage…")
             }
         }
         if let operation = model.completedOperation, operationScope(operation) == scope {
@@ -239,14 +252,14 @@ struct StorageSettingsView: View {
         switch operation {
         case .storage(let result, _):
             result.action == .clearIndex || result.action == .rebuildIndex ? .index : .caches
-        case .archivedChats: .chat
+        case .archivedChats, .unusedChatMaterials: .chat
         }
     }
 
     private func usageRow(_ category: ScholiumStorageCategory, _ title: LocalizedStringKey) -> some View {
         LabeledContent(title) {
             if let usage = model.inventory?.usages.first(where: { $0.category == category }) {
-                Text(storageBytes(usage.byteCount))
+                Text("Files: \(usage.fileCount) · \(storageBytes(usage.byteCount))")
             } else {
                 Text("Not Measured").foregroundStyle(.secondary)
             }
@@ -287,6 +300,7 @@ struct StorageSettingsView: View {
         case .index(.rebuildIndex, _): return "Rebuild This Triptych’s Index?"
         case .index: return "Clear This Triptych’s Index?"
         case .archivedChats: return "Delete Archived Conversations?"
+        case .unusedChatMaterials: return "Move Unused Chat Materials to Trash?"
         }
     }
 
@@ -295,6 +309,7 @@ struct StorageSettingsView: View {
         case .index(.rebuildIndex, _): "Rebuild Index"
         case .index: "Clear Index"
         case .archivedChats: "Delete Archived Conversations"
+        case .unusedChatMaterials: "Move to Trash"
         }
     }
 
@@ -317,6 +332,10 @@ struct StorageSettingsView: View {
         case .archivedChats(let plan):
             Text(
                 "Permanently delete \(plan.conversationIDs.count) archived conversations in \(request.triptychName) (about \(storageBytes(plan.estimatedByteCount)) of conversation data). Unreferenced managed Chat-material copies are also released. This cannot be undone. Note source, research attachments, recovery records and active conversations are preserved."
+            )
+        case .unusedChatMaterials(let plan):
+            Text(
+                "Move unused managed Chat-material copies for \(request.triptychName) to Trash. Files: \(plan.files.fileCount) · \(storageBytes(plan.files.byteCount)). Restore them using Finder before emptying Trash. Source files, retained conversations, referenced materials and recovery records are preserved. Changed files require a new inspection. Entries preserved: \(plan.files.preservedFiles)."
             )
         }
     }
@@ -347,6 +366,38 @@ struct StorageSettingsView: View {
             Text("Deleted \(result.removedConversations) archived conversations.")
             if let issue = result.materialCleanupIssue {
                 Label(issue, systemImage: "exclamationmark.triangle").textSelection(.enabled)
+            }
+        case .unusedChatMaterials(let result, let name):
+            Text("For \(name)")
+            Text("Files moved to Trash: \(result.movedFiles) · \(storageBytes(result.movedBytes))")
+            Text(
+                "Entries preserved: \(result.preservedFiles); failed moves: \(result.failedFiles); outcomes to inspect: \(result.uncertainFiles)."
+            )
+            .textSelection(.enabled)
+            if result.wasCancelled {
+                Text("Cleanup stopped. Remaining files are preserved; inspect again before continuing.")
+            }
+            if !result.resultingTrashURLs.isEmpty {
+                Button("Inspect Trash Locations in Finder") { NSWorkspace.shared.activateFileViewerSelecting(result.resultingTrashURLs) }
+            }
+            if result.uncertainFiles > 0 {
+                Text("Inspect App storage and Trash before retrying. An uncertain move is never retried automatically.")
+                    .textSelection(.enabled)
+            }
+            if !result.retainedFileNames.isEmpty {
+                Text("Some managed copies remain in App storage. Refresh and inspect again before retrying cleanup.")
+                    .textSelection(.enabled)
+            }
+            if !result.retainedFileNames.isEmpty || !result.uncertainFileNames.isEmpty {
+                DisclosureGroup("Files Needing Inspection") {
+                    ForEach(Array(Set(result.retainedFileNames + result.uncertainFileNames)).sorted(), id: \.self) { name in
+                        Text(name).textSelection(.enabled)
+                    }
+                    if let root = result.rootURL {
+                        Text(root.path).textSelection(.enabled)
+                        Button("Show Retained Material Folder in Finder") { NSWorkspace.shared.activateFileViewerSelecting([root]) }
+                    }
+                }
             }
         }
     }

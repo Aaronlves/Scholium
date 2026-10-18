@@ -97,7 +97,7 @@ extension AgentChatController {
     }
 
     func deleteConversation(_ id: UUID) {
-        guard isLoaded, canArchive(id), let index = conversations.firstIndex(where: { $0.id == id }),
+        guard isLoaded, !isCleaningUnusedMaterials, canArchive(id), let index = conversations.firstIndex(where: { $0.id == id }),
             conversations[index].archivedAt != nil
         else { return }
         executions[id]?.admissionID = nil
@@ -133,7 +133,7 @@ extension AgentChatController {
     /// thread history and settings are deliberately outside this operation.
     func deleteArchivedChats(_ plan: ArchivedChatCleanupPlan) async throws -> ArchivedChatCleanupResult {
         let current = try await archivedChatCleanupPlan()
-        guard plan == current, archivedChatCleanup == nil else { throw ArchivedChatCleanupError.changed }
+        guard plan == current, archivedChatCleanup == nil, !isCleaningUnusedMaterials else { throw ArchivedChatCleanupError.changed }
         try Task.checkCancellation()
         let ids = Set(plan.conversationIDs)
         let removed = conversations.enumerated().filter { ids.contains($0.element.id) }
@@ -508,7 +508,7 @@ extension AgentChatController {
         if pendingDeletionMaterials.isEmpty { materialCleanupError = nil }
     }
 
-    private func referencedMaterialIDs(in snapshot: [AgentChatConversation]) -> Set<UUID> {
+    func referencedMaterialIDs(in snapshot: [AgentChatConversation]) -> Set<UUID> {
         Set(
             snapshot.flatMap { conversation in
                 (conversation.localMaterials

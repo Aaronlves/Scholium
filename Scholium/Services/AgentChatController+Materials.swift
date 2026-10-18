@@ -81,7 +81,7 @@ extension AgentChatController {
     }
 
     func performMaterialPreparation(in conversationID: UUID, work: @escaping @MainActor () async throws -> Void) async -> Bool {
-        guard isLoaded, !preparingMaterials.contains(conversationID),
+        guard isLoaded, !isCleaningUnusedMaterials, !preparingMaterials.contains(conversationID),
             conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true })
         else { return false }
         preparingMaterials.insert(conversationID)

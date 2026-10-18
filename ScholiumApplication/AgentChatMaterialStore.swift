@@ -2,14 +2,41 @@ import Foundation
 import ImageIO
 import PDFKit
 import ScholiumContracts
+import ScholiumCore
 import UniformTypeIdentifiers
 
 /// Owns immutable machine-local file copies. It never writes the selected source.
 public actor AgentChatMaterialStore {
     private let root: URL
+    private let afterSnapshotWrite: (@Sendable () throws -> Void)?
     private static let maximumFileBytes = 20 * 1_024 * 1_024
     private static let maximumTextBytes = 1_024 * 1_024
-    public init(root: URL) { self.root = root }
+    public init(root: URL) {
+        self.root = root
+        afterSnapshotWrite = nil
+    }
+
+    init(root: URL, afterSnapshotWrite: @escaping @Sendable () throws -> Void) {
+        self.root = root
+        self.afterSnapshotWrite = afterSnapshotWrite
+    }
+
+    /// Runs synchronously on the same actor as staging and release. A cleanup
+    /// cannot interleave with creation of a partially prepared material.
+    public func unusedMaterialCleanupPlan(
+        referencedMaterialIDs: Set<UUID>, expectedHistoryFingerprint: DocumentFingerprint?
+    ) throws -> AgentChatMaterialCleanupPlan {
+        try AgentChatMaterialCleanup.inspect(
+            rootURL: root, referencedMaterialIDs: referencedMaterialIDs, expectedHistoryFingerprint: expectedHistoryFingerprint)
+    }
+
+    public func moveUnusedMaterialsToTrash(
+        _ plan: AgentChatMaterialCleanupPlan, referencedMaterialIDs: Set<UUID>, expectedHistoryFingerprint: DocumentFingerprint?
+    ) throws -> AgentChatMaterialCleanupResult {
+        guard plan.rootURL.standardizedFileURL == root.standardizedFileURL else { throw CocoaError(.fileWriteInvalidFileName) }
+        return try AgentChatMaterialCleanup.cleanup(
+            plan, referencedMaterialIDs: referencedMaterialIDs, expectedHistoryFingerprint: expectedHistoryFingerprint)
+    }
 
     public func stage(_ source: URL) throws -> AgentChatLocalMaterial {
         try Task.checkCancellation()
@@ -70,7 +97,16 @@ public actor AgentChatMaterialStore {
         let name = id.uuidString + "." + suffix
         let destination = root.appendingPathComponent(name)
         try data.write(to: destination, options: .withoutOverwriting)
-        try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: destination.path)
+        do {
+            try afterSnapshotWrite?()
+            try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: destination.path)
+        } catch {
+            // Keep the created copy attached to an inspectable failed material
+            // instead of losing its identity on a later preparation failure.
+            return .init(
+                id: id, source: .file(source), storedFileName: name,
+                fingerprint: .init(data: data), kind: kind, issue: .unreadable)
+        }
         var text = ""
         var pages: [AgentChatLocalMaterial.Page] = []
         var issue: AgentChatLocalMaterial.Issue?

@@ -8,6 +8,13 @@ enum ScholiumErrorLocalization {
     static func message(_ error: any Error, locale: Locale = .current) -> String {
         if let message = applicationMessage(error, locale: locale) { return message }
         switch error {
+        case let error as AgentChatMaterialCleanupError:
+            return switch error {
+            case .invalidRoot:
+                ScholiumL10n.string("The managed Chat-material folder is unavailable or unsafe.", locale: locale)
+            case .changed:
+                ScholiumL10n.string("Chat materials changed. Refresh the cleanup preview before trying again.", locale: locale)
+            }
         case let error as ScholiumStorageManagementError:
             return switch error {
             case .operationInProgress: ScholiumL10n.string("Another storage operation is already running.", locale: locale)

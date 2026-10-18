@@ -1,5 +1,17 @@
 import Foundation
 
+/// References and their exact persisted revision travel together when admitting
+/// cleanup. A nil fingerprint means the history file was observed absent.
+public struct AgentChatHistorySnapshot: Sendable {
+    public let conversations: [AgentChatConversation]
+    public let fingerprint: DocumentFingerprint?
+
+    public init(conversations: [AgentChatConversation], fingerprint: DocumentFingerprint?) {
+        self.conversations = conversations
+        self.fingerprint = fingerprint
+    }
+}
+
 /// User-selected operation policy, independent of research acceptance.
 public enum AgentChatPermission: String, Codable, CaseIterable, Sendable {
     case ask, fullAccess
