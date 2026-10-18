@@ -731,10 +731,11 @@ final class MCPAppBridgeRequestRouter {
     ) async throws -> MCPJSONValue {
         try requireOnly(
             arguments,
-            keys: ["triptych_id", "note_id", "start_line", "line_count", "include_context"]
+            keys: ["triptych_id", "note_id", "start_line", "line_count", "include_context", "expected_fingerprint"]
         )
         let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
         let noteID = try requiredUUID(arguments["note_id"], name: "note_id")
+        let expected = try arguments["expected_fingerprint"].map(requiredFingerprint)
         if let flag = arguments["include_context"], flag.boolValue == nil {
             throw invalid("include_context", "Use true or false to request saved Note details and material relationships.")
         }
@@ -754,6 +755,9 @@ final class MCPAppBridgeRequestRouter {
         _ = try resolveNote(noteID, snapshot: snapshot)
         let handle = try await currentWorkspace(id: triptychID)
         let source = try await handle.agentCollaboration.currentNoteSource(noteID: noteID)
+        if let expected, source.fingerprint != expected {
+            throw AgentCollaborationError.staleRevision(expected: expected, current: source.fingerprint)
+        }
         let slice = try Self.exactLineSlice(
             source.source,
             startLine: startLine,

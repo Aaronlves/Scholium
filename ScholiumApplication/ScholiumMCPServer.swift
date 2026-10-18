@@ -311,7 +311,7 @@ public actor ScholiumMCPServer {
             .workspaceStatus,
             description: "Reconcile and report the running App's currently open Triptych state.",
             properties: [
-                "triptych_id": stringSchema("Optional open Triptych UUID.")
+                "triptych_id": uuidSchema("Optional open Triptych UUID. Omit to discover candidates; select explicitly when several are open.")
             ],
             required: [],
             readOnly: true,
@@ -366,10 +366,11 @@ public actor ScholiumMCPServer {
         tool(
             .readNote,
             description:
-                "Read exact Note prose by stable UUID. Set include_context to also inspect the first 20 attachment pointers derived from this Note source. These pointers are not proof of reading their contents. Continue attachment listings with scholium_list_attachments; read selected material with the corresponding attachment or Zotero tool.",
+                "Read exact saved Markdown source, including YAML and BOM, by stable Note UUID. Pass expected_fingerprint from discovery or a preceding page to reject revision drift. Continue at next_line until complete; each page returns full-source UTF-8 offsets for exact edits. include_context adds the first 20 authored attachment pointers, not their contents; continue them with scholium_list_attachments.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
+                "expected_fingerprint": fingerprintSchema,
                 "start_line": integerSchema(minimum: 1, maximum: nil, default: 1),
                 "line_count": integerSchema(minimum: 1, maximum: 1_000, default: 200),
                 "include_context": .object(["type": .string("boolean"), "default": .bool(false)]),
@@ -448,7 +449,7 @@ public actor ScholiumMCPServer {
         ),
         tool(
             .updateNote,
-            description: "Revision-check one Note: replace body/source or apply exact UTF-8 range edits.",
+            description: "Revision-check one Note. Prefer edits for targeted changes using full-source UTF-8 offsets and exact expected_text from read_note. All edits address the same original revision and commit together. body preserves the YAML envelope; source replaces all Markdown/YAML and requires explicit authority. On stale_revision, reread and reconsider; never replay an uncertain write.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
@@ -535,7 +536,7 @@ public actor ScholiumMCPServer {
         tool(
             .undoChange,
             description:
-                "Undo only the explicitly requested eligible source, Metadata or attachment-relationship change while its current values equal the recorded ending. Use the receipt ending fingerprint, not a different Note-source fingerprint. Never automatically undo another task or repeat a completed write.",
+                "Undo only an explicitly requested eligible Note update or move from scholium_read_change, while source and identities still match its recorded ending. Use the receipt ending fingerprint. Restores exact source through ordinary recovery; never automatically undo another task or repeat a completed Undo.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID bound to this change."),
                 "change_id": uuidSchema("Exact Agent Change UUID."), "expected_fingerprint": fingerprintSchema,

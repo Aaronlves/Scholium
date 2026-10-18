@@ -101,7 +101,7 @@ research contracts are shared by external hosts and in-app Chat:
 | `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, Search, and graph generations |
 | `scholium_browse` | `triptych_id`; optional `role`, `directory`, `limit`, `offset`, `expected_listing_fingerprint` | bounded role roots or immediate directory/Note children, stable identities, exact source fingerprints, totals and listing fingerprint |
 | `scholium_search` | `triptych_id`, `query`; optional `roles`, `limit`, `offset`, `paragraph_limit`, and `paragraph_offset` | Note candidates with confirmed totals, indeterminate counts, continuation, freshness, identities, successful-branch match reasons, snippets, and exact source fingerprints |
-| `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count`, `include_context` | an exact current Markdown slice, continuation and full Note fingerprint; optional source-derived attachment pointers separately |
+| `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count`, `include_context`, `expected_fingerprint` | an exact current Markdown slice, continuation and full Note fingerprint; optional source-derived attachment pointers separately |
 | `scholium_list_attachments` | `triptych_id`, `note_id`; optional `offset`, `limit`, `expected_listing_fingerprint` | paged authored file links and images, availability and Note/listing fingerprints; metadata only |
 | `scholium_read_attachment` | `triptych_id`, `note_id`, `attachment_id`, `expected_note_fingerprint`, `mode`; optional `expected_fingerprint`, `page`, `start_utf8`, `max_utf8` | bounded current text or one image/PDF page, exact file fingerprint and explicit extraction/rendering coverage |
 | `scholium_show_note` | `triptych_id`, `note_id`, `expected_fingerprint`; optional `window_id` and complete `start_utf8`, `end_utf8`, `expected_text` range | named live-window navigation and exact passage-location request; no Note mutation or claim of rendered/assistive-technology arrival |
@@ -138,6 +138,9 @@ subject to a bounded response size. It preserves exact source bytes and reports
 the next line when more remains. Every slice also returns zero-based full-source
 `start_utf8` and exclusive `end_utf8`, including BOM and YAML, so exact edits
 can use the returned version and location. Repeated reads can retrieve the complete Note.
+An optional `expected_fingerprint` binds discovery-to-read or continuation to one
+exact source revision; a mismatch returns `stale_revision` without source content.
+Omitting it reads the current revision rather than a retained snapshot.
 
 With `include_context`, Note reads return a bounded first page of source-derived
 attachment pointers with Note/listing fingerprints. They do not fetch Zotero,

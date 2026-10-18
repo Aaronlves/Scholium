@@ -9,7 +9,7 @@ public enum ScholiumMCPContract {
     // Correlation identities must leave room for a complete, definite failure
     // reply before an operation can be admitted.
     public static let maximumEncodedResponseIdentityByteCount = 1_024
-    public static let currentToolSchemaVersion = 10
+    public static let currentToolSchemaVersion = 11
     public static let maximumChatObservationUTF8ByteCount = 16 * 1_024
     public static let maximumContextObservationUTF8ByteCount = 1_024 * 1_024
 }

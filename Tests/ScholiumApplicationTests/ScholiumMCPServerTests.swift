@@ -132,6 +132,7 @@ struct ScholiumMCPServerTests {
         let read = try #require(tools.first { $0["name"] as? String == "scholium_read_note" })
         let readProperties = try object(object(read["inputSchema"])["properties"])
         #expect(try object(readProperties["include_context"])["default"] as? Bool == false)
+        #expect(try object(readProperties["expected_fingerprint"])["additionalProperties"] as? Bool == false)
         let readVariants = try #require(object(read["outputSchema"])["oneOf"] as? [[String: Any]])
         #expect(try object(readVariants[0]["properties"])["context"] != nil)
         for tool in tools {
