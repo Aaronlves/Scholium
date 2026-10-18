@@ -46,15 +46,11 @@ struct WorkspaceOpeningSourceOperationTests {
                     return committed
                 }
                 await lifecycle.track(save)
-                try await requireState("the real save completes or reaches the source gate") {
-                    let completed = await result.isComplete
-                    let waiting = await handle.sourceOperationGate.waitingCount
-                    return completed || waiting > 0
+                try await requireState("the real save completes while opening remains paused") {
+                    await result.isComplete
                 }
                 #expect(await result.isComplete)
-                if await result.isComplete {
-                    #expect(try Data(contentsOf: noteURL) == Data(savedSource.utf8))
-                }
+                #expect(try Data(contentsOf: noteURL) == Data(savedSource.utf8))
                 #expect(!(await handle.sourceOperationGate.refreshCycleIsActive))
 
                 let coordinator = try #require(await handle.refreshCoordinator)

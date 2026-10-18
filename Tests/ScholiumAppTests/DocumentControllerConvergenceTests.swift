@@ -705,6 +705,185 @@ struct DocumentControllerConvergenceTests {
         #expect(controller.retainedFullSnapshotCount == 1)
     }
 
+    @Test("A departed session's hydration cannot replace or report failure on its transferred owner", arguments: [false, true])
+    func transferredSessionRejectsOldHydration(fails: Bool) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let base = note(vaultID: vault, noteID: id, path: "Transfer.md", source: "Base\r\n")
+        let external = note(vaultID: vault, noteID: id, path: "Transfer.md", source: "External\r\n")
+        let transferred = note(vaultID: vault, noteID: id, path: "Transfer.md", source: "Transferred exact e\u{301} 🦉.\r\n")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { _ in
+            await gate.pause()
+            if fails { throw WorkspaceHydrationError.staleSnapshot }
+            return external
+        })
+        controller.rememberPresentationMode(.read)
+        controller.installOpenedDocument(base, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let document = try #require(controller.selectedDocument)
+        let key = try #require(document.sessionKey)
+        _ = controller.receive(workspace(vaultID: vault, notes: [external]))
+        await gate.waitUntilStarted()
+        let adopted = DocumentSessionModel(key: key)
+        defer {
+            gate.release()
+            adopted.cancelScheduledWork()
+            controller.unbind()
+        }
+        controller.receiveSessionTransfer(
+            .init(document: document, session: adopted, snapshot: transferred, mode: .read))
+        gate.release()
+        await controller.waitForPendingHydrations()
+
+        #expect(controller.session(for: document.editingTarget) === adopted)
+        #expect(controller.activeSnapshot?.document.sourceBytes == transferred.document.sourceBytes)
+        #expect(controller.lastSaveError == nil)
+        #expect(adopted.editError == nil && !adopted.canRetrySave)
+        #expect(controller.pendingHydrationCount == 0)
+    }
+
+    @Test("A proven save supersedes an older hydration failure before its window snapshot publishes")
+    func committedSaveRejectsOldHydrationFailure() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/save-hydration-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults {
+            try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        }
+        let file = vaults[2].appendingPathComponent("Source.md")
+        let base = "\u{FEFF}Original 中文 🦉.\r\n"
+        try Data(base.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Save hydration fixture")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .draftProject })
+            let summary = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let original = try await capabilities.documents.hydrate(summary)
+            let gate = HydrationGate()
+            var staleReadReturned = false
+            let controller = DocumentController(hydrationLoader: { expected in
+                await gate.pause()
+                do {
+                    return try await capabilities.documents.hydrate(expected)
+                } catch WorkspaceHydrationError.staleSnapshot {
+                    staleReadReturned = true
+                    throw WorkspaceHydrationError.staleSnapshot
+                }
+            })
+            var commits = 0
+            controller.bind(
+                to: capabilities.documents,
+                documentDidCommit: { result in
+                    commits += 1
+                    gate.release()
+                    try? await waitForPresentation { staleReadReturned }
+                    #expect(staleReadReturned)
+                    let projection = note(
+                        vaultID: original.id.vaultID, noteID: original.stableIdentity.resolvedID!,
+                        path: original.id.relativePath, source: result.document.rawContent)
+                    let committed = WorkspaceNoteSnapshot(summary: projection.summary, document: result.document)
+                    controller.recordCommittedSnapshot(committed, vaultName: "Works", vaultRole: .draftProject)
+                })
+            controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+            let document = try #require(controller.selectedDocument)
+            let session = controller.session(for: document.editingTarget)
+            let editor = MarkdownEditorWebViewIntegrationTests.EditorHarness(
+                source: base, usesSessionDocumentIdentity: true,
+                suppliedSession: session.editorSession, initialMode: .source)
+            defer {
+                gate.release()
+                session.cancelScheduledWork()
+                editor.close()
+                controller.unbind()
+            }
+            controller.beginEditing(
+                session: session, target: document.editingTarget, source: base,
+                revision: original.fingerprint, mode: .source)
+            session.suppressAutosave = true
+            try await editor.waitUntilReady()
+            session.editorSession.loadDocument(
+                original.document.rawContent, documentID: session.editorSession.bridgeDocumentID,
+                mode: .source, citationSnapshot: original.document.citationSnapshot)
+            try #require(try await session.editorSession.waitUntilLoadedForSave())
+            try await session.editorSession.perform(.pastePlain, argument: "Saved exact e\u{301}.\r\n")
+            let draft = try await session.editorSession.currentText()
+            #expect(!draft.utf8.elementsEqual(base.utf8))
+            controller.refreshCitationSnapshot(for: summary)
+            await gate.waitUntilStarted()
+            try await controller.flushForExternalOperation(session: session, target: document.editingTarget)
+            await controller.waitForPendingHydrations()
+
+            #expect(staleReadReturned && commits == 1)
+            #expect(try Data(contentsOf: file) == Data(draft.utf8))
+            #expect(session.originalEditingSource.utf8.elementsEqual(draft.utf8))
+            #expect(session.editorSession.checkedSource.utf8.elementsEqual(draft.utf8))
+            #expect(session.pendingEditorCommit == nil)
+            #expect(session.conflict == nil && !session.canRetrySave && !session.hasUnsavedChanges)
+            #expect(controller.lastSaveError == nil)
+            #expect(controller.pendingHydrationCount == 0)
+            await editor.closeAndDrain()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test("Stale hydration waits for its save owner and preserves current failures", arguments: [false, true])
+    func staleHydrationWaitsForSaveOwner(retainsSaveError: Bool) async throws {
+        let vault = UUID()
+        let base = note(vaultID: vault, noteID: UUID(), path: "Failure.md", source: "Retained exact source\r\n")
+        let readGate = HydrationGate()
+        let saveGate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { _ in
+            await readGate.pause()
+            throw WorkspaceHydrationError.staleSnapshot
+        })
+        controller.installOpenedDocument(base, vaultName: "Works", vaultRole: .draftProject)
+        let document = try #require(controller.selectedDocument)
+        let session = controller.session(for: document.editingTarget)
+        let save = Task<EditorSaveOutcome, Error> { @MainActor in
+            await saveGate.pause()
+            throw DocumentControllerError.editorUnavailable
+        }
+        session.activeSaveTask = save
+        session.isSavingEdit = true
+        defer {
+            readGate.release()
+            saveGate.release()
+            save.cancel()
+            session.activeSaveTask = nil
+            session.isSavingEdit = false
+            session.cancelScheduledWork()
+            controller.unbind()
+        }
+        await saveGate.waitUntilStarted()
+        controller.refreshCitationSnapshot(for: base.summary)
+        await readGate.waitUntilStarted()
+        readGate.release()
+        await readGate.waitUntilReturned()
+        #expect(controller.lastSaveError == nil)
+        #expect(controller.pendingHydrationCount == 1)
+
+        let saveError = "Current exact-source save failed."
+        if retainsSaveError {
+            session.editError = saveError
+            controller.setSaveError(saveError)
+        }
+        saveGate.release()
+        await #expect(throws: DocumentControllerError.self) { _ = try await save.value }
+        await controller.waitForPendingHydrations()
+        let expectedError = retainsSaveError ? saveError : WorkspaceHydrationError.staleSnapshot.localizedDescription
+        #expect(controller.lastSaveError == expectedError)
+        #expect(session.editError == (retainsSaveError ? saveError : nil))
+        #expect(controller.activeSnapshot?.document.sourceBytes == base.document.sourceBytes)
+        #expect(controller.pendingHydrationCount == 0)
+    }
+
     @Test("Unbinding cancels a pending external read without replacing exact source")
     func unbindCancelsPendingHydration() async throws {
         let vault = UUID()

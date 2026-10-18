@@ -2662,6 +2662,9 @@ final class DocumentController: ObservableObject {
         let token = UUID()
         let epoch = hydrationEpoch
         let retainedSession = sessions.retainedSession(for: target)
+        let retainedRevision =
+            retainedSession?.editingRevision
+            ?? retainedSession?.key.flatMap { snapshots[$0]?.fingerprint }
         let task = Task { @MainActor [weak self] in
             guard !Task.isCancelled else { return }
             let result: Result<WorkspaceNoteSnapshot, Error>
@@ -2674,6 +2677,14 @@ final class DocumentController: ObservableObject {
                     return
                 }
             } catch { result = .failure(error) }
+            if case .failure(let error) = result,
+                case WorkspaceHydrationError.staleSnapshot = error,
+                let save = retainedSession?.activeSaveTask
+            {
+                // A commit can advance source before its window publication.
+                // Let that owner settle, then revalidate this older read.
+                _ = await save.result
+            }
             guard let self,
                 self.hydrationEpoch == epoch,
                 self.pendingHydrations[target]?.token == token
@@ -2681,6 +2692,7 @@ final class DocumentController: ObservableObject {
             self.pendingHydrations[target] = nil
             guard let published = self.publishedSummaries[target],
                 published.hasSameSourceBinding(as: summary),
+                self.sessions.retainedSession(for: target) === retainedSession,
                 !Task.isCancelled
             else { return }
             switch result {
@@ -2711,6 +2723,9 @@ final class DocumentController: ObservableObject {
                 }
             case .failure(let error):
                 guard !(error is CancellationError) else { return }
+                guard (retainedSession?.editingRevision ?? retainedRevision) == retainedRevision,
+                    retainedSession?.editError == nil
+                else { return }
                 if self.selectedDocument?.editingTarget == target {
                     self.setSaveError(ScholiumErrorLocalization.message(error))
                 }
