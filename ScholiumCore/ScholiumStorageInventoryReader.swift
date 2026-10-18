@@ -116,8 +116,7 @@ private final class InventoryWalk {
                     || DerivedStateStorage.isRecognizedCacheStaging(name) ? .sourceProjectionCache : nil
             case .chatTriptych: return name == "conversations.json" ? .chatHistory : nil
             case .materials:
-                let prefix = String(name.prefix(36))
-                return name.count > 37 && UUID(uuidString: prefix) != nil && name.dropFirst(36).first == "." ? .chatMaterials : nil
+                return AgentChatMaterialCleanup.isRecognizedFileName(name) ? .chatMaterials : nil
             case .workspace:
                 return ["workspace-registration-v3.json", "saved-searches.json", "search-term-groups.json"].contains(name) ? .configuration : nil
             case .styles:
@@ -134,7 +133,7 @@ private final class InventoryWalk {
             case .citationPairs:
                 return name.hasSuffix(".json") && UUID(uuidString: String(name.prefix(36))) != nil ? .recovery : nil
             case .saveTransactions: return name == ".transactions.lock" ? .recovery : nil
-            case .saveTransaction: return ["expected.md", "candidate.md", "manifest.json"].contains(name) ? .recovery : nil
+            case .saveTransaction: return ["expected.md", "candidate.md", "displaced.md", "manifest.json"].contains(name) ? .recovery : nil
             case .wordJob: return ["source.docx", "document.docx", DerivedStateStorage.lockFileName].contains(name) ? .temporaryFiles : nil
             case .wordJobs: return name == DerivedStateStorage.lockFileName ? .temporaryFiles : nil
             case .wordPackage: return .temporaryFiles

@@ -63,11 +63,13 @@ struct ScholiumStorageInventoryTests {
             ("Vaults/\(vault)/source-projections-v1/\(SourceProjectionCache.catalogFileName("Note.md"))", .sourceProjectionCache),
             ("Chat/\(conversation)/conversations.json", .chatHistory),
             ("Chat/\(conversation)/Materials/\(UUID().uuidString).page-1.png", .chatMaterials),
+            ("Chat/\(conversation)/Materials/.chat-material-cleanup-\(UUID().uuidString)-\(UUID().uuidString).pdf", .chatMaterials),
             ("Triptychs/\(triptych)/document-reviews-v1/\(note).json", .researchHistory),
             ("Triptychs/\(triptych)/agent-changes-v1/\(UUID().uuidString).json", .researchHistory),
             ("Triptychs/\(triptych)/transactions/records/\(UUID().uuidString).json", .recovery),
             ("Triptychs/\(triptych)/transactions/citation-pairs-v1/\(UUID().uuidString)-source-before.json", .recovery),
             ("Vaults/\(vault)/save-transactions-v2/\(UUID().uuidString)/expected.md", .recovery),
+            ("Vaults/\(vault)/save-transactions-v2/\(UUID().uuidString)/displaced.md", .recovery),
             ("Temporary/WordExports-v1/\(wordJob)/source.docx", .temporaryFiles),
             ("Temporary/WordExports-v1/\(wordJob)/package/word/document.xml", .temporaryFiles),
         ]
