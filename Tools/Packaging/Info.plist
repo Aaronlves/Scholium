@@ -64,7 +64,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.4.2</string>
     <key>CFBundleVersion</key>
-    <string>20</string>
+    <string>21</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>NSHighResolutionCapable</key>
