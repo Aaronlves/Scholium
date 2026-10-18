@@ -126,10 +126,10 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     }
 
     /// Delivery failure after these operations cannot prove that source,
-    /// receipts or runtime configuration stayed unchanged.
-    public var mayMutatePersistentState: Bool {
+    /// receipts, runtime configuration or requested navigation stayed unchanged.
+    public var mayHaveSideEffects: Bool {
         switch self {
-        case .createNote, .updateNote, .moveNote, .undoChange, .trashNote,
+        case .createNote, .updateNote, .moveNote, .undoChange, .trashNote, .showNote,
             .configureSkill, .configureTool, .configureChat:
             true
         default: false

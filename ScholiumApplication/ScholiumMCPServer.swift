@@ -98,7 +98,7 @@ public actor ScholiumMCPServer {
             let response = encodeUnbounded(responseResult(id: id, result: result))
             if let response, response.count <= ScholiumMCPContract.maximumEncodedMessageByteCount { return response }
             let tool = request.params?.objectValue?["name"]?.stringValue.flatMap(ScholiumMCPToolName.init(rawValue:))
-            let mayHaveChangedState = Self.deliveryMayHaveEffects(for: tool)
+            let mayHaveChangedState = tool?.mayHaveSideEffects != false
             let failure = ScholiumMCPFailure(
                 code: mayHaveChangedState ? .operationUncertain : .invalidRequest,
                 message: "The complete MCP result exceeds its encoded reply limit.",
@@ -193,7 +193,7 @@ public actor ScholiumMCPServer {
                     recovery: "Launch Scholium, open a Triptych, and call workspace status again."
                 )
             case .outcomeUnknown, .invalidResponse:
-                if Self.deliveryMayHaveEffects(for: requestedTool) {
+                if requestedTool?.mayHaveSideEffects != false {
                     failure = ScholiumMCPFailure(
                         code: .operationUncertain,
                         message: "The App bridge could not determine the operation outcome.",
@@ -223,12 +223,6 @@ public actor ScholiumMCPServer {
                         recovery: "Restart Scholium and begin again with workspace status."
                     ), for: requestedTool), isError: true)
         }
-    }
-
-    private static func deliveryMayHaveEffects(for tool: ScholiumMCPToolName?) -> Bool {
-        guard let tool else { return true }
-        // Navigation can have occurred even though it changes no durable source.
-        return tool.mayMutatePersistentState || tool == .showNote
     }
 
     private func toolResult(_ value: MCPJSONValue, isError: Bool, includesImage: Bool = false) -> MCPJSONValue {
@@ -431,7 +425,8 @@ public actor ScholiumMCPServer {
             required: ["triptych_id", "note_id", "attachment_id", "expected_note_fingerprint", "mode"], readOnly: true, destructive: false, idempotent: true),
         tool(
             .listLinks,
-            description: "List authored incoming or outgoing link occurrences with complete exact markup, source-owned annotations, fingerprints and locators. local_context is a bounded discovery snippet; local_context_truncated reports cropping. Read the source Note at its returned revision for broader context or exact edits.",
+            description:
+                "List authored incoming or outgoing link occurrences with complete exact markup, source-owned annotations, fingerprints and locators. local_context is a bounded discovery snippet; local_context_truncated reports cropping. Read the source Note at its returned revision for broader context or exact edits.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
@@ -463,7 +458,8 @@ public actor ScholiumMCPServer {
         ),
         tool(
             .updateNote,
-            description: "Revision-check one Note. Prefer edits for targeted changes using full-source UTF-8 offsets and exact expected_text from read_note. All edits address the same original revision and commit together. body preserves the YAML envelope; source replaces all Markdown/YAML and requires explicit authority. On stale_revision, reread and reconsider; never replay an uncertain write.",
+            description:
+                "Revision-check one Note. Prefer edits for targeted changes using full-source UTF-8 offsets and exact expected_text from read_note. All edits address the same original revision and commit together. body preserves the YAML envelope; source replaces all Markdown/YAML and requires explicit authority. On stale_revision, reread and reconsider; never replay an uncertain write.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
@@ -630,7 +626,7 @@ public actor ScholiumMCPServer {
         tool(
             .capabilities,
             description:
-                "Inspect the current in-app Agent runtime: available Skills, the Triptych Skills directory, connected MCP tools, and the writable tool-configuration revision. This is an observation, not permission to change research Notes.",
+                "Inspect the current in-app Agent runtime: available Skills, the Triptych Skills directory, connected MCP tools and their observed configuration revision. Tool connections are changed in native Settings; this surface can request tool sign-in. Observation grants no permission to change research Notes.",
             properties: [:],
             required: [],
             readOnly: true,

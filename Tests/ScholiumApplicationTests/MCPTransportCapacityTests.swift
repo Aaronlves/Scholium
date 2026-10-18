@@ -75,7 +75,9 @@ struct MCPTransportCapacityTests {
         #expect(await server.stopAndWait(timeout: 1))
     }
 
-    @Test("An oversized bridge reply preserves definite reads and committed mutation evidence", arguments: [ScholiumMCPToolName.readNote, .updateNote])
+    @Test(
+        "An oversized bridge reply preserves definite reads and unconfirmed source/navigation effects",
+        arguments: [ScholiumMCPToolName.readNote, .updateNote, .showNote])
     func oversizedBridgeReply(tool: ScholiumMCPToolName) async throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -115,7 +117,7 @@ struct MCPTransportCapacityTests {
         #expect(
             response.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue?["code"]
                 == .string(
-                    tool == .updateNote ? "operation_uncertain" : "invalid_request"))
+                    tool == .readNote ? "invalid_request" : "operation_uncertain"))
         #expect(try Data(contentsOf: noteURL) == (tool == .updateNote ? after : before))
         let changes = try await agent.agentChanges()
         #expect(changes.count == (tool == .updateNote ? 1 : 0))
@@ -124,8 +126,10 @@ struct MCPTransportCapacityTests {
         await runtime.shutdown()
     }
 
-    @Test("Complete MCP reply budgeting includes text and structured copies")
-    func duplicatedReplyBudget() async throws {
+    @Test(
+        "Complete MCP reply budgeting includes text and structured copies and preserves navigation uncertainty",
+        arguments: [ScholiumMCPToolName.listLinks, .showNote])
+    func duplicatedReplyBudget(tool: ScholiumMCPToolName) async throws {
         let row: MCPJSONValue = .object(["local_context": .string(String(repeating: "x", count: ScholiumMCPContract.maximumDocumentUTF8ByteCount))])
         let server = ScholiumMCPServer { _ in
             .object([
@@ -133,10 +137,12 @@ struct MCPTransportCapacityTests {
                 "links": .array(Array(repeating: row, count: 10)),
             ])
         }
-        let raw = try #require(await server.handle(requestData: rpc(.listLinks)))
+        let raw = try #require(await server.handle(requestData: rpc(tool)))
         #expect(raw.count <= ScholiumMCPContract.maximumEncodedMessageByteCount)
         let response = try JSONDecoder().decode(MCPJSONValue.self, from: raw)
-        #expect(response.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue?["code"] == .string("invalid_request"))
+        #expect(
+            response.objectValue?["result"]?.objectValue?["structuredContent"]?.objectValue?["code"]
+                == .string(tool == .showNote ? "operation_uncertain" : "invalid_request"))
     }
 
     @Test("Oversized response identities are refused before mutation admission", arguments: ["tools/list", "tools/call"])

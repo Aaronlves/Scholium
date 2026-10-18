@@ -39,15 +39,22 @@ extension MCPAppBridgeRequestRouterTests {
                 var update = noteScope.merging([
                     "expected_fingerprint": try #require(second["fingerprint"]), "mode": .string("edits"), "edits": .array([edit]),
                 ]) { _, new in new }
-                let invalid = update.merging(["edits": .array([edit, .object([
-                    "start_utf8": .integer(1), "end_utf8": .integer(2), "expected_text": .string(""), "replacement": .string("bad"),
-                ])])]) { _, new in new }
+                let invalid = update.merging([
+                    "edits": .array([
+                        edit,
+                        .object([
+                            "start_utf8": .integer(1), "end_utf8": .integer(2), "expected_text": .string(""), "replacement": .string("bad"),
+                        ]),
+                    ])
+                ]) { _, new in new }
                 #expect(try await agentWorkflowCall(handler, tool: .updateNote, arguments: invalid, failed: true)["code"] == .string("invalid_request"))
                 let changed = try await agentWorkflowCall(handler, tool: .updateNote, arguments: update)
                 let expectedSource = prefix + repeated + replacement
-                let saved = try await agentWorkflowCall(handler, tool: .readNote, arguments: noteScope.merging([
-                    "expected_fingerprint": try #require(changed["after_fingerprint"]),
-                ]) { _, new in new })
+                let saved = try await agentWorkflowCall(
+                    handler, tool: .readNote,
+                    arguments: noteScope.merging([
+                        "expected_fingerprint": try #require(changed["after_fingerprint"])
+                    ]) { _, new in new })
                 #expect(saved["source"] == .string(expectedSource))
                 #expect(saved["fingerprint"] == changed["after_fingerprint"])
                 #expect(try await agentWorkflowCall(handler, tool: .updateNote, arguments: update, failed: true)["code"] == .string("stale_revision"))
@@ -79,19 +86,23 @@ extension MCPAppBridgeRequestRouterTests {
             let router = MCPAppBridgeRequestRouter(
                 runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
             let args: [String: MCPJSONValue] = [
-                "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString), "direction": .string("outgoing"),
+                "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+                "direction": .string("outgoing"),
             ]
             let raw = try result(await router.handle(.init(tool: .listLinks, arguments: args)))
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             let structured = MCPJSONValue.object(raw)
             let wire: MCPJSONValue = .object([
-                "jsonrpc": .string("2.0"), "id": .integer(1), "result": .object([
+                "jsonrpc": .string("2.0"), "id": .integer(1),
+                "result": .object([
                     "content": .array([.object(["type": .string("text"), "text": .string(String(decoding: try encoder.encode(structured), as: UTF8.self))])]),
                     "structuredContent": structured, "isError": .bool(false),
                 ]),
             ])
-            print("MCP_LINK_PAYLOAD source_utf8=\(source.utf8.count) occurrences=100 structured_utf8=\(try encoder.encode(structured).count) wire_utf8=\(try encoder.encode(wire).count)")
+            print(
+                "MCP_LINK_PAYLOAD source_utf8=\(source.utf8.count) occurrences=100 structured_utf8=\(try encoder.encode(structured).count) wire_utf8=\(try encoder.encode(wire).count)"
+            )
             try await withAgentWorkflowBridge(fixture) { handler in
                 let (delivered, result) = try await agentWorkflowRPC(
                     handler, method: "tools/call", params: ["name": .string(ScholiumMCPToolName.listLinks.rawValue), "arguments": .object(args)])
@@ -175,9 +186,12 @@ extension MCPAppBridgeRequestRouterTests {
             .object(["sha256": .string(String(repeating: "a", count: 64)), "byte_count": .integer(-1)]),
             .object(["sha256": .string(String(repeating: "a", count: 64)), "byte_count": .integer(1), "extra": .bool(true)]),
         ] {
-            let response = await router.handle(.init(tool: .readNote, arguments: [
-                "triptych_id": .string(UUID().uuidString), "note_id": .string(UUID().uuidString), "expected_fingerprint": value,
-            ]))
+            let response = await router.handle(
+                .init(
+                    tool: .readNote,
+                    arguments: [
+                        "triptych_id": .string(UUID().uuidString), "note_id": .string(UUID().uuidString), "expected_fingerprint": value,
+                    ]))
             #expect(response.error?.code == .invalidRequest)
             #expect(response.result == nil)
         }

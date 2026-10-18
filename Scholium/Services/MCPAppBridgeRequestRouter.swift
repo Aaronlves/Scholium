@@ -758,7 +758,9 @@ final class MCPAppBridgeRequestRouter {
         if let expected, source.fingerprint != expected {
             throw ScholiumMCPFailure(
                 code: .staleRevision, message: "The Note changed since the supplied read revision.",
-                recovery: "Discard earlier pages and restart at start_line 1 without expected_fingerprint. Keep the new fingerprint for subsequent pages; never combine source from different revisions.")
+                recovery:
+                    "Discard earlier pages and restart at start_line 1 without expected_fingerprint. Keep the new fingerprint for subsequent pages; never combine source from different revisions."
+            )
         }
         let slice = try Self.exactLineSlice(
             source.source,

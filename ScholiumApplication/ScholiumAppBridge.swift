@@ -553,9 +553,9 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 let refusal: ScholiumAppBridgeResponse
                 if let mcpRequest = request.mcpRequest {
                     let failure = ScholiumMCPFailure(
-                        code: mcpRequest.tool.mayMutatePersistentState ? .operationUncertain : .invalidRequest,
+                        code: mcpRequest.tool.mayHaveSideEffects ? .operationUncertain : .invalidRequest,
                         message: "The complete operation result exceeds the encoded App bridge limit.",
-                        recovery: mcpRequest.tool.mayMutatePersistentState
+                        recovery: mcpRequest.tool.mayHaveSideEffects
                             ? "Do not replay the operation. Inspect current source, retained Agent Changes or runtime settings before another mutation."
                             : "Request a smaller page or source slice and retain its exact fingerprints.")
                     refusal = try .init(
