@@ -4,8 +4,9 @@ import ScholiumContracts
 /// Recovery surfaces: interrupted saves and unfinished Triptych mutations a
 /// researcher can inspect, resolve or restore from the window.
 extension WindowModel {
-    func refreshTransactionRecoveryRecords() async {
-        await researchController.refreshTransactionRecoveryRecords()
+    func refreshTransactionRecoveryRecords(includeRetainedCitationCopies: Bool = false) async {
+        await researchController.refreshTransactionRecoveryRecords(
+            includeRetainedCitationCopies: includeRetainedCitationCopies)
     }
 
     func markTransactionRecoveryResolved(_ id: UUID) async throws {

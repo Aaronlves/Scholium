@@ -46,6 +46,8 @@ struct TransactionRecoveryView: View {
     let error: String?
     let interruptedSaves: [InterruptedSaveRecovery]
     let interruptedSaveError: String?
+    let retainedCitationRecoveries: [ZoteroCitationPairRecovery]
+    let retainedCitationRecoveryError: String?
     let vaultNames: [UUID: String]
     let refresh: @MainActor () async -> Void
     let markResolved: @MainActor (UUID) async throws -> Void
@@ -69,8 +71,10 @@ struct TransactionRecoveryView: View {
             Divider()
             if records.isEmpty,
                 interruptedSaves.isEmpty,
+                retainedCitationRecoveries.isEmpty,
                 error == nil,
-                interruptedSaveError == nil
+                interruptedSaveError == nil,
+                retainedCitationRecoveryError == nil
             {
                 ScholiumContentStateView(
                     "No Pending Recovery",
@@ -107,6 +111,15 @@ struct TransactionRecoveryView: View {
                     }
                     ForEach(records) { record in
                         recoverySection(record)
+                    }
+                    if let retainedCitationRecoveryError {
+                        recoveryErrorSection(
+                            title: "Retained Citation Copies Unavailable",
+                            message: retainedCitationRecoveryError
+                        )
+                    }
+                    if !retainedCitationRecoveries.isEmpty {
+                        retainedCitationSection
                     }
                 }
                 .listStyle(.inset)
@@ -204,13 +217,42 @@ struct TransactionRecoveryView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("Recovery")
                     .font(ScholiumTypography.interface(.primaryTitle))
-                Text("Inspect exact save candidates retained after an interruption and durable records from file operations that could not finish cleanly.")
+                Text("Inspect interrupted saves, recorded file operations and retained citation recovery copies.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(ScholiumGrid.Spacing.regionContentInset)
+    }
+
+    private var retainedCitationSection: some View {
+        Section {
+            Text(
+                "These completed citation saves retain displaced external citation data and their exact source and citation revisions. They do not need reconciliation. The citation-pairs-v1 folder contains each record’s files, named with its record ID."
+            )
+            .font(ScholiumTypography.interface(.body))
+            .fixedSize(horizontal: false, vertical: true)
+            ForEach(retainedCitationRecoveries) { record in
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    LabeledContent("Note") {
+                        Text(verbatim: record.relativePath).textSelection(.enabled)
+                    }
+                    LabeledContent("Vault") {
+                        Text(verbatim: "\(vaultName(record.vaultID)) · \(record.vaultID.uuidString.lowercased())")
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("Record") {
+                        Text(verbatim: record.id.uuidString.lowercased()).textSelection(.enabled)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("scholium.recovery.retainedCitation.\(record.id.uuidString.lowercased())")
+            }
+        } header: {
+            Text("Retained Citation Copies (\(retainedCitationRecoveries.count))")
+        }
+        .accessibilityIdentifier("scholium.recovery.retainedCitations")
     }
 
     @ViewBuilder
@@ -252,7 +294,9 @@ struct TransactionRecoveryView: View {
                     .scholiumForeground(.confirmed)
             }
             HStack {
-                if !records.isEmpty || error != nil {
+                if !records.isEmpty || error != nil
+                    || !retainedCitationRecoveries.isEmpty || retainedCitationRecoveryError != nil
+                {
                     Button("Reveal Operation Records in Finder") {
                         revealRecords()
                     }

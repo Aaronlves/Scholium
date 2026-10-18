@@ -8,6 +8,11 @@ extension WorkspaceHandle {
         return try await services.transactionRecoveryStore.pending()
     }
 
+    func retainedCitationRecoveries() async throws -> [ZoteroCitationPairRecovery] {
+        try requireActive()
+        return try await services.transactionRecoveryStore.retainedCitationSaves()
+    }
+
     func resolveRecoveryRecord(_ id: UUID) async throws {
         try requireActive()
         let records = try await services.transactionRecoveryStore.pending()

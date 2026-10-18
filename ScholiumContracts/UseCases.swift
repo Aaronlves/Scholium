@@ -224,6 +224,9 @@ public protocol ResearchUseCases: Sendable {
         expectedRevision: SettingsRevision?
     ) async throws -> TriptychSettingsRecoveryResult
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
+    /// Completed citation pairs retaining displaced external revisions for inspection.
+    /// These never authorize pending recovery, replay, restoration, or deletion.
+    func retainedCitationRecoveries() async throws -> [ZoteroCitationPairRecovery]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }
 

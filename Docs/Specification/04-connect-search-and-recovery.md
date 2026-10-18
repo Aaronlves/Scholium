@@ -373,6 +373,10 @@ against the intended source and expected companion; it never overwrites newer
 source to compensate. Unknown or incoherent pairs retain their evidence.
 Explicit completion of a proven original or intended pair retains displaced
 revisions and a bound completion receipt; it never discards external bytes.
+Completed copies remain separately inspectable in **Recovery**, reachable through
+Research > Recovery…, with Note, vault and record identity, purpose and a Finder
+reveal route. They are retained evidence, excluded from pending counts, and
+authorize neither replay, restoration nor deletion.
 
 After Saving, a writable Document has exactly three outcomes:
 

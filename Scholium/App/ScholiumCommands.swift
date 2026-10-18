@@ -752,6 +752,11 @@ private struct ScholiumResearchCommandContent: View {
             appState?.presentationRouter.present(.documentChanges(scope: .all))
         }
         .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
+        Button("Recovery…") {
+            appState?.presentationRouter.present(.transactionRecovery)
+        }
+        .scholiumActivationPointer()
+        .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
     }
 }
 

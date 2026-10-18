@@ -496,6 +496,7 @@ struct CitationCompanionOperationsTests {
                         recovery.id
                     ])
                 #expect(try await services.transactionRecoveryStore.retainedCitationSaves().isEmpty)
+                #expect(try await handle.research.retainedCitationRecoveries().isEmpty)
             } else {
                 try await handle.research.resolveRecoveryRecord(recovery.id)
                 #expect(try await handle.research.recoveryRecords().isEmpty)
@@ -504,6 +505,18 @@ struct CitationCompanionOperationsTests {
                     try await services.transactionRecoveryStore.retainedCitationSaves().map(\.id) == [
                         recovery.id
                     ])
+                let retainedDirectory = services.transactionRecoveryStore.storageURL
+                    .appendingPathComponent("citation-pairs-v1", isDirectory: true)
+                func retainedFiles() throws -> [String: Data] {
+                    try Dictionary(
+                        uniqueKeysWithValues: FileManager.default
+                            .contentsOfDirectory(at: retainedDirectory, includingPropertiesForKeys: nil)
+                            .map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
+                }
+                let exactRetainedFiles = try retainedFiles()
+                #expect(try await handle.research.retainedCitationRecoveries() == [recovery])
+                #expect(try await handle.research.retainedCitationRecoveries() == [recovery])
+                #expect(try retainedFiles() == exactRetainedFiles)
             }
             #expect(try Data(contentsOf: sourceURL) == currentSource)
             #expect(

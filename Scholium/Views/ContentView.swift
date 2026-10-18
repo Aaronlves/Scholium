@@ -184,7 +184,8 @@ struct ContentView: View {
                     AgentChatView(
                         controller: chat,
                         transcriptReaderID: appState.nativeWindowID,
-                        isVisible: appState.isChatSidebarEnabled && shellState.libraryVisible && shellState.sidebarContent == .chat,
+                        isVisible: appState.isChatSidebarEnabled && shellState.libraryVisible
+                            && shellState.sidebarContent == .chat,
                         addSelection: { conversationID in
                             guard chat.selectedID == conversationID else { return false }
                             return await appState.addCurrentSelectionToChat()
@@ -335,7 +336,8 @@ struct ContentView: View {
         case nil:
             if appState.workspaceCatalog != nil { return .current }
             return .unavailable(
-                appState.workspaceCatalogError ?? ScholiumL10n.string("No complete derived workspace snapshot is available.")
+                appState.workspaceCatalogError
+                    ?? ScholiumL10n.string("No complete derived workspace snapshot is available.")
             )
         }
     }
@@ -353,7 +355,8 @@ struct ContentView: View {
             workspaceCatalog: appState.workspaceCatalog,
             canEdit: appState.canEditCurrentNote,
             documentTextScale: appState.documentTextScale,
-            documentAppearance: appState.cssSnippetStore.selectedAppearanceProfile?.settings ?? .defaultSettings,
+            documentAppearance: appState.cssSnippetStore.selectedAppearanceProfile?.settings
+                ?? .defaultSettings,
             appearanceCSS: appState.cssSnippetStore.appearanceCSS,
             readCSS: appState.cssSnippetStore.readCSS,
             livePreviewCSS: appState.cssSnippetStore.livePreviewCSS,
@@ -383,7 +386,9 @@ struct ContentView: View {
                 }
             },
             writingContinuation: { caret, status in
-                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return .unavailable(.cancelled) }
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else {
+                    return .unavailable(.cancelled)
+                }
                 return await appState.continueWriting(at: caret, status: status)
             },
             writingTerms: { query in
@@ -395,7 +400,8 @@ struct ContentView: View {
                 else { return nil }
                 guard !Task.isCancelled,
                     appState.currentDocumentDescriptor?.sessionKey == documentKey,
-                    appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                    appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                        == capabilities.runtimeIdentity,
                     appState.workspaceProjectionController.searchGeneration == generation
                 else { return nil }
                 return terms
@@ -628,7 +634,9 @@ struct ContentView: View {
                 request: request,
                 folderRelativePaths: request.vaultID == appState.currentRegisteredVault?.id
                     ? [""] + appState.currentLibraryFolders.filter(WorkspaceLibraryVisibility.includes) : [],
-                outcome: libraryMutationController.lastBatchOutcome.flatMap { $0.id == request.id ? $0 : nil },
+                outcome: libraryMutationController.lastBatchOutcome.flatMap {
+                    $0.id == request.id ? $0 : nil
+                },
                 isWorking: libraryMutationController.isBatchWorking,
                 move: { appState.executeLibraryBatchMove(request, toFolder: $0) },
                 cancel: { libraryMutationController.cancelNoteBatch() },
@@ -644,7 +652,9 @@ struct ContentView: View {
                 },
                 cancel: { presentationRouter.dismissSheet() })
         case .noteRestructure(let request):
-            NoteRestructureView(request: request, prepare: appState.prepareNoteRestructure, commit: appState.commitNoteRestructure)
+            NoteRestructureView(
+                request: request, prepare: appState.prepareNoteRestructure,
+                commit: appState.commitNoteRestructure)
         case .noteFileOperation(let request):
             NoteFileOperationView(
                 request: request,
@@ -691,10 +701,14 @@ struct ContentView: View {
                 error: appState.transactionRecoveryError,
                 interruptedSaves: appState.interruptedSaveRecoveries,
                 interruptedSaveError: appState.interruptedSaveRecoveryError,
+                retainedCitationRecoveries: researchController.retainedCitationRecoveries,
+                retainedCitationRecoveryError: researchController.retainedCitationRecoveryError,
                 vaultNames: Dictionary(
                     uniqueKeysWithValues: appState.registeredVaults.map { ($0.id, $0.name) }
                 ),
-                refresh: { await appState.refreshTransactionRecoveryRecords() },
+                refresh: {
+                    await appState.refreshTransactionRecoveryRecords(includeRetainedCitationCopies: true)
+                },
                 markResolved: { try await appState.markTransactionRecoveryResolved($0) },
                 revealRecords: { appState.revealTransactionRecoveryRecordsInFinder() },
                 loadInterruptedSave: {
@@ -884,12 +898,17 @@ struct ContentView: View {
         if let note = appState.currentNote?.hydratedSnapshot {
             ResearchInspectorView(
                 research: researchController,
-                editor: appState.presentedDocumentMode == .read ? nil : currentNoteDocumentSession?.editorSession,
+                editor: appState.presentedDocumentMode == .read
+                    ? nil : currentNoteDocumentSession?.editorSession,
                 termGroups: searchController.termGroups,
-                noteURL: appState.workspaceAssignment?.vaults.values.first(where: { $0.id == appState.currentDocumentVaultID }).map {
+                noteURL: appState.workspaceAssignment?.vaults.values.first(where: {
+                    $0.id == appState.currentDocumentVaultID
+                }).map {
                     URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.id.relativePath)
                 },
-                vaultRoots: appState.workspaceAssignment?.vaults.values.map { URL(fileURLWithPath: $0.canonicalPath) } ?? [],
+                vaultRoots: appState.workspaceAssignment?.vaults.values.map {
+                    URL(fileURLWithPath: $0.canonicalPath)
+                } ?? [],
                 openExternalURL: { appState.openExternalURL($0) },
                 note: note,
                 shellState: appState.shellState,
@@ -910,7 +929,9 @@ struct ContentView: View {
                 openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
                 },
                 insertRelated: { card in Task { await appState.insertRelatedMaterialLink(card) } },
-                insertRelatedParagraph: { card in Task { await appState.insertRelatedMaterialParagraphLink(card) } },
+                insertRelatedParagraph: { card in
+                    Task { await appState.insertRelatedMaterialParagraphLink(card) }
+                },
                 canDiscussRelated: appState.canPresentChat,
                 discussRelated: { card in
                     Task {

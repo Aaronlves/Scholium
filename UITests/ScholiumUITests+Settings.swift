@@ -364,6 +364,63 @@ extension ScholiumUITests {
         captureSettingsTransaction(window, named: "settings-appearance-repaired")
     }
 
+    /// The new cleanup route is discoverable at minimum width, binds a real
+    /// managed-copy cohort, cancels without effects and retains its empty state.
+    @MainActor
+    func testUnusedChatMaterialCleanupInspectionAndCancellation() throws {
+        waitForCurrentDocumentSurface()
+        let protectedBefore = try storageResearchFixtureBytes()
+        app.terminate()
+        let chat = try seedChatEntryFixture()
+        let materials = chat.archive.deletingLastPathComponent().appendingPathComponent("Materials", isDirectory: true)
+        try FileManager.default.createDirectory(at: materials, withIntermediateDirectories: true)
+        let orphan = materials.appendingPathComponent(UUID().uuidString + ".txt")
+        let bytes = Data("Synthetic unused material — preserve on cancellation.\r\n".utf8)
+        try bytes.write(to: orphan)
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let window = openSettingsForTransactionTest()
+        selectSettingsCategory("storage", in: window)
+        resizeSettingsToMinimumWidth(window)
+        typeCommittedText("unused materials", into: window.searchFields["scholium.settings.search"], in: app)
+        selectSettingsSearchResult("storage.chatHistory", in: window)
+        let inspect = window.buttons["scholium.settings.storage.trashUnusedChatMaterials"]
+        XCTAssertTrue(inspect.waitForExistence(timeout: 5))
+        XCTAssertTrue(inspect.isHittable)
+        inspect.click()
+        let commit = window.buttons["Move to Trash"].firstMatch
+        XCTAssertTrue(commit.waitForExistence(timeout: 15))
+        captureSettingsTransaction(window, named: "unused-chat-material-cleanup-confirmation")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !commit.exists })
+        XCTAssertEqual(try Data(contentsOf: orphan), bytes)
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        // Only this journey's unreferenced synthetic file is removed by the
+        // fixture owner; no product Trash request has been dispatched.
+        try FileManager.default.removeItem(at: orphan)
+        inspect.click()
+        XCTAssertTrue(window.staticTexts["No unused Chat-material files to move to Trash."].waitForExistence(timeout: 15))
+        XCTAssertFalse(commit.exists)
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+        captureSettingsTransaction(window, named: "unused-chat-material-cleanup-empty")
+        window.buttons[XCUIIdentifierCloseWindow].click()
+        app.menuBars.menuBarItems["Research"].click()
+        let recovery = app.menuItems["Recovery…"].firstMatch
+        XCTAssertTrue(recovery.exists && recovery.isEnabled)
+        recovery.click()
+        let emptyRecovery = app.sheets.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@ OR value BEGINSWITH %@", "No Pending Recovery", "No Pending Recovery")
+        ).firstMatch
+        XCTAssertTrue(emptyRecovery.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            (emptyRecovery.value as? String ?? emptyRecovery.label).contains("No interrupted save candidate or recorded file operation needs inspection."))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !emptyRecovery.exists })
+        XCTAssertEqual(try storageResearchFixtureBytes(), protectedBefore)
+    }
+
     /// One native task covers cancellation, real cache cleanup, deferred index
     /// clearing and explicit rebuilding without modifying the research fixture.
     @MainActor

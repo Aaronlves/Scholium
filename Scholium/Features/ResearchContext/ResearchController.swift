@@ -68,6 +68,8 @@ final class ResearchController: ObservableObject {
     @Published var transactionRecoveryError: String?
     @Published var interruptedSaveRecoveries: [InterruptedSaveRecovery] = []
     @Published var interruptedSaveRecoveryError: String?
+    @Published private(set) var retainedCitationRecoveries: [ZoteroCitationPairRecovery] = []
+    @Published private(set) var retainedCitationRecoveryError: String?
 
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
@@ -86,6 +88,7 @@ final class ResearchController: ObservableObject {
     private var retainedRecoveries: [UUID: RetainedRecovery] = [:]
     private var recoveryRefreshGeneration: UInt64 = 0
     private var recoveryBindingGeneration: UInt64 = 0
+    private var retainedCitationInspectionRequested = false
 
     init(
         shellState: WindowShellState = WindowShellState(),
@@ -122,6 +125,7 @@ final class ResearchController: ObservableObject {
         hasCompleteWorkspaceSnapshot = false
         recoveryRefreshGeneration &+= 1
         recoveryBindingGeneration &+= 1
+        retainedCitationInspectionRequested = false
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
             relatedMaterials.reset()
@@ -131,6 +135,8 @@ final class ResearchController: ObservableObject {
             transactionRecoveryError = nil
             interruptedSaveRecoveries = []
             interruptedSaveRecoveryError = nil
+            retainedCitationRecoveries = []
+            retainedCitationRecoveryError = nil
         }
         self.capabilities = capabilities
         agentChanges = nil
@@ -165,8 +171,11 @@ final class ResearchController: ObservableObject {
         retainedRecoveries = [:]
         recoveryRefreshGeneration &+= 1
         recoveryBindingGeneration &+= 1
+        retainedCitationInspectionRequested = false
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
+        retainedCitationRecoveries = []
+        retainedCitationRecoveryError = nil
     }
 
     func researchSnapshot() async throws -> WorkspaceResearchSnapshot {
@@ -225,7 +234,9 @@ final class ResearchController: ObservableObject {
             return changes
         } catch {
             guard generation == pendingChangesRefreshGeneration else { throw error }
-            if !(error is CancellationError) { pendingChangesError = ScholiumErrorLocalization.message(error) }
+            if !(error is CancellationError) {
+                pendingChangesError = ScholiumErrorLocalization.message(error)
+            }
             throw error
         }
     }
@@ -279,11 +290,19 @@ final class ResearchController: ObservableObject {
         transactionRecoveryError = retainedRecoveryFailures
     }
 
-    func refreshTransactionRecoveryRecords() async {
+    func refreshTransactionRecoveryRecords(includeRetainedCitationCopies: Bool = false) async {
         guard let capabilities else { return }
         recoveryRefreshGeneration &+= 1
         let generation = recoveryRefreshGeneration
         let bindingGeneration = recoveryBindingGeneration
+        if includeRetainedCitationCopies { retainedCitationInspectionRequested = true }
+        defer {
+            if generation == recoveryRefreshGeneration,
+                bindingGeneration == recoveryBindingGeneration
+            {
+                retainedCitationInspectionRequested = false
+            }
+        }
         func isCurrent() -> Bool {
             generation == recoveryRefreshGeneration
                 && bindingGeneration == recoveryBindingGeneration
@@ -307,11 +326,13 @@ final class ResearchController: ObservableObject {
                 transactionRecoveryRecords.filter { !retainedIDs.contains($0.id) }
                 + retainedRecoveryRecords
             let readFailure = ScholiumL10n.string(
-                "Scholium could not read the durable recovery records. Their file remains unchanged. \(ScholiumErrorLocalization.message(error))")
-            transactionRecoveryError = [readFailure, retainedRecoveryFailures].compactMap { $0 }.joined(separator: "\n")
+                "Scholium could not read the durable recovery records. Their file remains unchanged. \(ScholiumErrorLocalization.message(error))"
+            )
+            transactionRecoveryError = [readFailure, retainedRecoveryFailures].compactMap { $0 }.joined(
+                separator: "\n")
         }
 
-        // Both recovery groups belong to this captured binding and request.
+        // All recovery groups belong to this captured binding and request.
         // Rebinding during the first read cannot start a second read in the new
         // Triptych, and an older second read cannot overwrite a newer refresh.
         guard isCurrent() else { return }
@@ -324,7 +345,27 @@ final class ResearchController: ObservableObject {
             guard isCurrent(), !(error is CancellationError) else { return }
             interruptedSaveRecoveries = []
             interruptedSaveRecoveryError = String(
-                localized: "Scholium could not verify the interrupted save candidates. Their exact bytes remain unchanged. \(error.localizedDescription)",
+                localized:
+                    "Scholium could not verify the interrupted save candidates. Their exact bytes remain unchanged. \(error.localizedDescription)",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+
+        // A newer background refresh inherits an unfinished surface inspection.
+        // Only the current request clears that intent when it finishes.
+        guard retainedCitationInspectionRequested, isCurrent() else { return }
+        do {
+            let retained = try await capabilities.research.retainedCitationRecoveries()
+            guard isCurrent() else { return }
+            retainedCitationRecoveries = retained
+            retainedCitationRecoveryError = nil
+        } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
+            retainedCitationRecoveries = []
+            retainedCitationRecoveryError = String(
+                localized:
+                    "Scholium could not verify the retained citation recovery copies. Their exact bytes remain unchanged. \(error.localizedDescription)",
                 table: "Localizable",
                 bundle: .module
             )
@@ -418,11 +459,14 @@ final class ResearchController: ObservableObject {
         keptPassages.reset()
         recoveryRefreshGeneration &+= 1
         recoveryBindingGeneration &+= 1
+        retainedCitationInspectionRequested = false
         retainedRecoveries = [:]
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
+        retainedCitationRecoveries = []
+        retainedCitationRecoveryError = nil
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {

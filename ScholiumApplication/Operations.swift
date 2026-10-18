@@ -513,6 +513,11 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.recoveryRecords()
     }
 
+    public func retainedCitationRecoveries() async throws -> [ZoteroCitationPairRecovery] {
+        let handle = try await reference.requireHandle()
+        return try await handle.retainedCitationRecoveries()
+    }
+
     public func resolveRecoveryRecord(_ id: UUID) async throws {
         let handle = try await reference.requireHandle()
         try await handle.resolveRecoveryRecord(id)
