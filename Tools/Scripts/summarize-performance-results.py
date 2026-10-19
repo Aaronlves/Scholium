@@ -85,6 +85,13 @@ FIRST_READ_PHASE_KEYS = (
     "read_navigation_duration_ms",
     "read_navigation_to_ready_duration_ms",
 )
+EDIT_ACTIVATION_METRICS = {"warm_edit_activation", "first_edit_activation"}
+EDIT_ACTIVATION_PHASE_KEYS = (
+    "request_to_attached_duration_ms",
+    "attached_to_renderer_ready_duration_ms",
+    "renderer_ready_to_loaded_observed_duration_ms",
+    "loaded_observed_to_visible_duration_ms",
+)
 ALLOWED_KEYS = {
     "schema",
     "metric",
@@ -113,6 +120,8 @@ ALLOWED_KEYS = {
     "read_html_ready_to_navigation_start_duration_ms",
     "read_navigation_duration_ms",
     "read_navigation_to_ready_duration_ms",
+    *EDIT_ACTIVATION_PHASE_KEYS,
+    "pool_reused_page",
 }
 MEMORY_ROLES = ("app", "gpu", "networking", "web_content")
 MEMORY_ALLOWED_KEYS = {
@@ -382,6 +391,21 @@ def load_metric(
                 raise SystemExit(f"{path}:{line_number}: first Read phases do not match duration")
         elif any(value is not None for value in first_read_phases):
             raise SystemExit(f"{path}:{line_number}: unexpected first Read phase duration")
+        edit_fields = set(record) & {*EDIT_ACTIVATION_PHASE_KEYS, "pool_reused_page"}
+        if metric not in EDIT_ACTIVATION_METRICS and edit_fields:
+            raise SystemExit(f"{path}:{line_number}: unexpected Edit activation metadata")
+        for phase in EDIT_ACTIVATION_PHASE_KEYS:
+            if phase in record:
+                value = record[phase]
+                if (
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not math.isfinite(value)
+                    or value < 0
+                ):
+                    raise SystemExit(f"{path}:{line_number}: invalid Edit activation phase duration")
+        if "pool_reused_page" in record and not isinstance(record["pool_reused_page"], bool):
+            raise SystemExit(f"{path}:{line_number}: invalid Edit activation pool flag")
         records.append(record)
 
     total = warmups + samples
@@ -793,6 +817,63 @@ def self_test() -> None:
             assert "ordered sample indexes" in str(error)
         else:
             raise AssertionError("A missing Editor latency sample was accepted.")
+
+        edit_path = Path(directory) / "edit_activation.jsonl"
+        edit_base = {
+            "schema": "scholium-performance-v1",
+            "metric": "first_edit_activation",
+            "run_id": "self_test",
+            "sample": 0,
+            "duration_ms": 10.0,
+            "completed_uptime_ns": 1,
+        }
+        edit_phases = dict(zip(EDIT_ACTIVATION_PHASE_KEYS, (1.0, 2.0, 3.0, 4.0)))
+        complete_edit = {**edit_phases, "pool_reused_page": True}
+        partial_edit = {
+            EDIT_ACTIVATION_PHASE_KEYS[0]: 1.0,
+            EDIT_ACTIVATION_PHASE_KEYS[1]: 2.0,
+            "pool_reused_page": False,
+        }
+        for metric in sorted(EDIT_ACTIVATION_METRICS):
+            for metadata in ({}, complete_edit, partial_edit):
+                edit_records = [
+                    {**edit_base, **metadata, "metric": metric, "sample": sample}
+                    for sample in range(23)
+                ]
+                edit_path.write_text(
+                    "".join(json.dumps(record) + "\n" for record in edit_records),
+                    encoding="utf-8",
+                )
+                loaded, measured = load_metric(edit_path, metric, "self_test", 3, 20)
+                assert len(loaded) == 23 and measured == [10.0] * 20
+
+        def reject_edit_record(record: dict[str, object], message: str) -> None:
+            edit_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            try:
+                load_metric(edit_path, str(record["metric"]), "self_test", 0, 1)
+            except SystemExit as error:
+                assert message in str(error)
+            else:
+                raise AssertionError("Invalid Edit activation metadata was accepted.")
+
+        for phase in EDIT_ACTIVATION_PHASE_KEYS:
+            for invalid in (-1.0, True, float("nan"), float("inf"), "private", None):
+                reject_edit_record(
+                    {**edit_base, phase: invalid}, "invalid Edit activation phase duration"
+                )
+        for invalid in (0, 1, "false", None):
+            reject_edit_record(
+                {**edit_base, "pool_reused_page": invalid}, "invalid Edit activation pool flag"
+            )
+        for field, value in complete_edit.items():
+            reject_edit_record(
+                {**edit_base, "metric": "warm_read_activation", field: value},
+                "unexpected Edit activation metadata",
+            )
+        reject_edit_record(
+            {**edit_base, **complete_edit, "document_path": "Private.md"},
+            "privacy contract rejected keys",
+        )
 
         cjk_path = Path(directory) / CJK_CORRECTNESS_FILE
         cjk_path.write_text(

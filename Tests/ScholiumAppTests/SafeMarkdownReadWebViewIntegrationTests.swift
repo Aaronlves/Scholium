@@ -1646,35 +1646,20 @@ extension MarkdownEditorWebViewIntegrationTests {
         let harness = ReadHarness(
             source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
             initialAnchor: anchor, initialScrollFraction: 0,
-            presentsDocumentPreparation: true, laysOutForNativePreview: true)
+            presentsDocumentPreparation: true, laysOutForNativePreview: true,
+            pageExtension: PreviewPreparationGatePage())
         defer { harness.close() }
         try await harness.waitUntilReadPreparationAvailable()
         #expect(!harness.isReady)
 
-        // Hold a real pending Mermaid render at its async runtime boundary.
-        // This test-local event gate keeps API installation pending while
-        // SwiftUI delivers both revisions; it changes no product test hook.
+        // The fixture installs its gate at document start, before any reader
+        // initialization can finish. No native polling interval orders setup.
+        // Hold the real pending Mermaid render while both graph revisions arrive.
         try #require(
             try await harness.callBridgeJavaScript(
                 """
-                if (typeof window.scholiumSetLinkPreviews !== 'undefined') return false;
-                const state = window.__scholiumPreviewPreparationGate = {entered:false, released:false};
-                let release;
-                const gate = new Promise(resolve => {release=resolve;});
-                state.release=()=>{state.released=true; release();};
-                const wrap=runtime=>!runtime || runtime.version!==3 ? runtime : {
-                  ...runtime,
-                  async render(request) {
-                    state.entered=true;
-                    await gate;
-                    return await runtime.render(request);
-                  }
-                };
-                let runtime=wrap(window.scholiumMermaid);
-                Object.defineProperty(window,'scholiumMermaid',{
-                  configurable:true, get:()=>runtime, set:value=>{runtime=wrap(value);}
-                });
-                return true;
+                return window.__scholiumPreviewPreparationGate !== undefined
+                  && typeof window.scholiumSetLinkPreviews === 'undefined';
                 """) as? Bool == true)
         let pageIdentity = try #require(
             try await harness.callPageJavaScript("return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`;") as? String)
@@ -2891,6 +2876,68 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     }
 
+    /// Only this fixture supplies a dedicated WebView. All native Review load,
+    /// catalog convergence and finalization policies remain the product's.
+    @MainActor
+    private final class PreviewPreparationGatePage: ScholiumReadPageExtension {
+        let requiresDedicatedWebView = true
+        let requiresMathRuntime = false
+        let replyProjectionEnabled = false
+
+        func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
+            PreviewPreparationGateWebView(frame: .zero, configuration: configuration)
+        }
+        func preservesPage(currentDocumentID: String, nextDocumentID: String, hasLoadedPage: Bool) -> Bool { false }
+        func canUpdateInPlace(currentDocumentID: String, nextDocumentID: String, hasLoadedPage: Bool) -> Bool { false }
+        func acceptsMessageWithoutCurrentFingerprint(type: String) -> Bool { false }
+        func willBeginLoad(fingerprint: String) {}
+        func updateIfNeeded(
+            body: String, source: String, fingerprint: String, signature: String, documentID: String,
+            loadGeneration: UInt64, presentationCSS: String, userCSS: String, in webView: WKWebView,
+            isCurrent: @escaping @MainActor () -> Bool,
+            didApply: @escaping @MainActor (String, String) -> Void,
+            didFail: @escaping @MainActor (any Error) -> Void
+        ) -> Bool { false }
+        func didFinishNavigation(_ navigation: WKNavigation?, isCurrent: @escaping @MainActor () -> Bool) {}
+        func didFinalizePage(fingerprint: String) {}
+        func handleMessage(type: String, payload: [String: Any], webView: WKWebView?) -> Bool { false }
+        func cancel() {}
+    }
+
+    @MainActor
+    private final class PreviewPreparationGateWebView: DocumentNativeWebView {
+        override func loadHTMLString(_ string: String, baseURL: URL?) -> WKNavigation? {
+            // The coordinator has now installed its scripts (and cleared old
+            // scripts). Add only this fixture's barrier before navigation.
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: Self.gateScript, injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true, in: SafeMarkdownReadWebView.bridgeContentWorld))
+            return super.loadHTMLString(string, baseURL: baseURL)
+        }
+
+        private static let gateScript = """
+            (() => {
+              const state = window.__scholiumPreviewPreparationGate = {entered:false, released:false};
+              let release;
+              const gate = new Promise(resolve => {release=resolve;});
+              state.release=()=>{state.released=true; release();};
+              const wrap=runtime=>!runtime || runtime.version!==3 ? runtime : {
+                ...runtime,
+                async render(request) {
+                  state.entered=true;
+                  await gate;
+                  return await runtime.render(request);
+                }
+              };
+              let runtime=wrap(window.scholiumMermaid);
+              Object.defineProperty(window,'scholiumMermaid',{
+                configurable:true, get:()=>runtime, set:value=>{runtime=wrap(value);}
+              });
+            })();
+            """
+    }
+
     @MainActor
     final class ReadHarness {
         private let source: String
@@ -2922,7 +2969,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             imagePreviewsEnabled: Bool = false,
             onAskAgent: AgentSelectionInquiryHandler? = nil,
             modelsSourceReviewMounting: Bool = false,
-            relativePath: String = "ReadFixture.md"
+            relativePath: String = "ReadFixture.md",
+            pageExtension: (any ScholiumReadPageExtension)? = nil
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -2965,7 +3013,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 userCSS: userCSS,
                 sourceBox: sourceBox,
                 laysOutForNativePreview: laysOutForNativePreview,
-                pageExtension: sourceBox.chatPageExtension,
+                pageExtension: pageExtension ?? sourceBox.chatPageExtension,
                 onAskAgent: onAskAgent
             )
             let controller = NSHostingController(rootView: root)

@@ -408,6 +408,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         defer { application.terminate() }
 
         application.launch()
+        application.activate()
         XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
         XCTAssertTrue(
             application.descendants(matching: .any)["scholium.bootstrap"]
@@ -456,6 +457,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
         XCTAssertTrue(connect.waitForExistence(timeout: 5))
         XCTAssertTrue(connect.isEnabled)
         connect.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                !application.descendants(matching: .any)["scholium.bootstrap"].exists
+            },
+            "Bootstrap must close before responding to Sparkle's permission window."
+        )
+        declinePackagedAutomaticUpdateChecksIfOffered(in: application)
         let noteRow = packagedNoteRow(in: application)
         XCTAssertTrue(noteRow.waitForExistence(timeout: 45))
         noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
@@ -503,7 +511,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "The packaged App must fully terminate before the restore launch."
         )
         application.launch()
+        application.activate()
         XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        declinePackagedAutomaticUpdateChecksIfOffered(in: application)
         XCTAssertFalse(
             application.descendants(matching: .any)["scholium.bootstrap"].exists,
             "The saved Triptych must restore without repeating Bootstrap."
@@ -628,6 +638,26 @@ final class ScholiumPerformanceUITests: XCTestCase {
         XCTAssertTrue(
             selectedPath.waitForExistence(timeout: 10),
             "The packaged picker must return the exact disposable folder before continuing."
+        )
+    }
+
+    @MainActor
+    private func declinePackagedAutomaticUpdateChecksIfOffered(
+        in application: XCUIApplication
+    ) {
+        let consent = application.windows.containing(
+            .button, identifier: "Check Automatically"
+        ).firstMatch
+        guard consent.waitForExistence(timeout: 5) else { return }
+        let decline = consent.buttons["Don’t Check"]
+        XCTAssertTrue(decline.waitForExistence(timeout: 5))
+        // Sparkle may keep its permission panel loaded while it is hidden.
+        // Only a visible choice belongs to this journey.
+        guard waitUntil(timeout: 5, condition: { decline.isHittable }) else { return }
+        decline.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { !consent.exists },
+            "Declining automatic checks must dismiss Sparkle's permission prompt."
         )
     }
 
