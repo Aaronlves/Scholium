@@ -38,7 +38,7 @@ citation Recovery exposes retained copies for inspection without applying them.
 
 Core App Beta is public; external Agent Collaboration and optional Chat remain
 Preview. The App and helpers update together. Sparkle supports application
-updates; production key/feed configuration remains open. Artifact proof stays
+updates through GitHub Releases and the deployed HTTPS feed. Artifact proof stays
 tag-specific; source reachability establishes no packaged external-host,
 managed-Zotero, physical-input or release acceptance.
 

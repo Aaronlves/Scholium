@@ -14,20 +14,17 @@ reports the complete performance gate, 13/13 affected UI journeys, and mounted/
 copied clean-account save/readback smoke; VoiceOver, input, adaptation, icon,
 and Finder-restoration human acceptance remain open.
 
-**2026-10-18 — `v0.4.2-beta.2` published:** The
-[release record](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2)
-binds commit `374b90b3d68d9a8909c29ebbbde4129e7e6e386b`, version `0.4.2`/build
-`22`, arm64/macOS `26.0` ad-hoc DMG, SHA-256
-`a81179f640dab869337389c545a2920805eecd794a7d51d0aa1ace647117a2e9`.
-It reports package integrity and mounted/copied Core Bootstrap/save/relaunch
-journeys passed. [Exact-commit daily CI](https://github.com/Aaronlves/Scholium/actions/runs/39123508509)
-passed with 114 declared skips. Publication reused full-gate baseline `4d846397`
-(109 declared skips) under a researcher-approved release-specific exception,
-plus 16 focused queue/fixture checks; no exact-tag full execution is claimed.
-Human accessibility/input/adaptations/icon review, native Trash/restore,
-exact-package performance, additional Search/Related Material/Recovery journeys,
-and a separate clean account remained uncompleted. Agent Collaboration and
-optional Chat remain Preview; those omissions are not passes or future waivers.
+**2026-10-19 — `v0.4.3-beta.1` published:** [Release evidence](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1)
+binds clean commit `c76e46cf03ffb087ceb6c7d77a13e348ae1dac36`, `0.4.3`/build
+`23`, arm64/macOS `26.0`, and the ad-hoc DMG/checksum. All local repository
+phases passed, including a scoped Release continuation after a network failure.
+Exact-tag remote CI failed a test-setup race; its deterministic repair passed
+locally. Mounted/copied Core smoke, sandboxed diagnostic update, affected packaged
+performance series and archive-verified HTTPS feed passed; focused series are
+not G7. Diagnostic upgrade is not exact-DMG clean-account proof. Approved
+release-specific human, native Trash/restore and separate-account exceptions
+remain uncompleted; future candidates inherit no waiver. Developer ID/notarization
+are absent; Agent Collaboration/Chat remain Preview.
 
 ## Current feature coverage
 

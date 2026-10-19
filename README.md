@@ -229,14 +229,14 @@ the existing save/quit checks and replace the App and bundled helpers together.
 Users of earlier Betas must manually install an updater-enabled build once.
 
 The release archive stays on GitHub Releases; [Updates/appcast.xml](Updates/appcast.xml)
-is deployed at `https://aaronlves.github.io/Scholium/appcast.xml`. The initial feed
-is empty until a signed update is published. To prepare a release:
+is served at `https://aaronlves.github.io/Scholium/appcast.xml`.
+To publish subsequent signed updates:
 
-1. Resolve dependencies. Run `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account scholium`
-   once, back up its private key securely, and put the printed public key in
-   `Updates/public-key.txt` (commit this public key for deployment verification).
-   `SCHOLIUM_SPARKLE_PUBLIC_KEY` can override it for local packaging. Never commit a
-   private key. Losing it can prevent existing installations from updating.
+1. Reuse the production Sparkle key in Keychain account `scholium`; its public
+   key is committed in `Updates/public-key.txt`. Keep a secure private-key
+   backup. `SCHOLIUM_SPARKLE_PUBLIC_KEY` overrides it for intentional local
+   packaging. Never commit a private key. Losing or replacing it can prevent
+   existing installations from updating.
 2. Increase `CFBundleVersion` for every release; retain the App's bundle identity.
    Complete the release checks, commit and tag the exact clean source, then run
    `Tools/Scripts/package-app.sh`. Set `CODE_SIGN_IDENTITY` for Apple signing.

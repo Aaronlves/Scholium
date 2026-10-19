@@ -87,19 +87,14 @@
 
 ## Gate and release boundary
 
-- `v0.4.2-beta.2` retains release-specific exceptions for uncompleted human,
-  exact-package performance, additional journeys, native Trash/restore and
-  separate-account checks. [Verification](04-verification.md) binds the exact
-  artifact and reused gate scope; future candidates inherit no waiver.
+- `v0.4.3-beta.1` has artifact-specific proof and remaining acceptance recorded in
+  [Verification](04-verification.md); future candidates inherit no waiver.
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
 - Run affected packaged performance series when §21.3's change-trigger rule
   requires it; focused backend measurements are not G7.
 - Developer ID signing/notarization remain a future channel outside the current
   ad-hoc source-first Beta profile.
-- Configure/back up the production update key, publish an updater-enabled release
-  and deploy its feed. Local fixtures establish neither Pages/Gatekeeper nor
-  downloaded-package acceptance.
 
 ## Current boundary
 
