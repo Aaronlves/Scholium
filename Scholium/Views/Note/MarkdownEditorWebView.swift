@@ -481,6 +481,27 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+        #if DEBUG
+            struct TestingInputMessageTiming: Sendable {
+                enum Kind: String, Sendable {
+                    case documentChanged, interactionChanged, scrollChanged
+                }
+
+                let kind: Kind
+                let documentVersion: Int
+                let interactionRevision: Int?
+                let accepted: Bool
+                let receivedAt: ContinuousClock.Instant
+                let decodedAt: ContinuousClock.Instant
+                let admissionStartedAt: ContinuousClock.Instant
+                let admissionCompletedAt: ContinuousClock.Instant
+            }
+
+            /// Opt-in observation of existing admission. No diagnostic value
+            /// participates in message validation or document publication.
+            var testingInputMessageObserver: ((TestingInputMessageTiming) -> Void)?
+        #endif
+
         let session: MarkdownEditorSession
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
@@ -601,7 +622,34 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 activeWebView === webView, session.webView === webView,
                 webView.navigationDelegate === self
             else { return }
+            #if DEBUG
+                let timingObserver = testingInputMessageObserver
+                let timingReceivedAt: ContinuousClock.Instant? = timingObserver == nil ? nil : .now
+                var timingDecodedAt: ContinuousClock.Instant?
+                var timingKind: TestingInputMessageTiming.Kind?
+                var timingDocumentVersion: Int?
+                var timingInteractionRevision: Int?
+                var timingAdmissionStartedAt: ContinuousClock.Instant?
+                var timingAdmissionCompletedAt: ContinuousClock.Instant?
+                var timingAccepted = false
+                defer {
+                    if let timingObserver, let timingKind, let timingDocumentVersion,
+                        let timingReceivedAt, let timingDecodedAt, let timingAdmissionStartedAt
+                    {
+                        timingObserver(
+                            TestingInputMessageTiming(
+                                kind: timingKind, documentVersion: timingDocumentVersion,
+                                interactionRevision: timingInteractionRevision, accepted: timingAccepted,
+                                receivedAt: timingReceivedAt, decodedAt: timingDecodedAt,
+                                admissionStartedAt: timingAdmissionStartedAt,
+                                admissionCompletedAt: timingAdmissionCompletedAt ?? .now))
+                    }
+                }
+            #endif
             guard let payload = EditorBridgeMessageDecoder.decode(message.body) else { return }
+            #if DEBUG
+                if timingObserver != nil { timingDecodedAt = .now }
+            #endif
 
             switch payload {
             case .floatingSurface(let request):
@@ -648,6 +696,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         .string("The Markdown editor could not start.")
                 )
             case .interactionChanged(let interaction):
+                #if DEBUG
+                    if timingObserver != nil {
+                        timingKind = .interactionChanged
+                        timingDocumentVersion = interaction.envelope.documentVersion
+                        timingInteractionRevision = interaction.interactionRevision
+                        timingAdmissionStartedAt = .now
+                    }
+                #endif
                 guard surfaceVisibility.isActive,
                     validEnvelope(interaction.envelope)
                 else { return }
@@ -663,6 +719,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     focusTarget: interaction.focusTarget,
                     context: interaction.context
                 )
+                #if DEBUG
+                    if timingObserver != nil {
+                        timingAccepted = admitted
+                        timingAdmissionCompletedAt = .now
+                    }
+                #endif
                 guard admitted else {
                     if writingContinuation.requestID != nil {
                         EditorWritingContinuationController.trace(
@@ -680,6 +742,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .documentChanged(let change):
                 #if DEBUG
                     let baseGeneration = session.generation
+                    if timingObserver != nil {
+                        timingKind = .documentChanged
+                        timingDocumentVersion = change.envelope.documentVersion
+                        timingAdmissionStartedAt = .now
+                    }
                 #endif
                 // queryText can absorb a full snapshot before its queued delta.
                 // A rejected duplicate has no authority over a current request.
@@ -688,6 +755,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     && validEnvelope(change.envelope, allowingFutureGeneration: true)
                     && applyEditorChanges(change, in: message.webView ?? activeWebView)
                 #if DEBUG
+                    if timingObserver != nil {
+                        timingAccepted = admitted
+                        timingAdmissionCompletedAt = .now
+                    }
                     PerformanceProbe.shared.recordQASaveStage(
                         .editorDeltaAdmission, sessionID: session.sessionID,
                         flags: [
@@ -932,6 +1003,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     mode: request.mode
                 )
             case .scrollChanged(let scroll):
+                #if DEBUG
+                    if timingObserver != nil {
+                        timingKind = .scrollChanged
+                        timingDocumentVersion = scroll.envelope.documentVersion
+                        timingAdmissionStartedAt = .now
+                    }
+                #endif
                 guard surfaceVisibility.isActive,
                     validEnvelope(scroll.envelope),
                     (0...1).contains(scroll.fraction)
@@ -945,6 +1023,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     session.recordScrollFraction(scroll.fraction)
                 }
                 onScrollFractionChange(scroll.fraction)
+                #if DEBUG
+                    if timingObserver != nil {
+                        timingAccepted = true
+                        timingAdmissionCompletedAt = .now
+                    }
+                #endif
             }
         }
 

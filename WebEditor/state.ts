@@ -101,6 +101,21 @@ export class ExactSourceMirror {
 
   get usesCRLF() { return this.crlfLineBreakCount > 0; }
 
+  /** Maps a CodeMirror UTF-16 position using this exact source's retained ropes. */
+  exactOffset(requestedOffset: number) {
+    return exactOffset(this.exact, this.normalized, requestedOffset);
+  }
+
+  /** The inverse UTF-16 mapping; the interior of a CRLF has no editor position. */
+  normalizedOffset(requestedOffset: number) {
+    if (!Number.isSafeInteger(requestedOffset)
+        || requestedOffset < 0 || requestedOffset > this.exact.length) return null;
+    const exactLine = this.exact.lineAt(requestedOffset);
+    const normalizedLine = this.normalized.line(exactLine.number);
+    const column = requestedOffset - exactLine.from;
+    return column <= normalizedLine.length ? normalizedLine.from + column : null;
+  }
+
   copy() {
     const result = new ExactSourceMirror();
     result.exact = this.exact;

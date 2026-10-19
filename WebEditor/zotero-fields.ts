@@ -1,10 +1,11 @@
 import {EditorState, Text, Transaction, type StateEffect, type TransactionSpec} from "@codemirror/state";
 import {isolateHistory} from "@codemirror/commands";
-import {syntaxTree} from "@codemirror/language";
-import {scholiumMarkdownContentLanguage} from "./language";
+import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
+import {scholiumMarkdownContentLanguage, scholiumNoteLanguage} from "./language";
 import {appendMarkdownBlocks} from "./markdown-fragment";
 import {exactInsertionEffects, exactSourceFitsChanges, exactSourceState} from "./exact-source-history";
-import {exactOffsetForNormalizedOffset, frontmatterBoundary, normalizedDocumentText} from "./state";
+import {ExactSourceMirror, exactOffsetForNormalizedOffset, frontmatterBoundary, normalizedDocumentText} from "./state";
+import {recordEditorMetric} from "./performance";
 import {exactSourceFits} from "./source-capacity";
 import {citationState, setCitationData, validCitationData, citationDataEqual, type ZoteroCitationData} from "./zotero-citation-state";
 import {compactCitationPrefix, compactBibliographyPrefix, compactBibliographyClose, compactCitationLinkSource, validFieldID,
@@ -137,8 +138,7 @@ function normalizeEmphasis(element: Element, inherited = 0) {
   }
 }
 
-/** Bounded structural HTML subset. Original vendor strings remain opaque. */
-export function vendorTextToMarkdown(html: string, newline = "\n"): string {
+function vendorTextProjection(html: string): {markdown: string; visibleText: string} {
   if (html.length > maximumFallbackLength) throw new Error("The citation render cache exceeds the supported size.");
   const stack: Array<{name: string; className?: string}> = [];
   let cursor = 0;
@@ -197,7 +197,19 @@ export function vendorTextToMarkdown(html: string, newline = "\n"): string {
   if (JSON.stringify(formattingProjection(rendered)) !== JSON.stringify(expected)) {
     throw new Error("Unsupported HTML paragraph or emphasis boundary; Markdown formatting fidelity is unproven.");
   }
-  return markdown.replaceAll("\n", newline);
+  return {markdown, visibleText: rendered.textContent ?? ""};
+}
+
+// Retain only successful string results while their companion field remains
+// reachable. Exact text guards against an in-place field mutation; source,
+// context, fallback and companion admission still run for every new catalog.
+const stateVendorTextProjections = new WeakMap<FieldInput, {
+  text: string; projection: ReturnType<typeof vendorTextProjection>;
+}>();
+
+/** Bounded structural HTML subset. Original vendor strings remain opaque. */
+export function vendorTextToMarkdown(html: string, newline = "\n"): string {
+  return vendorTextProjection(html).markdown.replaceAll("\n", newline);
 }
 
 function renderVisibleMarkdown(markdown: string): HTMLElement {
@@ -245,41 +257,48 @@ interface ParserContexts {
   links: SourceRange[];
   comments: SourceRange[];
 }
-function parserContexts(source: string): ParserContexts {
-  const normalized = normalizedDocumentText(source);
+function parserContexts(source: string, state?: EditorState): ParserContexts {
+  const doc = state?.doc ?? Text.of(normalizedDocumentText(source).split("\n"));
+  const mirror = state?.field(exactSourceState, false) ?? new ExactSourceMirror(source);
   const result: ParserContexts = {ignored: [], unsupported: [], escaped: [], links: [], comments: []};
-  const map = (range: SourceRange) => ({from: exactOffsetForNormalizedOffset(source, range.from)!, to: exactOffsetForNormalizedOffset(source, range.to)!});
-  const doc = Text.of(normalized.split("\n")), metadata = frontmatterBoundary(doc);
+  const map = (range: SourceRange) => ({from: mirror.exactOffset(range.from)!, to: mirror.exactOffset(range.to)!});
+  const metadata = frontmatterBoundary(doc);
   if (metadata.unclosed) result.ignored.push({from: 0, to: source.length});
   else if (metadata.endLine) result.ignored.push(map({from: 0, to: Math.min(doc.length, doc.line(metadata.endLine).to + 1)}));
   const htmlStack: Array<{name: string; from: number}> = [];
-  markdownParser.parse(normalized).iterate({enter(node) {
+  // Only a complete current tree can validate every carrier and its context.
+  // Reuse the editor's incremental parser when ready; source-only operations
+  // and incomplete states retain the same complete-source validation below.
+  const tree = state && ensureSyntaxTree(state, doc.length, 0);
+  (tree || scholiumNoteLanguage.language.parser.parse(normalizedDocumentText(source))).iterate({enter(node) {
+    if (node.name === "Frontmatter") return false;
     if (literalNodeNames.has(node.name)) {
       result.ignored.push(map(node)); return false;
     }
     if (node.name === "Escape") { result.escaped.push(map(node)); return false; }
     if (["Comment", "CommentBlock"].includes(node.name)) {
-      const raw = normalized.slice(node.from, node.to);
+      const raw = doc.sliceString(node.from, node.to);
       if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose) || raw.startsWith(compactBibliographyPrefix) || raw.startsWith(compactBibliographyClose)) result.comments.push(map(node));
       else result.ignored.push(map(node));
       return false;
     }
     if (node.name === "HTMLTag") {
-      const tag = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b/.exec(normalized.slice(node.from, node.to));
+      const raw = doc.sliceString(node.from, node.to);
+      const tag = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b/.exec(raw);
       if (tag) {
         const name = tag[2].toLowerCase();
         if (tag[1]) {
           const opening = htmlStack.pop();
           if (opening) result.ignored.push(map({from: opening.from, to: node.to}));
-          if (opening?.name !== name) result.ignored.push(map({from: node.from, to: normalized.length}));
-        } else if (!/\/\s*>$/.test(normalized.slice(node.from, node.to)) && !["br", "hr", "img", "input", "meta", "link", "wbr"].includes(name)) htmlStack.push({name, from: node.from});
+          if (opening?.name !== name) result.ignored.push(map({from: node.from, to: doc.length}));
+        } else if (!/\/\s*>$/.test(raw) && !["br", "hr", "img", "input", "meta", "link", "wbr"].includes(name)) htmlStack.push({name, from: node.from});
       }
       result.ignored.push(map(node)); return false;
     }
     if (["Link", "Autolink", "Image"].includes(node.name)) {
       let reserved = false;
       for (let child = node.node.firstChild; child; child = child.nextSibling) {
-        if (child.name === "URL" && isCitationDestination(normalized.slice(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
+        if (child.name === "URL" && isCitationDestination(doc.sliceString(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
       }
       if (reserved) result.links.push(map(node));
       else { result.unsupported.push(map(node)); result.ignored.push(map(node)); return false; }
@@ -291,7 +310,7 @@ function parserContexts(source: string): ParserContexts {
       result.unsupported.push(map(node));
     }
   }});
-  for (const opening of htmlStack) result.ignored.push(map({from: opening.from, to: normalized.length}));
+  for (const opening of htmlStack) result.ignored.push(map({from: opening.from, to: doc.length}));
   return result;
 }
 function intersects(left: SourceRange, right: SourceRange) { return left.from < right.to && left.to > right.from; }
@@ -309,22 +328,37 @@ function markerOnly(source: string, range: SourceRange) {
 /** Source owns locations and visible text; a managed companion owns opaque field data.
  * This parsed projection itself grants no mutation authority. */
 export function projectFields(source: string, companion?: ZoteroCitationData | null): FieldProjection {
+  return projectFieldsInContext(source, companion, parserContexts(source));
+}
+
+function projectFieldsInContext(source: string, companion: ZoteroCitationData | null | undefined, contexts: ParserContexts,
+  recordMetric?: typeof recordEditorMetric, vendorProjections?: typeof stateVendorTextProjections): FieldProjection {
+  const startedAt = recordMetric ? performance.now() : 0;
+  let vendorTextMilliseconds = 0, fallbackTextMilliseconds = 0;
   const managed = companion !== undefined;
   const fields: ProjectedField[] = [], diagnostics: ProjectionDiagnostic[] = [];
   let documentData: string | null = null, documentRange: SourceRange | null = null;
   let bibliographyStyle: BibliographyStyle | null = null, acceptedFields: readonly FieldSignature[] | null = null;
-  const contexts = parserContexts(source);
   if (companion && !validCitationData(companion)) throw new Error("Invalid citation companion.");
   if (companion) { documentData = companion.documentData ?? null; bibliographyStyle = companion.bibliographyStyle ?? null; acceptedFields = companion.acceptedFields ?? null; }
+  const companionValidationMilliseconds = recordMetric ? performance.now() - startedAt : 0;
   const diagnose = (kind: ProjectionDiagnostic["kind"], range: SourceRange, message: string) => diagnostics.push({...range, kind, message});
   const protectedField = (range: SourceRange) => [...contexts.ignored, ...contexts.unsupported].some(other => intersects(range, other));
   const append = (field: FieldInput, range: SourceRange, fallbackRange: SourceRange) => {
     if (fields.length >= maximumFields) throw new Error("Too many source citation fields.");
     if (protectedField(range)) { diagnose("unsupported-context", range, "The complete field overlaps a protected source context."); return; }
     const fallback = source.slice(fallbackRange.from, fallbackRange.to);
-    const generated = vendorTextToMarkdown(field.text);
-    fields.push({...field, text: markdownVisibleText(fallback), cachedText: field.text, noteIndex: 0, adjacent: false,
-      range, fallbackRange, manualTextChanged: normalizedDocumentText(fallback) !== generated});
+    const vendorStartedAt = recordMetric ? performance.now() : 0;
+    const cached = vendorProjections?.get(field);
+    const generated = cached && cached.text === field.text ? cached.projection : vendorTextProjection(field.text);
+    if (!cached || cached.text !== field.text) vendorProjections?.set(field, {text: field.text, projection: generated});
+    if (recordMetric) vendorTextMilliseconds += performance.now() - vendorStartedAt;
+    const fallbackStartedAt = recordMetric ? performance.now() : 0;
+    const manualTextChanged = normalizedDocumentText(fallback) !== generated.markdown;
+    const text = manualTextChanged ? markdownVisibleText(fallback) : generated.visibleText;
+    if (recordMetric) fallbackTextMilliseconds += performance.now() - fallbackStartedAt;
+    fields.push({...field, text, cachedText: field.text, noteIndex: 0, adjacent: false,
+      range, fallbackRange, manualTextChanged});
   };
   const malformed = (range: SourceRange, error: unknown) => diagnose(error instanceof Error && /HTML|Markdown|render cache|render.*size/.test(error.message)
     ? "unsupported-text" : error instanceof Error && /version/.test(error.message) ? "unsupported-envelope" : "malformed-envelope",
@@ -413,8 +447,13 @@ export function projectFields(source: string, companion?: ZoteroCitationData | n
     // citation during Refresh so it can merge into the next citation.
     field.adjacent = field.kind === "citation" && next?.kind === "citation" && field.range.to === next.range.from;
   }
-  const current = fields.map(({id, code}) => ({id, code}));
-  const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
+  const citationStateStale = acceptedFields === null ? fields.length > 0
+    : acceptedFields.length !== fields.length || acceptedFields.some((field, index) =>
+      field.id !== fields[index].id || field.code !== fields[index].code);
+  recordMetric?.("citation-field-validation", startedAt, {
+    documentLength: source.length, fieldCount: fields.length,
+    companionValidationMilliseconds, vendorTextMilliseconds, fallbackTextMilliseconds,
+  });
   return {source, ...(managed ? {companion} : {}), fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics};
 }
 
@@ -425,32 +464,47 @@ export function projectFieldsForState(state: EditorState): FieldProjection {
   const snapshot = state.field(citationState, false);
   const existing = stateCatalogs.get(owner);
   if (existing && existing.snapshot === snapshot) return existing.projection;
+  const catalogStartedAt = performance.now();
   const containsReserved = (from = 0) => {
-    let carry = "";
+    let scanned = "";
     for (const chunk of from === 0 ? state.doc.iter() : state.doc.iterRange(from)) {
-      const scanned = carry + chunk;
+      scanned += chunk;
+      // Text iterators yield line contents and line breaks separately. Check
+      // small batches instead of allocating/testing a window for every line;
+      // retain enough overlap for every reserved word across batch boundaries.
+      if (scanned.length < 4_096) continue;
       if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) return true;
-      carry = scanned.slice(-32);
+      scanned = scanned.slice(-32);
     }
-    return false;
+    return /scholium-zotero|cite:|cite-bibliography/i.test(scanned);
   };
-  let reserved = containsReserved();
-  if (reserved) {
-    const metadata = frontmatterBoundary(state.doc);
-    // The existing envelope owner proves closed YAML inert to citation
-    // carriers. Its ordinary values must not cause a second Markdown parse
-    // on every body edit. Unclosed/absent boundaries keep full validation.
-    if (metadata.endLine > 0) {
-      reserved = containsReserved(Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1));
-    }
-  }
+  // Closed YAML is inert to citation carriers. Start its one reserved-token
+  // scan after the boundary rather than scanning the same body twice.
+  // Unclosed/absent boundaries still require the complete source check.
+  const metadata = frontmatterBoundary(state.doc);
+  const reserved = containsReserved(metadata.endLine > 0
+    ? Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1) : 0);
+  const reservedScanMilliseconds = performance.now() - catalogStartedAt;
   const source = () => mirror?.text ?? state.doc.toString();
-  const projection: FieldProjection = reserved
-    ? projectFields(source(), snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(source()) ? null : undefined))
-    : {get source() {return source();}, ...(snapshot ? {companion: snapshot.data ?? null} : {}), fields: [],
+  let projection: FieldProjection;
+  if (reserved) {
+    const startedAt = performance.now();
+    const text = source();
+    const snapshotMilliseconds = performance.now() - startedAt;
+    const contextsStartedAt = performance.now();
+    const contexts = parserContexts(text, state);
+    const parserContextMilliseconds = performance.now() - contextsStartedAt;
+    projection = projectFieldsInContext(text, snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(text) ? null : undefined),
+      contexts, recordEditorMetric, stateVendorTextProjections);
+    recordEditorMetric("citation-catalog", catalogStartedAt, {
+      documentLength: state.doc.length, reservedScanMilliseconds, snapshotMilliseconds, parserContextMilliseconds,
+    });
+  } else {
+    projection = {get source() {return source();}, ...(snapshot ? {companion: snapshot.data ?? null} : {}), fields: [],
       documentData: snapshot?.data?.documentData ?? null, bibliographyStyle: snapshot?.data?.bibliographyStyle ?? null,
       acceptedFields: snapshot?.data?.acceptedFields ?? null, citationStateStale: Boolean(snapshot?.data?.acceptedFields?.length),
       documentRange: null, diagnostics: []};
+  }
   if (snapshot && ["unsupported", "unresolved"].includes(snapshot.baseline.status)) {
     projection.diagnostics = [...projection.diagnostics, {kind: "unsupported-envelope", from: 0, to: state.doc.length,
       message: "The citation companion is unavailable for this source revision."}];

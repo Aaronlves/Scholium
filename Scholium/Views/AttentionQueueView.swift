@@ -415,6 +415,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
                 systemSymbolName: "exclamationmark.triangle",
                 accessibilityDescription: nil
             )
+            stateImage.contentTintColor = ScholiumColorRole.destructive.nsColor
             stateTitle.stringValue = ScholiumL10n.string("Could Not Load Notifications")
             stateDetail.stringValue = error
             stateAction.title = ScholiumL10n.string("Retry")
@@ -427,6 +428,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             systemSymbolName: "checkmark.circle",
             accessibilityDescription: nil
         )
+        stateImage.contentTintColor = .secondaryLabelColor
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         stateTitle.stringValue =
             query.isEmpty
@@ -647,6 +649,7 @@ private final class AttentionCategoryCell: NSTableCellView {
 @MainActor
 private final class AttentionItemCell: NSTableCellView {
     private let icon = NSImageView()
+    private var iconColor: NSColor = .labelColor
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
 
@@ -661,6 +664,7 @@ private final class AttentionItemCell: NSTableCellView {
         icon.imageScaling = .scaleProportionallyDown
         icon.setAccessibilityElement(false)
         addSubview(icon)
+        imageView = icon
 
         titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         titleLabel.lineBreakMode = .byWordWrapping
@@ -678,6 +682,7 @@ private final class AttentionItemCell: NSTableCellView {
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
         addSubview(detailLabel)
+        textField = titleLabel
 
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -696,6 +701,10 @@ private final class AttentionItemCell: NSTableCellView {
 
     required init?(coder: NSCoder) { nil }
 
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { applyForegroundStyle() }
+    }
+
     func configure(
         symbol: String,
         color: NSColor,
@@ -705,10 +714,20 @@ private final class AttentionItemCell: NSTableCellView {
         accessibilityLabel: String
     ) {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        icon.contentTintColor = color
+        iconColor = color
         titleLabel.stringValue = title
         detailLabel.stringValue = date.map { "\(detail) · \($0)" } ?? detail
         setAccessibilityLabel(accessibilityLabel)
         toolTip = accessibilityLabel
+        applyForegroundStyle()
+    }
+
+    private func applyForegroundStyle() {
+        let isSelected = backgroundStyle == .emphasized
+        icon.contentTintColor = isSelected ? .alternateSelectedControlTextColor : iconColor
+        titleLabel.cell?.backgroundStyle = backgroundStyle
+        detailLabel.cell?.backgroundStyle = backgroundStyle
+        titleLabel.textColor = isSelected ? .alternateSelectedControlTextColor : .labelColor
+        detailLabel.textColor = isSelected ? .alternateSelectedControlTextColor : .secondaryLabelColor
     }
 }

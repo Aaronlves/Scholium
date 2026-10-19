@@ -30,6 +30,40 @@ function referenceApply(
 }
 
 describe("exact source mirror", () => {
+  function expectInverseOffsets(mirror: ExactSourceMirror) {
+    const source = mirror.text, normalized = normalizedDocumentText(source);
+    for (let offset = 0; offset <= source.length; offset++) {
+      const expected = source[offset - 1] === "\r" && source[offset] === "\n"
+        ? null : normalizedDocumentText(source.slice(0, offset)).length;
+      expect(mirror.normalizedOffset(offset), `exact offset ${offset}`).toBe(expected);
+    }
+    for (let offset = 0; offset <= normalized.length; offset++) {
+      expect(mirror.normalizedOffset(mirror.exactOffset(offset)!)).toBe(offset);
+    }
+    for (const offset of [-1, source.length + 1, 0.5, NaN, Infinity]) {
+      expect(mirror.normalizedOffset(offset)).toBeNull();
+    }
+  }
+
+  it.each(["", "\ufeff", "\r\n", "\r\n\r\n", "one\r\ntwo\nthree\r\n",
+    "\ufeff中文 🧭 e\u0301\r\n\tvalue\rstandalone\nTail", "bare\r"])(
+    "maps exact UTF-16 positions back without admitting the interior of CRLF: %j", source => {
+      expectInverseOffsets(new ExactSourceMirror(source));
+    },
+  );
+
+  it("keeps inverse offsets current after copied edits, cross-line deletion and replacement", () => {
+    const original = new ExactSourceMirror("\ufeffLead 中文 🧭.\r\nSecond e\u0301.\nTail\r\n");
+    const copy = original.copy();
+    expect(copy.apply([{from: 2, to: 2, insert: "中\n🧭", exactInsert: "中\r\n🧭"}])).toBe(true);
+    expectInverseOffsets(copy);
+    expectInverseOffsets(original);
+    expect(copy.apply([{from: 1, to: 22, insert: "合并"}])).toBe(true);
+    expectInverseOffsets(copy);
+    copy.replace("\ufeffChanged\n\r\nlast\r");
+    expectInverseOffsets(copy);
+  });
+
   it("compares exact ropes across independent construction, edits and replacement", () => {
     const source = "\uFEFFEarlier 😀 e\u0301.\r\n研究\n";
     const original = new ExactSourceMirror(source);
@@ -55,6 +89,36 @@ describe("exact source mirror", () => {
     expect(exactOffsetForNormalizedOffset(source, 4)).toBe(5);
     expect(exactOffsetForNormalizedOffset(source, 8)).toBe(9);
     expect(exactOffsetForNormalizedOffset(source, 14)).toBe(source.length);
+  });
+
+  it("maps retained exact ropes through edits, independent copies and replacement", () => {
+    const source = "\uFEFFone\r\n😀e\u0301\n字\r\n";
+    const mirror = new ExactSourceMirror(source);
+    const original = mirror.copy();
+    const check = (value: ExactSourceMirror) => {
+      const exact = value.text;
+      const bytes = value.utf8ByteCount;
+      const length = normalizedDocumentText(exact).length;
+      for (let offset = 0; offset <= length; offset++) {
+        expect(value.exactOffset(offset)).toBe(referenceOffset(exact, offset));
+        expect(value.exactOffset(offset)).toBe(exactOffsetForNormalizedOffset(exact, offset));
+      }
+      for (const offset of [-1, 0.5, length + 1, Number.MAX_SAFE_INTEGER + 1, Number.NaN,
+        Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        expect(value.exactOffset(offset)).toBeNull();
+      }
+      expect(value.text).toBe(exact);
+      expect(value.utf8ByteCount).toBe(bytes);
+    };
+    check(mirror);
+    expect(mirror.apply([{from: 0, to: 0, insert: "前\n"}])).toBe(true);
+    expect(mirror.text).toBe("前\r\n" + source);
+    check(mirror);
+    check(original);
+    expect(original.text).toBe(source);
+    original.replace("\uFEFFβ\r\nx\n");
+    check(original);
+    expect(mirror.text).toBe("前\r\n" + source);
   });
 
   it("preserves untouched LF and CRLF bytes around an edit", () => {

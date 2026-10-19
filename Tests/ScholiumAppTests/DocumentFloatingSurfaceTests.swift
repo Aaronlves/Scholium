@@ -844,7 +844,8 @@ struct DocumentFloatingSurfaceTests {
                 + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>")
         setPreviewCSS(
             &latest,
-            ":root { --scholium-color-accent: #ff0000 !important; --scholium-color-separator: #00ff00 !important; "
+            try #require(ScholiumDocumentWebResources.text(named: "editor", extension: "css"))
+                + ":root { --scholium-color-accent: #ff0000 !important; --scholium-color-separator: #00ff00 !important; "
                 + "--scholium-document-accent: #ff0000 !important; --scholium-document-source-font-size: 80px !important; } "
                 + ".scholium-document h2 { font-size: 300%; text-align: right; padding-block: 80px; } "
                 + ".scholium-document strong :lang(zh-Hans) { font-family: Georgia; }")
@@ -899,7 +900,12 @@ struct DocumentFloatingSurfaceTests {
         #expect((Double(previewStyle[6].replacingOccurrences(of: "px", with: "")) ?? 100) < 30)
         #expect(previewStyle[7].contains("system-ui"))
         #expect(try await current.evaluateJavaScript("document.body.scrollHeight > window.innerHeight") as? Bool == true)
+        // Editor CSS disables viewport scrolling. The native preview must own
+        // its scroll policy: scrollTo alone also succeeds with overflow:hidden.
+        #expect(try await current.evaluateJavaScript("getComputedStyle(document.documentElement).overflowY") as? String == "auto")
+        #expect(try await current.evaluateJavaScript("getComputedStyle(document.body).overflowY") as? String == "visible")
         #expect(try await current.evaluateJavaScript("getComputedStyle(document.body).fontFamily.includes('system-ui')") as? Bool == true)
+        #expect(try await current.evaluateJavaScript("window.scrollY") as? Double == 0)
         _ = try await current.evaluateJavaScript("window.scrollTo(0, 160)")
         let readingOffset = try await current.evaluateJavaScript("window.scrollY") as? Double
         #expect((readingOffset ?? 0) > 0)

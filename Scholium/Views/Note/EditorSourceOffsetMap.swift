@@ -126,8 +126,29 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
             cumulativeShift += insertionLength - (delta.toUTF16 - delta.fromUTF16)
         }
 
+        // Valid, nonoverlapping old-source deltas preserve retained order.
+        // Boundary scans can overlap, so sort only that small changed set and
+        // merge it into the retained index while removing duplicate offsets.
+        rescanned.sort()
+        var merged: [Int] = []
+        merged.reserveCapacity(retained.count + rescanned.count)
+        var retainedIndex = 0
+        var rescannedIndex = 0
+        while retainedIndex < retained.count || rescannedIndex < rescanned.count {
+            let offset: Int
+            if rescannedIndex == rescanned.count
+                || (retainedIndex < retained.count && retained[retainedIndex] <= rescanned[rescannedIndex])
+            {
+                offset = retained[retainedIndex]
+                retainedIndex += 1
+            } else {
+                offset = rescanned[rescannedIndex]
+                rescannedIndex += 1
+            }
+            if merged.last != offset { merged.append(offset) }
+        }
         sourceUTF16Length = resultingLength
-        crlfSourceOffsets = Array(Set(retained + rescanned)).sorted()
+        crlfSourceOffsets = merged
     }
 
     private static func crlfOffsets(

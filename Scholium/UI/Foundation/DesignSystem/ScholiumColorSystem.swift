@@ -50,8 +50,7 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         case .secondaryText:
             .secondaryLabelColor.blended(withFraction: 0.15, of: .labelColor) ?? .labelColor
         case .separator: .separatorColor
-        case .accent: .controlAccentColor
-        case .information: .systemBlue
+        case .accent, .information: .controlAccentColor
         case .attention: .systemOrange
         case .destructive, .comparisonRemoval: .systemRed
         case .confirmed, .comparisonInsertion: .systemGreen

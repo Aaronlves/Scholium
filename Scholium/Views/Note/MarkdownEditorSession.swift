@@ -339,6 +339,56 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         )
         private var qaTerminationObserverInstalled = false
         var testingOpeningImageWaitID: UUID? { openingImageWaitID }
+
+        struct TestingEditorChangeTiming: Sendable {
+            let baseGeneration: Int
+            let resultingGeneration: Int
+            let accepted: Bool
+            let startedAt: ContinuousClock.Instant
+            let completedAt: ContinuousClock.Instant
+            let validationAndMapping: Duration
+            let bufferApply: Duration?
+            let offsetMap: Duration?
+            let publishingAndCallbacks: Duration?
+        }
+
+        /// Opt-in, content-free observation of the existing synchronous path.
+        var testingEditorChangeObserver: ((TestingEditorChangeTiming) -> Void)?
+
+        struct TestingImageRefreshTiming: Sendable {
+            let generation: Int
+            let accepted: Bool
+            let startedAt: ContinuousClock.Instant
+            let completedAt: ContinuousClock.Instant
+            let sourceCapture: Duration
+            let containsAndQuery: Duration?
+            let admissionGuard: Duration?
+            let publication: Duration?
+        }
+
+        /// Starts after debounce and initial identity admission; query time can
+        /// include suspension and is elapsed time rather than main-actor CPU.
+        var testingImageRefreshObserver: ((TestingImageRefreshTiming) -> Void)?
+
+        struct TestingRecoveryRetentionStats: Sendable {
+            let currentGeneration: Int
+            let recoveryGeneration: Int?
+            let recoverySourceUTF8Bytes: Int
+            let recoveryHistoryUTF8Bytes: Int
+            let detachmentSourceUTF8Bytes: Int
+            let detachmentHistoryUTF8Bytes: Int
+        }
+
+        /// Logical retained payload sizes, not process RSS or distinct allocations.
+        var testingRecoveryRetentionStats: TestingRecoveryRetentionStats {
+            TestingRecoveryRetentionStats(
+                currentGeneration: generation,
+                recoveryGeneration: recoverySnapshot?.generation,
+                recoverySourceUTF8Bytes: recoverySnapshot?.source.utf8.count ?? 0,
+                recoveryHistoryUTF8Bytes: recoverySnapshot?.stateJSON?.utf8.count ?? 0,
+                detachmentSourceUTF8Bytes: detachmentCapture?.snapshot.source.utf8.count ?? 0,
+                detachmentHistoryUTF8Bytes: detachmentCapture?.snapshot.stateJSON?.utf8.count ?? 0)
+        }
     #endif
     var hasAttachedWebView: Bool { webView != nil }
     var isReady: Bool { presentation.webContentReady }
@@ -1227,18 +1277,55 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     self.imageResourceQueryID = nil
                 }
             }
+            #if DEBUG
+                let timingObserver = self.testingImageRefreshObserver
+                let timingStartedAt: ContinuousClock.Instant? = timingObserver == nil ? nil : .now
+                var timingGeneration: Int?
+                var timingSourceCapturedAt: ContinuousClock.Instant?
+                var timingQueryCompletedAt: ContinuousClock.Instant?
+                var timingAdmittedAt: ContinuousClock.Instant?
+                var timingAccepted = false
+                defer {
+                    if let timingObserver, let timingStartedAt, let timingGeneration {
+                        let completedAt = ContinuousClock.now
+                        timingObserver(
+                            TestingImageRefreshTiming(
+                                generation: timingGeneration, accepted: timingAccepted,
+                                startedAt: timingStartedAt, completedAt: completedAt,
+                                sourceCapture: timingStartedAt.duration(to: timingSourceCapturedAt ?? completedAt),
+                                containsAndQuery: timingSourceCapturedAt.map { $0.duration(to: timingQueryCompletedAt ?? completedAt) },
+                                admissionGuard: timingQueryCompletedAt.map { $0.duration(to: timingAdmittedAt ?? completedAt) },
+                                publication: timingAdmittedAt.map { $0.duration(to: completedAt) }))
+                    }
+                }
+            #endif
             let source = self.checkedSource
             let expectedGeneration = self.generation
+            #if DEBUG
+                if timingObserver != nil {
+                    timingGeneration = expectedGeneration
+                    timingSourceCapturedAt = .now
+                }
+            #endif
             let images = source.contains("![") ? await query(source) : [:]
+            #if DEBUG
+                if timingObserver != nil { timingQueryCompletedAt = .now }
+            #endif
             guard !Task.isCancelled, !self.presentationIsClosed,
                 intendedRequestEpoch == self.requestEpoch,
                 intendedDocumentID == self.documentID,
                 intendedContextKey == self.imageResourceContextKey,
                 self.imageResourceQueryID == queryID,
                 expectedGeneration == self.generation,
-                source.utf8.elementsEqual(self.checkedSource.utf8)
+                self.checkedSourceBuffer.isEqual(to: source)
             else { return }
+            #if DEBUG
+                if timingObserver != nil { timingAdmittedAt = .now }
+            #endif
             self.setImageResources(images, documentID: intendedDocumentID, generation: expectedGeneration)
+            #if DEBUG
+                timingAccepted = true
+            #endif
         }
     }
 
@@ -2412,6 +2499,27 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         citationManaged: Bool? = nil,
         citationData: ZoteroCitationData? = nil
     ) -> Bool {
+        #if DEBUG
+            let timingObserver = testingEditorChangeObserver
+            let timingStartedAt: ContinuousClock.Instant? = timingObserver == nil ? nil : .now
+            var timingMappedAt: ContinuousClock.Instant?
+            var timingBufferAppliedAt: ContinuousClock.Instant?
+            var timingOffsetMappedAt: ContinuousClock.Instant?
+            var timingAccepted = false
+            defer {
+                if let timingObserver, let timingStartedAt {
+                    let completedAt = ContinuousClock.now
+                    timingObserver(
+                        TestingEditorChangeTiming(
+                            baseGeneration: baseGeneration, resultingGeneration: resultingGeneration,
+                            accepted: timingAccepted, startedAt: timingStartedAt, completedAt: completedAt,
+                            validationAndMapping: timingStartedAt.duration(to: timingMappedAt ?? completedAt),
+                            bufferApply: timingMappedAt.map { $0.duration(to: timingBufferAppliedAt ?? completedAt) },
+                            offsetMap: timingBufferAppliedAt.map { $0.duration(to: timingOffsetMappedAt ?? completedAt) },
+                            publishingAndCallbacks: timingOffsetMappedAt.map { $0.duration(to: completedAt) }))
+                }
+            }
+        #endif
         guard !rawChanges.isEmpty || citationManaged == true,
             rawChanges.count <= 512,
             baseGeneration == generation,
@@ -2446,21 +2554,34 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     insertion: raw.exactInsert
                 ))
         }
+        #if DEBUG
+            if timingObserver != nil { timingMappedAt = .now }
+        #endif
         do {
             try checkedSourceBuffer.apply(changes)
         } catch {
             return false
         }
+        #if DEBUG
+            if timingObserver != nil { timingBufferAppliedAt = .now }
+        #endif
         sourceOffsetMap.apply(
             changes,
             resultingSourceUTF16Length: checkedSourceBuffer.utf16Length,
             resultingCharacterAt: checkedSourceBuffer.character(atUTF16:)
         )
+        #if DEBUG
+            if timingObserver != nil { timingOffsetMappedAt = .now }
+        #endif
         checkedEditorUTF16Length = resultingEditorUTF16Length
         checkedCitationData = citationData
         generation = resultingGeneration
+        discardSupersededAttachedRecovery()
         updatePublished(\.isDirty, to: true)
         sourceChangeHandler?()
+        #if DEBUG
+            timingAccepted = true
+        #endif
         return true
     }
 
@@ -3204,6 +3325,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     sourceChangeHandler?()
                 }
                 generation = result.resultingGeneration
+                if advanced { discardSupersededAttachedRecovery() }
             }
             if result.resultingGeneration == generation,
                 responseEditorLength != nil
@@ -3385,6 +3507,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if publish {
             updatePublished(\.isDirty, to: true)
             sourceChangeHandler?()
+        }
+    }
+
+    /// The live page owns newer source and Undo. An older capture can no longer
+    /// recover that generation; keep only captures that still prove its state.
+    /// Loading/restoration retains the capture until its history is installed.
+    private func discardSupersededAttachedRecovery() {
+        guard isReady, isLoaded, webView != nil else { return }
+        if let snapshot = recoverySnapshot, snapshot.generation < generation {
+            recoverySnapshot = nil
+        }
+        if let capture = detachmentCapture, capture.snapshot.generation < generation {
+            detachmentCapture = nil
         }
     }
 

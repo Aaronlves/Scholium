@@ -274,7 +274,7 @@ function presentationBlockMarkerRanges(
 function inlinePresentation(
   node: ProjectionSyntaxNode,
   kind: PresentationInlineKind,
-  source: string,
+  sourceText: () => string,
   referenceTargets: () => ReadonlyMap<string, SemanticSourceRange>,
 ): SemanticInlineProjection | null {
   const markerNames = new Set<string>();
@@ -315,6 +315,7 @@ function inlinePresentation(
   let projectionTo = node.to;
   let visibleRanges = complementRanges(node.from, node.to, markerRanges);
   if (kind === "image") {
+    const source = sourceText();
     if (markerRanges.length < 2) return null;
     const alt = {from: markerRanges[0].to, to: markerRanges[1].from};
     targetRange = directChildRanges(node, "URL")[0] ?? null;
@@ -333,6 +334,7 @@ function inlinePresentation(
     }
     visibleRanges = [alt];
   } else if (kind === "link") {
+    const source = sourceText();
     const explicitVisible = directChildRanges(node, "URL");
     // The Markdown parser can retain a recoverable Link node for an unfinished
     // `[label](` prefix. Without a URL child there is no proven destination,
@@ -364,6 +366,7 @@ function inlinePresentation(
         : [];
     }
   } else if (kind === "wikilink") {
+    const source = sourceText();
     const alias = childRanges(node, new Set(["WikiLinkAlias"]));
     const target = childRanges(node, new Set(["WikiLinkTarget"]));
     targetRange = target[0] ?? null;
@@ -438,6 +441,7 @@ export function semanticProjectionRanges(
   visibleRanges: readonly {from: number; to: number}[],
   margin = 2_000,
   tree: ReturnType<typeof syntaxTree> = syntaxTree(state),
+  observeMaterialization?: (milliseconds: number, utf16Count: number) => void,
 ): SemanticProjectionRanges {
   const result: SemanticProjectionRanges = {
     blocks: [],
@@ -448,9 +452,21 @@ export function semanticProjectionRanges(
   const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
   const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
   const blockStack: SemanticBlockProjection[] = [];
-  const source = state.doc.toString();
+  let completeSource: string | undefined;
+  // References and link annotations can depend on source outside the window.
+  // Plain local paragraphs read their exact ranges directly from the rope.
+  const sourceText = () => {
+    if (completeSource === undefined) {
+      const materializationStartedAt = observeMaterialization ? performance.now() : 0;
+      completeSource = state.doc.toString();
+      observeMaterialization?.(performance.now() - materializationStartedAt, completeSource.length);
+    }
+    return completeSource;
+  };
+  const sourceSlice = (from: number, to: number) => completeSource === undefined
+    ? state.doc.sliceString(from, to) : completeSource.slice(from, to);
   let referenceTargets: ReadonlyMap<string, SemanticSourceRange> | undefined;
-  const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
+  const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, sourceText());
   tree.iterate({
     from,
     to,
@@ -530,7 +546,7 @@ export function semanticProjectionRanges(
 
       const inlineKind = inlineKinds.get(node.name);
       if (inlineKind) {
-        const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
+        const inline = inlinePresentation(node, inlineKind, sourceText, resolveReferenceTargets);
         if (inline) result.inlines.push(inline);
       }
       if ([
@@ -553,26 +569,27 @@ export function semanticProjectionRanges(
   });
   // Source-owned Obsidian paragraph identities are a suffix of a parsed
   // paragraph. Never recognize a lookalike inside inline or block literals.
-  const paragraphIsProtected = (block: SemanticBlockProjection) =>
-    source.slice(block.from, block.to).includes("%%")
-      || source.slice(block.from, block.to).includes("<!--")
+  const paragraphIsProtected = (block: SemanticBlockProjection) => {
+    const paragraph = sourceSlice(block.from, block.to);
+    return paragraph.includes("%%") || paragraph.includes("<!--")
       || result.inlines.some((inline) =>
         ["inlineMath", "inlineFootnote"].includes(inline.kind)
           && inline.from < block.to && inline.to > block.from)
       || result.blocks.some((candidate) =>
         ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind)
           && candidate.from < block.to && candidate.to > block.from);
+  };
   for (const block of result.blocks) {
     if (block.kind !== "paragraph") continue;
-    const paragraph = source.slice(block.from, block.to);
+    const paragraph = sourceSlice(block.from, block.to);
     const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
     if (!match || paragraphIsProtected(block)) continue;
     const markerFrom = block.from + match.index + match[0].indexOf("^");
     const markerTo = markerFrom + match[1].length + 1;
-    if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+    if (paragraph.trim() === sourceSlice(markerFrom, markerTo)) {
       const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
       if (!preceding || preceding.kind !== "paragraph"
-          || source.slice(preceding.to, block.from).trim() !== ""
+          || sourceSlice(preceding.to, block.from).trim() !== ""
           || paragraphIsProtected(preceding)) continue;
     }
     if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom)

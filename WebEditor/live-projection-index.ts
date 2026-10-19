@@ -27,9 +27,9 @@ import {
   semanticProjectionRanges,
   type SemanticProjectionRanges,
 } from "./semantic-projection";
-import {frontmatterBoundary, normalizedDocumentText} from "./state";
+import {frontmatterBoundary} from "./state";
 import {setCitationSnapshot, setCitationData} from "./zotero-citation-state";
-import {setExactSource} from "./exact-source-history";
+import {exactSourceState, setExactSource} from "./exact-source-history";
 import {projectFieldsForState, type FieldProjection} from "./zotero-fields";
 import {
   tablePresentation,
@@ -187,20 +187,20 @@ function indexedTaskItemRanges(syntax: SemanticProjectionRanges) {
 }
 
 function indexedQuoteRanges(syntax: SemanticProjectionRanges) {
+  const quotes = syntax.blocks.filter((block) => block.kind === "blockQuote");
+  if (quotes.length === 0) return [];
   const blocksByRange = new Map(
     syntax.blocks.map((block) => [rangeKey(block.from, block.to), block]),
   );
-  return syntax.blocks
-    .filter((block) => block.kind === "blockQuote")
-    .map((block): LiveQuoteProjectionRange => {
-      let depth = 1;
-      let parent = block.parent;
-      while (parent) {
-        if (parent.kind === "blockQuote") depth += 1;
-        parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
-      }
-      return {from: block.from, to: block.to, depth};
-    });
+  return quotes.map((block): LiveQuoteProjectionRange => {
+    let depth = 1;
+    let parent = block.parent;
+    while (parent) {
+      if (parent.kind === "blockQuote") depth += 1;
+      parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
+    }
+    return {from: block.from, to: block.to, depth};
+  });
 }
 
 export interface LiveProjectionIndexController {
@@ -284,16 +284,28 @@ function finalizedLiveProjectionIndex(
   frontmatterRange: ProjectionSourceRange | null,
   hasUnclosedFrontmatter: boolean,
   referenceDefinitionRanges: readonly ProjectionSourceRange[],
+  recordMetric: LiveProjectionIndexOptions["recordMetric"],
 ): LiveProjectionIndex {
   const doc = state.doc;
   if (syntax.inlines.some(inline => inline.kind === "citation")) {
+    const admissionStartedAt = performance.now();
     const catalog = projectFieldsForState(state);
+    const catalogMilliseconds = performance.now() - admissionStartedAt;
+    const mappingStartedAt = performance.now();
+    const mirror = state.field(exactSourceState, false);
     const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields
       .filter(field => field.kind === "citation")
-      .map(field => rangeKey(normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
-        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length)));
+      .flatMap(field => {
+        const from = mirror ? mirror.normalizedOffset(field.range.from) : field.range.from;
+        const to = mirror ? mirror.normalizedOffset(field.range.to) : field.range.to;
+        return from === null || to === null ? [] : [rangeKey(from, to)];
+      }));
     syntax = {...syntax, inlines: syntax.inlines.filter(inline => inline.kind !== "citation"
       || admitted.has(rangeKey(inline.from, inline.to)))};
+    recordMetric("citation-projection-admission", admissionStartedAt, {
+      documentLength: doc.length, fieldCount: catalog.fields.length,
+      catalogMilliseconds, rangeMappingMilliseconds: performance.now() - mappingStartedAt,
+    });
   }
   const immutableExcluded = immutableProjectionRanges(excluded);
   const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
@@ -534,6 +546,7 @@ function buildLiveProjectionIndex(
     frontmatterRange,
     yamlBoundary.unclosed,
     referenceDefinitionRanges,
+    recordMetric,
   );
   recordMetric("projection-index", startedAt, {
     documentLength: state.doc.length,
@@ -613,7 +626,7 @@ function mapLiveProjectionIndex(
   const result = finalizedLiveProjectionIndex(
     transaction.state, index.topologyIdentity, syntax, index.syntaxComplete, excluded, codeBlocks,
     inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts,
-    mathExpressions, frontmatterRange, index.hasUnclosedFrontmatter, referenceDefinitionRanges,
+    mathExpressions, frontmatterRange, index.hasUnclosedFrontmatter, referenceDefinitionRanges, recordMetric,
   );
   const finalizationMilliseconds = performance.now() - finalizationStartedAt;
   recordMetric("projection-index-map", startedAt, {
@@ -643,12 +656,15 @@ export function createLiveProjectionIndexController(
       }
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
       const topologyStartedAt = performance.now();
+      let topologyPhases: Record<string, number> = {};
       const mapped = previous.syntaxComplete && transactionCanMapProjectionTopology(
         transaction, structuralMarker, previous.mutationSensitiveRanges, previous.syntax,
+        observed => { topologyPhases = observed; },
       );
       options.recordMetric("projection-topology-proof", topologyStartedAt, {
         documentLength: transaction.newDoc.length, mapped: mapped ? 1 : 0, localProof: previous.syntaxComplete ? 1 : 0,
         blockCount: previous.syntax.blocks.length, inlineCount: previous.syntax.inlines.length,
+        ...topologyPhases,
       });
       return mapped
         ? mapLiveProjectionIndex(previous, transaction, options.recordMetric)

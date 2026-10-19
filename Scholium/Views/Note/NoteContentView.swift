@@ -829,7 +829,7 @@ struct NoteContentView<ShellNotices: View>: View {
 
     private var outlineTaskIdentity: String {
         if isEditing {
-            return "editing:\(editorSession.documentID):\(DocumentFingerprint(content: editingSource).sha256)"
+            return "editing:\(editorSession.documentID):\(documentSession.editingSourceFingerprint.sha256)"
         }
         return "read:\(noteFingerprint.sha256)"
     }
@@ -1311,9 +1311,10 @@ struct NoteContentView<ShellNotices: View>: View {
         if let retained = editorSession.retainedScrollAnchor {
             return retained
         }
+        guard let savedAnchor = documentSession.editorScrollAnchor else { return nil }
         let fingerprint = DocumentFingerprint(content: editorSession.checkedSource).sha256
-        guard documentSession.editorScrollAnchor?.sourceFingerprint == fingerprint else { return nil }
-        return documentSession.editorScrollAnchor
+        guard savedAnchor.sourceFingerprint == fingerprint else { return nil }
+        return savedAnchor
     }
 
     private var documentPresentation: ScholiumDocumentPresentationConfiguration {

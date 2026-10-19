@@ -3402,12 +3402,16 @@ struct FrontendArchitectureTests {
 
     @Test("Native colors are shared by AppKit and WebKit")
     func nativeAppearanceColors() throws {
-        let backgrounds: [(ScholiumColorRole, NSColor)] = [
+        let nativeColors: [(ScholiumColorRole, NSColor)] = [
             (.documentBackground, .textBackgroundColor),
             (.surfaceBackground, .windowBackgroundColor),
             (.navigationSurfaceBackground, .windowBackgroundColor),
             (.apparatusSurfaceBackground, .windowBackgroundColor),
             (.raisedSurfaceBackground, .underPageBackgroundColor),
+            (.accent, .controlAccentColor),
+            (.information, .controlAccentColor),
+            (.attention, .systemOrange),
+            (.destructive, .systemRed),
         ]
         let appearances: [(NSAppearance.Name, Bool, String)] = [
             (.aqua, false, ScholiumWebDesignTokens.rootCSSDeclarations),
@@ -3417,7 +3421,7 @@ struct FrontendArchitectureTests {
         ]
         for (appearanceName, increasedContrast, declarations) in appearances {
             let appearance = try #require(NSAppearance(named: appearanceName))
-            for (role, systemColor) in backgrounds {
+            for (role, systemColor) in nativeColors {
                 let expectedAppearance = try #require(
                     NSAppearance(
                         named: increasedContrast

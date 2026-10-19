@@ -1,7 +1,7 @@
 import ScholiumContracts
 
-/// A source-derived value for the existing Document notice stack. Review uses
-/// committed Markdown; an active editor uses its retained exact buffer.
+/// A source-derived value for the existing Document notice stack. An editor's
+/// most recent admitted status is presentation, never mutation authority.
 struct DocumentCitationPresentation: Equatable {
     enum Integrity: Equatable { case stale, unresolved }
 
@@ -12,7 +12,18 @@ struct DocumentCitationPresentation: Equatable {
     var isVisible: Bool { integrity != nil || status != nil }
 
     init(fields: ZoteroMarkdownFields, status: String?, canRefresh: Bool, canOpenSource: Bool) {
-        integrity = !fields.diagnostics.isEmpty ? .unresolved : fields.citationStateStale ? .stale : nil
+        self.init(
+            citationState: !fields.diagnostics.isEmpty ? .unresolved : fields.citationStateStale ? .stale : .current,
+            status: status, canRefresh: canRefresh, canOpenSource: canOpenSource)
+    }
+
+    init(citationState: MarkdownEditorCitationState, status: String?, canRefresh: Bool, canOpenSource: Bool) {
+        integrity =
+            switch citationState {
+            case .current: nil
+            case .stale: .stale
+            case .unresolved: .unresolved
+            }
         self.status = status
         self.canRefresh = integrity == .stale && canRefresh
         self.canOpenSource = integrity != nil && canOpenSource
@@ -70,6 +81,19 @@ extension DocumentSessionModel {
         PerformanceProbe.shared.measureNoteOpeningWork(
             .citationPresentation, documentID: committedDocument.relativePath, editorSessionID: editorSession.sessionID
         ) {
+            let canRefresh =
+                isEditing && editingIsAvailable && !returnToReadAfterSave && !editorSession.isComposing
+                && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true
+            let canOpenSource = editingIsAvailable && presentationMode != .source && !editorSession.isComposing && !returnToReadAfterSave
+            // Keep the last admitted notice while the next interaction is in
+            // flight. Commands independently capture and validate current source.
+            if isEditing, editorSession.documentID == editorSession.bridgeDocumentID,
+                let citationState = editorSession.interactionAvailability?.citationState
+            {
+                return DocumentCitationPresentation(
+                    citationState: citationState, status: editorSession.citationStatus,
+                    canRefresh: canRefresh, canOpenSource: canOpenSource)
+            }
             let fields: ZoteroMarkdownFields
             if isEditing, let checkedFields = editorSession.citationFields(forDocumentID: editorSession.bridgeDocumentID) {
                 fields = checkedFields
@@ -89,9 +113,7 @@ extension DocumentSessionModel {
             }
             return DocumentCitationPresentation(
                 fields: fields, status: editorSession.citationStatus,
-                canRefresh: isEditing && editingIsAvailable && !returnToReadAfterSave && !editorSession.isComposing
-                    && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true,
-                canOpenSource: editingIsAvailable && presentationMode != .source && !editorSession.isComposing && !returnToReadAfterSave)
+                canRefresh: canRefresh, canOpenSource: canOpenSource)
         }
     }
 }
@@ -99,6 +121,17 @@ extension DocumentSessionModel {
 extension ExternalMarkdownWindowModel {
     var citationPresentation: DocumentCitationPresentation? {
         guard let snapshot else { return nil }
+        let canRefresh =
+            mode != .read && permitsSourceActions && !isBusy && !editorSession.isComposing && inputResumeError == nil
+            && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true
+        let canOpenSource = mode != .source && canSelectMode(.source)
+        if mode != .read, editorSession.documentID == documentID,
+            let citationState = editorSession.interactionAvailability?.citationState
+        {
+            return DocumentCitationPresentation(
+                citationState: citationState, status: editorSession.citationStatus,
+                canRefresh: canRefresh, canOpenSource: canOpenSource)
+        }
         let fields: ZoteroMarkdownFields
         if mode != .read, let checkedFields = editorSession.citationFields(forDocumentID: documentID) {
             fields = checkedFields
@@ -110,8 +143,6 @@ extension ExternalMarkdownWindowModel {
         }
         return DocumentCitationPresentation(
             fields: fields, status: editorSession.citationStatus,
-            canRefresh: mode != .read && permitsSourceActions && !isBusy && !editorSession.isComposing && inputResumeError == nil
-                && editorSession.interactionAvailability?.availableCommands.contains(.refreshCitations) == true,
-            canOpenSource: mode != .source && canSelectMode(.source))
+            canRefresh: canRefresh, canOpenSource: canOpenSource)
     }
 }

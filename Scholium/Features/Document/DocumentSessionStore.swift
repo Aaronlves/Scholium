@@ -83,10 +83,14 @@ final class DocumentSessionModel: ObservableObject {
     let editorSession: MarkdownEditorSession
     let citationFieldsCache = DocumentCitationFieldsCache()
     private(set) var retainedCitationSourceRevision: UInt64 = 0
+    private var cachedEditingSourceFingerprint: DocumentFingerprint?
 
     @Published private(set) var presentation = DocumentPresentationState()
     @Published var editingSource = "" {
-        didSet { retainedCitationSourceRevision &+= 1 }
+        didSet {
+            retainedCitationSourceRevision &+= 1
+            cachedEditingSourceFingerprint = nil
+        }
     }
     @Published var originalEditingSource = ""
     @Published var editingRevision: DocumentFingerprint?
@@ -391,6 +395,15 @@ final class DocumentSessionModel: ObservableObject {
     /// both agree that the session is clean.
     var hasUnsavedChanges: Bool {
         editorSession.isDirty || !ScholiumExactUTF8.equal(editingSource, originalEditingSource)
+    }
+
+    /// Identity of the commit-paced snapshot, independent of both the newer
+    /// checked editor buffer and the disk revision used for persistence.
+    var editingSourceFingerprint: DocumentFingerprint {
+        if let cachedEditingSourceFingerprint { return cachedEditingSourceFingerprint }
+        let fingerprint = DocumentFingerprint(content: editingSource)
+        cachedEditingSourceFingerprint = fingerprint
+        return fingerprint
     }
 
     /// Presentation readiness does not determine source ownership. A detached

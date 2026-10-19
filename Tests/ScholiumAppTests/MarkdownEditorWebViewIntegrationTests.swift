@@ -3061,6 +3061,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(harness.session.floatingSurfaces.isPreviewShown)
         #expect(harness.session.floatingSurfaces.previewWebView?.window !== owner.window)
+        let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+        #expect(try await preview.evaluateJavaScript("getComputedStyle(document.documentElement).overflowY") as? String == "auto")
+        #expect(try await preview.evaluateJavaScript("getComputedStyle(document.body).overflowY") as? String == "visible")
         #expect(owner.frame == frame)
         #expect(harness.session.context?.selections == selection)
         #expect(harness.session.context?.undoLabel == undo)

@@ -2517,6 +2517,24 @@ describe("local citation completion", () => {
     expect(h.intents).toHaveLength(1);
   });
 
+  it.each([true, false])("rechecks exact source across a reinstall without a full snapshot (equal %s)", equal => {
+    const source = "\uFEFFEarlier 😀 e\u0301.\r\nAccording to @作者";
+    const h = citationSuggestionHarness(source);
+    const snapshots = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+    try {
+      const result = h.result()!;
+      const previous = h.state();
+      h.view.dispatch({effects: setExactSource.of(equal ? source : source.replaceAll("\r\n", "\n")),
+        annotations: Transaction.addToHistory.of(false)});
+      expect(h.state().doc).toBe(previous.doc);
+      expect(h.state().field(exactSourceState)).not.toBe(previous.field(exactSourceState));
+      h.accept(result);
+      expect(h.intents).toHaveLength(equal ? 1 : 0);
+      expect(undoDepth(h.state())).toBe(0);
+      expect(snapshots).not.toHaveBeenCalled();
+    } finally { snapshots.mockRestore(); }
+  });
+
   it("rejects source, interaction, lifecycle and composition changes before acceptance", () => {
     for (const invalidate of [
       (h: ReturnType<typeof citationSuggestionHarness>) => h.view.dispatch({changes: {from: 0, insert: "changed "}}),

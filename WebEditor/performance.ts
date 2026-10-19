@@ -43,13 +43,20 @@ export function recordEditorMetric(
 /// crossed into the following task. The frame callback itself runs before
 /// paint, so it is not a valid key-to-painted-edit endpoint.
 export function scheduleAfterNextPaint(
-  callback: () => void,
+  callback: (timing: {frameWaitMilliseconds: number; taskWaitMilliseconds: number}) => void,
   requestFrame: (callback: FrameRequestCallback) => number =
     window.requestAnimationFrame.bind(window),
   scheduleTask: (callback: () => void) => number =
     (task) => window.setTimeout(task, 0),
 ) {
-  requestFrame(() => { scheduleTask(callback); });
+  const startedAt = performance.now();
+  requestFrame(() => {
+    const frameAt = performance.now();
+    scheduleTask(() => callback({
+      frameWaitMilliseconds: Math.max(0, frameAt - startedAt),
+      taskWaitMilliseconds: Math.max(0, performance.now() - frameAt),
+    }));
+  });
 }
 
 export function sampleEditorMemory(documentLength: number) {

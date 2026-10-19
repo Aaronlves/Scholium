@@ -168,6 +168,95 @@ struct DocumentCitationPresentationTests {
         #expect(document.sourceBytes == Data(source.utf8))
     }
 
+    @Test(
+        "Edit presents the admitted citation state without deriving it again from native source",
+        arguments: [MarkdownEditorCitationState.current, .stale, .unresolved])
+    func admittedEditorNotice(citationState: MarkdownEditorCitationState) throws {
+        let exact = try source(for: citationState == .current ? .duplicate : .fresh)
+        let document = NoteDocument(relativePath: "Admitted.md", rawContent: exact)
+        let session = DocumentSessionModel(key: nil)
+        let editor = session.editorSession
+        session.editingSource = exact
+        editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
+        session.beginEditing(in: .livePreview)
+        let sourceNotice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
+        let expected = integrity(for: citationState)
+        try #require(sourceNotice.integrity != expected)
+
+        try #require(setInteraction(editor, composing: false, citationState: citationState))
+        let notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
+
+        #expect(notice.integrity == expected)
+        #expect(notice.isVisible == (expected != nil))
+        #expect(notice.canRefresh == (citationState == .stale))
+        #expect(notice.canOpenSource == (expected != nil))
+        #expect(!editor.isLoaded && !editor.hasAttachedWebView)
+        #expect(editor.checkedSource.utf8.elementsEqual(exact.utf8))
+        session.finishEditing()
+        #expect(
+            session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity
+                == sourceNotice.integrity)
+    }
+
+    @Test("A pending input preserves its admitted notice until a current interaction changes that presentation")
+    func pendingEditorNotice() throws {
+        let exact = "Ordinary synthetic source."
+        let document = NoteDocument(relativePath: "Pending.md", rawContent: exact)
+        let session = DocumentSessionModel(key: nil)
+        let editor = session.editorSession
+        session.editingSource = exact
+        editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
+        session.beginEditing(in: .livePreview)
+        try #require(setInteraction(editor, composing: false, citationState: .stale, interactionRevision: 10))
+        func notice() -> DocumentCitationPresentation {
+            session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
+        }
+        try #require(notice().integrity == .stale)
+        try #require(
+            editor.acceptEditorChanges(
+                [.init(from: 0, to: 0, insert: "Typed ", exactInsert: "Typed ")],
+                baseGeneration: 0, resultingGeneration: 1))
+        #expect(notice().integrity == .stale)
+        #expect(editor.checkedSource == "Typed " + exact)
+
+        #expect(
+            !setInteraction(
+                editor, composing: false, citationState: .current,
+                documentVersion: 0, interactionRevision: 11))
+        #expect(notice().integrity == .stale)
+        let selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
+        try #require(
+            editor.updateInteraction(
+                selections: selections, line: 1, column: 1, lineCount: 1,
+                documentVersion: 1, interactionRevision: 11, context: nil))
+        #expect(notice().integrity == .stale)
+        try #require(setInteraction(editor, composing: false, citationState: .unresolved, interactionRevision: 12))
+        #expect(notice().integrity == .unresolved)
+        #expect(!notice().canRefresh && notice().canOpenSource)
+        #expect(editor.checkedSource == "Typed " + exact)
+    }
+
+    @Test("A source reload clears the admitted notice before deriving its new source fallback")
+    func reloadedEditorNotice() throws {
+        let exact = try source(for: .duplicate)
+        let document = NoteDocument(relativePath: "Reloaded.md", rawContent: exact)
+        let session = DocumentSessionModel(key: nil)
+        let editor = session.editorSession
+        session.editingSource = exact
+        editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
+        session.beginEditing(in: .livePreview)
+        try #require(setInteraction(editor, composing: false, citationState: .current))
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == nil)
+
+        editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
+
+        #expect(editor.interactionAvailability == nil)
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .unresolved)
+        try #require(setInteraction(editor, composing: false, citationState: nil))
+        #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .unresolved)
+        #expect(editor.checkedSource.utf8.elementsEqual(exact.utf8))
+    }
+
     @Test("Edit uses the exact checked buffer and returning to Review restores committed-source authority")
     func editThenReviewChangesSourceOwner() throws {
         let committedSource = try source(for: .fresh)
@@ -216,6 +305,7 @@ struct DocumentCitationPresentationTests {
         editor.loadDocument(try source(for: .duplicate), documentID: foreignID, mode: .source)
         let foreign = try #require(editor.citationFields(forDocumentID: foreignID))
         #expect(!foreign.diagnostics.isEmpty)
+        try #require(setInteraction(editor, composing: false, citationState: .current))
         #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == .stale)
         session.finishEditing()
         #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).integrity == nil)
@@ -230,7 +320,7 @@ struct DocumentCitationPresentationTests {
         let editor = session.editorSession
         editor.loadDocument(exact, documentID: editor.bridgeDocumentID, mode: .livePreview)
         session.beginEditing(in: .livePreview)
-        setInteraction(editor, composing: false)
+        setInteraction(editor, composing: false, citationState: .stale)
         var notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.canRefresh && notice.canOpenSource)
         await editor.announceCitationStatus("Synthetic latest status")
@@ -239,11 +329,11 @@ struct DocumentCitationPresentationTests {
         editor.dismissCitationStatus()
         #expect(session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true).status == nil)
 
-        setInteraction(editor, composing: true)
+        setInteraction(editor, composing: true, citationState: .stale)
         #expect(editor.interactionAvailability?.availableCommands.contains(.refreshCitations) == true)
         notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.integrity == .stale && !notice.canRefresh && !notice.canOpenSource)
-        setInteraction(editor, composing: false)
+        setInteraction(editor, composing: false, citationState: .stale)
         session.returnToReadAfterSave = true
         notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(!notice.canRefresh && !notice.canOpenSource)
@@ -318,6 +408,40 @@ struct DocumentCitationPresentationTests {
         }
     }
 
+    @Test(
+        "External Edit presents admitted citation state while Review keeps the file snapshot",
+        arguments: [MarkdownEditorCitationState.current, .stale, .unresolved])
+    func admittedExternalNotice(citationState: MarkdownEditorCitationState) async throws {
+        try await withExternalSource(try source(for: citationState == .current ? .duplicate : .fresh)) { url, exact in
+            let model = ExternalMarkdownWindowModel(url: url)
+            defer { model.close() }
+            await model.open()
+            let sourceNotice = try #require(model.citationPresentation)
+            let expected = integrity(for: citationState)
+            try #require(sourceNotice.integrity != expected)
+            model.selectMode(.livePreview)
+            let editor = model.editorSession
+            editor.loadDocument(exact, documentID: model.documentID, mode: .livePreview)
+            try #require(setInteraction(editor, composing: false, citationState: citationState))
+
+            let notice = try #require(model.citationPresentation)
+
+            #expect(notice.integrity == expected)
+            #expect(notice.isVisible == (expected != nil))
+            #expect(notice.canRefresh == (citationState == .stale))
+            #expect(notice.canOpenSource == (expected != nil))
+            #expect(editor.checkedSource.utf8.elementsEqual(exact.utf8))
+            #expect(model.snapshot?.source.utf8.elementsEqual(exact.utf8) == true)
+            #expect(try Data(contentsOf: url) == Data(exact.utf8))
+
+            let foreignID = UUID().uuidString
+            editor.loadDocument("Foreign source.", documentID: foreignID, mode: .source)
+            #expect(editor.interactionAvailability == nil)
+            try #require(setInteraction(editor, composing: false, citationState: citationState))
+            #expect(model.citationPresentation?.integrity == sourceNotice.integrity)
+        }
+    }
+
     @Test("External Edit uses its exact buffer and composition revokes both repair actions")
     func externalEditActionsAndExactSource() async throws {
         try await withExternalSource(try source(for: .fresh)) { url, exact in
@@ -336,15 +460,15 @@ struct DocumentCitationPresentationTests {
             #expect(editor.citationFields(forDocumentID: foreignID)?.diagnostics.isEmpty == false)
             #expect(model.citationPresentation?.integrity == nil)
             editor.loadDocument(liveSource, documentID: model.documentID, mode: .livePreview)
-            setInteraction(editor, composing: false)
+            setInteraction(editor, composing: false, citationState: .stale)
             var notice = try #require(model.citationPresentation)
             #expect(notice.integrity == .stale && notice.canRefresh && notice.canOpenSource)
-            setInteraction(editor, composing: true)
+            setInteraction(editor, composing: true, citationState: .stale)
             notice = try #require(model.citationPresentation)
             #expect(notice.integrity == .stale && !notice.canRefresh && !notice.canOpenSource)
             model.selectMode(.source)
             #expect(model.mode == .livePreview)
-            setInteraction(editor, composing: false)
+            setInteraction(editor, composing: false, citationState: .stale)
             model.selectMode(.source)
             #expect(model.mode == .source)
             #expect(model.citationPresentation?.canOpenSource == false)
@@ -437,14 +561,26 @@ struct DocumentCitationPresentationTests {
         try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]).base64EncodedString()
     }
 
-    private func setInteraction(_ editor: MarkdownEditorSession, composing: Bool) {
+    private func integrity(for citationState: MarkdownEditorCitationState) -> DocumentCitationPresentation.Integrity? {
+        switch citationState {
+        case .current: nil
+        case .stale: .stale
+        case .unresolved: .unresolved
+        }
+    }
+
+    @discardableResult
+    private func setInteraction(
+        _ editor: MarkdownEditorSession, composing: Bool, citationState: MarkdownEditorCitationState?,
+        documentVersion: Int? = nil, interactionRevision: Int = 0
+    ) -> Bool {
         let selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
-        editor.updateInteraction(
-            selections: selections, line: 1, column: 1, lineCount: 1, documentVersion: editor.generation,
-            interactionRevision: 0,
+        return editor.updateInteraction(
+            selections: selections, line: 1, column: 1, lineCount: 1, documentVersion: documentVersion ?? editor.generation,
+            interactionRevision: interactionRevision,
             context: .init(
                 selections: selections, activeInlineConstructs: [], activeBlockConstructs: [],
-                composing: composing, availableCommands: [.refreshCitations], undoLabel: nil, redoLabel: nil))
+                composing: composing, availableCommands: [.refreshCitations], undoLabel: nil, redoLabel: nil, citationState: citationState))
     }
 
     private func withExternalSource(_ source: String, operation: @MainActor (URL, String) async throws -> Void) async throws {

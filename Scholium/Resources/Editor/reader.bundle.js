@@ -4928,7 +4928,7 @@
     flushNow() {
       const latest = this.latest;
       this.cancel();
-      latest?.();
+      latest?.("explicit");
     }
     flush(source, generation) {
       if (generation !== this.generation) return;
@@ -4938,7 +4938,7 @@
       this.watchdog = null;
       const latest = this.latest;
       this.latest = null;
-      latest?.();
+      latest?.(source);
     }
   };
 

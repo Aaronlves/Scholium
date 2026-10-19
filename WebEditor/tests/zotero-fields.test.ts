@@ -306,6 +306,46 @@ describe("source-owned Zotero Markdown fields", () => {
     expect(citationLinkSource(carrier)?.field.id).toBe(citation.id);
   });
 
+  it.each([
+    ["scholium-zotero", encodeField(citation)],
+    ["cite:", "[Missing](cite:unknown)"],
+    ["cite-bibliography", "<!--cite-bibliography:missing-->"],
+  ])("finds %s across batched rope boundaries and the final short chunk", (token, carrier) => {
+    for (const spelling of [token, token.toUpperCase()]) {
+      const value = carrier.replace(token, spelling);
+      for (let split = 1; split < token.length; split++) {
+        const source = "p".repeat(4_096 - value.indexOf(spelling) - split) + value;
+        const doc = EditorState.create({doc: source}).doc;
+        const snapshot = vi.fn(() => source);
+        const fake = {doc: Object.assign(Object.create(doc), {
+          iter: function* () {yield source.slice(0, 4_096); yield source.slice(4_096);},
+          toString: snapshot,
+        }), field: () => undefined} as unknown as EditorState;
+        const projection = projectFieldsForState(fake);
+        expect(snapshot).toHaveBeenCalled();
+        expect(projection).toEqual(projectFields(source));
+      }
+    }
+  });
+
+  it("bounds reserved-token checks in long multiline prose without materializing its exact source", () => {
+    const source = "\ufeff---\r\nkeywords: ['cite:', 'scholium-zotero']\r\n---\r\n"
+      + "Ordinary prose 中文 e\u0301 🧭.\r\n\r\n".repeat(4_096);
+    const state = initial(source);
+    const tests = vi.spyOn(RegExp.prototype, "test");
+    const snapshot = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+    let projection;
+    try {
+      projection = projectFieldsForState(state);
+      const checks = tests.mock.contexts.filter(regex => regex instanceof RegExp
+        && regex.source === "scholium-zotero|cite:|cite-bibliography").length;
+      expect(checks).toBeGreaterThan(0);
+      expect(checks).toBeLessThan(128);
+      expect(snapshot).not.toHaveBeenCalled();
+    } finally {tests.mockRestore(); snapshot.mockRestore();}
+    expect(projection).toEqual(projectFields(source));
+  });
+
   it.each(["\n", "\r\n"])("keeps reserved words in closed YAML inert without materializing source during body edits: %j", newline => {
     const yaml = "\ufeff" + ["---", 'keywords: ["cite:", "中文 e\u0301 🧭"]',
       'aliases: ["scholium-zotero:1:BAD"]', 'tags: ["cite-bibliography"]', "---", ""].join(newline);

@@ -23,7 +23,7 @@ export function interactionAvailabilitySignature(context: EditorContext) {
 export class AnimationFrameCoalescer {
   private frame: number | null = null;
   private watchdog: number | null = null;
-  private latest: (() => void) | null = null;
+  private latest: ((source: "frame" | "watchdog" | "explicit") => void) | null = null;
   private generation = 0;
 
   constructor(
@@ -34,7 +34,7 @@ export class AnimationFrameCoalescer {
     private readonly watchdogMilliseconds = 50,
   ) {}
 
-  schedule(callback: () => void) {
+  schedule(callback: (source: "frame" | "watchdog" | "explicit") => void) {
     this.latest = callback;
     if (this.frame !== null) return;
     const generation = ++this.generation;
@@ -59,7 +59,7 @@ export class AnimationFrameCoalescer {
   flushNow() {
     const latest = this.latest;
     this.cancel();
-    latest?.();
+    latest?.("explicit");
   }
 
   private flush(source: "frame" | "watchdog", generation: number) {
@@ -70,6 +70,6 @@ export class AnimationFrameCoalescer {
     this.watchdog = null;
     const latest = this.latest;
     this.latest = null;
-    latest?.();
+    latest?.(source);
   }
 }

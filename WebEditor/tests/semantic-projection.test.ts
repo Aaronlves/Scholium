@@ -1,6 +1,6 @@
 import {EditorState} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
   boundedLinePrefix,
   boundedProjectionRanges,
@@ -8,6 +8,9 @@ import {
   semanticProjectionRanges,
 } from "../semantic-projection";
 import {scholiumNoteLanguage} from "../language";
+import {createMarkdownDocumentState} from "../bootstrap";
+import {exactSourceHistory, exactSourceState} from "../exact-source-history";
+import {normalizedDocumentText} from "../state";
 
 describe("Lezer-backed semantic projection", () => {
   it("reads only a bounded marker prefix from a 100,000-unit interaction line", () => {
@@ -29,6 +32,87 @@ describe("Lezer-backed semantic projection", () => {
     if (!tree) throw new Error("Expected the semantic syntax tree to complete.");
     return semanticProjectionRanges(state, visibleRanges, 0, tree);
   }
+
+  it.each(["\n", "\r\n"])("projects local Unicode prose without materializing unrelated source (%j)", newline => {
+    const paragraph = "Local 中文 e\u0301 🧭 **strong** and `literal` text. ^identity";
+    const source = ["\uFEFFOpening.", "", "Distant ordinary paragraph.\n\n".repeat(400), paragraph,
+      "", "![unseen][figure]", "", "[figure]: images/distant.png"].join("\n").replace(/\n/g, newline);
+    const normalized = normalizedDocumentText(source);
+    const state = createMarkdownDocumentState(source, [scholiumNoteLanguage, exactSourceHistory]);
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    if (!tree) throw new Error("Expected a complete syntax tree.");
+    const from = normalized.indexOf(paragraph);
+    const toString = vi.spyOn(state.doc, "toString");
+    const materialized = vi.fn();
+    try {
+      const projection = semanticProjectionRanges(state, [{from, to: from + paragraph.length}], 0, tree, materialized);
+      expect(projection.blocks.find(block => block.kind === "paragraph"))
+        .toMatchObject({from, to: from + paragraph.length, parent: null});
+      expect(projection.inlines.map(inline => inline.kind)).toEqual(["strong", "code", "blockAnchor"]);
+      const anchor = projection.inlines.find(inline => inline.kind === "blockAnchor");
+      expect(anchor && normalized.slice(anchor.from, anchor.to)).toBe("^identity");
+      expect(toString).not.toHaveBeenCalled();
+      expect(materialized).not.toHaveBeenCalled();
+    } finally { toString.mockRestore(); }
+    expect(state.doc.sliceString(0, state.doc.length)).toBe(normalized);
+    expect(state.field(exactSourceState).text).toBe(source);
+  });
+
+  it("retains global first-definition image resolution while materializing once per projection", () => {
+    const images = "![First][figure] and ![Second][figure]";
+    const source = `\uFEFFOpening.\n\n${images}\n\n${"Distant paragraph.\n\n".repeat(250)}`
+      + "[FIGURE]: https://example.test/first.png\n[figure]: local.png";
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    if (!tree) throw new Error("Expected a complete syntax tree.");
+    const from = source.indexOf(images);
+    const toString = vi.spyOn(state.doc, "toString");
+    const materialized = vi.fn();
+    try {
+      const projection = semanticProjectionRanges(state, [{from, to: from + images.length}], 0, tree, materialized);
+      const resolved = projection.inlines.filter(inline => inline.kind === "image");
+      expect(resolved).toHaveLength(2);
+      expect(resolved.map(image => image.targetRange && source.slice(image.targetRange.from, image.targetRange.to)))
+        .toEqual(["https://example.test/first.png", "https://example.test/first.png"]);
+      expect(toString).toHaveBeenCalledTimes(1);
+      expect(materialized).toHaveBeenCalledExactlyOnceWith(expect.any(Number), source.length);
+    } finally { toString.mockRestore(); }
+  });
+
+  it("retains Wikilink annotation source beyond the projection window", () => {
+    const link = "[[Target|Alias]]";
+    const annotation = "First 中文 e\u0301 🧭.\n\n- escaped \\}} text\n- final **reason**";
+    const source = `\uFEFFOpening.\n\n${link}{{${annotation}}} tail\n\nFollowing.`;
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    if (!tree) throw new Error("Expected a complete syntax tree.");
+    const from = source.indexOf(link);
+    const materialized = vi.fn();
+    const projection = semanticProjectionRanges(state, [{from, to: from + link.length}], 0, tree, materialized);
+    const projected = projection.inlines.find(inline => inline.kind === "wikilink");
+    expect(projected?.annotationContentRange
+      && source.slice(projected.annotationContentRange.from, projected.annotationContentRange.to)).toBe(annotation);
+    expect(projected?.to).toBe(source.indexOf(" tail"));
+    expect(materialized).toHaveBeenCalledExactlyOnceWith(expect.any(Number), source.length);
+  });
+
+  it.each([
+    {source: "A multiline\nparagraph 中文 e\u0301 🧭\nending ^identity", passage: "paragraph", anchors: ["^identity"]},
+    {source: "> Quoted 中文\n> still quoted ^blocked", passage: "still", anchors: []},
+    {source: "- item 中文\n  continuation ^blocked", passage: "continuation", anchors: []},
+    {source: "Text %%comment%% ^blocked", passage: "Text", anchors: []},
+    {source: "Text <!-- comment --> ^blocked", passage: "Text", anchors: []},
+  ])("keeps complete paragraph and ancestor boundaries for local $passage", ({source, passage, anchors}) => {
+    const state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage]});
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    if (!tree) throw new Error("Expected a complete syntax tree.");
+    const from = source.indexOf(passage);
+    const materialized = vi.fn();
+    const projection = semanticProjectionRanges(state, [{from, to: from + passage.length}], 0, tree, materialized);
+    expect(projection.inlines.filter(inline => inline.kind === "blockAnchor")
+      .map(inline => source.slice(inline.from, inline.to))).toEqual(anchors);
+    expect(materialized).not.toHaveBeenCalled();
+  });
 
   it("resolves full, collapsed and shortcut image references to exact definition URLs", () => {
     const source = [

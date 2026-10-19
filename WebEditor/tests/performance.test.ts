@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
   clearEditorPerformanceSamples,
   editorPerformanceSamples,
@@ -47,5 +47,22 @@ describe("editor performance instrumentation", () => {
     expect(tasks).toHaveLength(1);
     tasks[0]();
     expect(reported).toBe(true);
+  });
+
+  it("separates frame scheduling from a delayed following task", () => {
+    const frames: FrameRequestCallback[] = [];
+    const tasks: Array<() => void> = [];
+    const callback = vi.fn();
+    const clock = vi.spyOn(performance, "now")
+      .mockReturnValueOnce(10).mockReturnValueOnce(12).mockReturnValueOnce(950);
+    try {
+      scheduleAfterNextPaint(callback,
+        frame => { frames.push(frame); return 1; },
+        task => { tasks.push(task); return 1; });
+      frames[0](0);
+      expect(callback).not.toHaveBeenCalled();
+      tasks[0]();
+      expect(callback).toHaveBeenCalledExactlyOnceWith({frameWaitMilliseconds: 2, taskWaitMilliseconds: 938});
+    } finally { clock.mockRestore(); }
   });
 });

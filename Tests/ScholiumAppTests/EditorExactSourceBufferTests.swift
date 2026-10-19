@@ -6,6 +6,20 @@ import Testing
 
 @Suite("Editor exact-source buffer")
 struct EditorExactSourceBufferTests {
+    @Test("Source equality compares literal Unicode, line endings, and BOM without canonical folding")
+    func equalityPreservesExactBytes() {
+        let sources = [
+            "", "\u{FEFF}", "line\n", "line\r\n", "\u{FEFF}line\r\n",
+            "é", "e\u{301}", "a\u{301}\u{323}", "a\u{323}\u{301}", "🧭中文\r\n",
+        ]
+        for source in sources {
+            let buffer = EditorExactSourceBuffer(source: source)
+            for candidate in sources {
+                #expect(buffer.isEqual(to: candidate) == source.utf8.elementsEqual(candidate.utf8))
+            }
+        }
+    }
+
     @Test("Scroll fingerprint stays exact across edits, rejected edits, and replacement")
     func fingerprintTracksExactSource() throws {
         let source = "\u{FEFF}中文 😀 e\u{301}\r\n"

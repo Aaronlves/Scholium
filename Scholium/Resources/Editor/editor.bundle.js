@@ -18728,7 +18728,7 @@
       return { from: range.from, to };
     });
   }
-  function inlinePresentation(node, kind, source, referenceTargets) {
+  function inlinePresentation(node, kind, sourceText, referenceTargets) {
     const markerNames2 = /* @__PURE__ */ new Set();
     switch (kind) {
       case "strong":
@@ -18777,6 +18777,7 @@
     let projectionTo = node.to;
     let visibleRanges = complementRanges(node.from, node.to, markerRanges);
     if (kind === "image") {
+      const source = sourceText();
       if (markerRanges.length < 2) return null;
       const alt = { from: markerRanges[0].to, to: markerRanges[1].from };
       targetRange = directChildRanges(node, "URL")[0] ?? null;
@@ -18792,6 +18793,7 @@
       }
       visibleRanges = [alt];
     } else if (kind === "link") {
+      const source = sourceText();
       const explicitVisible = directChildRanges(node, "URL");
       if (explicitVisible.length === 0) return null;
       targetRange = explicitVisible[0];
@@ -18825,6 +18827,7 @@
         visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
       }
     } else if (kind === "wikilink") {
+      const source = sourceText();
       const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
       const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
       targetRange = target[0] ?? null;
@@ -18881,7 +18884,7 @@
     }
     return merged;
   }
-  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
+  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state), observeMaterialization) {
     const result = {
       blocks: [],
       inlines: [],
@@ -18891,9 +18894,18 @@
     const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
     const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
     const blockStack = [];
-    const source = state.doc.toString();
+    let completeSource;
+    const sourceText = () => {
+      if (completeSource === void 0) {
+        const materializationStartedAt = observeMaterialization ? performance.now() : 0;
+        completeSource = state.doc.toString();
+        observeMaterialization?.(performance.now() - materializationStartedAt, completeSource.length);
+      }
+      return completeSource;
+    };
+    const sourceSlice = (from2, to2) => completeSource === void 0 ? state.doc.sliceString(from2, to2) : completeSource.slice(from2, to2);
     let referenceTargets;
-    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, source);
+    const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, sourceText());
     tree.iterate({
       from,
       to,
@@ -18967,7 +18979,7 @@
         }
         const inlineKind = inlineKinds.get(node.name);
         if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind, source, resolveReferenceTargets);
+          const inline = inlinePresentation(node, inlineKind, sourceText, resolveReferenceTargets);
           if (inline) result.inlines.push(inline);
         }
         if ([
@@ -18991,17 +19003,20 @@
         }
       }
     });
-    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    const paragraphIsProtected = (block) => {
+      const paragraph = sourceSlice(block.from, block.to);
+      return paragraph.includes("%%") || paragraph.includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    };
     for (const block of result.blocks) {
       if (block.kind !== "paragraph") continue;
-      const paragraph = source.slice(block.from, block.to);
+      const paragraph = sourceSlice(block.from, block.to);
       const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
       if (!match || paragraphIsProtected(block)) continue;
       const markerFrom = block.from + match.index + match[0].indexOf("^");
       const markerTo = markerFrom + match[1].length + 1;
-      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+      if (paragraph.trim() === sourceSlice(markerFrom, markerTo)) {
         const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
-        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+        if (!preceding || preceding.kind !== "paragraph" || sourceSlice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
       }
       if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
       result.inlines.push({
@@ -19174,7 +19189,7 @@
     const literals2 = projection.literals.map((literal2) => ["l", literal2.nodeName, literal2.from, literal2.to].join("|"));
     return [...blocks, ...inlines, ...literals2].sort().join("\n");
   }
-  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax) {
+  function transactionCanMapProjectionTopology(transaction, marker, mutationSensitiveRanges, previousSyntax, observeTiming) {
     if (!transaction.docChanged) return false;
     const changes = [];
     transaction.changes.iterChanges((fromA2, toA2, fromB2, toB2, inserted) => {
@@ -19195,8 +19210,19 @@
     }
     const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
     const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
+    const ensureTreeStartedAt = observeTiming ? performance.now() : 0;
+    if (observeTiming) syntaxTree(transaction.state);
+    const languageStateReadCompletedAt = observeTiming ? performance.now() : 0;
     const tree = ensureSyntaxTree(transaction.state, newNeighborhood.to, 0);
-    if (!tree) return false;
+    const ensureTreeCompletedAt = observeTiming ? performance.now() : 0;
+    if (!tree) {
+      observeTiming?.({
+        ensureTreeMilliseconds: ensureTreeCompletedAt - ensureTreeStartedAt,
+        languageStateReadMilliseconds: languageStateReadCompletedAt - ensureTreeStartedAt,
+        ensureTreeAfterStateReadMilliseconds: ensureTreeCompletedAt - languageStateReadCompletedAt
+      });
+      return false;
+    }
     const previousLocal = {
       ...previousSyntax,
       blocks: previousSyntax.blocks.filter((block) => rangesOverlap(block, oldNeighborhood)).map((block) => mapSemanticBlockProjection(
@@ -19206,13 +19232,33 @@
       inlines: previousSyntax.inlines.filter((inline) => rangesOverlap(inline, oldNeighborhood)).map((inline) => mappedInline(inline, transaction)),
       literals: previousSyntax.literals.filter((literal2) => rangesOverlap(literal2, oldNeighborhood)).map((literal2) => ({ ...literal2, ...mappedRange(literal2, transaction) }))
     };
+    const previousLocalCompletedAt = observeTiming ? performance.now() : 0;
+    let fullTextMaterializationMilliseconds = 0;
+    let fullTextMaterializationUTF16Count = 0;
     const nextLocal = semanticProjectionRanges(
       transaction.state,
       [newNeighborhood],
       0,
-      tree
+      tree,
+      observeTiming ? (milliseconds, utf16Count) => {
+        fullTextMaterializationMilliseconds = milliseconds;
+        fullTextMaterializationUTF16Count = utf16Count;
+      } : void 0
     );
-    return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
+    const nextSemanticCompletedAt = observeTiming ? performance.now() : 0;
+    const mapped = projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
+    const signatureCompletedAt = observeTiming ? performance.now() : 0;
+    observeTiming?.({
+      ensureTreeMilliseconds: ensureTreeCompletedAt - ensureTreeStartedAt,
+      languageStateReadMilliseconds: languageStateReadCompletedAt - ensureTreeStartedAt,
+      ensureTreeAfterStateReadMilliseconds: ensureTreeCompletedAt - languageStateReadCompletedAt,
+      previousLocalPreparationMilliseconds: previousLocalCompletedAt - ensureTreeCompletedAt,
+      nextSemanticMilliseconds: nextSemanticCompletedAt - previousLocalCompletedAt,
+      signatureMilliseconds: signatureCompletedAt - nextSemanticCompletedAt,
+      fullTextMaterializationMilliseconds,
+      fullTextMaterializationUTF16Count
+    });
+    return mapped;
   }
 
   // state.ts
@@ -19283,6 +19329,18 @@
     }
     get usesCRLF() {
       return this.crlfLineBreakCount > 0;
+    }
+    /** Maps a CodeMirror UTF-16 position using this exact source's retained ropes. */
+    exactOffset(requestedOffset) {
+      return exactOffset(this.exact, this.normalized, requestedOffset);
+    }
+    /** The inverse UTF-16 mapping; the interior of a CRLF has no editor position. */
+    normalizedOffset(requestedOffset) {
+      if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > this.exact.length) return null;
+      const exactLine = this.exact.lineAt(requestedOffset);
+      const normalizedLine = this.normalized.line(exactLine.number);
+      const column = requestedOffset - exactLine.from;
+      return column <= normalizedLine.length ? normalizedLine.from + column : null;
     }
     copy() {
       const result = new _ExactSourceMirror();
@@ -31600,6 +31658,65 @@ ${blankRow(table.position.columnCount)}`;
     appendBlockChildren(cursor, source, parent, options);
   }
 
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}) {
+    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    const startedAt = performance.now();
+    requestFrame(() => {
+      const frameAt = performance.now();
+      scheduleTask(() => callback({
+        frameWaitMilliseconds: Math.max(0, frameAt - startedAt),
+        taskWaitMilliseconds: Math.max(0, performance.now() - frameAt)
+      }));
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
+  }
+
   // source-capacity.ts
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
@@ -31717,7 +31834,7 @@ ${blankRow(table.position.columnCount)}`;
       if (merged) normalizeEmphasis(child, inherited | emphasis);
     }
   }
-  function vendorTextToMarkdown(html2, newline3 = "\n") {
+  function vendorTextProjection(html2) {
     if (html2.length > maximumFallbackLength) throw new Error("The citation render cache exceeds the supported size.");
     const stack = [];
     let cursor = 0;
@@ -31780,7 +31897,11 @@ ${blankRow(table.position.columnCount)}`;
     if (JSON.stringify(formattingProjection(rendered)) !== JSON.stringify(expected)) {
       throw new Error("Unsupported HTML paragraph or emphasis boundary; Markdown formatting fidelity is unproven.");
     }
-    return markdown2.replaceAll("\n", newline3);
+    return { markdown: markdown2, visibleText: rendered.textContent ?? "" };
+  }
+  var stateVendorTextProjections = /* @__PURE__ */ new WeakMap();
+  function vendorTextToMarkdown(html2, newline3 = "\n") {
+    return vendorTextProjection(html2).markdown.replaceAll("\n", newline3);
   }
   function renderVisibleMarkdown(markdown2) {
     const normalized2 = normalizedDocumentText(markdown2);
@@ -31816,15 +31937,18 @@ ${blankRow(table.position.columnCount)}`;
   function encodeField(field, newline3 = "\n") {
     return fieldEnvelope(field, vendorTextToMarkdown(field.text, newline3), newline3);
   }
-  function parserContexts(source) {
-    const normalized2 = normalizedDocumentText(source);
+  function parserContexts(source, state) {
+    const doc2 = state?.doc ?? Text.of(normalizedDocumentText(source).split("\n"));
+    const mirror = state?.field(exactSourceState, false) ?? new ExactSourceMirror(source);
     const result = { ignored: [], unsupported: [], escaped: [], links: [], comments: [] };
-    const map = (range) => ({ from: exactOffsetForNormalizedOffset(source, range.from), to: exactOffsetForNormalizedOffset(source, range.to) });
-    const doc2 = Text.of(normalized2.split("\n")), metadata = frontmatterBoundary(doc2);
+    const map = (range) => ({ from: mirror.exactOffset(range.from), to: mirror.exactOffset(range.to) });
+    const metadata = frontmatterBoundary(doc2);
     if (metadata.unclosed) result.ignored.push({ from: 0, to: source.length });
     else if (metadata.endLine) result.ignored.push(map({ from: 0, to: Math.min(doc2.length, doc2.line(metadata.endLine).to + 1) }));
     const htmlStack = [];
-    markdownParser.parse(normalized2).iterate({ enter(node) {
+    const tree = state && ensureSyntaxTree(state, doc2.length, 0);
+    (tree || scholiumNoteLanguage.language.parser.parse(normalizedDocumentText(source))).iterate({ enter(node) {
+      if (node.name === "Frontmatter") return false;
       if (literalNodeNames.has(node.name)) {
         result.ignored.push(map(node));
         return false;
@@ -31834,20 +31958,21 @@ ${blankRow(table.position.columnCount)}`;
         return false;
       }
       if (["Comment", "CommentBlock"].includes(node.name)) {
-        const raw = normalized2.slice(node.from, node.to);
+        const raw = doc2.sliceString(node.from, node.to);
         if (raw.startsWith(bibliographyPrefix) || raw.startsWith(documentPrefix) || raw.startsWith(bibliographyClose) || raw.startsWith(compactBibliographyPrefix) || raw.startsWith(compactBibliographyClose)) result.comments.push(map(node));
         else result.ignored.push(map(node));
         return false;
       }
       if (node.name === "HTMLTag") {
-        const tag = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b/.exec(normalized2.slice(node.from, node.to));
+        const raw = doc2.sliceString(node.from, node.to);
+        const tag = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b/.exec(raw);
         if (tag) {
           const name2 = tag[2].toLowerCase();
           if (tag[1]) {
             const opening = htmlStack.pop();
             if (opening) result.ignored.push(map({ from: opening.from, to: node.to }));
-            if (opening?.name !== name2) result.ignored.push(map({ from: node.from, to: normalized2.length }));
-          } else if (!/\/\s*>$/.test(normalized2.slice(node.from, node.to)) && !["br", "hr", "img", "input", "meta", "link", "wbr"].includes(name2)) htmlStack.push({ name: name2, from: node.from });
+            if (opening?.name !== name2) result.ignored.push(map({ from: node.from, to: doc2.length }));
+          } else if (!/\/\s*>$/.test(raw) && !["br", "hr", "img", "input", "meta", "link", "wbr"].includes(name2)) htmlStack.push({ name: name2, from: node.from });
         }
         result.ignored.push(map(node));
         return false;
@@ -31855,7 +31980,7 @@ ${blankRow(table.position.columnCount)}`;
       if (["Link", "Autolink", "Image"].includes(node.name)) {
         let reserved = false;
         for (let child = node.node.firstChild; child; child = child.nextSibling) {
-          if (child.name === "URL" && isCitationDestination(normalized2.slice(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
+          if (child.name === "URL" && isCitationDestination(doc2.sliceString(child.from, child.to).replace(/^<|>$/g, ""))) reserved = true;
         }
         if (reserved) result.links.push(map(node));
         else {
@@ -31869,7 +31994,7 @@ ${blankRow(table.position.columnCount)}`;
         result.unsupported.push(map(node));
       }
     } });
-    for (const opening of htmlStack) result.ignored.push(map({ from: opening.from, to: normalized2.length }));
+    for (const opening of htmlStack) result.ignored.push(map({ from: opening.from, to: doc2.length }));
     return result;
   }
   function intersects2(left, right) {
@@ -31883,17 +32008,22 @@ ${blankRow(table.position.columnCount)}`;
     return (prefix === "" || lineFrom === 0 && prefix === "\uFEFF") && (suffix === "" || following >= 0 && suffix === "\r");
   }
   function projectFields(source, companion) {
+    return projectFieldsInContext(source, companion, parserContexts(source));
+  }
+  function projectFieldsInContext(source, companion, contexts, recordMetric, vendorProjections) {
+    const startedAt = recordMetric ? performance.now() : 0;
+    let vendorTextMilliseconds = 0, fallbackTextMilliseconds = 0;
     const managed = companion !== void 0;
     const fields = [], diagnostics = [];
     let documentData = null, documentRange = null;
     let bibliographyStyle = null, acceptedFields = null;
-    const contexts = parserContexts(source);
     if (companion && !validCitationData(companion)) throw new Error("Invalid citation companion.");
     if (companion) {
       documentData = companion.documentData ?? null;
       bibliographyStyle = companion.bibliographyStyle ?? null;
       acceptedFields = companion.acceptedFields ?? null;
     }
+    const companionValidationMilliseconds = recordMetric ? performance.now() - startedAt : 0;
     const diagnose = (kind, range, message) => diagnostics.push({ ...range, kind, message });
     const protectedField = (range) => [...contexts.ignored, ...contexts.unsupported].some((other) => intersects2(range, other));
     const append = (field, range, fallbackRange) => {
@@ -31903,16 +32033,24 @@ ${blankRow(table.position.columnCount)}`;
         return;
       }
       const fallback = source.slice(fallbackRange.from, fallbackRange.to);
-      const generated = vendorTextToMarkdown(field.text);
+      const vendorStartedAt = recordMetric ? performance.now() : 0;
+      const cached = vendorProjections?.get(field);
+      const generated = cached && cached.text === field.text ? cached.projection : vendorTextProjection(field.text);
+      if (!cached || cached.text !== field.text) vendorProjections?.set(field, { text: field.text, projection: generated });
+      if (recordMetric) vendorTextMilliseconds += performance.now() - vendorStartedAt;
+      const fallbackStartedAt = recordMetric ? performance.now() : 0;
+      const manualTextChanged = normalizedDocumentText(fallback) !== generated.markdown;
+      const text = manualTextChanged ? markdownVisibleText(fallback) : generated.visibleText;
+      if (recordMetric) fallbackTextMilliseconds += performance.now() - fallbackStartedAt;
       fields.push({
         ...field,
-        text: markdownVisibleText(fallback),
+        text,
         cachedText: field.text,
         noteIndex: 0,
         adjacent: false,
         range,
         fallbackRange,
-        manualTextChanged: normalizedDocumentText(fallback) !== generated
+        manualTextChanged
       });
     };
     const malformed = (range, error) => diagnose(
@@ -32018,8 +32156,14 @@ ${blankRow(table.position.columnCount)}`;
       const next = fields[index + 1];
       field.adjacent = field.kind === "citation" && next?.kind === "citation" && field.range.to === next.range.from;
     }
-    const current = fields.map(({ id: id2, code: code2 }) => ({ id: id2, code: code2 }));
-    const citationStateStale = acceptedFields === null ? fields.length > 0 : JSON.stringify(acceptedFields) !== JSON.stringify(current);
+    const citationStateStale = acceptedFields === null ? fields.length > 0 : acceptedFields.length !== fields.length || acceptedFields.some((field, index) => field.id !== fields[index].id || field.code !== fields[index].code);
+    recordMetric?.("citation-field-validation", startedAt, {
+      documentLength: source.length,
+      fieldCount: fields.length,
+      companionValidationMilliseconds,
+      vendorTextMilliseconds,
+      fallbackTextMilliseconds
+    });
     return { source, ...managed ? { companion } : {}, fields, documentData, bibliographyStyle, acceptedFields, citationStateStale, documentRange, diagnostics };
   }
   var stateCatalogs = /* @__PURE__ */ new WeakMap();
@@ -32028,36 +32172,57 @@ ${blankRow(table.position.columnCount)}`;
     const snapshot = state.field(citationState, false);
     const existing = stateCatalogs.get(owner);
     if (existing && existing.snapshot === snapshot) return existing.projection;
+    const catalogStartedAt = performance.now();
     const containsReserved = (from = 0) => {
-      let carry = "";
+      let scanned = "";
       for (const chunk of from === 0 ? state.doc.iter() : state.doc.iterRange(from)) {
-        const scanned = carry + chunk;
+        scanned += chunk;
+        if (scanned.length < 4096) continue;
         if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) return true;
-        carry = scanned.slice(-32);
+        scanned = scanned.slice(-32);
       }
-      return false;
+      return /scholium-zotero|cite:|cite-bibliography/i.test(scanned);
     };
-    let reserved = containsReserved();
-    if (reserved) {
-      const metadata = frontmatterBoundary(state.doc);
-      if (metadata.endLine > 0) {
-        reserved = containsReserved(Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1));
-      }
-    }
+    const metadata = frontmatterBoundary(state.doc);
+    const reserved = containsReserved(metadata.endLine > 0 ? Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1) : 0);
+    const reservedScanMilliseconds = performance.now() - catalogStartedAt;
     const source = () => mirror?.text ?? state.doc.toString();
-    const projection = reserved ? projectFields(source(), snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(source()) ? null : void 0)) : {
-      get source() {
-        return source();
-      },
-      ...snapshot ? { companion: snapshot.data ?? null } : {},
-      fields: [],
-      documentData: snapshot?.data?.documentData ?? null,
-      bibliographyStyle: snapshot?.data?.bibliographyStyle ?? null,
-      acceptedFields: snapshot?.data?.acceptedFields ?? null,
-      citationStateStale: Boolean(snapshot?.data?.acceptedFields?.length),
-      documentRange: null,
-      diagnostics: []
-    };
+    let projection;
+    if (reserved) {
+      const startedAt = performance.now();
+      const text = source();
+      const snapshotMilliseconds = performance.now() - startedAt;
+      const contextsStartedAt = performance.now();
+      const contexts = parserContexts(text, state);
+      const parserContextMilliseconds = performance.now() - contextsStartedAt;
+      projection = projectFieldsInContext(
+        text,
+        snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(text) ? null : void 0),
+        contexts,
+        recordEditorMetric,
+        stateVendorTextProjections
+      );
+      recordEditorMetric("citation-catalog", catalogStartedAt, {
+        documentLength: state.doc.length,
+        reservedScanMilliseconds,
+        snapshotMilliseconds,
+        parserContextMilliseconds
+      });
+    } else {
+      projection = {
+        get source() {
+          return source();
+        },
+        ...snapshot ? { companion: snapshot.data ?? null } : {},
+        fields: [],
+        documentData: snapshot?.data?.documentData ?? null,
+        bibliographyStyle: snapshot?.data?.bibliographyStyle ?? null,
+        acceptedFields: snapshot?.data?.acceptedFields ?? null,
+        citationStateStale: Boolean(snapshot?.data?.acceptedFields?.length),
+        documentRange: null,
+        diagnostics: []
+      };
+    }
     if (snapshot && ["unsupported", "unresolved"].includes(snapshot.baseline.status)) {
       projection.diagnostics = [...projection.diagnostics, {
         kind: "unsupported-envelope",
@@ -32850,60 +33015,6 @@ ${blankRow(table.position.columnCount)}`;
     return { requestID, resultingGeneration: generation, interactionRevision, sourceChanged: false, selections: [], accepted: false, error };
   }
 
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    requestFrame(() => {
-      scheduleTask(callback);
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
-  }
-  function clearEditorPerformanceSamples() {
-    samples.length = 0;
-    sampleStart = 0;
-    sampleCount = 0;
-  }
-
   // exact-source-history.ts
   var setExactSource = StateEffect.define();
   var sourceCapacityExceeded = StateEffect.define();
@@ -33350,10 +33461,12 @@ ${blankRow(table.position.columnCount)}`;
     });
   }
   function indexedQuoteRanges(syntax) {
+    const quotes = syntax.blocks.filter((block) => block.kind === "blockQuote");
+    if (quotes.length === 0) return [];
     const blocksByRange = new Map(
       syntax.blocks.map((block) => [rangeKey(block.from, block.to), block])
     );
-    return syntax.blocks.filter((block) => block.kind === "blockQuote").map((block) => {
+    return quotes.map((block) => {
       let depth2 = 1;
       let parent = block.parent;
       while (parent) {
@@ -33399,15 +33512,26 @@ ${blankRow(table.position.columnCount)}`;
     }
     return { from: range.from, to };
   }
-  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, syntaxComplete, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges) {
+  function finalizedLiveProjectionIndex(state, topologyIdentity, syntax, syntaxComplete, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter, referenceDefinitionRanges, recordMetric) {
     const doc2 = state.doc;
     if (syntax.inlines.some((inline) => inline.kind === "citation")) {
+      const admissionStartedAt = performance.now();
       const catalog = projectFieldsForState(state);
-      const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields.filter((field) => field.kind === "citation").map((field) => rangeKey(
-        normalizedDocumentText(catalog.source.slice(0, field.range.from)).length,
-        normalizedDocumentText(catalog.source.slice(0, field.range.to)).length
-      )));
+      const catalogMilliseconds = performance.now() - admissionStartedAt;
+      const mappingStartedAt = performance.now();
+      const mirror = state.field(exactSourceState, false);
+      const admitted = new Set(catalog.diagnostics.length ? [] : catalog.fields.filter((field) => field.kind === "citation").flatMap((field) => {
+        const from = mirror ? mirror.normalizedOffset(field.range.from) : field.range.from;
+        const to = mirror ? mirror.normalizedOffset(field.range.to) : field.range.to;
+        return from === null || to === null ? [] : [rangeKey(from, to)];
+      }));
       syntax = { ...syntax, inlines: syntax.inlines.filter((inline) => inline.kind !== "citation" || admitted.has(rangeKey(inline.from, inline.to))) };
+      recordMetric("citation-projection-admission", admissionStartedAt, {
+        documentLength: doc2.length,
+        fieldCount: catalog.fields.length,
+        catalogMilliseconds,
+        rangeMappingMilliseconds: performance.now() - mappingStartedAt
+      });
     }
     const immutableExcluded = immutableProjectionRanges(excluded);
     const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
@@ -33597,7 +33721,8 @@ ${blankRow(table.position.columnCount)}`;
       mathExpressions,
       frontmatterRange,
       yamlBoundary.unclosed,
-      referenceDefinitionRanges
+      referenceDefinitionRanges,
+      recordMetric
     );
     recordMetric("projection-index", startedAt, {
       documentLength: state.doc.length,
@@ -33687,7 +33812,8 @@ ${blankRow(table.position.columnCount)}`;
       mathExpressions,
       frontmatterRange,
       index.hasUnclosedFrontmatter,
-      referenceDefinitionRanges
+      referenceDefinitionRanges,
+      recordMetric
     );
     const finalizationMilliseconds = performance.now() - finalizationStartedAt;
     recordMetric("projection-index-map", startedAt, {
@@ -33715,18 +33841,23 @@ ${blankRow(table.position.columnCount)}`;
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         const topologyStartedAt = performance.now();
+        let topologyPhases = {};
         const mapped = previous.syntaxComplete && transactionCanMapProjectionTopology(
           transaction,
           structuralMarker,
           previous.mutationSensitiveRanges,
-          previous.syntax
+          previous.syntax,
+          (observed) => {
+            topologyPhases = observed;
+          }
         );
         options.recordMetric("projection-topology-proof", topologyStartedAt, {
           documentLength: transaction.newDoc.length,
           mapped: mapped ? 1 : 0,
           localProof: previous.syntaxComplete ? 1 : 0,
           blockCount: previous.syntax.blocks.length,
-          inlineCount: previous.syntax.inlines.length
+          inlineCount: previous.syntax.inlines.length,
+          ...topologyPhases
         });
         return mapped ? mapLiveProjectionIndex(previous, transaction, options.recordMetric) : build(transaction.state);
       }
@@ -36784,7 +36915,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     flushNow() {
       const latest = this.latest;
       this.cancel();
-      latest?.();
+      latest?.("explicit");
     }
     flush(source, generation) {
       if (generation !== this.generation) return;
@@ -36794,7 +36925,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       this.watchdog = null;
       const latest = this.latest;
       this.latest = null;
-      latest?.();
+      latest?.(source);
     }
   };
 
@@ -38190,12 +38321,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const reference = analysisReferenceContext(options, context.state, context.pos);
       if (!reference) return null;
       const { from, query } = reference;
-      const source = context.state.field(exactSourceState, false)?.text;
-      if (source === void 0) return null;
-      const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
-      const toUTF16 = exactOffsetForNormalizedOffset(source, context.pos);
+      const mirror = context.state.field(exactSourceState, false);
+      if (!mirror) return null;
+      const fromUTF16 = mirror.exactOffset(from);
+      const toUTF16 = mirror.exactOffset(context.pos);
       const interactionRevision = options.citationContextRevision();
-      if (fromUTF16 === null || toUTF16 === null || !Number.isSafeInteger(interactionRevision) || interactionRevision < 0 || source.slice(fromUTF16, toUTF16) !== `@${query}`) return null;
+      if (fromUTF16 === null || toUTF16 === null || !Number.isSafeInteger(interactionRevision) || interactionRevision < 0 || mirror.slice(from, context.pos) !== `@${query}`) return null;
       const documentEpoch = citationDocumentEpoch;
       const intent = {
         actionID: "insertCitation",
@@ -38215,7 +38346,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         type: "scholium-command-citation",
         boost: 99,
         apply: (view, _completion, currentFrom, currentTo) => {
-          if (accepted || documentEpoch !== citationDocumentEpoch || !view.hasFocus || view.composing || !isLiveSuggestionContext(options, view.state) || view.state.readOnly || !view.state.facet(EditorView.editable) || options.canInsertCitation?.(view.state) === false || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection) || view.state.field(exactSourceState, false)?.text !== source || options.citationContextRevision?.() !== interactionRevision || currentFrom !== from || currentTo !== context.pos || options.protectedRanges(view.state).some((range) => from < range.to && context.pos > range.from)) return;
+          if (accepted || documentEpoch !== citationDocumentEpoch || !view.hasFocus || view.composing || !isLiveSuggestionContext(options, view.state) || view.state.readOnly || !view.state.facet(EditorView.editable) || options.canInsertCitation?.(view.state) === false || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection) || view.state.field(exactSourceState, false)?.eq(mirror) !== true || options.citationContextRevision?.() !== interactionRevision || currentFrom !== from || currentTo !== context.pos || options.protectedRanges(view.state).some((range) => from < range.to && context.pos > range.from)) return;
           accepted = true;
           closeCompletion(view);
           options.requestCitationInsertion?.(intent);
@@ -41577,18 +41708,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       test: request.wholeWord ? (_match, state, from, to) => documentFindWordBoundary(state.doc, from, to) : void 0
     });
   }
-  function matchingRanges(state, query) {
-    if (!query.valid) return [];
-    const matches = [];
+  function* matchingRanges(state, query) {
+    if (!query.valid) return;
     const cursor = query.getCursor(state);
     for (let next = cursor.next(); !next.done; next = cursor.next()) {
-      matches.push({
+      yield {
         from: next.value.from,
         to: next.value.to,
         precise: cursor instanceof SearchCursor && cursor.value.precise
-      });
+      };
     }
-    return matches;
   }
   function selectMatch(view, match) {
     if (!match) return;
@@ -41600,31 +41729,51 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     });
   }
   function forwardMatch(view, query, boundary2) {
-    const matches = matchingRanges(view.state, query);
-    return matches.find((match) => match.from >= boundary2) ?? matches[0] ?? null;
+    let first = null;
+    for (const match of matchingRanges(view.state, query)) {
+      first ??= match;
+      if (match.from >= boundary2) return match;
+    }
+    return first;
   }
   function previousMatch(view, query, boundary2) {
-    const matches = matchingRanges(view.state, query);
-    return matches.findLast((match) => match.to <= boundary2) ?? matches.at(-1) ?? null;
+    let previous = null;
+    let last = null;
+    for (const match of matchingRanges(view.state, query)) {
+      last = match;
+      if (match.to <= boundary2) previous = match;
+    }
+    return previous ?? last;
   }
   function currentMatch(view, query) {
     const selection = view.state.selection.main;
-    return matchingRanges(view.state, query).find(
-      (match) => match.from === selection.from && match.to === selection.to
-    ) ?? null;
+    for (const match of matchingRanges(view.state, query)) {
+      if (match.from === selection.from && match.to === selection.to) return match;
+    }
+    return null;
   }
   function summary(view, query) {
     const selection = view.state.selection.main;
-    const matches = matchingRanges(view.state, query);
-    const current = matches.findIndex(
-      (match) => match.from === selection.from && match.to === selection.to
-    );
-    const replacementTarget = matches[current] ?? forwardMatch(view, query, selection.from);
+    let first = null;
+    let forward = null;
+    let selected = null;
+    let current = 0, total = 0, replaceable = 0;
+    for (const match of matchingRanges(view.state, query)) {
+      first ??= match;
+      total += 1;
+      if (match.precise) replaceable += 1;
+      if (forward === null && match.from >= selection.from) forward = match;
+      if (match.from === selection.from && match.to === selection.to) {
+        selected = match;
+        current = total;
+      }
+    }
+    const replacementTarget = selected ?? forward ?? first;
     const writable = !view.state.readOnly && view.state.facet(EditorView.editable);
     return {
-      current: current < 0 ? 0 : current + 1,
-      total: matches.length,
-      replaceable: writable ? matches.filter((match) => match.precise).length : 0,
+      current,
+      total,
+      replaceable: writable ? replaceable : 0,
       canReplaceCurrent: writable && replacementTarget?.precise === true
     };
   }
@@ -41672,13 +41821,14 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       case "replaceAll": {
         if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
-        const matches = matchingRanges(view.state, query);
-        const changes = matches.filter((match) => match.precise).map((match) => ({
-          from: match.from,
-          to: match.to,
-          insert: normalizedDocumentText(request.replacement)
-        }));
-        replacement = { replaced: changes.length, skipped: matches.length - changes.length };
+        const changes = [];
+        const insert2 = normalizedDocumentText(request.replacement);
+        let matched = 0;
+        for (const match of matchingRanges(view.state, query)) {
+          matched += 1;
+          if (match.precise) changes.push({ from: match.from, to: match.to, insert: insert2 });
+        }
+        replacement = { replaced: changes.length, skipped: matched - changes.length };
         if (changes.length > 0) {
           if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
@@ -41991,14 +42141,25 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var liveWidgetReuseCounts = { table: 0, footnote: 0 };
   var lastUndoLabel;
   var lastRedoLabel;
-  var post = (message) => nativeHandler()?.postMessage({
-    protocolVersion: EDITOR_PROTOCOL_VERSION,
-    sessionID: bridgeSessionID,
-    documentID: bridgeDocumentID,
-    startingFingerprint: bridgeFingerprint,
-    documentVersion,
-    ...message
-  });
+  var post = (message) => {
+    const startedAt = performance.now();
+    nativeHandler()?.postMessage({
+      protocolVersion: EDITOR_PROTOCOL_VERSION,
+      sessionID: bridgeSessionID,
+      documentID: bridgeDocumentID,
+      startingFingerprint: bridgeFingerprint,
+      documentVersion,
+      ...message
+    });
+    if (message.type === "documentChanged" || message.type === "interactionChanged") {
+      recordEditorMetric("bridge-message-post", startedAt, {
+        generation: documentVersion,
+        interactionRevision: citationInsertionRevision,
+        documentChanged: message.type === "documentChanged" ? 1 : 0,
+        postedAtMilliseconds: startedAt
+      });
+    }
+  };
   function postConfiguredPerformanceSample(metric, durationMilliseconds) {
     if (webkitWindow.scholiumPerformanceMetric !== metric || !Number.isFinite(durationMilliseconds) || durationMilliseconds <= 0) return;
     post({ type: "performanceSample", metric, durationMilliseconds });
@@ -42952,7 +43113,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       if (input !== null) {
         recordEditorMetric("input-to-state", input.startedAt, {
           composing: input.composing ? 1 : 0,
-          documentLength: update.state.doc.length
+          documentLength: update.state.doc.length,
+          generation: documentVersion + 1,
+          interactionRevision: citationInsertionRevision,
+          trustedInput: input.trusted ? 1 : 0,
+          visibilityVisible: document.visibilityState === "visible" ? 1 : 0,
+          documentHasFocus: document.hasFocus() ? 1 : 0,
+          editorOwnsFocus: document.activeElement === update.view.contentDOM ? 1 : 0
         });
       }
       const keyStartedAt = pendingCommittedKeyStartedAt;
@@ -42975,16 +43142,18 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const paintedDocumentVersion = documentVersion;
         const paintedDocumentLength = update.state.doc.length;
         const attachment = documentAttachment;
-        scheduleAfterNextPaint(() => {
+        scheduleAfterNextPaint((paintTiming) => {
           if (attachment !== documentAttachment) return;
           if (input !== null) {
             recordEditorMetric("input-to-paint", input.startedAt, {
+              ...paintTiming,
               composing: input.composing ? 1 : 0,
               documentLength: paintedDocumentLength
             });
           }
           if (keyStartedAt !== null) {
             recordEditorMetric("key-to-paint", keyStartedAt, {
+              ...paintTiming,
               documentLength: paintedDocumentLength
             });
           }
@@ -43272,7 +43441,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       post({ type: "linkCompletionQuery", requestID, completionKind, query });
     },
     requestWritingContinuation: (requestID, state, position) => {
-      const caretUTF16Offset = exactOffsetForNormalizedOffset(state.field(exactSourceState).text, position);
+      const caretUTF16Offset = state.field(exactSourceState).exactOffset(position);
       if (caretUTF16Offset === null) {
         inputSuggestions.resolveWritingContinuation(requestID, { text: null });
         return;
@@ -43421,7 +43590,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     pendingCommittedKeyStartedAt = input.isComposing || editor.composing ? null : pendingKeyDownStartedAt;
     pendingInputStartedAt = {
       startedAt: performance.now(),
-      composing: input.isComposing || editor.composing
+      composing: input.isComposing || editor.composing,
+      trusted: event.isTrusted
     };
   }, { capture: true });
   var scrollCoordinator = createEditorScrollCoordinator(editor, {
@@ -43582,7 +43752,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     if (citationTransaction !== null) availableCommands.push("cancelCitation");
     else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
-      const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
+      const head = fieldProjection.fields.length ? state.field(exactSourceState).exactOffset(state.selection.main.head) : null;
       const inField = head !== null && fieldProjection.fields.some((field) => head >= field.range.from && head < field.range.to);
       if (inField || citationInsertionAvailable(state)) availableCommands.push("insertCitation", "insertBibliography");
       availableCommands.push("citationStyle");
@@ -43603,7 +43773,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   }
   function scheduleEditorInteractionReport(forceContext = false) {
     forceNextInteractionContext ||= forceContext;
-    interactionReporter.schedule(() => {
+    const scheduledAt = performance.now();
+    interactionReporter.schedule((source) => {
+      recordEditorMetric("interaction-report-queue", scheduledAt, {
+        generation: documentVersion,
+        interactionRevision: citationInsertionRevision,
+        frame: source === "frame" ? 1 : 0,
+        watchdog: source === "watchdog" ? 1 : 0,
+        explicit: source === "explicit" ? 1 : 0
+      });
+      const contextStartedAt = performance.now();
       const context = currentEditorContext();
       const head = editor.state.selection.main.head;
       const line = editor.state.doc.lineAt(head);
@@ -43612,6 +43791,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       forceNextInteractionContext = false;
       lastInteractionAvailabilitySignature = availabilitySignature;
       updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
+      recordEditorMetric("interaction-context", contextStartedAt, {
+        generation: documentVersion,
+        interactionRevision: citationInsertionRevision
+      });
       post({
         type: "interactionChanged",
         interactionRevision: citationInsertionRevision,
@@ -44066,7 +44249,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         const source = exactEditorSource();
         let referenceRange;
         if (reference) {
-          if (reference.interactionRevision !== citationInsertionRevision || reference.editorCaretUTF16Offset !== editor.state.selection.main.head || exactOffsetForNormalizedOffset(source, reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
+          if (reference.interactionRevision !== citationInsertionRevision || reference.editorCaretUTF16Offset !== editor.state.selection.main.head || editor.state.field(exactSourceState).exactOffset(reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
             return rejected2(request.requestID, documentVersion, localized("Citation completion is stale."));
           }
           referenceRange = {

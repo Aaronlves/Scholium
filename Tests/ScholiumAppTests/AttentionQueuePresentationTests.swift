@@ -182,7 +182,7 @@ struct AttentionQueuePresentationTests {
         controller.view.layoutSubtreeIfNeeded()
         table.layoutSubtreeIfNeeded()
         let category = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
-        let item = try #require(table.view(atColumn: 0, row: 1, makeIfNecessary: true))
+        let item = try #require(table.view(atColumn: 0, row: 1, makeIfNecessary: true) as? NSTableCellView)
         let shortItem = try #require(table.view(atColumn: 0, row: 2, makeIfNecessary: true))
         item.layoutSubtreeIfNeeded()
         shortItem.layoutSubtreeIfNeeded()
@@ -194,6 +194,20 @@ struct AttentionQueuePresentationTests {
             })
         let categoryLabel = try #require(find(NSTextField.self, in: category))
         let icon = try #require(find(NSImageView.self, in: item))
+        #expect(item.imageView === icon && item.textField === itemTitle)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            window.appearance = NSAppearance(named: appearance)
+            item.backgroundStyle = .normal
+            try expectColor(icon.contentTintColor, equals: .controlAccentColor, in: item.effectiveAppearance)
+            item.backgroundStyle = .emphasized
+            for color in [icon.contentTintColor, itemTitle.textColor, itemDetail.textColor] {
+                try expectColor(color, equals: .alternateSelectedControlTextColor, in: item.effectiveAppearance)
+            }
+            item.backgroundStyle = .normal
+            try expectColor(icon.contentTintColor, equals: .controlAccentColor, in: item.effectiveAppearance)
+            try expectColor(itemTitle.textColor, equals: .labelColor, in: item.effectiveAppearance)
+            try expectColor(itemDetail.textColor, equals: .secondaryLabelColor, in: item.effectiveAppearance)
+        }
         let search = try #require(find(NSSearchField.self, in: controller.view))
         window.displayIfNeeded()
         let titleRect = itemTitle.convert(itemTitle.bounds, to: controller.view)
@@ -245,6 +259,9 @@ struct AttentionQueuePresentationTests {
         controller.view.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
         let detail = try #require(findAll(NSTextField.self, in: controller.view).first { $0.stringValue == error })
+        let stateStack = try #require(detail.superview)
+        let stateIcon = try #require(find(NSImageView.self, in: stateStack))
+        try expectColor(stateIcon.contentTintColor, equals: ScholiumColorRole.destructive.nsColor, in: stateIcon.effectiveAppearance)
         let action = try #require(
             findAll(NSButton.self, in: controller.view).first {
                 $0.accessibilityIdentifier() == "scholium.attentionStateAction"
@@ -258,6 +275,26 @@ struct AttentionQueuePresentationTests {
         #expect(actionRect.maxY <= controller.view.bounds.maxY)
         #expect(!action.isHidden && action.isEnabled)
         try renderIfRequested(controller.view, name: "error")
+        errors.send(nil)
+        try await wait {
+            findAll(NSTextField.self, in: controller.view).contains { $0.stringValue == "No Notifications" }
+        }
+        try expectColor(stateIcon.contentTintColor, equals: .secondaryLabelColor, in: stateIcon.effectiveAppearance)
+    }
+
+    private func expectColor(_ actual: NSColor?, equals expected: NSColor, in appearance: NSAppearance) throws {
+        var resolvedActual: NSColor?
+        var resolvedExpected: NSColor?
+        appearance.performAsCurrentDrawingAppearance {
+            resolvedActual = actual?.usingColorSpace(.sRGB)
+            resolvedExpected = expected.usingColorSpace(.sRGB)
+        }
+        let actual = try #require(resolvedActual)
+        let expected = try #require(resolvedExpected)
+        #expect(abs(actual.redComponent - expected.redComponent) < 0.001)
+        #expect(abs(actual.greenComponent - expected.greenComponent) < 0.001)
+        #expect(abs(actual.blueComponent - expected.blueComponent) < 0.001)
+        #expect(abs(actual.alphaComponent - expected.alphaComponent) < 0.001)
     }
 
     private func find<T: NSView>(_ type: T.Type, in view: NSView) -> T? {

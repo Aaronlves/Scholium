@@ -29,7 +29,6 @@ import {
   type MarkdownEditingDialect,
 } from "./protocol";
 import {transformMarkdown} from "./transformations";
-import {exactOffsetForNormalizedOffset} from "./state";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
 import type {NativeSuggestionPort} from "./native-floating";
@@ -1143,13 +1142,13 @@ export function createEditorInputSuggestions(
     const reference = analysisReferenceContext(options, context.state, context.pos);
     if (!reference) return null;
     const {from, query} = reference;
-    const source = context.state.field(exactSourceState, false)?.text;
-    if (source === undefined) return null;
-    const fromUTF16 = exactOffsetForNormalizedOffset(source, from);
-    const toUTF16 = exactOffsetForNormalizedOffset(source, context.pos);
+    const mirror = context.state.field(exactSourceState, false);
+    if (!mirror) return null;
+    const fromUTF16 = mirror.exactOffset(from);
+    const toUTF16 = mirror.exactOffset(context.pos);
     const interactionRevision = options.citationContextRevision();
     if (fromUTF16 === null || toUTF16 === null || !Number.isSafeInteger(interactionRevision)
-      || interactionRevision < 0 || source.slice(fromUTF16, toUTF16) !== `@${query}`) return null;
+      || interactionRevision < 0 || mirror.slice(from, context.pos) !== `@${query}`) return null;
     const documentEpoch = citationDocumentEpoch;
     const intent: EditorCitationSuggestionIntent = {
       actionID: "insertCitation", requestID: boundedUUID(), query, fromUTF16, toUTF16,
@@ -1164,7 +1163,7 @@ export function createEditorInputSuggestions(
           || !isLiveSuggestionContext(options, view.state) || view.state.readOnly || !view.state.facet(EditorView.editable)
           || options.canInsertCitation?.(view.state) === false
           || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)
-          || view.state.field(exactSourceState, false)?.text !== source
+          || view.state.field(exactSourceState, false)?.eq(mirror) !== true
           || options.citationContextRevision?.() !== interactionRevision
           || currentFrom !== from || currentTo !== context.pos
           || options.protectedRanges(view.state).some(range => from < range.to && context.pos > range.from)) return;

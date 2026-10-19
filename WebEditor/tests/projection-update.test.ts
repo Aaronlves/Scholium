@@ -1,6 +1,6 @@
 import {EditorState, StateEffect} from "@codemirror/state";
 import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
   activeProjectionSignature,
   frontmatterPresentationNeedsRebuild,
@@ -13,7 +13,7 @@ import {
   transactionChangedSyntaxTree,
 } from "../projection-update";
 import {scholiumNoteLanguage} from "../language";
-import {semanticProjectionRanges} from "../semantic-projection";
+import {mapSemanticProjectionRanges, semanticProjectionRanges} from "../semantic-projection";
 
 describe("frontmatter envelope presentation rebuilds", () => {
   const envelope = "---\ntitle: Claim\nkeywords: [a]\n---\n\n";
@@ -239,6 +239,40 @@ describe("local projection-topology proof", () => {
   function syntaxFor(state: EditorState) {
     return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0);
   }
+
+  it.each(["x", "中", "e\u0301 🧭"])("keeps parser-proved ordinary input incremental without a full source string: %j", insert => {
+    const source = "\uFEFFOpening 🧭 e\u0301.\n\n" + "Earlier paragraph.\n\n".repeat(20)
+      + "Local argument beside **emphasis**.\n\n" + "Later paragraph.\n\n".repeat(20)
+      + "[[Distant]]{{Global annotation.}}";
+    const state = parsedState(source);
+    const previous = syntaxFor(state);
+    const from = source.indexOf("argument") + 3;
+    const transaction = state.update({changes: {from, insert}, selection: {anchor: from + insert.length}});
+    const toString = vi.spyOn(transaction.state.doc, "toString");
+    const observations: Array<Record<string, number>> = [];
+    try {
+      expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+        [], previous, observed => observations.push(observed))).toBe(true);
+      expect(toString).not.toHaveBeenCalled();
+      expect(observations).toHaveLength(1);
+      expect(observations[0]).toMatchObject({
+        languageStateReadMilliseconds: expect.any(Number),
+        ensureTreeAfterStateReadMilliseconds: expect.any(Number),
+        fullTextMaterializationMilliseconds: 0,
+        fullTextMaterializationUTF16Count: 0,
+      });
+      expect(Object.values(observations[0]).every(value => Number.isFinite(value) && value >= 0)).toBe(true);
+    } finally { toString.mockRestore(); }
+    const expected = source.slice(0, from) + insert + source.slice(from);
+    expect(transaction.state.doc.sliceString(0, transaction.state.doc.length)).toBe(expected);
+    expect(transaction.state.selection.main.head).toBe(from + insert.length);
+    const fresh = parsedState(expected);
+    expect(mapSemanticProjectionRanges(previous,
+      (position, association = -1) => transaction.changes.mapPos(position, association)))
+      .toEqual(syntaxFor(fresh));
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], previous)).toBe(true);
+  });
 
   it("maps an ordinary deletion only after comparing the resulting local topology", () => {
     const source = "An ordinary argument 中文 text beside *emphasis*.";

@@ -553,6 +553,8 @@ final class PerformanceProbe {
                 "projection", "projection-index", "projection-topology-proof", "projection-index-map",
                 "exact-source-admission", "exact-source-update", "input-to-state", "key-to-state",
                 "input-to-paint", "key-to-paint", "scroll-session", "bridge-request",
+                "citation-field-validation", "citation-catalog", "citation-projection-admission",
+                "interaction-report-queue", "interaction-context", "bridge-message-post",
             ]
             let fields: Set<String> = [
                 "documentLength", "changeCount", "blockCount", "inlineCount", "literalCount",
@@ -560,6 +562,16 @@ final class PerformanceProbe {
                 "semanticMapMilliseconds", "derivedMapMilliseconds", "finalizationMilliseconds",
                 "composing", "decorationCount", "visibleRangeCount", "projectionWindowUTF16Count",
                 "frameCount", "longestFrameMilliseconds", "droppedFrameCount",
+                "generation", "interactionRevision", "trustedInput", "visibilityVisible",
+                "documentHasFocus", "editorOwnsFocus", "frame", "watchdog", "explicit",
+                "frameWaitMilliseconds", "taskWaitMilliseconds",
+                "documentChanged", "postedAtMilliseconds", "fieldCount",
+                "companionValidationMilliseconds", "vendorTextMilliseconds", "fallbackTextMilliseconds",
+                "reservedScanMilliseconds", "snapshotMilliseconds", "parserContextMilliseconds",
+                "catalogMilliseconds", "rangeMappingMilliseconds",
+                "ensureTreeMilliseconds", "languageStateReadMilliseconds", "ensureTreeAfterStateReadMilliseconds",
+                "previousLocalPreparationMilliseconds", "nextSemanticMilliseconds",
+                "signatureMilliseconds", "fullTextMaterializationMilliseconds", "fullTextMaterializationUTF16Count",
             ]
             let values: [[String: Any]] = samples.compactMap { sample in
                 guard names.contains(sample.name), sample.durationMilliseconds.isFinite,

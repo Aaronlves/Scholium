@@ -1689,6 +1689,10 @@ struct SemanticSourceMapper {
     let lineStartsUTF16: [Int]
 
     init(_ source: String) {
+        // NSString-backed snapshots otherwise re-encode the entire prefix for
+        // every UTF-8 distance. Preserve exact code units in one native view.
+        var source = source
+        source.makeContiguousUTF8()
         self.source = source
         self.nsSource = source as NSString
         var starts = [0]

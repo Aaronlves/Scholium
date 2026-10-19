@@ -101,6 +101,37 @@ describe("document find", () => {
     expect(undoDepth(view.state)).toBe(0);
   });
 
+  it("navigates the same nonoverlapping matches from inside a match and wraps in both directions", () => {
+    const view = viewFor("aaaa aa");
+    view.dispatch({selection: {anchor: 1}});
+    const navigate = (action: "next" | "previous", current: number, from: number, to: number) => {
+      expect(performDocumentFind(view, request("aa", {action})))
+        .toMatchObject({current, total: 3, replaceable: 3, canReplaceCurrent: true, sourceChanged: false});
+      expect(view.state.selection.main.from).toBe(from);
+      expect(view.state.selection.main.to).toBe(to);
+    };
+    navigate("next", 2, 2, 4);
+    navigate("previous", 1, 0, 2);
+    navigate("previous", 3, 5, 7);
+    navigate("next", 1, 0, 2);
+    expect(view.state.field(exactSourceState).text).toBe("aaaa aa");
+    expect(undoDepth(view.state)).toBe(0);
+  });
+
+  it("counts dense matches without a ceiling and preserves selection for present and empty queries", () => {
+    const source = "x ".repeat(50_000);
+    const view = viewFor(source);
+    view.dispatch({selection: {anchor: source.length}});
+    const selection = view.state.selection;
+    expect(performDocumentFind(view, request("x", {action: "present"})))
+      .toMatchObject({current: 0, total: 50_000, replaceable: 50_000, canReplaceCurrent: true});
+    expect(performDocumentFind(view, request("", {action: "present"})))
+      .toMatchObject({current: 0, total: 0, replaceable: 0, canReplaceCurrent: false});
+    expect(view.state.selection.eq(selection)).toBe(true);
+    expect(view.state.field(exactSourceState).text).toBe(source);
+    expect(undoDepth(view.state)).toBe(0);
+  });
+
   it("matches canonical equivalents while whole-word matches retain combining marks", () => {
     expect(documentFindMatches("e\u0301 e", request("e", {wholeWord: true}))).toEqual([{from: 3, to: 4}]);
     expect(documentFindMatches("é e\u0301", request("é", {wholeWord: true})))

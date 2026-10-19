@@ -67,15 +67,15 @@ function searchQuery(request: DocumentFindRequest) {
   });
 }
 
-function matchingRanges(state: EditorState, query: SearchQuery): LocatedFindMatch[] {
-  if (!query.valid) return [];
-  const matches: LocatedFindMatch[] = [];
+// Navigation and counts need no retained match catalog, even for a dense query.
+// Replace All alone collects the changes required by its atomic transaction.
+function* matchingRanges(state: EditorState, query: SearchQuery): IterableIterator<LocatedFindMatch> {
+  if (!query.valid) return;
   const cursor = query.getCursor(state);
   for (let next = cursor.next(); !next.done; next = cursor.next()) {
-    matches.push({from: next.value.from, to: next.value.to,
-      precise: cursor instanceof SearchCursor && cursor.value.precise});
+    yield {from: next.value.from, to: next.value.to,
+      precise: cursor instanceof SearchCursor && cursor.value.precise};
   }
-  return matches;
 }
 
 function selectMatch(view: EditorView, match: DocumentFindMatch | null) {
@@ -89,34 +89,52 @@ function selectMatch(view: EditorView, match: DocumentFindMatch | null) {
 }
 
 function forwardMatch(view: EditorView, query: SearchQuery, boundary: number) {
-  const matches = matchingRanges(view.state, query);
-  return matches.find((match) => match.from >= boundary) ?? matches[0] ?? null;
+  let first: LocatedFindMatch | null = null;
+  for (const match of matchingRanges(view.state, query)) {
+    first ??= match;
+    if (match.from >= boundary) return match;
+  }
+  return first;
 }
 
 function previousMatch(view: EditorView, query: SearchQuery, boundary: number) {
-  const matches = matchingRanges(view.state, query);
-  return matches.findLast((match) => match.to <= boundary)
-    ?? matches.at(-1)
-    ?? null;
+  let previous: LocatedFindMatch | null = null;
+  let last: LocatedFindMatch | null = null;
+  for (const match of matchingRanges(view.state, query)) {
+    last = match;
+    if (match.to <= boundary) previous = match;
+  }
+  return previous ?? last;
 }
 
 function currentMatch(view: EditorView, query: SearchQuery) {
   const selection = view.state.selection.main;
-  return matchingRanges(view.state, query).find(
-    (match) => match.from === selection.from && match.to === selection.to,
-  ) ?? null;
+  for (const match of matchingRanges(view.state, query)) {
+    if (match.from === selection.from && match.to === selection.to) return match;
+  }
+  return null;
 }
 
 function summary(view: EditorView, query: SearchQuery) {
   const selection = view.state.selection.main;
-  const matches = matchingRanges(view.state, query);
-  const current = matches.findIndex(
-    (match) => match.from === selection.from && match.to === selection.to,
-  );
-  const replacementTarget = matches[current] ?? forwardMatch(view, query, selection.from);
+  let first: LocatedFindMatch | null = null;
+  let forward: LocatedFindMatch | null = null;
+  let selected: LocatedFindMatch | null = null;
+  let current = 0, total = 0, replaceable = 0;
+  for (const match of matchingRanges(view.state, query)) {
+    first ??= match;
+    total += 1;
+    if (match.precise) replaceable += 1;
+    if (forward === null && match.from >= selection.from) forward = match;
+    if (match.from === selection.from && match.to === selection.to) {
+      selected = match;
+      current = total;
+    }
+  }
+  const replacementTarget = selected ?? forward ?? first;
   const writable = !view.state.readOnly && view.state.facet(EditorView.editable);
-  return {current: current < 0 ? 0 : current + 1, total: matches.length,
-    replaceable: writable ? matches.filter(match => match.precise).length : 0,
+  return {current, total,
+    replaceable: writable ? replaceable : 0,
     canReplaceCurrent: writable && replacementTarget?.precise === true};
 }
 
@@ -172,12 +190,14 @@ export function performDocumentFind(
   }
   case "replaceAll": {
     if (view.state.readOnly || !view.state.facet(EditorView.editable)) break;
-    const matches = matchingRanges(view.state, query);
-    const changes = matches.filter(match => match.precise).map((match) => ({
-      from: match.from, to: match.to,
-      insert: normalizedDocumentText(request.replacement),
-    }));
-    replacement = {replaced: changes.length, skipped: matches.length - changes.length};
+    const changes: {from: number; to: number; insert: string}[] = [];
+    const insert = normalizedDocumentText(request.replacement);
+    let matched = 0;
+    for (const match of matchingRanges(view.state, query)) {
+      matched += 1;
+      if (match.precise) changes.push({from: match.from, to: match.to, insert});
+    }
+    replacement = {replaced: changes.length, skipped: matched - changes.length};
     if (changes.length > 0) {
       if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({

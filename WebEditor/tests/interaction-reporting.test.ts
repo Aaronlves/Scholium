@@ -5,6 +5,21 @@ import {
 } from "../interaction-reporting";
 
 describe("animation-frame interaction reporting", () => {
+  it("identifies the winning flush without duplicating raced or canceled reports", () => {
+    const frames: FrameRequestCallback[] = [], watchdogs: Array<() => void> = [];
+    const observed: string[] = [];
+    const coalescer = new AnimationFrameCoalescer(
+      callback => {frames.push(callback); return frames.length;}, () => {},
+      callback => {watchdogs.push(callback); return watchdogs.length;}, () => {},
+    );
+    const schedule = () => coalescer.schedule(source => observed.push(source));
+    schedule(); frames[0](16); watchdogs[0]();
+    schedule(); watchdogs[1](); frames[1](32);
+    schedule(); coalescer.flushNow(); watchdogs[2](); frames[2](48);
+    schedule(); coalescer.cancel(); watchdogs[3](); frames[3](64);
+    expect(observed).toEqual(["frame", "watchdog", "explicit"]);
+  });
+
   it("emits only the latest interaction once per frame", () => {
     const scheduled: FrameRequestCallback[] = [];
     const watchdogs: Array<() => void> = [];

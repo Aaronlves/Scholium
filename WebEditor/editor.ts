@@ -150,7 +150,6 @@ import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "./scro
 import {createEditorContextMenuExtension} from "./context-menu";
 import {createEditorInputSuggestions} from "./input-suggestions";
 import {boundedUUID} from "./uuid";
-import {exactOffsetForNormalizedOffset} from "./state";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -253,14 +252,24 @@ let modeTransitionSequence = 0;
 const liveWidgetReuseCounts = {table: 0, footnote: 0};
 let lastUndoLabel: string | undefined;
 let lastRedoLabel: string | undefined;
-const post = (message: Record<string, unknown>) => nativeHandler()?.postMessage({
-  protocolVersion: EDITOR_PROTOCOL_VERSION,
-  sessionID: bridgeSessionID,
-  documentID: bridgeDocumentID,
-  startingFingerprint: bridgeFingerprint,
-  documentVersion,
-  ...message,
-});
+const post = (message: Record<string, unknown>) => {
+  const startedAt = performance.now();
+  nativeHandler()?.postMessage({
+    protocolVersion: EDITOR_PROTOCOL_VERSION,
+    sessionID: bridgeSessionID,
+    documentID: bridgeDocumentID,
+    startingFingerprint: bridgeFingerprint,
+    documentVersion,
+    ...message,
+  });
+  if (message.type === "documentChanged" || message.type === "interactionChanged") {
+    recordEditorMetric("bridge-message-post", startedAt, {
+      generation: documentVersion, interactionRevision: citationInsertionRevision,
+      documentChanged: message.type === "documentChanged" ? 1 : 0,
+      postedAtMilliseconds: startedAt,
+    });
+  }
+};
 
 function postConfiguredPerformanceSample(
   metric: "editor_visible_projection",
@@ -1446,7 +1455,7 @@ const liveFrontmatterLines = StateField.define<FrontmatterPresentation>({
 let dirty = false;
 let pendingKeyDownStartedAt: number | null = null;
 let pendingCommittedKeyStartedAt: number | null = null;
-let pendingInputStartedAt: {startedAt: number; composing: boolean} | null = null;
+let pendingInputStartedAt: {startedAt: number; composing: boolean; trusted: boolean} | null = null;
 let forceNextInteractionContext = true;
 let lastInteractionAvailabilitySignature: string | null = null;
 const interactionReporter = new AnimationFrameCoalescer(
@@ -1479,6 +1488,11 @@ const stateReporter = EditorView.updateListener.of((update) => {
       recordEditorMetric("input-to-state", input.startedAt, {
         composing: input.composing ? 1 : 0,
         documentLength: update.state.doc.length,
+        generation: documentVersion + 1, interactionRevision: citationInsertionRevision,
+        trustedInput: input.trusted ? 1 : 0,
+        visibilityVisible: document.visibilityState === "visible" ? 1 : 0,
+        documentHasFocus: document.hasFocus() ? 1 : 0,
+        editorOwnsFocus: document.activeElement === update.view.contentDOM ? 1 : 0,
       });
     }
     const keyStartedAt = pendingCommittedKeyStartedAt;
@@ -1506,16 +1520,18 @@ const stateReporter = EditorView.updateListener.of((update) => {
       const paintedDocumentVersion = documentVersion;
       const paintedDocumentLength = update.state.doc.length;
       const attachment = documentAttachment;
-      scheduleAfterNextPaint(() => {
+      scheduleAfterNextPaint((paintTiming) => {
         if (attachment !== documentAttachment) return;
         if (input !== null) {
           recordEditorMetric("input-to-paint", input.startedAt, {
+            ...paintTiming,
             composing: input.composing ? 1 : 0,
             documentLength: paintedDocumentLength,
           });
         }
         if (keyStartedAt !== null) {
           recordEditorMetric("key-to-paint", keyStartedAt, {
+            ...paintTiming,
             documentLength: paintedDocumentLength,
           });
         }
@@ -1881,7 +1897,7 @@ const inputSuggestions = createEditorInputSuggestions({
     post({type: "linkCompletionQuery", requestID, completionKind, query});
   },
   requestWritingContinuation: (requestID, state, position) => {
-    const caretUTF16Offset = exactOffsetForNormalizedOffset(state.field(exactSourceState).text, position);
+    const caretUTF16Offset = state.field(exactSourceState).exactOffset(position);
     if (caretUTF16Offset === null) {
       inputSuggestions.resolveWritingContinuation(requestID, {text: null});
       return;
@@ -2041,6 +2057,7 @@ editor.contentDOM.addEventListener("beforeinput", (event) => {
   pendingInputStartedAt = {
     startedAt: performance.now(),
     composing: input.isComposing || editor.composing,
+    trusted: event.isTrusted,
   };
 }, {capture: true});
 const scrollCoordinator = createEditorScrollCoordinator(editor, {
@@ -2179,7 +2196,7 @@ function currentEditorContext(view = editor): EditorContext {
   }
   if (citationTransaction !== null) availableCommands.push("cancelCitation");
   else if (fieldProjection.diagnostics.length === 0 && state.selection.ranges.length === 1 && !editingFrontmatterSelection(state)) {
-    const head = fieldProjection.fields.length ? exactOffsetForNormalizedOffset(fieldProjection.source, state.selection.main.head) : null;
+    const head = fieldProjection.fields.length ? state.field(exactSourceState).exactOffset(state.selection.main.head) : null;
     const inField = head !== null && fieldProjection.fields.some(field => head >= field.range.from && head < field.range.to);
     if (inField || citationInsertionAvailable(state)) availableCommands.push("insertCitation", "insertBibliography");
     availableCommands.push("citationStyle");
@@ -2205,7 +2222,14 @@ function currentEditorContext(view = editor): EditorContext {
 
 function scheduleEditorInteractionReport(forceContext = false) {
   forceNextInteractionContext ||= forceContext;
-  interactionReporter.schedule(() => {
+  const scheduledAt = performance.now();
+  interactionReporter.schedule(source => {
+    recordEditorMetric("interaction-report-queue", scheduledAt, {
+      generation: documentVersion, interactionRevision: citationInsertionRevision,
+      frame: source === "frame" ? 1 : 0, watchdog: source === "watchdog" ? 1 : 0,
+      explicit: source === "explicit" ? 1 : 0,
+    });
+    const contextStartedAt = performance.now();
     const context = currentEditorContext();
     const head = editor.state.selection.main.head;
     const line = editor.state.doc.lineAt(head);
@@ -2215,6 +2239,9 @@ function scheduleEditorInteractionReport(forceContext = false) {
     forceNextInteractionContext = false;
     lastInteractionAvailabilitySignature = availabilitySignature;
     updateEditorAccessibility(editor.contentDOM, configuredEditorMode(editor.state), context);
+    recordEditorMetric("interaction-context", contextStartedAt, {
+      generation: documentVersion, interactionRevision: citationInsertionRevision,
+    });
     post({
       type: "interactionChanged",
       interactionRevision: citationInsertionRevision,
@@ -2624,7 +2651,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (reference) {
       if (reference.interactionRevision !== citationInsertionRevision
         || reference.editorCaretUTF16Offset !== editor.state.selection.main.head
-        || exactOffsetForNormalizedOffset(source, reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset
+        || editor.state.field(exactSourceState).exactOffset(reference.editorCaretUTF16Offset) !== reference.caretUTF16Offset
         || source.slice(reference.fromUTF16, reference.toUTF16) !== `@${reference.query}`) {
         return rejected(request.requestID, documentVersion, localized("Citation completion is stale."));
       }

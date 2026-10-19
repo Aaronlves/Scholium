@@ -1,4 +1,4 @@
-import {EditorSelection, EditorState} from "@codemirror/state";
+import {EditorSelection, EditorState, StateEffect} from "@codemirror/state";
 import {history, isolateHistory, redo, undo} from "@codemirror/commands";
 import {ensureSyntaxTree} from "@codemirror/language";
 import {EditorView} from "@codemirror/view";
@@ -51,6 +51,42 @@ describe("live projection index component", () => {
       [scholiumNoteLanguage, exactSourceHistory, oracle.extension]);
     expect(controller.index(state)).toEqual(oracle.index(fresh));
   }
+
+  it("keeps nested quote depth through list ancestors and mapped prose input", () => {
+    const source = "\ufeff> Outer\n> > Middle\n> > - item\n> >   > Nested in list.\n> >   > > Deepest.\n\nAfter.";
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    let state = createMarkdownDocumentState(source, [scholiumNoteLanguage, exactSourceHistory, controller.extension]);
+    expect(controller.index(state).quoteRanges.map(range => range.depth)).toEqual([1, 2, 3, 4]);
+    for (const passage of ["Nested in list.", "After."]) {
+      const from = state.doc.toString().indexOf(passage) + 2;
+      const transaction = state.update({changes: {from, insert: "中e\u0301"}});
+      state = transaction.state;
+      expect(controller.topologyWasMapped(transaction)).toBe(true);
+      expect(controller.index(state).quoteRanges.map(range => range.depth)).toEqual([1, 2, 3, 4]);
+      expectFreshIndex(state, controller);
+    }
+  });
+
+  it("does not index paragraph ancestors for an absent quote feature after long prose input", () => {
+    const source = "\ufeff" + "Ordinary 中文 😀 e\u0301 prose.\r\n\r\n".repeat(512);
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    let state = createMarkdownDocumentState(source, [scholiumNoteLanguage, exactSourceHistory]);
+    expect(ensureSyntaxTree(state, state.doc.length, 1_000)).not.toBeNull();
+    state = state.update({effects: StateEffect.appendConfig.of(controller.extension)}).state;
+    expect(controller.index(state).quoteRanges).toEqual([]);
+    const mapEntries = vi.spyOn(Map.prototype, "set");
+    try {
+      const transaction = state.update({changes: {from: 3, insert: "文"}});
+      state = transaction.state;
+      const index = controller.index(state);
+      expect(controller.topologyWasMapped(transaction)).toBe(true);
+      expect(index.syntax.blocks).toHaveLength(512);
+      expect(index.quoteRanges).toEqual([]);
+      const blocks = new Set<unknown>(index.syntax.blocks);
+      expect(mapEntries.mock.calls.filter(([, value]) => blocks.has(value))).toHaveLength(0);
+    } finally { mapEntries.mockRestore(); }
+    expectFreshIndex(state, controller);
+  });
 
   it.each(["所读书目原文", "Nested quotation"])(
     "maps repeated Callout prose input/deletion beside %j against a fresh parser", passage => {

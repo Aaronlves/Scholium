@@ -273,6 +273,7 @@ export function transactionCanMapProjectionTopology(
   marker: RegExp,
   mutationSensitiveRanges: readonly ProjectionSourceRange[],
   previousSyntax: SemanticProjectionRanges,
+  observeTiming?: (observed: Record<string, number>) => void,
 ) {
   if (!transaction.docChanged) return false;
   const changes: Array<{
@@ -312,8 +313,21 @@ export function transactionCanMapProjectionTopology(
   const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
   // Use the parser's ready context, which can be ahead of the published
   // LanguageState tree. A missing neighborhood cannot prove unchanged syntax.
+  const ensureTreeStartedAt = observeTiming ? performance.now() : 0;
+  // Both public tree APIs read the lazily updated language field. Separate
+  // that shared work from ensureSyntaxTree's remaining work only when observed.
+  if (observeTiming) syntaxTree(transaction.state);
+  const languageStateReadCompletedAt = observeTiming ? performance.now() : 0;
   const tree = ensureSyntaxTree(transaction.state, newNeighborhood.to, 0);
-  if (!tree) return false;
+  const ensureTreeCompletedAt = observeTiming ? performance.now() : 0;
+  if (!tree) {
+    observeTiming?.({
+      ensureTreeMilliseconds: ensureTreeCompletedAt - ensureTreeStartedAt,
+      languageStateReadMilliseconds: languageStateReadCompletedAt - ensureTreeStartedAt,
+      ensureTreeAfterStateReadMilliseconds: ensureTreeCompletedAt - languageStateReadCompletedAt,
+    });
+    return false;
+  }
   const previousLocal: SemanticProjectionRanges = {
     ...previousSyntax,
     blocks: previousSyntax.blocks
@@ -327,12 +341,32 @@ export function transactionCanMapProjectionTopology(
       .filter((literal) => rangesOverlap(literal, oldNeighborhood))
       .map((literal) => ({...literal, ...mappedRange(literal, transaction)})),
   };
+  const previousLocalCompletedAt = observeTiming ? performance.now() : 0;
+  let fullTextMaterializationMilliseconds = 0;
+  let fullTextMaterializationUTF16Count = 0;
   const nextLocal = semanticProjectionRanges(
     transaction.state,
     [newNeighborhood],
     0,
     tree,
+    observeTiming ? (milliseconds, utf16Count) => {
+      fullTextMaterializationMilliseconds = milliseconds;
+      fullTextMaterializationUTF16Count = utf16Count;
+    } : undefined,
   );
-  return projectionTopologySignature(previousLocal)
+  const nextSemanticCompletedAt = observeTiming ? performance.now() : 0;
+  const mapped = projectionTopologySignature(previousLocal)
     === projectionTopologySignature(nextLocal);
+  const signatureCompletedAt = observeTiming ? performance.now() : 0;
+  observeTiming?.({
+    ensureTreeMilliseconds: ensureTreeCompletedAt - ensureTreeStartedAt,
+    languageStateReadMilliseconds: languageStateReadCompletedAt - ensureTreeStartedAt,
+    ensureTreeAfterStateReadMilliseconds: ensureTreeCompletedAt - languageStateReadCompletedAt,
+    previousLocalPreparationMilliseconds: previousLocalCompletedAt - ensureTreeCompletedAt,
+    nextSemanticMilliseconds: nextSemanticCompletedAt - previousLocalCompletedAt,
+    signatureMilliseconds: signatureCompletedAt - nextSemanticCompletedAt,
+    fullTextMaterializationMilliseconds,
+    fullTextMaterializationUTF16Count,
+  });
+  return mapped;
 }
