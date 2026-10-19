@@ -1,5 +1,64 @@
 import WebKit
 
+/// An uncleared page is inaccessible until the incoming initialization is
+/// checked. This lease owns only runtime lifetime, never document source.
+@MainActor
+final class MarkdownEditorHandoffLease {
+    private weak var pool: MarkdownEditorWebViewPool?
+    private weak var webView: WindowAttachedWebView?
+    private let generation: Int
+    private var deadline: Task<Void, Never>?
+    private var isClaimed = false
+    private(set) var isRetired = false
+
+    var permitsInitialization: Bool {
+        isClaimed && !isRetired && webView?.editorHandoffLease === self
+    }
+
+    init(pool: MarkdownEditorWebViewPool, webView: WindowAttachedWebView, generation: Int, timeout: Duration) {
+        self.pool = pool
+        self.webView = webView
+        self.generation = generation
+        deadline = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            self?.retire()
+        }
+    }
+
+    func claim() -> Bool {
+        guard !isRetired, !isClaimed, let webView, webView.editorHandoffLease === self else { return false }
+        isClaimed = true
+        // Acquisition bounds only delivery. Once attached, the session's
+        // existing readiness/bridge deadlines own initialization, including
+        // its injected policy for legitimately large documents.
+        deadline?.cancel()
+        deadline = nil
+        return true
+    }
+
+    func commit() -> Bool {
+        guard isClaimed, !isRetired, let webView, webView.editorHandoffLease === self,
+            pool?.commitHandoff(self, webView: webView, generation: generation) == true
+        else { return false }
+        deadline?.cancel()
+        deadline = nil
+        webView.editorHandoffLease = nil
+        return true
+    }
+
+    func retire() {
+        guard !isRetired, let webView, webView.editorHandoffLease === self else { return }
+        isRetired = true
+        deadline?.cancel()
+        deadline = nil
+        pool?.retireHandoff(self, webView: webView)
+        // Keep the quarantine on the retired page. A late WebKit call may
+        // still run, so it must never become visible or enter the idle pool.
+        webView.editorSession?.retireQuarantinedHandoff(in: webView)
+    }
+}
+
 /// A window's one idle, already bootstrapped editor page. Document sessions
 /// still own exact source, history recovery, and transport identity. Reuse
 /// avoids reloading bundled JavaScript; initialization installs a fresh state.
@@ -22,6 +81,7 @@ final class MarkdownEditorWebViewPool {
     private var idleWebView: WindowAttachedWebView?
     private weak var attachedWebView: WindowAttachedWebView?
     private weak var preparingWebView: WindowAttachedWebView?
+    private weak var handoffLease: MarkdownEditorHandoffLease?
     private let abandonedWebViews = NSHashTable<WindowAttachedWebView>.weakObjects()
     private var preparation: Task<Void, Never>?
     private var expiry: Task<Void, Never>?
@@ -81,8 +141,8 @@ final class MarkdownEditorWebViewPool {
     }
 
     /// A replacement may be made before SwiftUI dismantles its predecessor.
-    /// Keep the new mount empty until the outgoing page has completed its
-    /// JavaScript reset. A failed reset grants no reuse.
+    /// Keep the new mount empty until the outgoing page is either cleared or
+    /// quarantined for a checked document initialization.
     func takeWhenPrepared() async -> WindowAttachedWebView? {
         if let webView = take() { return webView }
         guard !isInvalidated, hasOutgoingView else { return nil }
@@ -141,7 +201,13 @@ final class MarkdownEditorWebViewPool {
         return true
     }
 
-    func recycle(_ webView: WKWebView) {
+    func recycle(_ webView: WKWebView, hasFrozenSnapshot: Bool = false) {
+        let openingMeasurement = PerformanceProbe.shared.armedNoteOpeningAttemptID
+        PerformanceProbe.shared.markNoteOpeningMilestone(.poolRecycleEntered, attemptID: openingMeasurement)
+        if let lease = (webView as? DocumentNativeWebView)?.editorHandoffLease {
+            lease.retire()
+            return
+        }
         if let webView = webView as? WindowAttachedWebView,
             abandonedWebViews.contains(webView)
         {
@@ -156,6 +222,7 @@ final class MarkdownEditorWebViewPool {
         // Never retain the outgoing SwiftUI hierarchy, its coordinator, or
         // its closures. Only a detached, document-inaccessible page is idle.
         webView.removeFromSuperview()
+        PerformanceProbe.shared.markNoteOpeningMilestone(.poolOutgoingDetached, attemptID: openingMeasurement)
         if webView.editorReuseCount >= maximumSafeReuses {
             abandonedWebViews.add(webView)
             discardIdleAndPreparation()
@@ -165,15 +232,31 @@ final class MarkdownEditorWebViewPool {
         discardIdleAndPreparation()
         preparingWebView = webView
         let expectedGeneration = generation
+        if preparationGate == nil,
+            offerFrozenHandoff(
+                webView, hasFrozenSnapshot: hasFrozenSnapshot, generation: expectedGeneration,
+                openingMeasurement: openingMeasurement)
+        {
+            preparationSettledSerial &+= 1
+            return
+        }
         preparation = Task { @MainActor [weak self] in
             defer { self?.preparationSettledSerial &+= 1 }
             if let gate = self?.preparationGate { await gate() }
             guard !Task.isCancelled else { return }
+            if self?.offerFrozenHandoff(
+                webView, hasFrozenSnapshot: hasFrozenSnapshot, generation: expectedGeneration,
+                openingMeasurement: openingMeasurement) == true
+            {
+                return
+            }
+            PerformanceProbe.shared.markNoteOpeningMilestone(.poolReuseRequested, attemptID: openingMeasurement)
             let cleared =
-                try? await webView.callAsyncJavaScript(
-                    "return window.scholiumEditor?.prepareForReuse() === true",
-                    arguments: [:], in: nil, contentWorld: .page
+                try? await webView.evaluateJavaScript(
+                    "window.scholiumEditor?.prepareForReuse() === true",
+                    in: nil, contentWorld: .page
                 ) as? Bool
+            PerformanceProbe.shared.markNoteOpeningMilestone(.poolReuseReturned, attemptID: openingMeasurement)
             guard !Task.isCancelled, let self,
                 self.generation == expectedGeneration, !self.isInvalidated
             else { return }
@@ -196,13 +279,53 @@ final class MarkdownEditorWebViewPool {
         }
     }
 
+    private func offerFrozenHandoff(
+        _ webView: WindowAttachedWebView, hasFrozenSnapshot: Bool, generation expectedGeneration: Int,
+        openingMeasurement: UUID?
+    ) -> Bool {
+        guard hasFrozenSnapshot, !waiting.isEmpty, generation == expectedGeneration,
+            !isInvalidated, webView.navigationDelegate == nil
+        else { return false }
+        let lease = MarkdownEditorHandoffLease(
+            pool: self, webView: webView, generation: expectedGeneration, timeout: acquisitionDeadline)
+        webView.editorHandoffLease = lease
+        handoffLease = lease
+        preparation = nil
+        preparingWebView = nil
+        _ = finishWaiters(with: webView)
+        PerformanceProbe.shared.markNoteOpeningMilestone(
+            .poolHandoffOffered, attemptID: openingMeasurement)
+        return true
+    }
+
     func abandonOutgoing(_ webView: WKWebView) {
+        (webView as? DocumentNativeWebView)?.editorHandoffLease?.retire()
         if attachedWebView === webView { attachedWebView = nil }
         if preparation == nil { _ = finishWaiters(with: nil) }
     }
 
+    fileprivate func commitHandoff(
+        _ lease: MarkdownEditorHandoffLease, webView: WindowAttachedWebView, generation: Int
+    ) -> Bool {
+        guard handoffLease === lease, self.generation == generation, !isInvalidated,
+            attachedWebView === webView, !abandonedWebViews.contains(webView)
+        else { return false }
+        handoffLease = nil
+        return true
+    }
+
+    fileprivate func retireHandoff(_ lease: MarkdownEditorHandoffLease, webView: WindowAttachedWebView) {
+        abandonedWebViews.add(webView)
+        guard handoffLease === lease else { return }
+        handoffLease = nil
+        if attachedWebView === webView { attachedWebView = nil }
+        _ = finishWaiters(with: nil)
+    }
+
     private func discardIdleAndPreparation() {
         generation &+= 1
+        handoffLease?.retire()
+        handoffLease = nil
         preparation?.cancel()
         preparation = nil
         preparingWebView = nil

@@ -127,6 +127,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         reusedWebView: WindowAttachedWebView?
     ) {
         guard !mount.isDismantled, mount.container == nil else { return }
+        if let reusedWebView, reusedWebView.editorHandoffLease?.isRetired == true {
+            // Delivery can expire before its MainActor receiver runs. Keep
+            // the retired page quarantined and use the ordinary fresh path.
+            attach(to: mount, coordinator: coordinator, reusedWebView: nil)
+            return
+        }
         let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: performanceDocumentID)
         PerformanceProbe.shared.markNoteOpeningMilestone(.pageAcquired, attemptID: openingMeasurement)
         let attachmentSource = session.sourceForViewAttachment(
@@ -136,6 +142,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         let contentController = reusedWebView?.configuration.userContentController ?? WKUserContentController()
         contentController.add(coordinator, name: "scholium")
         let interfaceLocalization = WebKitInterfaceLocalization.current()
+        let editorScript = PerformanceProbe.shared.measureNoteOpeningWork(
+            .editorScriptLoad, documentID: performanceDocumentID, editorSessionID: session.sessionID,
+            operation: { Self.editorScript }
+        )
         let webView: WindowAttachedWebView
         if let reusedWebView {
             webView = reusedWebView
@@ -183,7 +193,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         forMainFrameOnly: true
                     ))
             }
-            if let editorScript = Self.editorScript {
+            if let editorScript {
                 contentController.addUserScript(
                     WKUserScript(
                         source: editorScript,
@@ -266,8 +276,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             .sessionPrepared, attemptID: openingMeasurement, editorSessionID: openingSessionID
         )
 
-        guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
-            Self.editorScript != nil
+        let editorHTML = PerformanceProbe.shared.measureNoteOpeningWork(
+            .editorResourceValidation, documentID: performanceDocumentID, editorSessionID: openingSessionID
+        ) {
+            Self.editorHTML(localization: interfaceLocalization)
+        }
+        guard let editorHTML, editorScript != nil
         else {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
             let container = DocumentWebViewContainer(
@@ -304,12 +318,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 webView.loadHTMLString(editorHTML, baseURL: nil)
             }
         }
-        let container = DocumentWebViewContainer(
-            webView: webView,
-            keyEquivalentRoute: { event in
-                ScholiumCommandKeyEquivalentRouter.route(event)
-            }
-        )
+        let container = PerformanceProbe.shared.measureNoteOpeningWork(
+            .editorContainerConstruction, documentID: performanceDocumentID, editorSessionID: openingSessionID
+        ) {
+            DocumentWebViewContainer(
+                webView: webView,
+                keyEquivalentRoute: { event in
+                    ScholiumCommandKeyEquivalentRouter.route(event)
+                }
+            )
+        }
         container.setSurfaceVisibility(surfaceVisibility)
         container.toolbarUnderlapEnabled = toolbarUnderlap
         coordinator.surfaceVisibility = surfaceVisibility
@@ -431,7 +449,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         guard ownsWebView, let webView else { return }
         coordinator.session.detach(webView)
         if canRecycle {
-            coordinator.session.webViewPool?.recycle(webView)
+            coordinator.session.webViewPool?.recycle(
+                webView, hasFrozenSnapshot: coordinator.session.hasDetachedPersistenceSnapshot)
         } else {
             coordinator.session.webViewPool?.abandonOutgoing(webView)
         }
@@ -1308,18 +1327,29 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         /// native attachment, then use the ordinary initialization boundary.
         func resumePreparedPage(in webView: WKWebView, editorHTML: String) {
             let expectedGeneration = pageGeneration
-            Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView, webView.navigationDelegate === self else { return }
-                let available =
-                    try? await webView.callAsyncJavaScript(
-                        "return typeof window.scholiumEditor?.dispatch === 'function'",
-                        arguments: [:], in: nil, contentWorld: .page
-                    ) as? Bool
-                guard webView.navigationDelegate === self,
+            guard webView.navigationDelegate === self, session.webView === webView else { return }
+            // A process-termination callback may already have started a reload
+            // before the receiving view enters its window.
+            guard !awaitingEditorLoad else { return }
+            if let lease = (webView as? DocumentNativeWebView)?.editorHandoffLease,
+                lease.permitsInitialization
+            {
+                guard !webView.isLoading else { return }
+                // A frozen handoff has just acknowledged this live runtime.
+                // Initialization remains the checked source boundary; probing
+                // the same page first adds another WebKit round trip.
+                signalReady()
+                return
+            }
+            webView.evaluateJavaScript(
+                "typeof window.scholiumEditor?.dispatch === 'function'",
+                in: nil, in: .page
+            ) { [weak self, weak webView] result in
+                guard let self, let webView, webView.navigationDelegate === self,
                     self.session.webView === webView,
                     self.pageGeneration == expectedGeneration
                 else { return }
-                if available == true {
+                if case .success(let available) = result, available as? Bool == true {
                     self.signalReady()
                 } else {
                     self.awaitingEditorLoad = true

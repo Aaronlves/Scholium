@@ -2314,6 +2314,9 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       return rejected(request.requestID, documentVersion, "invalid initialization");
     }
     editingDialect = operation.dialect;
+    // A frozen page may pass directly to this checked initialization without
+    // an intermediate empty document. Focus belongs to the incoming release.
+    editorOperations.blur();
     const stateStartedAt = performance.now();
     editorOperations.setDocument(
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
@@ -2520,7 +2523,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       editor.dispatch({effects: setEditorSuspension.of(null)});
       return rejected(request.requestID, documentVersion, localized("The editor history could not be retained. Keep this document open and try again."));
     }
-    return {...successfulResult(request.requestID), text: recovery.source, recovery};
+    let scrollAnchor: EditorScrollAnchor | undefined;
+    try {
+      scrollAnchor = scrollCoordinator.currentAnchor();
+    } catch {
+      // Geometry remains optional after the exact source/history freeze.
+    }
+    return {...successfulResult(request.requestID), text: recovery.source, recovery, scrollAnchor};
   }
   case "resumeAfterDetachment": {
     const suspension = editor.state.field(editorSuspensionState);

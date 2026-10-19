@@ -233,8 +233,8 @@ extension WindowModel {
             }
         }
         let hydrated: WorkspaceNoteSnapshot
+        let sourceReused: Bool
         if let committedSnapshot {
-            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             guard committedSnapshot.summary.hasSameSourceBinding(as: snapshot) else {
                 throw WorkspaceHydrationError.staleSnapshot
             }
@@ -242,22 +242,25 @@ extension WindowModel {
                 summary: snapshot, document: committedSnapshot.document,
                 cachedSemanticDocument: committedSnapshot.cachedSemanticDocument
             )
+            sourceReused = true
         } else if let stableID = snapshot.stableIdentity.resolvedID {
             let key = DocumentSessionKey(vaultID: snapshot.id.vaultID, noteID: stableID)
             if let retained = documentController.snapshots[key],
                 retained.fingerprint == snapshot.fingerprint,
                 retained.id.relativePath.utf8.elementsEqual(snapshot.id.relativePath.utf8)
             {
-                PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
                 hydrated = WorkspaceNoteSnapshot(
                     summary: snapshot, document: retained.document,
                     cachedSemanticDocument: retained.cachedSemanticDocument
                 )
+                sourceReused = true
             } else {
                 hydrated = try await hydrateForOpening(snapshot, openingMeasurement: openingMeasurement)
+                sourceReused = false
             }
         } else {
             hydrated = try await hydrateForOpening(snapshot, openingMeasurement: openingMeasurement)
+            sourceReused = false
         }
         try await validateSource()
         try validateDisplay()
@@ -269,6 +272,10 @@ extension WindowModel {
                 relativePath: hydrated.id.relativePath
             ), currentSummary.hasSameSourceBinding(as: hydrated.summary)
         else { throw WorkspaceHydrationError.staleSnapshot }
+        if sourceReused {
+            PerformanceProbe.shared.markNoteOpeningSourceReused(
+                attemptID: openingMeasurement, documentID: hydrated.id.relativePath)
+        }
         let current = WorkspaceNoteSnapshot(
             summary: currentSummary, document: hydrated.document,
             cachedSemanticDocument: hydrated.cachedSemanticDocument

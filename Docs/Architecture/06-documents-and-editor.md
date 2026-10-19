@@ -5,11 +5,11 @@ document ownership, exact-source transport, and nonauthorizing rendering.
 
 ## Documents and CodeMirror
 
-Document owns vault/Note-keyed sessions; transfer retains ownership and document
-identity while rotating transport identity. Dirty/composing/conflicted/saving/recovery
-states pin sessions. Destination leases precede release; close flushes before removal.
-Clean unleased sessions discard source, Undo, rendering and previews. Window visits
-separately own revision-bound return positions. Equal paths across vaults remain distinct.
+Document owns vault/Note-keyed sessions; transfer rotates transport identity,
+preserving ownership/document identity. Dirty/composing/conflicted/saving/recovery
+pin sessions. Destination leases precede release; close flushes before removal.
+Clean unleased sessions discard source/Undo/rendering/previews. Window visits
+own revision-bound return positions. Equal paths across vaults remain distinct.
 
 `DocumentController` owns persisted window mode. Sessions retain
 editor/flush identity, checked exact mirror, committed revision, presentation/
@@ -21,16 +21,17 @@ awaits acknowledgment; unsafe Review retains editor/recovery. Review and editor
 observe separate viewports; mode handoff alone copies anchors or fallback fractions.
 Returning Review restores its saved position.
 
-Detachment atomically freezes input and captures exact source, selection and
-history; incomplete capture retains the live editor. Source-bounded history records
-insertion line endings/citations; a pinned CodeMirror adapter verifies source/history/
-selection binding, including inverse effects and grouping.
-Frozen saves reuse unchanged document/revision/generation proof;
-cancelled transitions resume only their matching suspension. Committed snapshots
-update clean detached sessions atomically. Dirty sessions retain exact bytes for
-conflict comparison. External events reconcile all tabs by stable identity before
-changing paths/projections; clean deleted sessions release, unsafe sessions retain
-their buffers.
+Detachment atomically freezes input and captures exact source/selection/history;
+incomplete capture retains the editor. Source-bounded history records insertion
+line endings/citations; a pinned CodeMirror adapter verifies source/history/selection
+binding, inverse effects and grouping.
+Frozen saves reuse unchanged document/revision/generation proof; cancellation resumes only its
+matching suspension. The window pool reuses runtimes, never source/history.
+Quarantine blocks paint/input/accessibility until checked initialization;
+uncertain handoffs retire, only cleared pages park idle. Committed snapshots update
+clean detached sessions atomically; dirty sessions retain exact conflict bytes.
+External events reconcile tabs by stable identity before paths/projections change;
+clean deleted sessions release, unsafe buffers remain.
 
 Opening atomically installs exact source, mode and intent before mounting.
 Mapped selection and measured geometry precede handoff; failure preserves source

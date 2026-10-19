@@ -43880,6 +43880,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return rejected2(request.requestID, documentVersion, "invalid initialization");
       }
       editingDialect = operation.dialect;
+      editorOperations.blur();
       const stateStartedAt = performance.now();
       editorOperations.setDocument(
         operation.text,
@@ -44114,7 +44115,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           editor.dispatch({ effects: setEditorSuspension.of(null) });
           return rejected2(request.requestID, documentVersion, localized("The editor history could not be retained. Keep this document open and try again."));
         }
-        return { ...successfulResult(request.requestID), text: recovery.source, recovery };
+        let scrollAnchor;
+        try {
+          scrollAnchor = scrollCoordinator.currentAnchor();
+        } catch {
+        }
+        return { ...successfulResult(request.requestID), text: recovery.source, recovery, scrollAnchor };
       }
       case "resumeAfterDetachment": {
         const suspension = editor.state.field(editorSuspensionState);

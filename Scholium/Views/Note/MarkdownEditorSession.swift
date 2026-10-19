@@ -228,6 +228,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         isReady && isLoaded && errorMessage == nil && !isComposing
             && inFlightRequestTasks.isEmpty && unfinishedBridgeDispatches.isEmpty
             && webView?.isLoading == false
+            && (webView as? DocumentNativeWebView)?.editorHandoffLease == nil
     }
     private var citationTransactionID: String?
     @Published private(set) var citationStatus: String?
@@ -527,6 +528,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         self.webView = webView
+        if let handoff = (webView as? DocumentNativeWebView)?.editorHandoffLease,
+            !handoff.claim()
+        {
+            handoff.retire()
+        }
         deliveredImageResources = nil
         sessionID = UUID()
         updatePresentation { $0.reset() }
@@ -544,6 +550,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func detach(_ webView: WKWebView) {
         guard self.webView === webView else { return }
+        (webView as? DocumentNativeWebView)?.editorHandoffLease?.retire()
         floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
@@ -684,9 +691,29 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func reportError(_ message: String) {
+        (webView as? DocumentNativeWebView)?.editorHandoffLease?.retire()
         startupTask?.cancel()
         cancelModeTransition()
         updatePresentation { $0.fail(message) }
+    }
+
+    /// An initialization whose result is unknown cannot be parked or reused.
+    /// Defer publication because detachment can run inside SwiftUI teardown.
+    func retireQuarantinedHandoff(in webView: WKWebView) {
+        guard self.webView === webView else { return }
+        invalidateRequestQueue(clearingRecoveryReport: false)
+        documentLoadTask?.cancel()
+        startupTask?.cancel()
+        Task { @MainActor [weak self, weak webView] in
+            await Task.yield()
+            guard let self, let webView, self.webView === webView,
+                (webView as? DocumentNativeWebView)?.editorHandoffLease?.isRetired == true,
+                self.errorMessage == nil
+            else { return }
+            self.updatePresentation {
+                $0.fail(String(localized: "Edit mode did not finish starting.", table: "Localizable", bundle: .module))
+            }
+        }
     }
 
     func retryUnavailablePresentation() {
@@ -1652,6 +1679,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             requestEpoch: requestEpoch,
             generation: generation
         )
+        var capturedNewFrozenState = false
+        var frozenScrollAnchor: MarkdownEditorWireScrollAnchor?
         if suspendForDetachment {
             guard !isComposing, isReady, isLoaded, let webView else {
                 throw SessionError.unavailable
@@ -1694,6 +1723,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     if let focusTarget = snapshot.focusTarget {
                         observeFocusTarget(focusTarget)
                     }
+                    frozenScrollAnchor = result.scrollAnchor
+                    capturedNewFrozenState = true
                 } catch {
                     try? await resumeAfterDetachment(suspensionID: suspensionID)
                     throw error
@@ -1709,7 +1740,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     generation: generation
                 )
         else { throw SessionError.invalidResult }
-        let capturedScrollAnchor = try? await currentScrollAnchor()
+        let capturedScrollAnchor: EditorScrollAnchor?
+        if capturedNewFrozenState {
+            if let frozenScrollAnchor {
+                reconstructionScrollAnchor = nil
+                capturedScrollAnchor = recordScrollPosition(
+                    frozenScrollAnchor, fallbackFraction: frozenScrollAnchor.fallbackFraction)
+                pendingScrollAnchor = capturedScrollAnchor
+            } else {
+                capturedScrollAnchor = nil
+            }
+        } else {
+            // A frozen source can still scroll while persistence is pending.
+            capturedScrollAnchor = try? await currentScrollAnchor()
+        }
         guard
             expectedKey
                 == RecoveryCaptureKey(
@@ -2738,8 +2782,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let openingAttempt = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: sessionID)
         let openingSession = sessionID
         PerformanceProbe.shared.markNoteOpeningMilestone(.loadScheduled, attemptID: openingAttempt, editorSessionID: openingSession)
+        let handoff = (webView as? DocumentNativeWebView)?.editorHandoffLease
         documentLoadTask = Task {
+            defer { handoff?.retire() }
             do {
+                if let handoff {
+                    try Task.checkCancellation()
+                    guard !handoff.isRetired else { throw SessionError.unavailable }
+                }
                 guard intendedRequestEpoch == requestEpoch,
                     self.documentID == documentID,
                     self.webView === webView
@@ -2795,6 +2845,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         pendingSourceRange = nil
                         pendingSourceRangeIsDefault = false
                     }
+                }
+                if let handoff {
+                    try Task.checkCancellation()
+                    guard intendedRequestEpoch == requestEpoch, self.documentID == documentID,
+                        self.webView === webView, handoff.commit()
+                    else { throw SessionError.staleRequest }
                 }
                 if let snapshot = matchingRecovery,
                     snapshot.fingerprint == startingFingerprint,

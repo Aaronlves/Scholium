@@ -44,9 +44,11 @@ final class DocumentWebViewContainer: NSView {
     /// Background retained surfaces remain allocated without compositing.
     func setSurfaceVisibility(_ visibility: DocumentSurfaceVisibility) {
         let isRetained = visibility == .retained
-        setAccessibilityHidden(!visibility.isActive)
-        webView.setAccessibilityHidden(!visibility.isActive)
-        if !visibility.isActive, let responder = window?.firstResponder as? NSView,
+        let quarantined = (webView as? DocumentNativeWebView)?.editorHandoffLease != nil
+        let acceptsInput = visibility.isActive && !quarantined
+        setAccessibilityHidden(!acceptsInput)
+        webView.setAccessibilityHidden(!acceptsInput)
+        if !acceptsInput, let responder = window?.firstResponder as? NSView,
             responder === webView || responder.isDescendant(of: webView)
         {
             window?.makeFirstResponder(nil)
@@ -65,7 +67,9 @@ final class DocumentWebViewContainer: NSView {
     required init?(coder: NSCoder) { nil }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard surfaceVisibility.isActive else { return nil }
+        guard surfaceVisibility.isActive,
+            (webView as? DocumentNativeWebView)?.editorHandoffLease == nil
+        else { return nil }
         // The document paints behind native chrome, but must not own its
         // pointer, selection or clicks. Exclude the whole WebKit subtree so
         // AppKit can route this area to the window's toolbar/titlebar.
@@ -123,7 +127,9 @@ final class DocumentWebViewContainer: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard surfaceVisibility.isActive else { return false }
+        guard surfaceVisibility.isActive,
+            (webView as? DocumentNativeWebView)?.editorHandoffLease == nil
+        else { return false }
         // A focused WebKit document gets key equivalents before the menu bar.
         // Give registered app commands to their native menu owner first. The
         // composition root injects any app-level routing. This shared
@@ -143,7 +149,8 @@ final class DocumentWebViewContainer: NSView {
     override func accessibilityChildren() -> [Any]? {
         // WKWebView's own AX tree does not include arbitrary native subviews.
         // The native parent exposes both owners without mirroring their content.
-        surfaceVisibility.isActive && !isHidden ? subviews : []
+        surfaceVisibility.isActive && !isHidden
+            && (webView as? DocumentNativeWebView)?.editorHandoffLease == nil ? subviews : []
     }
 }
 
@@ -165,7 +172,20 @@ enum DocumentViewportGeometry {
 /// Every interactive document WebKit surface resolves input eligibility from
 /// its native container, including a prepared page reused from the pool.
 class DocumentNativeWebView: WKWebView {
+    var editorHandoffLease: MarkdownEditorHandoffLease? {
+        didSet {
+            // Preserve the real viewport for initialization while ensuring
+            // uncleared source cannot paint, receive input, or enter AX.
+            alphaValue = editorHandoffLease == nil ? 1 : 0
+            setAccessibilityHidden(editorHandoffLease != nil)
+            if let container = superview as? DocumentWebViewContainer {
+                container.setSurfaceVisibility(container.surfaceVisibility)
+            }
+        }
+    }
+
     var documentSurfaceAllowsInput: Bool {
+        guard editorHandoffLease == nil else { return false }
         var ancestor = superview
         while let view = ancestor {
             if let container = view as? DocumentWebViewContainer {

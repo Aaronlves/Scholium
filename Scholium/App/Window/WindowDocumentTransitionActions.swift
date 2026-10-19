@@ -186,10 +186,12 @@ extension WindowModel {
                         // Freeze before the final save: input accepted while
                         // opening a destination must not escape the saved base.
                         try await self.documentController.prepareSessionTransfer(document)
+                        PerformanceProbe.shared.markNoteOpeningMilestone(.outgoingFrozen, attemptID: openingMeasurement)
                         try validateBeforePreparation()
                         failurePhase = .saving
                         do {
                             try await self.documentController.flushDocumentBeforeDeparture(document, capturingEditorState: false)
+                            PerformanceProbe.shared.markNoteOpeningMilestone(.outgoingFlushed, attemptID: openingMeasurement)
                         } catch {
                             // A proven commit can still be awaiting its editor
                             // acknowledgement. Retain the Note without claiming
@@ -202,6 +204,7 @@ extension WindowModel {
                             // A commit rebases the editor identity. Capture its
                             // final source/history while input remains frozen.
                             try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+                            PerformanceProbe.shared.markNoteOpeningMilestone(.outgoingRecaptured, attemptID: openingMeasurement)
                         }
                     }
                 case .preserveSelectedDocument:
@@ -212,6 +215,7 @@ extension WindowModel {
                             preservedEditor = (document, session.editorSession.detachmentSuspensionID)
                         }
                         try await self.documentController.prepareSessionTransfer(document)
+                        PerformanceProbe.shared.markNoteOpeningMilestone(.outgoingFrozen, attemptID: openingMeasurement)
                         try validateBeforePreparation()
                     }
                 case .operationOnly:

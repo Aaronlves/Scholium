@@ -117,6 +117,392 @@ struct MarkdownEditorReuseTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A frozen direct handoff stays quarantined until checked initialization without a blank reset")
+    func frozenDirectHandoffPreservesDocumentIsolation() async throws {
+        let pool = MarkdownEditorWebViewPool(acquisitionDeadline: .milliseconds(100))
+        let dispatcher = HandoffInitializationDispatcher()
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        let b = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        b.webViewPool = pool
+        let originalA = "\u{FEFF}# A\r\n\r\nOnly A 中文 😀 e\u{301}。\r\n"
+        let editedA = originalA + "Unsaved A。\r\n"
+        let sourceB = "# B\n\nOnly B 🦉。\n"
+        defer {
+            dispatcher.gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: originalA, title: "A", mode: .livePreview)
+        let page = try #require(a.webView as? WindowAttachedWebView)
+        _ = try await a.send(.replacePassage(
+            expectedText: originalA, fromUTF16: 0, toUTF16: originalA.utf16.count,
+            replacement: editedA, preserveSelection: false), in: page)
+        _ = try await harness.javascript("""
+            window.handoffResetCount = 0;
+            const reset = window.scholiumEditor.prepareForReuse;
+            window.scholiumEditor.prepareForReuse = function() {
+              window.handoffResetCount++;
+              return reset.call(this);
+            };
+            document.getElementById('scholium-user-css').textContent = ':root { --handoff-old-owner: A; }';
+            """)
+        try await harness.beginReplacement(
+            b, source: sourceB, title: "B", mode: .livePreview, suspendForDetachment: true)
+        try await dispatcher.gate.waitUntilPaused()
+        let lease = try #require(page.editorHandoffLease)
+        #expect(b.webView === page)
+        #expect(!lease.isRetired)
+        #expect(lease.permitsInitialization)
+        #expect(page.alphaValue == 0)
+        #expect(!page.documentSurfaceAllowsInput)
+        let container = try #require(page.superview as? DocumentWebViewContainer)
+        #expect(container.accessibilityChildren()?.isEmpty == true)
+        #expect(container.hitTest(.zero) == nil)
+        #expect(!b.isLoaded)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        #expect(Data(a.checkedSource.utf8) == Data(editedA.utf8))
+        #expect(try await harness.javascript("return window.handoffResetCount;") as? Int == 0)
+        // The acquisition deadline must not become a shorter initialization
+        // deadline after the destination has claimed the page.
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!lease.isRetired)
+        dispatcher.gate.resume()
+        try await harness.waitForPrepared(b)
+        #expect(page.editorHandoffLease == nil)
+        #expect(!lease.permitsInitialization)
+        #expect(page.alphaValue == 1)
+        #expect(Data(try await b.currentText().utf8) == Data(sourceB.utf8))
+        #expect(b.context?.undoLabel == nil)
+        #expect(try await harness.javascript("return window.handoffResetCount;") as? Int == 0)
+        #expect(try await harness.javascript("return document.getElementById('scholium-user-css').textContent;") as? String == "")
+        #expect(try await harness.javascript("return document.querySelector('[data-scholium-title-input]')?.value;") as? String == "B")
+        try await harness.undo()
+        #expect(Data(try await b.currentText().utf8) == Data(sourceB.utf8))
+        try await harness.replace(
+            a, source: originalA, title: "A", mode: .livePreview, suspendForDetachment: true)
+        #expect(a.webView === page)
+        #expect(Data(try await a.currentText().utf8) == Data(editedA.utf8))
+        #expect(try await harness.javascript("return window.handoffResetCount;") as? Int == 0)
+        try await harness.undo()
+        #expect(Data(try await a.currentText().utf8) == Data(originalA.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("A first attachment with synthetic pending-reload state waits for native completion")
+    func firstAttachmentWaitsForObservedReload() async throws {
+        let pool = MarkdownEditorWebViewPool()
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        let dispatcher = HandoffInitializationDispatcher()
+        let b = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        let sourceA = "\u{FEFF}# A\r\n\r\nFrozen A e\u{301} 😀。\r\n"
+        let sourceB = "# B\r\n\r\nPending B 中文 🦉 without final newline"
+        defer {
+            dispatcher.gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: sourceA, title: "A")
+        var acquiredPage: WindowAttachedWebView?
+        let acquired = Task { @MainActor in
+            acquiredPage = await pool.takeWhenPrepared()
+        }
+        defer { acquired.cancel() }
+        try await waitForAcquisitions(pool, count: 1)
+        try await harness.hideWithoutWaitingForPool(suspendForDetachment: true)
+        await acquired.value
+        let page = try #require(acquiredPage)
+        let lease = try #require(page.editorHandoffLease)
+        #expect(!lease.permitsInitialization)
+        let coordinator = MarkdownEditorWebView.Coordinator(
+            session: b, performanceDocumentID: "reload-ordering",
+            onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
+            onRequestDocumentTitleRename: { _, requested in requested },
+            linkCompletionQuery: { _, _ in .current([]) }, onLinkActivation: { _ in },
+            onImagePreview: { _ in }, onScrollFractionChange: { _ in }, onScrollAnchorChange: { _ in })
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        defer {
+            b.detach(page)
+            page.editorSession = nil
+            page.navigationDelegate = nil
+        }
+        page.editorSession = b
+        b.attach(page)
+        b.loadDocument(sourceB, documentID: b.bridgeDocumentID, mode: .source)
+        #expect(lease.permitsInitialization)
+        coordinator.documentID = b.bridgeDocumentID
+        // The real bundled page has completed its navigation. Inject only the
+        // coordinator state left by an observed reload, independently of
+        // WebKit's asynchronous stopLoading behavior; no process is killed.
+        try #require(!page.isLoading)
+        coordinator.awaitingEditorLoad = true
+        #expect(coordinator.awaitingEditorLoad)
+        #expect(!b.isReady && !b.isLoaded)
+        #expect(dispatcher.initializationCount == 0)
+        page.navigationDelegate = coordinator
+        coordinator.resumePreparedPage(in: page, editorHTML: editorHTML)
+        // isLoading is already false, so the pending-load guard itself must
+        // prevent the claimed-lease shortcut from announcing readiness.
+        #expect(coordinator.awaitingEditorLoad && !page.isLoading)
+        #expect(!b.isReady && !b.isLoaded)
+        #expect(dispatcher.initializationCount == 0)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        #expect(page.alphaValue == 0 && !page.documentSurfaceAllowsInput)
+        coordinator.webView(page, didFinish: nil)
+        try await dispatcher.gate.waitUntilPaused()
+        #expect(!coordinator.awaitingEditorLoad)
+        #expect(b.isReady && !b.isLoaded)
+        #expect(dispatcher.initializationCount == 1)
+        #expect(Data(a.checkedSource.utf8) == Data(sourceA.utf8))
+        b.detach(page)
+        #expect(!lease.permitsInitialization)
+        dispatcher.gate.resume()
+        try await harness.wait("The cancelled reload initialization did not settle") { dispatcher.completed }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Managed frozen A to B to A handoffs isolate same-ID companion fields and preserve ordinary Undo")
+    func managedFrozenHandoffPreservesCompanionIsolation() async throws {
+        let pool = MarkdownEditorWebViewPool()
+        let dispatcher = HandoffInitializationDispatcher()
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        let b = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        b.webViewPool = pool
+        let vaultID = UUID()
+        let sourceA = "\u{FEFF}# A\r\n\r\n[Shared](cite:c-shared)\nA e\u{301} 中文 😀。\r\n"
+        let ordinaryEdit = "Ordinary A edit。"
+        let editedA = sourceA + ordinaryEdit
+        let sourceB = "# B\n\n[Shared](cite:c-shared)\nB e\u{301} 🦉 without final newline"
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        func fixture(_ name: String, source: String) throws -> (snapshot: ZoteroCitationSnapshot, bytes: Data) {
+            let noteID = UUID()
+            let code = "ITEM CSL_CITATION {\"citationItems\":[{\"id\":\"\(name)\"}],\"opaque\":\"\(name) e\u{301} 中文 🧭\"}"
+            let data = ZoteroCitationData(
+                fields: [.init(id: "c-shared", kind: .citation, code: code, text: "Shared")],
+                documentData: "<data>\r\n<prefs><pref name=\"noteType\" value=\"0\"/></prefs><!--\(name) e\u{301}--></data>",
+                acceptedFields: [.init(id: "c-shared", code: code)])
+            let fingerprint = DocumentFingerprint(content: source)
+            let companion = ZoteroCitationCompanion(
+                noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint, data: data)
+            try companion.validate(noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint)
+            let bytes = try encoder.encode(companion)
+            #expect(try ZoteroCitationCompanion.decode(bytes) == companion)
+            return (.init(
+                noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(data: bytes),
+                sourceFingerprint: fingerprint, data: data, status: .available), bytes)
+        }
+        func verifyPair(
+            _ session: MarkdownEditorSession, source: String,
+            fixture: (snapshot: ZoteroCitationSnapshot, bytes: Data)
+        ) async throws {
+            #expect(Data(try await session.currentText().utf8) == Data(source.utf8))
+            #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+            #expect(session.committedCitationSnapshot == fixture.snapshot)
+            #expect(session.currentCitationSnapshot?.noteID == fixture.snapshot.noteID)
+            #expect(session.currentCitationSnapshot?.sourceFingerprint == DocumentFingerprint(content: source))
+            let data = try #require(session.checkedCitationData)
+            // Deterministic companion bytes check opaque strings as UTF-8,
+            // including NFD, rather than Swift's canonically equal Strings.
+            let companion = ZoteroCitationCompanion(
+                noteID: fixture.snapshot.noteID, vaultID: fixture.snapshot.vaultID,
+                sourceFingerprint: try #require(fixture.snapshot.sourceFingerprint), data: data)
+            #expect(try encoder.encode(companion) == fixture.bytes)
+        }
+        let fixtureA = try fixture("A", source: sourceA)
+        let fixtureB = try fixture("B", source: sourceB)
+        #expect(fixtureA.snapshot.noteID != fixtureB.snapshot.noteID)
+        #expect(fixtureA.bytes != fixtureB.bytes)
+        a.loadDocument(sourceA, documentID: a.bridgeDocumentID, mode: .livePreview, citationSnapshot: fixtureA.snapshot)
+        b.loadDocument(sourceB, documentID: b.bridgeDocumentID, mode: .livePreview, citationSnapshot: fixtureB.snapshot)
+        defer {
+            dispatcher.gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: sourceA, title: "A", mode: .livePreview)
+        let page = try #require(a.webView as? WindowAttachedWebView)
+        _ = try await harness.javascript("""
+            window.managedHandoffResetCount = 0;
+            const reset = window.scholiumEditor.prepareForReuse;
+            window.scholiumEditor.prepareForReuse = function() {
+              window.managedHandoffResetCount++;
+              return reset.call(this);
+            };
+            """)
+        _ = try await a.send(.replacePassage(
+            expectedText: sourceA, fromUTF16: sourceA.utf16.count, toUTF16: sourceA.utf16.count,
+            replacement: ordinaryEdit, preserveSelection: false), in: page)
+        try await verifyPair(a, source: editedA, fixture: fixtureA)
+        try await harness.beginReplacement(
+            b, source: sourceB, title: "B", mode: .livePreview, suspendForDetachment: true)
+        try await dispatcher.gate.waitUntilPaused()
+        #expect(b.webView === page && page.editorHandoffLease != nil)
+        dispatcher.gate.resume()
+        try await harness.waitForPrepared(b)
+        try await verifyPair(b, source: sourceB, fixture: fixtureB)
+        #expect(b.context?.undoLabel == nil)
+        try await harness.undo()
+        try await verifyPair(b, source: sourceB, fixture: fixtureB)
+        try await harness.replace(
+            a, source: sourceA, title: "A", mode: .livePreview, suspendForDetachment: true)
+        #expect(a.webView === page)
+        #expect(try await harness.javascript("return window.managedHandoffResetCount;") as? Int == 0)
+        try await verifyPair(a, source: editedA, fixture: fixtureA)
+        try await harness.undo()
+        try await verifyPair(a, source: sourceA, fixture: fixtureA)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        let retainedBData = try #require(b.checkedCitationData)
+        let expectedBData = try #require(fixtureB.snapshot.data)
+        #expect(try encoder.encode(retainedBData) == encoder.encode(expectedBData))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Cancelling an executed handoff initialization retires its page before a late reply can reach C")
+    func cancelledHandoffInitializationCannotAffectSuccessor() async throws {
+        let pool = MarkdownEditorWebViewPool()
+        let dispatcher = HandoffInitializationDispatcher(afterExecution: true)
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        let b = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        b.webViewPool = pool
+        let c = makeSession(pool: pool)
+        let sourceA = "\u{FEFF}# A\r\n\r\nFrozen 😀。\r\n"
+        let sourceB = "# B\n\nB already initialized。\n"
+        let sourceC = "# C\r\n\r\nC stays exact e\u{301} 🦉。\r\n"
+        defer {
+            dispatcher.gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: sourceA, title: "A")
+        let oldPage = try #require(a.webView as? WindowAttachedWebView)
+        try await harness.beginReplacement(b, source: sourceB, title: "B", suspendForDetachment: true)
+        try await dispatcher.gate.waitUntilPaused()
+        let lease = try #require(oldPage.editorHandoffLease)
+        #expect(!b.canRecycleWebView)
+        harness.replacePending(c, source: sourceC, title: "C")
+        try await harness.waitForPrepared(c)
+        #expect(lease.isRetired)
+        #expect(c.webView !== oldPage)
+        #expect(oldPage.alphaValue == 0)
+        #expect(!oldPage.documentSurfaceAllowsInput)
+        dispatcher.gate.resume()
+        try await harness.wait("The cancelled initialize callback did not settle") { dispatcher.completed }
+        #expect(Data(try await c.currentText().utf8) == Data(sourceC.utf8))
+        #expect(c.context?.undoLabel == nil)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        #expect(Data(a.checkedSource.utf8) == Data(sourceA.utf8))
+        #expect(!pool.hasPreparedView)
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "Rejected, exceptional or missing-runtime initialization cannot park an uncleared handoff page",
+        arguments: ["native", "javascript", "missing-runtime"])
+    func rejectedHandoffInitializationRetiresPage(rejection: String) async throws {
+        let pool = MarkdownEditorWebViewPool()
+        let dispatcher = HandoffInitializationDispatcher(
+            rejects: rejection == "native", rejectsInJavaScript: rejection == "javascript",
+            removesRuntime: rejection == "missing-runtime")
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        let b = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        b.webViewPool = pool
+        let c = makeSession(pool: pool)
+        let sourceB = "\u{FEFF}# B\r\n\r\nB must survive transport failure 😀。\r\n"
+        let sourceC = "# C\n\nIndependent successor e\u{301} 🦉。\n"
+        defer {
+            dispatcher.gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: "# A\n", title: "A")
+        let page = try #require(a.webView as? WindowAttachedWebView)
+        try await harness.beginReplacement(b, source: sourceB, title: "B", suspendForDetachment: true)
+        try await dispatcher.gate.waitUntilPaused()
+        let lease = try #require(page.editorHandoffLease)
+        #expect(lease.permitsInitialization)
+        dispatcher.gate.resume()
+        try await harness.wait("The rejected initialize did not retire its page") { lease.isRetired && b.errorMessage != nil }
+        #expect(!lease.permitsInitialization)
+        #expect(!b.isLoaded)
+        #expect(!b.canRecycleWebView)
+        #expect(page.alphaValue == 0)
+        #expect(!pool.hasPreparedView)
+        #expect(pool.take() == nil)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        harness.replacePending(c, source: sourceC, title: "C")
+        try await harness.waitForPrepared(c)
+        #expect(c.webView !== page)
+        #expect(Data(try await c.currentText().utf8) == Data(sourceC.utf8))
+        #expect(c.context?.undoLabel == nil)
+        #expect(Data(b.checkedSource.utf8) == Data(sourceB.utf8))
+        #expect(page.alphaValue == 0 && !page.documentSurfaceAllowsInput)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Unclaimed frozen handoffs retire on cancellation, invalidation or acquisition expiry", arguments: ["cancelled", "invalidated", "expired"])
+    func unclaimedFrozenHandoffCannotBecomeIdle(rejection: String) async throws {
+        let pool = MarkdownEditorWebViewPool(acquisitionDeadline: .milliseconds(250))
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: "# A\r\n\r\nFrozen 中文。\r\n", title: "A")
+        var acquiredPage: WindowAttachedWebView?
+        let acquired = Task { @MainActor in
+            acquiredPage = await pool.takeWhenPrepared()
+        }
+        defer { acquired.cancel() }
+        try await waitForAcquisitions(pool, count: 1)
+        try await harness.hideWithoutWaitingForPool(suspendForDetachment: true)
+        await acquired.value
+        let page = try #require(acquiredPage)
+        let lease = try #require(page.editorHandoffLease)
+        #expect(!lease.permitsInitialization)
+        #expect(!pool.hasPreparedView)
+        if rejection == "cancelled" { pool.recycle(page) }
+        if rejection == "invalidated" { pool.invalidate() }
+        try await harness.wait("The unclaimed handoff did not retire") { lease.isRetired }
+        #expect(!lease.permitsInitialization)
+        #expect(!lease.claim())
+        #expect(!lease.commit())
+        #expect(page.alphaValue == 0)
+        #expect(!page.documentSurfaceAllowsInput)
+        #expect(pool.take() == nil)
+        #expect(pool.waitingAcquisitionCount == 0)
+        #expect(a.hasDetachedPersistenceSnapshot)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A frozen departure with no waiter still clears source before parking")
+    func frozenDepartureWithoutWaiterParksOnlyEmptyPage() async throws {
+        let pool = MarkdownEditorWebViewPool()
+        let harness = SwitchingHarness()
+        let a = makeSession(pool: pool)
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        try await harness.show(a, source: "\u{FEFF}# A\r\n\r\nPrivate to A 😀。\r\n", title: "A")
+        try await harness.hideWithoutWaitingForPool(suspendForDetachment: true)
+        try await harness.wait("The source-free idle page was not prepared") { pool.hasPreparedView }
+        let page = try #require(pool.take())
+        #expect(page.editorHandoffLease == nil)
+        #expect(try await page.callAsyncJavaScript(
+            "return document.querySelector('.cm-content').textContent;",
+            arguments: [:], in: nil, contentWorld: .page) as? String == "")
+        #expect(try await page.callAsyncJavaScript(
+            "return document.getElementById('scholium-user-css').textContent;",
+            arguments: [:], in: nil, contentWorld: .page) as? String == "")
+        await harness.closeAndDrain()
+    }
+
     @Test("A window pool cannot supply another window and clearing it evicts its cached surface")
     func poolIsolationAndEviction() async throws {
         let firstPool = MarkdownEditorWebViewPool()
@@ -530,6 +916,57 @@ struct MarkdownEditorReuseTests {
     }
 
     @MainActor
+    private final class HandoffInitializationDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        let gate = PreparationGate()
+        let afterExecution: Bool
+        let rejects: Bool
+        let rejectsInJavaScript: Bool
+        let removesRuntime: Bool
+        private(set) var initializationCount = 0
+        private(set) var completed = false
+
+        init(
+            afterExecution: Bool = false, rejects: Bool = false, rejectsInJavaScript: Bool = false,
+            removesRuntime: Bool = false
+        ) {
+            self.afterExecution = afterExecution
+            self.rejects = rejects
+            self.rejectsInJavaScript = rejectsInJavaScript
+            self.removesRuntime = removesRuntime
+        }
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            guard case .initialize = request.operation else {
+                return try await production.dispatch(requestJSON: requestJSON, in: webView)
+            }
+            initializationCount += 1
+            defer { completed = true }
+            if !afterExecution { await gate.pauseOnce() }
+            if removesRuntime {
+                let removed = try await webView.callAsyncJavaScript(
+                    "window.scholiumEditor = undefined; return typeof window.scholiumEditor === 'undefined';",
+                    arguments: [:], in: nil, contentWorld: .page) as? Bool
+                try #require(removed == true)
+            }
+            if rejectsInJavaScript {
+                // Exercise the real JS rejection before setDocument has
+                // replaced A. Keep the original request ID for native decoding.
+                var object = try #require(JSONSerialization.jsonObject(with: Data(requestJSON.utf8)) as? [String: Any])
+                object["knownGeneration"] = 1
+                let data = try JSONSerialization.data(withJSONObject: object)
+                return try await production.dispatch(
+                    requestJSON: try #require(String(data: data, encoding: .utf8)), in: webView)
+            }
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if afterExecution { await gate.pauseOnce() }
+            if rejects { throw MarkdownEditorSession.SessionError.invalidResult }
+            return result
+        }
+    }
+
+    @MainActor
     private final class PreparationGate {
         private var continuation: CheckedContinuation<Void, Never>?
         private var intercepted = false
@@ -585,11 +1022,20 @@ struct MarkdownEditorReuseTests {
     private final class DepartureMeasurementDispatcher: MarkdownEditorBridgeDispatching {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
         var suspensionCount = 0
+        var scrollQueryCount = 0
+        var suspensionAnchorCount = 0
 
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             if case .suspendForDetachment = request.operation { suspensionCount += 1 }
-            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if case .queryScrollAnchor = request.operation { scrollQueryCount += 1 }
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if case .suspendForDetachment = request.operation,
+                (result as? [String: Any])?["scrollAnchor"] as? [String: Any] != nil
+            {
+                suspensionAnchorCount += 1
+            }
+            return result
         }
     }
 
@@ -599,7 +1045,7 @@ struct MarkdownEditorReuseTests {
         let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
         let harness = SwitchingHarness()
         defer { harness.close() }
-        let original = "\u{FEFF}# Frozen\r\n\r\n中文 😀 e\u{301}。\r\n"
+        let original = "\u{FEFF}# Frozen\r\n\r\n" + String(repeating: "中文 😀 e\u{301} paragraph。\r\n\r\n", count: 80)
         let edited = original + "Unsaved draft。\r\n"
         try await harness.show(editor, source: original, title: "Frozen", mode: .livePreview)
         _ = try await editor.send(
@@ -608,10 +1054,25 @@ struct MarkdownEditorReuseTests {
                 replacement: edited, preserveSelection: false), in: try #require(editor.webView))
         let selection = try #require(editor.context?.selections)
         let undo = try #require(editor.context?.undoLabel)
+        try await harness.scroll(to: 0.25)
+        let initialScrollQueries = dispatcher.scrollQueryCount
         try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(dispatcher.scrollQueryCount == initialScrollQueries)
+        #expect(dispatcher.suspensionAnchorCount == 1)
+        let firstAnchor = try #require(editor.retainedScrollAnchor)
+        #expect(firstAnchor.sourceFingerprint == DocumentFingerprint(content: edited).sha256)
+        #expect(firstAnchor.isValid(forUTF16Length: edited.utf16.count))
+        #expect(firstAnchor.sourceUTF16Offset > 0)
         let suspensionID = try #require(editor.detachmentSuspensionID)
+        // Frozen text still permits researcher scrolling while a save waits.
+        try await harness.scroll(to: 0.75)
         try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
         #expect(dispatcher.suspensionCount == 1)
+        #expect(dispatcher.scrollQueryCount == initialScrollQueries + 1)
+        let laterAnchor = try #require(editor.retainedScrollAnchor)
+        #expect(laterAnchor.sourceFingerprint == firstAnchor.sourceFingerprint)
+        #expect(laterAnchor.sourceUTF16Offset > firstAnchor.sourceUTF16Offset)
+        #expect(laterAnchor.fallbackFraction > firstAnchor.fallbackFraction + 0.25)
         #expect(editor.detachmentSuspensionID == suspensionID)
         #expect(Data(try await editor.currentText().utf8) == Data(edited.utf8))
         #expect(editor.context?.selections == selection)
@@ -623,8 +1084,12 @@ struct MarkdownEditorReuseTests {
         let acknowledgement = try await editor.acknowledgeCommittedSnapshot(
             expectedText: edited, committedText: edited, fingerprint: committed, documentID: editor.documentID)
         #expect(acknowledgement == .clean)
+        let scrollQueriesBeforeRebaseCapture = dispatcher.scrollQueryCount
         try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
         #expect(dispatcher.suspensionCount == 2)
+        #expect(dispatcher.suspensionAnchorCount == 2)
+        #expect(dispatcher.scrollQueryCount == scrollQueriesBeforeRebaseCapture)
+        #expect(editor.retainedScrollAnchor?.sourceFingerprint == committed.sha256)
         #expect(editor.startingFingerprint == committed.sha256)
         #expect(editor.context?.undoLabel == undo)
         let committedSuspensionID = try #require(editor.detachmentSuspensionID)
@@ -633,9 +1098,24 @@ struct MarkdownEditorReuseTests {
         #expect(editor.detachmentSuspensionID == nil)
         try await harness.undo()
         #expect(Data(try await editor.currentText().utf8) == Data(original.utf8))
+        try await harness.scroll(to: 0.45)
+        let scrollQueriesBeforeResumeCapture = dispatcher.scrollQueryCount
         try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
         #expect(dispatcher.suspensionCount == 3)
+        #expect(dispatcher.suspensionAnchorCount == 3)
+        #expect(dispatcher.scrollQueryCount == scrollQueriesBeforeResumeCapture)
+        #expect(editor.retainedScrollAnchor?.sourceFingerprint == DocumentFingerprint(content: original).sha256)
         #expect(editor.detachmentSuspensionID != committedSuspensionID)
+        #expect(Data(try await editor.currentText().utf8) == Data(original.utf8))
+        let scrollQueriesBeforeOrdinaryCapture = dispatcher.scrollQueryCount
+        try await harness.hideCapturingState()
+        #expect(dispatcher.scrollQueryCount == scrollQueriesBeforeOrdinaryCapture + 1)
+        let detachedAnchor = try #require(editor.retainedScrollAnchor)
+        try await harness.show(editor, source: original, title: "Frozen", mode: .livePreview)
+        let restoredAnchor = try #require(try await editor.currentScrollAnchor())
+        #expect(restoredAnchor.sourceFingerprint == detachedAnchor.sourceFingerprint)
+        #expect(restoredAnchor.blockUTF16LowerBound == detachedAnchor.blockUTF16LowerBound)
+        #expect(restoredAnchor.blockUTF16UpperBound == detachedAnchor.blockUTF16UpperBound)
         #expect(Data(try await editor.currentText().utf8) == Data(original.utf8))
         await harness.closeAndDrain()
     }
@@ -793,18 +1273,20 @@ struct MarkdownEditorReuseTests {
 
         func replace(
             _ session: MarkdownEditorSession, source: String, title: String,
-            mode: MarkdownEditorMode = .source
+            mode: MarkdownEditorMode = .source, suspendForDetachment: Bool = false
         ) async throws {
-            try await beginReplacement(session, source: source, title: title, mode: mode)
+            try await beginReplacement(
+                session, source: source, title: title, mode: mode,
+                suspendForDetachment: suspendForDetachment)
             try await waitUntilPrepared(session)
         }
 
         func beginReplacement(
             _ session: MarkdownEditorSession, source: String, title: String,
-            mode: MarkdownEditorMode = .source
+            mode: MarkdownEditorMode = .source, suspendForDetachment: Bool = false
         ) async throws {
             let previous = try #require(attachment.current?.session)
-            try await previous.captureStateForViewReconstruction()
+            try await previous.captureStateForViewReconstruction(suspendForDetachment: suspendForDetachment)
             attachment.current = Document(session: session, source: source, title: title, mode: mode)
             try await wait("Previous editor did not detach") { !previous.hasAttachedWebView }
         }
@@ -852,9 +1334,9 @@ struct MarkdownEditorReuseTests {
             }
         }
 
-        func hideWithoutWaitingForPool() async throws {
+        func hideWithoutWaitingForPool(suspendForDetachment: Bool = false) async throws {
             let session = try #require(attachment.current?.session)
-            try await session.captureStateForViewReconstruction()
+            try await session.captureStateForViewReconstruction(suspendForDetachment: suspendForDetachment)
             attachment.current = nil
             try await wait("SwiftUI did not detach the preceding editor") { !session.hasAttachedWebView }
         }
@@ -862,6 +1344,20 @@ struct MarkdownEditorReuseTests {
         func javascript(_ body: String, arguments: [String: Any] = [:]) async throws -> Any? {
             let webView = try #require(attachment.current?.session.webView)
             return try await webView.callAsyncJavaScript(body, arguments: arguments, in: nil, contentWorld: .page)
+        }
+
+        func scroll(to fraction: Double) async throws {
+            let scrolled = try await javascript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                if (!scroller) return false;
+                const extent = scroller.scrollHeight - scroller.clientHeight;
+                if (extent <= 0) return false;
+                scroller.dispatchEvent(new WheelEvent('wheel', {deltaY: 1, bubbles: true}));
+                scroller.scrollTop = extent * fraction;
+                return scroller.scrollTop > 0;
+                """, arguments: ["fraction": fraction]) as? Bool
+            try #require(scrolled == true)
         }
 
         func undo() async throws {
@@ -874,7 +1370,7 @@ struct MarkdownEditorReuseTests {
                 """)
         }
 
-        private func wait(_ message: String, until predicate: () -> Bool) async throws {
+        func wait(_ message: String, until predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             while !predicate() {
                 guard ContinuousClock.now < deadline else {
@@ -948,8 +1444,8 @@ struct MarkdownEditorReuseTests {
                     requiresMathRuntime: false,
                     linkCompletionQuery: { _, _ in .current([]) },
                     linkPreviews: [],
-                    initialScrollFraction: 0,
-                    initialScrollAnchor: nil,
+                    initialScrollFraction: session.retainedScrollFraction(fallback: 0),
+                    initialScrollAnchor: session.retainedScrollAnchor,
                     onDocumentActivity: {},
                     onRequestSave: {},
                     onRequestFind: { _ in },
@@ -957,7 +1453,8 @@ struct MarkdownEditorReuseTests {
                     onPasteImage: { _ in false },
                     onLinkActivation: { _ in }, onImagePreview: { _ in },
                     onScrollFractionChange: { _ in },
-                    onScrollAnchorChange: { _ in })
+                    onScrollAnchorChange: { _ in },
+                    citationSnapshot: session.committedCitationSnapshot)
             }
         }
     }

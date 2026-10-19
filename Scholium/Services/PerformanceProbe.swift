@@ -49,6 +49,14 @@ final class PerformanceProbe {
     /// Diagnostic milestones keep framework scheduling separate from the
     /// existing, user-visible opening endpoint. Only numeric offsets escape.
     enum NoteOpeningMilestone: String {
+        case outgoingFrozen = "outgoing_frozen"
+        case outgoingFlushed = "outgoing_flushed"
+        case outgoingRecaptured = "outgoing_recaptured"
+        case poolRecycleEntered = "pool_recycle_entered"
+        case poolOutgoingDetached = "pool_outgoing_detached"
+        case poolHandoffOffered = "pool_handoff_offered"
+        case poolReuseRequested = "pool_reuse_requested"
+        case poolReuseReturned = "pool_reuse_returned"
         case mountRequested = "mount_requested"
         case pageAcquired = "page_acquired"
         case webViewPrepared = "web_view_prepared"
@@ -66,6 +74,9 @@ final class PerformanceProbe {
     enum NoteOpeningWork: String {
         case citationPresentation = "citation_presentation"
         case outlineProjection = "outline_projection"
+        case editorScriptLoad = "editor_script_load"
+        case editorResourceValidation = "editor_resource_validation"
+        case editorContainerConstruction = "editor_container_construction"
     }
 
     static let shared = PerformanceProbe()
@@ -192,6 +203,7 @@ final class PerformanceProbe {
         let documentID: String
         let started: UInt64
         var editorSessionID: UUID?
+        var sourceReusedAt: UInt64?
         var phases: [NoteOpeningPhase: UInt64] = [:]
         var milestones: [NoteOpeningMilestone: UInt64] = [:]
         var work: [NoteOpeningWork: (total: UInt64, maximum: UInt64, count: Int)] = [:]
@@ -290,6 +302,12 @@ final class PerformanceProbe {
         return noteOpening?.id
     }
 
+    /// Lifecycle owners without a destination identity capture this token
+    /// before suspension; a late completion cannot borrow a newer attempt.
+    var armedNoteOpeningAttemptID: UUID? {
+        measuresNoteOpenToInput ? noteOpening?.id : nil
+    }
+
     func currentNoteOpeningAttempt(editorSessionID: UUID) -> UUID? {
         guard measuresNoteOpenToInput, noteOpening?.editorSessionID == editorSessionID else {
             return nil
@@ -310,6 +328,20 @@ final class PerformanceProbe {
     func cancelNoteOpening(attemptID: UUID?) {
         guard let attemptID, noteOpening?.id == attemptID else { return }
         noteOpening = nil
+    }
+
+    /// The opening owner has revalidated a retained exact-source snapshot.
+    /// Reuse is a distinct source-resolution boundary, never disk hydration.
+    func markNoteOpeningSourceReused(attemptID: UUID?, documentID: String) {
+        guard let attemptID, var opening = noteOpening, opening.id == attemptID,
+            opening.documentID == documentID, opening.sourceReusedAt == nil
+        else { return }
+        let timestamp = now()
+        guard timestamp >= opening.started,
+            timestamp >= (opening.phases.values.max() ?? opening.started)
+        else { return }
+        opening.sourceReusedAt = timestamp
+        noteOpening = opening
     }
 
     func markNoteOpeningMilestone(
@@ -369,11 +401,16 @@ final class PerformanceProbe {
         else { return }
         opening.phases[phase] = timestamp
         noteOpening = opening
-        guard let visible = opening.phases[.stableVisible], let focused = opening.phases[.focused],
-            let hydrationStarted = opening.phases[.hydrationStarted],
-            let hydrated = opening.phases[.hydrated],
-            hydrated >= hydrationStarted, hydrated <= min(visible, focused)
-        else { return }
+        guard let visible = opening.phases[.stableVisible], let focused = opening.phases[.focused] else { return }
+        let sourceResolvedAt: UInt64?
+        if let hydrationStarted = opening.phases[.hydrationStarted],
+            let hydrated = opening.phases[.hydrated], hydrated >= hydrationStarted
+        {
+            sourceResolvedAt = hydrated
+        } else {
+            sourceResolvedAt = opening.sourceReusedAt
+        }
+        guard let sourceResolvedAt, sourceResolvedAt <= min(visible, focused) else { return }
         let completed = max(visible, focused)
         noteOpening = nil
         let previousCount = recordedSampleCount
@@ -555,6 +592,7 @@ final class PerformanceProbe {
                 "input-to-paint", "key-to-paint", "scroll-session", "bridge-request",
                 "citation-field-validation", "citation-catalog", "citation-projection-admission",
                 "interaction-report-queue", "interaction-context", "bridge-message-post",
+                "startup", "opening-atomic-state", "opening-preparation", "opening-release",
             ]
             let fields: Set<String> = [
                 "documentLength", "changeCount", "blockCount", "inlineCount", "literalCount",
@@ -572,6 +610,10 @@ final class PerformanceProbe {
                 "ensureTreeMilliseconds", "languageStateReadMilliseconds", "ensureTreeAfterStateReadMilliseconds",
                 "previousLocalPreparationMilliseconds", "nextSemanticMilliseconds",
                 "signatureMilliseconds", "fullTextMaterializationMilliseconds", "fullTextMaterializationUTF16Count",
+                "styleWorkMilliseconds", "fontsWaitMilliseconds", "projectionWorkMilliseconds",
+                "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount",
+                "widgetWaitMilliseconds", "widgetWaitCount", "imageWaitMilliseconds", "imageWaitCount",
+                "completed", "expired",
             ]
             let values: [[String: Any]] = samples.compactMap { sample in
                 guard names.contains(sample.name), sample.durationMilliseconds.isFinite,
@@ -1268,7 +1310,10 @@ final class PerformanceProbe {
     }
 
     private func noteOpeningDurations(_ opening: NoteOpening, completed: UInt64) -> [String: Double] {
-        var durations: [String: Double] = [:]
+        var durations: [String: Double] = ["source_reused": opening.sourceReusedAt == nil ? 0 : 1]
+        if let sourceReusedAt = opening.sourceReusedAt, sourceReusedAt <= completed {
+            durations["source_reused_since_click_ms"] = milliseconds(sourceReusedAt - opening.started)
+        }
         var previousName = "click"
         var previous: UInt64? = opening.started
         for phase in NoteOpeningPhase.allCases.dropLast(2) {

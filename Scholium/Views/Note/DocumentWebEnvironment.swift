@@ -17,6 +17,10 @@ final class DocumentWebEnvironment: NSObject {
     private var toolbarInset: CGFloat = 0
     private var projectedValues: Values?
     private var projectionRevision: UInt64 = 0
+    #if DEBUG
+        private(set) var testingProjectionDispatchCount = 0
+        private(set) var testingColorResolutionCount = 0
+    #endif
 
     init(webView: WKWebView, hostView: NSView) {
         self.webView = webView
@@ -65,11 +69,19 @@ final class DocumentWebEnvironment: NSObject {
         // An old retained container may outlive WebKit's return to the pool.
         // Its observations must never restyle the WebView's next attachment.
         guard let webView, let hostView, webView.superview === hostView,
-            !webView.isLoading
+            !webView.isLoading, webView.url != nil
         else { return }
-        let increasedContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        let values = Values(
-            colors: Dictionary(
+        let colors: [String: String]
+        if let projectedValues {
+            // Geometry can change on every layout. Appearance and system-color
+            // notifications invalidate this projection before resolving colors.
+            colors = projectedValues.colors
+        } else {
+            #if DEBUG
+                testingColorResolutionCount += 1
+            #endif
+            let increasedContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            colors = Dictionary(
                 uniqueKeysWithValues: ScholiumColorRole.allCases.map { role in
                     (
                         role.cssVariableName,
@@ -81,7 +93,10 @@ final class DocumentWebEnvironment: NSObject {
                             )
                         )
                     )
-                }),
+                })
+        }
+        let values = Values(
+            colors: colors,
             toolbarInset: toolbarInset
         )
         guard projectedValues != values else { return }
@@ -90,6 +105,9 @@ final class DocumentWebEnvironment: NSObject {
         let revision = projectionRevision
         var cssValues = values.colors
         cssValues["--scholium-document-toolbar-inset"] = "\(values.toolbarInset)px"
+        #if DEBUG
+            testingProjectionDispatchCount += 1
+        #endif
         webView.callAsyncJavaScript(
             """
             const root = document.documentElement;
