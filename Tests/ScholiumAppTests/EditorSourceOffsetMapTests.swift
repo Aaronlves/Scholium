@@ -144,6 +144,35 @@ struct EditorSourceOffsetMapTests {
         }
     }
 
+    @Test("Ordinary edits preserve a long CRLF index before, beside, and after newline boundaries")
+    func ordinaryLongDocumentEditsMatchRebuild() throws {
+        let paragraph = "Ordinary 中文 e\u{301} 🧭.\r\n"
+        let original = "\u{FEFF}" + String(repeating: paragraph, count: 1_024)
+        let firstCR = (original as NSString).range(of: "\r\n", options: .literal).location
+        let middleCR = firstCR + paragraph.utf16.count * 512
+        for position in [1, firstCR, firstCR + 2, middleCR, original.utf16.count] {
+            for insertion in ["x", "中文", "e\u{301}", "🧭"] {
+                var source = original
+                var map = EditorSourceOffsetMap(source: source)
+                let edited = try MarkdownEditorDeltaApplier.apply(
+                    [.init(fromUTF16: position, toUTF16: position, insertion: insertion)], to: source)
+                let storage = edited as NSString
+                map.apply(
+                    [.init(fromUTF16: position, toUTF16: position, insertion: insertion)],
+                    resultingSourceUTF16Length: storage.length, resultingCharacterAt: storage.character(at:))
+                #expect(map == EditorSourceOffsetMap(source: edited))
+                source = try MarkdownEditorDeltaApplier.apply(
+                    [.init(fromUTF16: position, toUTF16: position + insertion.utf16.count, insertion: "")], to: edited)
+                let restored = source as NSString
+                map.apply(
+                    [.init(fromUTF16: position, toUTF16: position + insertion.utf16.count, insertion: "")],
+                    resultingSourceUTF16Length: restored.length, resultingCharacterAt: restored.character(at:))
+                #expect(ScholiumExactUTF8.equal(source, original))
+                #expect(map == EditorSourceOffsetMap(source: original))
+            }
+        }
+    }
+
     private func applyAndAssert(
         _ deltas: [MarkdownEditorDelta], source: inout String, map: inout EditorSourceOffsetMap
     ) throws {

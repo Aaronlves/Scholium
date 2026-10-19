@@ -130,6 +130,24 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         // Boundary scans can overlap, so sort only that small changed set and
         // merge it into the retained index while removing duplicate offsets.
         rescanned.sort()
+        // Ordinary input usually changes zero or one CRLF boundary. Keep the
+        // already sorted retained index instead of copying every entry again.
+        if rescanned.count <= 1 {
+            if let offset = rescanned.first {
+                var lower = 0
+                var upper = retained.count
+                while lower < upper {
+                    let middle = (lower + upper) / 2
+                    if retained[middle] < offset { lower = middle + 1 } else { upper = middle }
+                }
+                if lower == retained.count || retained[lower] != offset {
+                    retained.insert(offset, at: lower)
+                }
+            }
+            sourceUTF16Length = resultingLength
+            crlfSourceOffsets = retained
+            return
+        }
         var merged: [Int] = []
         merged.reserveCapacity(retained.count + rescanned.count)
         var retainedIndex = 0
