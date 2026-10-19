@@ -74,7 +74,8 @@ struct ArchitectureBoundaryTests {
         #expect(compact.contains(expectedApplicationDependencies))
         let expectedAppDependencies = [
             #"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","#,
-            #".product(name:"ThinkingOrbs",package:"ThinkingOrbs"),]"#,
+            #".product(name:"ThinkingOrbs",package:"ThinkingOrbs"),"#,
+            #".product(name:"Sparkle",package:"Sparkle"),]"#,
         ].joined()
         #expect(compact.contains(expectedAppDependencies))
     }

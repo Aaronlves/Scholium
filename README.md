@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.2-beta.2/Scholium-v0.4.2-beta.2-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Scholium Beta for macOS, Apple silicon"></a>
+  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.3-beta.1/Scholium-v0.4.3-beta.1-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Scholium Beta for macOS, Apple silicon"></a>
 </p>
 
 <p align="center">
@@ -61,8 +61,8 @@ becomes part of your research.
 to run the packaged app.
 
 1. Download the DMG and its SHA-256 file from
-   [v0.4.2-beta.2](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2).
-   Run `shasum -a 256 Scholium-v0.4.2-beta.2-macos-arm64.dmg` and compare the
+   [v0.4.3-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1).
+   Run `shasum -a 256 Scholium-v0.4.3-beta.1-macos-arm64.dmg` and compare the
    result with the accompanying checksum.
 2. Open the DMG, drag **Scholium** to **Applications**, and eject the DMG.
 3. Open Scholium once. This Beta is ad-hoc signed and is not Developer ID signed
@@ -81,7 +81,7 @@ The public distribution is **Core App Beta**. External Agent collaboration and
 optional in-app Chat remain **Preview**. Packaged-release evidence and outstanding
 human UI, accessibility, and performance acceptance are recorded in
 [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) and the
-[release notes](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.2-beta.2).
+[release notes](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1).
 
 ## Optional integrations
 
@@ -221,6 +221,49 @@ only by `clean-editor`.
 
 </details>
 
+### Publishing application updates
+
+Updater-enabled builds offer **Scholium → Check for Updates…** and use Sparkle's
+standard download/install interface. Automatic checking is opt-in. Updates use
+the existing save/quit checks and replace the App and bundled helpers together.
+Users of earlier Betas must manually install an updater-enabled build once.
+
+The release archive stays on GitHub Releases; [Updates/appcast.xml](Updates/appcast.xml)
+is deployed at `https://aaronlves.github.io/Scholium/appcast.xml`. The initial feed
+is empty until a signed update is published. To prepare a release:
+
+1. Resolve dependencies. Run `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account scholium`
+   once, back up its private key securely, and put the printed public key in
+   `Updates/public-key.txt` (commit this public key for deployment verification).
+   `SCHOLIUM_SPARKLE_PUBLIC_KEY` can override it for local packaging. Never commit a
+   private key. Losing it can prevent existing installations from updating.
+2. Increase `CFBundleVersion` for every release; retain the App's bundle identity.
+   Complete the release checks, commit and tag the exact clean source, then run
+   `Tools/Scripts/package-app.sh`. Set `CODE_SIGN_IDENTITY` for Apple signing.
+   For an ad-hoc Beta, explicitly set `SCHOLIUM_ALLOW_ADHOC_DISTRIBUTION=1`:
+   this disables Library Validation for that App so its Sparkle framework can
+   load; Gatekeeper, sandboxing and Sparkle archive verification remain enabled.
+   Developer ID signing and notarization are recommended; the script does not
+   perform notarization. No Apple certificate is needed for EdDSA update signing.
+3. Upload the exact generated DMG and checksum to the matching GitHub Release.
+   Generate and cryptographically verify its feed entry:
+
+   ```bash
+   python3 Tools/Scripts/generate-update-feed.py /absolute/path/to/Scholium-TAG-macos-arm64.dmg \
+     --release-tag TAG --sparkle-tools .build/artifacts/sparkle/Sparkle/bin
+   ```
+
+   Use `--private-key-file` for an exported Sparkle key instead of Keychain.
+   Review, commit and push the generated feed to `main`. Never replace a released archive.
+4. Select **GitHub Pages → Source → GitHub Actions** once, then manually run
+   **Publish update feed** on reviewed `main`. It verifies the uploaded archives
+   with the public key and deploys only `Updates/`; it never handles private keys
+   or publishes application releases.
+
+Diagnostic/QA builds ignore production keys, disable automatic checks and accept
+only explicit `SCHOLIUM_SPARKLE_TEST_PUBLIC_KEY` / `SCHOLIUM_SPARKLE_TEST_FEED_URL`
+configuration. Their state and test keys belong under `.build/`.
+
 ## Your files and local state
 
 Research prose and assessments remain ordinary Markdown in your selected
@@ -234,8 +277,8 @@ bridge authentication, and exact Agent Change evidence stay on this Mac under:
 
 See [storage boundaries](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)
 and [save and recovery](Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery).
-The App, bundled helpers, and Core Protocol update together; there is no
-standalone CLI distribution or self-updater.
+The App, bundled helpers, and Core Protocol update together. There is no
+standalone CLI distribution.
 
 ## License
 

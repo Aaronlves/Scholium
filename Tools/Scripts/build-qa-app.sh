@@ -123,7 +123,11 @@ cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
   exit 1
 }
 xattr -cr "${APP}"
-codesign --force --deep --sign - "${APP}"
+python3 "${ROOT}/Tools/Scripts/prepare-sparkle.py" "${APP}" \
+  --scratch-path "${DERIVED}" --mode qa --identity - \
+  --entitlements-output "${DERIVED}/sparkle-app.entitlements"
+codesign --force --sign - "${APP}/Contents/Helpers/ScholiumAgentHelper"
+codesign --force --sign - "${APP}"
 codesign --verify --deep --strict "${APP}"
 
 print "QA app: ${APP}"

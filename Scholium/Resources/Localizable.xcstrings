@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Check for Updates…": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "检查更新…"}}}},
+    "Updates Unavailable": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "更新不可用"}}}},
+    "Updates are unavailable in this build. Download the latest version from Scholium Releases.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "此版本无法使用应用内更新。可前往 Scholium 发布页下载最新版本。"}}}},
+    "Open Releases": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "打开发布页"}}}},
     "Entries preserved: %lld; failed moves: %lld; outcomes to inspect: %lld.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "已保留项目：%lld；移动失败：%lld；待检查结果：%lld。"}}}},
     "Files: %lld · %@": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "文件：%lld · %@"}}}},
     "Chat History and Materials": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "聊天历史与素材"}}}},

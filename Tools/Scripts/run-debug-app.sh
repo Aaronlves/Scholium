@@ -42,7 +42,12 @@ cp "${ROOT}/Tools/Packaging/ScholiumIcon.icns" "${APP}/Contents/Resources/"
   -c "Set :CFBundleName Scholium Debug" \
   "${APP}/Contents/Info.plist"
 xattr -cr "${APP}"
-codesign --force --deep --sign - "${APP}"
+# Both local GUI identities run outside the distribution sandbox. Reuse the
+# QA embedding mode so this Debug bundle never inherits a production key.
+python3 "${ROOT}/Tools/Scripts/prepare-sparkle.py" "${APP}" \
+  --scratch-path "${SCRATCH}" --mode qa --identity - \
+  --entitlements-output "${SCRATCH}/sparkle-app.entitlements"
+codesign --force --sign - "${APP}"
 codesign --verify --deep --strict "${APP}"
 "${LSREGISTER}" -f -R -trusted "${APP}"
 /usr/bin/open "${APP}"

@@ -343,9 +343,10 @@ and opening errors retain recovery. Route identity is Codable. Cold launch
 restores presentation unless an explicit route names a Note. Access restoration
 renews exact registry authorization before vault reads.
 
-App and bundled helper share provenance/update lifetime. Helper entry points are
-delivery only, with no independent runtime, installer or research-file access.
-Artifact requirements and dated outcomes belong to Specification and Status.
+App delegate retains `ApplicationUpdateController`, wrapping Sparkle.
+Termination owns save/citation admission. Packaging embeds/signs its framework
+and installer services. App/helper/resources update together; Scholium's connection
+helper has no independent runtime or research-file access.
 
 ## Source entry points
 

@@ -16,6 +16,7 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "6.2.2"),
         .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.8.0"),
         .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.0"),
     ],
     targets: [
         .target(
@@ -58,9 +59,11 @@ let package = Package(
                 "ScholiumContracts",
                 "ScholiumApplication",
                 .product(name: "ThinkingOrbs", package: "ThinkingOrbs"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Scholium",
-            resources: [.process("Resources")]
+            resources: [.process("Resources")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .executableTarget(name: "ScholiumAgentHelper", dependencies: ["ScholiumApplication"], path: "ScholiumAgentHelper"),
         .testTarget(
@@ -99,7 +102,18 @@ let package = Package(
                 "ScholiumContracts",
                 "ScholiumApplication",
             ],
-            path: "Tests/ScholiumAppTests"
+            path: "Tests/ScholiumAppTests",
+            // CLI test bundles do not embed binary frameworks. Native SwiftPM
+            // and Swift Build place bundles at different depths in the same
+            // scratch directory; neither path belongs in a distributed App.
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker",
+                    "@loader_path/../../../../../artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64",
+                    "-Xlinker", "-rpath", "-Xlinker",
+                    "@loader_path/../../../../../../artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64",
+                ])
+            ]
         ),
     ]
 )

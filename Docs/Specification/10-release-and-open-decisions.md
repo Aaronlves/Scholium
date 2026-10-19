@@ -192,7 +192,7 @@ Each source-first Core App Beta release requires:
 - exact public prerelease tag/package provenance;
 - recorded app version/build and minimum supported macOS;
 - corresponding `GPL-3.0-or-later` tagged source and license notices;
-- architecture-labelled DMG containing the ad-hoc-signed App plus Applications
+- architecture-labelled DMG containing the signed App plus Applications
   alias; and
 - a checksum for the App artifact.
 
@@ -200,10 +200,21 @@ Scholium.app is the sole supported installation. Its signed, version-matched
 connection helper supplies external-host and token-scoped in-app MCP, including
 the independent `scholium-zotero` service. No separate Zotero runtime is
 copied into or required by the App. No
-standalone Scholium CLI, installer, terminal research commands or self-updater
+standalone Scholium CLI, installer or terminal research commands
 is distributed or supported. Helper and Core Protocol resources update
 atomically with the App. The helper never becomes a headless workspace or a
 second source writer.
+
+Application updates use a static HTTPS feed pointing to GitHub Release archives.
+Each archive has an EdDSA signature verified before extraction, a strictly
+increasing build number and a minimum macOS version. Unverified archives never
+install. Automatic checking requires opt-in; installation defaults to explicit
+researcher action. Update restart uses normal application termination, including
+all-window source flush and citation admission; refusal retains the running App
+and permits retry. Updates replace the complete App without changing research
+vaults or machine-local state. An unconfigured build explains unavailability and
+offers the Releases page. Previous builds without an updater require one manual
+installation of an updater-enabled version.
 
 The artifact contains no real vaults, private paths, credentials, bookmarks,
 indexes or generated user state. Packaging checks cover the App and nested
@@ -213,6 +224,9 @@ Ad-hoc signing is not Developer ID signing, notarization, or Gatekeeper
 acceptance. Documentation may describe **Open Anyway** for the trusted download
 but never advise disabling Gatekeeper, stripping quarantine, or installing a
 root certificate.
+Developer ID signing and notarization are recommended. An ad-hoc update-enabled
+Beta requires explicit packaging opt-in to disable Library Validation for that
+App; this does not disable Gatekeeper or replace archive-signature verification.
 
 Before every Core App distribution, rerun repository gates and artifact checks
 for the exact clean tag and provenance, package contents, metadata,

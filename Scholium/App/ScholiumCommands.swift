@@ -870,6 +870,7 @@ private struct ScholiumAttentionCommandContent: View {
 
 struct ScholiumCommands: Commands {
     let fileOpening: MarkdownFileOpeningController
+    let updates: ApplicationUpdateController
     @FocusedValue(\.scholiumApplicationBootstrapStatus)
     private var applicationBootstrapStatus
     @FocusedObject private var commandObservation: WindowCommandObservation?
@@ -891,6 +892,9 @@ struct ScholiumCommands: Commands {
         #if DEBUG
             let qaCommand = ScholiumQACommandContent(commandRevision: commandRevision)
         #endif
+        CommandGroup(after: .appInfo) {
+            ApplicationUpdateMenuItem(updates: updates)
+        }
         CommandGroup(replacing: .newItem) {
             fileCreationCommand
         }

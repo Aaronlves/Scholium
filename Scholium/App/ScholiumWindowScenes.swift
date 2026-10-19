@@ -112,7 +112,7 @@ struct ScholiumApp: App {
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
         .commands {
-            ScholiumCommands(fileOpening: applicationDelegate.markdownFiles)
+            ScholiumCommands(fileOpening: applicationDelegate.markdownFiles, updates: applicationDelegate.updates)
         }
 
         WindowGroup(id: "scholium-external-markdown", for: ExternalMarkdownWindowRoute.self) { route in

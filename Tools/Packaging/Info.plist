@@ -62,13 +62,25 @@
         </dict>
     </array>
     <key>CFBundleShortVersionString</key>
-    <string>0.4.2</string>
+	<string>0.4.3</string>
     <key>CFBundleVersion</key>
-    <string>22</string>
+	<string>23</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://aaronlves.github.io/Scholium/appcast.xml</string>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SUEnableSystemProfiling</key>
+    <false/>
+    <key>SUEnableJavaScript</key>
+    <false/>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
     <key>NSHumanReadableCopyright</key>
     <string>Scholium</string>
 </dict>

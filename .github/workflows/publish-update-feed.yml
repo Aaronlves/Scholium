@@ -1,0 +1,39 @@
+name: Publish update feed
+
+# Deploy only the reviewed, committed static feed. This workflow neither builds
+# releases nor reads update private keys, and does not enable Pages itself.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scholium-update-feed
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate signed release entries
+        run: python3 Tools/Scripts/validate-update-feed.py Updates/appcast.xml --allow-empty --verify-downloads
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: Updates
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy static appcast
+        id: deployment
+        uses: actions/deploy-pages@v4

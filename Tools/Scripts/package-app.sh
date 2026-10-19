@@ -32,6 +32,15 @@ APP="${OUTPUT}/Scholium.app"
 SCRATCH="${ROOT}/.build/release"
 STAGING_APP="${SCRATCH}/Scholium.app"
 IDENTITY="${CODE_SIGN_IDENTITY:--}"
+APP_ENTITLEMENT_COMPONENT=app
+if [[ "${IDENTITY}" == "-" ]]; then
+  APP_ENTITLEMENT_COMPONENT=app-adhoc
+  if [[ "${PACKAGE_MODE}" == release && "${SCHOLIUM_ALLOW_ADHOC_DISTRIBUTION:-0}" != 1 ]]; then
+    print -u2 "Sparkle needs an Apple signing identity with Library Validation, or explicit SCHOLIUM_ALLOW_ADHOC_DISTRIBUTION=1."
+    print -u2 "The opt-in disables Library Validation for this App only; it does not provide Developer ID trust or notarization."
+    exit 65
+  fi
+fi
 DEPLOYMENT_TARGET="26.0"
 SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
 LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
@@ -167,8 +176,7 @@ plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 cp "${PROVENANCE}" \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
 
-[[ "${MARKETING_VERSION}" == "0.4.2" ]]
-[[ "${BUILD_NUMBER}" == "22" ]]
+[[ -n "${MARKETING_VERSION}" && "${BUILD_NUMBER}" =~ '^[0-9]+$' ]]
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
@@ -187,13 +195,20 @@ mv "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" "${STAGING_APP}/Contents/M
 xcrun strip -S -x "${STAGING_APP}/Contents/MacOS/Scholium"
 xcrun strip -S -x "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 xcrun vtool -show-build "${STAGING_APP}/Contents/MacOS/Scholium" | rg -q "sdk ${SDK_VERSION}"
+xattr -cr "${STAGING_APP}"
+
+SIGNING_ENTITLEMENTS="${SCRATCH}/sparkle-app.entitlements"
+python3 "${ROOT}/Tools/Scripts/prepare-sparkle.py" "${STAGING_APP}" \
+  --scratch-path "${SCRATCH}" --mode "${PACKAGE_MODE}" --identity "${IDENTITY}" \
+  --entitlements-output "${SIGNING_ENTITLEMENTS}"
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" \
+  "${APP_ENTITLEMENT_COMPONENT}" "${SIGNING_ENTITLEMENTS}"
 if LC_ALL=C grep -aEq '/Users/[^/]+/' \
   "${STAGING_APP}/Contents/MacOS/Scholium" \
   "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"; then
   print -u2 "Refusing to package binaries containing a user home-directory path."
   exit 65
 fi
-xattr -cr "${STAGING_APP}"
 
 codesign --force --options runtime --sign "${IDENTITY}" \
   "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
@@ -203,13 +218,13 @@ codesign -d --entitlements :- "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelp
 python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" helper "${HELPER_ENTITLEMENTS}"
 python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 codesign --force --options runtime \
-  --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
+  --entitlements "${SIGNING_ENTITLEMENTS}" \
   --sign "${IDENTITY}" "${STAGING_APP}"
 codesign --verify --deep --strict --verbose=2 "${STAGING_APP}"
 APP_ENTITLEMENTS="${SCRATCH}/app-entitlements.plist"
 codesign -d --entitlements :- "${STAGING_APP}" \
   > "${APP_ENTITLEMENTS}" 2>/dev/null || true
-python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" "${APP_ENTITLEMENT_COMPONENT}" \
   "${APP_ENTITLEMENTS}"
 if [[ ! -x "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper" ]]; then
   print -u2 "The App connection helper is missing."

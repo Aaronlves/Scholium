@@ -20,6 +20,9 @@ This file records the dependencies used to build Scholium. Exact JavaScript vers
   additional permissive notices reproduced in its `COPYING` file.
 - Swift Subprocess 1.0.0: Apache License 2.0.
 - Swift System (transitive): Apache License 2.0 with Swift Runtime Library Exception.
+- Sparkle 2.10.0: MIT License, including incorporated BSD and other permissive
+  notices. Packaging retains its complete upstream `LICENSE` with the framework's
+  installer helpers and resources.
 
 ## Build tools
 

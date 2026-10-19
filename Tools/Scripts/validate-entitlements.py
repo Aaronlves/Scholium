@@ -14,6 +14,9 @@ APP_ENTITLEMENTS = {
     "com.apple.security.files.bookmarks.app-scope": True,
     "com.apple.security.network.client": True,
     "com.apple.security.network.server": True,
+    "com.apple.security.temporary-exception.mach-lookup.global-name": [
+        "com.scholium.app-spks", "com.scholium.app-spki",
+    ],
     "com.apple.security.temporary-exception.files.home-relative-path.read-write": [
         "/Library/Application Support/Scholium/"
     ],
@@ -31,6 +34,8 @@ SIGNING_METADATA_ENTITLEMENTS = {
 def expected_entitlements(component: str) -> dict[str, object]:
     if component == "app":
         return APP_ENTITLEMENTS
+    if component == "app-adhoc":
+        return {**APP_ENTITLEMENTS, "com.apple.security.cs.disable-library-validation": True}
     if component == "helper":
         return {}
     raise ValueError(f"unknown component {component!r}")
@@ -77,6 +82,9 @@ def validate(component: str, actual: dict[str, object]) -> None:
 
 def self_test() -> None:
     validate("app", dict(APP_ENTITLEMENTS))
+    validate("app-adhoc", {
+        **APP_ENTITLEMENTS, "com.apple.security.cs.disable-library-validation": True,
+    })
     validate("helper", {})
     validate("app", {
         **APP_ENTITLEMENTS,
@@ -93,6 +101,10 @@ def self_test() -> None:
                  if key != "com.apple.security.app-sandbox"}),
         ("helper", {"com.apple.security.app-sandbox": True}),
         ("app", {**APP_ENTITLEMENTS, "com.apple.security.get-task-allow": True}),
+        ("app", {**APP_ENTITLEMENTS, "com.apple.security.cs.disable-library-validation": True}),
+        ("app-adhoc", dict(APP_ENTITLEMENTS)),
+        ("app", {**APP_ENTITLEMENTS,
+                 "com.apple.security.temporary-exception.mach-lookup.global-name": ["*"]}),
         ("app", {**APP_ENTITLEMENTS, "com.apple.developer.team-identifier": ""}),
     ]:
         try:
@@ -109,7 +121,7 @@ def main(argv: list[str]) -> int:
         return 0
     if len(argv) != 2:
         print(
-            "usage: validate-entitlements.py <app|helper> <entitlements.plist>",
+            "usage: validate-entitlements.py <app|app-adhoc|helper> <entitlements.plist>",
             file=sys.stderr,
         )
         return 64

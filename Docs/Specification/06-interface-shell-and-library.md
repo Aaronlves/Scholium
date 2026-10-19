@@ -15,6 +15,11 @@ and Library presentation without restating those workflows.
 This chapter owns shell composition, navigation and command placement.
 Bootstrap readiness is governed by §16.
 
+The application menu offers **Check for Updates…** after About, independently of
+Triptych or document readiness. Standard updater windows expose checking,
+availability, download, cancellation, installation and retry; §21.5 owns update
+authentication and guarded restart. User preferences govern automatic checks.
+
 ### 18.2 Workspace shell and Document tabs
 
 Each configured window contains one native split view:

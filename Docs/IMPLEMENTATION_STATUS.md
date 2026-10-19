@@ -36,10 +36,10 @@ access and receipts remain distinct from evidence. No research-result lifecycle
 or API is exposed. Storage reaches inspected cleanup of unused Chat copies;
 citation Recovery exposes retained copies for inspection without applying them.
 
-The public release profile is Core App Beta. External Agent Collaboration and
-optional in-app Chat remain Preview; reachability is not implicit acceptance.
-The distribution is an App with bundled helpers. Verification's artifact proof
-is tag-specific; source reachability does not establish packaged external-host,
+Core App Beta is public; external Agent Collaboration and optional Chat remain
+Preview. The App and helpers update together. Sparkle supports application
+updates; production key/feed configuration remains open. Artifact proof stays
+tag-specific; source reachability establishes no packaged external-host,
 managed-Zotero, physical-input or release acceptance.
 
 ## Status chapters

@@ -5,6 +5,11 @@ import SwiftUI
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
     let markdownFiles = MarkdownFileOpeningController()
+    let updates = ApplicationUpdateController()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        updates.start()
+    }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard !windowLifecycleRegistry.isTerminationAttemptInProgress else { return }

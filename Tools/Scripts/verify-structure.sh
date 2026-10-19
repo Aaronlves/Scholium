@@ -260,8 +260,13 @@ PYTHONPYCACHEPREFIX="${SCHOLIUM_VERIFY_RUN_ROOT:-${ROOT}/.build/ci-verification/
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
   "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
   "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
-  "${ROOT}/Tools/Scripts/validate-entitlements.py"
+  "${ROOT}/Tools/Scripts/validate-entitlements.py" \
+  "${ROOT}/Tools/Scripts/prepare-sparkle.py" \
+  "${ROOT}/Tools/Scripts/generate-update-feed.py" \
+  "${ROOT}/Tools/Scripts/validate-update-feed.py"
 python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" --self-test
+python3 "${ROOT}/Tools/Tests/test-updates.py"
+python3 "${ROOT}/Tools/Scripts/validate-update-feed.py" "${ROOT}/Updates/appcast.xml" --allow-empty
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
 

@@ -97,6 +97,9 @@
   requires it; focused backend measurements are not G7.
 - Developer ID signing/notarization remain a future channel outside the current
   ad-hoc source-first Beta profile.
+- Configure/back up the production update key, publish an updater-enabled release
+  and deploy its feed. Local fixtures establish neither Pages/Gatekeeper nor
+  downloaded-package acceptance.
 
 ## Current boundary
 
