@@ -287,6 +287,10 @@ private final class ImportProjectionReadOperations: DocumentUseCases {
         to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
     ) async throws -> PreparedSourceAttachment { throw ImportProjectionUnexpectedCall() }
+    func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL, destination: String, for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment { throw ImportProjectionUnexpectedCall() }
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

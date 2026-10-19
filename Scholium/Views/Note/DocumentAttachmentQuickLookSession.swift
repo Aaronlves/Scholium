@@ -24,7 +24,7 @@ final class DocumentAttachmentQuickLookSession: ObservableObject {
     /// A new gesture owns preparation; stale results release their access
     /// without presenting after navigation, cancellation, or a newer gesture.
     func prepare(
-        isCurrent: @escaping () -> Bool,
+        isCurrent: @escaping @MainActor () -> Bool,
         acquire: @escaping () async throws -> DocumentAttachmentPreviewAccess,
         onFailure: @escaping (any Error) -> Void,
         returnFocus: @escaping () -> Void

@@ -303,8 +303,10 @@ export function createLiveStructuredBlockProjections(options: {
         const current = options.projections.index(transaction.state).callouts;
         folds = new Map([...folds].flatMap(([from, collapsed]) => {
           const mapped = transaction.changes.mapPos(from);
-          const oldHeader = previous.presentations.find(item => item.from === from)?.source.split("\n", 1)[0];
-          const newHeader = current.find(item => item.from === mapped)?.source.split("\n", 1)[0];
+          const oldHeader = previous.presentations.some(item => item.from === from)
+            ? transaction.startState.doc.lineAt(from).text : undefined;
+          const newHeader = current.some(item => item.from === mapped)
+            ? transaction.state.doc.lineAt(mapped).text : undefined;
           // An authored header change supersedes a transient disclosure choice.
           return newHeader !== undefined && oldHeader === newHeader ? [[mapped, collapsed] as const] : [];
         }));

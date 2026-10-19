@@ -410,6 +410,7 @@ export function createPreviewPopoverController(
   }
 
   const handlePointerMove = (event: PointerEvent) => {
+    if (editor?.composing) { hide(); return; }
     const annotation = annotationButtonAt(event.target);
     const footnote = footnoteButtonAt(event.target);
     const link = linkAnchorAt(event.target);
@@ -421,7 +422,7 @@ export function createPreviewPopoverController(
     }
     // Pointer events carry the current modifier state even when its key-up was
     // delivered in the native preview window rather than this document.
-    const modifierActive = event.metaKey || event.ctrlKey;
+    const modifierActive = event.metaKey && !event.ctrlKey;
     setArmedLink(modifierActive ? link : null);
     const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
     if (!anchor) {
@@ -432,10 +433,16 @@ export function createPreviewPopoverController(
   };
   const handleKeyUp = (event: KeyboardEvent) => {
     if (event.key !== "Meta" && event.key !== "Control") return;
-    setArmedLink(null);
-    if (target?.kind === "link" && !nativeHovered) hide(true);
+    updateCommandIntent(event);
   };
   const handleCompositionStart = () => hide();
+  function updateCommandIntent(event: KeyboardEvent) {
+    const active = event.metaKey && !event.ctrlKey && !event.isComposing
+      && event.keyCode !== 229 && !editor?.composing && !hasPinnedPreview();
+    setArmedLink(active ? hoveredLink : null);
+    if (active && hoveredLink) scheduleShow(hoveredLink, "link");
+    else if (target?.kind === "link" && !nativeHovered) hide(true);
+  }
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape" && root && !root.hidden) {
@@ -443,9 +450,7 @@ export function createPreviewPopoverController(
       return;
     }
     if (event.key !== "Meta" && event.key !== "Control") return;
-    if (!hoveredLink || hasPinnedPreview()) return;
-    setArmedLink(hoveredLink);
-    scheduleShow(hoveredLink, "link");
+    updateCommandIntent(event);
   };
   const handleFocusIn = (event: FocusEvent) => {
     const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
@@ -499,6 +504,15 @@ export function createPreviewPopoverController(
     hoveredLink = null;
     hide();
   };
+  const handlePointerLeave = () => {
+    hoveredLink = null;
+    setArmedLink(null);
+    if (target?.kind === "link") scheduleHide();
+  };
+  const handleWindowBlur = () => {
+    handlePointerLeave();
+    if (!nativeHovered) hide();
+  };
 
   function mount(view: EditorView) {
     if (editor) return;
@@ -532,8 +546,10 @@ export function createPreviewPopoverController(
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("compositionstart", handleCompositionStart);
+    view.contentDOM.addEventListener("pointerleave", handlePointerLeave);
     view.scrollDOM.addEventListener("scroll", handleViewportExit, {passive: true});
     window.addEventListener("resize", handleViewportExit);
+    window.addEventListener("blur", handleWindowBlur);
   }
 
   function unmount(view: EditorView) {
@@ -547,8 +563,10 @@ export function createPreviewPopoverController(
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("compositionstart", handleCompositionStart);
+    view.contentDOM.removeEventListener("pointerleave", handlePointerLeave);
     view.scrollDOM.removeEventListener("scroll", handleViewportExit);
     window.removeEventListener("resize", handleViewportExit);
+    window.removeEventListener("blur", handleWindowBlur);
     root = null;
     title = null;
     metadata = null;

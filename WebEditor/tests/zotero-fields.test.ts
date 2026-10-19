@@ -7,7 +7,7 @@ import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-sou
 import {scholiumNoteLanguage} from "../language";
 import {createLiveProjectionIndexController} from "../live-projection-index";
 import {appendMarkdownBlocks} from "../markdown-fragment";
-import {normalizedDocumentText} from "../state";
+import {ExactSourceMirror, normalizedDocumentText} from "../state";
 import {citationLinkSource, encodeOpaque, maximumEnvelopeLength} from "../zotero-field-envelope";
 import {encodeDocumentData, encodeField, fieldMetadataRanges, fieldOperationTransaction, isCompletedFieldCode,
   citationInsertionContextSupported, markdownVisibleText, projectFields, projectFieldsForState, stageFieldOperation, vendorTextToMarkdown,
@@ -297,11 +297,77 @@ describe("source-owned Zotero Markdown fields", () => {
     expect(projectFieldsForState(state.update({selection: {anchor: 5}}).state)).toBe(catalog);
     const carrier = encodeField(citation), split = carrier.indexOf("scholium-zotero:") + 8;
     // Exercise the chunk scanner without relying on rope implementation details.
-    const fake = {doc: {iter: function* () {yield carrier.slice(0, split); yield carrier.slice(split);}, toString: () => carrier},
+    const carrierDoc = EditorState.create({doc: carrier}).doc;
+    const fake = {doc: Object.assign(Object.create(carrierDoc), {
+      iter: function* () {yield carrier.slice(0, split); yield carrier.slice(split);},
+    }),
       field: () => undefined} as unknown as EditorState;
     expect(projectFieldsForState(fake).fields[0].id).toBe(citation.id);
     expect(citationLinkSource(carrier)?.field.id).toBe(citation.id);
   });
+
+  it.each(["\n", "\r\n"])("keeps reserved words in closed YAML inert without materializing source during body edits: %j", newline => {
+    const yaml = "\ufeff" + ["---", 'keywords: ["cite:", "中文 e\u0301 🧭"]',
+      'aliases: ["scholium-zotero:1:BAD"]', 'tags: ["cite-bibliography"]', "---", ""].join(newline);
+    let source = yaml + "Body e\u0301 🧭.";
+    let state = initial(source);
+    const snapshot = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+    try {
+      for (const insert of ["中", "文", "e\u0301"]) {
+        const from = state.doc.length;
+        state = state.update({changes: {from, insert}}).state;
+        source += insert;
+        snapshot.mockClear();
+        const projection = projectFieldsForState(state);
+        expect(snapshot).not.toHaveBeenCalled();
+        expect(projection.fields).toEqual([]);
+        expect(projection.diagnostics).toEqual([]);
+        expect(projectFieldsForState(state.update({selection: {anchor: 5}}).state)).toBe(projection);
+        expect(snapshot).not.toHaveBeenCalled();
+        expect(projection).toEqual(projectFields(source));
+        expect(state.field(exactSourceState).text).toBe(source);
+        expect(source.startsWith(yaml)).toBe(true);
+      }
+    } finally { snapshot.mockRestore(); }
+  });
+
+  it("still validates body citation carriers and malformed reserved destinations after closed YAML", () => {
+    const yaml = '---\nkeywords: ["cite:", "scholium-zotero:"]\naliases: ["cite-bibliography"]\n---\n\n';
+    for (const body of [acceptedSource([citation]), "[Broken](scholium-zotero:2:AAAA)", "[Missing](cite:unknown)"]) {
+      const source = yaml + body;
+      const projection = projectFieldsForState(initial(source));
+      expect(projection).toEqual(projectFields(source));
+      if (body === acceptedSource([citation])) expect(projection.fields[0].id).toBe(citation.id);
+      else expect(projection.diagnostics.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("rechecks cached citation candidates when the YAML closing boundary changes", () => {
+    const source = '\ufeff---\r\nkeywords: ["cite:", "scholium-zotero:"]\r\n---\r\n\r\n' + encodeField(citation);
+    let state = initial(source);
+    expect(projectFieldsForState(state).fields[0].id).toBe(citation.id);
+    const close = state.doc.toString().indexOf("\n---\n") + 1;
+    state = state.update({changes: {from: close, to: close + 1}}).state;
+    expect(projectFieldsForState(state)).toEqual(projectFields(state.field(exactSourceState).text));
+    expect(projectFieldsForState(state).fields).toEqual([]);
+    state = state.update({changes: {from: close, insert: "-"}}).state;
+    expect(projectFieldsForState(state)).toEqual(projectFields(source));
+    expect(projectFieldsForState(state).fields[0].id).toBe(citation.id);
+    expect(state.field(exactSourceState).text).toBe(source);
+  });
+
+  it.each(['---\nkeywords: "cite:"\n', '--\nkeywords: "cite:"\n---\n', ""])(
+    "keeps full conservative validation for an unclosed, partial or absent envelope: %j", prefix => {
+      const source = prefix + "\n[Broken](scholium-zotero:2:AAAA)\n";
+      const state = initial(source);
+      const snapshot = vi.spyOn(ExactSourceMirror.prototype, "text", "get");
+      try {
+        const projection = projectFieldsForState(state);
+        expect(snapshot).toHaveBeenCalled();
+        expect(projection).toEqual(projectFields(source));
+      } finally {snapshot.mockRestore();}
+    },
+  );
 
   it("uses complete catalog identity and context validity for live editor projection", () => {
     const controller = createLiveProjectionIndexController({editingDialect: () => null, recordMetric: () => {}});

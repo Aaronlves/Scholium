@@ -53,6 +53,38 @@ function calloutHarness() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("retained Callout disclosure", () => {
+  it("retains a transient fold after body input and resets it after the authored header changes", () => {
+    const h = calloutHarness();
+    const refreshHeading = () => {
+      const widget = headingWidget(h.view.state);
+      expect(widget.updateDOM(h.root, h.view as unknown as EditorView, widget)).toBe(true);
+    };
+    h.click();
+    refreshHeading();
+    expect(h.root.querySelector("button")!.getAttribute("aria-expanded")).toBe("false");
+    const beforeBody = h.view.state.doc.toString();
+    h.change({changes: {from: beforeBody.indexOf("Body") + 2, insert: "中文"}});
+    refreshHeading();
+    expect(h.root.querySelector("button")!.getAttribute("aria-expanded")).toBe("false");
+    const beforeHeader = h.view.state.doc.toString();
+    h.change({changes: {from: beforeHeader.indexOf("Heading") + 2, insert: "changed"}});
+    refreshHeading();
+    expect(h.root.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
+    expect(h.root.querySelector("button")!.getAttribute("aria-label")).toContain("Hechangedading");
+  });
+
+  it("exposes a folded body when its exact source selection enters it", () => {
+    const h = calloutHarness();
+    const source = h.view.state.doc.toString();
+    h.click();
+    h.change({selection: {anchor: source.indexOf("Body") + 2}});
+    const widget = headingWidget(h.view.state);
+    expect(widget.updateDOM(h.root, h.view as unknown as EditorView, widget)).toBe(true);
+    expect(h.root.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
+    expect(h.view.state.doc.toString()).toBe(source);
+    expect(h.view.state.selection.main.head).toBe(source.indexOf("Body") + 2);
+  });
+
   it("folds and preserves layout using the current widget ranges after source shifts", () => {
     const h = calloutHarness();
     const previous = headingWidget(h.view.state);

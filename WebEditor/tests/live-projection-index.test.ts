@@ -1,8 +1,11 @@
 import {EditorSelection, EditorState} from "@codemirror/state";
+import {history, isolateHistory, redo, undo} from "@codemirror/commands";
 import {ensureSyntaxTree} from "@codemirror/language";
+import {EditorView} from "@codemirror/view";
 import {describe, expect, it, vi} from "vitest";
 import {scholiumNoteLanguage} from "../language";
 import {createLiveProjectionIndexController} from "../live-projection-index";
+import {createLiveSemanticLayout} from "../live-semantic-layout";
 import type {MarkdownEditingDialect} from "../protocol";
 import {createMarkdownDocumentState} from "../bootstrap";
 import {exactSourceHistory, exactSourceState} from "../exact-source-history";
@@ -36,6 +39,114 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  const linkedCallout = "Lead 中文 e\u0301 🧭.\n\n> [!cite]+ 来源与版本\n"
+    + "> Example, A. (2026). A disposable source.\n>\n"
+    + "> 书目来源：[来源 1](https://example.invalid/source)\n"
+    + "> 所读书目原文：[PDF](</Users/fixture/Research Papers/Example source.pdf>)\n"
+    + ">\n> > [!quote]- 嵌套引文\n> > Nested quotation.\n\nAfter.";
+
+  function expectFreshIndex(state: EditorState, controller: ReturnType<typeof createLiveProjectionIndexController>) {
+    const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const fresh = createMarkdownDocumentState(state.field(exactSourceState, false)?.text ?? state.doc.toString(),
+      [scholiumNoteLanguage, exactSourceHistory, oracle.extension]);
+    expect(controller.index(state)).toEqual(oracle.index(fresh));
+  }
+
+  it.each(["所读书目原文", "Nested quotation"])(
+    "maps repeated Callout prose input/deletion beside %j against a fresh parser", passage => {
+      let builds = 0;
+      const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+        recordMetric: name => {if (name === "projection-index") builds++;}});
+      const from = linkedCallout.indexOf(passage) + 2;
+      let state = EditorState.create({doc: linkedCallout, selection: {anchor: from},
+        extensions: [scholiumNoteLanguage, controller.extension]});
+      const identity = controller.index(state).topologyIdentity;
+      for (const insert of ["中", "文", " ", "e", "\u0301"]) {
+        const inserted = state.update({changes: {from, insert}, selection: {anchor: from + insert.length}});
+        state = inserted.state;
+        expect(controller.topologyWasMapped(inserted)).toBe(true);
+        expect(controller.index(state).topologyIdentity).toBe(identity);
+        expect(state.doc.toString()).toBe(linkedCallout.slice(0, from) + insert + linkedCallout.slice(from));
+        expect(state.selection.main.head).toBe(from + insert.length);
+        expectFreshIndex(state, controller);
+        const deleted = state.update({changes: {from, to: from + insert.length}, selection: {anchor: from}});
+        state = deleted.state;
+        expect(controller.topologyWasMapped(deleted)).toBe(true);
+        expect(state.doc.toString()).toBe(linkedCallout);
+        expect(state.selection.main.head).toBe(from);
+        expectFreshIndex(state, controller);
+      }
+      expect(builds).toBe(1);
+    },
+  );
+
+  it.each(["\n", "\r\n"])("preserves exact Callout source, selection, composition transactions and Undo with %j", newline => {
+    const source = "\ufeff" + linkedCallout.replaceAll("\n", newline);
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const from = normalizedDocumentText(source).indexOf("所读书目原文") + 2;
+    let state = createMarkdownDocumentState(source,
+      [scholiumNoteLanguage, history(), exactSourceHistory, controller.extension],
+      {selection: EditorSelection.single(from)});
+    const beforeSelection = state.selection;
+    const insert = "中文 e\u0301 🧭";
+    state = state.update({changes: {from, insert}, selection: {anchor: from + insert.length},
+      userEvent: "input.type.compose", annotations: isolateHistory.of("full")}).state;
+    const changed = state;
+    expectFreshIndex(state, controller);
+    expect(state.field(exactSourceState).text).toBe(source.replace("所读书目原文", `所读${insert}书目原文`));
+    expect(state.doc.toString()).toBe(normalizedDocumentText(state.field(exactSourceState).text));
+    expect(undo({state, dispatch: transaction => {state = transaction.state;}})).toBe(true);
+    expect(state.field(exactSourceState).text).toBe(source);
+    expect(state.selection.eq(beforeSelection)).toBe(true);
+    expectFreshIndex(state, controller);
+    expect(redo({state, dispatch: transaction => {state = transaction.state;}})).toBe(true);
+    expect(state.field(exactSourceState).text).toBe(changed.field(exactSourceState).text);
+    expect(state.selection.eq(changed.selection)).toBe(true);
+    expectFreshIndex(state, controller);
+  });
+
+  it.each([
+    {needle: "来源与版本", insert: " 中"},
+    {needle: "[!cite]", insert: "x"},
+    {needle: "所读书目原文", insert: ">"},
+    {needle: "所读书目原文", insert: "\n> "},
+    {needle: "Nested quotation.", insert: "x", end: true},
+    {needle: "After.", insert: "> "},
+  ])("rechecks header, nested endpoints and structural changes against the parser: %j", ({needle, insert, end}) => {
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const from = linkedCallout.indexOf(needle) + (end ? needle.length : 0);
+    const state = EditorState.create({doc: linkedCallout, extensions: [scholiumNoteLanguage, controller.extension]});
+    const transaction = state.update({changes: {from, insert}});
+    expectFreshIndex(transaction.state, controller);
+    if (/[>\n]/.test(insert) || needle === "来源与版本" || needle === "[!cite]") {
+      expect(controller.topologyWasMapped(transaction)).toBe(false);
+    }
+  });
+
+  it("refreshes every body line when ordinary header text changes the Callout role", () => {
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const layout = createLiveSemanticLayout({projections: controller, editingDialect: () => dialect, selection: {
+      extension: [], selection: state => state.selection, changed: (a, b) => !a.selection.eq(b.selection),
+    }});
+    const extensions = [scholiumNoteLanguage, controller.extension, layout.extension];
+    const source = "> [!state] Heading\n> First\n> Second\n> Third\n> Distant body.";
+    const state = EditorState.create({doc: source, extensions});
+    const classes = (value: EditorState) => value.facet(EditorView.decorations).flatMap(set => {
+      if (typeof set === "function") return [];
+      const result: string[] = [];
+      set.between(value.doc.line(5).from, value.doc.line(5).to, (_from, _to, decoration) => {
+        if (decoration.spec.attributes?.class) result.push(decoration.spec.attributes.class);
+      });
+      return result;
+    }).join(" ");
+    expect(classes(state)).toContain("cm-live-callout-role-state");
+    const transaction = state.update({changes: {from: source.indexOf("state"), insert: "x"}});
+    expect(controller.topologyWasMapped(transaction)).toBe(false);
+    expectFreshIndex(transaction.state, controller);
+    expect(classes(transaction.state)).toContain("cm-live-callout-role-neutral");
+    expect(classes(transaction.state)).toBe(classes(EditorState.create({doc: transaction.newDoc, extensions})));
+  });
+
   it.each(["    ", "\t", "- ", "+ ", "1. ", "1) "])(
     "reclassifies a newly inserted structural prefix %j from the parser",
     prefix => {
@@ -390,10 +501,10 @@ describe("live projection index component", () => {
 
     expect(index.syntax.blocks.find((block) => block.kind === "callout")?.to)
       .toBeLessThan(source.length);
-    expect(index.callouts).toEqual([{from: 0, to: source.length, source}]);
+    expect(index.callouts).toEqual([{from: 0, to: source.length}]);
   });
 
-  it("rebuilds cached Callout source when Return appends a quote-only line", () => {
+  it("rebuilds Callout topology when Return appends a quote-only line", () => {
     const controller = createLiveProjectionIndexController({
       editingDialect: () => dialect,
       recordMetric: () => {},
@@ -413,7 +524,7 @@ describe("live projection index component", () => {
     const next = controller.index(transaction.state);
 
     expect(next.topologyIdentity).not.toBe(initial.topologyIdentity);
-    expect(next.callouts).toEqual([{from: 0, to: continued.length, source: continued}]);
+    expect(next.callouts).toEqual([{from: 0, to: continued.length}]);
     expect(next.syntax.blocks.find((block) => block.kind === "callout")?.markerRanges
       .map((range) => continued.slice(range.from, range.to)))
       .toEqual([">", "[!state]", ">"]);

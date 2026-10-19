@@ -541,6 +541,89 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    /// Opens an authored file through its existing grant, or lets the
+    /// researcher grant only that exact original without inserting another link.
+    func prepareAuthoredDocumentAttachmentPreview(
+        destination: String,
+        for target: SourceAttachmentTarget,
+        isCurrent: @escaping @MainActor () -> Bool,
+        selectFile: @MainActor (ScholiumFileSelectionRequest) async throws -> URL?
+    ) async throws -> DocumentAttachmentPreviewAccess {
+        let owner = try requireOperations()
+        let id = VaultQualifiedNoteID(vaultID: target.vaultID, relativePath: target.relativePath)
+        let source = try await owner.load(id)
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
+        guard
+            let reference = SourceResourceReferences.file(
+                destination: destination, noteRelativePath: target.relativePath),
+            SourceResourceReferences.files(in: source.body, noteRelativePath: target.relativePath)
+                .contains(where: {
+                    !$0.isImage && $0.relativePath == reference.relativePath
+                        && $0.absolutePath == reference.absolutePath
+                })
+        else { throw DocumentAttachmentError.unavailable(destination) }
+        let snapshots = try await owner.documentAttachments(for: target)
+        let existing: DocumentAttachmentSnapshot?
+        if let path = reference.relativePath {
+            existing = snapshots.first { $0.record.location == .vaultRelative(path) }
+        } else {
+            existing = try await owner.sourceAttachment(for: destination, target: target)
+        }
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
+        var preparation: PreparedSourceAttachment?
+        var lease: DocumentAttachmentPreviewLease?
+        do {
+            let attachmentID: UUID
+            if let existing, existing.availability == .available {
+                attachmentID = existing.record.id
+            } else {
+                guard let path = reference.absolutePath else {
+                    throw DocumentAttachmentError.unavailable(destination)
+                }
+                let expectedURL = URL(fileURLWithPath: path)
+                let request = ScholiumFileSelectionRequest(
+                    title: String(localized: "Allow Read Access"),
+                    message: String(localized: "Select the linked file to allow read-only access: \(path)"),
+                    prompt: String(localized: "Allow Read Access"),
+                    initialDirectoryURL: expectedURL.deletingLastPathComponent(),
+                    kind: .files(allowedContentTypes: [.content], resolvesAliases: false))
+                guard let selectedURL = try await selectFile(request) else { throw CancellationError() }
+                try Task.checkCancellation()
+                guard isCurrent() else { throw CancellationError() }
+                let prepared = try await owner.prepareAuthoredDocumentAttachment(
+                    at: selectedURL, destination: destination, for: target,
+                    expectedSourceFingerprint: source.fingerprint)
+                preparation = prepared
+                attachmentID = prepared.record.id
+            }
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
+            let acquired = try await owner.prepareDocumentAttachmentPreview(
+                attachmentID: attachmentID, for: target)
+            lease = acquired
+            let currentSource = try await owner.load(id)
+            try Task.checkCancellation()
+            guard isCurrent(), currentSource.fingerprint == source.fingerprint else {
+                throw CancellationError()
+            }
+            return .init(lease: acquired, releaseAccess: { await owner.releaseDocumentAttachmentPreview(accessToken: $0) })
+        } catch {
+            if let lease { await owner.releaseDocumentAttachmentPreview(accessToken: lease.accessToken) }
+            if let preparation, preparation.createdCatalogRecord || preparation.createdLocalAccessRecord {
+                do {
+                    try await Task { try await owner.rollbackSourceAttachment(preparation) }.value
+                } catch let cleanup {
+                    throw DocumentAttachmentError.preparationCleanupFailed(
+                        operation: ScholiumErrorLocalization.message(error),
+                        cleanup: ScholiumErrorLocalization.message(cleanup))
+                }
+            }
+            throw error
+        }
+    }
+
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

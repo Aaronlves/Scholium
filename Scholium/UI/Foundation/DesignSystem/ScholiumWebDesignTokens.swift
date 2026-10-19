@@ -721,7 +721,8 @@ enum ScholiumWebDesignTokens {
         .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed:active {
           background: var(--scholium-content-keyboard-focus-surface);
         }
-        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
+        .cm-editor.scholium-live-mode .scholium-link-preview-armed,
+        .cm-editor.scholium-live-mode .scholium-link-preview-armed * {
           cursor: pointer;
         }
         .scholium-document h1,

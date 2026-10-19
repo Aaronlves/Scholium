@@ -20,7 +20,7 @@ public struct SourceProjectionCache: Sendable {
         let rankingVersion: Int
 
         static let current = Policy(
-            formatVersion: 2, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
+            formatVersion: 2, projectionVersion: 3, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
     }
@@ -46,7 +46,7 @@ public struct SourceProjectionCache: Sendable {
         let yamlParserVersion: String
 
         static let current = CatalogPolicy(
-            formatVersion: 1, projectionVersion: 1,
+            formatVersion: 1, projectionVersion: 2,
             markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2")
     }
 

@@ -282,22 +282,24 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
     }
 
     private static func requiresSemanticParsing(_ document: NoteDocument) -> Bool {
+        // Validated frontmatter cannot contain body-owned citation carriers.
+        // Invalid closed YAML retains the complete source for its refusal;
+        // an unclosed envelope already leaves body equal to rawContent.
+        let source = document.validationWarnings.isEmpty ? document.body : document.rawContent
         if let snapshot = document.citationSnapshot {
             guard snapshot.status == .absent,
                 snapshot.data == nil, snapshot.revision == nil, snapshot.sourceFingerprint == nil
             else { return true }
-            // A reserved destination absent from the raw source can only be
-            // introduced by entity, backslash or percent decoding. Retain the
-            // semantic path whenever link/HTML syntax can use those forms;
-            // ordinary links and YAML arrays do not require a Markdown parse.
-            let source = document.rawContent
-            if (source.contains("[") || source.contains("<"))
-                && (source.contains("&") || source.contains("\\") || source.contains("%"))
-            {
-                return true
-            }
         }
-        return hasSourceMarkers(document.rawContent)
+        // Entity, backslash or percent decoding can introduce reserved body
+        // destinations. A standalone source has no checked companion, but a
+        // marker in its YAML could previously admit that semantic parse too.
+        if (source.contains("[") || source.contains("<"))
+            && (source.contains("&") || source.contains("\\") || source.contains("%"))
+        {
+            return document.citationSnapshot != nil || hasSourceMarkers(document.rawContent)
+        }
+        return hasSourceMarkers(source)
     }
 
     private static func hasSourceMarkers(_ source: String) -> Bool {

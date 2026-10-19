@@ -227,9 +227,18 @@ struct ZoteroCitationCompanionTests {
         let attached = note.withCitationSnapshot(snapshot)
         #expect(attached.sourceBytes == note.sourceBytes)
         #expect(attached.fingerprint == note.fingerprint)
+        #expect(attached.rawContent == note.rawContent)
+        #expect(attached.rawFrontmatter == note.rawFrontmatter)
+        #expect(attached.parsedFrontmatter == note.parsedFrontmatter)
+        #expect(attached.frontmatterByteRange == note.frontmatterByteRange)
+        #expect(attached.bodyByteRange == note.bodyByteRange)
+        #expect(attached.newlineStyle == note.newlineStyle)
+        #expect(attached.validationWarnings == note.validationWarnings)
+        #expect(note.citationSnapshot == nil)
         #expect(attached.citationSnapshot == snapshot)
         let edit = ZoteroCitationEdit(expectedRevision: nil, data: .init())
         #expect(Data(try attached.applying(.citationSource(source, edit), timestampKey: "modified").utf8) == note.sourceBytes)
         #expect(attached.withCitationSnapshot(nil).citationSnapshot == nil)
+        #expect(attached.citationSnapshot == snapshot)
     }
 }

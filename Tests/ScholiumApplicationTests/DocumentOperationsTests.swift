@@ -301,6 +301,155 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("An existing absolute document link gains exact read access without source changes or duplicate records")
+    func authoredDocumentAuthorization() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let originalURL = fixture.rootURL.appendingPathComponent("原文 e\u{301} (2).pdf")
+            .resolvingSymlinksInPath().standardizedFileURL
+        let bytes = Data("Disposable document fixture; not a research PDF.".utf8)
+        try bytes.write(to: originalURL)
+        let original = try await handle.documents.load(fixture.targetID)
+        let source = "\u{FEFF}---\r\ncustom: 'retained'\r\n---\r\n> [!info] 来源\r\n> [PDF](<\(originalURL.path)>)\r\n"
+        let linked = try await handle.documents.save(
+            try await capturedSaveTarget(handle, fixture.targetID, revision: original.fingerprint),
+            changeSet: .source(source)
+        ).committedValue
+        let summary = try #require(try await handle.snapshot().document(id: fixture.targetID))
+        let target = SourceAttachmentTarget(
+            noteID: try #require(summary.stableIdentity.resolvedID),
+            vaultID: fixture.targetID.vaultID, relativePath: fixture.targetID.relativePath)
+        #expect(try await handle.documents.sourceAttachment(for: originalURL.path, target: target) == nil)
+        let prepared = try await handle.documents.prepareAuthoredDocumentAttachment(
+            at: originalURL, destination: originalURL.path, for: target,
+            expectedSourceFingerprint: linked.document.fingerprint)
+        #expect(prepared.createdCatalogRecord && prepared.createdLocalAccessRecord)
+        let preview = try await handle.documents.prepareDocumentAttachmentPreview(
+            attachmentID: prepared.record.id, for: target)
+        #expect(try Data(contentsOf: preview.fileURL) == bytes)
+        await handle.documents.releaseDocumentAttachmentPreview(accessToken: preview.accessToken)
+        let reused = try await handle.documents.prepareAuthoredDocumentAttachment(
+            at: originalURL, destination: originalURL.path, for: target,
+            expectedSourceFingerprint: linked.document.fingerprint)
+        #expect(reused.record.id == prepared.record.id)
+        #expect(!reused.createdCatalogRecord && !reused.createdLocalAccessRecord)
+        try await handle.documents.rollbackSourceAttachment(reused)
+        #expect(try await handle.documents.sourceAttachment(for: originalURL.path, target: target)?.availability == .available)
+        #expect(try await handle.documents.documentAttachments(for: target).count == 1)
+        #expect(try await handle.documents.load(fixture.targetID).sourceBytes == Data(source.utf8))
+        #expect(try Data(contentsOf: originalURL) == bytes)
+        // A stale bookmark must refresh the same identity; adding a second
+        // binding for this path could keep selecting its unavailable predecessor.
+        let movedURL = originalURL.deletingLastPathComponent().appendingPathComponent("Moved Original.pdf")
+        try FileManager.default.moveItem(at: originalURL, to: movedURL)
+        let replacementBytes = Data("A newly selected exact original.".utf8)
+        try replacementBytes.write(to: originalURL)
+        #expect(try await handle.documents.sourceAttachment(for: originalURL.path, target: target)?.availability == .unavailable)
+        let restored = try await handle.documents.prepareAuthoredDocumentAttachment(
+            at: originalURL, destination: originalURL.path, for: target,
+            expectedSourceFingerprint: linked.document.fingerprint)
+        #expect(restored.record.id == prepared.record.id)
+        #expect(!restored.createdCatalogRecord && !restored.createdLocalAccessRecord)
+        try await handle.documents.rollbackSourceAttachment(restored)
+        let restoredPreview = try await handle.documents.prepareDocumentAttachmentPreview(
+            attachmentID: restored.record.id, for: target)
+        #expect(try Data(contentsOf: restoredPreview.fileURL) == replacementBytes)
+        await handle.documents.releaseDocumentAttachmentPreview(accessToken: restoredPreview.accessToken)
+        #expect(try await handle.documents.documentAttachments(for: target).count == 1)
+        await runtime.shutdown()
+    }
+
+    @Test("A late preparation rollback preserves a grant already adopted by another preview")
+    func authoredDocumentAdoptedGrantSurvivesLateRollback() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let originalURL = fixture.rootURL.appendingPathComponent("Shared Original.pdf")
+            .resolvingSymlinksInPath().standardizedFileURL
+        try Data("Disposable shared original.".utf8).write(to: originalURL)
+        let original = try await handle.documents.load(fixture.targetID)
+        let source = "[PDF](<\(originalURL.path)>)\n"
+        let linked = try await handle.documents.save(
+            try await capturedSaveTarget(handle, fixture.targetID, revision: original.fingerprint),
+            changeSet: .source(source)
+        ).committedValue
+        let summary = try #require(try await handle.snapshot().document(id: fixture.targetID))
+        let target = SourceAttachmentTarget(
+            noteID: try #require(summary.stableIdentity.resolvedID),
+            vaultID: fixture.targetID.vaultID, relativePath: fixture.targetID.relativePath)
+        // Window A creates the grant, then yields while its presentation is pending.
+        let firstPreparation = try await handle.documents.prepareAuthoredDocumentAttachment(
+            at: originalURL, destination: originalURL.path, for: target,
+            expectedSourceFingerprint: linked.document.fingerprint)
+        // Window B adopts it and closes its preview before A is cancelled.
+        let secondPreview = try await handle.documents.prepareDocumentAttachmentPreview(
+            attachmentID: firstPreparation.record.id, for: target)
+        await handle.documents.releaseDocumentAttachmentPreview(accessToken: secondPreview.accessToken)
+        try await handle.documents.rollbackSourceAttachment(firstPreparation)
+        // Closing B's lease does not return ownership of its grant to A.
+        #expect(try await handle.documents.sourceAttachment(for: originalURL.path, target: target)?.availability == .available)
+        let reopened = try await handle.documents.prepareDocumentAttachmentPreview(
+            attachmentID: firstPreparation.record.id, for: target)
+        #expect(
+            reopened.fileURL.resolvingSymlinksInPath().standardizedFileURL.path
+                == originalURL.resolvingSymlinksInPath().standardizedFileURL.path)
+        await handle.documents.releaseDocumentAttachmentPreview(accessToken: reopened.accessToken)
+        #expect(try await handle.documents.load(fixture.targetID).sourceBytes == Data(source.utf8))
+        await runtime.shutdown()
+    }
+
+    @Test("Authored document authorization refuses substituted, symbolic, unlinked and stale targets")
+    func authoredDocumentAuthorizationRejectsSubstitution() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let originalURL = fixture.rootURL.appendingPathComponent("Original.pdf")
+            .resolvingSymlinksInPath().standardizedFileURL
+        let otherDirectory = originalURL.deletingLastPathComponent().appendingPathComponent("Other")
+        try FileManager.default.createDirectory(at: otherDirectory, withIntermediateDirectories: false)
+        let sameName = otherDirectory.appendingPathComponent(originalURL.lastPathComponent)
+        let alias = originalURL.deletingLastPathComponent().appendingPathComponent("Alias.pdf")
+        try Data("original".utf8).write(to: originalURL)
+        try Data("different".utf8).write(to: sameName)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: originalURL)
+        let original = try await handle.documents.load(fixture.targetID)
+        let linked = try await handle.documents.save(
+            try await capturedSaveTarget(handle, fixture.targetID, revision: original.fingerprint),
+            changeSet: .source("[PDF](<\(originalURL.path)>)\n")
+        ).committedValue
+        let summary = try #require(try await handle.snapshot().document(id: fixture.targetID))
+        let target = SourceAttachmentTarget(
+            noteID: try #require(summary.stableIdentity.resolvedID),
+            vaultID: fixture.targetID.vaultID, relativePath: fixture.targetID.relativePath)
+        for selected in [sameName, alias] {
+            await #expect(throws: DocumentAttachmentError.self) {
+                _ = try await handle.documents.prepareAuthoredDocumentAttachment(
+                    at: selected, destination: originalURL.path, for: target,
+                    expectedSourceFingerprint: linked.document.fingerprint)
+            }
+        }
+        await #expect(throws: DocumentAttachmentError.self) {
+            _ = try await handle.documents.prepareAuthoredDocumentAttachment(
+                at: sameName, destination: sameName.path, for: target,
+                expectedSourceFingerprint: linked.document.fingerprint)
+        }
+        _ = try await handle.documents.save(
+            try await capturedSaveTarget(handle, fixture.targetID, revision: linked.document.fingerprint),
+            changeSet: .source("The link was removed.\n"))
+        await #expect(throws: DocumentAttachmentError.self) {
+            _ = try await handle.documents.prepareAuthoredDocumentAttachment(
+                at: originalURL, destination: originalURL.path, for: target,
+                expectedSourceFingerprint: linked.document.fingerprint)
+        }
+        #expect(try await handle.documents.sourceAttachment(for: originalURL.path, target: target) == nil)
+        #expect(try await handle.documents.documentAttachments(for: target).isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Untitled creation claims the first unoccupied name in the requested folder")
     func untitledCreationAdvancesWithoutReplacingSource() async throws {
         let fixture = try await LifecycleFixture.make()

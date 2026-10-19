@@ -106,7 +106,7 @@ public struct NoteDocument: Sendable {
     public let validationWarnings: [String]
     /// Nil identifies an independent standalone document; managed Notes always
     /// carry a checked companion status, including absence and load failures.
-    public let citationSnapshot: ZoteroCitationSnapshot?
+    public private(set) var citationSnapshot: ZoteroCitationSnapshot?
 
     /// Exact CodeMirror UTF-16 position at which authored body content begins.
     /// A valid frontmatter envelope may therefore have an empty body even when
@@ -213,7 +213,9 @@ public struct NoteDocument: Sendable {
     }
 
     public func withCitationSnapshot(_ snapshot: ZoteroCitationSnapshot?) -> Self {
-        .init(relativePath: relativePath, rawContent: rawContent, citationSnapshot: snapshot)
+        var document = self
+        document.citationSnapshot = snapshot
+        return document
     }
 
     public func applying(

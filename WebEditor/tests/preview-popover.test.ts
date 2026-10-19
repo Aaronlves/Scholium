@@ -136,6 +136,56 @@ describe("editor preview target lifecycle", () => {
     f.close();
   });
 
+  it.each(["/fixture/原文/Reasons (2018).pdf", "https://example.test/original", "Uncached note"])(
+    "arms an uncached link after pointer entry, without changing source or selection: %s", destination => {
+      const f = fixture("Keep this exact source.", []);
+      f.anchors(`<span data-scholium-link-target='${destination}' data-scholium-source-from='0' data-scholium-source-to='5'><em>PDF</em></span>`);
+      const anchor = f.contentDOM.firstElementChild!;
+      const label = anchor.firstElementChild!;
+      const state = f.view.state;
+      f.dispatch("pointermove", label);
+      expect(anchor.classList.contains("scholium-link-preview-armed")).toBe(false);
+      f.dispatch("keydown", label, {key: "Meta", metaKey: true});
+      expect(anchor.classList.contains("scholium-link-preview-armed")).toBe(true);
+      vi.advanceTimersByTime(300);
+      expect(f.current()).toBeNull();
+      expect(f.view.state).toBe(state);
+      expect(f.view.dispatch).not.toHaveBeenCalled();
+      expect(f.view.focus).not.toHaveBeenCalled();
+      f.dispatch("keyup", label, {key: "Meta"});
+      expect(anchor.classList.contains("scholium-link-preview-armed")).toBe(false);
+      f.close();
+    });
+
+  it("matches Command-click's modifier rule and clears on pointer exit or composition", () => {
+    const f = fixture();
+    f.anchors("<span data-link-preview-index='0'>A</span>");
+    const anchor = f.contentDOM.firstElementChild!;
+    const armed = () => anchor.classList.contains("scholium-link-preview-armed");
+    f.dispatch("pointermove", anchor, {ctrlKey: true});
+    expect(armed()).toBe(false);
+    f.dispatch("keydown", anchor, {key: "Meta", metaKey: true, ctrlKey: true});
+    expect(armed()).toBe(false);
+    f.dispatch("keyup", anchor, {key: "Control", metaKey: true});
+    expect(armed()).toBe(true);
+    f.dispatch("pointerleave", f.contentDOM);
+    expect(armed()).toBe(false);
+    f.dispatch("keydown", anchor, {key: "Meta", metaKey: true});
+    expect(armed()).toBe(false);
+    f.dispatch("pointermove", anchor, {metaKey: true});
+    expect(armed()).toBe(true);
+    f.view.composing = true;
+    f.dispatch("compositionstart", anchor);
+    f.dispatch("pointermove", anchor, {metaKey: true});
+    expect(armed()).toBe(false);
+    expect(f.current()).toBeNull();
+    f.view.composing = false;
+    f.dispatch("pointermove", anchor, {metaKey: true});
+    expect(armed()).toBe(true);
+    f.close();
+    expect(armed()).toBe(false);
+  });
+
   it("projects menu availability from the same current target as disclosure", () => {
     const f = fixture();
     expect(f.controller.canShowAtSelection()).toBe(true);

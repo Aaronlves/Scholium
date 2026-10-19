@@ -1,5 +1,6 @@
 import {scanMath, type MathDialect, type MathProjection} from "./math";
 import {scholiumMarkdownContentLanguage} from "./language";
+import {markdownLinkDestination} from "./link-target";
 import {
   tablePresentation,
   type TablePresentation,
@@ -223,7 +224,7 @@ function appendInlineMarkdownNode(
     const opening = children.find(child => child.name === "LinkMark" && source.slice(child.from, child.to) === "[");
     const closing = children.find(child => child.name === "LinkMark" && source.slice(child.from, child.to) === "]");
     const url = children.find(child => child.name === "URL");
-    const target = url ? source.slice(url.from, url.to).replace(/^<|>$/g, "") : null;
+    const target = url ? markdownLinkDestination(source.slice(url.from, url.to)) : null;
     if (target && isCitationDestination(target)) {
       try {
         const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);

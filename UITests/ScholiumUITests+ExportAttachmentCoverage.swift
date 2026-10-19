@@ -347,6 +347,67 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testAuthoredPDFCommandClickGrantsExactOriginalOnceAndPreservesEdit() throws {
+        app.terminate()
+        let vault = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
+        let noteURL = vault.appendingPathComponent("QA Autosave A.md")
+        let originalNote = try String(contentsOf: noteURL, encoding: .utf8)
+        let inputs = testDirectory.appendingPathComponent("authored-pdf-inputs", isDirectory: true)
+        try FileManager.default.createDirectory(at: inputs, withIntermediateDirectories: true)
+        let originalPDF = inputs.appendingPathComponent("原文 - Reasons (2018).pdf")
+        let page = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 160))
+        let pdfBytes = page.dataWithPDF(inside: page.bounds)
+        XCTAssertTrue(pdfBytes.starts(with: Data("%PDF-".utf8)))
+        try pdfBytes.write(to: originalPDF)
+        let source = originalNote + "\n\n> [!cite] 来源与版本\n> 所读书目原文：[Original PDF](<\(originalPDF.resolvingSymlinksInPath().path)>)\n\nReturn to editing.\n"
+        try Data(source.utf8).write(to: noteURL)
+        app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let workspace = stableWorkspaceWindow(app.windows.firstMatch)
+        let editor = enterLivePreview(in: workspace)
+        editor.typeKey(.end, modifierFlags: [.command])
+        let link = workspace.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@ OR value == %@", "Original PDF", "Original PDF")
+        ).firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 5) { link.isHittable })
+        XCUIElement.perform(withKeyModifiers: [.command]) { link.click() }
+        let panel = workspace.sheets["open-panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        panel.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Edit")
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
+
+        for attempt in 0..<2 {
+            XCUIElement.perform(withKeyModifiers: [.command]) { link.click() }
+            if attempt == 0 {
+                try coverageChooseFile(originalPDF, in: workspace)
+            } else {
+                XCTAssertFalse(panel.exists, "The existing exact-file grant must be reused.")
+            }
+            let preview = app.windows["Quick Look"].firstMatch
+            XCTAssertTrue(preview.waitForExistence(timeout: 10))
+            let filename = preview.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "label == %@ OR value == %@ OR title == %@",
+                    originalPDF.lastPathComponent, originalPDF.lastPathComponent, originalPDF.lastPathComponent)
+            ).firstMatch
+            XCTAssertTrue(filename.waitForExistence(timeout: 5))
+            if attempt == 0 { coverageCapture(preview, name: "authored-absolute-pdf-quick-look") }
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 5) { !preview.exists })
+            XCTAssertEqual(documentModeState(documentModeControl(in: workspace)), "Edit")
+            XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
+            XCTAssertEqual(try Data(contentsOf: originalPDF), pdfBytes)
+        }
+        editor.typeText("Resumed")
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("Resumed") })
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
+    }
+
+    @MainActor
     func testNativeAttachmentAndImageInsertionPreserveFilesAndReturnFromQuickLook() throws {
         app.terminate()
         app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)

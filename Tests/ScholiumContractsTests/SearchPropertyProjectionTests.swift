@@ -88,6 +88,180 @@ struct SearchPropertyProjectionTests {
         #expect(aliases.entry(forExactKey: "inside") == nil)
     }
 
+    @Test("Long typed arrays retain each repeated token's exact UTF-16 location", arguments: ["\n", "\r\n", "\r"])
+    func typedArrayCoordinates(newline: String) throws {
+        for block in [false, true] {
+            var fixture = LocatedSource()
+            fixture.append("\u{FEFF}---")
+            fixture.newline(newline)
+            var expected: [String: (key: SearchSourceRange, values: [(String, SearchSourceRange)])] = [:]
+            for key in ["keywords", "tags", "aliases"] {
+                let keyRange = fixture.append(key)
+                fixture.append(block ? ":" : ": [")
+                if block { fixture.newline(newline) }
+                var members: [(String, SearchSourceRange)] = []
+                for index in 0..<128 {
+                    if block {
+                        fixture.append("  - ")
+                    } else if index > 0 {
+                        fixture.append(", ")
+                    }
+                    // Repeated values exercise positional identity rather than
+                    // a first textual match. Emoji and decomposed text make
+                    // scalar, Character and UTF-16 columns different.
+                    let value = index.isMultiple(of: 2) ? "[[合成资料|重复 🦉 e\u{301}]]" : "重复 🦉 e\u{301}"
+                    let range = fixture.append("'" + value + "'")
+                    members.append((value, range))
+                    if block { fixture.newline(newline) }
+                }
+                if !block {
+                    fixture.append("]")
+                    fixture.newline(newline)
+                }
+                expected[key] = (keyRange, members)
+            }
+            fixture.append("---")
+            fixture.newline(newline)
+            fixture.append("Exact body e\u{301} 🦉 without final newline")
+            let bytes = Data(fixture.text.utf8)
+            let document = NoteDocument(relativePath: "Typed arrays.md", rawContent: fixture.text)
+            let projection = SearchPropertyProjection(document: document)
+            try #require(document.validationWarnings.isEmpty)
+            #expect(projection.issues.isEmpty)
+            for (key, locations) in expected {
+                let entry = try #require(projection.entry(forExactKey: key))
+                #expect(entry.keySourceRange == locations.key)
+                #expect(entry.valueKind == .stringSequence)
+                try #require(entry.stringMembers.count == locations.values.count)
+                for (actual, expected) in zip(entry.stringMembers, locations.values) {
+                    #expect(actual.value.utf8.elementsEqual(expected.0.utf8))
+                    #expect(actual.sourceRange == expected.1)
+                    #expect(sourceText(fixture.text, in: expected.1) == "'" + expected.0 + "'")
+                }
+            }
+            #expect(document.sourceBytes == bytes)
+            #expect(document.fingerprint == DocumentFingerprint(data: bytes))
+        }
+    }
+
+    @Test("Quoted and block scalars retain exact locations across Unicode and newline forms", arguments: ["\n", "\r\n", "\r"])
+    func quotedAndBlockCoordinates(newline: String) throws {
+        var fixture = LocatedSource()
+        fixture.append("\u{FEFF}---")
+        fixture.newline(newline)
+        let quotedKey = fixture.append("\"研究 🦉 e\u{301}\"")
+        fixture.append(": [")
+        let single = fixture.append("'it''s 🦉 e\u{301}'")
+        fixture.append(", ")
+        let double = fixture.append(#""\u4E2D \U0001F989 \"quoted\"""#)
+        fixture.append(", ")
+        let leadingCombining = fixture.append("'\u{301}leading 🦉'")
+        fixture.append("]")
+        fixture.newline(newline)
+        let summaryKey = fixture.append("summary")
+        fixture.append(": ")
+        let blockStart = fixture.location
+        fixture.append("|-")
+        fixture.newline(newline)
+        fixture.append("  第一行 🦉")
+        fixture.newline(newline)
+        fixture.append("  e\u{301} 第二行")
+        fixture.newline(newline)
+        let block = fixture.range(from: blockStart)
+        let nextKey = fixture.append("next")
+        fixture.append(": ")
+        let next = fixture.append("untouched")
+        fixture.newline(newline)
+        fixture.append("folded: ")
+        let quotedStart = fixture.location
+        fixture.append("\"first 🦉")
+        fixture.newline(newline)
+        fixture.append("  second e\u{301}\"")
+        let multilineQuoted = fixture.range(from: quotedStart)
+        fixture.newline(newline)
+        fixture.append("---")
+        fixture.newline(newline)
+        fixture.append("Body")
+        let bytes = Data(fixture.text.utf8)
+        let document = NoteDocument(relativePath: "Located scalars.md", rawContent: fixture.text)
+        let projection = SearchPropertyProjection(document: document)
+        try #require(document.validationWarnings.isEmpty)
+        #expect(projection.issues.isEmpty)
+        let quoted = try #require(projection.entry(forExactKey: "研究 🦉 e\u{301}"))
+        #expect(quoted.keySourceRange == quotedKey)
+        #expect(quoted.stringMembers.map(\.value) == ["it's 🦉 e\u{301}", "中 🦉 \"quoted\"", "\u{301}leading 🦉"])
+        #expect(quoted.stringMembers.map(\.sourceRange) == [single, double, leadingCombining])
+        let summary = try #require(projection.entry(forExactKey: "summary"))
+        #expect(summary.keySourceRange == summaryKey)
+        #expect(summary.stringMembers.first?.value == "第一行 🦉\ne\u{301} 第二行")
+        #expect(summary.stringMembers.first?.sourceRange == block)
+        #expect(projection.entry(forExactKey: "next")?.keySourceRange == nextKey)
+        #expect(projection.entry(forExactKey: "next")?.stringMembers.first?.sourceRange == next)
+        #expect(projection.entry(forExactKey: "folded")?.stringMembers.first?.value == "first 🦉 second e\u{301}")
+        #expect(projection.entry(forExactKey: "folded")?.stringMembers.first?.sourceRange == multilineQuoted)
+        #expect(document.sourceBytes == bytes)
+    }
+
+    @Test("Yams Unicode line marks resolve to exact source lines", arguments: ["\u{85}", "\u{2028}", "\u{2029}"])
+    func unicodeYAMLLineMarks(newline: String) throws {
+        var fixture = LocatedSource()
+        fixture.append("---")
+        fixture.newline("\n")
+        fixture.append("keywords: ['🦉 e\u{301}']")
+        // Yams advances its parser line for these scalars; exact source lines
+        // follow the shared CR/LF locator contract, so they occupy a column.
+        fixture.append(newline)
+        let keyRange = fixture.append("aliases")
+        fixture.append(": [")
+        let valueRange = fixture.append("'[[资料 🦉]]'")
+        fixture.append("]")
+        fixture.newline("\n")
+        fixture.append("---\nBody")
+        let document = NoteDocument(relativePath: "Line marks.md", rawContent: fixture.text)
+        let projection = SearchPropertyProjection(document: document)
+        try #require(document.validationWarnings.isEmpty)
+        #expect(projection.issues.isEmpty)
+        let aliases = try #require(projection.entry(forExactKey: "aliases"))
+        #expect(aliases.keySourceRange == keyRange)
+        #expect(aliases.stringMembers.first?.sourceRange == valueRange)
+        #expect(aliases.stringMembers.first?.value == "[[资料 🦉]]")
+        #expect(document.sourceBytes == Data(fixture.text.utf8))
+    }
+
+    /// Independent fixture construction records positions before inserting
+    /// tokens. It neither asks Yams for coordinates nor searches repeated text.
+    private struct LocatedSource {
+        private(set) var text = ""
+        private var offset = 0
+        private var line = 1
+        private var column = 1
+
+        var location: (offset: Int, line: Int, column: Int) { (offset, line, column) }
+
+        @discardableResult
+        mutating func append(_ token: String) -> SearchSourceRange {
+            let start = location
+            let length = token.utf16.count
+            text += token
+            offset += length
+            column += length
+            return range(from: start)
+        }
+
+        mutating func newline(_ token: String) {
+            text += token
+            offset += token.utf16.count
+            line += 1
+            column = 1
+        }
+
+        func range(from start: (offset: Int, line: Int, column: Int)) -> SearchSourceRange {
+            SearchSourceRange(
+                utf16LowerBound: start.offset, utf16UpperBound: offset,
+                line: start.line, column: start.column, endLine: line, endColumn: column)
+        }
+    }
+
     private func sourceText(_ text: String, in range: SearchSourceRange) -> String? {
         guard
             let lower = text.utf16.index(

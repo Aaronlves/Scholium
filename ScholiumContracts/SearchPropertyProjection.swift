@@ -235,23 +235,60 @@ public struct SearchPropertyProjection: Hashable, Sendable {
 
 private extension SearchPropertyProjection {
     struct Source {
-        let complete: String
-        let frontmatter: String
+        let units: [UInt16]
         let frontmatterStartUTF16: Int
+        private let scalarOffsetsUTF16: [Int]
+        private let parserLineStarts: [Int]
+        private let sourceLineStartsUTF16: [Int]
 
         init(document: NoteDocument, frontmatter: String) {
-            complete = document.rawContent
-            self.frontmatter = frontmatter
+            units = Array(frontmatter.utf16)
+            let prefix: String
             if let byteRange = document.frontmatterByteRange {
                 let prefixBytes = document.sourceBytes.prefix(byteRange.lowerBound)
-                frontmatterStartUTF16 =
-                    String(
-                        decoding: prefixBytes,
-                        as: UTF8.self
-                    ).utf16.count
+                prefix = String(decoding: prefixBytes, as: UTF8.self)
             } else {
-                frontmatterStartUTF16 = 0
+                prefix = ""
             }
+            frontmatterStartUTF16 = prefix.utf16.count
+
+            // Yams marks count Unicode scalars; Search locators count UTF-16.
+            // Build this immutable, operation-local map once instead of walking
+            // the source prefix again for every key and sequence member.
+            var scalarOffsets = [0]
+            var parserStarts = [0]
+            var utf16Offset = 0
+            var scalarOffset = 0
+            var previousWasCR = false
+            for scalar in frontmatter.unicodeScalars {
+                utf16Offset += scalar.value > 0xFFFF ? 2 : 1
+                scalarOffset += 1
+                scalarOffsets.append(utf16Offset)
+                if scalar.value == 0x0A, previousWasCR {
+                    parserStarts[parserStarts.count - 1] = scalarOffset
+                } else if Self.isYAMLLineBreak(scalar.value) {
+                    parserStarts.append(scalarOffset)
+                }
+                previousWasCR = scalar.value == 0x0D
+            }
+            scalarOffsetsUTF16 = scalarOffsets
+            parserLineStarts = parserStarts
+
+            // Source ranges never leave authored frontmatter. Include its exact
+            // delimiter/BOM prefix, without scanning or retaining the Note body.
+            var sourceStarts = [0]
+            utf16Offset = 0
+            previousWasCR = false
+            for unit in (prefix + frontmatter).utf16 {
+                utf16Offset += 1
+                if unit == 0x0A, previousWasCR {
+                    sourceStarts[sourceStarts.count - 1] = utf16Offset
+                } else if unit == 0x0A || unit == 0x0D {
+                    sourceStarts.append(utf16Offset)
+                }
+                previousWasCR = unit == 0x0D
+            }
+            sourceLineStartsUTF16 = sourceStarts
         }
 
         func range(
@@ -260,7 +297,7 @@ private extension SearchPropertyProjection {
         ) -> Range<Int>? {
             guard let start = utf16Offset(for: mark) else { return nil }
             let upper = start + tokenUTF16Length
-            guard upper <= complete.utf16.count else { return nil }
+            guard upper <= frontmatterStartUTF16 + units.count else { return nil }
             return start..<upper
         }
 
@@ -275,21 +312,12 @@ private extension SearchPropertyProjection {
         }
 
         func scalarTokenRange(_ scalar: Node.Scalar) -> Range<Int>? {
-            guard let start = utf16Offset(for: scalar.mark),
-                let startIndex = complete.utf16.index(
-                    complete.utf16.startIndex,
-                    offsetBy: start,
-                    limitedBy: complete.utf16.endIndex
-                ),
-                let stringStart = startIndex.samePosition(in: complete)
-            else {
-                return nil
-            }
+            guard let start = utf16Offset(for: scalar.mark) else { return nil }
             switch scalar.style {
             case .singleQuoted:
-                return quotedRange(start: stringStart, quote: "'", doublesQuote: true)
+                return quotedRange(start: start, quote: 0x27, doublesQuote: true)
             case .doubleQuoted:
-                return quotedRange(start: stringStart, quote: "\"", doublesQuote: false)
+                return quotedRange(start: start, quote: 0x22, doublesQuote: false)
             case .plain, .any:
                 // A plain scalar has no escape spelling. Prove the complete
                 // decoded text at the parser's start mark; never return a
@@ -303,25 +331,17 @@ private extension SearchPropertyProjection {
                 else { return nil }
                 return range
             case .literal, .folded:
-                return blockScalarRange(start: stringStart, scalar: scalar)
+                return blockScalarRange(start: start, scalar: scalar)
             }
         }
 
         func substring(in utf16Range: Range<Int>) -> String? {
-            guard
-                let lower = complete.utf16.index(
-                    complete.utf16.startIndex,
-                    offsetBy: utf16Range.lowerBound,
-                    limitedBy: complete.utf16.endIndex
-                ),
-                let upper = complete.utf16.index(
-                    complete.utf16.startIndex,
-                    offsetBy: utf16Range.upperBound,
-                    limitedBy: complete.utf16.endIndex
-                ), let lowerIndex = lower.samePosition(in: complete),
-                let upperIndex = upper.samePosition(in: complete)
+            let lower = utf16Range.lowerBound - frontmatterStartUTF16
+            let upper = utf16Range.upperBound - frontmatterStartUTF16
+            guard lower >= 0, upper <= units.count,
+                isScalarBoundary(lower), isScalarBoundary(upper)
             else { return nil }
-            return String(complete[lowerIndex..<upperIndex])
+            return String(decoding: units[lower..<upper], as: UTF16.self)
         }
 
         func searchRange(for utf16Range: Range<Int>) -> SearchSourceRange {
@@ -338,81 +358,67 @@ private extension SearchPropertyProjection {
         }
 
         private func utf16Offset(for mark: Mark?) -> Int? {
-            guard let mark, mark.line > 0, mark.column > 0 else { return nil }
-            var line = 1
-            var lineStart = frontmatter.unicodeScalars.startIndex
-            var cursor = lineStart
-            while line < mark.line, cursor < frontmatter.unicodeScalars.endIndex {
-                if frontmatter.unicodeScalars[cursor].value == 0x0A {
-                    line += 1
-                    lineStart = frontmatter.unicodeScalars.index(after: cursor)
-                }
-                cursor = frontmatter.unicodeScalars.index(after: cursor)
-            }
-            guard line == mark.line,
-                let scalarIndex = frontmatter.unicodeScalars.index(
-                    lineStart,
-                    offsetBy: mark.column - 1,
-                    limitedBy: frontmatter.unicodeScalars.endIndex
-                ),
-                let utf16Index = scalarIndex.samePosition(in: frontmatter.utf16)
-            else {
-                return nil
-            }
-            return frontmatterStartUTF16
-                + frontmatter.utf16.distance(
-                    from: frontmatter.utf16.startIndex,
-                    to: utf16Index
-                )
+            guard let mark, mark.line > 0, mark.line <= parserLineStarts.count, mark.column > 0
+            else { return nil }
+            let lineStart = parserLineStarts[mark.line - 1]
+            let column = mark.column - 1
+            guard column < scalarOffsetsUTF16.count - lineStart else { return nil }
+            return frontmatterStartUTF16 + scalarOffsetsUTF16[lineStart + column]
         }
 
         private func quotedRange(
-            start: String.Index,
-            quote: Character,
+            start: Int,
+            quote: UInt16,
             doublesQuote: Bool
         ) -> Range<Int>? {
-            guard start < complete.endIndex, complete[start] == quote else { return nil }
-            var cursor = complete.index(after: start)
+            let localStart = start - frontmatterStartUTF16
+            guard localStart >= 0, localStart < units.count, units[localStart] == quote else { return nil }
+            var cursor = localStart + 1
             var escaped = false
-            while cursor < complete.endIndex {
-                let character = complete[cursor]
+            while cursor < units.count {
+                let character = units[cursor]
                 if doublesQuote, character == quote {
-                    let next = complete.index(after: cursor)
-                    if next < complete.endIndex, complete[next] == quote {
-                        cursor = complete.index(after: next)
+                    let next = cursor + 1
+                    if next < units.count, units[next] == quote {
+                        cursor = next + 1
                         continue
                     }
-                    return utf16Range(start..<next)
+                    return start..<(frontmatterStartUTF16 + next)
                 }
                 if !doublesQuote {
                     if escaped {
                         escaped = false
-                    } else if character == "\\" {
+                    } else if character == 0x5C {
                         escaped = true
                     } else if character == quote {
-                        return utf16Range(start..<complete.index(after: cursor))
+                        return start..<(frontmatterStartUTF16 + cursor + 1)
                     }
                 }
-                cursor = complete.index(after: cursor)
+                cursor += 1
             }
             return nil
         }
 
-        private func blockScalarRange(start: String.Index, scalar: Node.Scalar) -> Range<Int>? {
-            guard complete[start] == "|" || complete[start] == ">" else { return nil }
-            let yamlEnd = frontmatterStartUTF16 + frontmatter.utf16.count
-            let prefix = complete[..<start]
-            let lineStart =
-                prefix.lastIndex(where: { $0.isNewline }).map { complete.index(after: $0) }
-                ?? complete.startIndex
-            let parentIndent = complete[lineStart..<start].prefix(while: { $0 == " " }).count
-            var end = start
+        private func blockScalarRange(start: Int, scalar: Node.Scalar) -> Range<Int>? {
+            let localStart = start - frontmatterStartUTF16
+            guard localStart >= 0, localStart < units.count,
+                units[localStart] == 0x7C || units[localStart] == 0x3E
+            else { return nil }
+            guard let mark = scalar.mark, mark.line > 0, mark.line <= parserLineStarts.count else { return nil }
+            let lineStart = scalarOffsetsUTF16[parserLineStarts[mark.line - 1]]
+            let parentIndent = units[lineStart..<localStart].prefix(while: { $0 == 0x20 }).count
+            var end = localStart
             var firstLine = true
-            while end < complete.endIndex, end.utf16Offset(in: complete) < yamlEnd {
-                let lineEnd =
-                    complete[end...].firstIndex(where: { $0.isNewline })
-                    .map { complete.index(after: $0) } ?? complete.endIndex
-                let line = complete[end..<lineEnd]
+            while end < units.count {
+                var lineEnd = end
+                while lineEnd < units.count, !Self.isSourceLineBreak(units[lineEnd]) { lineEnd += 1 }
+                if lineEnd < units.count {
+                    if units[lineEnd] == 0x0D, lineEnd + 1 < units.count, units[lineEnd + 1] == 0x0A {
+                        lineEnd += 1
+                    }
+                    lineEnd += 1
+                }
+                let line = String(decoding: units[end..<lineEnd], as: UTF16.self)
                 if !firstLine {
                     let nonblank = !line.allSatisfy(\.isWhitespace)
                     let indent = line.prefix(while: { $0 == " " }).count
@@ -421,8 +427,7 @@ private extension SearchPropertyProjection {
                 firstLine = false
                 end = lineEnd
             }
-            let boundedEnd = min(end.utf16Offset(in: complete), yamlEnd)
-            let result = start.utf16Offset(in: complete)..<boundedEnd
+            let result = start..<(frontmatterStartUTF16 + end)
             guard let token = substring(in: result) else { return nil }
             let lines = token.components(separatedBy: "\n")
             let rebased = lines.enumerated().map { index, line in
@@ -438,22 +443,33 @@ private extension SearchPropertyProjection {
             return result
         }
 
-        private func utf16Range(_ range: Range<String.Index>) -> Range<Int> {
-            let lower = range.lowerBound.utf16Offset(in: complete)
-            let upper = range.upperBound.utf16Offset(in: complete)
-            return lower..<upper
+        private func isScalarBoundary(_ offset: Int) -> Bool {
+            offset >= 0 && offset <= units.count
+                && (offset == units.count || !(0xDC00...0xDFFF).contains(units[offset]))
         }
 
         private func lineAndColumn(atUTF16Offset offset: Int) -> (line: Int, column: Int) {
-            let bounded = min(max(0, offset), complete.utf16.count)
-            let prefix = String(complete.utf16.prefix(bounded)) ?? ""
-            let line = prefix.reduce(into: 1) { count, character in
-                if character.isNewline { count += 1 }
+            let bounded = min(max(0, offset), frontmatterStartUTF16 + units.count)
+            let line = sourceLineIndex(at: bounded)
+            return (line + 1, bounded - sourceLineStartsUTF16[line] + 1)
+        }
+
+        private func sourceLineIndex(at offset: Int) -> Int {
+            var lower = 0
+            var upper = sourceLineStartsUTF16.count
+            while lower + 1 < upper {
+                let middle = (lower + upper) / 2
+                if sourceLineStartsUTF16[middle] <= offset { lower = middle } else { upper = middle }
             }
-            let lastLine =
-                prefix.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last
-                .map(String.init) ?? ""
-            return (line, lastLine.utf16.count + 1)
+            return lower
+        }
+
+        private static func isYAMLLineBreak(_ scalar: UInt32) -> Bool {
+            scalar == 0x0A || scalar == 0x0D || scalar == 0x85 || scalar == 0x2028 || scalar == 0x2029
+        }
+
+        private static func isSourceLineBreak(_ unit: UInt16) -> Bool {
+            isYAMLLineBreak(UInt32(unit)) || unit == 0x0B || unit == 0x0C
         }
     }
 }

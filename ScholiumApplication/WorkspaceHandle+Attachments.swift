@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ImageIO
 import ScholiumContracts
@@ -218,6 +219,7 @@ extension WorkspaceHandle {
         indexedSourceURL: URL?
     ) async throws -> PreparedSourceAttachment {
         let existingIndexedRecord: PortableAttachmentRecord?
+        let existingIndexedAccessIsAvailable: Bool
         if let indexedSourceURL {
             guard case .external(let reference) = preparedFile.location else {
                 throw ImageAttachmentError.unsupportedImage(indexedSourceURL.path)
@@ -233,18 +235,18 @@ extension WorkspaceHandle {
                     .first(where: {
                         $0.id == existingID && $0.vaultID == vaultID
                             && $0.location == preparedFile.location
-                    }),
-                try await services.indexedAttachmentAccessStore.isAvailable(
-                    attachmentID: candidate.id,
-                    expectedFilename: reference.filename
-                )
+                    })
             {
                 existingIndexedRecord = candidate
+                existingIndexedAccessIsAvailable = try await services.indexedAttachmentAccessStore.isAvailable(
+                    attachmentID: candidate.id, expectedFilename: reference.filename)
             } else {
                 existingIndexedRecord = nil
+                existingIndexedAccessIsAvailable = false
             }
         } else {
             existingIndexedRecord = nil
+            existingIndexedAccessIsAvailable = false
         }
 
         let registration: (record: PortableAttachmentRecord, created: Bool)
@@ -288,7 +290,7 @@ extension WorkspaceHandle {
                 throw ImageAttachmentError.unsupportedImage(indexedSourceURL.path)
             }
             do {
-                if existingIndexedRecord == nil {
+                if !existingIndexedAccessIsAvailable {
                     let canonicalPath =
                         indexedSourceURL
                         .resolvingSymlinksInPath()
@@ -333,15 +335,19 @@ extension WorkspaceHandle {
         let mutationLease = try await beginSourceMutation()
         defer { endSourceMutation(mutationLease) }
 
+        if preparation.createdLocalAccessRecord {
+            // Removing the grant and deciding rollback ownership happen in one
+            // access-store turn. A preview that already adopted it owns lasting
+            // access, even after its lease closes or this preparation expires.
+            guard
+                try await services.indexedAttachmentAccessStore.removeIfUnadopted(
+                    attachmentID: preparation.record.id)
+            else { return }
+        }
         if preparation.createdCatalogRecord {
             // Keep Finder bytes when catalog cleanup is uncertain: a remaining
             // portable record must never be made to point at a missing file.
             try await services.controlStore.removeAttachment(preparation.record)
-        }
-        if preparation.createdLocalAccessRecord {
-            try await services.indexedAttachmentAccessStore.removeIfPresent(
-                attachmentID: preparation.record.id
-            )
         }
         if let fingerprint = preparation.copiedFileFingerprint {
             guard case .vaultRelative(let relativePath) = preparation.record.location else {
@@ -438,6 +444,73 @@ extension WorkspaceHandle {
                 copiedFileFingerprint: file.copiedFileFingerprint, copiedRelativePath: file.copiedRelativePath),
             attachmentID: id, vaultID: target.vaultID, fileStore: store,
             indexedSourceURL: management == .referenceOriginal ? sourceURL : nil)
+    }
+
+    func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL,
+        destination: String,
+        for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment {
+        try requireActive()
+        try Task.checkCancellation()
+        let expectedPath = try await verifiedAuthoredDocumentPath(
+            destination: destination, target: target, fingerprint: expectedSourceFingerprint)
+        let secured = selectedURL.startAccessingSecurityScopedResource()
+        defer { if secured { selectedURL.stopAccessingSecurityScopedResource() } }
+        guard selectedURL.isFileURL,
+            selectedURL.resolvingSymlinksInPath().standardizedFileURL.path == expectedPath,
+            selectedURL.standardizedFileURL.path == expectedPath
+        else { throw DocumentAttachmentError.unavailable(destination) }
+        let selectedIdentity = try Self.authoredDocumentFileIdentity(selectedURL)
+        let preparation = try await prepareDocumentAttachment(
+            at: selectedURL, to: target, management: .referenceOriginal)
+        do {
+            try Task.checkCancellation()
+            _ = try await verifiedAuthoredDocumentPath(
+                destination: destination, target: target, fingerprint: expectedSourceFingerprint)
+            guard try Self.authoredDocumentFileIdentity(selectedURL) == selectedIdentity else {
+                throw DocumentAttachmentError.unavailable(destination)
+            }
+            return preparation
+        } catch {
+            if preparation.createdCatalogRecord || preparation.createdLocalAccessRecord {
+                do {
+                    // A cancelled preview still owns cleanup of its new state.
+                    try await Task { try await self.rollbackSourceAttachment(preparation) }.value
+                } catch let cleanup {
+                    throw DocumentAttachmentError.preparationCleanupFailed(
+                        operation: error.localizedDescription, cleanup: cleanup.localizedDescription)
+                }
+            }
+            throw error
+        }
+    }
+
+    private func verifiedAuthoredDocumentPath(
+        destination: String,
+        target: SourceAttachmentTarget,
+        fingerprint: DocumentFingerprint
+    ) async throws -> String {
+        let repository = try await verifiedDocumentAttachmentTarget(target)
+        let document = try await repository.load(relativePath: target.relativePath)
+        guard document.fingerprint == fingerprint,
+            let path = SourceResourceReferences.file(
+                destination: destination, noteRelativePath: target.relativePath)?.absolutePath,
+            SourceResourceReferences.files(in: document.body, noteRelativePath: target.relativePath)
+                .contains(where: { !$0.isImage && $0.absolutePath == path })
+        else { throw DocumentAttachmentError.unavailable(destination) }
+        return path
+    }
+
+    private static func authoredDocumentFileIdentity(_ url: URL) throws -> String {
+        var identity = stat()
+        guard lstat(url.path, &identity) == 0,
+            (identity.st_mode & S_IFMT) == S_IFREG
+        else { throw DocumentAttachmentError.unavailable(url.lastPathComponent) }
+        return "\(identity.st_dev):\(identity.st_ino):\(identity.st_size):"
+            + "\(identity.st_mtimespec.tv_sec):\(identity.st_mtimespec.tv_nsec):"
+            + "\(identity.st_ctimespec.tv_sec):\(identity.st_ctimespec.tv_nsec)"
     }
 
     func prepareDocumentAttachmentPreview(

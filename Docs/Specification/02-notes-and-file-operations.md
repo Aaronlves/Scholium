@@ -99,6 +99,9 @@ new, exactly verified preparation state. Removing a link removes the derived
 relationship and never deletes the file. Images retain their inline routes.
 File links open through bounded native Quick Look; unavailable files report an
 error without substituting a different path or filename match.
+An authored external link without usable local access offers a native file
+selection for that exact original. Granting access preserves source and Undo;
+cancellation preserves the Document and creates no new relationship.
 
 Review and Edit preserve exact Markdown while presenting semantic Callouts,
 lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned

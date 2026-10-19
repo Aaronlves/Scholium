@@ -76,9 +76,7 @@ interface SemanticLiteralRanges {
   readonly codeBlocks: readonly Readonly<SemanticCodeBlockRange>[];
 }
 
-export interface CalloutPresentation extends ProjectionSourceRange {
-  readonly source: string;
-}
+export type CalloutPresentation = Readonly<ProjectionSourceRange>;
 
 export interface LiveBlockProjectionRange extends ProjectionSourceRange {
   readonly kind: "table" | "callout" | "footnote" | "math" | "heading";
@@ -319,7 +317,12 @@ function finalizedLiveProjectionIndex(
   );
   const immutableStructuralRanges = immutableProjectionRanges([
     ...immutableTables,
-    ...immutableCallouts,
+    // A header's role styles its entire body, so changing that source still
+    // rebuilds the presentation. Body prose carries no cached source.
+    ...immutableCallouts.map(({from}) => {
+      const header = doc.lineAt(from);
+      return {from: header.from, to: header.to};
+    }),
     ...footnotes.definitions,
     ...footnotes.references,
     // Both inline and display mathematics cache source content for KaTeX.
@@ -509,10 +512,10 @@ function buildLiveProjectionIndex(
     const presentation = tablePresentation(source(), range.from, range.to);
     return presentation ? [presentation] : [];
   });
-  const callouts = calloutRanges.map((range): CalloutPresentation => ({
-    ...range,
-    source: state.doc.sliceString(range.from, range.to),
-  }));
+  // Callouts project editable prose rather than caching a rendered body. Their
+  // current headers are read from this state, so ordinary body edits can use
+  // the same parser-proved range mapping as prose outside a callout.
+  const callouts = calloutRanges;
   const mathExpressions = mathExpressionsFromCatalog(state, syntax);
   const index = finalizedLiveProjectionIndex(
     state,

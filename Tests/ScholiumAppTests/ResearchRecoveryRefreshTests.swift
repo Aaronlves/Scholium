@@ -448,6 +448,10 @@ private final class RecoveryOperations: DocumentUseCases, ResearchUseCases,
         to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
     ) async throws -> PreparedSourceAttachment { throw RecoveryReadFailure() }
+    func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL, destination: String, for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment { throw RecoveryReadFailure() }
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

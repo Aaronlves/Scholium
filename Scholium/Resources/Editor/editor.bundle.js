@@ -19102,11 +19102,18 @@
     return syntaxTree(transaction.startState) !== syntaxTree(transaction.state);
   }
   function frontmatterPresentationNeedsRebuild(transaction, envelopeEnd, signature, previousSignature) {
-    if (transaction.docChanged) return true;
+    if (signature !== previousSignature) return true;
+    if (transaction.docChanged) {
+      let touchesEnvelope = false;
+      transaction.changes.iterChangedRanges((fromA, _toA, fromB) => {
+        if (fromA < envelopeEnd || fromB < envelopeEnd) touchesEnvelope = true;
+      });
+      if (touchesEnvelope) return true;
+    }
     if (transactionChangedSyntaxTree(transaction) && syntaxTree(transaction.startState).length < envelopeEnd) {
       return true;
     }
-    return signature !== previousSignature;
+    return false;
   }
   function rangesOverlap(left, right) {
     return left.from < right.to && left.to > right.from;
@@ -30280,6 +30287,32 @@
     return count2 % 2 === 1;
   }
 
+  // link-target.ts
+  function markdownLinkDestination(source) {
+    return source.trim().replace(/^<([\s\S]*)>$/, "$1");
+  }
+  function linkTargetAt(source, offset) {
+    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
+    if (offset < 0 || offset > document2.length) return null;
+    const sourceLine = document2.lineAt(offset);
+    const lineFrom = sourceLine.from;
+    const line = sourceLine.text;
+    const position = offset - lineFrom;
+    let target = null;
+    scholiumMarkdownContentLanguage.language.parser.parse(line).iterate({
+      enter(node) {
+        if (position < node.from || position >= node.to) return false;
+        const child = node.name === "WikiLink" ? node.node.getChild("WikiLinkTarget") : node.name === "Link" || node.name === "Image" ? node.node.getChild("URL") : null;
+        if (!child) return;
+        const sourceTarget = line.slice(child.from, child.to);
+        const destination = node.name === "WikiLink" ? sourceTarget.trim() : markdownLinkDestination(sourceTarget);
+        target = isCitationDestination(destination) ? null : destination;
+        return false;
+      }
+    });
+    return target;
+  }
+
   // tables.ts
   var tableCommands = /* @__PURE__ */ new Set([
     "tableInsertRowBefore",
@@ -30985,7 +31018,7 @@ ${blankRow(table.position.columnCount)}`;
       const opening = children.find((child) => child.name === "LinkMark" && source.slice(child.from, child.to) === "[");
       const closing2 = children.find((child) => child.name === "LinkMark" && source.slice(child.from, child.to) === "]");
       const url = children.find((child) => child.name === "URL");
-      const target = url ? source.slice(url.from, url.to).replace(/^<|>$/g, "") : null;
+      const target = url ? markdownLinkDestination(source.slice(url.from, url.to)) : null;
       if (target && isCitationDestination(target)) {
         try {
           const citation = compactCitationLinkSource(raw) ?? citationLinkSource(raw);
@@ -31995,14 +32028,21 @@ ${blankRow(table.position.columnCount)}`;
     const snapshot = state.field(citationState, false);
     const existing = stateCatalogs.get(owner);
     if (existing && existing.snapshot === snapshot) return existing.projection;
-    let reserved = false, carry = "";
-    for (const chunk of state.doc.iter()) {
-      const scanned = carry + chunk;
-      if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) {
-        reserved = true;
-        break;
+    const containsReserved = (from = 0) => {
+      let carry = "";
+      for (const chunk of from === 0 ? state.doc.iter() : state.doc.iterRange(from)) {
+        const scanned = carry + chunk;
+        if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) return true;
+        carry = scanned.slice(-32);
       }
-      carry = scanned.slice(-32);
+      return false;
+    };
+    let reserved = containsReserved();
+    if (reserved) {
+      const metadata = frontmatterBoundary(state.doc);
+      if (metadata.endLine > 0) {
+        reserved = containsReserved(Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1));
+      }
     }
     const source = () => mirror?.text ?? state.doc.toString();
     const projection = reserved ? projectFields(source(), snapshot?.data ?? (snapshot && !/scholium-zotero/i.test(source()) ? null : void 0)) : {
@@ -33385,7 +33425,12 @@ ${blankRow(table.position.columnCount)}`;
     );
     const immutableStructuralRanges = immutableProjectionRanges([
       ...immutableTables,
-      ...immutableCallouts,
+      // A header's role styles its entire body, so changing that source still
+      // rebuilds the presentation. Body prose carries no cached source.
+      ...immutableCallouts.map(({ from }) => {
+        const header = doc2.lineAt(from);
+        return { from: header.from, to: header.to };
+      }),
       ...footnotes.definitions,
       ...footnotes.references,
       // Both inline and display mathematics cache source content for KaTeX.
@@ -33534,10 +33579,7 @@ ${blankRow(table.position.columnCount)}`;
       const presentation = tablePresentation(source(), range.from, range.to);
       return presentation ? [presentation] : [];
     });
-    const callouts = calloutRanges.map((range) => ({
-      ...range,
-      source: state.doc.sliceString(range.from, range.to)
-    }));
+    const callouts = calloutRanges;
     const mathExpressions = mathExpressionsFromCatalog(state, syntax);
     const index = finalizedLiveProjectionIndex(
       state,
@@ -35860,29 +35902,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     return transformed.undoLabel;
   }
 
-  // link-target.ts
-  function linkTargetAt(source, offset) {
-    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
-    if (offset < 0 || offset > document2.length) return null;
-    const sourceLine = document2.lineAt(offset);
-    const lineFrom = sourceLine.from;
-    const line = sourceLine.text;
-    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) return match[1].trim();
-    }
-    for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) {
-        const target = match[1].trim().replace(/^<|>$/g, "");
-        return isCitationDestination(target) ? null : match[1].trim();
-      }
-    }
-    return null;
-  }
-
   // source-highlighting.ts
   var sourceHighlightStyle = HighlightStyle.define([
     { tag: tags.heading, class: "cm-source-heading" },
@@ -36542,6 +36561,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }, 300);
     }
     const handlePointerMove = (event) => {
+      if (editor2?.composing) {
+        hide();
+        return;
+      }
       const annotation = annotationButtonAt(event.target);
       const footnote = footnoteButtonAt(event.target);
       const link = linkAnchorAt(event.target);
@@ -36550,7 +36573,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         setArmedLink(null);
         return;
       }
-      const modifierActive = event.metaKey || event.ctrlKey;
+      const modifierActive = event.metaKey && !event.ctrlKey;
       setArmedLink(modifierActive ? link : null);
       const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
       if (!anchor) {
@@ -36561,10 +36584,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     };
     const handleKeyUp = (event) => {
       if (event.key !== "Meta" && event.key !== "Control") return;
-      setArmedLink(null);
-      if (target?.kind === "link" && !nativeHovered) hide(true);
+      updateCommandIntent(event);
     };
     const handleCompositionStart = () => hide();
+    function updateCommandIntent(event) {
+      const active = event.metaKey && !event.ctrlKey && !event.isComposing && event.keyCode !== 229 && !editor2?.composing && !hasPinnedPreview();
+      setArmedLink(active ? hoveredLink : null);
+      if (active && hoveredLink) scheduleShow(hoveredLink, "link");
+      else if (target?.kind === "link" && !nativeHovered) hide(true);
+    }
     const handleKeyDown = (event) => {
       if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape" && root && !root.hidden) {
@@ -36572,9 +36600,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return;
       }
       if (event.key !== "Meta" && event.key !== "Control") return;
-      if (!hoveredLink || hasPinnedPreview()) return;
-      setArmedLink(hoveredLink);
-      scheduleShow(hoveredLink, "link");
+      updateCommandIntent(event);
     };
     const handleFocusIn = (event) => {
       const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
@@ -36625,6 +36651,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       hoveredLink = null;
       hide();
     };
+    const handlePointerLeave = () => {
+      hoveredLink = null;
+      setArmedLink(null);
+      if (target?.kind === "link") scheduleHide();
+    };
+    const handleWindowBlur = () => {
+      handlePointerLeave();
+      if (!nativeHovered) hide();
+    };
     function mount(view) {
       if (editor2) return;
       editor2 = view;
@@ -36655,8 +36690,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
       document.addEventListener("compositionstart", handleCompositionStart);
+      view.contentDOM.addEventListener("pointerleave", handlePointerLeave);
       view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
       window.addEventListener("resize", handleViewportExit);
+      window.addEventListener("blur", handleWindowBlur);
     }
     function unmount(view) {
       if (editor2 !== view) return;
@@ -36669,8 +36706,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("compositionstart", handleCompositionStart);
+      view.contentDOM.removeEventListener("pointerleave", handlePointerLeave);
       view.scrollDOM.removeEventListener("scroll", handleViewportExit);
       window.removeEventListener("resize", handleViewportExit);
+      window.removeEventListener("blur", handleWindowBlur);
       root = null;
       title = null;
       metadata = null;
@@ -38797,7 +38836,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         line.from,
         lineQueryTo
       )[0] ?? null;
-      const opening = calloutPresentation ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "") : null;
+      const opening = calloutPresentation ? calloutHeader(state.doc.lineAt(calloutPresentation.from).text) : null;
       const calloutIdentifier = opening ? calloutDefinition(options.editingDialect(), opening[2]).identifier : null;
       const displayMath = blocks.find((block) => block.kind === "displayMath") ?? null;
       const quoteBlocks = calloutPresentation ? [] : blocks.filter((block) => block.kind === "blockQuote");
@@ -39777,8 +39816,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           const current = options.projections.index(transaction.state).callouts;
           folds = new Map([...folds].flatMap(([from, collapsed]) => {
             const mapped = transaction.changes.mapPos(from);
-            const oldHeader = previous.presentations.find((item) => item.from === from)?.source.split("\n", 1)[0];
-            const newHeader = current.find((item) => item.from === mapped)?.source.split("\n", 1)[0];
+            const oldHeader = previous.presentations.some((item) => item.from === from) ? transaction.startState.doc.lineAt(from).text : void 0;
+            const newHeader = current.some((item) => item.from === mapped) ? transaction.state.doc.lineAt(mapped).text : void 0;
             return newHeader !== void 0 && oldHeader === newHeader ? [[mapped, collapsed]] : [];
           }));
         }
@@ -42565,6 +42604,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             const linkClass = embed ? "cm-live-embed" : "cm-live-wiki-link";
             const projectedLinkAttributes = {
               "data-scholium-link-target": target,
+              "data-scholium-source-from": String(linkRange.from),
+              "data-scholium-source-to": String(linkRange.to),
               "data-scholium-source-caret": String(linkRange.to)
             };
             if (previewIndex === void 0) {
@@ -42603,6 +42644,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
               from: Math.max(constructFrom, range.from),
               to: Math.min(constructTo, range.to)
             })).filter((range) => range.to > range.from).sort((left, right) => left.from - right.from || left.to - right.to);
+            const projectedLinkAttributes = construct.kind === "link" && construct.targetRange ? {
+              "data-scholium-link-target": markdownLinkDestination(
+                doc2.sliceString(construct.targetRange.from, construct.targetRange.to)
+              ),
+              "data-scholium-source-from": String(construct.from),
+              "data-scholium-source-to": String(construct.to)
+            } : void 0;
             let position = constructFrom;
             for (const visible2 of visibleRanges) {
               if (visible2.from > position) addHidden(position, visible2.from);
@@ -42615,9 +42663,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
                 }).range(visible2.from));
               }
               if (previewIndex === void 0) {
-                addMark(visible2.from, visible2.to, className);
+                if (projectedLinkAttributes) {
+                  decorations2.push(Decoration.mark({ class: className, attributes: projectedLinkAttributes }).range(visible2.from, visible2.to));
+                } else {
+                  addMark(visible2.from, visible2.to, className);
+                }
               } else {
-                addPreviewMark(visible2.from, visible2.to, className, previewIndex);
+                addPreviewMark(visible2.from, visible2.to, className, previewIndex, projectedLinkAttributes);
               }
               position = Math.max(position, visible2.to);
             }

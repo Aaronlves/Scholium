@@ -72,12 +72,67 @@ describe("frontmatter envelope presentation rebuilds", () => {
     ).toBe(true);
   });
 
-  it("always rebuilds for a document change", () => {
+  it("rebuilds for a source change inside YAML", () => {
     const state = parsedState(body, 6);
     const transaction = state.update({changes: {from: 6, insert: "X"}});
     expect(
       frontmatterPresentationNeedsRebuild(transaction, envelope.length, "x", "x"),
     ).toBe(true);
+  });
+
+  it.each(["x", "\nNew body paragraph.\n", "---\nbody fence\n---"])(
+    "retains closed frontmatter during a body insertion %j", insert => {
+      const state = parsedState(body, envelope.length);
+      const transaction = state.update({changes: {from: envelope.length, insert},
+        selection: {anchor: envelope.length + insert.length}});
+      expect(frontmatterPresentationNeedsRebuild(transaction, envelope.length,
+        `${envelope.length}:0`, `${envelope.length}:0`)).toBe(false);
+    },
+  );
+
+  it("retains closed frontmatter through body deletion and mixed distant body edits", () => {
+    const state = parsedState(body, envelope.length + 5);
+    for (const changes of [
+      {from: envelope.length, to: envelope.length + 8},
+      [{from: envelope.length, insert: "一"}, {from: body.length - 1, to: body.length}],
+    ]) {
+      const transaction = state.update({changes});
+      expect(frontmatterPresentationNeedsRebuild(transaction, envelope.length,
+        `${envelope.length}:0`, `${envelope.length}:0`)).toBe(false);
+    }
+  });
+
+  it("refreshes activation when a body edit also moves the selection out of YAML", () => {
+    const state = parsedState(body, 6);
+    const transaction = state.update({changes: {from: envelope.length + 10, insert: "x"},
+      selection: {anchor: envelope.length + 11}});
+    expect(frontmatterPresentationNeedsRebuild(transaction, envelope.length,
+      `${envelope.length}:0`, `${envelope.length}:1`)).toBe(true);
+  });
+
+  it("rebuilds a mixed transaction that also edits YAML", () => {
+    const state = parsedState(body, envelope.length + 5);
+    const transaction = state.update({changes: [{from: 12, insert: "new "},
+      {from: envelope.length + 10, insert: "body "}]});
+    expect(frontmatterPresentationNeedsRebuild(transaction, envelope.length + 4,
+      `${envelope.length + 4}:0`, `${envelope.length}:0`)).toBe(true);
+  });
+
+  it("continues rebuilding edits throughout an unclosed envelope", () => {
+    const source = "---\ntitle: Unclosed\n\n" + "source remains literal\n".repeat(500);
+    const state = parsedState(source, source.length);
+    const transaction = state.update({changes: {from: source.length - 20, insert: "x"}});
+    expect(frontmatterPresentationNeedsRebuild(transaction, transaction.newDoc.length,
+      `${transaction.newDoc.length}:1`, `${state.doc.length}:1`)).toBe(true);
+  });
+
+  it("refreshes incomplete YAML parse progress even alongside a body-only edit", () => {
+    const state = EditorState.create({doc: body});
+    const transaction = state.update({effects: StateEffect.reconfigure.of([scholiumNoteLanguage]),
+      changes: {from: envelope.length + 5, insert: "x"}});
+    expect(syntaxTree(state).length).toBeLessThan(envelope.length);
+    expect(frontmatterPresentationNeedsRebuild(transaction, envelope.length,
+      `${envelope.length}:0`, `${envelope.length}:0`)).toBe(true);
   });
 });
 

@@ -425,11 +425,24 @@ export function projectFieldsForState(state: EditorState): FieldProjection {
   const snapshot = state.field(citationState, false);
   const existing = stateCatalogs.get(owner);
   if (existing && existing.snapshot === snapshot) return existing.projection;
-  let reserved = false, carry = "";
-  for (const chunk of state.doc.iter()) {
-    const scanned = carry + chunk;
-    if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) { reserved = true; break; }
-    carry = scanned.slice(-32);
+  const containsReserved = (from = 0) => {
+    let carry = "";
+    for (const chunk of from === 0 ? state.doc.iter() : state.doc.iterRange(from)) {
+      const scanned = carry + chunk;
+      if (/scholium-zotero|cite:|cite-bibliography/i.test(scanned)) return true;
+      carry = scanned.slice(-32);
+    }
+    return false;
+  };
+  let reserved = containsReserved();
+  if (reserved) {
+    const metadata = frontmatterBoundary(state.doc);
+    // The existing envelope owner proves closed YAML inert to citation
+    // carriers. Its ordinary values must not cause a second Markdown parse
+    // on every body edit. Unclosed/absent boundaries keep full validation.
+    if (metadata.endLine > 0) {
+      reserved = containsReserved(Math.min(state.doc.length, state.doc.line(metadata.endLine).to + 1));
+    }
   }
   const source = () => mirror?.text ?? state.doc.toString();
   const projection: FieldProjection = reserved

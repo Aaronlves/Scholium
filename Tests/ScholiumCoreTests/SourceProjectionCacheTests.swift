@@ -202,6 +202,48 @@ struct SourceProjectionCacheTests {
         #expect(fixture.cache.load(for: document) != nil)
     }
 
+    @Test("Pre-indexed YAML coordinates cannot restore Search or Catalog records", arguments: [false, true])
+    func retiresPreviousYAMLCoordinateProjection(catalog: Bool) throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let source = "\u{FEFF}---\rkeywords: ['中文 e\u{301} 🦉']\raliases: ['[[资料 🦉]]']\r---\rExact body"
+        let document = NoteDocument(relativePath: "Original.md", rawContent: source)
+        let original = fixture.root.appendingPathComponent(document.relativePath)
+        let sourceBytes = Data(source.utf8)
+        try sourceBytes.write(to: original)
+        let search = SearchDocumentProjection(document: document)
+        let syntax = fixture.catalogProjection(document)
+        fixture.cache.store(search, for: document)
+        fixture.cache.storeCatalog(syntax, for: document)
+        try #require(fixture.cache.load(for: document) == search)
+        try #require(fixture.cache.loadCatalog(for: document) == syntax)
+        let record = catalog ? fixture.catalogRecord(document) : fixture.record(document)
+        let sibling = catalog ? fixture.record(document) : fixture.catalogRecord(document)
+        let siblingBytes = try Data(contentsOf: sibling)
+        var frame = try #require(
+            PropertyListSerialization.propertyList(
+                from: Data(contentsOf: record), format: nil) as? [String: Any])
+        var policy = try #require(frame["policy"] as? [String: Any])
+        // Actual policies shipped before the source-coordinate correction.
+        policy["projectionVersion"] = catalog ? 1 : 2
+        frame["policy"] = policy
+        frame["payload"] = Data("Retired payload must never be decoded".utf8)
+        let retired = try PropertyListSerialization.data(fromPropertyList: frame, format: .binary, options: 0)
+        try retired.write(to: record)
+        #expect(SourceProjectionCache.recordPolicy(retired, fileName: record.lastPathComponent) == .retired)
+        if catalog {
+            #expect(fixture.cache.loadCatalog(for: document) == nil)
+            fixture.cache.storeCatalog(syntax, for: document)
+            #expect(fixture.cache.loadCatalog(for: document) == syntax)
+        } else {
+            #expect(fixture.cache.load(for: document) == nil)
+            fixture.cache.store(search, for: document)
+            #expect(fixture.cache.load(for: document) == search)
+        }
+        #expect(try Data(contentsOf: sibling) == siblingBytes)
+        #expect(try Data(contentsOf: original) == sourceBytes)
+    }
+
     @Test("Current filenames expose retirement policy without inflating their payload", arguments: [false, true])
     func currentFilenamePolicyRetirement(catalog: Bool) throws {
         let fixture = try Fixture()
@@ -446,7 +488,8 @@ struct SourceProjectionCacheTests {
         fixture.cache.store(SearchDocumentProjection(document: document), for: document)
         let original = try PropertyListDecoder().decode(SourceProjectionCache.Frame.self, from: Data(contentsOf: fixture.record(document)))
         let policy = SourceProjectionCache.Policy(
-            formatVersion: 0, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
+            formatVersion: 0, projectionVersion: SourceProjectionCache.Policy.current.projectionVersion,
+            markdownParserVersion: "0.8.0", yamlParserVersion: "6.2.2",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
         try fixture.write(
@@ -456,7 +499,8 @@ struct SourceProjectionCacheTests {
                 payloadDigest: original.payloadDigest, payload: original.payload), for: document)
         #expect(fixture.cache.load(for: document) == nil)
         let outdatedYAML = SourceProjectionCache.Policy(
-            formatVersion: 2, projectionVersion: 2, markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
+            formatVersion: 2, projectionVersion: SourceProjectionCache.Policy.current.projectionVersion,
+            markdownParserVersion: "0.8.0", yamlParserVersion: "6.0.0",
             searchVersion: SearchContract.currentVersion, schemaVersion: SearchContract.schemaVersion,
             tokenizerVersion: SearchContract.tokenizerPolicyVersion, rankingVersion: SearchContract.rankingPolicyVersion)
         try fixture.write(

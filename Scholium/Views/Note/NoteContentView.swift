@@ -1435,7 +1435,7 @@ struct NoteContentView<ShellNotices: View>: View {
     }
 
     private func prepareDocumentPreview(
-        acquire: @escaping @MainActor (@escaping () -> Bool) async throws -> DocumentAttachmentPreviewAccess,
+        acquire: @escaping @MainActor (@escaping @MainActor () -> Bool) async throws -> DocumentAttachmentPreviewAccess,
         onFailure: @escaping (any Error) -> Void
     ) {
         let session = editorSession
@@ -1445,7 +1445,7 @@ struct NoteContentView<ShellNotices: View>: View {
         let generation = session.generation
         let fingerprint = noteFingerprint.sha256
         let selection = session.context?.selections
-        let current: () -> Bool = {
+        let current: @MainActor () -> Bool = {
             guard controller.selectedDocument?.editingTarget == target,
                 controller.retainsSession(documentSession, for: target),
                 session.openingPresentationID == openingPresentationID,
@@ -1493,7 +1493,7 @@ struct NoteContentView<ShellNotices: View>: View {
             actions.openExternalURL(reference.url)
             return
         }
-        guard let file = SourceResourceReferences.file(destination: destination, noteRelativePath: note.id.relativePath),
+        guard SourceResourceReferences.file(destination: destination, noteRelativePath: note.id.relativePath) != nil,
             let attachmentTarget = documentAttachmentTarget
         else {
             actions.openInternalLink(destination)
@@ -1506,17 +1506,11 @@ struct NoteContentView<ShellNotices: View>: View {
                     guard documentSession.editError == nil, documentSession.conflict == nil else { throw CancellationError() }
                 }
                 guard current() else { throw CancellationError() }
-                let snapshots = try await controller.documentAttachments(for: attachmentTarget)
-                let matching: DocumentAttachmentSnapshot?
-                if let path = file.relativePath {
-                    matching = snapshots.first { $0.record.location == .vaultRelative(path) }
-                } else {
-                    // Resolve exact absolute path through the machine-local bookmark owner.
-                    matching = try await controller.sourceAttachment(for: destination, target: attachmentTarget)
+                return try await controller.prepareAuthoredDocumentAttachmentPreview(
+                    destination: destination, for: attachmentTarget, isCurrent: current
+                ) { request in
+                    try await fileSelectionPresenter.requiredForFileSelection().selectURL(request)
                 }
-                guard current() else { throw CancellationError() }
-                guard let matching else { throw DocumentAttachmentError.unavailable(destination) }
-                return try await controller.prepareDocumentAttachmentPreview(attachmentID: matching.record.id, for: attachmentTarget)
             },
             onFailure: { error in
                 if !(error is CancellationError) { actions.notify(ScholiumErrorLocalization.message(error), .error) }

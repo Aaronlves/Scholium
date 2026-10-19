@@ -360,6 +360,88 @@ struct SearchPropertyIndexTests {
         }
     }
 
+    @Test(
+        "YAML parser line marks keep exact properties through incremental update, rebuild and retired-index replacement",
+        arguments: ["\r", "\u{85}", "\u{2028}", "\u{2029}"])
+    func parserLineMarksSurviveIndexLifecycles(separator: String) async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let before =
+            "\u{FEFF}---\r\nkeywords: ['中文 e\u{301} 🦉']" + separator
+            + "aliases: ['[[资料 🦉]]']\r\n---\r\nExact body"
+        let after =
+            "\u{FEFF}---\r\ncustom: '前缀 🦉'\r\nkeywords: ['中文 e\u{301} 🦉']" + separator
+            + "aliases: ['[[资料 🦉]]']\r\n---\r\nExact body"
+        let bytes = Data(after.utf8)
+        let original = fixture.root.appendingPathComponent("Original.md")
+        try bytes.write(to: original)
+        let index = try fixture.index()
+        do {
+            _ = try await index.synchronize([fixture.item("Original.md", before)])
+            _ = try await index.synchronize([fixture.item("Original.md", after)])
+            let clean = try fixture.index(at: fixture.root.appendingPathComponent("clean.sqlite"))
+            do {
+                _ = try await clean.synchronize([fixture.item("Original.md", after)])
+                for (query, field, token, value) in [
+                    ("property:keywords=\"中文 e\u{301} 🦉\"", "keywords", "'中文 e\u{301} 🦉'", "中文 e\u{301} 🦉"),
+                    ("property:aliases=\"[[资料 🦉]]\"", "aliases", "'[[资料 🦉]]'", "[[资料 🦉]]"),
+                ] {
+                    let incremental = try await index.testSearch(fixture.request(query))
+                    let rebuilt = try await clean.testSearch(fixture.request(query))
+                    let hit = try #require(incremental.noteResults.first)
+                    #expect(incremental.noteResults.count == 1)
+                    #expect(hit.primaryMatchReason == rebuilt.noteResults.first?.primaryMatchReason)
+                    #expect(hit.sourceRange == rebuilt.noteResults.first?.sourceRange)
+                    guard case .property(let property) = hit.primaryMatchReason else {
+                        Issue.record("A YAML equality hit must retain property provenance")
+                        continue
+                    }
+                    #expect(property.key == field)
+                    #expect(property.normalizedValue == SearchTextNormalization.normalize(value))
+                    let keyRange = try #require(property.keySourceRange)
+                    #expect(sourceText(after, range: keyRange) == field)
+                    #expect(property.valueSourceRanges.count == 1)
+                    #expect(sourceText(after, range: try #require(property.valueSourceRanges.first)) == token)
+                }
+                await clean.shutdown()
+            } catch {
+                await clean.shutdown()
+                throw error
+            }
+            await index.shutdown()
+        } catch {
+            await index.shutdown()
+            throw error
+        }
+
+        // An unchanged fingerprint must not allow the previous schema's omitted
+        // YAML fields/coordinates to remain authoritative after relaunch.
+        let writer = try SearchSQLiteDatabase(path: fixture.databaseURL.path)
+        try writer.execute("UPDATE search_index_state SET schema_version = 26;")
+        try writer.admitCheckpointOnClose()
+        writer.close()
+        let recovered = try TriptychSearchIndex.openRecovering(
+            isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        do {
+            #expect(recovered.recoveredCorruption)
+            #expect(try await recovered.index.generation() == nil)
+            _ = try await recovered.index.synchronize([fixture.item("Original.md", after)])
+            let response = try await recovered.index.testSearch(fixture.request("property:aliases=\"[[资料 🦉]]\""))
+            #expect(response.noteResults.map(\.relativePath) == ["Original.md"])
+            guard case .property(let property) = try #require(response.noteResults.first?.primaryMatchReason) else {
+                Issue.record("Rebuilt YAML hit lost its property provenance")
+                await recovered.index.shutdown()
+                return
+            }
+            #expect(sourceText(after, range: try #require(property.valueSourceRanges.first)) == "'[[资料 🦉]]'")
+            #expect(try Data(contentsOf: original) == bytes)
+            await recovered.index.shutdown()
+        } catch {
+            await recovered.index.shutdown()
+            throw error
+        }
+    }
+
     private final class Fixture: @unchecked Sendable {
         let root: URL
         let databaseURL: URL

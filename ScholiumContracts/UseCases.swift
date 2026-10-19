@@ -101,6 +101,14 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
     ) async throws -> PreparedSourceAttachment
+    /// Grants read-only access only to the exact external file already linked
+    /// by this captured Note revision. Preparation never inserts or saves source.
+    func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL,
+        destination: String,
+        for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

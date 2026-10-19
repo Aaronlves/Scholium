@@ -8601,6 +8601,65 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Uncached PDF, web and Note links show Command intent and activate exact destinations")
+    func uncachedAuthoredLinksRetainCommandFeedback() async throws {
+        let pdf = "/Users/fixture/原文/Star - 2018 - Reasons (original).pdf"
+        let destinations = [("PDF", pdf), ("Website", "https://example.test/original"), ("Uncached note", "Uncached note")]
+        let source =
+            "\u{FEFF}Intro 中文.\r\n\r\n> [!cite] 来源与版本\r\n> 所读书目原文：[PDF](<\(pdf)>)\r\n> [Website](https://example.test/original) and [[Uncached note]]\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        var activated: [String] = []
+        for (label, destination) in destinations {
+            let feedback =
+                try await harness.callPageJavaScript(
+                    """
+                    const link = [...document.querySelectorAll('[data-scholium-link-target]')]
+                      .find(node => node.textContent === label);
+                    if (!link) return {found: false};
+                    link.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                    const plain = getComputedStyle(link).cursor;
+                    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+                    const armed = getComputedStyle(link).cursor;
+                    document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+                    const released = getComputedStyle(link).cursor;
+                    return {found: true, plain, armed, released, target: link.dataset.scholiumLinkTarget};
+                    """, arguments: ["label": label]) as? [String: Any]
+            let values = try #require(feedback)
+            #expect(values["found"] as? Bool == true)
+            #expect(values["plain"] as? String != "pointer")
+            #expect(values["armed"] as? String == "pointer")
+            #expect(values["released"] as? String != "pointer")
+            #expect(values["target"] as? String == destination)
+            try await harness.session.testingModifiedClickVisibleText(label, modifierFlags: .command)
+            activated.append(destination)
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while harness.activatedLinks != activated, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(harness.activatedLinks == activated)
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.checkedSource == source)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(!harness.session.isDirty)
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let labelFrom =
+            try #require(normalized.range(of: "[PDF]"))
+            .lowerBound.utf16Offset(in: normalized) + 1
+        try await harness.session.testingClickVisibleText("PDF")
+        _ = try await harness.waitUntilSelection(in: labelFrom..<(labelFrom + 4))
+        #expect(harness.activatedLinks == activated)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit previews Command-armed links and annotated links in the native surface without reflow")
     func editAnnotatedLinkDisclosure() async throws {
         let source = "Intro.\n\n> [!state] Related\n> [[Target]]\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"

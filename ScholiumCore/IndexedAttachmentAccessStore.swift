@@ -24,6 +24,9 @@ public actor IndexedAttachmentAccessStore {
     private let directory: SecureRecordDirectory
     private let lock: AdvisoryFileLock
     private var activeAccesses: [UUID: (url: URL, started: Bool)] = [:]
+    // A successful reader has adopted this grant. Closing its lease cannot
+    // return rollback ownership to an earlier, still-pending preparation.
+    private var adoptedAttachmentIDs: Set<UUID> = []
 
     public init(applicationSupportURL: URL, triptychID: UUID) throws {
         self.triptychID = triptychID
@@ -247,6 +250,7 @@ public actor IndexedAttachmentAccessStore {
             }
             let token = UUID()
             activeAccesses[token] = (resolved, started)
+            adoptedAttachmentIDs.insert(attachmentID)
             return (token, resolved)
         }
     }
@@ -271,6 +275,21 @@ public actor IndexedAttachmentAccessStore {
             payload.bindings.removeAll { $0.attachmentID == attachmentID }
             guard payload.bindings.count != originalCount else { return }
             try persist(payload)
+            adoptedAttachmentIDs.remove(attachmentID)
+        }
+    }
+
+    /// Atomically withdraws a newly prepared grant only before a reader adopts
+    /// it. The caller must retain its portable record when this returns false.
+    /// There is no suspension between checking adoption and removing access.
+    public func removeIfUnadopted(attachmentID: UUID) throws -> Bool {
+        try lock.withExclusiveLock {
+            guard !adoptedAttachmentIDs.contains(attachmentID) else { return false }
+            var payload = try load()
+            let originalCount = payload.bindings.count
+            payload.bindings.removeAll { $0.attachmentID == attachmentID }
+            if payload.bindings.count != originalCount { try persist(payload) }
+            return true
         }
     }
 

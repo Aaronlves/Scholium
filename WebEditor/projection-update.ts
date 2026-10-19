@@ -175,7 +175,7 @@ export function transactionChangedSyntaxTree(transaction: Transaction) {
  * and whether the selection sits inside it. Rebuilding it walks the document
  * three times — boundary search, per-line decoration, whole-tree iteration —
  * and an unclosed envelope makes each of those walks cover the entire note.
- * Ordinary caret movement must therefore reuse the mounted decorations, and
+ * Ordinary body edits and caret movement reuse the mounted decorations;
  * parse progress beyond the envelope cannot change how the envelope renders.
  */
 export function frontmatterPresentationNeedsRebuild(
@@ -184,12 +184,21 @@ export function frontmatterPresentationNeedsRebuild(
   signature: string,
   previousSignature: string,
 ) {
-  if (transaction.docChanged) return true;
+  if (signature !== previousSignature) return true;
+  if (transaction.docChanged) {
+    let touchesEnvelope = false;
+    transaction.changes.iterChangedRanges((fromA, _toA, fromB) => {
+      if (fromA < envelopeEnd || fromB < envelopeEnd) touchesEnvelope = true;
+    });
+    // The closed envelope starts at zero. Edits entirely after its unchanged
+    // end cannot shift its decorations or change any authored YAML token.
+    if (touchesEnvelope) return true;
+  }
   if (transactionChangedSyntaxTree(transaction)
       && syntaxTree(transaction.startState).length < envelopeEnd) {
     return true;
   }
-  return signature !== previousSignature;
+  return false;
 }
 
 function rangesOverlap(left: ProjectionSourceRange, right: ProjectionSourceRange) {

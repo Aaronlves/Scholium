@@ -186,6 +186,18 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL,
+        destination: String,
+        for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareAuthoredDocumentAttachment(
+            at: selectedURL, destination: destination, for: target,
+            expectedSourceFingerprint: expectedSourceFingerprint)
+    }
+
     public func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

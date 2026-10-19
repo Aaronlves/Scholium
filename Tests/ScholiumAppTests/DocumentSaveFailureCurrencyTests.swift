@@ -236,6 +236,10 @@ private final class SaveFailureReadOperations: DocumentUseCases {
         to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
     ) async throws -> PreparedSourceAttachment { throw UnexpectedSaveFailureProbeCall() }
+    func prepareAuthoredDocumentAttachment(
+        at selectedURL: URL, destination: String, for target: SourceAttachmentTarget,
+        expectedSourceFingerprint: DocumentFingerprint
+    ) async throws -> PreparedSourceAttachment { throw UnexpectedSaveFailureProbeCall() }
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
         for target: SourceAttachmentTarget

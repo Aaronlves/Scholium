@@ -214,7 +214,7 @@ export function createLiveSemanticLayout(options: {
       lineQueryTo,
     )[0] ?? null;
     const opening = calloutPresentation
-      ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "")
+      ? calloutHeader(state.doc.lineAt(calloutPresentation.from).text)
       : null;
     const calloutIdentifier = opening
       ? calloutDefinition(options.editingDialect(), opening[2]).identifier

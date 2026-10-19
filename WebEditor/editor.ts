@@ -97,7 +97,7 @@ import {tableCommandAvailable, tableTabAction} from "./tables";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
 import {createEditorTextTransfer} from "./text-transfer";
 import {completeHeadingSelection} from "./text-transfer-ranges";
-import {linkTargetAt} from "./link-target";
+import {linkTargetAt, markdownLinkDestination} from "./link-target";
 import {scholiumNoteLanguage} from "./language";
 import {sourceHighlighting} from "./source-highlighting";
 import {
@@ -1040,6 +1040,8 @@ function buildLiveDecorations(
           const linkClass = embed ? "cm-live-embed" : "cm-live-wiki-link";
           const projectedLinkAttributes = {
             "data-scholium-link-target": target,
+            "data-scholium-source-from": String(linkRange.from),
+            "data-scholium-source-to": String(linkRange.to),
             "data-scholium-source-caret": String(linkRange.to),
           };
           if (previewIndex === undefined) {
@@ -1082,6 +1084,13 @@ function buildLiveDecorations(
             }))
             .filter((range) => range.to > range.from)
             .sort((left, right) => left.from - right.from || left.to - right.to);
+          const projectedLinkAttributes = construct.kind === "link" && construct.targetRange
+            ? {
+              "data-scholium-link-target": markdownLinkDestination(
+                doc.sliceString(construct.targetRange.from, construct.targetRange.to)),
+              "data-scholium-source-from": String(construct.from),
+              "data-scholium-source-to": String(construct.to),
+            } : undefined;
           let position = constructFrom;
           for (const visible of visibleRanges) {
             if (visible.from > position) addHidden(position, visible.from);
@@ -1099,9 +1108,14 @@ function buildLiveDecorations(
               }).range(visible.from));
             }
             if (previewIndex === undefined) {
-              addMark(visible.from, visible.to, className);
+              if (projectedLinkAttributes) {
+                decorations.push(Decoration.mark({class: className, attributes: projectedLinkAttributes})
+                  .range(visible.from, visible.to));
+              } else {
+                addMark(visible.from, visible.to, className);
+              }
             } else {
-              addPreviewMark(visible.from, visible.to, className, previewIndex);
+              addPreviewMark(visible.from, visible.to, className, previewIndex, projectedLinkAttributes);
             }
             position = Math.max(position, visible.to);
           }

@@ -82,6 +82,88 @@ struct ZoteroMarkdownFieldsTests {
         #expect(document.sourceBytes == Data(source.utf8))
     }
 
+    @Test(
+        "YAML-only reserved text preserves semantic catalogs and companion refusals",
+        arguments: [
+            "\u{FEFF}---\r\nkeywords: ['cite:', 'scholium-zotero:', '中文 😀 e\u{301}']\r\naliases: ['[x](c&#105;te:field)'] # keep\r\nunknown: '<!--cite-bibliography:one-->'\r\n---\r\nReadable 中文 😀 e\u{301} prose.\r\n",
+            "---\nkeywords: ['cite:', 'scholium-zotero:']\n---\n",
+            "\u{FEFF}---\r\nkeywords: [cite:,\r\n---\r\nReadable 中文 😀 e\u{301} prose.\r\n",
+            "---\n- 'cite:'\n---\nReadable prose.\n",
+            "\u{FEFF}---\r\nkeywords: ['cite:']\r\nReadable 中文 😀 e\u{301} prose.\r\n",
+            "---\nkeywords: [cite:,\nReadable prose.\n",
+        ])
+    func frontmatterMarkerCatalogParity(_ source: String) throws {
+        let noteID = UUID()
+        let vaultID = UUID()
+        let fingerprint = DocumentFingerprint(content: source)
+        let data = ZoteroCitationData(fields: [], documentData: "<data>opaque</data>")
+        let snapshots: [ZoteroCitationSnapshot?] = [
+            nil,
+            .init(noteID: noteID, vaultID: vaultID, status: .absent),
+            .init(noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint, data: data, status: .available),
+            .init(noteID: noteID, vaultID: vaultID, status: .unresolved),
+            .init(noteID: noteID, vaultID: vaultID, status: .unsupported),
+            .init(noteID: noteID, vaultID: vaultID, status: .available),
+            .init(noteID: noteID, vaultID: vaultID, data: data, status: .absent),
+            .init(noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint, status: .absent),
+            .init(noteID: noteID, vaultID: vaultID, revision: fingerprint, status: .absent),
+        ]
+        for (index, snapshot) in snapshots.enumerated() {
+            let document = NoteDocument(relativePath: "Metadata.md", rawContent: source, citationSnapshot: snapshot)
+            let catalog = ZoteroMarkdownFields(parsing: document)
+            #expect(catalog == MarkdownSemanticDocument(parsing: document).zoteroFields)
+            #expect(catalog.fingerprint == fingerprint && catalog.fields.isEmpty)
+            #expect(document.sourceBytes == Data(source.utf8))
+            #expect(catalog.readingProjection(source: source)?.source.utf8.elementsEqual(source.utf8) == true)
+            if document.frontmatterState == .malformed {
+                #expect(!catalog.canMutate && catalog.documentState == nil && catalog.metadataSpans.isEmpty)
+                let diagnostic = try #require(catalog.diagnostics.first)
+                #expect(diagnostic.kind == .unsupportedContext)
+                #expect(diagnostic.span.utf8Range == 0..<source.utf8.count)
+                #expect(diagnostic.span.utf16Range == 0..<source.utf16.count)
+            } else {
+                #expect(document.frontmatterState == .valid)
+                #expect(catalog.canMutate == (index <= 2))
+                #expect(catalog.documentState?.data == (index == 2 ? data.documentData : nil))
+            }
+        }
+    }
+
+    @Test(
+        "Metadata markers retain admission of decoded body destinations without a companion",
+        arguments: ["c&#105;te:field", "cite\\:field", "%63ite%3Afield", "scholium%2Dzotero:1:AAAA"])
+    func encodedBodyWithMetadataMarker(_ destination: String) {
+        let source = "\u{FEFF}---\r\nkeywords: ['cite:', '中文 😀 e\u{301}']\r\n---\r\nBefore [Readable](\(destination)) after.\r\n"
+        for snapshot: ZoteroCitationSnapshot? in [nil, .init(noteID: UUID(), vaultID: UUID(), status: .absent)] {
+            let document = NoteDocument(relativePath: "Encoded.md", rawContent: source, citationSnapshot: snapshot)
+            let catalog = ZoteroMarkdownFields(parsing: document)
+            #expect(document.frontmatterState == .valid)
+            #expect(catalog == MarkdownSemanticDocument(parsing: document).zoteroFields)
+            #expect(catalog.fields.isEmpty)
+            if destination == "%63ite%3Afield" {
+                #expect(!catalog.canMutate && !catalog.diagnostics.isEmpty)
+            }
+            #expect(document.sourceBytes == Data(source.utf8))
+        }
+    }
+
+    @Test("Body citation spans remain exact after metadata-only reserved strings")
+    func bodyCitationWithMetadataMarker() throws {
+        let link = try citation()
+        let source = "\u{FEFF}---\r\nkeywords: ['cite:', 'scholium-zotero:', '中文 😀 e\u{301}'] # keep\r\n---\r\nBefore 😀 e\u{301} \(link) after.\r\n"
+        for snapshot: ZoteroCitationSnapshot? in [nil, .init(noteID: UUID(), vaultID: UUID(), status: .absent)] {
+            let document = NoteDocument(relativePath: "Citation.md", rawContent: source, citationSnapshot: snapshot)
+            let catalog = ZoteroMarkdownFields(parsing: document)
+            #expect(catalog == MarkdownSemanticDocument(parsing: document).zoteroFields)
+            #expect(catalog.canMutate && catalog.fields.count == 1)
+            let field = try #require(catalog.fields.first)
+            #expect(field.isCompleted && field.code == citationCode)
+            #expect((source as NSString).substring(with: field.span.nsRange) == link)
+            #expect(Data(source.utf8).subdata(in: field.span.utf8Range) == Data(link.utf8))
+            #expect(document.sourceBytes == Data(source.utf8))
+        }
+    }
+
     private func encoded(_ object: [String: Any]) throws -> String {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]).base64EncodedString()
     }
