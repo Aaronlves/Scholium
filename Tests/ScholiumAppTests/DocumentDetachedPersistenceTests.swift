@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -418,6 +419,64 @@ struct DocumentDetachedPersistenceTests {
             if let resume = session.detachmentResumeTask { await resume.value }
             throw error
         }
+    }
+
+    @Test(
+        "A clean frozen flush publishes only byte-distinct retained source, including canonically equal Unicode",
+        arguments: [false, true])
+    func cleanSnapshotPublishesOnlyByteDistinctRetainedSource(staleMirror: Bool) async throws {
+        let source = "\u{FEFF}# Cafe\u{301}\r\nunknown: keep\n尾 🦉\r\nEnd"
+        let retainedSource = staleMirror
+            ? "\u{FEFF}# Café\r\nunknown: keep\n尾 🦉\r\nEnd"
+            : source
+        try #require(retainedSource == source)
+        try #require((Data(retainedSource.utf8) != Data(source.utf8)) == staleMirror)
+        let fixture = try await makeEditor(source: source)
+        defer { fixture.editor.detach(fixture.webView) }
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let document = WindowSelectedDocument.workspace(
+            .init(
+                sessionKey: key,
+                reference: .init(
+                    vaultID: key.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                    relativePath: "Source.md", stableNoteID: key.noteID.uuidString)))
+        let session = DocumentSessionModel(key: key, editorSession: fixture.editor)
+        session.beginEditing(in: .source)
+        session.editingSource = retainedSource
+        session.originalEditingSource = source
+        session.editingRevision = fixture.revision
+        session.suppressAutosave = true
+        let controller = DocumentController()
+        controller.receiveSessionTransfer(
+            .init(document: document, session: session, snapshot: nil, mode: .source), selecting: false)
+        defer { session.cancelScheduledWork() }
+        try await controller.prepareSessionTransfer(document)
+        let suspensionID = try #require(fixture.editor.detachmentSuspensionID)
+        try #require(!fixture.editor.isDirty)
+        let sourceRevision = session.retainedCitationSourceRevision
+        let retainedFingerprint = session.editingSourceFingerprint
+        try #require(retainedFingerprint == DocumentFingerprint(data: Data(retainedSource.utf8)))
+        var publishedSources: [Data] = []
+        let observation = session.$editingSource.dropFirst().sink { publishedSources.append(Data($0.utf8)) }
+        defer { observation.cancel() }
+
+        try await controller.flushDocumentBeforeDeparture(document, capturingEditorState: false)
+
+        #expect(publishedSources == (staleMirror ? [Data(source.utf8)] : []))
+        #expect(session.retainedCitationSourceRevision == sourceRevision + (staleMirror ? 1 : 0))
+        #expect(session.editingSourceFingerprint == fixture.revision)
+        #expect((session.editingSourceFingerprint != retainedFingerprint) == staleMirror)
+        #expect(Data(session.editingSource.utf8) == Data(source.utf8))
+        #expect(Data(session.originalEditingSource.utf8) == Data(source.utf8))
+        #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+        #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
+        #expect(!session.hasUnsavedChanges && !fixture.editor.isDirty)
+        #expect(session.editingRevision == fixture.revision)
+        #expect(session.pendingEditorCommit == nil && session.activeSaveTask == nil)
+        #expect(session.editError == nil && !session.canRetrySave)
+        #expect(fixture.editor.detachmentSuspensionID == suspensionID)
+        #expect(fixture.dispatcher.suspensionID == suspensionID)
+        try await fixture.editor.resumeAfterDetachment(suspensionID: suspensionID)
     }
 
     enum SaveScenario: CaseIterable {

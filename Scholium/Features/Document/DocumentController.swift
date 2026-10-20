@@ -2482,7 +2482,9 @@ final class DocumentController: ObservableObject {
             throw DocumentControllerError.documentUnavailable
         }
         session.suppressAutosave = true
-        session.editingSource = sourceBeingSaved
+        if !ScholiumExactUTF8.equal(session.editingSource, sourceBeingSaved) {
+            session.editingSource = sourceBeingSaved
+        }
         defer { session.suppressAutosave = false }
         guard
             !exactMatchesCommitted
