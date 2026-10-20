@@ -62,6 +62,16 @@ import WebKit
                     let reconstructionMilliseconds = Self.milliseconds(reconstructionStarted.duration(to: .now))
                     let bridges = dispatcher.endSample()
 
+                    // Query only after the lifecycle timing ends. The bounded
+                    // ring contains numeric phase costs, never document text.
+                    let phases = try await harness.session.queryPerformanceSamples().filter {
+                        $0.name.hasPrefix("recovery-") || $0.name == "opening-atomic-state" || $0.name == "bridge-dispatch-stages"
+                    }
+                    for phase in phases {
+                        let observations = phase.observed.keys.sorted().map { "\($0)=\(phase.observed[$0]!)" }.joined(separator: " ")
+                        print("EDITOR_RESTORATION_PHASE label=\(label) sample=\(sample) name=\(phase.name) duration_ms=\(phase.durationMilliseconds) \(observations)")
+                    }
+
                     // Full-source and history oracles are outside all timings.
                     #expect(Data(try await harness.session.currentText().utf8) == Data(edited.utf8))
                     #expect(harness.session.generation == generation)

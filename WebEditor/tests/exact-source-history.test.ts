@@ -1,4 +1,4 @@
-import {EditorSelection, EditorState, StateEffect, Transaction} from "@codemirror/state";
+import {EditorSelection, EditorState, StateEffect, StateField, Transaction} from "@codemirror/state";
 import {history, historyField, invertedEffects, isolateHistory, redo, redoDepth, redoSelection, undo, undoDepth, undoSelection} from "@codemirror/commands";
 import {describe, expect, it} from "vitest";
 import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "../exact-source-history";
@@ -267,6 +267,63 @@ describe("exact newline history", () => {
     const before = perform(state, undoSelection), recoveredBefore = perform(restored, undoSelection);
     expect(exact(recoveredBefore)).toBe(exact(before));
     expect(recoveredBefore.selection.eq(before.selection)).toBe(true);
+  });
+
+  it("constructs incoming derived fields once after decoding exact multi-selection history", () => {
+    let derivedInitializations = 0;
+    const derived = StateField.define({create: () => { derivedInitializations++; return null; }, update: value => value});
+    const custom = [extensions, EditorState.allowMultipleSelections.of(true), derived];
+    const source = "\uFEFFa\r\nCafe\u0301 中文 🦉\nTail\rEnd\r\nLast";
+    let state = EditorState.create({doc: normalizedDocumentText(source), extensions: custom,
+      selection: EditorSelection.create([EditorSelection.range(1, 2), EditorSelection.cursor(5)], 1),
+    }).update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+    const newline = state.doc.toString().indexOf("\n");
+    state = state.update({changes: {from: newline, to: newline + 1},
+      annotations: isolateHistory.of("full")}).state;
+    state = state.update({changes: {from: state.doc.length, insert: " Ω\n"},
+      annotations: isolateHistory.of("full")}).state;
+    state = perform(state, undo);
+    state = state.update({selection: EditorSelection.create([EditorSelection.range(1, 2), EditorSelection.cursor(6)], 1),
+      userEvent: "select.pointer", annotations: Transaction.time.of(1000)}).state;
+    expect(state.selection.mainIndex).toBe(1);
+    expect(undoDepth(state)).toBe(1);
+    expect(redoDepth(state)).toBe(1);
+    const serialized = captureExactHistory(state)!;
+    expect(serialized).toBeDefined();
+    const before = state.toJSON({history: historyField});
+    derivedInitializations = 0;
+
+    const recovered = restoreExactHistory(serialized, exact(state), custom);
+    expect(derivedInitializations).toBe(1);
+    expect(exact(recovered)).toBe(exact(state));
+    expect(recovered.selection.mainIndex).toBe(1);
+    expect(recovered.toJSON({history: historyField})).toEqual(before);
+    for (const command of [undo, redo, undoSelection, redoSelection]) {
+      let originalBranch = state, recoveredBranch = recovered;
+      while (command({state: originalBranch, dispatch: transaction => { originalBranch = transaction.state; }})) {
+        recoveredBranch = perform(recoveredBranch, command);
+        expect(exact(recoveredBranch)).toBe(exact(originalBranch));
+        expect(recoveredBranch.selection.eq(originalBranch.selection)).toBe(true);
+      }
+      expect(command({state: recoveredBranch, dispatch: () => {}})).toBe(false);
+    }
+    expect(exact(perform(recovered, undo))).toBe(source);
+    const continueSelection = (value: EditorState) => value.update({
+      selection: EditorSelection.create([EditorSelection.range(1, 2), EditorSelection.cursor(7)], 1),
+      userEvent: "select.pointer", annotations: Transaction.time.of(1100),
+    }).state;
+    const groupedOriginal = continueSelection(state), groupedRecovered = continueSelection(recovered);
+    expect(groupedRecovered.toJSON({history: historyField})).toEqual(groupedOriginal.toJSON({history: historyField}));
+    expect(perform(groupedRecovered, undoSelection).selection.eq(perform(groupedOriginal, undoSelection).selection)).toBe(true);
+
+    derivedInitializations = 0;
+    expect(() => restoreExactHistory(serialized, exact(state) + "foreign source", custom)).toThrow();
+    expect(derivedInitializations).toBe(0);
+    const corrupted = JSON.parse(serialized);
+    corrupted.effects.done[0] = [{unknown: 1}];
+    expect(() => restoreExactHistory(JSON.stringify(corrupted), exact(state), custom)).toThrow();
+    expect(derivedInitializations).toBe(0);
+    expect(state.toJSON({history: historyField})).toEqual(before);
   });
 
   it("rejects unknown inverse effects before detaching the unchanged live state", () => {

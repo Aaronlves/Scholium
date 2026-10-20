@@ -2752,15 +2752,33 @@ const compositionGate = new CompositionRequestGate<EditorRequest, EditorCommandR
 async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResult> {
   const bridgeStartedAt = performance.now();
   const requestBytes = (() => { try { return encodedByteLength(value); } catch { return 0; } })();
-  if (!isEditorRequest(value)) {
+  const admissionStartedAt = performance.now();
+  const admitted = isEditorRequest(value);
+  const admissionEndedAt = performance.now();
+  if (!admitted) {
     recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes});
     return rejected("invalid", documentVersion, "malformed editor request");
   }
-  if (value.expiresAt <= Date.now()) return rejected(value.requestID, documentVersion, "editor request expired");
+  const initializationStages: Record<string, number> | undefined = value.operation.type === "initialize" ? {
+    requestBytes,
+    requestEnvelopeMilliseconds: admissionStartedAt - bridgeStartedAt,
+    admissionMilliseconds: admissionEndedAt - admissionStartedAt,
+  } : undefined;
+  const recordInitializationStages = (result: EditorCommandResult, endedAt = performance.now()) => {
+    if (initializationStages) recordEditorMetric("bridge-dispatch-stages", bridgeStartedAt,
+      {...initializationStages, accepted: result.accepted ? 1 : 0}, endedAt);
+  };
+  if (value.expiresAt <= Date.now()) {
+    const result = rejected(value.requestID, documentVersion, "editor request expired");
+    recordInitializationStages(result);
+    return result;
+  }
   const compositionPolicy = compositionRequestPolicy(value.operation.type);
   if ((editor.composing || compositionGate.active)
       && compositionPolicy === "reject") {
-    return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
+    const result = rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
+    recordInitializationStages(result);
+    return result;
   }
   if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
     const result = compositionGate.enqueue(value);
@@ -2772,11 +2790,22 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
       return accepted;
     });
   }
+  const executeStartedAt = performance.now();
   try {
     const result = await executeEditorRequest(value);
-    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
+    const resultEnvelopeStartedAt = performance.now();
+    if (initializationStages) initializationStages.executeMilliseconds = resultEnvelopeStartedAt - executeStartedAt;
+    const resultBytes = encodedByteLength(result);
+    const resultEnvelopeEndedAt = performance.now();
+    if (initializationStages) {
+      initializationStages.resultEnvelopeMilliseconds = resultEnvelopeEndedAt - resultEnvelopeStartedAt;
+      initializationStages.resultBytes = resultBytes;
+    }
+    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes});
+    recordInitializationStages(result, resultEnvelopeEndedAt);
     return result;
   } catch (error) {
+    if (initializationStages) initializationStages.executeMilliseconds = performance.now() - executeStartedAt;
     const result = rejected(
       value.requestID,
       documentVersion,
@@ -2784,7 +2813,15 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
         ? error.message === sourceCapacityMessage ? localized(sourceCapacityMessage) : error.message
         : "editor request failed",
     );
-    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes: encodedByteLength(result)});
+    const resultEnvelopeStartedAt = performance.now();
+    const resultBytes = encodedByteLength(result);
+    const resultEnvelopeEndedAt = performance.now();
+    if (initializationStages) {
+      initializationStages.resultEnvelopeMilliseconds = resultEnvelopeEndedAt - resultEnvelopeStartedAt;
+      initializationStages.resultBytes = resultBytes;
+    }
+    recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes, resultBytes});
+    recordInitializationStages(result, resultEnvelopeEndedAt);
     return result;
   }
 }
@@ -3105,7 +3142,10 @@ const editorOperations = {
     lastUndoLabel = restored?.historyPreserved ? recovery?.undoLabel : undefined;
     lastRedoLabel = restored?.historyPreserved ? recovery?.redoLabel : undefined;
     lastDocumentFocusTarget = recovery?.focusTarget;
+    const installStartedAt = performance.now();
     editor.setState(state);
+    recordEditorMetric("recovery-live-install", installStartedAt, {recovery: recovery ? 1 : 0,
+      documentLength: state.doc.length, rangeCount: state.selection.ranges.length});
     inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
     inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
     appliedPresentation = presentation;

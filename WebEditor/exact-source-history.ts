@@ -191,6 +191,9 @@ interface HistoryGrouping {time: number; userEvent?: string}
 type HistoryBranch = "done" | "undone";
 type InverseEffects = ({lineEndings: [number[], string]} | {citation: number})[];
 const historyError = () => new Error("Incompatible exact history metadata");
+// Validation decodes only JSON-owned fields, before presentation is constructed.
+const historyDecodingExtensions = [historyField, citationState,
+  EditorState.allowMultipleSelections.of(true), EditorState.lineSeparator.of("\n")];
 const ownKeys = (value: object, keys: readonly string[]) => {
   const actual = Object.keys(value).sort(), expected = [...keys].sort();
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
@@ -423,8 +426,7 @@ export function captureExactHistory(state: EditorState, maximumBytes = MAX_RECOV
     const serializedState = {...base, history: encodedHistory};
     const fields: Record<string, typeof historyField | typeof citationState> = {history: historyField};
     if (citationFields) fields.citations = citationState;
-    const decoded = EditorState.fromJSON(serializedState, {extensions: [historyField, citationState,
-      EditorState.allowMultipleSelections.of(true), EditorState.lineSeparator.of("\n")]}, fields);
+    const decoded = EditorState.fromJSON(serializedState, {extensions: historyDecodingExtensions}, fields);
     if (!jsonEqual(decoded.toJSON(fields), serializedState)) throw historyError();
     const roundtrip = attachInverseEffects(decoded, effects, citationTable, encodedHistory, grouping);
     for (const branch of ["done", "undone"] as const) for (let index = 0; index < history[branch].length; index++) {
@@ -442,28 +444,55 @@ export function captureExactHistory(state: EditorState, maximumBytes = MAX_RECOV
 }
 
 export function restoreExactHistory(serialized: string, source: string, extensions: Extension): EditorState {
-  if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-  if (new TextEncoder().encode(serialized).byteLength > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
-  const payload = JSON.parse(serialized);
-  if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"])
-      || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"])
-      || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
-  if (!Array.isArray(payload.citationTable)
-      || !payload.citationTable.every((snapshot: unknown) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
-  const grouping = checkedGrouping(payload.grouping);
-  const fields: Record<string, typeof historyField | typeof citationState> = {history: historyField};
-  if (payload.state.citations) fields.citations = citationState;
-  const original = EditorState.fromJSON(payload.state, {extensions}, fields);
-  if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
-  if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
-  const history = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
-  // Public field initialization installs the validated CodeMirror value. No
-  // additional field becomes a second owner of text, selections or history.
-  const state = EditorState.fromJSON(payload.state, {extensions: [historyField.init(() => history), extensions]},
-    payload.state.citations ? {citations: citationState} : undefined)
-    .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
-  checkedHistory(state);
-  if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
-  validateHistoryBranches(state, history, source);
-  return state;
+  const startedAt = performance.now();
+  const observed: Record<string, number> = {sourceUTF16Length: source.length, completed: 0};
+  let stageStartedAt = startedAt;
+  try {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    const historyBytes = new TextEncoder().encode(serialized).byteLength;
+    if (historyBytes > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
+    observed.historyBytes = historyBytes;
+    observed.capacityMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    const payload = JSON.parse(serialized);
+    observed.parseMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"])
+        || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"])
+        || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
+    if (!Array.isArray(payload.citationTable)
+        || !payload.citationTable.every((snapshot: unknown) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
+    const grouping = checkedGrouping(payload.grouping);
+    const fields: Record<string, typeof historyField | typeof citationState> = {history: historyField};
+    if (payload.state.citations) fields.citations = citationState;
+    observed.payloadValidationMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    const original = EditorState.fromJSON(payload.state, {extensions: historyDecodingExtensions}, fields);
+    observed.firstStateMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
+    if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
+    const history = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
+    observed.roundtripAndEffectsMilliseconds = performance.now() - stageStartedAt;
+    observed.doneEvents = history.done.length;
+    observed.undoneEvents = history.undone.length;
+    stageStartedAt = performance.now();
+    // Public field initialization installs the validated CodeMirror value. No
+    // additional field becomes a second owner of text, selections or history.
+    const state = EditorState.fromJSON(payload.state, {extensions: [historyField.init(() => history), extensions]},
+      payload.state.citations ? {citations: citationState} : undefined)
+      .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+    observed.finalStateMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    checkedHistory(state);
+    if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
+    observed.finalAdmissionMilliseconds = performance.now() - stageStartedAt;
+    stageStartedAt = performance.now();
+    validateHistoryBranches(state, history, source);
+    observed.branchesMilliseconds = performance.now() - stageStartedAt;
+    observed.completed = 1;
+    return state;
+  } finally {
+    recordEditorMetric("recovery-restore", startedAt, observed);
+  }
 }

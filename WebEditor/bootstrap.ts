@@ -24,30 +24,49 @@ export function createMarkdownDocumentState(source: string, extensions: Extensio
 
 /** Build the complete recovered state before the live view installs it. */
 export function restoreMarkdownDocumentState(snapshot: RecoverySnapshot, extensions: Extension[]) {
-  const selection = EditorSelection.create(snapshot.ranges.map(range => EditorSelection.range(range.anchor, range.head)));
-  if (snapshot.stateJSON) {
-    try {
-      const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
-      const citations = restored.field(citationState);
-      if (!citationDataEqual(citations?.data, snapshot.citationData)
-          || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID
-          || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
-        throw new Error("Citation history mismatch");
+  const startedAt = performance.now();
+  const observed: Record<string, number> = {rangeCount: snapshot.ranges.length, historyPreserved: 0, completed: 0};
+  try {
+    const selection = EditorSelection.create(snapshot.ranges.map(range => EditorSelection.range(range.anchor, range.head)));
+    observed.selectionMilliseconds = performance.now() - startedAt;
+    if (snapshot.stateJSON) {
+      const historyStartedAt = performance.now();
+      try {
+        const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
+        observed.codecMilliseconds = performance.now() - historyStartedAt;
+        const bindingStartedAt = performance.now();
+        const citations = restored.field(citationState);
+        if (!citationDataEqual(citations?.data, snapshot.citationData)
+            || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID
+            || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
+          throw new Error("Citation history mismatch");
+        }
+        // A detached save can advance the disk baseline without changing the
+        // draft's semantic data or Undo. Rebase only that nonhistory boundary.
+        const state = restored.update({selection,
+          effects: snapshot.citationSnapshot
+            ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
+          annotations: Transaction.addToHistory.of(false),
+        }).state;
+        observed.bindingMilliseconds = performance.now() - bindingStartedAt;
+        observed.historyPreserved = 1;
+        observed.completed = 1;
+        return {state, historyPreserved: true};
+      } catch {
+        observed.failedHistoryAttemptMilliseconds = performance.now() - historyStartedAt;
+        // Exact source remains recoverable when the history codec refuses it.
       }
-      // A detached save can advance the disk baseline without changing the
-      // draft's semantic data or Undo. Rebase only that nonhistory boundary.
-      const state = restored.update({selection,
-        effects: snapshot.citationSnapshot
-          ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
-        annotations: Transaction.addToHistory.of(false),
-      }).state;
-      return {state, historyPreserved: true};
-    } catch { /* Exact source remains recoverable when the history codec refuses it. */ }
+    }
+    const fallbackStartedAt = performance.now();
+    const state = createMarkdownDocumentState(snapshot.source, extensions, {
+      selection, citationSnapshot: snapshot.citationSnapshot, citationData: snapshot.citationData,
+    });
+    observed.fallbackMilliseconds = performance.now() - fallbackStartedAt;
+    observed.completed = 1;
+    return {state, historyPreserved: false};
+  } finally {
+    recordEditorMetric("recovery-composition", startedAt, observed);
   }
-  const state = createMarkdownDocumentState(snapshot.source, extensions, {
-    selection, citationSnapshot: snapshot.citationSnapshot, citationData: snapshot.citationData,
-  });
-  return {state, historyPreserved: false};
 }
 
 export function createMarkdownEditor(parent: HTMLElement, extensions: Extension[]) {

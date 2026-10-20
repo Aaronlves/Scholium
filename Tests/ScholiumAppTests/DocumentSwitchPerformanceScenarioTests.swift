@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import ScholiumContracts
 import SwiftUI
@@ -10,7 +11,8 @@ import WebKit
 #if DEBUG
     /// Diagnostic boundaries only: the session store, editor representable,
     /// demand renderer and hidden native layout. No Window navigation queue,
-    /// Application hydration, disk save, native focus, paint or RSS is measured.
+    /// Application hydration, disk save, native focus or paint is measured.
+    /// The separate live-page experiment reports current-process RSS only.
     @MainActor
     @Suite("Hidden document switching diagnostics", .serialized)
     struct DocumentSwitchPerformanceScenarioTests {
@@ -93,6 +95,124 @@ import WebKit
                 try await harness.assertExactSource(a, expected: a.source)
                 #expect(b.model.editorSession.checkedSource.utf8.elementsEqual(b.source.utf8))
             }
+        }
+
+        @Test(
+            "Compare reconstruction with two retained live native editor pages",
+            .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_DOCUMENT_LIVE_SWITCH"] == "1"))
+        func recentLiveEditorPages() async throws {
+            // Select one strategy per process so prior WebKit/allocator work
+            // from the other strategy cannot become its memory baseline.
+            let retainsLivePages = ProcessInfo.processInfo.environment["SCHOLIUM_DOCUMENT_SWITCH_RETAIN_LIVE"] == "1"
+            let strategy = retainsLivePages ? "live-two-pages" : "capture-remount"
+            let initialRSS = try Self.currentProcessRSS()
+            print("DocumentLiveMemory strategy=\(strategy) phase=before current_process_rss_bytes=\(initialRSS) webcontent_measured=0")
+            try await withHarness(retainsLivePages: retainsLivePages) { harness in
+                let a = harness.documents[0]
+                let b = harness.documents[1]
+                a.model.beginEditing(in: .livePreview)
+                b.model.beginEditing(in: .livePreview)
+                try await harness.show(a)
+                let editedA = a.source + "Additional synthetic paragraph 😀.\r\n"
+                try await harness.edit(a, replacing: a.source, with: editedA)
+                let selectionA = try await harness.selection(a)
+                let viewportA = try #require(try await a.model.editorSession.currentScrollAnchor())
+                var selectionB: [MarkdownEditorSelectionRange]?
+                let initialTransport = a.model.editorSession.sessionID
+                let firstPageA = ObjectIdentifier(try #require(a.model.editorSession.webView))
+                var firstPageB: ObjectIdentifier?
+                var transportB: UUID?
+                var pageTokens = Set([try await harness.pageToken(a)])
+
+                // Keep production capture in both arms. Only the incoming
+                // presentation's lifetime changes; no lighter recovery proof
+                // or hypothetical product eviction policy is substituted.
+                for index in 0..<22 {
+                    let target = index.isMultiple(of: 2) ? b : a
+                    let expected = target === a ? editedA : b.source
+                    let prior = try #require(harness.attachment.current)
+                    let start = ContinuousClock.now
+                    try await prior.model.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+                    let captured = ContinuousClock.now
+                    if !retainsLivePages {
+                        harness.attachment.current = nil
+                        try await harness.wait("outgoing editor detach") { !prior.model.editorSession.hasAttachedWebView }
+                    }
+                    try await harness.show(target, expectedSource: expected)
+                    let ranges = try await harness.selection(target)
+                    let settled = ContinuousClock.now
+
+                    if target === a {
+                        #expect(ranges == selectionA)
+                        #expect(target.model.editorSession.isDirty)
+                        #expect(try await harness.hasUndo(target))
+                        let restoredViewport = try #require(try await target.model.editorSession.currentScrollAnchor())
+                        #expect(restoredViewport.sourceFingerprint == viewportA.sourceFingerprint)
+                        #expect(restoredViewport.blockUTF16LowerBound == viewportA.blockUTF16LowerBound)
+                        #expect(restoredViewport.blockUTF16UpperBound == viewportA.blockUTF16UpperBound)
+                    } else if let selectionB {
+                        #expect(ranges == selectionB)
+                    } else {
+                        selectionB = ranges
+                    }
+                    #expect(!b.model.editorSession.isDirty)
+                    #expect(a.model.editorSession.checkedSource.utf8.elementsEqual(editedA.utf8))
+                    #expect(b.model.editorSession.checkedSource.utf8.elementsEqual(b.source.utf8))
+                    #expect(harness.totalInitializations == (retainsLivePages ? 2 : index + 2))
+                    #expect(harness.store.qaDiagnosticCounts.retained == 2)
+                    #expect(harness.store.qaDiagnosticCounts.leased == 2)
+                    #expect(harness.store.qaDiagnosticCounts.attachedWebView == (retainsLivePages ? 2 : 1))
+                    #expect(harness.pool.qaDiagnosticCounts.waiting == 0)
+                    #expect(await harness.cache.entryCount(workspaceID: harness.workspaceID) == 0)
+                    if retainsLivePages {
+                        if firstPageB == nil {
+                            firstPageB = ObjectIdentifier(try #require(b.model.editorSession.webView))
+                            transportB = b.model.editorSession.sessionID
+                        }
+                        #expect(ObjectIdentifier(try #require(a.model.editorSession.webView)) == firstPageA)
+                        #expect(ObjectIdentifier(try #require(b.model.editorSession.webView)) == firstPageB)
+                        #expect(a.model.editorSession.sessionID == initialTransport)
+                        #expect(b.model.editorSession.sessionID == transportB)
+                        try harness.assertLiveIsolation(active: target, retained: prior)
+                    }
+                    let token = try await harness.pageToken(target)
+                    let fresh = pageTokens.insert(token).inserted
+                    // Memory reads are outside the interval. Like the old
+                    // scenario, its endpoint includes editorReady's exact-source
+                    // and DOM geometry checks, not a visible-paint event.
+                    let rss = try Self.currentProcessRSS()
+                    print(
+                        "DocumentLiveSwitch boundary=capture-presentation-layout strategy=\(strategy) index=\(index) phase=\(index < 2 ? "warmup" : "retained") "
+                            + "page=\(fresh ? "fresh" : "reused") captureMs=\(Self.milliseconds(start.duration(to: captured))) "
+                            + "presentationMs=\(Self.milliseconds(captured.duration(to: settled))) totalMs=\(Self.milliseconds(start.duration(to: settled))) "
+                            + "pages=\(pageTokens.count) initialize=\(harness.totalInitializations) sourceBytes=\(expected.utf8.count) "
+                            + "attached=\(harness.store.qaDiagnosticCounts.attachedWebView) current_process_rss_bytes=\(rss) webcontent_measured=0")
+                    if index == 0 {
+                        try await harness.undo(b)
+                        try await harness.assertExactSource(b, expected: b.source)
+                        #expect(!b.model.editorSession.isDirty)
+                    }
+                }
+                if let pauseValue = ProcessInfo.processInfo.environment["SCHOLIUM_DOCUMENT_SWITCH_MEMORY_PAUSE_SECONDS"] {
+                    let seconds = try #require(Int(pauseValue))
+                    try #require((1...30).contains(seconds))
+                    print("DocumentLiveMemory strategy=\(strategy) phase=settled pid=\(getpid()) pause_seconds=\(seconds)")
+                    fflush(nil)
+                    if let readyPath = ProcessInfo.processInfo.environment["SCHOLIUM_DOCUMENT_SWITCH_MEMORY_READY_PATH"] {
+                        try Data(String(getpid()).utf8).write(to: URL(fileURLWithPath: readyPath), options: .atomic)
+                    }
+                    try await Task.sleep(for: .seconds(seconds))
+                }
+                #expect(harness.attachment.current === a)
+                #expect(pageTokens.count == 2)
+                #expect((a.model.editorSession.sessionID == initialTransport) == retainsLivePages)
+                #expect(try await harness.hasUndo(a))
+                try await harness.undo(a)
+                try await harness.assertExactSource(a, expected: a.source)
+                #expect(b.model.editorSession.checkedSource.utf8.elementsEqual(b.source.utf8))
+            }
+            let finalRSS = try Self.currentProcessRSS()
+            print("DocumentLiveMemory strategy=\(strategy) phase=closed current_process_rss_bytes=\(finalRSS) webcontent_measured=0")
         }
 
         @Test(
@@ -198,8 +318,8 @@ import WebKit
             }
         }
 
-        private func withHarness(_ operation: @MainActor (HiddenHarness) async throws -> Void) async throws {
-            let harness = HiddenHarness()
+        private func withHarness(retainsLivePages: Bool = false, _ operation: @MainActor (HiddenHarness) async throws -> Void) async throws {
+            let harness = HiddenHarness(retainsLivePages: retainsLivePages)
             do {
                 try await operation(harness)
                 await harness.closeAndDrain()
@@ -212,6 +332,19 @@ import WebKit
         private static func milliseconds(_ duration: Duration) -> Double {
             let components = duration.components
             return Double(components.seconds) * 1_000 + Double(components.attoseconds) / 1_000_000_000_000_000
+        }
+
+        private static func currentProcessRSS() throws -> UInt64 {
+            var info = mach_task_basic_info_data_t()
+            var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
+            let capacity = Int(count)
+            let status = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: capacity) {
+                    task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+                }
+            }
+            try #require(status == KERN_SUCCESS)
+            return UInt64(info.resident_size)
         }
 
         @MainActor
@@ -243,6 +376,7 @@ import WebKit
         @MainActor
         private final class Attachment: ObservableObject {
             @Published var current: FixtureDocument?
+            @Published var mounted: [FixtureDocument] = []
         }
 
         @MainActor
@@ -255,11 +389,13 @@ import WebKit
             let window: NSWindow
             private var hosting: NSHostingController<Root>?
             private var closed = false
+            private let retainsLivePages: Bool
             var rendererCalls = 0
             var pool: MarkdownEditorWebViewPool { store.editorWebViewPool }
             var totalInitializations: Int { documents.reduce(0) { $0 + $1.dispatcher.initializations } }
 
-            init() {
+            init(retainsLivePages: Bool = false) {
+                self.retainsLivePages = retainsLivePages
                 _ = NSApplication.shared
                 let vaultID = UUID()
                 documents = ["A", "B"].map {
@@ -271,6 +407,10 @@ import WebKit
                 window.isReleasedWhenClosed = false
                 for document in documents {
                     if let key = document.model.key { store.receiveSession(document.model, for: .workspace(key)) }
+                    // The production pool owns one active runtime. A second
+                    // simultaneous fixture page must use its ordinary fresh
+                    // construction instead of waiting for the first to detach.
+                    if retainsLivePages { document.model.editorSession.webViewPool = nil }
                 }
                 store.reconcileLeases(openTargets: documents.compactMap { $0.model.key.map(DocumentEditingTarget.workspace) }, foregroundTarget: nil)
                 let controller = NSHostingController(rootView: Root(attachment: attachment))
@@ -285,6 +425,10 @@ import WebKit
             }
 
             func show(_ document: FixtureDocument, expectedSource: String? = nil) async throws {
+                if retainsLivePages {
+                    try await showLive(document, expectedSource: expectedSource ?? document.source)
+                    return
+                }
                 let oldTransport = document.model.editorSession.sessionID
                 attachment.current = document
                 hosting?.view.layoutSubtreeIfNeeded()
@@ -299,6 +443,46 @@ import WebKit
                         expectedMode: document.model.retainedEditorMode)
                 }
                 #expect(!window.isVisible)
+            }
+
+            private func showLive(_ document: FixtureDocument, expectedSource: String) async throws {
+                let editor = document.model.editorSession
+                let transport = editor.sessionID
+                let previousPage = editor.webView
+                let alreadyMounted = attachment.mounted.contains { $0 === document }
+                if !alreadyMounted { attachment.mounted.append(document) }
+                attachment.current = document
+                hosting?.view.layoutSubtreeIfNeeded()
+                if alreadyMounted {
+                    try #require(editor.webView != nil && editor.webView === previousPage && editor.sessionID == transport)
+                    if let suspensionID = editor.detachmentSuspensionID {
+                        // This is the same production resumption used by
+                        // DocumentController for an attached retained tab.
+                        try await editor.resumeAfterDetachment(suspensionID: suspensionID)
+                    }
+                } else {
+                    try await wait("new live target transport attachment") {
+                        editor.hasAttachedWebView && editor.sessionID != transport
+                            && editor.documentID == editor.bridgeDocumentID
+                    }
+                }
+                try await editorReady(document, expectedSource: expectedSource, expectedMode: document.model.retainedEditorMode)
+                #expect(attachment.mounted.count <= 2 && !window.isVisible)
+            }
+
+            func assertLiveIsolation(active: FixtureDocument, retained: FixtureDocument) throws {
+                let activeWeb = try #require(active.model.editorSession.webView as? DocumentNativeWebView)
+                let retainedWeb = try #require(retained.model.editorSession.webView as? DocumentNativeWebView)
+                let activeContainer = try #require(container(for: activeWeb))
+                let retainedContainer = try #require(container(for: retainedWeb))
+                #expect(activeWeb.window === window && retainedWeb.window === window)
+                #expect(activeContainer.surfaceVisibility == .active && activeWeb.documentSurfaceAllowsInput)
+                #expect(activeContainer.accessibilityChildren()?.isEmpty == false)
+                #expect(retainedContainer.surfaceVisibility == .retained && retainedContainer.isHidden && retainedWeb.isHidden)
+                #expect(!retainedWeb.documentSurfaceAllowsInput && !retainedWeb.acceptsFirstResponder && !retainedWeb.canBecomeKeyView)
+                #expect(retainedContainer.accessibilityChildren()?.isEmpty == true)
+                #expect(retainedContainer.hitTest(NSPoint(x: retainedContainer.bounds.midX, y: retainedContainer.bounds.midY)) == nil)
+                #expect(retained.model.editorSession.detachmentSuspensionID != nil)
             }
 
             func editorReady(_ document: FixtureDocument, expectedSource: String, expectedMode: MarkdownEditorMode) async throws {
@@ -450,6 +634,7 @@ import WebKit
                 closed = true
                 #expect(!window.isVisible)
                 attachment.current = nil
+                attachment.mounted = []
                 window.contentViewController = nil
                 hosting = nil
                 window.close()
@@ -470,7 +655,17 @@ import WebKit
         private struct Root: View {
             @ObservedObject var attachment: Attachment
             var body: some View {
-                if let document = attachment.current {
+                if !attachment.mounted.isEmpty {
+                    ZStack {
+                        ForEach(attachment.mounted, id: \.model.editorSession.bridgeDocumentID) { document in
+                            let isActive = attachment.current === document
+                            Surface(document: document, model: document.model, editorVisibility: isActive ? .active : .retained)
+                                .allowsHitTesting(isActive)
+                                .accessibilityHidden(!isActive)
+                                .zIndex(isActive ? 1 : 0)
+                        }
+                    }
+                } else if let document = attachment.current {
                     Surface(document: document, model: document.model).id(document.model.editorSession.bridgeDocumentID)
                 } else {
                     Color.clear
@@ -481,6 +676,7 @@ import WebKit
         private struct Surface: View {
             let document: FixtureDocument
             @ObservedObject var model: DocumentSessionModel
+            var editorVisibility: DocumentSurfaceVisibility? = nil
             var body: some View {
                 let editor = model.editorSession
                 let fingerprint = DocumentFingerprint(content: document.source).sha256
@@ -517,6 +713,9 @@ import WebKit
                         onLinkActivation: { _ in }, onImagePreview: { _ in },
                         onScrollFractionChange: { model.observeScrollFraction($0, on: .editor) },
                         onScrollAnchorChange: { model.observeScrollAnchor($0, on: .editor) })
+                        .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
+                            if let editorVisibility { visibility = editorVisibility }
+                        }
                 }
             }
         }

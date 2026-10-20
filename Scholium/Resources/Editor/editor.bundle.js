@@ -33162,6 +33162,12 @@ ${blankRow(table.position.columnCount)}`;
     return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
   }
   var historyError = () => new Error("Incompatible exact history metadata");
+  var historyDecodingExtensions = [
+    historyField,
+    citationState,
+    EditorState.allowMultipleSelections.of(true),
+    EditorState.lineSeparator.of("\n")
+  ];
   var ownKeys = (value, keys2) => {
     const actual = Object.keys(value).sort(), expected = [...keys2].sort();
     return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
@@ -33352,12 +33358,7 @@ ${blankRow(table.position.columnCount)}`;
       const serializedState = { ...base2, history: encodedHistory };
       const fields = { history: historyField };
       if (citationFields) fields.citations = citationState;
-      const decoded = EditorState.fromJSON(serializedState, { extensions: [
-        historyField,
-        citationState,
-        EditorState.allowMultipleSelections.of(true),
-        EditorState.lineSeparator.of("\n")
-      ] }, fields);
+      const decoded = EditorState.fromJSON(serializedState, { extensions: historyDecodingExtensions }, fields);
       if (!jsonEqual(decoded.toJSON(fields), serializedState)) throw historyError();
       const roundtrip = attachInverseEffects(decoded, effects, citationTable, encodedHistory, grouping);
       for (const branch of ["done", "undone"]) for (let index = 0; index < history2[branch].length; index++) {
@@ -33375,27 +33376,54 @@ ${blankRow(table.position.columnCount)}`;
     }
   }
   function restoreExactHistory(serialized, source, extensions) {
-    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
-    if (new TextEncoder().encode(serialized).byteLength > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
-    const payload = JSON.parse(serialized);
-    if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"]) || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"]) || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
-    if (!Array.isArray(payload.citationTable) || !payload.citationTable.every((snapshot) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
-    const grouping = checkedGrouping(payload.grouping);
-    const fields = { history: historyField };
-    if (payload.state.citations) fields.citations = citationState;
-    const original = EditorState.fromJSON(payload.state, { extensions }, fields);
-    if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
-    if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
-    const history2 = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
-    const state = EditorState.fromJSON(
-      payload.state,
-      { extensions: [historyField.init(() => history2), extensions] },
-      payload.state.citations ? { citations: citationState } : void 0
-    ).update({ effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false) }).state;
-    checkedHistory(state);
-    if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
-    validateHistoryBranches(state, history2, source);
-    return state;
+    const startedAt = performance.now();
+    const observed = { sourceUTF16Length: source.length, completed: 0 };
+    let stageStartedAt = startedAt;
+    try {
+      if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+      const historyBytes = new TextEncoder().encode(serialized).byteLength;
+      if (historyBytes > MAX_RECOVERY_HISTORY_BYTES) throw new Error("History is too large");
+      observed.historyBytes = historyBytes;
+      observed.capacityMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      const payload = JSON.parse(serialized);
+      observed.parseMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      if (!payload || !ownKeys(payload, ["state", "effects", "citationTable", "grouping"]) || !payload.state || !payload.state.history || !ownKeys(payload.state.history, ["done", "undone"]) || !payload.effects || !ownKeys(payload.effects, ["done", "undone"])) throw historyError();
+      if (!Array.isArray(payload.citationTable) || !payload.citationTable.every((snapshot) => snapshot === null || validCitationData(snapshot))) throw new Error("Invalid citation history");
+      const grouping = checkedGrouping(payload.grouping);
+      const fields = { history: historyField };
+      if (payload.state.citations) fields.citations = citationState;
+      observed.payloadValidationMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      const original = EditorState.fromJSON(payload.state, { extensions: historyDecodingExtensions }, fields);
+      observed.firstStateMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      if (original.doc.toString() !== normalizedDocumentText(source)) throw new Error("History does not match the recovered source");
+      if (!jsonEqual(original.toJSON(fields), payload.state)) throw historyError();
+      const history2 = attachInverseEffects(original, payload.effects, payload.citationTable, payload.state.history, grouping);
+      observed.roundtripAndEffectsMilliseconds = performance.now() - stageStartedAt;
+      observed.doneEvents = history2.done.length;
+      observed.undoneEvents = history2.undone.length;
+      stageStartedAt = performance.now();
+      const state = EditorState.fromJSON(
+        payload.state,
+        { extensions: [historyField.init(() => history2), extensions] },
+        payload.state.citations ? { citations: citationState } : void 0
+      ).update({ effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false) }).state;
+      observed.finalStateMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      checkedHistory(state);
+      if (state.field(exactSourceState).text !== source || !jsonEqual(state.toJSON(fields), payload.state)) throw historyError();
+      observed.finalAdmissionMilliseconds = performance.now() - stageStartedAt;
+      stageStartedAt = performance.now();
+      validateHistoryBranches(state, history2, source);
+      observed.branchesMilliseconds = performance.now() - stageStartedAt;
+      observed.completed = 1;
+      return state;
+    } finally {
+      recordEditorMetric("recovery-restore", startedAt, observed);
+    }
   }
 
   // live-projection-index.ts
@@ -36242,29 +36270,46 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     });
   }
   function restoreMarkdownDocumentState(snapshot, extensions) {
-    const selection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
-    if (snapshot.stateJSON) {
-      try {
-        const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
-        const citations = restored.field(citationState);
-        if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
-          throw new Error("Citation history mismatch");
+    const startedAt = performance.now();
+    const observed = { rangeCount: snapshot.ranges.length, historyPreserved: 0, completed: 0 };
+    try {
+      const selection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
+      observed.selectionMilliseconds = performance.now() - startedAt;
+      if (snapshot.stateJSON) {
+        const historyStartedAt = performance.now();
+        try {
+          const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
+          observed.codecMilliseconds = performance.now() - historyStartedAt;
+          const bindingStartedAt = performance.now();
+          const citations = restored.field(citationState);
+          if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
+            throw new Error("Citation history mismatch");
+          }
+          const state2 = restored.update({
+            selection,
+            effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
+            annotations: Transaction.addToHistory.of(false)
+          }).state;
+          observed.bindingMilliseconds = performance.now() - bindingStartedAt;
+          observed.historyPreserved = 1;
+          observed.completed = 1;
+          return { state: state2, historyPreserved: true };
+        } catch {
+          observed.failedHistoryAttemptMilliseconds = performance.now() - historyStartedAt;
         }
-        const state2 = restored.update({
-          selection,
-          effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
-          annotations: Transaction.addToHistory.of(false)
-        }).state;
-        return { state: state2, historyPreserved: true };
-      } catch {
       }
+      const fallbackStartedAt = performance.now();
+      const state = createMarkdownDocumentState(snapshot.source, extensions, {
+        selection,
+        citationSnapshot: snapshot.citationSnapshot,
+        citationData: snapshot.citationData
+      });
+      observed.fallbackMilliseconds = performance.now() - fallbackStartedAt;
+      observed.completed = 1;
+      return { state, historyPreserved: false };
+    } finally {
+      recordEditorMetric("recovery-composition", startedAt, observed);
     }
-    const state = createMarkdownDocumentState(snapshot.source, extensions, {
-      selection,
-      citationSnapshot: snapshot.citationSnapshot,
-      citationData: snapshot.citationData
-    });
-    return { state, historyPreserved: false };
   }
   function createMarkdownEditor(parent, extensions) {
     const stateStartedAt = performance.now();
@@ -44404,14 +44449,36 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return 0;
       }
     })();
-    if (!isEditorRequest(value)) {
+    const admissionStartedAt = performance.now();
+    const admitted = isEditorRequest(value);
+    const admissionEndedAt = performance.now();
+    if (!admitted) {
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes });
       return rejected2("invalid", documentVersion, "malformed editor request");
     }
-    if (value.expiresAt <= Date.now()) return rejected2(value.requestID, documentVersion, "editor request expired");
+    const initializationStages = value.operation.type === "initialize" ? {
+      requestBytes,
+      requestEnvelopeMilliseconds: admissionStartedAt - bridgeStartedAt,
+      admissionMilliseconds: admissionEndedAt - admissionStartedAt
+    } : void 0;
+    const recordInitializationStages = (result, endedAt = performance.now()) => {
+      if (initializationStages) recordEditorMetric(
+        "bridge-dispatch-stages",
+        bridgeStartedAt,
+        { ...initializationStages, accepted: result.accepted ? 1 : 0 },
+        endedAt
+      );
+    };
+    if (value.expiresAt <= Date.now()) {
+      const result = rejected2(value.requestID, documentVersion, "editor request expired");
+      recordInitializationStages(result);
+      return result;
+    }
     const compositionPolicy = compositionRequestPolicy(value.operation.type);
     if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
-      return rejected2(value.requestID, documentVersion, "editor identity cannot change during composition");
+      const result = rejected2(value.requestID, documentVersion, "editor identity cannot change during composition");
+      recordInitializationStages(result);
+      return result;
     }
     if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
       const result = compositionGate.enqueue(value);
@@ -44423,17 +44490,36 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return accepted;
       });
     }
+    const executeStartedAt = performance.now();
     try {
       const result = await executeEditorRequest(value);
-      recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes: encodedByteLength(result) });
+      const resultEnvelopeStartedAt = performance.now();
+      if (initializationStages) initializationStages.executeMilliseconds = resultEnvelopeStartedAt - executeStartedAt;
+      const resultBytes = encodedByteLength(result);
+      const resultEnvelopeEndedAt = performance.now();
+      if (initializationStages) {
+        initializationStages.resultEnvelopeMilliseconds = resultEnvelopeEndedAt - resultEnvelopeStartedAt;
+        initializationStages.resultBytes = resultBytes;
+      }
+      recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes });
+      recordInitializationStages(result, resultEnvelopeEndedAt);
       return result;
     } catch (error) {
+      if (initializationStages) initializationStages.executeMilliseconds = performance.now() - executeStartedAt;
       const result = rejected2(
         value.requestID,
         documentVersion,
         error instanceof Error ? error.message === sourceCapacityMessage ? localized(sourceCapacityMessage) : error.message : "editor request failed"
       );
-      recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes: encodedByteLength(result) });
+      const resultEnvelopeStartedAt = performance.now();
+      const resultBytes = encodedByteLength(result);
+      const resultEnvelopeEndedAt = performance.now();
+      if (initializationStages) {
+        initializationStages.resultEnvelopeMilliseconds = resultEnvelopeEndedAt - resultEnvelopeStartedAt;
+        initializationStages.resultBytes = resultBytes;
+      }
+      recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes, resultBytes });
+      recordInitializationStages(result, resultEnvelopeEndedAt);
       return result;
     }
   }
@@ -44693,7 +44779,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       lastUndoLabel = restored?.historyPreserved ? recovery?.undoLabel : void 0;
       lastRedoLabel = restored?.historyPreserved ? recovery?.redoLabel : void 0;
       lastDocumentFocusTarget = recovery?.focusTarget;
+      const installStartedAt = performance.now();
       editor.setState(state);
+      recordEditorMetric("recovery-live-install", installStartedAt, {
+        recovery: recovery ? 1 : 0,
+        documentLength: state.doc.length,
+        rangeCount: state.selection.ranges.length
+      });
       inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
       inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
       appliedPresentation = presentation;
