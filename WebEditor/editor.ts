@@ -73,7 +73,6 @@ import {
 import {
   EDITOR_PROTOCOL_VERSION,
   type EditorPresentationConfiguration, admitPresentationSources,
-  MAX_RECOVERY_HISTORY_BYTES,
   type EditorCommandResult,
   type EditorContext,
   type EditorFocusTarget,
@@ -86,7 +85,6 @@ import {
   encodedByteLength,
   generationCanExecuteEditorRequest,
   isEditorRequest,
-  recoveryGenerationCanReplaceCurrent,
   rejected as rejectedCommand,
 } from "./protocol";
 import {
@@ -126,7 +124,7 @@ import {
   normalizedDocumentText,
   replacementChange,
 } from "./state";
-import {captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
+import {captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
   cancelEditorAnnouncement,
@@ -135,7 +133,7 @@ import {
   updateEditorAccessibility,
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
-import {createMarkdownDocumentState, createMarkdownEditor, measureMarkdownEditor} from "./bootstrap";
+import {createMarkdownDocumentState, createMarkdownEditor, measureMarkdownEditor, restoreMarkdownDocumentState} from "./bootstrap";
 import {createMermaidRuntimeLoader} from "./mermaid-runtime-loader";
 import {
   clearEditorPerformanceSamples,
@@ -2340,14 +2338,17 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // an intermediate empty document. Focus belongs to the incoming release.
     editorOperations.blur();
     const stateStartedAt = performance.now();
-    editorOperations.setDocument(
+    const recoveryHistoryPreserved = editorOperations.setDocument(
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
       operation.mode, operation.presentation, operation.initialSelection, operation.citationSnapshot,
+      operation.recovery,
     );
     recordEditorMetric("opening-atomic-state", stateStartedAt, {documentLength: editor.state.doc.length});
     recordEditorMetric("document-load", loadStartedAt, {documentLength: editor.state.doc.length});
     sampleEditorMemory(editor.state.doc.length);
-    return successfulResult(request.requestID);
+    return {...successfulResult(request.requestID), ...(operation.recovery ? {
+      text: exactEditorSource(), recoveryHistoryPreserved,
+    } : {})};
   }
   if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID
       || (request.startingFingerprint !== bridgeFingerprint && !replayedCommit)) {
@@ -2560,60 +2561,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // is source-neutral; a different live token still owns its frozen input.
     if (suspension !== null) editor.dispatch({effects: setEditorSuspension.of(null)});
     return {...successfulResult(request.requestID), text: exactEditorSource()};
-  }
-  case "restoreRecovery": {
-    const snapshot = operation.snapshot;
-    if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint
-        || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion)
-        || !exactSourceFits(snapshot.source)
-        || snapshot.citationSnapshot?.noteID !== editor.state.field(citationState)?.baseline.noteID
-        || snapshot.citationSnapshot?.vaultID !== editor.state.field(citationState)?.baseline.vaultID) {
-      return rejected(request.requestID, documentVersion, "stale recovery snapshot");
-    }
-    const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) =>
-      EditorSelection.range(range.anchor, range.head)));
-    let restoredHistory = false;
-    let recoveredState: EditorState | null = null;
-    if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_RECOVERY_HISTORY_BYTES) {
-      try {
-        const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
-        const citations = restored.field(citationState);
-        if (!citationDataEqual(citations?.data, snapshot.citationData)
-          || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID
-          || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) throw new Error("Citation history mismatch");
-        // A detached save may advance the outer checked disk baseline after
-        // stateJSON was captured. Rebase it without changing semantic Undo.
-        recoveredState = restored.update({selection: recoveredSelection,
-          effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
-          annotations: Transaction.addToHistory.of(false)}).state;
-        restoredHistory = true;
-      } catch { restoredHistory = false; }
-    }
-    if (!recoveredState) {
-      try {
-        recoveredState = createMarkdownDocumentState(snapshot.source, editorExtensions).update({
-        selection: recoveredSelection,
-        effects: [setExactSource.of(snapshot.source), setCitationSnapshot.of(snapshot.citationSnapshot),
-          ...(snapshot.citationSnapshot ? [setCitationData.of(snapshot.citationData)] : [])],
-        annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
-        }).state;
-      } catch {
-        return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
-      }
-    }
-    // Source, history, and the latest exact selection become
-    // visible together. No partially restored state can escape a failed
-    // stateJSON or selection validation path.
-    const restoredMode = configuredEditorMode(editor.state);
-    editor.setState(recoveredState);
-    lastUndoLabel = restoredHistory ? snapshot.undoLabel : undefined;
-    lastRedoLabel = restoredHistory ? snapshot.redoLabel : undefined;
-    lastDocumentFocusTarget = snapshot.focusTarget;
-    editorOperations.setMode(restoredMode);
-    dirty = snapshot.dirty;
-    documentVersion = snapshot.generation;
-    return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory,
-      undoLabel: lastUndoLabel, redoLabel: lastRedoLabel}};
   }
   case "acknowledgeCommittedSnapshot": {
     // Equal expected/committed snapshots only advance the disk base: they
@@ -3098,7 +3045,8 @@ const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string,
     mode: EditorMode, presentation: EditorPresentationConfiguration,
-    initialSelection?: {anchor: number; head: number}, citationSnapshot?: ZoteroCitationSnapshot) {
+    initialSelection?: {anchor: number; head: number}, citationSnapshot?: ZoteroCitationSnapshot,
+    recovery?: RecoverySnapshot) {
     appliedPresentation = null;
     citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;
@@ -3138,26 +3086,34 @@ const editorOperations = {
     if (documentAttachment > 1) clearEditorPerformanceSamples();
     documentVersion = 0;
     // setState destroys old view plugins as well as replacing all fields.
-    // Recovery is a separate, identity-checked operation after initialization.
     document.getElementById("scholium-presentation-css")!.textContent = presentation.presentationCSS;
     document.getElementById("scholium-user-css")!.textContent = presentation.userCSS;
     documentTitle.setTitle(presentation.documentTitle);
     linkPreviews = presentation.linkPreviewGeneration === 0
       ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
     linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
-    const state = createMarkdownDocumentState(text, editorExtensions.map(extension =>
-      extension === initialModeExtension ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension), {
+    const extensions = editorExtensions.map(extension => extension === initialModeExtension
+      ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension);
+    // Both branches construct against the incoming presentation and mode.
+    // The live view sees only the final exact source, history and selections.
+    const restored = recovery ? restoreMarkdownDocumentState(recovery, extensions) : undefined;
+    const state = restored?.state ?? createMarkdownDocumentState(text, extensions, {
       selection: initialSelection ? EditorSelection.single(initialSelection.anchor, initialSelection.head) : undefined,
       citationSnapshot,
     });
+    documentVersion = recovery?.generation ?? 0;
+    lastUndoLabel = restored?.historyPreserved ? recovery?.undoLabel : undefined;
+    lastRedoLabel = restored?.historyPreserved ? recovery?.redoLabel : undefined;
+    lastDocumentFocusTarget = recovery?.focusTarget;
     editor.setState(state);
     inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
     inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
     appliedPresentation = presentation;
     updateEditorAccessibility(editor.contentDOM, mode, currentEditorContext());
-    dirty = false;
+    dirty = recovery?.dirty ?? false;
     lastInteractionAvailabilitySignature = null;
     scheduleEditorInteractionReport(true);
+    return restored?.historyPreserved;
   },
 
   /** @param {string} mode */

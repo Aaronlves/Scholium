@@ -918,6 +918,7 @@ struct AgentChatDocumentObservationTests {
     @MainActor private final class FakeBridge: MarkdownEditorBridgeDispatching {
         var source = ""
         var citationSnapshot: ZoteroCitationSnapshot?
+        var citationData: ZoteroCitationData?
         var generation = 0
         var interactionRevision = 0
         var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
@@ -953,11 +954,14 @@ struct AgentChatDocumentObservationTests {
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             operations.append(request.operation)
-            if case .initialize(let source, _, _, let selection, let citationSnapshot, _) = request.operation {
+            var initializedRecovery: MarkdownEditorRecoverySnapshot?
+            if case .initialize(let source, _, _, let selection, let citationSnapshot, let recovery, _) = request.operation {
                 self.source = source
                 self.citationSnapshot = citationSnapshot
-                generation = 0
-                selections = selection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                citationData = recovery == nil ? citationSnapshot?.data : recovery?.citationData
+                generation = recovery?.generation ?? 0
+                selections = recovery?.ranges ?? selection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                initializedRecovery = recovery
             }
             if case .documentFind(let query) = request.operation, query.action != .present {
                 // A Find navigation changes only the selection before its reply.
@@ -972,8 +976,12 @@ struct AgentChatDocumentObservationTests {
                 "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "context": try JSONSerialization.jsonObject(with: JSONEncoder().encode(context)),
             ]
-            if let citationData = citationSnapshot?.data {
+            if let citationData {
                 result["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData))
+            }
+            if let initializedRecovery {
+                result["text"] = initializedRecovery.source
+                result["recoveryHistoryPreserved"] = initializedRecovery.undoHistoryPreserved
             }
             if case .documentFind = request.operation {
                 result["find"] = ["current": 0, "total": 1, "replaceable": 1, "canReplaceCurrent": true]

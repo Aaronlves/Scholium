@@ -55,7 +55,7 @@ struct MarkdownEditorCitationStateTests {
                 expectedCitationData: updated.data, committedCitationSnapshot: updated
             ),
         ]
-        #expect(markdownEditorProtocolVersion == 52)
+        #expect(markdownEditorProtocolVersion == 53)
         for operation in operations {
             let encoded = try JSONEncoder().encode(operation)
             #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)

@@ -1014,7 +1014,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
             switch request.operation {
-            case .setPresentation(let configuration), .initialize(_, _, _, _, _, let configuration):
+            case .setPresentation(let configuration), .initialize(_, _, _, _, _, _, let configuration):
                 applied.append(configuration)
             default: break
             }
@@ -10691,7 +10691,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 MarkdownEditorRequest.self,
                 from: Data(requestJSON.utf8)
             )
-            if case .initialize(_, _, _, _, _, let presentation) = request.operation {
+            if case .initialize(_, _, _, _, _, _, let presentation) = request.operation {
                 initialPresentation = presentation
             }
             if holdsBeforeInitialization, !didSuspend, case .initialize = request.operation {
@@ -10703,7 +10703,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 in: webView
             )
             if !didSuspend,
-                case .initialize(_, _, _, .some, _, _) = request.operation
+                case .initialize(_, _, _, .some, _, _, _) = request.operation
             {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }
@@ -10747,7 +10747,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requestJSON: requestJSON,
                 in: webView
             )
-            guard case .initialize(_, _, _, .some, _, _) = request.operation,
+            guard case .initialize(_, _, _, .some, _, _, _) = request.operation,
                 var object = result as? [String: Any]
             else {
                 return result
@@ -10786,7 +10786,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 titleFocusReceipts.append("result: \(String(describing: result)); DOM: \(String(describing: dom))")
             }
             switch request.operation {
-            case .initialize(_, let initialMode, _, _, _, let initial):
+            case .initialize(_, let initialMode, _, _, _, _, let initial):
                 mode = initialMode
                 configuration = initial
             case .setPresentation(let value): configuration = value

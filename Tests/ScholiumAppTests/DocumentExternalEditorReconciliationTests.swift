@@ -357,6 +357,7 @@ struct DocumentExternalEditorReconciliationTests {
     private final class BufferBridge: MarkdownEditorBridgeDispatching {
         var source = ""
         var generation = 0
+        var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
         var suspensionID: String?
         var nextFreeze: CaptureGate?
         var freezeCount = 0
@@ -371,17 +372,21 @@ struct DocumentExternalEditorReconciliationTests {
 
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
-            let selection = ["anchor": 0, "head": 0]
             var result: [String: Any] = [
                 "requestID": request.requestID.uuidString,
-                "interactionRevision": generation, "sourceChanged": false, "selections": [selection], "accepted": true,
+                "interactionRevision": generation, "sourceChanged": false, "accepted": true,
             ]
             switch request.operation {
-            case .initialize(let text, _, _, _, _, _):
+            case .initialize(let text, _, _, let initialSelection, _, let restored, _):
                 source = text
-                generation = 0
+                generation = restored?.generation ?? 0
+                selections = restored?.ranges ?? initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
                 suspensionID = nil
                 initializations += 1
+                if let restored {
+                    result["text"] = restored.source
+                    result["recoveryHistoryPreserved"] = restored.undoHistoryPreserved
+                }
             case .queryText:
                 result["text"] = source
             case .suspendForDetachment(let id):
@@ -390,7 +395,7 @@ struct DocumentExternalEditorReconciliationTests {
                 result["text"] = source
                 result["recovery"] = [
                     "documentID": request.documentID, "fingerprint": request.startingFingerprint,
-                    "generation": generation, "ranges": [selection], "source": source,
+                    "generation": generation, "ranges": selections.map { ["anchor": $0.anchor, "head": $0.head] }, "source": source,
                     "stateJSON": "{}", "undoHistoryPreserved": true, "dirty": generation > 0,
                 ]
                 if let invalid = invalidNextFreeze {
@@ -420,6 +425,7 @@ struct DocumentExternalEditorReconciliationTests {
             default: break
             }
             result["resultingGeneration"] = generation
+            result["selections"] = selections.map { ["anchor": $0.anchor, "head": $0.head] }
             return result
         }
     }

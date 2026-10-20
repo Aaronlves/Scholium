@@ -2,7 +2,7 @@ import {describe, expect, it} from "vitest";
 import {
   EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, MAX_SOURCE_ENVELOPE_BYTES, MAX_RECOVERY_ENVELOPE_BYTES,
   MAX_RECOVERY_HISTORY_BYTES, MAX_RECOVERY_ACTION_LABEL_BYTES, MAX_PRESENTATION_ENVELOPE_BYTES, encodedByteLength, isEditorRequest,
-  admitPresentationSources, generationCanExecuteEditorRequest, recoveryGenerationCanReplaceCurrent, rejected,
+  admitPresentationSources, generationCanExecuteEditorRequest, rejected,
 } from "../protocol";
 
 const request = {
@@ -37,15 +37,19 @@ const dialect = {
   mathematics: {inlineDelimiter: "$", displayDelimiter: "$$", singleDollarInline: true},
 };
 
+const initializeRecovery = (recovery: Record<string, unknown>) => ({...request, knownGeneration: 0,
+  operation: {type: "initialize", text: recovery.source, mode: "source", dialect, presentation, recovery},
+});
+
 describe("editor protocol", () => {
   it("transports escaped recovery history independently of ordinary message limits", () => {
     const stateJSON = JSON.stringify({doc: "\u0000\"\\".repeat(300_000)});
     expect(new TextEncoder().encode(stateJSON).byteLength).toBeGreaterThan(MAX_INBOUND_BYTES);
-    const envelope = {...request, operation: {type: "restoreRecovery", snapshot: {
+    const envelope = initializeRecovery({
       documentID: "document", fingerprint: "fingerprint", generation: 4,
       ranges: [{anchor: 0, head: 0}], source: "", stateJSON, undoHistoryPreserved: true, dirty: true,
-    }}};
-    expect(encodedByteLength(envelope)).toBeLessThan(MAX_RECOVERY_ENVELOPE_BYTES);
+    });
+    expect(encodedByteLength(envelope)).toBeLessThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES + MAX_RECOVERY_ENVELOPE_BYTES);
     expect(MAX_RECOVERY_ENVELOPE_BYTES).toBeGreaterThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_RECOVERY_HISTORY_BYTES * 2);
     expect(isEditorRequest(envelope)).toBe(true);
   });
@@ -55,8 +59,7 @@ describe("editor protocol", () => {
       documentID: "document", fingerprint: "fingerprint", generation: 4,
       ranges: [{anchor: 0, head: 0}], source: "", undoHistoryPreserved: true, dirty: true,
     };
-    const admitted = (labels: Record<string, unknown>) => isEditorRequest({...request,
-      operation: {type: "restoreRecovery", snapshot: {...snapshot, ...labels}}});
+    const admitted = (labels: Record<string, unknown>) => isEditorRequest(initializeRecovery({...snapshot, ...labels}));
     expect(admitted({})).toBe(true);
     expect(admitted({undoLabel: "Paste", redoLabel: "Citation Operation"})).toBe(true);
     const bounded = "😀".repeat(MAX_RECOVERY_ACTION_LABEL_BYTES / 4);
@@ -106,9 +109,9 @@ describe("editor protocol", () => {
     expect(generationCanExecuteEditorRequest("releasePreparation", 3, 4)).toBe(false);
   });
 
-  it("uses the source-free continuation cancellation protocol and rejects its predecessor", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(52);
-    expect(isEditorRequest({...request, protocolVersion: 51})).toBe(false);
+  it("uses the atomic initialization recovery protocol and rejects its predecessor", () => {
+    expect(EDITOR_PROTOCOL_VERSION).toBe(53);
+    expect(isEditorRequest({...request, protocolVersion: 52})).toBe(false);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};
@@ -119,8 +122,7 @@ describe("editor protocol", () => {
     const data = {schemaVersion: 1, fields: [], documentData: "opaque"};
     const committedCitationSnapshot = {...citationSnapshot, status: "available", data,
       sourceFingerprint: {sha256: "a".repeat(64), byteCount: 8}};
-    // Recovered draft bytes may differ from the saved disk baseline before
-    // restoreRecovery supplies the checked draft's semantic data and history.
+    // Recovered draft bytes may differ from the saved disk baseline.
     expect(isEditorRequest({...request, operation: {...operation, text: "A longer recovered draft", citationSnapshot: committedCitationSnapshot}})).toBe(true);
     expect(isEditorRequest({...request, operation: {type: "acknowledgeCommittedSnapshot", expectedText: "Argument", committedText: "Argument",
       committedFingerprint: "a".repeat(64), expectedCitationData: data, committedCitationSnapshot}})).toBe(true);
@@ -322,37 +324,35 @@ describe("editor protocol", () => {
       dirty: true,
       focusTarget: "title",
     };
-    expect(isEditorRequest({
-      ...request,
-      operation: {type: "restoreRecovery", snapshot},
-    })).toBe(true);
-    expect(isEditorRequest({
-      ...request,
-      operation: {
-        type: "restoreRecovery",
-        snapshot: {...snapshot, ranges: [{anchor: 0, head: 5}]},
-      },
-    })).toBe(false);
-    expect(isEditorRequest({
-      ...request,
-      operation: {
-        type: "restoreRecovery",
-        snapshot: {...snapshot, ranges: [{anchor: -1, head: 0}]},
-      },
-    })).toBe(false);
-    expect(isEditorRequest({
-      ...request,
-      operation: {
-        type: "restoreRecovery",
-        snapshot: {...snapshot, focusTarget: "sidebar"},
-      },
-    })).toBe(false);
+    expect(isEditorRequest(initializeRecovery(snapshot))).toBe(true);
+    expect(isEditorRequest(initializeRecovery({...snapshot, ranges: [{anchor: 0, head: 5}]}))).toBe(false);
+    expect(isEditorRequest(initializeRecovery({...snapshot, ranges: [{anchor: -1, head: 0}]}))).toBe(false);
+    expect(isEditorRequest(initializeRecovery({...snapshot, focusTarget: "sidebar"}))).toBe(false);
+    for (const generation of [-1, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(isEditorRequest(initializeRecovery({...snapshot, generation}))).toBe(false);
+    }
   });
 
-  it("does not let a recovery snapshot rewind the current generation", () => {
-    expect(recoveryGenerationCanReplaceCurrent(3, 4)).toBe(false);
-    expect(recoveryGenerationCanReplaceCurrent(4, 4)).toBe(true);
-    expect(recoveryGenerationCanReplaceCurrent(5, 4)).toBe(true);
+  it("binds initialization recovery to exact bytes, outer identity and citation ownership", () => {
+    const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222",
+      status: "available", sourceFingerprint: {sha256: "a".repeat(64), byteCount: 4}, data: {schemaVersion: 1, fields: []}};
+    const recovery = {documentID: "document", fingerprint: "a".repeat(64), generation: 7,
+      source: "\uFEFFDraft Cafe\u0301\r\n尾", ranges: [{anchor: 1, head: 4}, {anchor: 9, head: 11}],
+      undoHistoryPreserved: false, dirty: true, citationSnapshot, citationData: {schemaVersion: 1, fields: [], documentData: "draft"}};
+    const envelope = {...initializeRecovery(recovery), startingFingerprint: recovery.fingerprint};
+    const operation = {...envelope.operation, citationSnapshot};
+    // The saved fingerprint/byte count names the disk baseline, not draft bytes.
+    expect(isEditorRequest({...envelope, operation})).toBe(true);
+    for (const changed of [
+      {...recovery, documentID: "another"}, {...recovery, fingerprint: "b".repeat(64)},
+      {...recovery, source: recovery.source.replace("e\u0301", "é")},
+      {...recovery, citationSnapshot: {...citationSnapshot, noteID: "33333333-3333-3333-3333-333333333333"}},
+      {...recovery, citationSnapshot: {...citationSnapshot, vaultID: "33333333-3333-3333-3333-333333333333"}},
+      {...recovery, citationSnapshot: undefined, citationData: undefined},
+    ]) {
+      expect(isEditorRequest({...envelope, operation: {...operation, recovery: changed}})).toBe(false);
+    }
+    expect(isEditorRequest({...envelope, operation: {...operation, citationSnapshot: undefined}})).toBe(false);
   });
 
   it("authorizes mutations only at their exact document generation", () => {

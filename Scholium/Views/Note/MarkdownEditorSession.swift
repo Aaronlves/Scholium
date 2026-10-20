@@ -2824,28 +2824,35 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         dialect: .current,
                         initialSelection: initialSelection,
                         citationSnapshot: committedCitationSnapshot,
+                        recovery: matchingRecovery,
                         presentation: initialPresentation
                     ),
                     in: webView,
                     requiringRequestEpoch: intendedRequestEpoch
                 )
-                if intendedRequestEpoch == requestEpoch, self.documentID == documentID, self.webView === webView {
-                    PerformanceProbe.shared.markNoteOpeningMilestone(.initialized, attemptID: openingAttempt, editorSessionID: openingSession)
-                }
+                try Task.checkCancellation()
+                guard intendedRequestEpoch == requestEpoch,
+                    self.documentID == documentID, self.webView === webView
+                else { return }
+                PerformanceProbe.shared.markNoteOpeningMilestone(.initialized, attemptID: openingAttempt, editorSessionID: openingSession)
                 deliveredPresentationConfiguration = initialPresentation
                 if initialized.resultingGeneration == initialPresentation.imageResourceGeneration {
                     deliveredImageResources = initialPresentation.imageResources
                 }
-                if let initialSelection {
+                if let initialSelection, matchingRecovery == nil {
                     guard initialized.selections == [initialSelection] else {
                         throw SessionError.invalidResult
                     }
-                    if pendingSourceRange == requestedInitialRange, pendingSourceRangeRevision == initialRangeRevision,
-                        pendingSourceRangeIsDefault == initialRangeIsDefault
-                    {
-                        pendingSourceRange = nil
-                        pendingSourceRangeIsDefault = false
-                    }
+                }
+                // Recovery installs all captured ranges. A default caret may
+                // yield to them, while an explicit navigation request must be
+                // applied by the convergence loop after that atomic install.
+                if matchingRecovery == nil || initialRangeIsDefault,
+                    pendingSourceRange == requestedInitialRange, pendingSourceRangeRevision == initialRangeRevision,
+                    pendingSourceRangeIsDefault == initialRangeIsDefault
+                {
+                    pendingSourceRange = nil
+                    pendingSourceRangeIsDefault = false
                 }
                 if let handoff {
                     try Task.checkCancellation()
@@ -2853,22 +2860,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         self.webView === webView, handoff.commit()
                     else { throw SessionError.staleRequest }
                 }
-                if let snapshot = matchingRecovery,
-                    snapshot.fingerprint == startingFingerprint,
-                    snapshot.source.utf8.elementsEqual(checkedSource.utf8)
-                {
-                    let recovered = try await send(
-                        .restoreRecovery(snapshot),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                    guard intendedRequestEpoch == requestEpoch,
-                        self.documentID == documentID,
-                        self.webView === webView
-                    else { return }
-                    generation = recovered.resultingGeneration
+                if let snapshot = matchingRecovery {
                     updatePublished(\.isDirty, to: snapshot.dirty)
-                    if recovered.recovery?.undoHistoryPreserved == false {
+                    if initialized.recoveryHistoryPreserved == false {
                         updatePresentation {
                             $0.report(
                                 String(
@@ -3320,6 +3314,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 markdownEditorInteractionRevisionIsValid(result.interactionRevision)
             else {
                 throw SessionError.invalidResult
+            }
+
+            if case .initialize(let source, _, _, _, _, let recovery, _) = operation {
+                // Initialization is a checked source install, including an
+                // optional retained generation. Admit its receipt before any
+                // mirror, selection or semantic availability can advance.
+                guard !result.sourceChanged, result.recovery == nil,
+                    result.resultingGeneration == (recovery?.generation ?? 0),
+                    (result.recoveryHistoryPreserved != nil) == (recovery != nil)
+                else { throw SessionError.invalidResult }
+                if let recovery {
+                    guard let text = result.text,
+                        ScholiumExactUTF8.equal(text, source),
+                        result.selections == recovery.ranges,
+                        result.citationData == recovery.citationData
+                    else { throw SessionError.invalidResult }
+                }
             }
 
             // Validate the complete response before changing the checked mirror.

@@ -33,7 +33,7 @@ clean detached sessions atomically; dirty sessions retain exact conflict bytes.
 External events reconcile tabs by stable identity before paths/projections change;
 clean deleted sessions release, unsafe buffers remain.
 
-Opening atomically installs exact source, mode and intent before mounting.
+Opening atomically installs exact source, mode, intent and recovery before mounting.
 Mapped selection and measured geometry precede handoff; failure preserves source
 behind retry/Source. External replacement/Reload serialize with navigation and freeze
 live input before deciding; navigation's freeze defers publications. Comparison

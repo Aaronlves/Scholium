@@ -1521,14 +1521,19 @@ struct ExternalMarkdownWindowLifecycleTests {
                 MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             var text: String?
             var recovery: MarkdownEditorRecoverySnapshot?
+            var recoveryHistoryPreserved: Bool?
             var superseded: Bool?
             switch request.operation {
             case .focus, .focusTitle:
                 focusCount += 1
-            case .initialize(let source, _, _, let initialSelection, _, _):
+            case .initialize(let source, _, _, let initialSelection, _, let restored, _):
                 self.source = source
-                generation = 0
-                selections = initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                generation = restored?.generation ?? 0
+                selections = restored?.ranges ?? initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                if let restored {
+                    text = restored.source
+                    recoveryHistoryPreserved = restored.undoHistoryPreserved
+                }
                 if let pause = nextInitializePause {
                     nextInitializePause = nil
                     await pause.suspend()
@@ -1592,6 +1597,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                 ]
             }
             if let text { result["text"] = text }
+            if let recoveryHistoryPreserved { result["recoveryHistoryPreserved"] = recoveryHistoryPreserved }
             if let superseded { result["commitSuperseded"] = superseded }
             if let recovery {
                 var payload: [String: Any] = [

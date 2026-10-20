@@ -182,7 +182,7 @@ private final class GalleryPreparationBridgeProbe: MarkdownEditorBridgeDispatchi
         }
         let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
         switch request.operation {
-        case .initialize(_, _, _, _, _, let presentation):
+        case .initialize(_, _, _, _, _, _, let presentation):
             initialImageCount = presentation.imageResources.count
             initialized = try JSONDecoder().decode(
                 MarkdownEditorCommandResult.self,

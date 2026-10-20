@@ -878,7 +878,7 @@ private final class InlineImageStartupScrollBarrier: MarkdownEditorBridgeDispatc
         let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
         let configuration: MarkdownEditorPresentationConfiguration?
         switch request.operation {
-        case .setPresentation(let value), .initialize(_, _, _, _, _, let value): configuration = value
+        case .setPresentation(let value), .initialize(_, _, _, _, _, _, let value): configuration = value
         default: configuration = nil
         }
         if let configuration, !configuration.imageResources.isEmpty,

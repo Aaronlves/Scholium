@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 52;
+export const EDITOR_PROTOCOL_VERSION = 53;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {maximumCitationDataBytes, validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -154,6 +154,7 @@ export type EditorOperation =
     initialSelection?: SelectionRange;
     citationSnapshot?: ZoteroCitationSnapshot;
     presentation: EditorPresentationConfiguration;
+    recovery?: RecoverySnapshot;
   }
   | {type: "setPresentation"; value: EditorPresentationConfiguration}
   | {type: "completePreparation"; anchor?: EditorScrollAnchor; fraction?: number}
@@ -173,7 +174,6 @@ export type EditorOperation =
   | {type: "documentFind"; value: DocumentFindQuery}
   | {type: "clearDocumentFind"}
   | {type: "captureRecovery"}
-  | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string; expectedCitationData?: ZoteroCitationData; committedCitationSnapshot?: ZoteroCitationSnapshot}
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
@@ -209,6 +209,7 @@ export interface EditorCommandResult {
   context?: EditorContext;
   selection?: SelectionSnapshot;
   recovery?: RecoverySnapshot;
+  recoveryHistoryPreserved?: boolean;
   scrollAnchor?: EditorScrollAnchor;
   performanceSamples?: EditorPerformanceSample[];
   find?: DocumentFindResult;
@@ -223,7 +224,7 @@ const operationTypes = new Set([
   "setPresentation", "completePreparation", "releasePreparation",
   "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "showPreview", "showSelectionActions", "measureVisibleProjection", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "captureRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -273,16 +274,6 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
   return snapshot.ranges.every((range) => Boolean(range)
     && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength
     && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
-}
-
-/** A recovery snapshot may advance, but never rewind, source authority. */
-export function recoveryGenerationCanReplaceCurrent(
-  snapshotGeneration: number,
-  currentGeneration: number,
-) {
-  return Number.isSafeInteger(snapshotGeneration)
-    && Number.isSafeInteger(currentGeneration)
-    && snapshotGeneration >= currentGeneration;
 }
 
 const forwardReadableOperationTypes = new Set([
@@ -391,6 +382,7 @@ function validOperation(operation: Record<string, unknown>): boolean {
       && (operation.citationSnapshot === undefined || validCitationSnapshot(operation.citationSnapshot))
       && validDialect(operation.dialect)
       && validPresentation(operation.presentation)
+      && (operation.recovery === undefined || validRecoverySnapshot(operation.recovery))
       && validInitialSelection(
         operation.initialSelection,
         operation.text.replaceAll("\r\n", "\n").length,
@@ -423,7 +415,6 @@ function validOperation(operation: Record<string, unknown>): boolean {
       && Number.isFinite(anchor.fallbackFraction)
       && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
   }
-  case "restoreRecovery": return validRecoverySnapshot(operation.snapshot);
   case "acknowledgeCommittedSnapshot":
     return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText)
       && typeof operation.committedText === "string" && exactSourceFits(operation.committedText)
@@ -497,11 +488,17 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   const type = (request.operation as {type?: unknown}).type;
   if (typeof type !== "string" || !operationTypes.has(type)) return false;
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
+  if (request.operation.type === "initialize" && request.operation.recovery) {
+    const {recovery, text, citationSnapshot} = request.operation;
+    if (recovery.source !== text || recovery.documentID !== request.documentID
+        || recovery.fingerprint !== request.startingFingerprint
+        || recovery.citationSnapshot?.noteID !== citationSnapshot?.noteID
+        || recovery.citationSnapshot?.vaultID !== citationSnapshot?.vaultID) return false;
+  }
   try {
-    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-    const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES
+    const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "replacePassage", "pasteClipboard"].includes(type);
+    const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES + MAX_RECOVERY_ENVELOPE_BYTES
       : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES
-      : type === "restoreRecovery" ? MAX_RECOVERY_ENVELOPE_BYTES
       : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
     return encodedByteLength(value) <= maximum;
   } catch { return false; }

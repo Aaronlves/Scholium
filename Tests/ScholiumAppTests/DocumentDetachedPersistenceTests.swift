@@ -777,9 +777,10 @@ struct DocumentDetachedPersistenceTests {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             var text: String?
             var recovery: MarkdownEditorRecoverySnapshot?
+            var recoveryHistoryPreserved: Bool?
             var commitSuperseded: Bool?
             switch request.operation {
-            case .initialize(let source, _, _, let initialSelection, let citationSnapshot, _):
+            case .initialize(let source, _, _, let initialSelection, let citationSnapshot, let restored, _):
                 initializeCount += 1
                 if failNextInitialization {
                     failNextInitialization = false
@@ -787,10 +788,14 @@ struct DocumentDetachedPersistenceTests {
                 }
                 self.source = source
                 self.citationSnapshot = citationSnapshot
-                citationData = citationSnapshot?.data
-                generation = 0
+                citationData = restored == nil ? citationSnapshot?.data : restored?.citationData
+                generation = restored?.generation ?? 0
                 suspensionID = nil
-                selections = initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                selections = restored?.ranges ?? initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
+                if let restored {
+                    text = restored.source
+                    recoveryHistoryPreserved = restored.undoHistoryPreserved
+                }
                 if holdInitializationReply {
                     holdInitializationReply = false
                     await withCheckedContinuation { reply in
@@ -861,6 +866,7 @@ struct DocumentDetachedPersistenceTests {
                 result["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData))
             }
             if let text { result["text"] = text }
+            if let recoveryHistoryPreserved { result["recoveryHistoryPreserved"] = recoveryHistoryPreserved }
             if let commitSuperseded { result["commitSuperseded"] = commitSuperseded }
             if let recovery {
                 var payload: [String: Any] = [

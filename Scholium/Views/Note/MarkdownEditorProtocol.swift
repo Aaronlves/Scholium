@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 52
+let markdownEditorProtocolVersion = 53
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -271,6 +271,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         dialect: MarkdownEditingDialect,
         initialSelection: MarkdownEditorSelectionRange?,
         citationSnapshot: ZoteroCitationSnapshot? = nil,
+        recovery: MarkdownEditorRecoverySnapshot? = nil,
         presentation: MarkdownEditorPresentationConfiguration
     )
     case setPresentation(MarkdownEditorPresentationConfiguration)
@@ -291,7 +292,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case clearDocumentFind
     case suspendForDetachment(suspensionID: String)
     case resumeAfterDetachment(suspensionID: String)
-    case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(
         expected: String, committed: String, fingerprint: String,
         expectedCitationData: ZoteroCitationData? = nil, committedCitationSnapshot: ZoteroCitationSnapshot? = nil)
@@ -310,7 +310,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .finishCitation, .command, .pasteClipboard,
+        case .initialize, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .finishCitation, .command, .pasteClipboard,
             .suspendForDetachment, .resumeAfterDetachment:
             true
         case .documentFind(let query):
@@ -322,22 +322,21 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
 
     var maximumRequestEnvelopeBytes: Int {
         switch self {
-        case .initialize: markdownEditorMaximumSourceEnvelopeBytes + markdownEditorMaximumPresentationEnvelopeBytes
+        case .initialize: markdownEditorMaximumSourceEnvelopeBytes + markdownEditorMaximumPresentationEnvelopeBytes + markdownEditorMaximumRecoveryEnvelopeBytes
         case .setPresentation: markdownEditorMaximumPresentationEnvelopeBytes
-        case .restoreRecovery: markdownEditorMaximumRecoveryEnvelopeBytes
         default: markdownEditorMaximumSourceEnvelopeBytes
         }
     }
 
     var maximumResultEnvelopeBytes: Int {
         switch self {
-        case .captureRecovery, .suspendForDetachment, .restoreRecovery: markdownEditorMaximumRecoveryEnvelopeBytes
+        case .captureRecovery, .suspendForDetachment: markdownEditorMaximumRecoveryEnvelopeBytes
         default: markdownEditorMaximumSourceEnvelopeBytes
         }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot
+        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, recovery
         case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID,
             plainText, selections, transactionID, reference
         case citationSnapshot, expectedCitationData, committedCitationSnapshot, presentation, focusTarget
@@ -348,7 +347,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             announceStatus
         case goToLine, revealSourceRange, selectAll, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor,
             queryPerformance
-        case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
+        case captureRecovery, suspendForDetachment, resumeAfterDetachment, acknowledgeCommittedSnapshot, replacePassage, insertReference,
             beginCitation, citationCallback, finishCitation, cancelCitation, command, pasteClipboard, documentFind, clearDocumentFind,
             markClean, focus,
             focusTitle, blur
@@ -367,6 +366,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                     forKey: .initialSelection
                 ),
                 citationSnapshot: container.decodeIfPresent(ZoteroCitationSnapshot.self, forKey: .citationSnapshot),
+                recovery: container.decodeIfPresent(MarkdownEditorRecoverySnapshot.self, forKey: .recovery),
                 presentation: container.decode(MarkdownEditorPresentationConfiguration.self, forKey: .presentation)
             )
         case .setPresentation:
@@ -403,7 +403,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             self = try .suspendForDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
         case .resumeAfterDetachment:
             self = try .resumeAfterDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
-        case .restoreRecovery: self = try .restoreRecovery(container.decode(MarkdownEditorRecoverySnapshot.self, forKey: .snapshot))
         case .acknowledgeCommittedSnapshot:
             self = try .acknowledgeCommittedSnapshot(
                 expected: container.decode(String.self, forKey: .expectedText),
@@ -463,7 +462,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .initialize(let text, let mode, let dialect, let initialSelection, let citationSnapshot, let presentation):
+        case .initialize(let text, let mode, let dialect, let initialSelection, let citationSnapshot, let recovery, let presentation):
             try container.encode(Kind.initialize, forKey: .type)
             try container.encode(text, forKey: .text)
             try container.encode(mode, forKey: .mode)
@@ -473,6 +472,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 forKey: .initialSelection
             )
             try container.encodeIfPresent(citationSnapshot, forKey: .citationSnapshot)
+            try container.encodeIfPresent(recovery, forKey: .recovery)
             try container.encode(presentation, forKey: .presentation)
         case .setPresentation(let value): try pair(.setPresentation, value, .value, into: &container)
         case .completePreparation(let anchor, let fraction):
@@ -509,7 +509,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try pair(.suspendForDetachment, suspensionID, .suspensionID, into: &container)
         case .resumeAfterDetachment(let suspensionID):
             try pair(.resumeAfterDetachment, suspensionID, .suspensionID, into: &container)
-        case .restoreRecovery(let snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
         case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint, let expectedCitationData, let committedCitationSnapshot):
             try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
             try container.encode(expected, forKey: .expectedText)
@@ -623,6 +622,7 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     var citationManaged: Bool? = nil
     var citationData: ZoteroCitationData? = nil
     var selectionSurfaceID: Int? = nil
+    var recoveryHistoryPreserved: Bool? = nil
     let accepted: Bool
     let error: String?
 }

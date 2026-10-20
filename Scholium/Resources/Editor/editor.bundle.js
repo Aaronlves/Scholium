@@ -32744,7 +32744,7 @@ ${blankRow(table.position.columnCount)}`;
   };
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 52;
+  var EDITOR_PROTOCOL_VERSION = 53;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
@@ -32783,7 +32783,6 @@ ${blankRow(table.position.columnCount)}`;
     "queryScrollAnchor",
     "queryPerformance",
     "captureRecovery",
-    "restoreRecovery",
     "acknowledgeCommittedSnapshot",
     "replacePassage",
     "insertReference",
@@ -32871,9 +32870,6 @@ ${blankRow(table.position.columnCount)}`;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
-  function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
-    return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
-  }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
     "setPresentation",
     "queryText",
@@ -32920,7 +32916,7 @@ ${blankRow(table.position.columnCount)}`;
   function validOperation(operation) {
     switch (operation.type) {
       case "initialize":
-        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validPresentation(operation.presentation) && validInitialSelection(
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && (operation.citationSnapshot === void 0 || validCitationSnapshot(operation.citationSnapshot)) && validDialect(operation.dialect) && validPresentation(operation.presentation) && (operation.recovery === void 0 || validRecoverySnapshot(operation.recovery)) && validInitialSelection(
           operation.initialSelection,
           operation.text.replaceAll("\r\n", "\n").length
         );
@@ -32944,8 +32940,6 @@ ${blankRow(table.position.columnCount)}`;
         const anchor = operation.anchor;
         return Boolean(anchor) && Number.isSafeInteger(anchor?.sourceUTF16Offset) && Number.isSafeInteger(anchor?.blockUTF16LowerBound) && Number.isSafeInteger(anchor?.blockUTF16UpperBound) && typeof anchor?.relativeBlockPosition === "number" && Number.isFinite(anchor.relativeBlockPosition) && anchor.relativeBlockPosition >= 0 && anchor.relativeBlockPosition <= 1 && typeof anchor?.fallbackFraction === "number" && Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction >= 0 && anchor.fallbackFraction <= 1;
       }
-      case "restoreRecovery":
-        return validRecoverySnapshot(operation.snapshot);
       case "acknowledgeCommittedSnapshot":
         return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string" && (operation.expectedCitationData === void 0 || validCitationData(operation.expectedCitationData)) && (operation.committedCitationSnapshot === void 0 || validCitationSnapshot(operation.committedCitationSnapshot));
       case "insertReference": {
@@ -33003,9 +32997,13 @@ ${blankRow(table.position.columnCount)}`;
     const type = request.operation.type;
     if (typeof type !== "string" || !operationTypes.has(type)) return false;
     if (!validOperation(request.operation)) return false;
+    if (request.operation.type === "initialize" && request.operation.recovery) {
+      const { recovery, text, citationSnapshot } = request.operation;
+      if (recovery.source !== text || recovery.documentID !== request.documentID || recovery.fingerprint !== request.startingFingerprint || recovery.citationSnapshot?.noteID !== citationSnapshot?.noteID || recovery.citationSnapshot?.vaultID !== citationSnapshot?.vaultID) return false;
+    }
     try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage", "pasteClipboard"].includes(type);
-      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : type === "restoreRecovery" ? MAX_RECOVERY_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "replacePassage", "pasteClipboard"].includes(type);
+      const maximum = type === "initialize" ? MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES + MAX_RECOVERY_ENVELOPE_BYTES : type === "setPresentation" ? MAX_PRESENTATION_ENVELOPE_BYTES : sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES;
       return encodedByteLength(value) <= maximum;
     } catch {
       return false;
@@ -36149,7 +36147,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     releasePreparation: "reject",
     goToLine: "defer",
     revealSourceRange: "defer",
-    restoreRecovery: "defer",
     acknowledgeCommittedSnapshot: "defer",
     command: "defer",
     documentFind: "defer",
@@ -36237,9 +36234,37 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       extensions: [
         extensions,
         exactSourceState.init(() => new ExactSourceMirror(source)),
-        citationState.init(() => snapshot ? { baseline: snapshot, data: snapshot.data } : void 0)
+        citationState.init(() => snapshot ? {
+          baseline: snapshot,
+          data: initial && "citationData" in initial ? initial.citationData : snapshot.data
+        } : void 0)
       ]
     });
+  }
+  function restoreMarkdownDocumentState(snapshot, extensions) {
+    const selection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
+    if (snapshot.stateJSON) {
+      try {
+        const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
+        const citations = restored.field(citationState);
+        if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
+          throw new Error("Citation history mismatch");
+        }
+        const state2 = restored.update({
+          selection,
+          effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
+          annotations: Transaction.addToHistory.of(false)
+        }).state;
+        return { state: state2, historyPreserved: true };
+      } catch {
+      }
+    }
+    const state = createMarkdownDocumentState(snapshot.source, extensions, {
+      selection,
+      citationSnapshot: snapshot.citationSnapshot,
+      citationData: snapshot.citationData
+    });
+    return { state, historyPreserved: false };
   }
   function createMarkdownEditor(parent, extensions) {
     const stateStartedAt = performance.now();
@@ -43907,7 +43932,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       editingDialect = operation.dialect;
       editorOperations.blur();
       const stateStartedAt = performance.now();
-      editorOperations.setDocument(
+      const recoveryHistoryPreserved = editorOperations.setDocument(
         operation.text,
         request.sessionID,
         request.documentID,
@@ -43915,12 +43940,16 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         operation.mode,
         operation.presentation,
         operation.initialSelection,
-        operation.citationSnapshot
+        operation.citationSnapshot,
+        operation.recovery
       );
       recordEditorMetric("opening-atomic-state", stateStartedAt, { documentLength: editor.state.doc.length });
       recordEditorMetric("document-load", loadStartedAt, { documentLength: editor.state.doc.length });
       sampleEditorMemory(editor.state.doc.length);
-      return successfulResult(request.requestID);
+      return { ...successfulResult(request.requestID), ...operation.recovery ? {
+        text: exactEditorSource(),
+        recoveryHistoryPreserved
+      } : {} };
     }
     if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint && !replayedCommit) {
       return rejected2(request.requestID, documentVersion, "stale editor identity");
@@ -44151,59 +44180,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         if (suspension !== null && suspension !== operation.suspensionID) return rejected2(request.requestID, documentVersion, "stale editor suspension");
         if (suspension !== null) editor.dispatch({ effects: setEditorSuspension.of(null) });
         return { ...successfulResult(request.requestID), text: exactEditorSource() };
-      }
-      case "restoreRecovery": {
-        const snapshot = operation.snapshot;
-        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot?.noteID !== editor.state.field(citationState)?.baseline.noteID || snapshot.citationSnapshot?.vaultID !== editor.state.field(citationState)?.baseline.vaultID) {
-          return rejected2(request.requestID, documentVersion, "stale recovery snapshot");
-        }
-        const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
-        let restoredHistory = false;
-        let recoveredState = null;
-        if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_RECOVERY_HISTORY_BYTES) {
-          try {
-            const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
-            const citations = restored.field(citationState);
-            if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) throw new Error("Citation history mismatch");
-            recoveredState = restored.update({
-              selection: recoveredSelection,
-              effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
-              annotations: Transaction.addToHistory.of(false)
-            }).state;
-            restoredHistory = true;
-          } catch {
-            restoredHistory = false;
-          }
-        }
-        if (!recoveredState) {
-          try {
-            recoveredState = createMarkdownDocumentState(snapshot.source, editorExtensions).update({
-              selection: recoveredSelection,
-              effects: [
-                setExactSource.of(snapshot.source),
-                setCitationSnapshot.of(snapshot.citationSnapshot),
-                ...snapshot.citationSnapshot ? [setCitationData.of(snapshot.citationData)] : []
-              ],
-              annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
-            }).state;
-          } catch {
-            return rejected2(request.requestID, documentVersion, "invalid recovery snapshot");
-          }
-        }
-        const restoredMode = configuredEditorMode(editor.state);
-        editor.setState(recoveredState);
-        lastUndoLabel = restoredHistory ? snapshot.undoLabel : void 0;
-        lastRedoLabel = restoredHistory ? snapshot.redoLabel : void 0;
-        lastDocumentFocusTarget = snapshot.focusTarget;
-        editorOperations.setMode(restoredMode);
-        dirty = snapshot.dirty;
-        documentVersion = snapshot.generation;
-        return { ...successfulResult(request.requestID), recovery: {
-          ...snapshot,
-          undoHistoryPreserved: restoredHistory,
-          undoLabel: lastUndoLabel,
-          redoLabel: lastRedoLabel
-        } };
       }
       case "acknowledgeCommittedSnapshot": {
         if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {
@@ -44662,7 +44638,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   });
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
-    setDocument(text, sessionID, documentID, startingFingerprint, mode, presentation, initialSelection, citationSnapshot) {
+    setDocument(text, sessionID, documentID, startingFingerprint, mode, presentation, initialSelection, citationSnapshot, recovery) {
       appliedPresentation = null;
       citationTransaction?.cancel();
       citationTransaction = null;
@@ -44707,18 +44683,25 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       documentTitle.setTitle(presentation.documentTitle);
       linkPreviews = presentation.linkPreviewGeneration === 0 ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
       linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
-      const state = createMarkdownDocumentState(text, editorExtensions.map((extension) => extension === initialModeExtension ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension), {
+      const extensions = editorExtensions.map((extension) => extension === initialModeExtension ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension);
+      const restored = recovery ? restoreMarkdownDocumentState(recovery, extensions) : void 0;
+      const state = restored?.state ?? createMarkdownDocumentState(text, extensions, {
         selection: initialSelection ? EditorSelection.single(initialSelection.anchor, initialSelection.head) : void 0,
         citationSnapshot
       });
+      documentVersion = recovery?.generation ?? 0;
+      lastUndoLabel = restored?.historyPreserved ? recovery?.undoLabel : void 0;
+      lastRedoLabel = restored?.historyPreserved ? recovery?.redoLabel : void 0;
+      lastDocumentFocusTarget = recovery?.focusTarget;
       editor.setState(state);
       inputSuggestions.configureWritingContinuation(presentation.writingContinuationEnabled, presentation.writingContinuationContextKey);
       inputSuggestions.configureWritingIndexContext(presentation.writingIndexContextKey);
       appliedPresentation = presentation;
       updateEditorAccessibility(editor.contentDOM, mode, currentEditorContext());
-      dirty = false;
+      dirty = recovery?.dirty ?? false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
+      return restored?.historyPreserved;
     },
     /** @param {string} mode */
     setMode(mode) {

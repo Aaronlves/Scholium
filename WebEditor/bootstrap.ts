@@ -1,22 +1,53 @@
-import {EditorState, type Extension, type EditorSelection} from "@codemirror/state";
+import {EditorSelection, EditorState, Transaction, type Extension} from "@codemirror/state";
 import {EditorView} from "@codemirror/view";
-import {exactSourceFits, sourceCapacityMessage, exactSourceState} from "./exact-source-history";
+import {exactSourceFits, sourceCapacityMessage, exactSourceState, restoreExactHistory} from "./exact-source-history";
 import {ExactSourceMirror, normalizedDocumentText} from "./state";
-import {citationState, type ZoteroCitationSnapshot} from "./zotero-citation-state";
+import {citationDataEqual, citationState, setCitationData, setCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {recordEditorMetric} from "./performance";
+import type {RecoverySnapshot} from "./protocol";
 
 /** A reused runtime must not transfer document-owned fields or history. */
 export function createMarkdownDocumentState(source: string, extensions: Extension[], initial?: {
   selection?: EditorSelection;
   citationSnapshot?: ZoteroCitationSnapshot;
+  citationData?: ZoteroCitationData;
 }) {
   if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
   const snapshot = initial?.citationSnapshot;
   return EditorState.create({
     doc: normalizedDocumentText(source), selection: initial?.selection,
     extensions: [extensions, exactSourceState.init(() => new ExactSourceMirror(source)),
-      citationState.init(() => snapshot ? {baseline: snapshot, data: snapshot.data} : undefined)],
+      citationState.init(() => snapshot ? {baseline: snapshot,
+        data: initial && "citationData" in initial ? initial.citationData : snapshot.data} : undefined)],
   });
+}
+
+/** Build the complete recovered state before the live view installs it. */
+export function restoreMarkdownDocumentState(snapshot: RecoverySnapshot, extensions: Extension[]) {
+  const selection = EditorSelection.create(snapshot.ranges.map(range => EditorSelection.range(range.anchor, range.head)));
+  if (snapshot.stateJSON) {
+    try {
+      const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, extensions);
+      const citations = restored.field(citationState);
+      if (!citationDataEqual(citations?.data, snapshot.citationData)
+          || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID
+          || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
+        throw new Error("Citation history mismatch");
+      }
+      // A detached save can advance the disk baseline without changing the
+      // draft's semantic data or Undo. Rebase only that nonhistory boundary.
+      const state = restored.update({selection,
+        effects: snapshot.citationSnapshot
+          ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
+        annotations: Transaction.addToHistory.of(false),
+      }).state;
+      return {state, historyPreserved: true};
+    } catch { /* Exact source remains recoverable when the history codec refuses it. */ }
+  }
+  const state = createMarkdownDocumentState(snapshot.source, extensions, {
+    selection, citationSnapshot: snapshot.citationSnapshot, citationData: snapshot.citationData,
+  });
+  return {state, historyPreserved: false};
 }
 
 export function createMarkdownEditor(parent: HTMLElement, extensions: Extension[]) {

@@ -284,6 +284,7 @@ private final class CapturePause {
 private final class ConflictBufferBridge: MarkdownEditorBridgeDispatching {
     var source = ""
     var generation = 0
+    var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
     var citationSnapshot: ZoteroCitationSnapshot?
     var citationData: ZoteroCitationData?
     var suspensionID: String?
@@ -303,13 +304,19 @@ private final class ConflictBufferBridge: MarkdownEditorBridgeDispatching {
         var text: String?
         var recovery = false
         var preservesHistory = false
+        var recoveryHistoryPreserved: Bool?
         switch request.operation {
-        case .initialize(let source, _, _, _, let citationSnapshot, _):
+        case .initialize(let source, _, _, let initialSelection, let citationSnapshot, let restored, _):
             self.source = source
-            generation = 0
+            generation = restored?.generation ?? 0
+            selections = restored?.ranges ?? initialSelection.map { [$0] } ?? [.init(anchor: 0, head: 0)]
             self.citationSnapshot = citationSnapshot
-            citationData = citationSnapshot?.data
+            citationData = restored == nil ? citationSnapshot?.data : restored?.citationData
             suspensionID = nil
+            if let restored {
+                text = restored.source
+                recoveryHistoryPreserved = restored.undoHistoryPreserved
+            }
         case .queryText:
             if let pause = nextQueryPause {
                 nextQueryPause = nil
@@ -330,15 +337,16 @@ private final class ConflictBufferBridge: MarkdownEditorBridgeDispatching {
         var result: [String: Any] = [
             "requestID": request.requestID.uuidString, "resultingGeneration": generation,
             "interactionRevision": generation, "sourceChanged": false,
-            "selections": [["anchor": 0, "head": 0]], "accepted": true,
+            "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] }, "accepted": true,
             "citationManaged": citationSnapshot != nil,
         ]
         if let text { result["text"] = text }
+        if let recoveryHistoryPreserved { result["recoveryHistoryPreserved"] = recoveryHistoryPreserved }
         if let citationData { result["citationData"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationData)) }
         if recovery {
             var payload: [String: Any] = [
                 "documentID": request.documentID, "fingerprint": request.startingFingerprint,
-                "generation": generation, "ranges": [["anchor": 0, "head": 0]],
+                "generation": generation, "ranges": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "source": source, "undoHistoryPreserved": preservesHistory, "dirty": generation > 0, "focusTarget": "editor",
             ]
             if preservesHistory { payload["stateJSON"] = "{}" }
