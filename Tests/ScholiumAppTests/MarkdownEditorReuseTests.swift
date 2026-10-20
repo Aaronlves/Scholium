@@ -88,6 +88,16 @@ struct MarkdownEditorReuseTests {
         #expect(Data(try await sessionA.currentText().utf8) == Data(editedA.utf8))
         let selectionA = try #require(sessionA.context?.selections)
         #expect(sessionA.context?.undoLabel != nil)
+        _ = try await harness.javascript(
+            """
+            const phases = ['document-start', 'bundle-start', 'entry', 'bundle-end'];
+            const began = performance.now();
+            phases.forEach((phase, index) => {
+              const name = `scholium-editor:bootstrap-${phase}`;
+              performance.clearMarks(name);
+              performance.mark(name, {startTime: began + index});
+            });
+            """)
 
         try await harness.hideCapturingState()
         #expect(!sessionA.hasAttachedWebView)
@@ -96,6 +106,14 @@ struct MarkdownEditorReuseTests {
         #expect(try await harness.javascript("return window.reuseTestNavigationSentinel;") as? String == "first-navigation")
         #expect(Data(try await sessionB.currentText().utf8) == Data(sourceB.utf8))
         #expect(sessionB.context?.undoLabel == nil)
+        let samplesB = try await sessionB.queryPerformanceSamples()
+        #expect(!samplesB.contains { $0.name == "bootstrap" })
+        #expect(
+            try await harness.javascript(
+                """
+                return ['document-start', 'bundle-start', 'entry', 'bundle-end'].every(phase =>
+                  performance.getEntriesByName(`scholium-editor:bootstrap-${phase}`).length === 0);
+                """) as? Bool == true)
         try await harness.undo()
         #expect(Data(try await sessionB.currentText().utf8) == Data(sourceB.utf8))
         #expect(Data(sessionA.checkedSource.utf8) == Data(editedA.utf8))
@@ -135,10 +153,12 @@ struct MarkdownEditorReuseTests {
         }
         try await harness.show(a, source: originalA, title: "A", mode: .livePreview)
         let page = try #require(a.webView as? WindowAttachedWebView)
-        _ = try await a.send(.replacePassage(
-            expectedText: originalA, fromUTF16: 0, toUTF16: originalA.utf16.count,
-            replacement: editedA, preserveSelection: false), in: page)
-        _ = try await harness.javascript("""
+        _ = try await a.send(
+            .replacePassage(
+                expectedText: originalA, fromUTF16: 0, toUTF16: originalA.utf16.count,
+                replacement: editedA, preserveSelection: false), in: page)
+        _ = try await harness.javascript(
+            """
             window.handoffResetCount = 0;
             const reset = window.scholiumEditor.prepareForReuse;
             window.scholiumEditor.prepareForReuse = function() {
@@ -290,9 +310,11 @@ struct MarkdownEditorReuseTests {
             try companion.validate(noteID: noteID, vaultID: vaultID, sourceFingerprint: fingerprint)
             let bytes = try encoder.encode(companion)
             #expect(try ZoteroCitationCompanion.decode(bytes) == companion)
-            return (.init(
-                noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(data: bytes),
-                sourceFingerprint: fingerprint, data: data, status: .available), bytes)
+            return (
+                .init(
+                    noteID: noteID, vaultID: vaultID, revision: DocumentFingerprint(data: bytes),
+                    sourceFingerprint: fingerprint, data: data, status: .available), bytes
+            )
         }
         func verifyPair(
             _ session: MarkdownEditorSession, source: String,
@@ -324,7 +346,8 @@ struct MarkdownEditorReuseTests {
         }
         try await harness.show(a, source: sourceA, title: "A", mode: .livePreview)
         let page = try #require(a.webView as? WindowAttachedWebView)
-        _ = try await harness.javascript("""
+        _ = try await harness.javascript(
+            """
             window.managedHandoffResetCount = 0;
             const reset = window.scholiumEditor.prepareForReuse;
             window.scholiumEditor.prepareForReuse = function() {
@@ -332,9 +355,10 @@ struct MarkdownEditorReuseTests {
               return reset.call(this);
             };
             """)
-        _ = try await a.send(.replacePassage(
-            expectedText: sourceA, fromUTF16: sourceA.utf16.count, toUTF16: sourceA.utf16.count,
-            replacement: ordinaryEdit, preserveSelection: false), in: page)
+        _ = try await a.send(
+            .replacePassage(
+                expectedText: sourceA, fromUTF16: sourceA.utf16.count, toUTF16: sourceA.utf16.count,
+                replacement: ordinaryEdit, preserveSelection: false), in: page)
         try await verifyPair(a, source: editedA, fixture: fixtureA)
         try await harness.beginReplacement(
             b, source: sourceB, title: "B", mode: .livePreview, suspendForDetachment: true)
@@ -494,12 +518,14 @@ struct MarkdownEditorReuseTests {
         try await harness.wait("The source-free idle page was not prepared") { pool.hasPreparedView }
         let page = try #require(pool.take())
         #expect(page.editorHandoffLease == nil)
-        #expect(try await page.callAsyncJavaScript(
-            "return document.querySelector('.cm-content').textContent;",
-            arguments: [:], in: nil, contentWorld: .page) as? String == "")
-        #expect(try await page.callAsyncJavaScript(
-            "return document.getElementById('scholium-user-css').textContent;",
-            arguments: [:], in: nil, contentWorld: .page) as? String == "")
+        #expect(
+            try await page.callAsyncJavaScript(
+                "return document.querySelector('.cm-content').textContent;",
+                arguments: [:], in: nil, contentWorld: .page) as? String == "")
+        #expect(
+            try await page.callAsyncJavaScript(
+                "return document.getElementById('scholium-user-css').textContent;",
+                arguments: [:], in: nil, contentWorld: .page) as? String == "")
         await harness.closeAndDrain()
     }
 
@@ -945,9 +971,10 @@ struct MarkdownEditorReuseTests {
             defer { completed = true }
             if !afterExecution { await gate.pauseOnce() }
             if removesRuntime {
-                let removed = try await webView.callAsyncJavaScript(
-                    "window.scholiumEditor = undefined; return typeof window.scholiumEditor === 'undefined';",
-                    arguments: [:], in: nil, contentWorld: .page) as? Bool
+                let removed =
+                    try await webView.callAsyncJavaScript(
+                        "window.scholiumEditor = undefined; return typeof window.scholiumEditor === 'undefined';",
+                        arguments: [:], in: nil, contentWorld: .page) as? Bool
                 try #require(removed == true)
             }
             if rejectsInJavaScript {
@@ -1347,16 +1374,17 @@ struct MarkdownEditorReuseTests {
         }
 
         func scroll(to fraction: Double) async throws {
-            let scrolled = try await javascript(
-                """
-                const scroller = document.querySelector('.cm-scroller');
-                if (!scroller) return false;
-                const extent = scroller.scrollHeight - scroller.clientHeight;
-                if (extent <= 0) return false;
-                scroller.dispatchEvent(new WheelEvent('wheel', {deltaY: 1, bubbles: true}));
-                scroller.scrollTop = extent * fraction;
-                return scroller.scrollTop > 0;
-                """, arguments: ["fraction": fraction]) as? Bool
+            let scrolled =
+                try await javascript(
+                    """
+                    const scroller = document.querySelector('.cm-scroller');
+                    if (!scroller) return false;
+                    const extent = scroller.scrollHeight - scroller.clientHeight;
+                    if (extent <= 0) return false;
+                    scroller.dispatchEvent(new WheelEvent('wheel', {deltaY: 1, bubbles: true}));
+                    scroller.scrollTop = extent * fraction;
+                    return scroller.scrollTop > 0;
+                    """, arguments: ["fraction": fraction]) as? Bool
             try #require(scrolled == true)
         }
 

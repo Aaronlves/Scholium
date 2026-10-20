@@ -8,36 +8,36 @@ import WebKit
 @MainActor
 struct DocumentWebEnvironmentTests {
     #if DEBUG
-    @Test("Appearance waits for a real page and geometry reuses its current colors")
-    func initialPageAndRepeatedLayout() async throws {
-        let web = WKWebView()
-        let host = NSView()
-        host.addSubview(web)
-        let environment = DocumentWebEnvironment(webView: web, hostView: host)
-        environment.refreshAppearance()
-        environment.updateToolbarInset(44)
-        #expect(web.url == nil)
-        #expect(environment.testingProjectionDispatchCount == 0)
-        #expect(environment.testingColorResolutionCount == 0)
+        @Test("Appearance waits for a real page and geometry reuses its current colors")
+        func initialPageAndRepeatedLayout() async throws {
+            let web = WKWebView()
+            let host = NSView()
+            host.addSubview(web)
+            let environment = DocumentWebEnvironment(webView: web, hostView: host)
+            environment.refreshAppearance()
+            environment.updateToolbarInset(44)
+            #expect(web.url == nil)
+            #expect(environment.testingProjectionDispatchCount == 0)
+            #expect(environment.testingColorResolutionCount == 0)
 
-        let navigation = Navigation()
-        web.navigationDelegate = navigation
-        try await navigation.load(web, text: "Synthetic document")
-        #expect(try await toolbarInset(in: web) == "44.0px")
-        let dispatches = environment.testingProjectionDispatchCount
-        let resolutions = environment.testingColorResolutionCount
-        #expect(dispatches > 0)
-        #expect(resolutions > 0)
-        for _ in 0..<5 { environment.updateToolbarInset(44) }
-        #expect(environment.testingProjectionDispatchCount == dispatches)
-        #expect(environment.testingColorResolutionCount == resolutions)
-        environment.updateToolbarInset(28)
-        #expect(try await toolbarInset(in: web) == "28.0px")
-        #expect(environment.testingColorResolutionCount == resolutions)
-        environment.refreshAppearance()
-        #expect(try await toolbarInset(in: web) == "28.0px")
-        #expect(environment.testingColorResolutionCount == resolutions + 1)
-    }
+            let navigation = Navigation()
+            web.navigationDelegate = navigation
+            try await navigation.load(web, text: "Synthetic document")
+            #expect(try await toolbarInset(in: web) == "44.0px")
+            let dispatches = environment.testingProjectionDispatchCount
+            let resolutions = environment.testingColorResolutionCount
+            #expect(dispatches > 0)
+            #expect(resolutions > 0)
+            for _ in 0..<5 { environment.updateToolbarInset(44) }
+            #expect(environment.testingProjectionDispatchCount == dispatches)
+            #expect(environment.testingColorResolutionCount == resolutions)
+            environment.updateToolbarInset(28)
+            #expect(try await toolbarInset(in: web) == "28.0px")
+            #expect(environment.testingColorResolutionCount == resolutions)
+            environment.refreshAppearance()
+            #expect(try await toolbarInset(in: web) == "28.0px")
+            #expect(environment.testingColorResolutionCount == resolutions + 1)
+        }
     #endif
 
     @Test("Reload reapplies native values without owning document content or DOM selection")

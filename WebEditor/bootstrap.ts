@@ -3,6 +3,7 @@ import {EditorView} from "@codemirror/view";
 import {exactSourceFits, sourceCapacityMessage, exactSourceState} from "./exact-source-history";
 import {ExactSourceMirror, normalizedDocumentText} from "./state";
 import {citationState, type ZoteroCitationSnapshot} from "./zotero-citation-state";
+import {recordEditorMetric} from "./performance";
 
 /** A reused runtime must not transfer document-owned fields or history. */
 export function createMarkdownDocumentState(source: string, extensions: Extension[], initial?: {
@@ -19,7 +20,13 @@ export function createMarkdownDocumentState(source: string, extensions: Extensio
 }
 
 export function createMarkdownEditor(parent: HTMLElement, extensions: Extension[]) {
-  return new EditorView({parent, state: EditorState.create({doc: "", extensions})});
+  const stateStartedAt = performance.now();
+  const state = EditorState.create({doc: "", extensions});
+  recordEditorMetric("bootstrap-state", stateStartedAt);
+  const viewStartedAt = performance.now();
+  const view = new EditorView({parent, state});
+  recordEditorMetric("bootstrap-view", viewStartedAt);
+  return view;
 }
 
 /** Completes CodeMirror's real measure even when WebKit animation frames pause. */

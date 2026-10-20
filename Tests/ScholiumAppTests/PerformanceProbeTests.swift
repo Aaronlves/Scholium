@@ -23,6 +23,17 @@ struct PerformanceProbeTests {
                     "documentLength": 500, "semanticMapMilliseconds": 0.5,
                     "private-field": 12, "inlineCount": .infinity,
                 ])
+            let bootstrapFields = [
+                "documentStartToBundleStartMilliseconds": 0.25, "bundleStartToEntryMilliseconds": 0.5,
+                "entryToBundleEndMilliseconds": 0.75, "bundleExecutionMilliseconds": 1.25,
+            ]
+            let bootstrapSamples: [MarkdownEditorPerformanceSample] = [
+                .init(
+                    name: "bootstrap", durationMilliseconds: 1.5,
+                    observed: bootstrapFields.merging(["private-field": 12, "invalid-field": .infinity]) { first, _ in first }),
+                .init(name: "bootstrap-state", durationMilliseconds: 0.25, observed: [:]),
+                .init(name: "bootstrap-view", durationMilliseconds: 0.5, observed: [:]),
+            ]
             var disabled = fixture.environment
             disabled["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = nil
             for (environment, identity) in [
@@ -39,7 +50,7 @@ struct PerformanceProbeTests {
             probe.recordQAEditorWork(Array(repeating: sample, count: 257))
             probe.recordQAEditorWork([.init(name: "untrusted source text", durationMilliseconds: 1, observed: [:])])
             #expect(!FileManager.default.fileExists(atPath: result.path))
-            for _ in 0..<20 { probe.recordQAEditorWork([sample]) }
+            for _ in 0..<20 { probe.recordQAEditorWork([sample] + bootstrapSamples) }
             let data = try Data(contentsOf: result)
             let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
             #expect(lines.count == 16)
@@ -48,6 +59,9 @@ struct PerformanceProbeTests {
                 let values = try #require(object["measurements"] as? [[String: Any]])
                 let observed = try #require(values.first?["observed"] as? [String: Double])
                 #expect(observed == ["documentLength": 500, "semanticMapMilliseconds": 0.5])
+                #expect(values.count == 4)
+                #expect(values.dropFirst().compactMap { $0["name"] as? String } == ["bootstrap", "bootstrap-state", "bootstrap-view"])
+                #expect(values[1]["observed"] as? [String: Double] == bootstrapFields)
             }
             try FileManager.default.removeItem(at: result)
             let protected = fixture.root.appendingPathComponent("untouched.jsonl")
@@ -1663,6 +1677,42 @@ struct PerformanceProbeTests {
             probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == 0)
     }
 
+    @Test("Replacing a page invalidates its active or completed opening without borrowing a later session", arguments: [false, true])
+    func lostPageCannotPublishReloadBootstrap(completed: Bool) throws {
+        let fixture = try noteOpeningFixture(sampleCount: 3) { 10_000_000 }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let sessionID = UUID()
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+        if completed {
+            for phase: PerformanceProbe.NoteOpeningPhase in [
+                .hydrationStarted, .hydrated, .loaded, .stableVisible, .focused,
+            ] {
+                probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+            }
+            #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) != nil)
+        }
+        probe.invalidateNoteOpeningPage(editorSessionID: UUID())
+        if completed {
+            #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) != nil)
+        } else {
+            #expect(probe.currentNoteOpeningAttempt(editorSessionID: sessionID) == attempt)
+        }
+        probe.invalidateNoteOpeningPage(editorSessionID: sessionID)
+        #expect(probe.currentNoteOpeningAttempt(editorSessionID: sessionID) == nil)
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == nil)
+        probe.recordNoteOpeningWebSamples(
+            [.init(name: "bootstrap", durationMilliseconds: 20, observed: [:])], documentID: "Fixture.md")
+        let web = fixture.result.deletingPathExtension().appendingPathExtension("web.jsonl")
+        #expect(!FileManager.default.fileExists(atPath: web.path))
+        let nextSession = UUID()
+        let next = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        #expect(probe.bindNoteOpening(attemptID: next, editorSessionID: nextSession))
+        probe.invalidateNoteOpeningPage(editorSessionID: sessionID)
+        #expect(probe.currentNoteOpeningAttempt(editorSessionID: nextSession) == next)
+    }
+
     @Test("Opening Web diagnostics are bounded, private and bound to the completed sample")
     func noteOpeningWebSamplesAreBoundedAndPrivate() throws {
         var timestamp: UInt64 = 10_000_000
@@ -1704,7 +1754,7 @@ struct PerformanceProbeTests {
         probe.recordNoteOpeningWebSamples([safe], documentID: "Fixture.md", sample: sample + 1)
         #expect(!FileManager.default.fileExists(atPath: web.path))
         let ring =
-            Array(repeating: safe, count: 253) + [
+            Array(repeating: safe, count: 250) + [
                 MarkdownEditorPerformanceSample(
                     name: "startup", durationMilliseconds: 2, observed: ["documentLength": 0]),
                 MarkdownEditorPerformanceSample(
@@ -1713,6 +1763,16 @@ struct PerformanceProbeTests {
                 MarkdownEditorPerformanceSample(
                     name: "projection", durationMilliseconds: 1,
                     observed: ["selectionScoped": 1, "widgetReuseCount": 0]),
+                MarkdownEditorPerformanceSample(
+                    name: "bootstrap", durationMilliseconds: 4,
+                    observed: [
+                        "documentStartToBundleStartMilliseconds": 2, "bundleStartToEntryMilliseconds": 1,
+                        "entryToBundleEndMilliseconds": 1, "bundleExecutionMilliseconds": 2,
+                    ]),
+                MarkdownEditorPerformanceSample(
+                    name: "bootstrap-state", durationMilliseconds: 0, observed: [:]),
+                MarkdownEditorPerformanceSample(
+                    name: "bootstrap-view", durationMilliseconds: 1, observed: [:]),
             ]
         probe.recordNoteOpeningWebSamples(ring, documentID: "Fixture.md", sample: sample)
         let first = try #require(
@@ -1723,6 +1783,7 @@ struct PerformanceProbeTests {
         let values = try #require(first["samples"] as? [[String: Any]])
         #expect(values.count == 256)
         #expect(values.allSatisfy { Set($0.keys) == ["name", "duration_ms", "observed"] })
+        #expect(values.suffix(3).compactMap { $0["name"] as? String } == ["bootstrap", "bootstrap-state", "bootstrap-view"])
         #expect(
             try String(contentsOf: fixture.result, encoding: .utf8).split(separator: "\n").count == 1)
 

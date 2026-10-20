@@ -62,6 +62,11 @@ final class PerformanceProbe {
         case webViewPrepared = "web_view_prepared"
         case sessionPrepared = "session_prepared"
         case containerPrepared = "container_prepared"
+        case bootstrapLoadRequested = "bootstrap_load_requested"
+        case bootstrapLoadReturned = "bootstrap_load_returned"
+        case bootstrapNavigationStarted = "bootstrap_navigation_started"
+        case bootstrapNavigationCommitted = "bootstrap_navigation_committed"
+        case bootstrapNavigationFinished = "bootstrap_navigation_finished"
         case loadScheduled = "load_scheduled"
         case loadStarted = "load_started"
         case initializationRequested = "initialization_requested"
@@ -330,6 +335,13 @@ final class PerformanceProbe {
         noteOpening = nil
     }
 
+    /// A replacement WebContent process has a new JavaScript clock and
+    /// attachment counter. Never join its samples to the lost page's opening.
+    func invalidateNoteOpeningPage(editorSessionID: UUID) {
+        if noteOpening?.editorSessionID == editorSessionID { noteOpening = nil }
+        if completedNoteOpening?.editorSessionID == editorSessionID { completedNoteOpening = nil }
+    }
+
     /// The opening owner has revalidated a retained exact-source snapshot.
     /// Reuse is a distinct source-resolution boundary, never disk hydration.
     func markNoteOpeningSourceReused(attemptID: UUID?, documentID: String) {
@@ -480,6 +492,7 @@ final class PerformanceProbe {
         else { return }
         let allowedNames: Set<String> = [
             "startup", "projection", "projection-index", "exact-source-update", "document-load",
+            "bootstrap", "bootstrap-state", "bootstrap-view",
             "bridge-request",
             "opening-atomic-state", "opening-preparation", "opening-release",
             "memory-sample", "scroll-session", "mode-toggle", "mode-toggle-work", "cached-preview",
@@ -500,6 +513,8 @@ final class PerformanceProbe {
             "literalCount", "tableCount", "calloutCount", "footnoteCount",
             "blockCount", "inlineCount", "mapped", "localProof", "admitted",
             "semanticMapMilliseconds", "derivedMapMilliseconds", "finalizationMilliseconds",
+            "documentStartToBundleStartMilliseconds", "bundleStartToEntryMilliseconds",
+            "entryToBundleEndMilliseconds", "bundleExecutionMilliseconds",
         ]
         guard
             samples.allSatisfy({ value in
@@ -593,6 +608,7 @@ final class PerformanceProbe {
                 "citation-field-validation", "citation-catalog", "citation-projection-admission",
                 "interaction-report-queue", "interaction-context", "bridge-message-post",
                 "startup", "opening-atomic-state", "opening-preparation", "opening-release",
+                "bootstrap", "bootstrap-state", "bootstrap-view",
             ]
             let fields: Set<String> = [
                 "documentLength", "changeCount", "blockCount", "inlineCount", "literalCount",
@@ -614,6 +630,8 @@ final class PerformanceProbe {
                 "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount",
                 "widgetWaitMilliseconds", "widgetWaitCount", "imageWaitMilliseconds", "imageWaitCount",
                 "completed", "expired",
+                "documentStartToBundleStartMilliseconds", "bundleStartToEntryMilliseconds",
+                "entryToBundleEndMilliseconds", "bundleExecutionMilliseconds",
             ]
             let values: [[String: Any]] = samples.compactMap { sample in
                 guard names.contains(sample.name), sample.durationMilliseconds.isFinite,

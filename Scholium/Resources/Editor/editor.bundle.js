@@ -31672,8 +31672,8 @@ ${blankRow(table.position.columnCount)}`;
     samples[sampleStart] = sample;
     sampleStart = (sampleStart + 1) % sampleCapacity;
   }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+  function recordEditorMetric(name2, startedAt, observed = {}, endedAt = performance.now()) {
+    const durationMilliseconds = Math.max(0, endedAt - startedAt);
     const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
     appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
     const measureName = `scholium-editor:${name2}`;
@@ -36242,7 +36242,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     });
   }
   function createMarkdownEditor(parent, extensions) {
-    return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
+    const stateStartedAt = performance.now();
+    const state = EditorState.create({ doc: "", extensions });
+    recordEditorMetric("bootstrap-state", stateStartedAt);
+    const viewStartedAt = performance.now();
+    const view = new EditorView({ parent, state });
+    recordEditorMetric("bootstrap-view", viewStartedAt);
+    return view;
   }
   function measureMarkdownEditor(view, read) {
     return new Promise((resolve, reject) => {
@@ -42109,6 +42115,25 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
 
   // editor.ts
   var editorStartupStartedAt = performance.now();
+  if (performance.getEntriesByName("scholium-editor:bootstrap-bundle-start").length) {
+    performance.mark("scholium-editor:bootstrap-entry");
+  }
+  function recordBootstrapInterval() {
+    const names = ["document-start", "bundle-start", "entry", "bundle-end"].map((phase) => `scholium-editor:bootstrap-${phase}`);
+    const times = names.map((name2) => performance.getEntriesByName(name2).at(-1)?.startTime);
+    names.forEach((name2) => performance.clearMarks(name2));
+    if (documentAttachment > 1) return;
+    if (times.some((time) => time === void 0)) return;
+    const [documentStart, bundleStart, entry, bundleEnd] = times;
+    if (documentStart <= bundleStart && bundleStart <= entry && entry <= bundleEnd) {
+      recordEditorMetric("bootstrap", bundleStart, {
+        documentStartToBundleStartMilliseconds: bundleStart - documentStart,
+        bundleStartToEntryMilliseconds: entry - bundleStart,
+        entryToBundleEndMilliseconds: bundleEnd - entry,
+        bundleExecutionMilliseconds: bundleEnd - bundleStart
+      }, bundleEnd);
+    }
+  }
   var webkitWindow = window;
   var nativeHandler = () => webkitWindow.webkit?.messageHandlers?.scholium;
   var documentAttachment = 0;
@@ -44096,11 +44121,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           ...successfulResult(request.requestID),
           scrollAnchor: scrollCoordinator.currentAnchor()
         };
-      case "queryPerformance":
-        return {
-          ...successfulResult(request.requestID),
-          performanceSamples: editorPerformanceSamples()
-        };
+      case "queryPerformance": {
+        recordBootstrapInterval();
+        return { ...successfulResult(request.requestID), performanceSamples: editorPerformanceSamples() };
+      }
       case "captureRecovery": {
         return { ...successfulResult(request.requestID), recovery: captureRecovery() };
       }

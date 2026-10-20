@@ -150,6 +150,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let reusedWebView {
             webView = reusedWebView
         } else {
+            let measuresBootstrap = PerformanceProbe.shared.measuresNoteOpenToInput
+            if measuresBootstrap {
+                contentController.addUserScript(
+                    WKUserScript(
+                        source: "try { performance.mark('scholium-editor:bootstrap-document-start'); } catch {}",
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: true
+                    ))
+            }
             let editorStartFailure = Self.jsonLiteral(
                 interfaceLocalization.string("The Markdown editor could not start.")
             )
@@ -194,9 +203,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     ))
             }
             if let editorScript {
+                let injectedScript =
+                    measuresBootstrap
+                    ? "try { performance.mark('scholium-editor:bootstrap-bundle-start'); } catch {}\n"
+                        + editorScript
+                        + "\n;try { performance.mark('scholium-editor:bootstrap-bundle-end'); } catch {}"
+                    : editorScript
                 contentController.addUserScript(
                     WKUserScript(
-                        source: editorScript,
+                        source: injectedScript,
                         injectionTime: .atDocumentEnd,
                         forMainFrameOnly: true
                     ))
@@ -307,7 +322,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         } else {
             coordinator.awaitingEditorLoad = true
-            webView.onFirstWindowAttachment = { [weak webView, performanceDocumentID] in
+            webView.onFirstWindowAttachment = { [weak webView, weak coordinator, performanceDocumentID] in
                 guard let webView else { return }
                 PerformanceProbe.shared.markEditActivationAttached(
                     documentID: performanceDocumentID, reusedPage: false
@@ -315,7 +330,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 PerformanceProbe.shared.markNoteOpeningPhase(
                     .attached, attemptID: openingMeasurement, editorSessionID: openingSessionID
                 )
-                webView.loadHTMLString(editorHTML, baseURL: nil)
+                if let coordinator {
+                    coordinator.loadEditorHTML(editorHTML, in: webView)
+                } else {
+                    webView.loadHTMLString(editorHTML, baseURL: nil)
+                }
             }
         }
         let container = PerformanceProbe.shared.measureNoteOpeningWork(
@@ -569,6 +588,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
         private var pageGeneration: UInt64 = 0
+        private struct BootstrapNavigationObservation {
+            let attemptID: UUID
+            let editorSessionID: UUID
+            let pageGeneration: UInt64
+            var navigation: WKNavigation?
+        }
+        private var bootstrapNavigationObservation: BootstrapNavigationObservation?
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var mathRuntimeLoadTask: Task<Void, Never>?
@@ -1051,7 +1077,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         }
 
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            markBootstrapNavigation(.bootstrapNavigationStarted, in: webView, navigation: navigation)
+        }
+
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            markBootstrapNavigation(.bootstrapNavigationCommitted, in: webView, navigation: navigation)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            markBootstrapNavigation(.bootstrapNavigationFinished, in: webView, navigation: navigation)
             // The page and an injected end-of-document script both report
             // readiness. Keep this delegate as a last-resort signal on beta
             // WebKit builds that occasionally drop the first script message.
@@ -1069,6 +1104,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            if activeWebView === webView, session.webView === webView {
+                PerformanceProbe.shared.invalidateNoteOpeningPage(editorSessionID: session.sessionID)
+            }
             pageGeneration &+= 1
             session.webContentProcessTerminated()
             cancelMermaidRuntimeLoad()
@@ -1082,7 +1120,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 session.reportError(String(localized: "The Markdown editor resources could not be reloaded.", table: "Localizable", bundle: .module))
                 return
             }
-            webView.loadHTMLString(editorHTML, baseURL: nil)
+            loadEditorHTML(editorHTML, in: webView)
         }
 
         private func requestMermaidRuntime(in webView: WKWebView) {
@@ -1322,6 +1360,59 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             return .allow
         }
 
+        /// Observe only the first controlled navigation of this attachment.
+        /// Later reloads cannot fill gaps in its diagnostic timeline.
+        func loadEditorHTML(_ editorHTML: String, in webView: WKWebView) {
+            let observation: BootstrapNavigationObservation?
+            if bootstrapNavigationObservation == nil, PerformanceProbe.shared.measuresNoteOpenToInput,
+                let attemptID = noteOpeningAttemptID, let editorSessionID = noteOpeningSessionID
+            {
+                let candidate = BootstrapNavigationObservation(
+                    attemptID: attemptID, editorSessionID: editorSessionID, pageGeneration: pageGeneration)
+                if isCurrentBootstrapObservation(candidate, in: webView) {
+                    observation = candidate
+                    bootstrapNavigationObservation = candidate
+                    PerformanceProbe.shared.markNoteOpeningMilestone(
+                        .bootstrapLoadRequested, attemptID: attemptID, editorSessionID: editorSessionID)
+                } else {
+                    observation = nil
+                }
+            } else {
+                observation = nil
+            }
+            // The load always runs. Diagnostics never gate navigation or ready.
+            let navigation = webView.loadHTMLString(editorHTML, baseURL: nil)
+            if var observation {
+                observation.navigation = navigation
+                bootstrapNavigationObservation = observation
+                if isCurrentBootstrapObservation(observation, in: webView) {
+                    PerformanceProbe.shared.markNoteOpeningMilestone(
+                        .bootstrapLoadReturned, attemptID: observation.attemptID,
+                        editorSessionID: observation.editorSessionID)
+                }
+            }
+        }
+
+        private func isCurrentBootstrapObservation(
+            _ observation: BootstrapNavigationObservation, in webView: WKWebView
+        ) -> Bool {
+            activeWebView === webView && session.webView === webView && webView.navigationDelegate === self
+                && observation.pageGeneration == pageGeneration && observation.attemptID == noteOpeningAttemptID
+                && observation.editorSessionID == noteOpeningSessionID && observation.editorSessionID == session.sessionID
+        }
+
+        private func markBootstrapNavigation(
+            _ milestone: PerformanceProbe.NoteOpeningMilestone, in webView: WKWebView, navigation: WKNavigation?
+        ) {
+            guard let observation = bootstrapNavigationObservation, let navigation,
+                observation.navigation === navigation, isCurrentBootstrapObservation(observation, in: webView)
+            else { return }
+            // These are native callback receipts, not WebContent CPU or process
+            // launch times. A reload cannot complete the first navigation's span.
+            PerformanceProbe.shared.markNoteOpeningMilestone(
+                milestone, attemptID: observation.attemptID, editorSessionID: observation.editorSessionID)
+        }
+
         /// Rebinding never inherits the outgoing document's ready state.
         /// A WebKit process may have died while idle: validate the page after
         /// native attachment, then use the ordinary initialization boundary.
@@ -1341,9 +1432,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 signalReady()
                 return
             }
-            webView.evaluateJavaScript(
-                "typeof window.scholiumEditor?.dispatch === 'function'",
-                in: nil, in: .page
+            webView.callAsyncJavaScript(
+                "return typeof window.scholiumEditor?.dispatch === 'function'",
+                arguments: [:], in: nil, in: .page
             ) { [weak self, weak webView] result in
                 guard let self, let webView, webView.navigationDelegate === self,
                     self.session.webView === webView,
@@ -1353,7 +1444,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     self.signalReady()
                 } else {
                     self.awaitingEditorLoad = true
-                    webView.loadHTMLString(editorHTML, baseURL: nil)
+                    self.loadEditorHTML(editorHTML, in: webView)
                 }
             }
         }
@@ -1365,7 +1456,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             PerformanceProbe.shared.markNoteOpeningPhase(
                 .rendererReady, attemptID: noteOpeningAttemptID, editorSessionID: noteOpeningSessionID
             )
-            session.editorBecameReady()
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)
             session.setLinkPreviews(linkPreviews, in: session.checkedSource)
@@ -1375,6 +1465,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     fallback: initialScrollFraction
                 )
             )
+            // Stage the complete initial presentation and viewport before
+            // declaring the renderer ready for its first initialization.
+            session.editorBecameReady()
         }
 
         /// Persistence rebases the saved preimage without changing the live

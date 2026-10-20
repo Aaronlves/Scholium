@@ -3541,6 +3541,29 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("The first initialization includes prepared styles and link previews")
+    func firstInitializationIncludesPreparedPresentation() async throws {
+        let source = "[[Target]]\n"
+        let css = ":root { --initial-presentation-proof: 1; }"
+        let dispatcher = SuspendingInitialSelectionBridgeDispatcher(holdsBeforeInitialization: true)
+        let harness = EditorHarness(
+            source: source, linkPreviews: [Self.linkPreview(atUTF16: 0)],
+            bridgeDispatcher: dispatcher, initialPresentationCSS: css)
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await dispatcher.waitUntilSuspended()
+        let initial = try #require(dispatcher.initialPresentation)
+        #expect(initial.presentationCSS == css)
+        #expect(initial.linkPreviews.count == 1)
+        #expect(!harness.session.isLoaded)
+        dispatcher.resume()
+        try await harness.waitUntilReady()
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Late Source, title, styles and previews converge before native input is released")
     func latePresentationConvergesBeforeOpeningHandoff() async throws {
         let source = "---\ntags: [draft]\n---\n[[Target]]\n"
@@ -10649,6 +10672,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var continuation: CheckedContinuation<Void, Never>?
         private var didSuspend = false
         private let holdsBeforeInitialization: Bool
+        private(set) var initialPresentation: MarkdownEditorPresentationConfiguration?
 
         init(holdsBeforeInitialization: Bool = false) {
             self.holdsBeforeInitialization = holdsBeforeInitialization
@@ -10667,6 +10691,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 MarkdownEditorRequest.self,
                 from: Data(requestJSON.utf8)
             )
+            if case .initialize(_, _, _, _, _, let presentation) = request.operation {
+                initialPresentation = presentation
+            }
             if holdsBeforeInitialization, !didSuspend, case .initialize = request.operation {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }

@@ -40,9 +40,10 @@ struct DocumentEditingSourceFingerprintTests {
         let generation = editor.generation
         let insertion = "\r\nTyped e\u{301} 😀"
 
-        try #require(editor.acceptEditorChanges(
-            [.init(from: end, to: end, insert: "\nTyped e\u{301} 😀", exactInsert: insertion)],
-            baseGeneration: generation, resultingGeneration: generation + 1))
+        try #require(
+            editor.acceptEditorChanges(
+                [.init(from: end, to: end, insert: "\nTyped e\u{301} 😀", exactInsert: insertion)],
+                baseGeneration: generation, resultingGeneration: generation + 1))
 
         let updated = exact + insertion
         #expect(editor.generation == generation + 1)

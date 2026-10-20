@@ -343,10 +343,11 @@ struct DocumentDetachedPersistenceTests {
 
     @Test("A cancelled capture drains before a retry acquires its own input suspension")
     func cancelledCaptureCannotReleaseRetry() async throws {
-        let fixture = try await makeEditor()
+        let source = "\u{FEFF}Original cafe\u{301} 中文 🦉\r\n"
+        let fixture = try await makeEditor(source: source)
         defer {
+            fixture.dispatcher.releaseSuspensionReply()
             fixture.editor.detach(fixture.webView)
-            fixture.dispatcher.releaseScrollReply()
         }
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         let document = WindowSelectedDocument.workspace(
@@ -364,22 +365,59 @@ struct DocumentDetachedPersistenceTests {
         controller.receiveSessionTransfer(.init(document: document, session: session, snapshot: nil, mode: .source))
         defer { session.cancelScheduledWork() }
         let started = AsyncStream<Void>.makeStream()
-        fixture.dispatcher.holdNextScrollReply = true
-        fixture.dispatcher.scrollDidStart = { started.continuation.yield(()) }
-        let first = Task { try await controller.prepareSessionTransfer(document) }
-        var iterator = started.stream.makeAsyncIterator()
-        _ = await iterator.next()
-        let firstSuspension = try #require(fixture.editor.detachmentSuspensionID)
-        first.cancel()
-        let retry = Task { try await controller.prepareSessionTransfer(document) }
-        fixture.dispatcher.releaseScrollReply()
-        await #expect(throws: CancellationError.self) { try await first.value }
-        try await retry.value
-        let retrySuspension = try #require(fixture.editor.detachmentSuspensionID)
-        #expect(retrySuspension != firstSuspension)
-        #expect(fixture.dispatcher.suspensionID == retrySuspension)
-        #expect(session.detachmentPreparationTask == nil)
-        try await fixture.editor.resumeAfterDetachment(suspensionID: retrySuspension)
+        fixture.dispatcher.holdNextSuspensionReply = true
+        fixture.dispatcher.suspensionDidStart = { started.continuation.yield(()) }
+        let first = Task {
+            defer { started.continuation.finish() }
+            try await controller.prepareSessionTransfer(document)
+        }
+        var retry: Task<Void, Error>?
+        defer {
+            first.cancel()
+            retry?.cancel()
+            fixture.dispatcher.releaseSuspensionReply()
+            fixture.dispatcher.suspensionDidStart = nil
+            started.continuation.finish()
+        }
+        do {
+            var iterator = started.stream.makeAsyncIterator()
+            try #require(await iterator.next() != nil)
+            let firstSuspension = try #require(fixture.editor.detachmentSuspensionID)
+            #expect(fixture.dispatcher.suspensionID == firstSuspension)
+            first.cancel()
+            let retryStarted = AsyncStream<Void>.makeStream()
+            let retryCapture = Task {
+                defer { retryStarted.continuation.finish() }
+                retryStarted.continuation.yield(())
+                try await controller.prepareSessionTransfer(document)
+            }
+            retry = retryCapture
+            var retryIterator = retryStarted.stream.makeAsyncIterator()
+            try #require(await retryIterator.next() != nil)
+            // The first freeze has applied in WebKit, but its reply is still
+            // outstanding. The retry must drain that capture before replacing
+            // its input suspension, independently of optional scroll queries.
+            #expect(fixture.editor.detachmentSuspensionID == firstSuspension)
+            #expect(fixture.dispatcher.suspensionID == firstSuspension)
+            fixture.dispatcher.releaseSuspensionReply()
+            await #expect(throws: CancellationError.self) { try await first.value }
+            try await retryCapture.value
+            let retrySuspension = try #require(fixture.editor.detachmentSuspensionID)
+            #expect(retrySuspension != firstSuspension)
+            #expect(fixture.dispatcher.suspensionID == retrySuspension)
+            #expect(session.detachmentPreparationTask == nil)
+            #expect(Data(fixture.editor.checkedSource.utf8) == Data(source.utf8))
+            #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
+            try await fixture.editor.resumeAfterDetachment(suspensionID: retrySuspension)
+        } catch {
+            first.cancel()
+            retry?.cancel()
+            fixture.dispatcher.releaseSuspensionReply()
+            _ = await first.result
+            if let retry { _ = await retry.result }
+            if let resume = session.detachmentResumeTask { await resume.value }
+            throw error
+        }
     }
 
     enum SaveScenario: CaseIterable {
@@ -636,16 +674,16 @@ struct DocumentDetachedPersistenceTests {
         var suspensionID: String?
         var failNextAcknowledgement = false
         var holdNextResumeReply = false
-        var holdNextScrollReply = false
+        var holdNextSuspensionReply = false
         var holdInitializationReply = false
         var failNextInitialization = false
         var holdNextBlurReply = false
         private(set) var initializeCount = 0
-        var scrollDidStart: (() -> Void)?
+        var suspensionDidStart: (() -> Void)?
         var resumeDidStart: (() -> Void)?
         private(set) var resumeDispatchCount = 0
         private var resumeReply: CheckedContinuation<Void, Never>?
-        private var scrollReply: CheckedContinuation<Void, Never>?
+        private var suspensionReply: CheckedContinuation<Void, Never>?
         private var initializationReply: CheckedContinuation<Void, Never>?
         private var blurReply: CheckedContinuation<Void, Never>?
         private var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
@@ -670,9 +708,9 @@ struct DocumentDetachedPersistenceTests {
             reply?.resume()
         }
 
-        func releaseScrollReply() {
-            let reply = scrollReply
-            scrollReply = nil
+        func releaseSuspensionReply() {
+            let reply = suspensionReply
+            suspensionReply = nil
             reply?.resume()
         }
 
@@ -710,6 +748,13 @@ struct DocumentDetachedPersistenceTests {
             case .suspendForDetachment(let id):
                 suspensionID = id
                 recovery = snapshot(request)
+                if holdNextSuspensionReply {
+                    holdNextSuspensionReply = false
+                    await withCheckedContinuation { reply in
+                        suspensionReply = reply
+                        suspensionDidStart?()
+                    }
+                }
             case .resumeAfterDetachment(let id):
                 resumeDispatchCount += 1
                 guard suspensionID == id else { throw MarkdownEditorSession.SessionError.staleRequest }
@@ -723,14 +768,6 @@ struct DocumentDetachedPersistenceTests {
                 }
             case .captureRecovery:
                 recovery = snapshot(request)
-            case .queryScrollAnchor:
-                if holdNextScrollReply {
-                    holdNextScrollReply = false
-                    await withCheckedContinuation { reply in
-                        scrollReply = reply
-                        scrollDidStart?()
-                    }
-                }
             case .queryText:
                 text = source
             case .acknowledgeCommittedSnapshot(let expected, let committed, _, let expectedCitationData, let committedCitationSnapshot):

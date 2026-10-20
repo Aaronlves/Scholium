@@ -198,6 +198,28 @@ import {
 import {applyDecodedImagePresentation, createImageProjection} from "./image-presentation";
 
 const editorStartupStartedAt = performance.now();
+if (performance.getEntriesByName("scholium-editor:bootstrap-bundle-start").length) {
+  performance.mark("scholium-editor:bootstrap-entry");
+}
+
+function recordBootstrapInterval() {
+  const names = ["document-start", "bundle-start", "entry", "bundle-end"]
+    .map(phase => `scholium-editor:bootstrap-${phase}`);
+  const times = names.map(name => performance.getEntriesByName(name).at(-1)?.startTime);
+  names.forEach(name => performance.clearMarks(name));
+  // A later document must not inherit an unqueried cold-page interval.
+  if (documentAttachment > 1) return;
+  if (times.some(time => time === undefined)) return;
+  const [documentStart, bundleStart, entry, bundleEnd] = times as number[];
+  if (documentStart <= bundleStart && bundleStart <= entry && entry <= bundleEnd) {
+    recordEditorMetric("bootstrap", bundleStart, {
+      documentStartToBundleStartMilliseconds: bundleStart - documentStart,
+      bundleStartToEntryMilliseconds: entry - bundleStart,
+      entryToBundleEndMilliseconds: bundleEnd - entry,
+      bundleExecutionMilliseconds: bundleEnd - bundleStart,
+    }, bundleEnd);
+  }
+}
 
 interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
@@ -2501,10 +2523,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     ...successfulResult(request.requestID),
     scrollAnchor: scrollCoordinator.currentAnchor(),
   };
-  case "queryPerformance": return {
-    ...successfulResult(request.requestID),
-    performanceSamples: editorPerformanceSamples(),
-  };
+  case "queryPerformance": {
+    recordBootstrapInterval();
+    return {...successfulResult(request.requestID), performanceSamples: editorPerformanceSamples()};
+  }
   case "captureRecovery": {
     return {...successfulResult(request.requestID), recovery: captureRecovery()};
   }

@@ -30,6 +30,19 @@ describe("editor performance instrumentation", () => {
     expect(performance.getEntriesByName("scholium-editor:sample-299")).toHaveLength(0);
   });
 
+  it("reports a completed startup interval without including the later diagnostic query", () => {
+    clearEditorPerformanceSamples();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(10_000);
+    try {
+      recordEditorMetric("bootstrap", 20, {bundleExecutionMilliseconds: 12}, 32);
+      expect(editorPerformanceSamples()).toEqual([{
+        name: "bootstrap", durationMilliseconds: 12,
+        observed: {bundleExecutionMilliseconds: 12},
+      }]);
+      expect(performance.getEntriesByName("scholium-editor:bootstrap")).toHaveLength(0);
+    } finally { clock.mockRestore(); }
+  });
+
   it("crosses a frame and the following task before reporting painted input", () => {
     const frames: FrameRequestCallback[] = [];
     const tasks: Array<() => void> = [];

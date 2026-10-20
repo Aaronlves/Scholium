@@ -23,8 +23,9 @@ export function recordEditorMetric(
   name: string,
   startedAt: number,
   observed: Record<string, number> = {},
+  endedAt: number = performance.now(),
 ) {
-  const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+  const durationMilliseconds = Math.max(0, endedAt - startedAt);
   const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
   appendSample({name, durationMilliseconds, observed: safeObserved});
   const measureName = `scholium-editor:${name}`;

@@ -941,7 +941,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let transitionID = UUID()
         let intendedModeTransitionEpoch = modeTransitionEpoch
         modeTransitionID = transitionID
-        modeTransitionTask = Task.immediate { [weak self, weak webView] in
+        let transitionTask = Task.immediate { [weak self, weak webView] in
             guard let self, let webView else { return }
             defer {
                 if self.modeTransitionID == transitionID {
@@ -995,6 +995,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 _ = try? await self.send(.announceStatus(message), in: webView)
             }
         }
+        if modeTransitionID == transitionID { modeTransitionTask = transitionTask }
     }
 
     private func cancelModeTransition() {
