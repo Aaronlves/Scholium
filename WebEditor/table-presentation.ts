@@ -1,4 +1,5 @@
 import {tableAt} from "./tables";
+import type {Text} from "@codemirror/state";
 
 export type TableColumnAlignment = "left" | "center" | "right" | null;
 
@@ -24,8 +25,8 @@ function alignmentFor(separator: string): TableColumnAlignment {
   return null;
 }
 
-function cellSource(source: string, from: number, to: number) {
-  return source.slice(from, to);
+function sourceSlice(source: string | Text, from: number, to: number) {
+  return typeof source === "string" ? source.slice(from, to) : source.sliceString(from, to);
 }
 
 /**
@@ -33,7 +34,7 @@ function cellSource(source: string, from: number, to: number) {
  * remain the only editing identity; the projection is never serialized back.
  */
 export function tablePresentation(
-  source: string,
+  source: string | Text,
   from: number,
   to: number,
 ): TablePresentation | null {
@@ -45,12 +46,12 @@ export function tablePresentation(
 
   const separator = parsed.rows[parsed.separatorIndex];
   const alignments = separator.cells.map((cell) =>
-    alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
+    alignmentFor(sourceSlice(source, cell.contentFrom, cell.contentTo))
   );
   const rows = parsed.rows
     .filter((_, index) => index !== parsed.separatorIndex)
     .map((row) => row.cells.map((cell, column) => ({
-      source: cellSource(source, cell.contentFrom, cell.contentTo),
+      source: sourceSlice(source, cell.contentFrom, cell.contentTo),
       sourceOffset: cell.contentFrom,
       alignment: alignments[column] ?? null,
     })));
@@ -59,7 +60,7 @@ export function tablePresentation(
   return {
     from,
     to,
-    source: source.slice(from, to),
+    source: sourceSlice(source, from, to),
     header,
     body: rows,
   };

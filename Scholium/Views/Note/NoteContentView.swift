@@ -983,9 +983,9 @@ struct NoteContentView<ShellNotices: View>: View {
                 let presentedMode = editorSession.presentedMode,
                 presentedMode == documentSession.activeEditorMode
             {
-                let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: editorSession.sessionID)
+                let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: note.id.relativePath)
                 PerformanceReadyBoundary(
-                    generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
+                    generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue):\(openingMeasurement?.uuidString ?? "none")"
                 ) {
                     PerformanceProbe.shared.markEditorModeVisible(
                         documentID: note.id.relativePath,
@@ -994,9 +994,20 @@ struct NoteContentView<ShellNotices: View>: View {
                     PerformanceProbe.shared.markEditorVisible(
                         documentID: note.id.relativePath
                     )
-                    PerformanceProbe.shared.markNoteOpeningEditorPhase(
-                        .stableVisible, editorSessionID: editorSession.sessionID, attemptID: openingMeasurement
-                    )
+                    if let openingMeasurement,
+                        controller.selectedDocument?.editingTarget == target,
+                        let nativeWebView = editorSession.webView as? DocumentNativeWebView,
+                        nativeWebView.documentSurfaceAllowsInput, !nativeWebView.isHiddenOrHasHiddenAncestor,
+                        let window = nativeWebView.window, window.isVisible, window.isKeyWindow,
+                        window.attachedSheet == nil,
+                        PerformanceProbe.shared.bindNoteOpening(
+                            attemptID: openingMeasurement, documentID: note.id.relativePath,
+                            editorSessionID: editorSession.sessionID)
+                    {
+                        PerformanceProbe.shared.markNoteOpeningEditorPhase(
+                            .stableVisible, editorSessionID: editorSession.sessionID, attemptID: openingMeasurement)
+                        editorSession.recordNoteOpeningActualFocus(attemptID: openingMeasurement)
+                    }
                     actions.openingDocumentPresentationDidComplete()
                 }
                 .frame(width: 0, height: 0)

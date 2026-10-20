@@ -529,7 +529,9 @@ function buildLiveProjectionIndex(
     };
   }
   const tables = tableRanges.flatMap((range): TablePresentation[] => {
-    const presentation = tablePresentation(source(), range.from, range.to);
+    // Reuse this revision's rope. Passing the whole Note as a string makes
+    // tableAt split and rebuild that rope independently for every table.
+    const presentation = tablePresentation(state.doc, range.from, range.to);
     return presentation ? [presentation] : [];
   });
   // Callouts project editable prose rather than caching a rendered body. Their

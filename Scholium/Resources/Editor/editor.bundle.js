@@ -18265,10 +18265,15 @@
       index = continuation - 1;
     }
     const rawReferences = [];
+    let definitionMarkerIndex = 0;
     for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
       const from = match.index;
       const to = from + match[0].length;
-      if (overlaps(excluded, from, to) || rawDefinitions.some((definition) => overlaps([definition.marker], from, to)) || isEscaped(source, from)) continue;
+      while (definitionMarkerIndex < rawDefinitions.length && rawDefinitions[definitionMarkerIndex].marker.to <= from) {
+        definitionMarkerIndex += 1;
+      }
+      const definitionMarker = rawDefinitions[definitionMarkerIndex]?.marker;
+      if (overlaps(excluded, from, to) || definitionMarker !== void 0 && definitionMarker.from < to || isEscaped(source, from)) continue;
       rawReferences.push({
         identifier: match[1],
         from,
@@ -18715,7 +18720,7 @@
     return visible;
   }
   function presentationBlockMarkerRanges(state, node, kind, markerNames2, stopAt) {
-    const ranges = childRanges(node, markerNames2, stopAt);
+    const ranges = markerNames2.size === 0 ? [] : childRanges(node, markerNames2, stopAt);
     if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
     return ranges.map((range) => {
       if (range.from !== node.from) return range;
@@ -18903,7 +18908,7 @@
       }
       return completeSource;
     };
-    const sourceSlice = (from2, to2) => completeSource === void 0 ? state.doc.sliceString(from2, to2) : completeSource.slice(from2, to2);
+    const sourceSlice2 = (from2, to2) => completeSource === void 0 ? state.doc.sliceString(from2, to2) : completeSource.slice(from2, to2);
     let referenceTargets;
     const resolveReferenceTargets = () => referenceTargets ??= imageReferenceTargets(tree, sourceText());
     tree.iterate({
@@ -19004,19 +19009,19 @@
       }
     });
     const paragraphIsProtected = (block) => {
-      const paragraph = sourceSlice(block.from, block.to);
+      const paragraph = sourceSlice2(block.from, block.to);
       return paragraph.includes("%%") || paragraph.includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
     };
     for (const block of result.blocks) {
       if (block.kind !== "paragraph") continue;
-      const paragraph = sourceSlice(block.from, block.to);
+      const paragraph = sourceSlice2(block.from, block.to);
       const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
       if (!match || paragraphIsProtected(block)) continue;
       const markerFrom = block.from + match.index + match[0].indexOf("^");
       const markerTo = markerFrom + match[1].length + 1;
-      if (paragraph.trim() === sourceSlice(markerFrom, markerTo)) {
+      if (paragraph.trim() === sourceSlice2(markerFrom, markerTo)) {
         const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
-        if (!preceding || preceding.kind !== "paragraph" || sourceSlice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+        if (!preceding || preceding.kind !== "paragraph" || sourceSlice2(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
       }
       if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
       result.inlines.push({
@@ -30561,8 +30566,8 @@ ${blankRow(table.position.columnCount)}`;
     if (value.startsWith(":")) return "left";
     return null;
   }
-  function cellSource(source, from, to) {
-    return source.slice(from, to);
+  function sourceSlice(source, from, to) {
+    return typeof source === "string" ? source.slice(from, to) : source.sliceString(from, to);
   }
   function tablePresentation(source, from, to) {
     if (from < 0 || to <= from || to > source.length) return null;
@@ -30572,10 +30577,10 @@ ${blankRow(table.position.columnCount)}`;
     if (finalRow.lineTo !== to) return null;
     const separator = parsed.rows[parsed.separatorIndex];
     const alignments = separator.cells.map(
-      (cell) => alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
+      (cell) => alignmentFor(sourceSlice(source, cell.contentFrom, cell.contentTo))
     );
     const rows = parsed.rows.filter((_, index) => index !== parsed.separatorIndex).map((row) => row.cells.map((cell, column) => ({
-      source: cellSource(source, cell.contentFrom, cell.contentTo),
+      source: sourceSlice(source, cell.contentFrom, cell.contentTo),
       sourceOffset: cell.contentFrom,
       alignment: alignments[column] ?? null
     })));
@@ -30584,7 +30589,7 @@ ${blankRow(table.position.columnCount)}`;
     return {
       from,
       to,
-      source: source.slice(from, to),
+      source: sourceSlice(source, from, to),
       header,
       body: rows
     };
@@ -32744,7 +32749,7 @@ ${blankRow(table.position.columnCount)}`;
   };
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 53;
+  var EDITOR_PROTOCOL_VERSION = 54;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
@@ -32866,7 +32871,7 @@ ${blankRow(table.position.columnCount)}`;
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || [snapshot.undoLabel, snapshot.redoLabel].some((label) => label !== void 0 && (typeof label !== "string" || new TextEncoder().encode(label).byteLength > MAX_RECOVERY_ACTION_LABEL_BYTES)) || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_RECOVERY_HISTORY_BYTES)) return false;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || snapshot.citationSnapshot !== void 0 && !validCitationSnapshot(snapshot.citationSnapshot) || snapshot.citationData !== void 0 && (!snapshot.citationSnapshot || !validCitationData(snapshot.citationData)) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.hasHistory !== "boolean" || [snapshot.undoLabel, snapshot.redoLabel].some((label) => label !== void 0 && (typeof label !== "string" || new TextEncoder().encode(label).byteLength > MAX_RECOVERY_ACTION_LABEL_BYTES)) || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_RECOVERY_HISTORY_BYTES)) return false;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
@@ -33160,6 +33165,10 @@ ${blankRow(table.position.columnCount)}`;
       previous = change.to;
     }
     return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+  function hasExactHistory(state) {
+    const history2 = state.field(historyField);
+    return history2.done.length > 0 || history2.undone.length > 0;
   }
   var historyError = () => new Error("Incompatible exact history metadata");
   var historyDecodingExtensions = [
@@ -33727,7 +33736,7 @@ ${blankRow(table.position.columnCount)}`;
       };
     }
     const tables = tableRanges.flatMap((range) => {
-      const presentation = tablePresentation(source(), range.from, range.to);
+      const presentation = tablePresentation(state.doc, range.from, range.to);
       return presentation ? [presentation] : [];
     });
     const callouts = calloutRanges;
@@ -39290,7 +39299,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
             )
           };
         }
-        if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
+        if (projections.index(transaction.startState) !== projections.index(transaction.state)) {
+          return buildLineState(transaction.state);
+        }
         if (selection.changed(transaction.startState, transaction.state)) {
           const affected = affectedProjectionAndCodeBlockRanges(
             projections,
@@ -39370,7 +39381,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         if (transaction.docChanged) {
           return projections.topologyWasMapped(transaction) ? { decorations: previous.decorations.map(transaction.changes) } : buildSpacingState(transaction.state);
         }
-        return transactionChangedSyntaxTree(transaction) ? buildSpacingState(transaction.state) : previous;
+        return projections.index(transaction.startState) !== projections.index(transaction.state) ? buildSpacingState(transaction.state) : previous;
       },
       provide: (field) => EditorView.decorations.from(field, (value) => value.decorations)
     });
@@ -39631,7 +39642,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       create: build,
       update(previous, transaction) {
         const refreshedTheme = transaction.effects.find((effect) => effect.is(options.refreshThemeEffect));
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction) || refreshedTheme) {
+        if (transaction.docChanged || options.projections.index(transaction.startState) !== options.projections.index(transaction.state) || refreshedTheme) {
           return build(
             transaction.state,
             refreshedTheme?.value ?? options.currentThemeRevision()
@@ -39869,7 +39880,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const tableField = StateField.define({
       create: buildTable,
       update(previous, transaction) {
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+        if (transaction.docChanged || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
           return buildTable(transaction.state);
         }
         if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
@@ -40042,7 +40053,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           folds.set(effect.value.from, effect.value.collapsed);
           foldChanged = true;
         }
-        if (foldChanged || transaction.docChanged || transactionChangedSyntaxTree(transaction) || options.selection.changed(transaction.startState, transaction.state)) {
+        if (foldChanged || transaction.docChanged || options.projections.index(transaction.startState) !== options.projections.index(transaction.state) || options.selection.changed(transaction.startState, transaction.state)) {
           return buildCallout(transaction.state, folds);
         }
         return previous;
@@ -40177,7 +40188,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const field = StateField.define({
       create: build,
       update(previous, transaction) {
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+        if (transaction.docChanged || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
           return build(transaction.state);
         }
         if (options.shouldRefreshRuntime(transaction)) {
@@ -40326,7 +40337,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     const field = StateField.define({
       create: build,
       update(previous, transaction) {
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+        if (transaction.docChanged || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
           return build(transaction.state);
         }
         if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
@@ -43012,9 +43023,9 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const explicitlyRefreshed = update.transactions.some(
         (transaction) => transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect) || effect.is(setCitationSnapshot) || effect.is(setCitationData))
       );
-      const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
+      const indexChanged = liveProjectionIndex.index(update.startState) !== liveProjectionIndex.index(update.state);
       const viewportNeedsProjection = update.viewportChanged && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
-      if (update.docChanged || explicitlyRefreshed || syntaxTreeChanged) {
+      if (update.docChanged || explicitlyRefreshed || indexChanged) {
         const projection = buildLiveDecorations(update.view);
         this.decorations = projection.decorations;
         this.atomicRanges = projection.atomicRanges;
@@ -43042,7 +43053,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         }
         this.coveredRanges = coveredRanges;
       }
-      if (!update.docChanged && !explicitlyRefreshed && !syntaxTreeChanged && liveSelection.changed(update.startState, update.state)) {
+      if (!update.docChanged && !explicitlyRefreshed && !indexChanged && liveSelection.changed(update.startState, update.state)) {
         const projectionIndex = liveProjectionIndex.index(update.state);
         const inlineRanges = projectionIndex.inlineRanges;
         const codeBlockRanges = projectionIndex.literals.codeBlocks.map((block) => codeBlockActivationRange(update.state.doc, block));
@@ -43948,6 +43959,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       citationSnapshot: editor.state.field(citationState)?.baseline,
       citationData: editor.state.field(citationState)?.data,
       undoHistoryPreserved: stateJSON !== void 0,
+      hasHistory: hasExactHistory(historyState),
       undoLabel: lastUndoLabel,
       redoLabel: lastRedoLabel,
       dirty,

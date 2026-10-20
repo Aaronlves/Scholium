@@ -188,6 +188,11 @@ interface HistoryValue {
   prevUserEvent?: string;
 }
 interface HistoryGrouping {time: number; userEvent?: string}
+/** Includes selection-only and metadata-only events, as well as the redo branch. */
+export function hasExactHistory(state: EditorState): boolean {
+  const history = state.field(historyField) as HistoryValue;
+  return history.done.length > 0 || history.undone.length > 0;
+}
 type HistoryBranch = "done" | "undone";
 type InverseEffects = ({lineEndings: [number[], string]} | {citation: number})[];
 const historyError = () => new Error("Incompatible exact history metadata");

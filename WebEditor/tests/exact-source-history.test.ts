@@ -1,7 +1,7 @@
 import {EditorSelection, EditorState, StateEffect, StateField, Transaction} from "@codemirror/state";
 import {history, historyField, invertedEffects, isolateHistory, redo, redoDepth, redoSelection, undo, undoDepth, undoSelection} from "@codemirror/commands";
 import {describe, expect, it} from "vitest";
-import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "../exact-source-history";
+import {captureExactHistory, hasExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "../exact-source-history";
 import {normalizedDocumentText} from "../state";
 import {continueList} from "../interaction";
 import {MAX_SOURCE_UTF8_BYTES} from "../source-capacity";
@@ -20,6 +20,19 @@ function perform(state: EditorState, command: typeof undo) {
 }
 
 describe("exact newline history", () => {
+  it("distinguishes empty, selection-only, edited and redo-only retained histories", () => {
+    const empty = initial("abc");
+    expect(hasExactHistory(empty)).toBe(false);
+    const selected = empty.update({selection: {anchor: 2}, annotations: Transaction.userEvent.of("select")}).state;
+    expect(undoDepth(selected)).toBe(0);
+    expect(hasExactHistory(selected)).toBe(true);
+    const edited = empty.update({changes: {from: 0, insert: "x"}}).state;
+    expect(hasExactHistory(edited)).toBe(true);
+    const undone = perform(edited, undo);
+    expect(undoDepth(undone)).toBe(0);
+    expect(redoDepth(undone)).toBe(1);
+    expect(hasExactHistory(undone)).toBe(true);
+  });
   it("retains a full supported-size replacement through document reconstruction", () => {
     const source = "a".repeat(MAX_SOURCE_UTF8_BYTES - 4) + "\r\n\r\n";
     const replacement = "b".repeat(MAX_SOURCE_UTF8_BYTES - 4) + "\r\n\r\n";

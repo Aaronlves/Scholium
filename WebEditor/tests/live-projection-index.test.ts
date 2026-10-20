@@ -1,4 +1,4 @@
-import {EditorSelection, EditorState, StateEffect, StateField} from "@codemirror/state";
+import {EditorSelection, EditorState, StateEffect, StateField, Text} from "@codemirror/state";
 import {history, isolateHistory, redo, undo} from "@codemirror/commands";
 import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
 import {EditorView} from "@codemirror/view";
@@ -52,6 +52,36 @@ describe("live projection index component", () => {
       [scholiumNoteLanguage, exactSourceHistory, oracle.extension]);
     expect(controller.index(state)).toEqual(oracle.index(fresh));
   }
+
+  it("projects many complete tables from the current rope without rebuilding or materializing the whole Note", () => {
+    const tableSource = "| 中文 🦉 | e\u0301 |\n|:---|---:|\n| A \\| B | value |";
+    const source = "\ufeffBefore.\r\n\r\n" + Array.from({length: 40}, () => tableSource.replaceAll("\n", "\r\n")).join("\r\n\r\n")
+      + "\r\n\r\nAfter.";
+    let state = createMarkdownDocumentState(source, [scholiumNoteLanguage, exactSourceHistory]);
+    expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+    const textOf = vi.spyOn(Text, "of");
+    const toString = vi.spyOn(state.doc, "toString");
+    try {
+      state = state.update({effects: StateEffect.appendConfig.of(controller.extension)}).state;
+      const index = controller.index(state);
+      expect(index.syntaxComplete).toBe(true);
+      expect(index.tables).toHaveLength(40);
+      for (const table of index.tables) {
+        expect(state.doc.sliceString(table.from, table.to)).toBe(tableSource);
+        expect(table.header.map(cell => cell.source)).toEqual(["中文 🦉", "e\u0301"]);
+        expect(table.header.map(cell => cell.alignment)).toEqual(["left", "right"]);
+        expect(state.doc.sliceString(table.body[0][0].sourceOffset, table.body[0][0].sourceOffset + 6)).toBe("A \\| B");
+      }
+      expect(textOf).not.toHaveBeenCalled();
+      expect(toString).not.toHaveBeenCalled();
+      expect(state.field(exactSourceState).text).toBe(source);
+    } finally {
+      textOf.mockRestore();
+      toString.mockRestore();
+    }
+    expectFreshIndex(state, controller);
+  });
 
   it("keeps nested quote depth through list ancestors and mapped prose input", () => {
     const source = "\ufeff> Outer\n> > Middle\n> > - item\n> >   > Nested in list.\n> >   > > Deepest.\n\nAfter.";

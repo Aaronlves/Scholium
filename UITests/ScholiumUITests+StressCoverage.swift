@@ -4,6 +4,264 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// Opt-in lifecycle pressure over the standard 500-note fixture. These
+    /// XCTest action/AX bounds are distinct from the foreground frame probe.
+    @MainActor
+    func testRepeatedOpenInNewTabReleasesDocumentOwners() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_TAB_STRESS_UI"] == "1" else {
+            throw XCTSkip("The standard-fixture tab pressure diagnostic is not enabled.")
+        }
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let build = repository.appendingPathComponent(".build").resolvingSymlinksInPath()
+        let output = URL(
+            fileURLWithPath: environment["SCHOLIUM_TAB_STRESS_OUTPUT"]
+                ?? build.appendingPathComponent("tab-opening/stress-results.json").path
+        )
+        .standardizedFileURL.resolvingSymlinksInPath()
+        guard output.path.hasPrefix(build.path + "/"), output.pathExtension == "json",
+            !FileManager.default.fileExists(atPath: output.path)
+        else { throw XCTSkip("The tab diagnostic requires a new JSON output inside repository .build.") }
+        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: triptychDirectory.appendingPathComponent("fixture-manifest.json"))) as? [String: Any])
+        let inventory = try XCTUnwrap(manifest["files_sha256"] as? [String: String])
+        let roles = ["01-analyses": "Analyses", "02-topics": "Topics", "03-works": "Works"]
+        let paths = [
+            "02-topics/源码保真.md", "02-topics/QA Topic.md", "02-topics/排版样本.md",
+            "02-topics/长文与目录.md", "02-topics/诊断样本.md", "02-topics/空白笔记.md",
+            "01-analyses/QA Autosave A.md", "01-analyses/QA Autosave B.md", "01-analyses/示例材料.md",
+            "03-works/QA Work.md",
+        ]
+        let sourcePaths = inventory.keys.filter { path in
+            path.hasSuffix(".md") && roles.keys.contains { path.hasPrefix($0 + "/") }
+        }.sorted()
+        let counts = Dictionary(
+            uniqueKeysWithValues: roles.keys.map { role in
+                (role, sourcePaths.filter { $0.hasPrefix(role + "/") }.count)
+            })
+        XCTAssertEqual(counts, ["01-analyses": 160, "02-topics": 220, "03-works": 120])
+        var actualPaths = Set<String>()
+        for role in roles.keys {
+            let entries = try XCTUnwrap(
+                FileManager.default.enumerator(
+                    at: triptychDirectory.appendingPathComponent(role), includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]))
+            for case let file as URL in entries where file.pathExtension.lowercased() == "md" {
+                actualPaths.insert(String(file.path.dropFirst(triptychDirectory.path.count + 1)))
+            }
+        }
+        XCTAssertEqual(actualPaths, Set(sourcePaths), "The tab workload must use exactly the standard 500-note fixture.")
+        func assertSourceInventory() throws {
+            for path in sourcePaths {
+                XCTAssertFalse(path.split(separator: "/").contains(".."))
+                let data = try Data(contentsOf: triptychDirectory.appendingPathComponent(path))
+                let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                XCTAssertEqual(digest, inventory[path], "The tab journey changed exact fixture source: \(path)")
+            }
+        }
+        try assertSourceInventory()
+        let fidelityURL = triptychDirectory.appendingPathComponent(paths[0])
+        let original = try Data(contentsOf: fidelityURL)
+        XCTAssertTrue(original.starts(with: [0xEF, 0xBB, 0xBF]))
+        XCTAssertTrue(original.contains(0x0D))
+        XCTAssertFalse(original.suffix(1) == Data([0x0A]))
+        var observations: [[String: Any]] = []
+        var memoryOwners: [[String: Any]] = []
+        var completedRounds = 0
+        var inventoryVerified = false
+        var undoRedoVerified = false
+        func saveSummary() throws {
+            let report: [String: Any] = [
+                "schema": "scholium-standard-fixture-tab-pressure-v1",
+                "fixture_counts": counts, "notes_per_round": paths.count, "planned_rounds": 2,
+                "source_paths": paths, "completed_rounds": completedRounds,
+                "conditions":
+                    "Isolated Debug QA; the setup-owned standard 500-note Triptych copy; one diagnostic process after enabling the existing memory-owner probe, with both rounds in that process.",
+                "timing_boundary":
+                    "Immediately before Library context menu Open in New Tab activation through observing the matching Document title, usable document surface and native tab count. Includes XCTest input/idle/AX waits; role browsing and context menu presentation are excluded. No frame or app-only latency claim.",
+                "unmeasured": ["first paint", "frame pacing", "process resident memory", "installed Release behavior"],
+                "observations": observations, "memory_owner_samples": memoryOwners,
+                "cross_tab_edit_undo_redo_exact_bytes_verified": undoRedoVerified,
+                "all_500_fixture_sources_verified": inventoryVerified,
+            ]
+            try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+                .write(to: output, options: .atomic)
+        }
+        try saveSummary()
+
+        // The setup launch did not enable this opt-in owner probe. Relaunch
+        // only its disposable home/Triptych, then keep both rounds in one process.
+        app.terminate()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.state == .notRunning })
+        sessionID = UUID()
+        app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000, openNote: nil)
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["SCHOLIUM_QA_MEMORY_OWNER_DIAGNOSTICS"] = "1"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        let tabs = window.toolbars.firstMatch.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.documentTab."))
+        // Existing toolbar chrome is hidden for a single tab. Its AX count
+        // therefore cannot distinguish one logical tab from an empty workspace.
+        func visibleTabCount(for logicalCount: Int) -> Int { logicalCount > 1 ? logicalCount : 0 }
+        func closeAllTabs(expectedLogicalCount: Int) {
+            XCTAssertLessThanOrEqual(expectedLogicalCount, paths.count)
+            XCTAssertEqual(tabs.count, visibleTabCount(for: expectedLogicalCount))
+            for remaining in stride(from: expectedLogicalCount, through: 1, by: -1) {
+                app.menuBars.menuBarItems["File"].click()
+                let close = app.menuItems["Close Tab"].firstMatch
+                XCTAssertTrue(close.waitForExistence(timeout: 3) && close.isEnabled)
+                close.click()
+                XCTAssertTrue(
+                    waitUntil(timeout: 30) {
+                        tabs.count == visibleTabCount(for: remaining - 1) && window.exists
+                    })
+            }
+            XCTAssertEqual(tabs.count, 0)
+        }
+        func recordOwners(_ phase: String) throws -> [String: Any] {
+            let sample = try stressMemoryOwnerSnapshot(phase: phase)
+            memoryOwners.append(sample)
+            try saveSummary()
+            return sample
+        }
+        let releasedKeys = [
+            "retained_sessions", "leased_sessions", "pinned_sessions", "attached_webview_sessions",
+            "full_snapshots", "pending_hydrations", "editor_pool_attached", "editor_pool_preparing",
+            "editor_pool_abandoned_live", "editor_pool_waiting",
+        ]
+        func releasedOwners(_ phase: String) throws -> [String: Any] {
+            var latest: [String: Any]?
+            var nextSample = ContinuousClock.now
+            var failure: Error?
+            let released = waitUntil(timeout: 20) {
+                guard ContinuousClock.now >= nextSample else { return false }
+                nextSample = ContinuousClock.now.advanced(by: .seconds(1))
+                do {
+                    latest = try recordOwners(phase)
+                    return releasedKeys.allSatisfy { latest?[$0] as? Int == 0 }
+                } catch {
+                    failure = error
+                    return true
+                }
+            }
+            if let failure { throw failure }
+            XCTAssertTrue(released, "Closing every tab must release document sessions, snapshots and pending page acquisitions.")
+            let sample = try XCTUnwrap(latest)
+            for key in releasedKeys { XCTAssertEqual(sample[key] as? Int, 0, "Unreleased owner: \(key)") }
+            // The existing pool deliberately keeps at most one source-neutral runtime.
+            XCTAssertLessThanOrEqual(try XCTUnwrap(sample["editor_pool_idle"] as? Int), 1)
+            return sample
+        }
+        closeAllTabs(expectedLogicalCount: 0)
+        _ = try releasedOwners("baseline_no_tabs")
+        var peaks: [[String: Any]] = []
+        var closedRounds: [[String: Any]] = []
+        for round in 0..<2 {
+            for (index, path) in paths.enumerated() {
+                let components = path.split(separator: "/").map(String.init)
+                let role = try XCTUnwrap(roles[components[0]])
+                let relative = components[1]
+                let navigator = window.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+                let control = navigator.descendants(matching: .any)[role].firstMatch
+                XCTAssertTrue(control.waitForExistence(timeout: 10))
+                XCTAssertTrue(waitUntil(timeout: 45) { control.isEnabled })
+                control.click()
+                _ = clickLibraryRow(relative, in: window, rightMouseButton: true)
+                let menu = app.menus["scholium.noteRow.\(relative)"]
+                XCTAssertTrue(menu.waitForExistence(timeout: 5))
+                let open = menu.menuItems["Open in New Tab"]
+                XCTAssertTrue(open.waitForExistence(timeout: 3) && open.isEnabled)
+                let started = DispatchTime.now().uptimeNanoseconds
+                open.click()
+                let title = (relative as NSString).deletingPathExtension
+                XCTAssertTrue(
+                    waitUntil(timeout: 45) {
+                        self.documentTitle(in: window) == title && tabs.count == visibleTabCount(for: index + 1)
+                            && self.documentSurfaceIsUsable(for: relative)
+                    })
+                let ready = DispatchTime.now().uptimeNanoseconds
+                observations.append([
+                    "round": round, "index": index, "source_path": path, "tab_count": index + 1,
+                    "visible_tab_count": tabs.count,
+                    "action": "library_context_open_new_tab_to_ready",
+                    "observed_duration_ms": Double(ready - started) / 1_000_000,
+                ])
+                try saveSummary()
+                if index == 0 {
+                    let token = " tab-pressure-\(round)"
+                    try enterLivePreviewAndAppend(token, in: window)
+                    app.typeKey("s", modifierFlags: [.command])
+                    XCTAssertTrue(
+                        waitUntil(timeout: 15) {
+                            (try? Data(contentsOf: fidelityURL)) == original + Data(token.utf8)
+                        })
+                }
+                _ = try recordOwners("round_\(round)_open_\(index + 1)")
+            }
+            let peak = try recordOwners("round_\(round)_all_tabs")
+            peaks.append(peak)
+            XCTAssertEqual(peak["retained_sessions"] as? Int, paths.count)
+            XCTAssertEqual(peak["leased_sessions"] as? Int, paths.count)
+            XCTAssertEqual(peak["full_snapshots"] as? Int, paths.count)
+            // The last opened tab advances to the first one through the actual
+            // Window menu, including when ten tabs overflow the visible strip.
+            app.menuBars.menuBarItems["Window"].click()
+            let next = app.menuItems["Next Tab"].firstMatch
+            XCTAssertTrue(next.waitForExistence(timeout: 3) && next.isEnabled)
+            next.click()
+            XCTAssertTrue(waitForDocumentTitle("源码保真", in: window, timeout: 30))
+            let token = " tab-pressure-\(round)"
+            let editor = window.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+            XCTAssertTrue(waitUntil(timeout: 15) { (editor.value as? String)?.contains(token) == true })
+            // Tab navigation can preserve Library focus. Undo must be sent
+            // to the actual document editor before checking its saved bytes.
+            editor.click()
+            for (redo, expected) in [
+                (false, original), (true, original + Data(token.utf8)), (false, original),
+            ] {
+                app.typeKey("z", modifierFlags: redo ? [.command, .shift] : [.command])
+                XCTAssertTrue(
+                    waitUntil(timeout: 15) { (editor.value as? String)?.contains(token) == redo },
+                    "The focused editor must finish cross-tab \(redo ? "Redo" : "Undo") before Save.")
+                app.typeKey("s", modifierFlags: [.command])
+                XCTAssertTrue(
+                    waitUntil(timeout: 15) { (try? Data(contentsOf: fidelityURL)) == expected },
+                    "Cross-tab \(redo ? "Redo" : "Undo") must preserve exact BOM, CRLF and final-newline bytes.")
+            }
+            undoRedoVerified = true
+            closeAllTabs(expectedLogicalCount: paths.count)
+            closedRounds.append(try releasedOwners("round_\(round)_all_closed"))
+            completedRounds += 1
+            try saveSummary()
+        }
+        // Compare held document owners at the same completed workload boundary.
+        // A transient preparation or the single idle runtime is not a leak;
+        // their settled bounds are checked only after every tab has closed.
+        for key in [
+            "retained_sessions", "leased_sessions", "attached_webview_sessions", "full_snapshots",
+            "editor_pool_attached", "read_projection_entries",
+        ] {
+            XCTAssertLessThanOrEqual(
+                try XCTUnwrap(peaks[1][key] as? Int),
+                try XCTUnwrap(peaks[0][key] as? Int), "The second round accumulated held \(key).")
+        }
+        for key in releasedKeys + ["read_projection_entries"] {
+            XCTAssertLessThanOrEqual(
+                try XCTUnwrap(closedRounds[1][key] as? Int),
+                try XCTUnwrap(closedRounds[0][key] as? Int), "The second round retained closed \(key).")
+        }
+        app.terminate()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.state == .notRunning })
+        try assertSourceInventory()
+        inventoryVerified = true
+        try saveSummary()
+        print("TAB_PRESSURE_UI rounds=2 notes_per_round=10 cross_tab_undo_redo_exact=true unchanged_sources=500 output=\(output.lastPathComponent)")
+    }
+
     @MainActor
     func testUndoSaveAfterCrossLibraryEditorHandoff() throws {
         app.terminate()

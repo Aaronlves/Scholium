@@ -222,13 +222,15 @@ extension WindowModel {
             guard activeDocumentTransitionCurrency?() ?? true else { throw CancellationError() }
             try validateDocumentIsAvailable(retainedTab.document)
             if documentController.canSelectRetainedDocument(retainedTab.document) {
+                PerformanceProbe.shared.markNoteOpeningSourceReused(
+                    attemptID: openingMeasurement, documentID: reference.relativePath)
                 try commitDocumentLibrarySelection(stagedLibrary, opening: snapshot)
                 _ = documentController.selectRetainedDocument(retainedTab.document)
+                PerformanceProbe.shared.markNoteOpeningPhase(.documentInstalled, attemptID: openingMeasurement)
                 if let workspace = workspaceSlot(for: vault) {
                     shellState.selectDocumentWorkspace(workspace)
                 }
                 synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
-                PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
                 return
             }
         }

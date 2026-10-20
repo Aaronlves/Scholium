@@ -867,7 +867,7 @@ final class WindowModel: ObservableObject {
         }
         #if DEBUG
             if Bundle.main.bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier,
-                PerformanceProbe.shared.measuresNoteOpenToInput,
+                PerformanceProbe.shared.measuresNoteOpeningLifecycle,
                 ProcessInfo.processInfo.arguments.contains("--scholium-performance-editor-mode-notifications")
             {
                 let name = "com.scholium.qa.performance-note-opening-close-target"

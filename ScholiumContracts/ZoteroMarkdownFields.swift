@@ -302,8 +302,23 @@ public struct ZoteroMarkdownFields: Codable, Hashable, Sendable {
         return hasSourceMarkers(source)
     }
 
+    private static let sourceMarkerExpression: NSRegularExpression? = {
+        let schemes = [citationScheme, compactCitationScheme]
+            .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        let markers = [
+            bibliographyPrefix, bibliographyClose, ZoteroMarkdownFieldParser.fieldPrefix,
+            ZoteroMarkdownFieldParser.documentPrefix, ZoteroMarkdownFieldParser.fieldClose,
+        ].map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        return try? NSRegularExpression(pattern: "(?i:\(schemes))|\(markers)")
+    }()
+
     private static func hasSourceMarkers(_ source: String) -> Bool {
-        source.range(of: citationScheme, options: .caseInsensitive) != nil
+        // One negative scan avoids repeating Unicode searches on ordinary
+        // prose. Positive candidates retain the original predicates, including
+        // String's grapheme boundaries; only the semantic parser grants fields.
+        guard let sourceMarkerExpression else { return true }
+        guard sourceMarkerExpression.firstMatch(in: source, range: NSRange(location: 0, length: source.utf16.count)) != nil else { return false }
+        return source.range(of: citationScheme, options: .caseInsensitive) != nil
             || source.range(of: compactCitationScheme, options: .caseInsensitive) != nil
             || source.contains(bibliographyPrefix)
             || source.contains(bibliographyClose)

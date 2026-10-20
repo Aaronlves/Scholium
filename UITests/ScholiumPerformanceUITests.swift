@@ -24,6 +24,372 @@ final class ScholiumPerformanceUITests: XCTestCase {
         try visibleStressEditingDiagnostic("image_gallery")
     }
 
+    /// Opt-in foreground journey, independent of the frozen RDF-1 gate.
+    /// Native readiness and screenshot observation are separate endpoints;
+    /// optional WindowServer frames are analyzed offline, outside this driver.
+    @MainActor
+    func testForegroundNoteOpeningDiagnostic() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let label = environment["SCHOLIUM_FOREGROUND_OPEN_LABEL"] else {
+            throw XCTSkip("The isolated foreground note-opening diagnostic is not configured.")
+        }
+        guard !label.isEmpty, label.utf8.count <= 48,
+            label.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") })
+        else {
+            throw NSError(
+                domain: "ScholiumUITests.ForegroundOpening", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "A short ASCII diagnostic label is required."])
+        }
+        let startWithAlternate = environment["SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE"] == "1"
+        let retainTarget = environment["SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET"] == "1"
+        let opensNewTab = environment["SCHOLIUM_FOREGROUND_OPEN_NEW_TAB"] == "1"
+        let sampleCount = opensNewTab ? 1 : 3
+        if opensNewTab { XCTAssertTrue(startWithAlternate && retainTarget) }
+        try requireQAPreferencePreservation()
+        continueAfterFailure = false
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let fixture = repository.appendingPathComponent(".build/qa-runtime/fixtures").standardizedFileURL.resolvingSymlinksInPath()
+        for (directory, count) in [("01-analyses", 160), ("02-topics", 220), ("03-works", 120)] {
+            let enumerator = try XCTUnwrap(
+                FileManager.default.enumerator(
+                    at: fixture.appendingPathComponent(directory), includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]))
+            XCTAssertEqual(
+                enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "md" }.count, count,
+                "Use the disposable standard 500-note Triptych, with three separate vaults.")
+        }
+        let targetID = "QA Autosave A.md"
+        let alternateID = "QA Autosave B.md"
+        let note = fixture.appendingPathComponent("01-analyses/\(targetID)")
+        let alternate = fixture.appendingPathComponent("01-analyses/\(alternateID)")
+        let original = try Data(contentsOf: note)
+        let alternateOriginal = try Data(contentsOf: alternate)
+        let sentinel = "quartz amber lantern fifty seven"
+        XCTAssertFalse(String(decoding: original, as: UTF8.self).contains(sentinel), "The fixture must have no sentinel left from an earlier run.")
+        // Long-fixture returns restore a body viewport; recognize a unique
+        // recurring target paragraph without resetting the user's scroll.
+        let recognitionSentinel = original.count > 100_000 ? "Synthetic structure" : sentinel
+        let bodyAnchor = try XCTUnwrap(original.range(of: Data("Synthetic nonprivate QA fixture.".utf8)))
+        let newline = original.range(of: Data("\r\n".utf8)) == nil ? "\n" : "\r\n"
+        let prepared =
+            original.prefix(upTo: bodyAnchor.upperBound)
+            + Data("\(newline)\(newline)\(sentinel)".utf8) + original.suffix(from: bodyAnchor.upperBound)
+        let bundle = repository.appendingPathComponent(".build/qa-runtime/registered/Scholium-Codex-QA-Do-Not-Use.app")
+        XCTAssertEqual(Bundle(url: bundle)?.bundleIdentifier, "com.scholium.qa")
+        let application = XCUIApplication(url: bundle)
+        let cleanup: @MainActor () throws -> Void = {
+            application.terminate()
+            if application.state == .notRunning {
+                try original.write(to: note, options: .atomic)
+            } else {
+                XCTFail("The disposable target is retained because QA termination was not confirmed.")
+            }
+        }
+        addTeardownBlock { try await cleanup() }
+        try prepared.write(to: note, options: .atomic)
+        let runID = "foreground-\(label)-\(UUID().uuidString)"
+        let run = repository.appendingPathComponent(".build/performance-\(runID)/app-state")
+        let raw = run.appendingPathComponent("raw")
+        let home = run.appendingPathComponent("home")
+        for directory in [raw, home] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let result = raw.appendingPathComponent("note-opening.jsonl")
+        let webResult = raw.appendingPathComponent("note-opening.web.jsonl")
+        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "--scholium-performance-editor-mode-notifications"]
+        application.launchEnvironment = [
+            "SCHOLIUM_HOME": home.path, "CFFIXED_USER_HOME": home.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixture.path,
+            "SCHOLIUM_UI_TEST_OPEN_SLOT": "paper_analysis",
+            "SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1380",
+            "SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS": "300000",
+            "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+            "SCHOLIUM_PERFORMANCE_METRIC": "note_open_to_visible",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+            "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": String(sampleCount),
+            "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": targetID,
+        ]
+        if startWithAlternate { application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = alternateID }
+        application.launch()
+        let window = application.windows.firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 30))
+        let editor = application.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let target = nativeLibraryRow("scholium.noteRow.\(targetID)", in: application)
+        let other = nativeLibraryRow("scholium.noteRow.\(alternateID)", in: application)
+        XCTAssertTrue(target.waitForExistence(timeout: 60))
+        XCTAssertTrue(other.waitForExistence(timeout: 10))
+        if startWithAlternate {
+            XCTAssertTrue(
+                waitUntil(timeout: 60) {
+                    window.title == "QA Autosave B" && editor.exists
+                        && NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor)
+                }, "Initial alternate setup must finish loading and focus the real editor before measurement.")
+        } else {
+            XCTAssertTrue(application.descendants(matching: .any)["scholium.noDocumentState"].waitForExistence(timeout: 30))
+            XCTAssertFalse(editor.exists, "Cold first-open setup must not instantiate an editor in advance.")
+        }
+        XCTAssertEqual(lineCount(at: result.path), 0)
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
+        XCTAssertEqual(running.count, 1, "Exactly one isolated QA application may run.")
+        let process = try XCTUnwrap(running.first)
+        XCTAssertEqual(process.bundleURL?.standardizedFileURL.resolvingSymlinksInPath(), bundle.standardizedFileURL.resolvingSymlinksInPath())
+        let requestDirectory = environment["SCHOLIUM_FOREGROUND_FRAME_REQUEST_DIRECTORY"].map {
+            URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath()
+        }
+        if let requestDirectory {
+            XCTAssertTrue(
+                requestDirectory.path.hasPrefix(
+                    repository.appendingPathComponent(".build").standardizedFileURL.resolvingSymlinksInPath().path + "/"))
+            var isDirectory: ObjCBool = false
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: requestDirectory.path, isDirectory: &isDirectory) && isDirectory.boolValue,
+                "The parent capture supervisor must create its isolated request directory.")
+        }
+        var observations: [[String: Any]] = []
+        func openAlternateInNewTab() {
+            other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
+            let menu = application.menus["scholium.noteRow.\(alternateID)"]
+            XCTAssertTrue(menu.waitForExistence(timeout: 3))
+            menu.menuItems["Open in New Tab"].click()
+        }
+        for sample in 0..<sampleCount {
+            if sample > 0 {
+                if retainTarget && sample == 1 { openAlternateInNewTab() } else { other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click() }
+                XCTAssertTrue(
+                    waitUntil(timeout: 60) {
+                        window.title == "QA Autosave B" && other.isSelected && editor.exists
+                    })
+                editor.click()
+                XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
+                XCTAssertEqual(lineCount(at: result.path), sample, "Alternate clicks must not complete target attempts.")
+            }
+            let directory = raw.appendingPathComponent("sample-\(sample)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let before = window.screenshot()
+            try before.pngRepresentation.write(to: directory.appendingPathComponent("before.png"))
+            XCTAssertFalse(
+                try foregroundScreenshotContains(recognitionSentinel, png: before.pngRepresentation),
+                "The outgoing document must not already display the target body sentinel.")
+            // Native NSOutlineView row containers do not expose a hittable
+            // AX action; use the same row-center mouse route as other journeys.
+            XCTAssertTrue(
+                target.frame.width > 0 && target.frame.height > 0 && window.frame.intersects(target.frame),
+                "The actual Library row must have on-window geometry before capture starts.")
+            let point = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let targetMenu = application.menus["scholium.noteRow.\(targetID)"]
+            if opensNewTab {
+                point.rightClick()
+                XCTAssertTrue(targetMenu.waitForExistence(timeout: 3))
+            }
+            var captureRequest: (stop: URL, finished: URL)?
+            func stopRecorder() {
+                guard let request = captureRequest else { return }
+                captureRequest = nil
+                do {
+                    try Data().write(to: request.stop, options: .atomic)
+                } catch {
+                    XCTFail("The capture stop request could not be written: \(error)")
+                    return
+                }
+                let stopped = waitUntil(timeout: 20) { FileManager.default.fileExists(atPath: request.finished.path) }
+                XCTAssertTrue(stopped, "The parent capture supervisor must finish before the next attempt.")
+                if stopped {
+                    do {
+                        let receipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: request.finished)) as? [String: Any])
+                        XCTAssertEqual(receipt["exit_code"] as? Int, 0, "The parent-owned frame capture must exit successfully.")
+                    } catch { XCTFail("The capture completion receipt is invalid: \(error)") }
+                }
+            }
+            defer { stopRecorder() }
+            if let requestDirectory {
+                let frames = directory.appendingPathComponent("frames")
+                let identifier = UUID().uuidString
+                let request = requestDirectory.appendingPathComponent("\(identifier).request.json")
+                let finished = requestDirectory.appendingPathComponent("\(identifier).finished.json")
+                captureRequest = (requestDirectory.appendingPathComponent("\(identifier).stop"), finished)
+                try JSONSerialization.data(
+                    withJSONObject: [
+                        "schema": 1, "pid": process.processIdentifier, "output": frames.path,
+                    ], options: [.sortedKeys]
+                ).write(to: request, options: .atomic)
+                XCTAssertTrue(
+                    waitUntil(timeout: 15) {
+                        FileManager.default.fileExists(atPath: frames.appendingPathComponent("ready").path)
+                            || FileManager.default.fileExists(atPath: finished.path)
+                    })
+                XCTAssertFalse(
+                    FileManager.default.fileExists(atPath: finished.path),
+                    "The capture supervisor must remain active until the observation finishes.")
+                XCTAssertTrue(
+                    FileManager.default.fileExists(atPath: frames.appendingPathComponent("ready").path),
+                    "Window capture must be ready before the real Library click.")
+            }
+            XCTAssertEqual(application.state, .runningForeground, "Display measurements require the QA application in the foreground.")
+            let refreshVisible = application.descendants(matching: .any)["scholium.refreshStatus"].exists
+            let actionStarted = DispatchTime.now().uptimeNanoseconds
+            if opensNewTab { targetMenu.menuItems["Open in New Tab"].click() } else { point.click() }
+            let actionReturned = DispatchTime.now().uptimeNanoseconds
+            let nativeCompleted = waitUntil(timeout: 10) { self.lineCount(at: result.path) == sample + 1 }
+            if !nativeCompleted {
+                _ = notify_post("com.scholium.qa.performance-note-opening-web-samples")
+                let pending = result.deletingPathExtension().appendingPathExtension("pending.jsonl")
+                _ = waitUntil(timeout: 3) { FileManager.default.fileExists(atPath: pending.path) }
+            }
+            XCTAssertTrue(
+                nativeCompleted,
+                "Each target click must complete exactly one current native opening attempt.")
+            // Keep screenshot capture and Vision away from the measured render.
+            // Offline analysis rejects any match arriving after this quiet period.
+            Thread.sleep(forTimeInterval: 0.25)
+            let firstScreenshotStarted = DispatchTime.now().uptimeNanoseconds
+            var captures: [[String: Any]] = []
+            var recognized = false
+            var lastScreenshot = Data()
+            var observed: UInt64 = actionReturned
+            for capture in 0..<8 {
+                let screen = window.screenshot()
+                lastScreenshot = screen.pngRepresentation
+                observed = DispatchTime.now().uptimeNanoseconds
+                recognized = try foregroundScreenshotContains(recognitionSentinel, png: screen.pngRepresentation)
+                captures.append(["capture": capture, "capture_return_uptime_ns": observed, "body_recognized": recognized])
+                if capture == 0 { try screen.pngRepresentation.write(to: directory.appendingPathComponent("first-after.png")) }
+                if recognized {
+                    try screen.pngRepresentation.write(to: directory.appendingPathComponent("after.png"))
+                    break
+                }
+            }
+            if !recognized {
+                try lastScreenshot.write(to: directory.appendingPathComponent("last-after.png"))
+                stopRecorder()
+            }
+            XCTAssertTrue(recognized, "The target's unique body must appear in actual screenshot pixels.")
+            let native = try foregroundLastRecord(at: result)
+            XCTAssertEqual(native["run_id"] as? String, runID)
+            XCTAssertEqual(native["sample"] as? Int, sample)
+            XCTAssertEqual(native["metric"] as? String, "note_open_to_visible")
+            let nativeEnd = try XCTUnwrap((native["completed_uptime_ns"] as? NSNumber)?.uint64Value)
+            XCTAssertGreaterThanOrEqual(nativeEnd, actionStarted)
+            XCTAssertNotNil(native["duration_ms"] as? Double)
+            XCTAssertEqual(notify_post("com.scholium.qa.performance-note-opening-web-samples"), UInt32(NOTIFY_STATUS_OK))
+            XCTAssertTrue(
+                waitUntil(timeout: 30) { self.lineCount(at: webResult.path) == sample + 1 },
+                "Collect Web phases before the alternate click invalidates this completed attempt.")
+            let web = try foregroundLastRecord(at: webResult)
+            XCTAssertEqual(web["run_id"] as? String, runID)
+            XCTAssertEqual(web["sample"] as? Int, sample)
+            XCTAssertFalse(try XCTUnwrap(web["samples"] as? [[String: Any]]).isEmpty)
+            if let captureRequest {
+                XCTAssertFalse(
+                    FileManager.default.fileExists(atPath: captureRequest.finished.path),
+                    "The recorder must cover the complete observation interval.")
+            }
+            stopRecorder()
+            if requestDirectory != nil {
+                let capture = try XCTUnwrap(
+                    JSONSerialization.jsonObject(
+                        with: Data(
+                            contentsOf:
+                                directory.appendingPathComponent("frames/capture-summary.json"))) as? [String: Any])
+                XCTAssertGreaterThan(try XCTUnwrap(capture["captured_frames"] as? Int), 0)
+                XCTAssertEqual(capture["overflow_frames"] as? Int, 0, "Capture overflow invalidates this display sample.")
+                XCTAssertEqual(capture["errors"] as? Int, 0, "Capture errors invalidate this display sample.")
+            }
+            let observation: [String: Any] = [
+                "sample": sample,
+                "kind": opensNewTab
+                    ? "new_tab_first_open"
+                    : (sample == 0 ? (startWithAlternate ? "first_switch" : "cold_first_open") : (retainTarget ? "retained_tab_return" : "replace_return")),
+                "driver_action_start_uptime_ns": actionStarted, "driver_action_return_uptime_ns": actionReturned,
+                "screenshot_observation_upper_bound_ms": Double(observed - actionStarted) / 1_000_000,
+                "target_body_recognized": recognized, "captures": captures, "native": native,
+                "first_screenshot_start_uptime_ns": firstScreenshotStarted,
+                "passive_frame_interval_before_screenshot": true,
+                "window_server_frames_enabled": requestDirectory != nil,
+                "background_refresh_visible_before_click": refreshVisible,
+            ]
+            observations.append(observation)
+            try JSONSerialization.data(withJSONObject: observation, options: [.prettyPrinted, .sortedKeys])
+                .write(to: directory.appendingPathComponent("observations.json"), options: .atomic)
+            XCTAssertEqual(try Data(contentsOf: note), prepared)
+            XCTAssertEqual(try Data(contentsOf: alternate), alternateOriginal)
+        }
+        // This correctness phase is deliberately outside all three opening samples.
+        editor.click()
+        XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
+        let beforeEditValue = try XCTUnwrap(editor.value as? String)
+        application.typeKey(.end, modifierFlags: .command)
+        let edit = "9"
+        application.typeKey(edit, modifierFlags: [])
+        application.typeKey("s", modifierFlags: .command)
+        let edited = prepared + Data(edit.utf8)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited })
+        let afterEditValue = try XCTUnwrap(editor.value as? String)
+        XCTAssertNotEqual(afterEditValue, beforeEditValue)
+        if retainTarget { openAlternateInNewTab() } else { other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click() }
+        XCTAssertTrue(waitUntil(timeout: 60) { window.title == "QA Autosave B" && other.isSelected })
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(
+            waitUntil(timeout: 60) {
+                window.title == "QA Autosave A" && editor.exists
+            })
+        editor.click()
+        let beforeUndoValue = editor.value as? String
+        application.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String != beforeUndoValue })
+        application.typeKey("s", modifierFlags: .command)
+        let undone = waitUntil(timeout: 10) { (try? Data(contentsOf: note)) == prepared }
+        if !undone { try Data(contentsOf: note).write(to: raw.appendingPathComponent("undo-observed.md")) }
+        XCTAssertTrue(undone, "A single-key Undo must survive ordinary replacement as well as retained tabs.")
+        let beforeRedoValue = editor.value as? String
+        application.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String != beforeRedoValue })
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited }, "Redo must preserve exact source after returning.")
+        let beforeFinalUndoValue = editor.value as? String
+        application.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.value as? String != beforeFinalUndoValue })
+        application.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == prepared })
+        XCTAssertEqual(try Data(contentsOf: alternate), alternateOriginal)
+        XCTAssertEqual(lineCount(at: result.path), sampleCount)
+        let report: [String: Any] = [
+            "label": label, "run_id": runID, "fixture_notes": 500, "target": targetID, "alternate": alternateID,
+            "body_sentinel": recognitionSentinel, "initial_alternate": startWithAlternate, "retain_target": retainTarget,
+            "opens_new_tab": opensNewTab, "samples": observations,
+            "source_sha256": SHA256.hash(data: prepared).map { String(format: "%02x", $0) }.joined(),
+            "qa_binary_sha256": SHA256.hash(data: try Data(contentsOf: bundle.appendingPathComponent("Contents/MacOS/Scholium"))).map {
+                String(format: "%02x", $0)
+            }.joined(),
+            "post_measurement_exact_save_navigation_undo_redo": true,
+            "native_boundary":
+                opensNewTab
+                ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
+                : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
+            "screenshot_boundary":
+                "Before XCTest Library click to recognized screenshot return; includes XCTest transport/idling, capture and earlier OCR/write work. Conservative upper bound only.",
+            "frame_boundary":
+                "Optional QA-window-only SCStream frames retain WindowServer displayTime converted to uptime nanoseconds. Offline body recognition is required; this is not physical panel scanout.",
+        ]
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+            .write(to: raw.appendingPathComponent("observations.json"), options: .atomic)
+        print("FOREGROUND_OPEN_DIAGNOSTIC label=\(label) samples=\(sampleCount) initial_alternate=\(startWithAlternate) new_tab=\(opensNewTab) raw=\(raw.path)")
+    }
+
+    private func foregroundScreenshotContains(_ sentinel: String, png: Data) throws -> Bool {
+        let recognition = VNRecognizeTextRequest()
+        recognition.recognitionLanguages = ["en-US"]
+        recognition.recognitionLevel = .accurate
+        try VNImageRequestHandler(data: png).perform([recognition])
+        let text = recognition.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+        let normalize: (String) -> String = { String($0.lowercased().filter { $0.isLetter || $0.isNumber }) }
+        return normalize(text).contains(normalize(sentinel))
+    }
+
+    private func foregroundLastRecord(at url: URL) throws -> [String: Any] {
+        let line = try XCTUnwrap(String(contentsOf: url, encoding: .utf8).split(separator: "\n").last)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+    }
+
     /// Opt-in native diagnostic. System hitch metrics, screenshot-confirmed
     /// observation bounds, and WebKit event/post-frame-task samples are distinct.
     @MainActor

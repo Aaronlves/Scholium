@@ -704,8 +704,8 @@ final class DocumentController: ObservableObject {
         sessions.retainedSession(for: target)
     }
 
-    /// Observes a session only to publish an equatable chrome projection. The
-    /// controller never forwards the session's broad objectWillChange stream.
+    /// Coalesces chrome updates and completes closed-session cleanup after
+    /// native detachment. The broad objectWillChange stream is not forwarded.
     func observe(_ session: DocumentSessionModel) {
         let identifier = ObjectIdentifier(session)
         guard sessionCancellables[identifier] == nil else { return }
@@ -720,6 +720,14 @@ final class DocumentController: ObservableObject {
                 guard let session else { return }
                 self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
                 self.refreshChromeProjection(ifOwnedBy: session)
+                // Close's first reap can precede SwiftUI's actual detach.
+                // Its deferred presentation publication completes cleanup.
+                if session.presentationIsClosed, !session.editorSession.hasAttachedWebView,
+                    self.selectedSessionWithoutCreation() !== session
+                {
+                    self.sessions.reapEligibleSessions(matching: session)
+                    self.pruneReapedSessionBookkeeping()
+                }
             }
         }
     }
@@ -2698,6 +2706,13 @@ final class DocumentController: ObservableObject {
         writingSuggestions.replace(workspace.vaults.flatMap(\.documents))
         var documents = Set(openDocuments)
         if let selectedDocument { documents.insert(selectedDocument) }
+        // Ordinary navigation can release a tab while retaining its serialized
+        // history. Those sessions must still converge on external revisions
+        // and deletion instead of becoming an unreachable source cache.
+        for (key, reference) in retainedReferences {
+            guard sessions.retainedSession(for: key)?.editorSession.hasRetainedHistory == true else { continue }
+            documents.insert(.workspace(.init(sessionKey: key, reference: reference)))
+        }
         guard !documents.isEmpty else { return .unchanged }
 
         var removed: Set<WindowSelectedDocument> = []
@@ -2725,7 +2740,7 @@ final class DocumentController: ObservableObject {
                 guard
                     let session = sessions.retainedSession(
                         for: document.editingTarget
-                    ), !sessions.pinReasons(for: session).isEmpty
+                    ), requiresDeletedSourceRecovery(session)
                 else {
                     removed.insert(document)
                     continue
@@ -2746,11 +2761,17 @@ final class DocumentController: ObservableObject {
         guard let selectedDocument,
             let session = sessions.retainedSession(
                 for: selectedDocument.editingTarget
-            ), !sessions.pinReasons(for: session).isEmpty
+            ), requiresDeletedSourceRecovery(session)
         else {
             return nil
         }
         return selectedDocument.relativePath
+    }
+
+    private func requiresDeletedSourceRecovery(_ session: DocumentSessionModel) -> Bool {
+        // Saved Undo is a navigation retention reason, not unsaved source or
+        // failed persistence. A clean external deletion still closes the Note.
+        !sessions.pinReasons(for: session).subtracting([.editorHistory]).isEmpty
     }
 
     private enum PublishedDocumentLocation {
@@ -2927,6 +2948,7 @@ final class DocumentController: ObservableObject {
         let token = UUID()
         let epoch = hydrationEpoch
         let retainedSession = sessions.retainedSession(for: target)
+        let retainedForHistory = retainedSession?.editorSession.hasRetainedHistory == true
         let retainedRevision =
             retainedSession?.editingRevision
             ?? retainedSession?.key.flatMap { snapshots[$0]?.fingerprint }
@@ -2955,6 +2977,11 @@ final class DocumentController: ObservableObject {
                 self.pendingHydrations[target]?.token == token
             else { return }
             self.pendingHydrations[target] = nil
+            defer {
+                if retainedForHistory, self.selectedDocument?.editingTarget != target {
+                    self.reapDetachedSessions()
+                }
+            }
             guard let published = self.publishedSummaries[target],
                 published.hasSameSourceBinding(as: summary),
                 self.sessions.retainedSession(for: target) === retainedSession,
@@ -3051,6 +3078,7 @@ final class DocumentController: ObservableObject {
             session.conflict = nil
             session.editError = nil
             session.canRetrySave = false
+            session.endClosedPresentation()
         }
         if let selectedDocument,
             targets.contains(selectedDocument.editingTarget)
@@ -3062,6 +3090,7 @@ final class DocumentController: ObservableObject {
             setSaveError(nil)
             refreshChromeProjection()
         }
+        reapDetachedSessions()
     }
 
     private func reconcile(

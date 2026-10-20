@@ -13,6 +13,22 @@ import {exactSourceHistory, exactSourceState} from "../exact-source-history";
 import {normalizedDocumentText} from "../state";
 
 describe("Lezer-backed semantic projection", () => {
+  it("retains nested inline projections below marker-free paragraph and table blocks", () => {
+    const source = "Ordinary **strong *nested*** and `literal` 中文 e\u0301 🦉.\n\n"
+      + "| Header | Second |\n| --- | --- |\n| [[Target]] | $x$ and *cell* |";
+    const projection = completeProjection(source);
+
+    const paragraph = projection.blocks.find(block => block.kind === "paragraph");
+    const table = projection.blocks.find(block => block.kind === "table");
+    expect(paragraph?.markerRanges).toEqual([]);
+    expect(table?.markerRanges).toEqual([]);
+    expect(projection.inlines.map(inline => [inline.kind, source.slice(inline.from, inline.to)]))
+      .toEqual([["strong", "**strong *nested***"], ["emphasis", "*nested*"], ["code", "`literal`"],
+        ["wikilink", "[[Target]]"], ["inlineMath", "$x$"], ["emphasis", "*cell*"]]);
+    expect(projection.inlines.find(inline => inline.kind === "strong")?.markerRanges
+      .map(range => source.slice(range.from, range.to))).toEqual(["**", "**"]);
+  });
+
   it("reads only a bounded marker prefix from a 100,000-unit interaction line", () => {
     const state = EditorState.create({doc: `> [!state] ${"x".repeat(99_989)}`});
     const prefix = boundedLinePrefix(state.doc, state.doc.length, 512);

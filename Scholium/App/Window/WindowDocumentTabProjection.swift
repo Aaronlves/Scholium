@@ -10,7 +10,6 @@ extension WindowModel {
     ) {
         guard let document = documentController.selectedDocument else { return }
         let presentation = documentTabPresentation(for: document)
-        let previousTabs = documentTabController.tabs
         switch activation {
         case .place(let placement):
             documentTabController.activate(
@@ -40,10 +39,8 @@ extension WindowModel {
             }
             documentNavigationHistoryController.record(document)
         }
-        let openTargets = Set(documentTabController.tabs.map { $0.document.editingTarget })
-        for tab in previousTabs where !openTargets.contains(tab.document.editingTarget) {
-            documentController.endClosedPresentation(of: tab.document)
-        }
+        // Replacing the selected tab is navigation. Only an explicit Close
+        // ends its retained editing history; departure already froze the page.
         reconcileDocumentSessionLeases()
         PerformanceProbe.shared.markFirstReadDocumentSelected(
             documentID: document.relativePath

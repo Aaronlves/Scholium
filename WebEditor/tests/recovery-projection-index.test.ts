@@ -129,7 +129,7 @@ describe("semantic projection during exact history recovery", () => {
     }).state;
     const snapshot = {documentID: "synthetic", fingerprint: "a".repeat(64), generation: 1,
       source, ranges: original.selection.ranges.map(({anchor, head}) => ({anchor, head})),
-      stateJSON: captureExactHistory(original), undoHistoryPreserved: true, dirty: true,
+      stateJSON: captureExactHistory(original), undoHistoryPreserved: true, hasHistory: true, dirty: true,
       citationSnapshot, citationData: draftData};
     expect(snapshot.stateJSON).toBeDefined();
     builds = 0;

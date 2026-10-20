@@ -123,7 +123,7 @@ extension WindowModel {
                 requestPerformanceNoteOpeningCloseTarget()
         #endif
         case "com.scholium.qa.performance-note-opening-web-samples":
-            guard PerformanceProbe.shared.measuresNoteOpenToInput,
+            guard PerformanceProbe.shared.measuresNoteOpeningLifecycle,
                 let descriptor = currentDocumentDescriptor
             else { return }
             let session = documentController.session(for: descriptor)
@@ -131,7 +131,15 @@ extension WindowModel {
                 let sample = PerformanceProbe.shared.completedNoteOpeningSample(
                     documentID: descriptor.reference.relativePath, editorSessionID: session.editorSession.sessionID
                 )
-            else { return }
+            else {
+                PerformanceProbe.shared.recordPendingNoteOpeningState(
+                    editorSessionID: session.editorSession.sessionID, isEditing: session.isEditing,
+                    editorIsLoaded: session.editorSession.isLoaded, editorIsReady: session.editorSession.isReady,
+                    editorHasWebView: session.editorSession.hasAttachedWebView,
+                    windowModeIsEditing: documentController.currentPresentationMode != .read,
+                    focusState: session.editorSession.noteOpeningFocusDiagnostics)
+                return
+            }
             Task { @MainActor [weak self] in
                 guard let self, let samples = try? await session.editorSession.queryPerformanceSamples(),
                     currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,

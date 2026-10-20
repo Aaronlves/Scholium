@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 53
+let markdownEditorProtocolVersion = 54
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -100,6 +100,7 @@ struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
     let source: String
     let stateJSON: String?
     let undoHistoryPreserved: Bool
+    var hasHistory: Bool = false
     let dirty: Bool
     let focusTarget: WindowDocumentFocusTarget?
     var undoLabel: String? = nil

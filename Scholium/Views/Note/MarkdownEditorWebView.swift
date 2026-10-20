@@ -150,7 +150,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let reusedWebView {
             webView = reusedWebView
         } else {
-            let measuresBootstrap = PerformanceProbe.shared.measuresNoteOpenToInput
+            let measuresBootstrap = PerformanceProbe.shared.measuresNoteOpeningLifecycle
             if measuresBootstrap {
                 contentController.addUserScript(
                     WKUserScript(
@@ -1364,7 +1364,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         /// Later reloads cannot fill gaps in its diagnostic timeline.
         func loadEditorHTML(_ editorHTML: String, in webView: WKWebView) {
             let observation: BootstrapNavigationObservation?
-            if bootstrapNavigationObservation == nil, PerformanceProbe.shared.measuresNoteOpenToInput,
+            if bootstrapNavigationObservation == nil, PerformanceProbe.shared.measuresNoteOpeningLifecycle,
                 let attemptID = noteOpeningAttemptID, let editorSessionID = noteOpeningSessionID
             {
                 let candidate = BootstrapNavigationObservation(

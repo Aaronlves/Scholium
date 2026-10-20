@@ -250,7 +250,9 @@ function presentationBlockMarkerRanges(
   markerNames: ReadonlySet<string>,
   stopAt: ReadonlySet<string>,
 ) {
-  const ranges = childRanges(node, markerNames, stopAt);
+  // Marker-free blocks still own their semantic descendants in the main
+  // traversal. A second recursive walk cannot find an admitted marker.
+  const ranges = markerNames.size === 0 ? [] : childRanges(node, markerNames, stopAt);
   if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
 
   // Lezer's HeaderMark covers only the `#` run. In rendered Markdown, the

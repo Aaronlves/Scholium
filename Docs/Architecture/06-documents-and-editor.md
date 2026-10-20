@@ -5,11 +5,12 @@ document ownership, exact-source transport, and nonauthorizing rendering.
 
 ## Documents and CodeMirror
 
-Document owns vault/Note-keyed sessions; transfer rotates transport identity,
-preserving ownership/document identity. Dirty/composing/conflicted/saving/recovery
-pin sessions. Destination leases precede release; close flushes before removal.
-Clean unleased sessions discard source/Undo/rendering/previews. Window visits
-own revision-bound return positions. Equal paths across vaults remain distinct.
+Document owns vault/Note-keyed sessions. Transfer rotates transport identity,
+preserving ownership/document identity. Dirty/composing/conflicted/saving/recovery and
+history pin sessions. Destination leases precede release; Close flushes and releases
+clean history. Navigation releases WebViews, preserving serialized Undo. Unleased,
+unpinned sessions discard source/rendering/previews. Window visits own revision-bound
+positions; vaults remain distinct.
 
 `DocumentController` owns persisted window mode. Sessions retain
 editor/flush identity, checked exact mirror, committed revision, presentation/
@@ -19,17 +20,17 @@ preparation measures behind a native skeleton. Mount committed Review
 only for Review/read recovery; reconstruct after Edit/Source. Mode presentation
 awaits acknowledgment; unsafe Review retains editor/recovery. Review and editor
 observe separate viewports; mode handoff alone copies anchors or fallback fractions.
-Returning Review restores its saved position.
+Review restores its saved position.
 
 Detachment atomically freezes input and captures exact source/selection/history;
 incomplete capture retains the editor. Source-bounded history records insertion
 line endings/citations; a pinned CodeMirror adapter verifies source/history/selection
 binding, inverse effects and grouping.
-Frozen saves reuse unchanged document/revision/generation proof; cancellation resumes only its
-matching suspension. The window pool reuses runtimes, never source/history.
-Quarantine blocks paint/input/accessibility until checked initialization;
-uncertain handoffs retire, only cleared pages park idle. Committed snapshots update
-clean detached sessions atomically; dirty sessions retain exact conflict bytes.
+Frozen saves reuse unchanged source/revision/generation proof; cancellation resumes matching suspensions.
+Pool reuse excludes source/history; leases exclude retained donors. Deadlines bind specific pages.
+Quarantine blocks paint/input/accessibility until checked initialization; uncertain handoffs retire,
+only cleared pages idle. Snapshots atomically update clean detached sessions;
+dirty sessions retain exact conflict bytes.
 External events reconcile tabs by stable identity before paths/projections change;
 clean deleted sessions release, unsafe buffers remain.
 
@@ -63,9 +64,9 @@ capacity is checked separately.
 
 Requests bind protocol/request, session/document, fingerprint, generation and
 expiration. Mutations serialize and recheck identity after suspension; snapshots
-may observe later generations. Expired/composing work cannot mutate. Outbound
-source uses structured page-world arguments/JSON, never executable interpolation
-or Foundation object decoding that loses leading BOM.
+may observe later generations. Expired/composing work cannot mutate. Structured
+page-world arguments/JSON preserve source, excluding executable interpolation and
+Foundation decoding that loses leading BOM.
 
 A save acknowledges one immutable committed snapshot. Newer input stays dirty
 and schedules another save rather than being overwritten. Proven commits remain
@@ -83,9 +84,9 @@ recovery uses the checked mirror/last selection, never disk over dirty source.
 Undo-history loss is distinct from source loss. Invalid reconstruction cannot
 silently normalize or repair source.
 
-One atomic CodeMirror configuration owns Edit/Source facets and all projection
+Atomic CodeMirror configuration owns Edit/Source facets and projection
 extensions/listeners. Initialization or absent facet fails closed to Source.
-Source has no semantic widgets or Edit overlays, while keeping shared
+Source has no semantic widgets or Edit overlays, keeping
 exact navigation/editing. Pending native input cannot independently toggle DOM
 mode. Lezer topology completion is bounded; incomplete parsing remains incomplete
 until the parser transaction, with no regex fallback or second Markdown parser.

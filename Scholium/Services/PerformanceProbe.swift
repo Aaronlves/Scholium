@@ -21,6 +21,7 @@ final class PerformanceProbe {
         case warmEditActivation = "warm_edit_activation"
         case firstEditActivation = "first_edit_activation"
         case noteOpenToInput = "note_open_to_input"
+        case noteOpenToVisible = "note_open_to_visible"
         case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
         case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
@@ -49,6 +50,7 @@ final class PerformanceProbe {
     /// Diagnostic milestones keep framework scheduling separate from the
     /// existing, user-visible opening endpoint. Only numeric offsets escape.
     enum NoteOpeningMilestone: String {
+        case clickRecognized = "click_recognized"
         case outgoingFrozen = "outgoing_frozen"
         case outgoingFlushed = "outgoing_flushed"
         case outgoingRecaptured = "outgoing_recaptured"
@@ -192,6 +194,7 @@ final class PerformanceProbe {
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
+    private var pendingNoteOpeningDumpCount = 0
     private struct ChatEntry {
         let id = UUID()
         let conversationID: UUID
@@ -280,17 +283,19 @@ final class PerformanceProbe {
 
     var isEnabled: Bool { configuration != nil }
     var measuresChatEntry: Bool { configuration?.metric == .chatEntry }
-    var measuresNoteOpenToInput: Bool { configuration?.metric == .noteOpenToInput }
+    var measuresNoteOpeningLifecycle: Bool {
+        configuration?.metric == .noteOpenToInput || configuration?.metric == .noteOpenToVisible
+    }
 
     func measuresNoteOpening(documentID: String) -> Bool {
-        measuresNoteOpenToInput && configuration?.expectedDocument == documentID
+        measuresNoteOpeningLifecycle && configuration?.expectedDocument == documentID
     }
 
     @discardableResult
     func beginNoteOpening(documentID: String, startNanoseconds: UInt64? = nil) -> UUID? {
         noteOpening = nil
         completedNoteOpening = nil
-        guard let configuration, measuresNoteOpenToInput,
+        guard let configuration, measuresNoteOpeningLifecycle,
             documentID == configuration.expectedDocument,
             recordedSampleCount < configuration.sampleCount
         else { return nil }
@@ -303,18 +308,18 @@ final class PerformanceProbe {
     }
 
     func currentNoteOpeningAttempt(documentID: String) -> UUID? {
-        guard measuresNoteOpenToInput, noteOpening?.documentID == documentID else { return nil }
+        guard measuresNoteOpeningLifecycle, noteOpening?.documentID == documentID else { return nil }
         return noteOpening?.id
     }
 
     /// Lifecycle owners without a destination identity capture this token
     /// before suspension; a late completion cannot borrow a newer attempt.
     var armedNoteOpeningAttemptID: UUID? {
-        measuresNoteOpenToInput ? noteOpening?.id : nil
+        measuresNoteOpeningLifecycle ? noteOpening?.id : nil
     }
 
     func currentNoteOpeningAttempt(editorSessionID: UUID) -> UUID? {
-        guard measuresNoteOpenToInput, noteOpening?.editorSessionID == editorSessionID else {
+        guard measuresNoteOpeningLifecycle, noteOpening?.editorSessionID == editorSessionID else {
             return nil
         }
         return noteOpening?.id
@@ -413,7 +418,15 @@ final class PerformanceProbe {
         else { return }
         opening.phases[phase] = timestamp
         noteOpening = opening
-        guard let visible = opening.phases[.stableVisible], let focused = opening.phases[.focused] else { return }
+        guard let visible = opening.phases[.stableVisible] else { return }
+        let focused: UInt64
+        if configuration?.metric == .noteOpenToVisible {
+            focused = visible
+        } else if let received = opening.phases[.focused] {
+            focused = received
+        } else {
+            return
+        }
         let sourceResolvedAt: UInt64?
         if let hydrationStarted = opening.phases[.hydrationStarted],
             let hydrated = opening.phases[.hydrated], hydrated >= hydrationStarted
@@ -475,17 +488,52 @@ final class PerformanceProbe {
     }
 
     func completedNoteOpeningSample(documentID: String, editorSessionID: UUID) -> Int? {
-        guard measuresNoteOpenToInput, noteOpening == nil,
+        guard measuresNoteOpeningLifecycle, noteOpening == nil,
             let completed = completedNoteOpening, completed.documentID == documentID,
             completed.editorSessionID == editorSessionID
         else { return nil }
         return completed.sample
     }
 
+    /// On-demand failure evidence; emits only closed phase names, booleans
+    /// and numeric offsets, independently of whether pixels have appeared.
+    func recordPendingNoteOpeningState(
+        editorSessionID: UUID, isEditing: Bool, editorIsLoaded: Bool, editorIsReady: Bool,
+        editorHasWebView: Bool, windowModeIsEditing: Bool, focusState: [String: Bool] = [:]
+    ) {
+        guard let configuration, measuresNoteOpeningLifecycle, pendingNoteOpeningDumpCount < 4 else { return }
+        let destination = configuration.resultURL.deletingPathExtension().appendingPathExtension("pending.jsonl")
+        var value: [String: Any] = [
+            "recorded_samples": recordedSampleCount,
+            "has_pending": noteOpening != nil, "has_completed": completedNoteOpening != nil,
+            "current_session_matches_pending": noteOpening?.editorSessionID == editorSessionID,
+            "current_is_editing": isEditing, "current_loaded": editorIsLoaded, "current_ready": editorIsReady,
+            "current_has_webview": editorHasWebView, "window_mode_is_editing": windowModeIsEditing,
+        ]
+        let focusKeys: Set<String> = [
+            "authorized", "pending", "closed", "composing", "suspended", "mode_matches",
+            "native", "allows_input", "hidden", "key_window", "sheet", "responder",
+        ]
+        if !focusState.isEmpty { value["focus"] = focusState.filter { focusKeys.contains($0.key) } }
+        if let opening = noteOpening {
+            value["bound_session"] = opening.editorSessionID != nil
+            value["source_reused"] = opening.sourceReusedAt != nil
+            value["phases"] = Dictionary(
+                uniqueKeysWithValues: opening.phases.map {
+                    ($0.key.rawValue, milliseconds($0.value - opening.started))
+                })
+            value["milestones"] = Dictionary(
+                uniqueKeysWithValues: opening.milestones.map {
+                    ($0.key.rawValue, milliseconds($0.value - opening.started))
+                })
+        }
+        if append(value, to: destination) { pendingNoteOpeningDumpCount += 1 }
+    }
+
     func recordNoteOpeningWebSamples(
         _ samples: [MarkdownEditorPerformanceSample], documentID: String, sample: Int? = nil
     ) {
-        guard let configuration, measuresNoteOpenToInput, recordedSampleCount > 0, noteOpening == nil,
+        guard let configuration, measuresNoteOpeningLifecycle, recordedSampleCount > 0, noteOpening == nil,
             documentID == configuration.expectedDocument, let completed = completedNoteOpening,
             completed.documentID == documentID, sample == nil || sample == completed.sample,
             samples.count <= 256
@@ -499,6 +547,9 @@ final class PerformanceProbe {
             "cached-preview-work",
             "input-to-state", "input-to-paint", "key-to-state", "key-to-paint",
             "projection-topology-proof", "projection-index-map", "exact-source-admission",
+            "recovery-restore", "recovery-composition", "recovery-live-install",
+            "bridge-dispatch-stages", "bridge-message-post", "interaction-report-queue", "interaction-context",
+            "citation-projection-admission", "citation-catalog", "citation-field-validation",
         ]
         let allowedObserved: Set<String> = [
             "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count",
@@ -515,6 +566,23 @@ final class PerformanceProbe {
             "semanticMapMilliseconds", "derivedMapMilliseconds", "finalizationMilliseconds",
             "documentStartToBundleStartMilliseconds", "bundleStartToEntryMilliseconds",
             "entryToBundleEndMilliseconds", "bundleExecutionMilliseconds",
+            // Exact-history/bootstrap producers, including refused-history fallback.
+            "sourceUTF16Length", "historyBytes", "capacityMilliseconds", "parseMilliseconds",
+            "payloadValidationMilliseconds", "firstStateMilliseconds", "roundtripAndEffectsMilliseconds",
+            "doneEvents", "undoneEvents", "finalStateMilliseconds", "finalAdmissionMilliseconds", "branchesMilliseconds",
+            "rangeCount", "historyPreserved", "selectionMilliseconds", "codecMilliseconds", "bindingMilliseconds",
+            "failedHistoryAttemptMilliseconds", "fallbackMilliseconds", "recovery",
+            // Bridge, interaction scheduling and input/paint producers in editor.ts.
+            "requestEnvelopeMilliseconds", "admissionMilliseconds", "executeMilliseconds", "resultEnvelopeMilliseconds", "accepted",
+            "generation", "interactionRevision", "documentChanged", "postedAtMilliseconds", "frame", "watchdog", "explicit",
+            "trustedInput", "visibilityVisible", "documentHasFocus", "editorOwnsFocus", "frameWaitMilliseconds", "taskWaitMilliseconds",
+            // Citation projection/validation and topology-proof subphases.
+            "fieldCount", "catalogMilliseconds", "rangeMappingMilliseconds", "reservedScanMilliseconds",
+            "snapshotMilliseconds", "parserContextMilliseconds", "companionValidationMilliseconds",
+            "vendorTextMilliseconds", "fallbackTextMilliseconds",
+            "ensureTreeMilliseconds", "languageStateReadMilliseconds", "ensureTreeAfterStateReadMilliseconds",
+            "previousLocalPreparationMilliseconds", "nextSemanticMilliseconds", "signatureMilliseconds",
+            "fullTextMaterializationMilliseconds", "fullTextMaterializationUTF16Count",
         ]
         guard
             samples.allSatisfy({ value in
@@ -1344,7 +1412,8 @@ final class PerformanceProbe {
             previousName = phase.rawValue
         }
         if let loaded = opening.phases[.loaded], loaded <= completed {
-            durations["loaded_to_input_ready_duration_ms"] = milliseconds(completed - loaded)
+            let endpoint = configuration?.metric == .noteOpenToVisible ? "visible" : "input_ready"
+            durations["loaded_to_\(endpoint)_duration_ms"] = milliseconds(completed - loaded)
             for phase in [NoteOpeningPhase.stableVisible, .focused] {
                 if let timestamp = opening.phases[phase], timestamp >= loaded {
                     durations["loaded_to_\(phase.rawValue)_duration_ms"] = milliseconds(timestamp - loaded)

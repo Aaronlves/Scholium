@@ -10,6 +10,216 @@ import WebKit
 @Suite("Markdown editor document switching", .serialized)
 @MainActor
 struct MarkdownEditorReuseTests {
+    @Test("Opening another leased tab never waits for or retires the retained editor")
+    func leasedTabPageDoesNotBlockFreshAttachment() async throws {
+        let store = DocumentSessionStore()
+        let aKey = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let bKey = DocumentSessionKey(vaultID: aKey.vaultID, noteID: UUID())
+        let a = store.session(for: aKey).editorSession
+        let pool = store.editorWebViewPool
+        let aHarness = SwitchingHarness()
+        let bHarness = SwitchingHarness()
+        defer {
+            bHarness.close()
+            aHarness.close()
+            store.removeAll()
+        }
+        let originalA = "\u{FEFF}# A\r\n\r\nRetained 中文 😀 e\u{301}。\r\n"
+        let editedA = originalA + "A history remains exact.\r\n"
+        let sourceB = "# B\n\nOnly B 🦉。\n"
+        store.reconcileLeases(openTargets: [.workspace(aKey)], foregroundTarget: .workspace(aKey))
+        try await aHarness.show(a, source: originalA, title: "A")
+        let aPage = try #require(a.webView)
+        _ = try await a.send(
+            .replacePassage(
+                expectedText: originalA, fromUTF16: 0, toUTF16: originalA.utf16.count,
+                replacement: editedA, preserveSelection: false), in: aPage)
+        try await a.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspension = try #require(a.detachmentSuspensionID)
+        let undo = try #require(a.context?.undoLabel)
+
+        store.reconcileLeases(
+            openTargets: [.workspace(aKey), .workspace(bKey)], foregroundTarget: .workspace(bKey))
+        // Acquire B after its tab is leased; an unleased, unattached B
+        // would correctly be reaped by the initial A-only reconciliation.
+        let b = store.session(for: bKey).editorSession
+        #expect(!pool.hasOutgoingView)
+        let acquisitions = pool.acquisitionSerial
+        #expect(await pool.takeWhenPrepared() == nil)
+        try await bHarness.show(b, source: sourceB, title: "B")
+        #expect(pool.acquisitionSerial == acquisitions)
+        #expect(pool.waitingAcquisitionCount == 0)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 0)
+        #expect(a.webView === aPage)
+        #expect(b.webView !== aPage)
+        #expect(pool.qaDiagnosticCounts.attached == 2)
+        #expect(a.context?.undoLabel == undo)
+        #expect(Data(try await a.currentText().utf8) == Data(editedA.utf8))
+        // B was created last and remains leased. A must still be available
+        // as the outgoing donor when ordinary replacement releases its tab.
+        store.reconcileLeases(openTargets: [.workspace(bKey)], foregroundTarget: .workspace(bKey))
+        #expect(pool.hasOutgoingView)
+        let departingPage = AcquiredPage()
+        let departing = Task { @MainActor in departingPage.value = await pool.takeWhenPrepared() }
+        defer { departing.cancel() }
+        try await waitForAcquisitions(pool, count: 1)
+        // Restoring A also releases B. The waiter bound to A must finish
+        // instead of silently changing its timeout target to the new donor.
+        store.reconcileLeases(openTargets: [.workspace(aKey)], foregroundTarget: .workspace(aKey))
+        await departing.value
+        #expect(departingPage.value == nil)
+        #expect(pool.hasOutgoingView)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 0)
+        store.reconcileLeases(
+            openTargets: [.workspace(aKey), .workspace(bKey)], foregroundTarget: .workspace(aKey))
+        try await a.resumeAfterDetachment(suspensionID: suspension)
+        try await aHarness.undo()
+        #expect(Data(try await a.currentText().utf8) == Data(originalA.utf8))
+        #expect(Data(try await b.currentText().utf8) == Data(sourceB.utf8))
+        await bHarness.closeAndDrain()
+        await aHarness.closeAndDrain()
+    }
+
+    @Test("Restoring an attached page's tab lease ends acquisition without a late retirement")
+    func restoredTabLeaseCancelsPendingAcquisition() async throws {
+        let pool = MarkdownEditorWebViewPool(acquisitionDeadline: .milliseconds(100))
+        let a = makeSession(pool: pool)
+        let harness = SwitchingHarness()
+        defer {
+            harness.close()
+            pool.removeAll()
+        }
+        let source = "# Retained A\r\n\r\nUnchanged 中文 😀。\r\n"
+        try await harness.show(a, source: source, title: "A")
+        let page = try #require(a.webView)
+        let acquiredPage = AcquiredPage()
+        let acquired = Task { @MainActor in acquiredPage.value = await pool.takeWhenPrepared() }
+        defer { acquired.cancel() }
+        try await waitForAcquisitions(pool, count: 1)
+        pool.reconcileTabLeases([a])
+        await acquired.value
+        #expect(acquiredPage.value == nil)
+        #expect(pool.waitingAcquisitionCount == 0)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!pool.hasOutgoingView)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 0)
+        #expect(a.webView === page)
+        #expect(a.detachmentSuspensionID == nil)
+        #expect(Data(try await a.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Transferring a session cannot leave a false outgoing page in its former pool")
+    func transferredSessionCannotDonateToFormerPool() async throws {
+        let origin = DocumentSessionStore()
+        let destination = DocumentSessionStore()
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let model = origin.session(for: key)
+        let a = model.editorSession
+        let pool = origin.editorWebViewPool
+        let harness = SwitchingHarness()
+        defer {
+            harness.close()
+            destination.removeAll()
+            origin.removeAll()
+        }
+        let source = "# Transferred A\n\nExact source 😀。\n"
+        origin.reconcileLeases(openTargets: [.workspace(key)], foregroundTarget: .workspace(key))
+        try await harness.show(a, source: source, title: "A")
+        let page = try #require(a.webView as? WindowAttachedWebView)
+        #expect(origin.takeSession(for: .workspace(key)) === model)
+        #expect(pool.qaDiagnosticCounts.attached == 0)
+        destination.receiveSession(model, for: .workspace(key))
+        #expect(a.webViewPool === destination.editorWebViewPool)
+        // A late attachment observation must not turn a foreign page into
+        // a donor, even before its former container has disappeared.
+        pool.registerAttached(page)
+        #expect(pool.qaDiagnosticCounts.attached == 0)
+        #expect(!pool.hasOutgoingView)
+        let acquisitions = pool.acquisitionSerial
+        #expect(await pool.takeWhenPrepared() == nil)
+        #expect(pool.acquisitionSerial == acquisitions)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 0)
+        #expect(a.webView === page)
+        #expect(Data(try await a.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("An older tab's acquisition timeout cannot retire a newer retained tab")
+    func outgoingTimeoutCannotRetireAnotherRetainedPage() async throws {
+        let pool = MarkdownEditorWebViewPool(acquisitionDeadline: .milliseconds(100))
+        let a = makeSession(pool: pool)
+        let b = makeSession(pool: pool)
+        let aHarness = SwitchingHarness()
+        let bHarness = SwitchingHarness()
+        defer {
+            bHarness.close()
+            aHarness.close()
+            pool.removeAll()
+        }
+        let sourceA = "# Outgoing A\r\n\r\nRetained exact A.\r\n"
+        let sourceB = "\u{FEFF}# Retained B\r\n\r\n中文 😀 e\u{301}。\r\n"
+        let editedB = sourceB + "B history.\r\n"
+        pool.reconcileTabLeases([a, b])
+        try await aHarness.show(a, source: sourceA, title: "A")
+        try await bHarness.show(b, source: sourceB, title: "B")
+        let bPage = try #require(b.webView)
+        _ = try await b.send(
+            .replacePassage(
+                expectedText: sourceB, fromUTF16: 0, toUTF16: sourceB.utf16.count,
+                replacement: editedB, preserveSelection: false), in: bPage)
+
+        pool.reconcileTabLeases([b])
+        #expect(pool.hasOutgoingView)
+        #expect(await pool.takeWhenPrepared() == nil)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 1)
+        #expect(b.webView === bPage)
+        #expect(Data(try await b.currentText().utf8) == Data(editedB.utf8))
+        try await bHarness.undo()
+        #expect(Data(try await b.currentText().utf8) == Data(sourceB.utf8))
+        #expect(Data(try await a.currentText().utf8) == Data(sourceA.utf8))
+        // Exclude A, then release B's lease. B is still a legitimate donor;
+        // the timeout must not have blacklisted the last-created page.
+        pool.forgetTransferredSession(a)
+        pool.reconcileTabLeases([])
+        #expect(pool.hasOutgoingView)
+        await bHarness.closeAndDrain()
+        await aHarness.closeAndDrain()
+    }
+
+    @Test("A detached page's reuse preparation remains waitable when its session regains a tab")
+    func preparingPageRemainsWaitableAfterTabLeaseRestoration() async throws {
+        let gate = PreparationGate()
+        let pool = MarkdownEditorWebViewPool(preparationGate: { await gate.pauseOnce() })
+        let a = makeSession(pool: pool)
+        let harness = SwitchingHarness()
+        defer {
+            gate.resume()
+            harness.close()
+            pool.removeAll()
+        }
+        let source = "# Departing A\n\nSynthetic source.\n"
+        try await harness.show(a, source: source, title: "A")
+        let page = try #require(a.webView)
+        let acquiredPage = AcquiredPage()
+        let acquired = Task { @MainActor in acquiredPage.value = await pool.takeWhenPrepared() }
+        defer { acquired.cancel() }
+        try await waitForAcquisitions(pool, count: 1)
+        try await harness.hideWithoutWaitingForPool()
+        try await gate.waitUntilPaused()
+        pool.reconcileTabLeases([a])
+        #expect(pool.hasOutgoingView)
+        #expect(pool.waitingAcquisitionCount == 1)
+        #expect(!a.hasAttachedWebView)
+        gate.resume()
+        await acquired.value
+        #expect(acquiredPage.value === page)
+        #expect(pool.waitingAcquisitionCount == 0)
+        #expect(pool.qaDiagnosticCounts.abandonedLive == 0)
+        #expect(Data(a.checkedSource.utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Invalidating request bookkeeping does not recycle a still-running bridge dispatch")
     func bridgeDispatchMustActuallyFinishBeforeReuse() async throws {
         let dispatcher = SuspendingPerformanceDispatcher()

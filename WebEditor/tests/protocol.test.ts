@@ -47,7 +47,7 @@ describe("editor protocol", () => {
     expect(new TextEncoder().encode(stateJSON).byteLength).toBeGreaterThan(MAX_INBOUND_BYTES);
     const envelope = initializeRecovery({
       documentID: "document", fingerprint: "fingerprint", generation: 4,
-      ranges: [{anchor: 0, head: 0}], source: "", stateJSON, undoHistoryPreserved: true, dirty: true,
+      ranges: [{anchor: 0, head: 0}], source: "", stateJSON, undoHistoryPreserved: true, hasHistory: true, dirty: true,
     });
     expect(encodedByteLength(envelope)).toBeLessThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_PRESENTATION_ENVELOPE_BYTES + MAX_RECOVERY_ENVELOPE_BYTES);
     expect(MAX_RECOVERY_ENVELOPE_BYTES).toBeGreaterThan(MAX_SOURCE_ENVELOPE_BYTES + MAX_RECOVERY_HISTORY_BYTES * 2);
@@ -57,10 +57,12 @@ describe("editor protocol", () => {
   it("admits only bounded UTF-8 recovery action labels", () => {
     const snapshot = {
       documentID: "document", fingerprint: "fingerprint", generation: 4,
-      ranges: [{anchor: 0, head: 0}], source: "", undoHistoryPreserved: true, dirty: true,
+      ranges: [{anchor: 0, head: 0}], source: "", undoHistoryPreserved: true, hasHistory: true, dirty: true,
     };
     const admitted = (labels: Record<string, unknown>) => isEditorRequest(initializeRecovery({...snapshot, ...labels}));
     expect(admitted({})).toBe(true);
+    expect(admitted({hasHistory: undefined})).toBe(false);
+    expect(admitted({hasHistory: 1})).toBe(false);
     expect(admitted({undoLabel: "Paste", redoLabel: "Citation Operation"})).toBe(true);
     const bounded = "😀".repeat(MAX_RECOVERY_ACTION_LABEL_BYTES / 4);
     expect(admitted({undoLabel: bounded, redoLabel: bounded})).toBe(true);
@@ -110,8 +112,8 @@ describe("editor protocol", () => {
   });
 
   it("uses the atomic initialization recovery protocol and rejects its predecessor", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(53);
-    expect(isEditorRequest({...request, protocolVersion: 52})).toBe(false);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(54);
+    expect(isEditorRequest({...request, protocolVersion: 53})).toBe(false);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {
     const citationSnapshot = {noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222", status: "absent"};
@@ -320,7 +322,7 @@ describe("editor protocol", () => {
       generation: 4,
       ranges: [{anchor: 0, head: 4}],
       source: "Body",
-      undoHistoryPreserved: false,
+      undoHistoryPreserved: false, hasHistory: false,
       dirty: true,
       focusTarget: "title",
     };
@@ -338,7 +340,7 @@ describe("editor protocol", () => {
       status: "available", sourceFingerprint: {sha256: "a".repeat(64), byteCount: 4}, data: {schemaVersion: 1, fields: []}};
     const recovery = {documentID: "document", fingerprint: "a".repeat(64), generation: 7,
       source: "\uFEFFDraft Cafe\u0301\r\n尾", ranges: [{anchor: 1, head: 4}, {anchor: 9, head: 11}],
-      undoHistoryPreserved: false, dirty: true, citationSnapshot, citationData: {schemaVersion: 1, fields: [], documentData: "draft"}};
+      undoHistoryPreserved: false, hasHistory: false, dirty: true, citationSnapshot, citationData: {schemaVersion: 1, fields: [], documentData: "draft"}};
     const envelope = {...initializeRecovery(recovery), startingFingerprint: recovery.fingerprint};
     const operation = {...envelope.operation, citationSnapshot};
     // The saved fingerprint/byte count names the disk baseline, not draft bytes.

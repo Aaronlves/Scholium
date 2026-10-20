@@ -4,6 +4,7 @@ import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 import Testing
+import WebKit
 
 @testable import ScholiumApp
 
@@ -553,6 +554,235 @@ struct DocumentControllerConvergenceTests {
             #expect(!session.hasUnsavedChanges)
             #expect(session.conflict == nil)
         }
+    }
+
+    @Test("Unleased navigation history receives external source and companion revisions", arguments: [false, true])
+    func navigationHistoryExternalRevision(companionOnly: Bool) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let source = "\u{FEFF}Original cafe\u{301} 中文 🦉.\r\n"
+        let original = citationNote(vaultID: vault, noteID: id, source: source, preferences: "baseline")
+        let external = citationNote(
+            vaultID: vault, noteID: id,
+            source: companionOnly ? source : source + "External revision.\r\n", preferences: "peer")
+        let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other.\n")
+        var hydrationCount = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            hydrationCount += 1
+            guard expected.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            return external
+        })
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let first = try #require(controller.selectedDocument)
+        let session = controller.session(for: first.editingTarget)
+        let editor = try await retainedRedoHistory(original, in: session, controller: controller)
+        defer {
+            editor.close()
+            controller.removeAll()
+            controller.unbind()
+        }
+        controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let selected = try #require(controller.selectedDocument)
+        controller.reconcileSessionLeases(leasedDocuments: [selected], selectedDocument: selected)
+        #expect(controller.retainedSessionCount == 2)
+        #expect(controller.retainedSession(for: try #require(first.sessionKey)) === session)
+        _ = controller.receive(workspace(vaultID: vault, notes: [original, other]), openDocuments: [selected])
+        await controller.waitForPendingHydrations()
+        #expect(hydrationCount == 0 && session.editorSession.hasRetainedHistory)
+
+        let result = controller.receive(
+            workspace(vaultID: vault, notes: [external, other]), openDocuments: [selected])
+        if companionOnly { controller.refreshCitationSnapshots(affectedNoteIDs: [id]) }
+        await controller.waitForPendingHydrations()
+        #expect(result == .unchanged)
+        #expect(hydrationCount == 1)
+        #expect(controller.selectedDocument?.editingTarget == selected.editingTarget)
+        #expect(!session.editorSession.hasRetainedHistory)
+        #expect(controller.retainedSession(for: try #require(first.sessionKey)) == nil)
+        #expect(controller.retainedSessionCount == 1 && controller.retainedFullSnapshotCount == 1)
+        #expect(controller.lastSaveError == nil)
+
+        controller.installOpenedDocument(external, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let reopened = controller.session(for: first.editingTarget)
+        #expect(reopened !== session)
+        #expect(reopened.editorSession.checkedSource.utf8.elementsEqual(external.document.rawContent.utf8))
+        #expect(reopened.editorSession.committedCitationSnapshot == external.document.citationSnapshot)
+        #expect(!reopened.editorSession.hasRetainedHistory)
+        await editor.closeAndDrain()
+    }
+
+    @Test("Clean externally deleted navigation history closes with and without a tab", arguments: [false, true])
+    func cleanNavigationHistoryExternalDeletion(retainsTab: Bool) async throws {
+        let vault = UUID()
+        let original = note(
+            vaultID: vault, noteID: UUID(), path: "Deleted.md", source: "\u{FEFF}Saved e\u{301} 🦉.\r\n")
+        let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other.\n")
+        let controller = DocumentController()
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let first = try #require(controller.selectedDocument)
+        let session = controller.session(for: first.editingTarget)
+        let editor = try await retainedRedoHistory(original, in: session, controller: controller)
+        defer {
+            editor.close()
+            controller.removeAll()
+            controller.unbind()
+        }
+        controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let selected = try #require(controller.selectedDocument)
+        let documents = retainsTab ? [first, selected] : [selected]
+        controller.reconcileSessionLeases(leasedDocuments: documents, selectedDocument: selected)
+
+        let result = controller.receive(workspace(vaultID: vault, notes: [other]), openDocuments: documents)
+        #expect(result.removedDocuments == [first])
+        #expect(result.retainedDeletedDocuments.isEmpty)
+        #expect(controller.selectedDocument?.editingTarget == selected.editingTarget)
+        #expect(controller.retainedDeletedDocumentPath == nil)
+        #expect(session.editError == nil && !session.hasUnsavedChanges)
+        #expect(!session.editorSession.hasRetainedHistory)
+        controller.reconcileSessionLeases(leasedDocuments: [selected], selectedDocument: selected)
+        #expect(controller.retainedSession(for: try #require(first.sessionKey)) == nil)
+        #expect(controller.retainedSessionCount == 1 && controller.retainedFullSnapshotCount == 1)
+        await editor.closeAndDrain()
+    }
+
+    @Test("Unleased navigation history with newer unsaved input survives external deletion")
+    func dirtyNavigationHistoryExternalDeletion() async throws {
+        let vault = UUID()
+        let original = note(
+            vaultID: vault, noteID: UUID(), path: "Deleted.md", source: "\u{FEFF}Saved e\u{301} 🦉.\r\n")
+        let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other.\n")
+        let controller = DocumentController()
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let first = try #require(controller.selectedDocument)
+        let session = controller.session(for: first.editingTarget)
+        let editor = try await retainedRedoHistory(original, in: session, controller: controller)
+        defer {
+            editor.close()
+            controller.removeAll()
+            controller.unbind()
+        }
+        let draft = original.document.rawContent + "Unsaved researcher input.\r\n"
+        try acceptCheckedDraft(draft, in: session)
+        controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let selected = try #require(controller.selectedDocument)
+        controller.reconcileSessionLeases(leasedDocuments: [selected], selectedDocument: selected)
+
+        let result = controller.receive(workspace(vaultID: vault, notes: [other]), openDocuments: [selected])
+        #expect(result.removedDocuments.isEmpty)
+        #expect(result.retainedDeletedDocuments == [first])
+        #expect(controller.retainedSession(for: try #require(first.sessionKey)) === session)
+        #expect(session.retainedExactSource.utf8.elementsEqual(draft.utf8))
+        #expect(session.hasUnsavedChanges)
+        #expect(session.editError?.contains("deleted outside Scholium") == true)
+        #expect(controller.lastSaveError == nil)
+        await editor.closeAndDrain()
+    }
+
+    enum LateDetachRetention: CaseIterable { case clean, cleanNeverReady, dirty, leased }
+
+    @Test("Late detachment reaps only the closed eligible session", arguments: LateDetachRetention.allCases)
+    func lateDetachReapsClosedSession(retention: LateDetachRetention) async throws {
+        _ = NSApplication.shared
+        let vault = UUID()
+        let original = note(vaultID: vault, noteID: UUID(), path: "Closed.md", source: "\u{FEFF}Saved e\u{301} 🦉.\r\n")
+        let other = note(vaultID: vault, noteID: UUID(), path: "Selected.md", source: "New selection.\n")
+        let controller = DocumentController()
+        defer { controller.removeAll() }
+        controller.rememberPresentationMode(.read)
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let closingDocument = try #require(controller.selectedDocument)
+        let session = controller.session(for: closingDocument.editingTarget)
+        let editor = session.editorSession
+        // No page is loaded: this fixture controls the native attachment and
+        // its real deferred detachment publication independently of SwiftUI.
+        let webView = WKWebView()
+        editor.webView = webView
+        if retention != .cleanNeverReady { editor.editorBecameReady() }
+        session.renderedReadHTML = String(repeating: "retained projection", count: 256)
+        if retention == .dirty { session.editingSource += "Unsaved researcher input.\r\n" }
+        let retainedSource = session.editingSource
+        controller.clearSelectionAfterClosingLastTab()
+        session.endClosedPresentation()
+        controller.reconcileSessionLeases(
+            leasedDocuments: retention == .leased ? [closingDocument] : [], selectedDocument: nil)
+        controller.reapDetachedSessions()
+        // The close-time attempt must leave an AppKit-attached page alone.
+        #expect(controller.retainedSession(for: try #require(closingDocument.sessionKey)) === session)
+        #expect(controller.retainedSessionCount == 1 && controller.retainedFullSnapshotCount == 1)
+
+        // A new selection can precede its tab lease projection. Reaping in
+        // response to the old session must not touch this independent owner.
+        controller.installOpenedDocument(other, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let selected = try #require(controller.selectedDocument)
+        let selectedSession = controller.session(for: selected.editingTarget)
+        #expect(controller.retainedSessionCount == 2)
+        // Let close's existing deferred observer finish while still attached,
+        // so cleanup below must be caused by the actual late detachment.
+        selectedSession.preparePresentationMode(.source)
+        try await waitForPresentation { controller.chromeProjection.mode == .source }
+        #expect(controller.peekRetainedSession(for: closingDocument.editingTarget) === session)
+        editor.detach(webView)
+        try await waitForPresentation { !editor.isReady }
+        if retention == .clean || retention == .cleanNeverReady {
+            try await waitForPresentation {
+                controller.peekRetainedSession(for: closingDocument.editingTarget) == nil
+            }
+            #expect(session.editingSource.isEmpty && session.renderedReadHTML.isEmpty)
+            #expect(controller.snapshots[try #require(closingDocument.sessionKey)] == nil)
+            #expect(controller.retainedSessionCount == 1 && controller.retainedFullSnapshotCount == 1)
+        } else {
+            // Observe the existing deferred controller subscriber completing
+            // another actual presentation update, without a timed sleep.
+            selectedSession.preparePresentationMode(.livePreview)
+            try await waitForPresentation { controller.chromeProjection.mode == .livePreview }
+            #expect(controller.peekRetainedSession(for: closingDocument.editingTarget) === session)
+            #expect(session.editingSource.utf8.elementsEqual(retainedSource.utf8))
+            #expect(!session.renderedReadHTML.isEmpty)
+            #expect(controller.retainedSessionCount == 2 && controller.retainedFullSnapshotCount == 2)
+        }
+        #expect(controller.selectedDocument?.editingTarget == selected.editingTarget)
+        #expect(controller.peekRetainedSession(for: selected.editingTarget) === selectedSession)
+        #expect(selectedSession.editingSource.utf8.elementsEqual(other.document.rawContent.utf8))
+    }
+
+    private func retainedRedoHistory(
+        _ snapshot: WorkspaceNoteSnapshot,
+        in session: DocumentSessionModel,
+        controller: DocumentController
+    ) async throws -> MarkdownEditorWebViewIntegrationTests.EditorHarness {
+        let target = DocumentEditingTarget.workspace(try #require(session.key))
+        controller.beginEditing(
+            session: session, target: target, source: snapshot.document.rawContent,
+            revision: snapshot.fingerprint, mode: .source)
+        session.suppressAutosave = true
+        let editor = MarkdownEditorWebViewIntegrationTests.EditorHarness(
+            source: snapshot.document.rawContent, usesSessionDocumentIdentity: true,
+            suppliedSession: session.editorSession, citationSnapshot: snapshot.document.citationSnapshot, initialMode: .source)
+        var completed = false
+        defer { if !completed { editor.close() } }
+        try await editor.waitUntilReady()
+        try await session.editorSession.perform(.pastePlain, argument: "Temporary history event ")
+        _ = try await editor.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, bubbles: true, cancelable: true}));"
+        )
+        #expect(try await session.editorSession.currentText().utf8.elementsEqual(snapshot.document.rawContent.utf8))
+        _ = try await session.editorSession.acknowledgeCommittedSnapshot(
+            expectedText: snapshot.document.rawContent, committedText: snapshot.document.rawContent,
+            fingerprint: snapshot.fingerprint, documentID: editor.documentID,
+            expectedCitationData: snapshot.document.citationSnapshot?.data,
+            citationSnapshot: snapshot.document.citationSnapshot)
+        session.editingSource = snapshot.document.rawContent
+        session.originalEditingSource = snapshot.document.rawContent
+        try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+        try #require(session.editorSession.hasRetainedHistory && !session.hasUnsavedChanges)
+        try await editor.detachEditorView()
+        completed = true
+        return editor
     }
 
     @Test("A companion invalidation supersedes an in-flight read of unchanged source")

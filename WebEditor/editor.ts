@@ -124,7 +124,7 @@ import {
   normalizedDocumentText,
   replacementChange,
 } from "./state";
-import {captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, setExactSource} from "./exact-source-history";
+import {captureExactHistory, hasExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
   cancelEditorAnnouncement,
@@ -1250,7 +1250,9 @@ class LivePreviewPlugin {
     const explicitlyRefreshed = update.transactions.some((transaction) =>
       transaction.effects.some((effect) => effect.is(refreshLivePreviewEffect) || effect.is(setCitationSnapshot) || effect.is(setCitationData)),
     );
-    const syntaxTreeChanged = update.transactions.some(transactionChangedSyntaxTree);
+    // The index may already contain a tree that CodeMirror publishes later.
+    // Only a changed semantic index invalidates these derived decorations.
+    const indexChanged = liveProjectionIndex.index(update.startState) !== liveProjectionIndex.index(update.state);
     const viewportNeedsProjection = update.viewportChanged
       && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
     // Projection depends on document, selection, composition, syntax, and the
@@ -1258,7 +1260,7 @@ class LivePreviewPlugin {
     // refreshes this field when it takes or yields document focus; generic
     // WebKit/window focus changes do not. Rebuilding on window focus loss can
     // observe temporarily empty visible ranges and erase valid decorations.
-    if (update.docChanged || explicitlyRefreshed || syntaxTreeChanged) {
+    if (update.docChanged || explicitlyRefreshed || indexChanged) {
       const projection = buildLiveDecorations(update.view);
       this.decorations = projection.decorations;
       this.atomicRanges = projection.atomicRanges;
@@ -1291,7 +1293,7 @@ class LivePreviewPlugin {
     // Scrolling and caret movement can arrive in the same view update. The
     // newly entered viewport edge does not refresh activation in its retained
     // overlap, so selection invalidation must run after viewport maintenance.
-    if (!update.docChanged && !explicitlyRefreshed && !syntaxTreeChanged
+    if (!update.docChanged && !explicitlyRefreshed && !indexChanged
         && liveSelection.changed(update.startState, update.state)) {
       const projectionIndex = liveProjectionIndex.index(update.state);
       const inlineRanges = projectionIndex.inlineRanges;
@@ -2309,7 +2311,8 @@ function captureRecovery(): RecoverySnapshot {
   return {
     documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion,
     ranges: editorSelections(), source: exactEditorSource(), stateJSON, citationSnapshot: editor.state.field(citationState)?.baseline, citationData: editor.state.field(citationState)?.data,
-    undoHistoryPreserved: stateJSON !== undefined, undoLabel: lastUndoLabel, redoLabel: lastRedoLabel,
+    undoHistoryPreserved: stateJSON !== undefined, hasHistory: hasExactHistory(historyState),
+    undoLabel: lastUndoLabel, redoLabel: lastRedoLabel,
     dirty, focusTarget: lastDocumentFocusTarget,
   };
 }

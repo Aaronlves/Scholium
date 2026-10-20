@@ -8,6 +8,8 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         onCompletion: (@MainActor (Result<Void, Error>) -> Void)? = nil
     ) {
+        let openingMeasurement = PerformanceProbe.shared.beginNoteOpening(documentID: reference.relativePath)
+        PerformanceProbe.shared.markNoteOpeningMilestone(.clickRecognized, attemptID: openingMeasurement)
         var forwarded = false
         let validate: @MainActor () throws -> Void = { [weak self] in
             guard let self, !forwarded else { throw CancellationError() }
@@ -18,16 +20,19 @@ extension WindowModel {
                 }
             ) {
                 forwarded = true
+                PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
                 throw CancellationError()
             }
         }
         enqueueDocumentTransition(
             preparation: openingPreparation(for: reference, placement: .newTab),
+            openingMeasurement: openingMeasurement,
             validateBeforePreparation: validate
         ) { [weak self] in
             guard let self else { throw CancellationError() }
             try await self.activateWorkspaceReference(
-                reference, tabActivation: .place(.newTab), validateDisplay: validate
+                reference, tabActivation: .place(.newTab), openingMeasurement: openingMeasurement,
+                validateDisplay: validate
             )
         } completion: { result in
             if !forwarded { onCompletion?(result) }

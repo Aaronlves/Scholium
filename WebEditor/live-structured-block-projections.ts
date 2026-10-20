@@ -7,7 +7,6 @@ import type {MarkdownEditingDialect} from "./protocol";
 import {
   activeProjectionSignature,
   selectionActivatesSyntax,
-  transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
 } from "./projection-update";
 import {preserveLivePresentationLayout} from "./live-presentation-layout";
@@ -129,7 +128,8 @@ export function createLiveStructuredBlockProjections(options: {
   const tableField = StateField.define<LiveTableProjectionState>({
     create: buildTable,
     update(previous, transaction) {
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+      if (transaction.docChanged
+          || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
         return buildTable(transaction.state);
       }
       if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
@@ -316,7 +316,8 @@ export function createLiveStructuredBlockProjections(options: {
         folds.set(effect.value.from, effect.value.collapsed);
         foldChanged = true;
       }
-      if (foldChanged || transaction.docChanged || transactionChangedSyntaxTree(transaction)
+      if (foldChanged || transaction.docChanged
+          || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)
         || options.selection.changed(transaction.startState, transaction.state)) {
         return buildCallout(transaction.state, folds);
       }

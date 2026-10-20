@@ -14,6 +14,8 @@ QA_RUN_LOCK="${ROOT}/.build/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
 QA_PREFERENCES_CAPTURED=0
+FRAME_SUPERVISOR_PID=""
+FRAME_REQUESTS=""
 
 if [[ "${1:-}" == "stress" || "${1:-}" == "visible-editor" ]]; then
   python3 - "${ROOT}" "${SCHOLIUM_TEST_VAULTS:-}" <<'PY'
@@ -113,6 +115,13 @@ terminate_qa_instances() {
 
 cleanup() {
   local exit_code=$?
+  if [[ -n "${FRAME_SUPERVISOR_PID}" ]]; then
+    kill -TERM "${FRAME_SUPERVISOR_PID}" 2>/dev/null || true
+    wait "${FRAME_SUPERVISOR_PID}" || true
+  fi
+  if [[ -n "${FRAME_REQUESTS}" && "${SCHOLIUM_QA_KEEP_ARTIFACTS:-0}" != 1 && ${exit_code} == 0 ]]; then
+    rm -rf "${FRAME_REQUESTS}"
+  fi
   if (( ! QA_PREFERENCES_CAPTURED )); then
     if [[ "$(<"${QA_RUN_LOCK}/pid" 2>/dev/null || true)" == "$$" ]]; then
       rm -rf "${QA_RUN_LOCK}"
@@ -193,7 +202,7 @@ cp -R "${QA_APP}" "${REGISTERED_QA}"
 # app here would create a second window before launchEnvironment is applied.
 profile="${1:-smoke}"
 case "${profile}" in
-  smoke|complete|focused|stress|visible-editor)
+  smoke|complete|focused|stress|tab-stress|visible-editor|foreground-opening)
     shift $(( $# > 0 ? 1 : 0 ))
     ;;
   *)
@@ -231,7 +240,49 @@ common_arguments=(
   -derivedDataPath "${UI_TEST_DERIVED}"
 )
 
-if [[ "${profile}" == "visible-editor" ]]; then
+if [[ "${profile}" == "foreground-opening" ]]; then
+  label="${SCHOLIUM_FOREGROUND_OPEN_LABEL:-baseline}"
+  [[ "${label}" == baseline || "${label}" == candidate ]] || {
+    print -u2 "Foreground opening diagnostics require baseline or candidate."
+    exit 64
+  }
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
+  recorder="${UI_TEST_DERIVED}/qa-window-frame-recorder"
+  DEVELOPER_DIR="${DEVELOPER_DIR}" swiftc -parse-as-library -swift-version 5 \
+    -module-cache-path "${UI_TEST_DERIVED}/recorder-module-cache" \
+    "${ROOT}/Tools/Diagnostics/RecordQAWindowFrames.swift" -o "${recorder}"
+  FRAME_REQUESTS="${QA_ROOT}/frame-requests-$$"
+  mkdir "${FRAME_REQUESTS}"
+  python3 "${ROOT}/Tools/Diagnostics/qa_window_frame_supervisor.py" \
+    --requests "${FRAME_REQUESTS}" --recorder "${recorder}" --owner-pid "$$" \
+    > "${UI_TEST_DERIVED}/frame-supervisor.log" 2>&1 &
+  FRAME_SUPERVISOR_PID=$!
+  base_run="$(find "${UI_TEST_DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+  foreground_run="${UI_TEST_DERIVED}/Build/Products/ScholiumForegroundOpening.xctestrun"
+  python3 - "${base_run}" "${foreground_run}" "${label}" "${FRAME_REQUESTS}" <<'PY'
+import os
+import plistlib
+import sys
+source, target, label, requests = sys.argv[1:]
+with open(source, 'rb') as stream:
+    run = plistlib.load(stream)
+environment = run['ScholiumUITests'].setdefault('EnvironmentVariables', {})
+environment['SCHOLIUM_FOREGROUND_OPEN_LABEL'] = label
+environment['SCHOLIUM_FOREGROUND_FRAME_REQUEST_DIRECTORY'] = requests
+environment['SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE'] = os.environ.get('SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE', '0')
+environment['SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET'] = os.environ.get('SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET', '0')
+environment['SCHOLIUM_FOREGROUND_OPEN_NEW_TAB'] = os.environ.get('SCHOLIUM_FOREGROUND_OPEN_NEW_TAB', '0')
+with open(target, 'wb') as stream:
+    plistlib.dump(run, stream)
+PY
+  if (( ${#test_arguments[@]} == 0 )); then
+    test_arguments=(-only-testing:ScholiumUITests/ScholiumPerformanceUITests/testForegroundNoteOpeningDiagnostic)
+  fi
+  DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
+    -xctestrun "${foreground_run}" -destination "platform=macOS" \
+    -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+    -derivedDataPath "${UI_TEST_DERIVED}" "${test_arguments[@]}" test-without-building
+elif [[ "${profile}" == "visible-editor" ]]; then
   label="${SCHOLIUM_VISIBLE_EDITOR_LABEL:-baseline}"
   [[ "${label}" == baseline || "${label}" == profile || "${label}" == candidate ]] || {
     print -u2 "Visible editor diagnostics require baseline, profile, or candidate."
@@ -261,29 +312,36 @@ PY
     -xctestrun "${visible_run}" -destination "platform=macOS" \
     -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
     -derivedDataPath "${UI_TEST_DERIVED}" "${test_arguments[@]}" test-without-building
-elif [[ "${profile}" == "stress" ]]; then
+elif [[ "${profile}" == "stress" || "${profile}" == "tab-stress" ]]; then
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
   base_run="$(find "${UI_TEST_DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
   [[ -n "${base_run}" ]] || { print -u2 "No stress QA test driver was built."; exit 1; }
   stress_run="${UI_TEST_DERIVED}/Build/Products/ScholiumStress.xctestrun"
-  python3 - "${base_run}" "${stress_run}" "${SCHOLIUM_STRESS_UI_OUTPUT:-}" <<'PY'
+  stress_output="${SCHOLIUM_STRESS_UI_OUTPUT:-}"
+  stress_test="testLargeSyntheticVaultDocumentLifecycleStress"
+  if [[ "${profile}" == "tab-stress" ]]; then
+    stress_output="${SCHOLIUM_TAB_STRESS_OUTPUT:-}"
+    stress_test="testRepeatedOpenInNewTabReleasesDocumentOwners"
+  fi
+  python3 - "${base_run}" "${stress_run}" "${stress_output}" "${profile}" <<'PY'
 import os
 import plistlib
 import sys
 from pathlib import Path
 
-source, target, output = sys.argv[1:]
+source, target, output, profile = sys.argv[1:]
 with open(source, 'rb') as stream:
     run = plistlib.load(stream)
 environment = run['ScholiumUITests'].setdefault('EnvironmentVariables', {})
-environment['SCHOLIUM_STRESS_UI'] = '1'
+prefix = 'SCHOLIUM_TAB_STRESS' if profile == 'tab-stress' else 'SCHOLIUM_STRESS'
+environment[prefix + '_UI'] = '1'
 selection = os.environ.get('SCHOLIUM_STRESS_UI_SCENARIOS')
 if selection is None:
     environment.pop('SCHOLIUM_STRESS_UI_SCENARIOS', None)
 else:
     environment['SCHOLIUM_STRESS_UI_SCENARIOS'] = selection
 if output:
-    environment['SCHOLIUM_STRESS_UI_OUTPUT'] = output
+    environment[prefix + ('_OUTPUT' if profile == 'tab-stress' else '_UI_OUTPUT')] = output
 with open(target, 'wb') as stream:
     plistlib.dump(run, stream)
 PY
@@ -291,7 +349,7 @@ PY
     -xctestrun "${stress_run}" -destination "platform=macOS" \
     -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
     -derivedDataPath "${UI_TEST_DERIVED}" \
-    -only-testing:ScholiumUITests/ScholiumUITests/testLargeSyntheticVaultDocumentLifecycleStress \
+    "-only-testing:ScholiumUITests/ScholiumUITests/${stress_test}" \
     "${test_arguments[@]}" test-without-building
 elif [[ "${profile}" == "smoke" ]]; then
   test_arguments=(

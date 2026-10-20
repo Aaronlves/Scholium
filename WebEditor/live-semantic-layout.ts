@@ -16,7 +16,6 @@ import {
   selectionActivatesSyntax,
   selectionAffectedProjectionRanges,
   selectionIntersectsPhysicalLine,
-  transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
   type ProjectionSourceRange,
 } from "./projection-update";
@@ -507,7 +506,9 @@ export function createLiveSemanticLayout(options: {
           ),
         };
       }
-      if (transactionChangedSyntaxTree(transaction)) return buildLineState(transaction.state);
+      if (projections.index(transaction.startState) !== projections.index(transaction.state)) {
+        return buildLineState(transaction.state);
+      }
       if (selection.changed(transaction.startState, transaction.state)) {
         const affected = affectedProjectionAndCodeBlockRanges(
           projections,
@@ -601,7 +602,7 @@ export function createLiveSemanticLayout(options: {
           ? {decorations: previous.decorations.map(transaction.changes)}
           : buildSpacingState(transaction.state);
       }
-      return transactionChangedSyntaxTree(transaction)
+      return projections.index(transaction.startState) !== projections.index(transaction.state)
         ? buildSpacingState(transaction.state)
         : previous;
     },

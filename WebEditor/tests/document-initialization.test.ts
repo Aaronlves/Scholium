@@ -22,7 +22,7 @@ function step(state: EditorState, command: typeof undo) {
 function recoverySnapshot(state: EditorState): RecoverySnapshot {
   return {documentID: "document", fingerprint: "baseline", generation: 7, source: exact(state),
     ranges: state.selection.ranges.map(range => ({anchor: range.anchor, head: range.head})),
-    stateJSON: captureExactHistory(state), undoHistoryPreserved: true, dirty: true,
+    stateJSON: captureExactHistory(state), undoHistoryPreserved: true, hasHistory: true, dirty: true,
     citationSnapshot: state.field(citationState)?.baseline, citationData: state.field(citationState)?.data};
 }
 

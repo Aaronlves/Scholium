@@ -526,7 +526,7 @@ struct DocumentSessionLifecycleTests {
             session.isSavingEdit = true
         case .retryableRecovery:
             session.canRetrySave = true
-        case .recoveryBuffer:
+        case .recoveryBuffer, .editorHistory:
             Issue.record("Recovery-buffer pin is exercised by WebKit recovery integration tests")
         }
 

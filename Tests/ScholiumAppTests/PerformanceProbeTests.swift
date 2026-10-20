@@ -1807,6 +1807,195 @@ struct PerformanceProbeTests {
         #expect(!FileManager.default.fileExists(atPath: outside.path))
     }
 
+    @Test("Display-only opening does not borrow or require an editor focus receipt")
+    func noteOpeningDisplayMetricSeparatesFocus() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture(metric: "note_open_to_visible") { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        let sessionID = UUID()
+        #expect(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+        probe.markNoteOpeningPhase(.hydrationStarted, attemptID: attempt)
+        timestamp += 2_000_000
+        probe.markNoteOpeningPhase(.hydrated, attemptID: attempt)
+        probe.markNoteOpeningEditorPhase(.loaded, editorSessionID: sessionID, attemptID: attempt)
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+        timestamp += 3_000_000
+        probe.markNoteOpeningEditorPhase(.stableVisible, editorSessionID: sessionID, attemptID: attempt)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.result)) as? [String: Any])
+        #expect(object["metric"] as? String == "note_open_to_visible")
+        #expect(object["duration_ms"] as? Double == 5)
+        #expect(object["loaded_to_visible_duration_ms"] as? Double == 3)
+        #expect(object["loaded_to_input_ready_duration_ms"] == nil)
+        #expect(object["loaded_to_focused_duration_ms"] == nil)
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == 0)
+    }
+
+    @Test("Pending opening diagnostics remain bounded and cannot complete an opening")
+    func pendingNoteOpeningDiagnosticsAreBounded() throws {
+        var timestamp: UInt64 = 10_000_000
+        let fixture = try noteOpeningFixture { timestamp }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        timestamp += 1_000_000
+        probe.markNoteOpeningMilestone(.clickRecognized, attemptID: attempt)
+        let sessionID = UUID()
+        for _ in 0..<6 {
+            probe.recordPendingNoteOpeningState(
+                editorSessionID: sessionID, isEditing: true, editorIsLoaded: true,
+                editorIsReady: true, editorHasWebView: true, windowModeIsEditing: true,
+                focusState: ["authorized": true, "private source": true])
+        }
+        let pending = fixture.result.deletingPathExtension().appendingPathExtension("pending.jsonl")
+        let lines = try String(contentsOf: pending, encoding: .utf8).split(separator: "\n")
+        #expect(lines.count == 4)
+        let value = try #require(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
+        #expect(
+            Set(value.keys) == [
+                "recorded_samples", "has_pending", "has_completed", "current_session_matches_pending",
+                "current_is_editing", "current_loaded", "current_ready", "current_has_webview",
+                "window_mode_is_editing", "bound_session", "source_reused", "phases", "milestones", "focus",
+            ])
+        #expect(value["bound_session"] as? Bool == false)
+        #expect(value["focus"] as? [String: Bool] == ["authorized": true])
+        #expect(value["milestones"] as? [String: Double] == ["click_recognized": 1])
+        #expect(probe.currentNoteOpeningAttempt(documentID: "Fixture.md") == attempt)
+        #expect(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID) == nil)
+        #expect(!FileManager.default.fileExists(atPath: fixture.result.path))
+    }
+
+    @Test("Current opening ring producers export only their closed numeric phase metadata")
+    func noteOpeningExportsCurrentRecoveryAndInteractionProducers() throws {
+        let fixture = try noteOpeningFixture { 10_000_000 }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let probe = fixture.probe
+        let attempt = try #require(probe.beginNoteOpening(documentID: "Fixture.md"))
+        let sessionID = UUID()
+        #expect(probe.bindNoteOpening(attemptID: attempt, editorSessionID: sessionID))
+        for phase: PerformanceProbe.NoteOpeningPhase in [
+            .hydrationStarted, .hydrated, .loaded, .focused, .stableVisible,
+        ] {
+            probe.markNoteOpeningPhase(phase, attemptID: attempt, editorSessionID: sessionID)
+        }
+        let sample = try #require(probe.completedNoteOpeningSample(documentID: "Fixture.md", editorSessionID: sessionID))
+        // Mirror the numeric keys emitted by current production producers;
+        // source, paths, vendor payloads and identifiers are never export keys.
+        let producers: [(String, [String: Double])] = [
+            (
+                "recovery-restore",
+                [
+                    "sourceUTF16Length": 12, "historyBytes": 40, "completed": 1,
+                    "capacityMilliseconds": 0, "parseMilliseconds": 0.1, "payloadValidationMilliseconds": 0.1,
+                    "firstStateMilliseconds": 0.2, "roundtripAndEffectsMilliseconds": 0.3,
+                    "doneEvents": 2, "undoneEvents": 1, "finalStateMilliseconds": 1,
+                    "finalAdmissionMilliseconds": 0.1, "branchesMilliseconds": 0.3,
+                ]
+            ),
+            (
+                "recovery-composition",
+                [
+                    "rangeCount": 2, "historyPreserved": 1, "completed": 1,
+                    "selectionMilliseconds": 0.1, "codecMilliseconds": 2, "bindingMilliseconds": 0.1,
+                    "failedHistoryAttemptMilliseconds": 0.2, "fallbackMilliseconds": 0.3,
+                ]
+            ),
+            ("recovery-live-install", ["recovery": 1, "documentLength": 12, "rangeCount": 2]),
+            (
+                "bridge-dispatch-stages",
+                [
+                    "requestBytes": 50, "resultBytes": 40, "accepted": 1,
+                    "requestEnvelopeMilliseconds": 0.1, "admissionMilliseconds": 0.1,
+                    "executeMilliseconds": 3, "resultEnvelopeMilliseconds": 0.1,
+                ]
+            ),
+            (
+                "bridge-message-post",
+                [
+                    "generation": 2, "interactionRevision": 3, "documentChanged": 0, "postedAtMilliseconds": 20,
+                ]
+            ),
+            (
+                "interaction-report-queue",
+                [
+                    "generation": 2, "interactionRevision": 3, "frame": 1, "watchdog": 0, "explicit": 0,
+                ]
+            ),
+            ("interaction-context", ["generation": 2, "interactionRevision": 3]),
+            (
+                "input-to-state",
+                [
+                    "documentLength": 12, "composing": 0, "generation": 2, "interactionRevision": 3,
+                    "trustedInput": 1, "visibilityVisible": 1, "documentHasFocus": 1, "editorOwnsFocus": 1,
+                ]
+            ),
+            (
+                "input-to-paint",
+                [
+                    "documentLength": 12, "composing": 0, "frameWaitMilliseconds": 5, "taskWaitMilliseconds": 1,
+                ]
+            ),
+            (
+                "citation-projection-admission",
+                [
+                    "documentLength": 12, "fieldCount": 1, "catalogMilliseconds": 1, "rangeMappingMilliseconds": 0.1,
+                ]
+            ),
+            (
+                "citation-catalog",
+                [
+                    "documentLength": 12, "reservedScanMilliseconds": 0.1, "snapshotMilliseconds": 0.2,
+                    "parserContextMilliseconds": 0.3,
+                ]
+            ),
+            (
+                "citation-field-validation",
+                [
+                    "documentLength": 12, "fieldCount": 1, "companionValidationMilliseconds": 0.1,
+                    "vendorTextMilliseconds": 0.2, "fallbackTextMilliseconds": 0.1,
+                ]
+            ),
+            (
+                "projection-topology-proof",
+                [
+                    "documentLength": 12, "mapped": 1, "localProof": 1, "blockCount": 1, "inlineCount": 1,
+                    "ensureTreeMilliseconds": 0.2, "languageStateReadMilliseconds": 0.1,
+                    "ensureTreeAfterStateReadMilliseconds": 0.1, "previousLocalPreparationMilliseconds": 0.2,
+                    "nextSemanticMilliseconds": 0.3, "signatureMilliseconds": 0.1,
+                    "fullTextMaterializationMilliseconds": 0, "fullTextMaterializationUTF16Count": 0,
+                ]
+            ),
+        ]
+        let samples = producers.map { name, observed in
+            MarkdownEditorPerformanceSample(name: name, durationMilliseconds: 1, observed: observed)
+        }
+        let web = fixture.result.deletingPathExtension().appendingPathExtension("web.jsonl")
+        // A known sample must not cause an unknown or malformed neighbor to be
+        // filtered into an apparently complete, accepted opening trace.
+        for invalid in [
+            MarkdownEditorPerformanceSample(name: "private note path", durationMilliseconds: 1, observed: [:]),
+            MarkdownEditorPerformanceSample(name: "recovery-restore", durationMilliseconds: 1, observed: ["source": 12]),
+            MarkdownEditorPerformanceSample(name: "citation-catalog", durationMilliseconds: 1, observed: ["vendorPayload": 12]),
+            MarkdownEditorPerformanceSample(name: "recovery-composition", durationMilliseconds: .infinity, observed: [:]),
+            MarkdownEditorPerformanceSample(name: "bridge-dispatch-stages", durationMilliseconds: 1, observed: ["accepted": .nan]),
+            MarkdownEditorPerformanceSample(name: "interaction-context", durationMilliseconds: 1, observed: ["generation": -1]),
+        ] {
+            probe.recordNoteOpeningWebSamples(samples + [invalid], documentID: "Fixture.md", sample: sample)
+            #expect(!FileManager.default.fileExists(atPath: web.path))
+        }
+        probe.recordNoteOpeningWebSamples(samples, documentID: "Fixture.md", sample: sample)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: web)) as? [String: Any])
+        #expect(Set(object.keys) == ["schema", "run_id", "sample", "samples"])
+        let values = try #require(object["samples"] as? [[String: Any]])
+        #expect(values.count == producers.count)
+        for (value, producer) in zip(values, producers) {
+            #expect(Set(value.keys) == ["name", "duration_ms", "observed"])
+            #expect(value["name"] as? String == producer.0)
+            #expect(value["observed"] as? [String: Double] == producer.1)
+        }
+    }
+
     @Test("First Read records activation-to-interactive phase decomposition")
     func firstReadRecordsActivationPhases() throws {
         let fileManager = FileManager.default

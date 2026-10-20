@@ -399,6 +399,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var hasRecoverableBuffer: Bool {
         isDirty || recoverySnapshot?.dirty == true
     }
+    var hasRetainedHistory: Bool {
+        recoverySnapshot.map {
+            $0.undoHistoryPreserved && $0.stateJSON?.isEmpty == false && $0.hasHistory
+        } ?? false
+    }
     var canAttemptPreview: Bool { pendingMode == .livePreview }
 
     @discardableResult
@@ -570,7 +575,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let self, self.webView == nil else { return }
-            self.updatePresentation { $0.reset() }
+            // Even a never-ready page completes a lifecycle transition here.
+            // Publish its detachment so the document owner can release a
+            // closed session after SwiftUI's teardown has returned.
+            self.presentation = MarkdownEditorPresentationState()
         }
     }
 
@@ -1779,6 +1787,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard self.webView === webView, detachmentSuspensionID == suspensionID else { return }
         detachmentCapture = nil
         pendingDetachmentSuspensionID = nil
+        recordNoteOpeningActualFocus(
+            attemptID: PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: sessionID))
     }
 
     /// An acknowledged freeze is an exact source proof even before the view
@@ -1861,7 +1871,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             documentID: documentID, fingerprint: fingerprint.sha256,
             generation: generation, ranges: recovered.ranges,
             source: recovered.source, stateJSON: recovered.stateJSON,
-            undoHistoryPreserved: recovered.undoHistoryPreserved, dirty: superseded,
+            undoHistoryPreserved: recovered.undoHistoryPreserved, hasHistory: recovered.hasHistory, dirty: superseded,
             focusTarget: recovered.focusTarget,
             undoLabel: recovered.undoLabel,
             redoLabel: recovered.redoLabel,
@@ -2263,17 +2273,42 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             !Task.isCancelled,
             epoch == requestEpoch, sessionID == intendedSessionID, self.webView === webView,
             revision == focusRequestRevision, target == automaticFocusTarget,
+            presentedMode == mode, pendingMode == mode
+        {
+            recordNoteOpeningActualFocus(attemptID: openingAttemptID)
+        }
+    }
+
+    /// Observes an acknowledged native focus without requesting or changing it.
+    /// A retained surface may become visible without another bridge focus command.
+    func recordNoteOpeningActualFocus(attemptID: UUID?) {
+        guard let attemptID,
             automaticFocusIsAuthorized, pendingFocusIntentRevision == nil,
             !presentationIsClosed, isReady, isLoaded, errorMessage == nil, !isComposing,
-            presentedMode == mode, pendingMode == mode,
+            detachmentSuspensionID == nil,
+            let presentedMode, pendingMode == presentedMode,
             let nativeWebView = webView as? DocumentNativeWebView,
             nativeWebView.documentSurfaceAllowsInput, !nativeWebView.isHiddenOrHasHiddenAncestor,
             let window = nativeWebView.window, window.isKeyWindow, window.attachedSheet == nil,
             let responder = window.firstResponder as? NSView,
             responder === nativeWebView || responder.isDescendant(of: nativeWebView)
-        {
-            PerformanceProbe.shared.markNoteOpeningEditorPhase(.focused, editorSessionID: intendedSessionID, attemptID: openingAttemptID)
-        }
+        else { return }
+        PerformanceProbe.shared.markNoteOpeningEditorPhase(.focused, editorSessionID: sessionID, attemptID: attemptID)
+    }
+
+    var noteOpeningFocusDiagnostics: [String: Bool] {
+        let native = webView as? DocumentNativeWebView
+        let window = native?.window
+        let responder = window?.firstResponder as? NSView
+        return [
+            "authorized": automaticFocusIsAuthorized, "pending": pendingFocusIntentRevision != nil,
+            "closed": presentationIsClosed, "composing": isComposing,
+            "suspended": detachmentSuspensionID != nil, "mode_matches": presentedMode == pendingMode,
+            "native": native != nil, "allows_input": native?.documentSurfaceAllowsInput == true,
+            "hidden": native?.isHiddenOrHasHiddenAncestor != false, "key_window": window?.isKeyWindow == true,
+            "sheet": window?.attachedSheet != nil,
+            "responder": native.map { responder === $0 || responder?.isDescendant(of: $0) == true } ?? false,
+        ]
     }
 
     private func focusOperation(
@@ -2740,6 +2775,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 source: snapshot.source,
                 stateJSON: snapshot.stateJSON,
                 undoHistoryPreserved: snapshot.undoHistoryPreserved,
+                hasHistory: snapshot.hasHistory,
                 dirty: isDirty,
                 focusTarget: preferredDocumentFocusTarget,
                 undoLabel: snapshot.undoLabel,

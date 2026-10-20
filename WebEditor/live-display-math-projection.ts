@@ -4,7 +4,6 @@ import type {MathProjection} from "./math";
 import {
   activeProjectionSignature,
   selectionActivatesSyntax,
-  transactionChangedSyntaxTree,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
 import type {LiveSelectionController} from "./live-selection";
@@ -50,7 +49,8 @@ export function createLiveDisplayMathProjection(options: {
   const field = StateField.define<LiveDisplayMathProjectionState>({
     create: build,
     update(previous, transaction) {
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+      if (transaction.docChanged
+          || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
         return build(transaction.state);
       }
       if (options.shouldRefreshRuntime(transaction)) {

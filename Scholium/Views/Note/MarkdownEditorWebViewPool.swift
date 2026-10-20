@@ -80,6 +80,8 @@ final class MarkdownEditorWebViewPool {
     private let preparationGate: (@MainActor () async -> Void)?
     private var idleWebView: WindowAttachedWebView?
     private weak var attachedWebView: WindowAttachedWebView?
+    private let attachedWebViews = NSHashTable<WindowAttachedWebView>.weakObjects()
+    private var tabLeasedSessionIDs: Set<ObjectIdentifier> = []
     private weak var preparingWebView: WindowAttachedWebView?
     private weak var handoffLease: MarkdownEditorHandoffLease?
     private let abandonedWebViews = NSHashTable<WindowAttachedWebView>.weakObjects()
@@ -87,6 +89,7 @@ final class MarkdownEditorWebViewPool {
     private var expiry: Task<Void, Never>?
     private struct WaitingAcquisition {
         let id: UUID
+        weak var outgoingWebView: WindowAttachedWebView?
         let continuation: CheckedContinuation<WindowAttachedWebView?, Never>
         let deadline: Task<Void, Never>
     }
@@ -111,15 +114,62 @@ final class MarkdownEditorWebViewPool {
 
     var hasPreparedView: Bool { idleWebView != nil }
     var hasOutgoingView: Bool {
-        (attachedWebView.map { !abandonedWebViews.contains($0) } ?? false) || preparation != nil
+        outgoingAttachedWebView != nil || preparation != nil
     }
     var waitingAcquisitionCount: Int { waiting.count }
+
+    private var outgoingAttachedWebView: WindowAttachedWebView? {
+        if let webView = attachedWebView, canYieldAttachedPage(webView) { return webView }
+        // A previously created tab can depart while the most recently
+        // attached page is still retained by another tab.
+        return attachedWebViews.allObjects.first { canYieldAttachedPage($0) }
+    }
+
+    private func canYieldAttachedPage(_ webView: WindowAttachedWebView) -> Bool {
+        guard !abandonedWebViews.contains(webView),
+            let session = webView.editorSession,
+            session.webView === webView,
+            session.webViewPool === self,
+            !tabLeasedSessionIDs.contains(ObjectIdentifier(session))
+        else { return false }
+        return true
+    }
+
+    /// Tab membership owns whether an attached page will actually depart.
+    /// A new tab retains its predecessor, so waiting for that page to recycle
+    /// would only expire. A detached page already preparing for reuse remains
+    /// a valid acquisition regardless of its former session's membership.
+    func reconcileTabLeases(_ sessions: [MarkdownEditorSession]) {
+        tabLeasedSessionIDs = Set(sessions.map(ObjectIdentifier.init))
+        for entry in waiting {
+            guard let webView = entry.outgoingWebView,
+                webView === preparingWebView || canYieldAttachedPage(webView)
+            else {
+                cancelWaiter(entry.id)
+                continue
+            }
+        }
+    }
+
+    /// Transfer releases this pool's attachment projection without detaching,
+    /// clearing or quarantining the page now owned by another window.
+    func forgetTransferredSession(_ session: MarkdownEditorSession) {
+        tabLeasedSessionIDs.remove(ObjectIdentifier(session))
+        for webView in attachedWebViews.allObjects where webView.editorSession === session {
+            attachedWebViews.remove(webView)
+            cancelWaiters(for: webView)
+        }
+        if attachedWebView?.editorSession === session { attachedWebView = nil }
+    }
 
     #if DEBUG
         var qaDiagnosticCounts: QADiagnosticCounts {
             QADiagnosticCounts(
                 idle: idleWebView == nil ? 0 : 1,
-                attached: attachedWebView == nil ? 0 : 1,
+                attached: attachedWebViews.allObjects.filter { webView in
+                    guard let session = webView.editorSession else { return false }
+                    return session.webView === webView && session.webViewPool === self
+                }.count,
                 preparing: preparingWebView == nil ? 0 : 1,
                 abandonedLive: abandonedWebViews.allObjects.count,
                 waiting: waiting.count
@@ -137,6 +187,7 @@ final class MarkdownEditorWebViewPool {
     }
 
     func registerAttached(_ webView: WindowAttachedWebView) {
+        attachedWebViews.add(webView)
         attachedWebView = webView
     }
 
@@ -145,7 +196,9 @@ final class MarkdownEditorWebViewPool {
     /// quarantined for a checked document initialization.
     func takeWhenPrepared() async -> WindowAttachedWebView? {
         if let webView = take() { return webView }
-        guard !isInvalidated, hasOutgoingView else { return nil }
+        guard !isInvalidated,
+            let outgoing = preparingWebView ?? outgoingAttachedWebView
+        else { return nil }
         let id = UUID()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -160,7 +213,8 @@ final class MarkdownEditorWebViewPool {
                     }
                     waiting.append(
                         WaitingAcquisition(
-                            id: id, continuation: continuation, deadline: deadline))
+                            id: id, outgoingWebView: outgoing,
+                            continuation: continuation, deadline: deadline))
                 }
             }
         } onCancel: {
@@ -175,20 +229,35 @@ final class MarkdownEditorWebViewPool {
         entry.continuation.resume(returning: nil)
     }
 
-    private func expireAcquisition(_ id: UUID) {
-        guard waiting.contains(where: { $0.id == id }) else { return }
-        // A hung outgoing page may still execute JavaScript after cancellation.
-        // Retire that exact page and advance the generation before resolving
-        // mounts to the ordinary fresh-page path.
-        if let oldPage = preparingWebView ?? attachedWebView {
-            abandonedWebViews.add(oldPage)
+    private func cancelWaiters(for webView: WindowAttachedWebView) {
+        for entry in waiting where entry.outgoingWebView === webView {
+            cancelWaiter(entry.id)
         }
-        discardIdleAndPreparation()
-        _ = finishWaiters(with: nil)
+    }
+
+    private func expireAcquisition(_ id: UUID) {
+        guard let entry = waiting.first(where: { $0.id == id }) else { return }
+        guard let outgoing = entry.outgoingWebView,
+            outgoing === preparingWebView || canYieldAttachedPage(outgoing)
+        else {
+            cancelWaiter(id)
+            return
+        }
+        // A hung outgoing page may still execute JavaScript after cancellation.
+        // Retire only the page this acquisition actually awaited. Another
+        // retained tab or a different preparation is not its timeout target.
+        abandonedWebViews.add(outgoing)
+        if outgoing === preparingWebView {
+            discardIdleAndPreparation()
+        } else {
+            outgoing.editorHandoffLease?.retire()
+        }
+        cancelWaiters(for: outgoing)
     }
 
     private func finishWaiters(with webView: WindowAttachedWebView?) -> Bool {
         guard !waiting.isEmpty else { return false }
+        if let webView, waiting.last?.outgoingWebView !== webView { return false }
         let newest = waiting.removeLast()
         newest.deadline.cancel()
         webView?.editorReuseCount += 1
@@ -204,6 +273,7 @@ final class MarkdownEditorWebViewPool {
     func recycle(_ webView: WKWebView, hasFrozenSnapshot: Bool = false) {
         let openingMeasurement = PerformanceProbe.shared.armedNoteOpeningAttemptID
         PerformanceProbe.shared.markNoteOpeningMilestone(.poolRecycleEntered, attemptID: openingMeasurement)
+        if let webView = webView as? WindowAttachedWebView { attachedWebViews.remove(webView) }
         if let lease = (webView as? DocumentNativeWebView)?.editorHandoffLease {
             lease.retire()
             return
@@ -283,7 +353,7 @@ final class MarkdownEditorWebViewPool {
         _ webView: WindowAttachedWebView, hasFrozenSnapshot: Bool, generation expectedGeneration: Int,
         openingMeasurement: UUID?
     ) -> Bool {
-        guard hasFrozenSnapshot, !waiting.isEmpty, generation == expectedGeneration,
+        guard hasFrozenSnapshot, waiting.last?.outgoingWebView === webView, generation == expectedGeneration,
             !isInvalidated, webView.navigationDelegate == nil
         else { return false }
         let lease = MarkdownEditorHandoffLease(
@@ -299,9 +369,12 @@ final class MarkdownEditorWebViewPool {
     }
 
     func abandonOutgoing(_ webView: WKWebView) {
+        if let webView = webView as? WindowAttachedWebView {
+            attachedWebViews.remove(webView)
+            cancelWaiters(for: webView)
+        }
         (webView as? DocumentNativeWebView)?.editorHandoffLease?.retire()
         if attachedWebView === webView { attachedWebView = nil }
-        if preparation == nil { _ = finishWaiters(with: nil) }
     }
 
     fileprivate func commitHandoff(
@@ -316,10 +389,11 @@ final class MarkdownEditorWebViewPool {
 
     fileprivate func retireHandoff(_ lease: MarkdownEditorHandoffLease, webView: WindowAttachedWebView) {
         abandonedWebViews.add(webView)
+        attachedWebViews.remove(webView)
         guard handoffLease === lease else { return }
         handoffLease = nil
         if attachedWebView === webView { attachedWebView = nil }
-        _ = finishWaiters(with: nil)
+        cancelWaiters(for: webView)
     }
 
     private func discardIdleAndPreparation() {

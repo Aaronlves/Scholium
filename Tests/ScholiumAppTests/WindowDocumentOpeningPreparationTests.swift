@@ -719,6 +719,23 @@ struct WindowDocumentOpeningPreparationTests {
         #expect(milliseconds.count == 5)
     }
 
+    @Test("Library replacement navigates without ending the departing presentation")
+    func libraryReplacementDoesNotClosePresentation() throws {
+        let (model, background, outgoing) = makeModel()
+        defer {
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        outgoing.canRetrySave = true
+        outgoing.scrollFraction = 0.62
+        let departing = try #require(model.documentTabController.tabs.last?.document)
+        let destination = try #require(model.documentTabController.tabs.first?.document)
+        model.documentController.selectDocument(destination)
+        model.synchronizeDocumentTabs(after: .place(.replaceSelected))
+        #expect(outgoing.scrollFraction == 0.62)
+        #expect(model.documentController.retainedSession(for: try #require(departing.sessionKey)) === outgoing)
+    }
+
     private func makeModel() -> (WindowModel, DocumentSessionModel, DocumentSessionModel) {
         let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
         let vaultID = UUID()

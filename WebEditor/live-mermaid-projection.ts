@@ -11,7 +11,6 @@ import {mermaidPresentation, type MermaidPresentation} from "./mermaid-presentat
 import {
   activeProjectionSignature,
   selectionActivatesSyntax,
-  transactionChangedSyntaxTree,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
 import type {LiveSelectionController} from "./live-selection";
@@ -206,7 +205,9 @@ export function createLiveMermaidProjection(options: {
     update(previous, transaction) {
       const refreshedTheme = transaction.effects.find((effect) =>
         effect.is(options.refreshThemeEffect));
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction) || refreshedTheme) {
+      if (transaction.docChanged
+          || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)
+          || refreshedTheme) {
         return build(
           transaction.state,
           refreshedTheme?.value ?? options.currentThemeRevision(),

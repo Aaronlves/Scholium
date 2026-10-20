@@ -156,11 +156,19 @@ export function footnotePresentation(
   }
 
   const rawReferences: RawReference[] = [];
+  // Definition markers and regex matches both follow source order. Keep the
+  // next possible overlap instead of rescanning every definition per match.
+  let definitionMarkerIndex = 0;
   for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
     const from = match.index;
     const to = from + match[0].length;
+    while (definitionMarkerIndex < rawDefinitions.length
+        && rawDefinitions[definitionMarkerIndex].marker.to <= from) {
+      definitionMarkerIndex += 1;
+    }
+    const definitionMarker = rawDefinitions[definitionMarkerIndex]?.marker;
     if (overlaps(excluded, from, to)
-      || rawDefinitions.some((definition) => overlaps([definition.marker], from, to))
+      || (definitionMarker !== undefined && definitionMarker.from < to)
       || isEscaped(source, from)) continue;
     rawReferences.push({
       identifier: match[1],

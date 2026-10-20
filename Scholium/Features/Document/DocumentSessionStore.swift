@@ -128,7 +128,7 @@ final class DocumentSessionModel: ObservableObject {
     /// so another navigation can never consume the creation focus intent.
     @Published private(set) var managedCreationBodyStartUTF16: Int? = nil
     private var hasBeenActivated = false
-    private var presentationIsClosed = false
+    private(set) var presentationIsClosed = false
 
     var autosaveTask: Task<Void, Never>?
     var autosaveToken: UUID?
@@ -554,6 +554,7 @@ final class DocumentSessionStore {
         case saveInFlight
         case retryableRecovery
         case recoveryBuffer
+        case editorHistory
     }
 
     private struct Entry {
@@ -610,13 +611,17 @@ final class DocumentSessionStore {
     }
 
     func takeSession(for target: DocumentEditingTarget) -> DocumentSessionModel? {
-        entries.removeValue(forKey: target)?.session
+        guard let session = entries.removeValue(forKey: target)?.session else { return nil }
+        editorWebViewPool.forgetTransferredSession(session.editorSession)
+        synchronizeEditorPageLeases()
+        return session
     }
 
     func receiveSession(_ session: DocumentSessionModel, for target: DocumentEditingTarget) {
         precondition(entries[target] == nil)
         session.editorSession.webViewPool = editorWebViewPool
         entries[target] = Entry(session: session, leaseCount: 1, isForeground: true)
+        synchronizeEditorPageLeases()
     }
 
     func reconcileLeases(
@@ -631,7 +636,14 @@ final class DocumentSessionStore {
             entries[target]?.leaseCount = counts[target, default: 0]
             entries[target]?.isForeground = target == foregroundTarget
         }
+        synchronizeEditorPageLeases()
         reapEligibleSessions()
+    }
+
+    private func synchronizeEditorPageLeases() {
+        editorWebViewPool.reconcileTabLeases(
+            entries.values.compactMap { $0.leaseCount > 0 ? $0.session.editorSession : nil }
+        )
     }
 
     func pinReasons(for session: DocumentSessionModel) -> Set<PinReason> {
@@ -646,6 +658,7 @@ final class DocumentSessionStore {
         if session.canRetrySave { reasons.insert(.retryableRecovery) }
         if session.inputResumeError != nil { reasons.insert(.retryableRecovery) }
         if session.editorSession.hasRecoverableBuffer { reasons.insert(.recoveryBuffer) }
+        if session.editorSession.hasRetainedHistory { reasons.insert(.editorHistory) }
         return reasons
     }
 
@@ -658,9 +671,10 @@ final class DocumentSessionStore {
         }
     }
 
-    func reapEligibleSessions() {
+    func reapEligibleSessions(matching session: DocumentSessionModel? = nil) {
         let eligible = entries.compactMap { target, entry -> DocumentEditingTarget? in
-            guard entry.leaseCount == 0,
+            guard session == nil || entry.session === session,
+                entry.leaseCount == 0,
                 pinReasons(for: entry.session).isEmpty,
                 !entry.session.editorSession.hasAttachedWebView
             else { return nil }

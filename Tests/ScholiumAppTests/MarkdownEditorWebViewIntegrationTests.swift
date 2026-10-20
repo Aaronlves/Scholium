@@ -10,6 +10,66 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Clean navigation retains both history branches without a WebView until explicit Close")
+    func cleanUnleasedNavigationRetainsHistory() async throws {
+        let store = DocumentSessionStore()
+        let target = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
+        let document = store.session(for: target)
+        let source = "\u{FEFF}Original cafe\u{301} 中文 🦉\r\n"
+        document.editingSource = source
+        document.originalEditingSource = source
+        let harness = EditorHarness(source: source, suppliedSession: document.editorSession, initialMode: .livePreview)
+        defer {
+            harness.close()
+            store.removeAll()
+        }
+        try await harness.waitUntilReady()
+        try await document.editorSession.captureStateForViewReconstruction()
+        #expect(!document.editorSession.hasRetainedHistory)
+        try await document.editorSession.perform(.pastePlain, argument: "First ")
+        try await document.editorSession.perform(.pastePlain, argument: "Second ")
+        let second = try await document.editorSession.currentText()
+        func historyKey(redo: Bool) async throws {
+            _ = try await harness.callPageJavaScript(
+                "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: redo ? 'Z' : 'z', code: 'KeyZ', keyCode: 90, which: 90, metaKey: true, shiftKey: redo, bubbles: true, cancelable: true}));",
+                arguments: ["redo": redo])
+        }
+        try await historyKey(redo: false)
+        let first = try await document.editorSession.currentText()
+        #expect(Data(first.utf8) != Data(second.utf8))
+        #expect(Data(first.utf8) != Data(source.utf8))
+        _ = try await document.editorSession.acknowledgeCommittedSnapshot(
+            expectedText: first, committedText: first, fingerprint: DocumentFingerprint(content: first), documentID: harness.documentID)
+        document.editingSource = first
+        document.originalEditingSource = first
+        harness.synchronizeLifecycleSourceFromSession()
+        try await document.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(!document.hasUnsavedChanges)
+        #expect(document.editorSession.hasRetainedHistory)
+        try await harness.detachEditorView()
+        store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+        #expect(store.retainedSession(for: target) === document)
+        #expect(store.pinReasons(for: document) == [.editorHistory])
+        #expect(!document.editorSession.hasAttachedWebView)
+        harness.reattachEditorView()
+        try await harness.waitUntilReady()
+        try await historyKey(redo: true)
+        #expect(Data(try await document.editorSession.currentText().utf8) == Data(second.utf8))
+        try await historyKey(redo: false)
+        try await historyKey(redo: false)
+        #expect(Data(try await document.editorSession.currentText().utf8) == Data(source.utf8))
+        try await historyKey(redo: true)
+        #expect(Data(try await document.editorSession.currentText().utf8) == Data(first.utf8))
+        _ = try await document.editorSession.acknowledgeCommittedSnapshot(
+            expectedText: first, committedText: first, fingerprint: DocumentFingerprint(content: first), documentID: harness.documentID)
+        try await document.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+        try await harness.detachEditorView()
+        document.endClosedPresentation()
+        store.reconcileLeases(openTargets: [], foregroundTarget: nil)
+        #expect(store.retainedSession(for: target) == nil)
+        await harness.closeAndDrain()
+    }
+
     @Test("Incomplete history replies refuse native detachment and resume the live buffer", arguments: [false, true])
     func incompleteHistoryRefusesDetachment(reportsPreserved: Bool) async throws {
         let source = "\u{FEFF}Original cafe\u{301} 中文 🦉\r\n"
@@ -10383,6 +10443,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         func reconstructEditorView() async throws {
+            try await detachEditorView()
+            reattachEditorView()
+        }
+
+        func reattachEditorView() { sourceBox.showsEditor = true }
+
+        func detachEditorView() async throws {
             sourceBox.showsEditor = false
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(3))
@@ -10393,7 +10460,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
-            sourceBox.showsEditor = true
         }
 
         func waitUntilText(_ expected: String) async throws {

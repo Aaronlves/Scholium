@@ -8,7 +8,6 @@ import {localizedTemplate} from "./localization";
 import {
   activeProjectionSignature,
   selectionActivatesSyntax,
-  transactionChangedSyntaxTree,
   type ProjectionSourceRange,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
@@ -168,7 +167,8 @@ export function createLiveFootnoteProjection(options: {
   const field = StateField.define<LiveFootnoteReferenceState>({
     create: build,
     update(previous, transaction) {
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
+      if (transaction.docChanged
+          || options.projections.index(transaction.startState) !== options.projections.index(transaction.state)) {
         return build(transaction.state);
       }
       if (!options.selection.changed(transaction.startState, transaction.state)) return previous;

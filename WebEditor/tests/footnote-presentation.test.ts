@@ -102,4 +102,34 @@ describe("footnotePresentation", () => {
     expect(projection.references.map((reference) => reference.identifier)).toEqual(["real"]);
     expect(projection.definitions.find((definition) => definition.identifier === "code")?.ordinal).toBeNull();
   });
+
+  it.each(["\n", "\r\n"])("retains source-ordered references around duplicate definition markers and protected Unicode prose (%j)", newline => {
+    const source = [
+      "\ufeff中文 🦉 e\u0301 [^二], [^one], missing[^none], `[^literal]`.",
+      "",
+      "[^one]: First 🧭 [^definition-content]",
+      "  continuation [^二]",
+      "[^二]: 第二定义 e\u0301",
+      "[^one]: Duplicate [^duplicate-content]",
+      "",
+      "After [^one], escaped \\[^escaped], inline ^[行内 🦉].",
+    ].join(newline);
+    const literalFrom = source.indexOf("`[^literal]`");
+    const projection = footnotePresentation(source, [{from: literalFrom, to: literalFrom + "`[^literal]`".length}]);
+
+    expect(projection.references.map(reference => [reference.identifier, reference.ordinal, reference.occurrence]))
+      .toEqual([["二", 1, 1], ["one", 2, 1], ["none", 3, 1], ["二", 1, 2], ["one", 2, 2], ["inline-1", 4, 1]]);
+    expect(projection.definitions.map(definition => [definition.identifier, definition.content, definition.ordinal]))
+      .toEqual([["二", "第二定义 e\u0301", 1], ["one", "First 🧭 [^definition-content]\ncontinuation [^二]", 2], ["inline-1", "行内 🦉", 4]]);
+    for (const reference of projection.references) {
+      expect(source.slice(reference.from, reference.to)).toBe(reference.isInline ? "^[行内 🦉]" : `[^${reference.identifier}]`);
+      if (reference.identifier === "none") {
+        expect(reference.definitionFrom).toBeNull();
+        expect(reference.definitionContentFrom).toBeNull();
+      } else if (!reference.isInline) {
+        const firstDefinition = source.indexOf(`[^${reference.identifier}]:`);
+        expect(reference.definitionFrom).toBe(firstDefinition);
+      }
+    }
+  });
 });
