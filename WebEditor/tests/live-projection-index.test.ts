@@ -1,6 +1,6 @@
-import {EditorSelection, EditorState, StateEffect} from "@codemirror/state";
+import {EditorSelection, EditorState, StateEffect, StateField} from "@codemirror/state";
 import {history, isolateHistory, redo, undo} from "@codemirror/commands";
-import {ensureSyntaxTree} from "@codemirror/language";
+import {ensureSyntaxTree, syntaxTree} from "@codemirror/language";
 import {EditorView} from "@codemirror/view";
 import {describe, expect, it, vi} from "vitest";
 import {scholiumNoteLanguage} from "../language";
@@ -8,9 +8,10 @@ import {createLiveProjectionIndexController} from "../live-projection-index";
 import {createLiveSemanticLayout} from "../live-semantic-layout";
 import type {MarkdownEditingDialect} from "../protocol";
 import {createMarkdownDocumentState} from "../bootstrap";
-import {exactSourceHistory, exactSourceState} from "../exact-source-history";
+import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
 import {normalizedDocumentText} from "../state";
 import {transformMarkdown} from "../transformations";
+import {citationHistory, setCitationData, setCitationSnapshot, type ZoteroCitationSnapshot} from "../zotero-citation-state";
 
 const dialect: MarkdownEditingDialect = {
   version: 6,
@@ -237,6 +238,95 @@ describe("live projection index component", () => {
         expect(controller.index(state)).toEqual(oracle.index(fresh));
       }
       expect(builds).toBe(1);
+    },
+  );
+
+  it("reuses a complete index when its already analyzed tree is subsequently published", () => {
+    let builds = 0;
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+      recordMetric: name => { if (name === "projection-index") builds++; }});
+    const source = "Plain paragraph 中文.\n\n".repeat(400) + "# Later heading\n\nAfter.";
+    let now = 0;
+    const deadline = vi.spyOn(Date, "now").mockImplementation(() => now += 100);
+    let initialPublishedTree: ReturnType<typeof syntaxTree> | undefined;
+    const releaseParseBudget = StateField.define({
+      create(state) {
+        // Force the language's initial budget exhaustion through the public
+        // API, then let the index ensure a complete tree in the same state.
+        initialPublishedTree = syntaxTree(state);
+        deadline.mockRestore();
+        return null;
+      },
+      update: value => value,
+    });
+    let state: EditorState;
+    try {
+      state = createMarkdownDocumentState(source,
+        [scholiumNoteLanguage, exactSourceHistory, releaseParseBudget, controller.extension]);
+    } finally {
+      deadline.mockRestore();
+    }
+    const initial = controller.index(state);
+    const ensured = ensureSyntaxTree(state, state.doc.length, 5_000);
+    expect(initial.syntaxComplete).toBe(true);
+    expect(ensured).not.toBeNull();
+    expect(initialPublishedTree?.length).toBeLessThan(state.doc.length);
+    expect(syntaxTree(state)).toBe(initialPublishedTree);
+    expect(syntaxTree(state)).not.toBe(ensured);
+    expect(builds).toBe(1);
+
+    const published = state.update({});
+    expect(published.docChanged).toBe(false);
+    expect(published.effects).toHaveLength(0);
+    state = published.state;
+    expect(syntaxTree(state)).toBe(ensured);
+    expect(controller.index(state)).toBe(initial);
+    expect(builds).toBe(1);
+
+    const next = state.update({changes: {from: state.doc.length, insert: "\n\n```ts\nnewly_protected\n```"}}).state;
+    expect(controller.index(next)).not.toBe(initial);
+    expect(builds).toBe(2);
+    expect(syntaxTree(next)).not.toBe(ensured);
+    const target = next.doc.toString().indexOf("newly_protected");
+    expect(transformMarkdown(next.doc.toString(), [{anchor: target, head: target + 15}], "bold",
+      {protectedRanges: controller.index(next).commandProtectedRanges})).toBeNull();
+    expectFreshIndex(next, controller);
+    expect(state.field(exactSourceState).text).toBe(source);
+  });
+
+  it.each(["source", "citation-data", "citation-baseline"])(
+    "rebuilds for %s changes even when the published tree was already analyzed", change => {
+      let builds = 0;
+      const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+        recordMetric: name => { if (name === "projection-index") builds++; }});
+      const source = "# Claim\n\nPlain 中文 🦉.\n";
+      const baseline: ZoteroCitationSnapshot = {
+        noteID: "11111111-1111-1111-1111-111111111111", vaultID: "22222222-2222-2222-2222-222222222222",
+        status: "absent",
+      };
+      let state = createMarkdownDocumentState(source,
+        [scholiumNoteLanguage, exactSourceHistory, citationHistory, controller.extension], {citationSnapshot: baseline});
+      expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+      state = state.update({}).state;
+      const index = controller.index(state), tree = syntaxTree(state), before = builds;
+      const draft = {schemaVersion: 1 as const, fields: [], documentData: "changed companion"};
+      const effect = change === "source" ? setExactSource.of(source.replaceAll("\n", "\r\n"))
+        : change === "citation-data" ? setCitationData.of(draft)
+        : setCitationSnapshot.of({...baseline, status: "unresolved"});
+      const changed = state.update({effects: effect}).state;
+      expect(syntaxTree(changed)).toBe(tree);
+      expect(changed.doc.toString()).toBe(state.doc.toString());
+      expect(controller.index(changed)).not.toBe(index);
+      expect(builds).toBe(before + 1);
+      if (change === "source") {
+        expect(index.zoteroFields.source).toBe(source);
+        expect(controller.index(changed).zoteroFields.source).toBe(source.replaceAll("\n", "\r\n"));
+      } else if (change === "citation-data") {
+        expect(controller.index(changed).zoteroFields.companion).toEqual(draft);
+      } else {
+        expect(index.zoteroFields.diagnostics).toHaveLength(0);
+        expect(controller.index(changed).zoteroFields.diagnostics.length).toBeGreaterThan(0);
+      }
     },
   );
 

@@ -20,11 +20,14 @@ import WebKit
             "Measure retained A/B editor reconstruction with exact source, selection and Undo",
             .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_DOCUMENT_SWITCH"] == "1"))
         func warmRetainedEditorSwitches() async throws {
+            let mode = try EditorAblationDiagnosticConfiguration.mode()
+            let label = try EditorAblationDiagnosticConfiguration.label()
+            let fixture = try EditorAblationDiagnosticConfiguration.fixture(default: .small)
             try await withHarness { harness in
                 let a = harness.documents[0]
                 let b = harness.documents[1]
-                a.model.beginEditing(in: .livePreview)
-                b.model.beginEditing(in: .livePreview)
+                a.model.beginEditing(in: mode)
+                b.model.beginEditing(in: mode)
                 try await harness.show(a)
                 let editedA = a.source + "Additional synthetic paragraph 😀.\r\n"
                 try await harness.edit(a, replacing: a.source, with: editedA)
@@ -47,9 +50,16 @@ import WebKit
                     let captured = ContinuousClock.now
                     harness.attachment.current = nil
                     try await harness.wait("outgoing editor detach") { !prior.model.editorSession.hasAttachedWebView }
-                    try await harness.show(target, expectedSource: expected)
-                    let ranges = try await harness.selection(target)
+                    try await harness.show(target, expectedSource: expected, verifySource: false)
                     let settled = ContinuousClock.now
+                    // The incoming attachment resets its bounded numeric ring.
+                    // Read it before any correctness oracle can demand a full
+                    // semantic context; none of these reads enters elapsed.
+                    try EditorAblationDiagnosticConfiguration.emit(
+                        try await target.model.editorSession.queryPerformanceSamples(),
+                        label: label, boundary: "pooled-switch", sample: index)
+                    try await harness.assertExactSource(target, expected: expected)
+                    let ranges = try await harness.selection(target)
                     if target === a {
                         #expect(ranges == selectionA)
                         #expect(target.model.editorSession.isDirty)
@@ -75,7 +85,7 @@ import WebKit
                     let token = try await harness.pageToken(target)
                     let fresh = pageTokens.insert(token).inserted
                     print(
-                        "DocumentSwitch boundary=capture-remount-layout index=\(index) phase=\(index < 2 ? "warmup" : "retained") "
+                        "DocumentSwitch label=\(label) mode=\(mode.rawValue) fixture=\(fixture.rawValue) boundary=capture-remount-layout index=\(index) phase=\(index < 2 ? "warmup" : "retained") "
                             + "page=\(fresh ? "fresh" : "reused") captureMs=\(Self.milliseconds(start.duration(to: captured))) "
                             + "remountMs=\(Self.milliseconds(captured.duration(to: settled))) totalMs=\(Self.milliseconds(start.duration(to: settled))) "
                             + "pages=\(pageTokens.count) initialize=\(harness.totalInitializations) "
@@ -89,7 +99,13 @@ import WebKit
                 }
                 #expect(harness.attachment.current === a)
                 #expect(a.model.editorSession.sessionID != initialTransport)
-                #expect(pageTokens.count == 2, "The measured run crosses the production pool's reuse limit once.")
+                if fixture == .small {
+                    #expect(pageTokens.count == 2, "The small fixture crosses the production pool's reuse limit once.")
+                } else {
+                    // Larger documents can also retire a page during initial
+                    // handoff. Each fresh page is reported separately above.
+                    #expect(pageTokens.count >= 2)
+                }
                 #expect(try await harness.hasUndo(a))
                 try await harness.undo(a)
                 try await harness.assertExactSource(a, expected: a.source)
@@ -319,7 +335,8 @@ import WebKit
         }
 
         private func withHarness(retainsLivePages: Bool = false, _ operation: @MainActor (HiddenHarness) async throws -> Void) async throws {
-            let harness = HiddenHarness(retainsLivePages: retainsLivePages)
+            let fixture = try EditorAblationDiagnosticConfiguration.fixture(default: .small)
+            let harness = HiddenHarness(retainsLivePages: retainsLivePages, fixture: fixture)
             do {
                 try await operation(harness)
                 await harness.closeAndDrain()
@@ -355,10 +372,8 @@ import WebKit
             let dispatcher: CountingDispatcher
             let readPage = DedicatedReadPage()
 
-            init(key: DocumentSessionKey, label: String) {
-                source =
-                    "\u{FEFF}# Synthetic \(label)\r\n\r\n"
-                    + (0..<60).map { "Paragraph \($0): 中文 😀 e\u{301} synthetic source.\r\n\r\n" }.joined()
+            init(key: DocumentSessionKey, label: String, fixture: EditorAblationDiagnosticConfiguration.Fixture) {
+                source = fixture.source(label: label)
                 readDocument = NoteDocument(relativePath: "Synthetic.md", rawContent: source)
                 dispatcher = CountingDispatcher()
                 let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher, citationIntegration: UnavailableCitationPort())
@@ -394,12 +409,12 @@ import WebKit
             var pool: MarkdownEditorWebViewPool { store.editorWebViewPool }
             var totalInitializations: Int { documents.reduce(0) { $0 + $1.dispatcher.initializations } }
 
-            init(retainsLivePages: Bool = false) {
+            init(retainsLivePages: Bool = false, fixture: EditorAblationDiagnosticConfiguration.Fixture = .small) {
                 self.retainsLivePages = retainsLivePages
                 _ = NSApplication.shared
                 let vaultID = UUID()
                 documents = ["A", "B"].map {
-                    FixtureDocument(key: .init(vaultID: vaultID, noteID: UUID()), label: $0)
+                    FixtureDocument(key: .init(vaultID: vaultID, noteID: UUID()), label: $0, fixture: fixture)
                 }
                 window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
@@ -424,7 +439,7 @@ import WebKit
                 #expect(!window.isVisible)
             }
 
-            func show(_ document: FixtureDocument, expectedSource: String? = nil) async throws {
+            func show(_ document: FixtureDocument, expectedSource: String? = nil, verifySource: Bool = true) async throws {
                 if retainsLivePages {
                     try await showLive(document, expectedSource: expectedSource ?? document.source)
                     return
@@ -440,7 +455,7 @@ import WebKit
                     }
                     try await editorReady(
                         document, expectedSource: expectedSource ?? document.source,
-                        expectedMode: document.model.retainedEditorMode)
+                        expectedMode: document.model.retainedEditorMode, verifySource: verifySource)
                 }
                 #expect(!window.isVisible)
             }
@@ -485,7 +500,7 @@ import WebKit
                 #expect(retained.model.editorSession.detachmentSuspensionID != nil)
             }
 
-            func editorReady(_ document: FixtureDocument, expectedSource: String, expectedMode: MarkdownEditorMode) async throws {
+            func editorReady(_ document: FixtureDocument, expectedSource: String, expectedMode: MarkdownEditorMode, verifySource: Bool = true) async throws {
                 let editor = document.model.editorSession
                 try await wait("target editor attachment") {
                     attachment.current === document && editor.hasAttachedWebView
@@ -504,7 +519,7 @@ import WebKit
                         && editor.webView?.isHidden == false
                 }
                 #expect(editor.startingFingerprint == DocumentFingerprint(content: document.source).sha256)
-                try await assertExactSource(document, expected: expectedSource)
+                if verifySource { try await assertExactSource(document, expected: expectedSource) }
                 hosting?.view.layoutSubtreeIfNeeded()
                 let web = try #require(editor.webView)
                 let laidOut =
@@ -541,9 +556,10 @@ import WebKit
             }
 
             func hasUndo(_ document: FixtureDocument) async throws -> Bool {
-                let editor = document.model.editorSession
-                let result = try await editor.send(.queryContext, in: #require(editor.webView))
-                return result.context?.undoLabel != nil
+                // Current source/selection receipts already publish an exact
+                // Undo label. A full semantic query would contaminate the
+                // deferred-analysis experiment even outside this interval.
+                return document.model.editorSession.context?.undoLabel != nil
             }
 
             func undo(_ document: FixtureDocument) async throws {

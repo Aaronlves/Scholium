@@ -477,11 +477,11 @@ export function restoreExactHistory(serialized: string, source: string, extensio
     observed.doneEvents = history.done.length;
     observed.undoneEvents = history.undone.length;
     stageStartedAt = performance.now();
-    // Public field initialization installs the validated CodeMirror value. No
-    // additional field becomes a second owner of text, selections or history.
-    const state = EditorState.fromJSON(payload.state, {extensions: [historyField.init(() => history), extensions]},
-      payload.state.citations ? {citations: citationState} : undefined)
-      .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+    // Initialize exact bytes before derived fields read them. A later source
+    // replacement would rebuild their catalogs after the first initialization.
+    const state = EditorState.fromJSON(payload.state, {extensions: [
+      historyField.init(() => history), exactSourceState.init(() => new ExactSourceMirror(source)), extensions,
+    ]}, payload.state.citations ? {citations: citationState} : undefined);
     observed.finalStateMilliseconds = performance.now() - stageStartedAt;
     stageStartedAt = performance.now();
     checkedHistory(state);

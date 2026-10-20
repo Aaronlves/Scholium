@@ -2,7 +2,7 @@ import {EditorSelection, EditorState, Transaction, type Extension} from "@codemi
 import {EditorView} from "@codemirror/view";
 import {exactSourceFits, sourceCapacityMessage, exactSourceState, restoreExactHistory} from "./exact-source-history";
 import {ExactSourceMirror, normalizedDocumentText} from "./state";
-import {citationDataEqual, citationState, setCitationData, setCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
+import {citationDataEqual, citationSnapshotEqual, citationState, setCitationData, setCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {recordEditorMetric} from "./performance";
 import type {RecoverySnapshot} from "./protocol";
 
@@ -43,8 +43,10 @@ export function restoreMarkdownDocumentState(snapshot: RecoverySnapshot, extensi
         }
         // A detached save can advance the disk baseline without changing the
         // draft's semantic data or Undo. Rebase only that nonhistory boundary.
+        const rebase = snapshot.citationSnapshot
+          && !citationSnapshotEqual(citations?.baseline, snapshot.citationSnapshot);
         const state = restored.update({selection,
-          effects: snapshot.citationSnapshot
+          effects: rebase
             ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
           annotations: Transaction.addToHistory.of(false),
         }).state;

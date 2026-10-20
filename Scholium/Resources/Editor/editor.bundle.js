@@ -33406,11 +33406,11 @@ ${blankRow(table.position.columnCount)}`;
       observed.doneEvents = history2.done.length;
       observed.undoneEvents = history2.undone.length;
       stageStartedAt = performance.now();
-      const state = EditorState.fromJSON(
-        payload.state,
-        { extensions: [historyField.init(() => history2), extensions] },
-        payload.state.citations ? { citations: citationState } : void 0
-      ).update({ effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false) }).state;
+      const state = EditorState.fromJSON(payload.state, { extensions: [
+        historyField.init(() => history2),
+        exactSourceState.init(() => new ExactSourceMirror(source)),
+        extensions
+      ] }, payload.state.citations ? { citations: citationState } : void 0);
       observed.finalStateMilliseconds = performance.now() - stageStartedAt;
       stageStartedAt = performance.now();
       checkedHistory(state);
@@ -33439,6 +33439,7 @@ ${blankRow(table.position.columnCount)}`;
     const prefix = doc2.sliceString(line.from, block.from);
     return /^[ \t]*$/.test(prefix) ? prefix.length : 0;
   }
+  var indexedSyntax = /* @__PURE__ */ new WeakMap();
   function indexedListPrefixRanges(doc2, syntax) {
     const contentStarts = /* @__PURE__ */ new Map();
     for (const block of syntax.blocks) {
@@ -33750,6 +33751,7 @@ ${blankRow(table.position.columnCount)}`;
       referenceDefinitionRanges,
       recordMetric
     );
+    if (completeTree) indexedSyntax.set(index, { tree: completeTree, dialect });
     recordMetric("projection-index", startedAt, {
       documentLength: state.doc.length,
       literalCount: excluded.length,
@@ -33863,7 +33865,13 @@ ${blankRow(table.position.columnCount)}`;
       create: build,
       update(previous, transaction) {
         if (!transaction.docChanged) {
-          return transactionChangedSyntaxTree(transaction) || transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData)) ? build(transaction.state) : previous;
+          if (transaction.effects.some((effect) => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData))) {
+            return build(transaction.state);
+          }
+          if (!transactionChangedSyntaxTree(transaction)) return previous;
+          const analyzed = indexedSyntax.get(previous);
+          const sameAnalysis = previous.syntaxComplete && analyzed?.tree === syntaxTree(transaction.state) && analyzed.dialect === options.editingDialect() && transaction.startState.field(exactSourceState, false) === transaction.state.field(exactSourceState, false) && transaction.startState.field(citationState, false) === transaction.state.field(citationState, false);
+          return sameAnalysis ? previous : build(transaction.state);
         }
         const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         const topologyStartedAt = performance.now();
@@ -36285,9 +36293,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           if (!citationDataEqual(citations?.data, snapshot.citationData) || citations?.baseline.noteID !== snapshot.citationSnapshot?.noteID || citations?.baseline.vaultID !== snapshot.citationSnapshot?.vaultID) {
             throw new Error("Citation history mismatch");
           }
+          const rebase = snapshot.citationSnapshot && !citationSnapshotEqual(citations?.baseline, snapshot.citationSnapshot);
           const state2 = restored.update({
             selection,
-            effects: snapshot.citationSnapshot ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
+            effects: rebase ? [setCitationSnapshot.of(snapshot.citationSnapshot), setCitationData.of(citations?.data)] : [],
             annotations: Transaction.addToHistory.of(false)
           }).state;
           observed.bindingMilliseconds = performance.now() - bindingStartedAt;

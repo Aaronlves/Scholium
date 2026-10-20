@@ -28,7 +28,7 @@ import {
   type SemanticProjectionRanges,
 } from "./semantic-projection";
 import {frontmatterBoundary} from "./state";
-import {setCitationSnapshot, setCitationData} from "./zotero-citation-state";
+import {citationState, setCitationSnapshot, setCitationData} from "./zotero-citation-state";
 import {exactSourceState, setExactSource} from "./exact-source-history";
 import {projectFieldsForState, type FieldProjection} from "./zotero-fields";
 import {
@@ -126,6 +126,14 @@ export interface LiveProjectionIndex {
   readonly tablePositionRanges: readonly Readonly<IndexedTablePositionRange>[];
   readonly hasUnclosedFrontmatter: boolean;
 }
+
+// A completed tree can be analyzed before CodeMirror publishes it in state.
+// Retain only that provenance, so publishing the same tree is not a new scan.
+// Mapped and incomplete indexes have no such proof and remain conservative.
+const indexedSyntax = new WeakMap<LiveProjectionIndex, {
+  tree: ReturnType<typeof syntaxTree>;
+  dialect: MarkdownEditingDialect | null;
+}>();
 
 function indexedListPrefixRanges(
   doc: Text,
@@ -548,6 +556,7 @@ function buildLiveProjectionIndex(
     referenceDefinitionRanges,
     recordMetric,
   );
+  if (completeTree) indexedSyntax.set(index, {tree: completeTree, dialect});
   recordMetric("projection-index", startedAt, {
     documentLength: state.doc.length,
     literalCount: excluded.length,
@@ -650,9 +659,16 @@ export function createLiveProjectionIndexController(
     create: build,
     update(previous, transaction) {
       if (!transaction.docChanged) {
-        return transactionChangedSyntaxTree(transaction) || transaction.effects.some(effect => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData))
-          ? build(transaction.state)
-          : previous;
+        if (transaction.effects.some(effect => effect.is(setExactSource) || effect.is(setCitationSnapshot) || effect.is(setCitationData))) {
+          return build(transaction.state);
+        }
+        if (!transactionChangedSyntaxTree(transaction)) return previous;
+        const analyzed = indexedSyntax.get(previous);
+        const sameAnalysis = previous.syntaxComplete && analyzed?.tree === syntaxTree(transaction.state)
+          && analyzed.dialect === options.editingDialect()
+          && transaction.startState.field(exactSourceState, false) === transaction.state.field(exactSourceState, false)
+          && transaction.startState.field(citationState, false) === transaction.state.field(citationState, false);
+        return sameAnalysis ? previous : build(transaction.state);
       }
       const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
       const topologyStartedAt = performance.now();
