@@ -10,6 +10,600 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Review shares the live CodeMirror page, native reading selection and complete Undo/Redo")
+    func unifiedReviewPreservesReadingAndHistory() async throws {
+        let source =
+            "\u{FEFF}# Heading\r\n\r\nPlain e\u{301} 🦉 sentence.\r\n\r\n**Bold** with a footnote[^1].\r\n\r\n[^1]: Exact definition.\r\n\r\n[External reading](https://example.invalid/reading).\r\n"
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        try await harness.session.perform(.pastePlain, argument: "First ")
+        let first = try await harness.session.currentText()
+        try await harness.session.perform(.pastePlain, argument: "Second ")
+        let second = try await harness.session.currentText()
+        func historyKey(redo: Bool) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true});
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
+            #expect(handled == true, "The actual CodeMirror Undo/Redo keymap must consume the shortcut.")
+        }
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(first, stage: "first paste before entering Review")
+        _ = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: first, committedText: first, fingerprint: DocumentFingerprint(content: first), documentID: harness.documentID)
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: first)
+        let html = SafeMarkdownRenderer.render(document).htmlBody
+        var selected: MarkdownReviewSelection?
+        var renderingReadyCount = 0
+        var externalLinks: [URL] = []
+        func readingConfiguration(css: String = "") -> SafeMarkdownReadWebView {
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Reading fixture", document: document,
+                htmlBody: html, presentationCSS: css, userCSS: "", configurationRevision: document.fingerprint.sha256,
+                onLinkClick: { _ in }, onOpenExternalURL: { externalLinks.append($0) }, onSelectionChange: { selected = $0 },
+                onRenderingFailure: { reason in Issue.record(Comment(rawValue: reason)) },
+                onRenderingReady: { renderingReadyCount += 1 })
+        }
+        harness.configureReview(readingConfiguration())
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        #expect(harness.session.webView === webView)
+        #expect(renderingReadyCount > 0)
+        #expect(!harness.session.isDirty)
+        let readingPageURL = webView.url
+        _ = try await harness.callPageJavaScript("document.querySelector('#scholium-document a[href=\"https://example.invalid/reading\"]').click();")
+        let externalDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while externalLinks.isEmpty, ContinuousClock.now < externalDeadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(externalLinks.map(\.absoluteString) == ["https://example.invalid/reading"])
+        #expect(harness.session.webView?.url == readingPageURL)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(first.utf8))
+        _ = try await harness.callPageJavaScript(
+            """
+            const paragraph = [...document.querySelectorAll('#scholium-document p')].find(p => p.textContent.startsWith('Plain'));
+            if (!paragraph || !paragraph.firstChild) throw new Error('The committed reading paragraph is missing.');
+            const range = document.createRange(); range.setStart(paragraph.firstChild, 0); range.setEnd(paragraph.firstChild, 5);
+            const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            """)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while selected == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let readingSelection = try #require(selected)
+        #expect(readingSelection.excerpt == "Plain")
+        let expectedRange = (first as NSString).range(of: "Plain")
+        #expect(readingSelection.exactUTF16Range == expectedRange.location..<(expectedRange.location + expectedRange.length))
+        _ = try await harness.callPageJavaScript(
+            "window.__nativeReviewSelectionProbe = {root: document.getElementById('scholium-document'), active: document.activeElement?.className || document.activeElement?.tagName};"
+        )
+        harness.configureReview(readingConfiguration(css: ".scholium-document { --test-reading-style: 1; }"))
+        let styleDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var styleApplied = false
+        while !styleApplied, ContinuousClock.now < styleDeadline {
+            styleApplied =
+                try await harness.callPageJavaScript(
+                    "return getComputedStyle(document.getElementById('scholium-document')).getPropertyValue('--test-reading-style').trim() === '1';") as? Bool
+                == true
+            if !styleApplied { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        #expect(styleApplied)
+        let selectionProbe = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return {sameRoot: window.__nativeReviewSelectionProbe.root === document.getElementById('scholium-document'),
+                  selected: window.getSelection()?.toString(), activeBefore: window.__nativeReviewSelectionProbe.active,
+                  activeAfter: document.activeElement?.className || document.activeElement?.tagName};
+                """) as? [String: Any])
+        #expect(selectionProbe["sameRoot"] as? Bool == true, "Appearance must retain the existing reading DOM.")
+        #expect(selectionProbe["selected"] as? String == "Plain", Comment(rawValue: "Reading selection after appearance: \(selectionProbe)"))
+        do {
+            try await harness.session.perform(.bold)
+            Issue.record("Review granted source mutation authority.")
+        } catch { #expect(error is MarkdownEditorSession.SessionError) }
+        #expect(Data(try await harness.session.currentText().utf8) == Data(first.utf8))
+        harness.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(harness.session.webView === webView)
+        let previousReaderMountCount = renderingReadyCount
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        #expect(renderingReadyCount > previousReaderMountCount)
+        #expect(try await harness.callPageJavaScript("return Boolean(window.scholiumReviewFind && window.scholiumReadNavigation);") as? Bool == true)
+        harness.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        try await historyKey(redo: true)
+        try await harness.waitUntilText(second, stage: "Redo branch after leaving Review")
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(first, stage: "Undo to committed first paste after Review")
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(source, stage: "Undo to original bytes after Review")
+        harness.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        #expect(harness.session.webView === webView)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        let editAccessibility = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                return {label: content.getAttribute('aria-label'), role: content.getAttribute('role'),
+                  editable: content.isContentEditable, inert: content.closest('[inert]') !== null};
+                """) as? [String: Any])
+        #expect(editAccessibility["label"] as? String == ScholiumL10n.string("Markdown editor, Edit mode"))
+        #expect(editAccessibility["role"] as? String == "textbox")
+        #expect(editAccessibility["editable"] as? Bool == true)
+        #expect(editAccessibility["inert"] as? Bool == false)
+        try await harness.waitUntilNativeInputIsEnabled()
+        await harness.closeAndDrain()
+    }
+
+    @Test("Cold Review restores real editable accessibility when the shared host enters Edit and Source")
+    func coldReviewRestoresWritableAccessibility() async throws {
+        let source = "# Cold Review\n\nA paragraph with **instant formatting**.\n"
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        var readingMounts = 0
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Cold Review", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                configurationRevision: document.fingerprint.sha256, onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) },
+                onRenderingReady: { readingMounts += 1 }))
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.review)
+        #expect(readingMounts == 1)
+        let webView = try #require(harness.session.webView)
+        for mode in [MarkdownEditorMode.livePreview, .source] {
+            harness.setMode(mode)
+            try await harness.waitUntilPresentedMode(mode)
+            let content = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    return {label: content.getAttribute('aria-label'), role: content.getAttribute('role'),
+                      editable: content.isContentEditable, inert: content.closest('[inert]') !== null};
+                    """) as? [String: Any])
+            let expectedLabel: String.LocalizationValue = mode == .livePreview ? "Markdown editor, Edit mode" : "Markdown source editor"
+            #expect(content["label"] as? String == ScholiumL10n.string(expectedLabel))
+            #expect(content["role"] as? String == "textbox")
+            #expect(content["editable"] as? Bool == true)
+            #expect(content["inert"] as? Bool == false)
+            #expect(webView.accessibilityIdentifier().isEmpty)
+            #expect(harness.session.webView === webView)
+            #expect(!harness.session.isDirty)
+            #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+            try await harness.waitUntilNativeInputIsEnabled()
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review owns one document inset and keeps its reading position after Edit restoration retries")
+    func reviewPreservesSharedViewportGeometry() async throws {
+        let source =
+            "# A section\n\n"
+            + (0..<120).map {
+                "Paragraph \($0). Reading **formatted writing** with enough lines to exercise the shared viewport.\n\n"
+            }.joined()
+        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
+        let middle = (source as NSString).range(of: "Paragraph 60. Reading **formatted writing** with enough lines to exercise the shared viewport.")
+        let initialAnchor = EditorScrollAnchor(
+            sourceFingerprint: DocumentFingerprint(content: source).sha256,
+            sourceUTF16Offset: middle.location, blockUTF16LowerBound: middle.location,
+            blockUTF16UpperBound: middle.location + middle.length,
+            relativeBlockPosition: 0.35, fallbackFraction: 0.55)
+        let documentSession = DocumentSessionModel(key: nil)
+        let harness = EditorHarness(
+            source: source, suppliedSession: documentSession.editorSession,
+            initialMode: .review, initialPresentationCSS: presentationCSS,
+            initialScrollAnchor: initialAnchor)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        var readerRestoreReceipts = 0
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Argument", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: presentationCSS, userCSS: "",
+                configurationRevision: document.fingerprint.sha256, onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) },
+                // A standalone reader restore cannot compete with the shared
+                // Session's different, nonzero initialization position.
+                scrollRestoreRequest: ScrollRestoreRequest(
+                    id: 1, fingerprint: document.fingerprint.sha256,
+                    position: ObservedScrollPosition(), reason: .documentLoad),
+                onScrollRestoreConsumed: { _, _ in readerRestoreReceipts += 1 }))
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.review)
+        let webView = try #require(harness.session.webView)
+        let opened = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return {top: document.querySelector('.cm-scroller').scrollTop,
+                  restores: window.scholiumReadScroll.restoreCount};
+                """) as? [String: Any])
+        #expect((opened["top"] as? Double ?? 0) > 0)
+        #expect(opened["restores"] as? Int == 0)
+        #expect(readerRestoreReceipts == 0)
+        func geometry(review: Bool) async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content'), contentStyle = getComputedStyle(content);
+                    const root = review ? document.querySelector('main#scholium-document') : content;
+                    const title = document.querySelector(review
+                      ? '.scholium-review-projection main#scholium-document > .scholium-note-title'
+                      : '.cm-live-note-title.scholium-note-title');
+                    const rootRect = root.getBoundingClientRect(), rootStyle = getComputedStyle(root);
+                    const titleRect = title.getBoundingClientRect(), viewport = document.querySelector('.cm-scroller').getBoundingClientRect();
+                    return {paddingTop: parseFloat(contentStyle.paddingTop), paddingLeft: parseFloat(contentStyle.paddingLeft),
+                      titleTop: titleRect.top - viewport.top, titleLeft: titleRect.left - viewport.left,
+                      readerRestores: window.scholiumReadScroll?.restoreCount ?? null,
+                      measure: rootRect.width - parseFloat(rootStyle.paddingInlineStart) - parseFloat(rootStyle.paddingInlineEnd)};
+                    """, arguments: ["review": review]) as? [String: Any])
+        }
+        for width in [CGFloat(600), CGFloat(1_040)] {
+            harness.resize(width: width)
+            _ = try await harness.nativePreparationSnapshot()
+            harness.setMode(.livePreview)
+            try await harness.waitUntilPresentedMode(.livePreview)
+            _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+            let edit = try await geometry(review: false)
+            harness.setMode(.review)
+            try await harness.waitUntilPresentedMode(.review)
+            _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+            let reading = try await geometry(review: true)
+            #expect(reading["paddingTop"] as? Double == 0)
+            #expect(reading["paddingLeft"] as? Double == 0)
+            #expect(reading["readerRestores"] as? Int == 0)
+            for key in ["titleTop", "titleLeft", "measure"] {
+                let editValue = try #require(edit[key] as? Double)
+                let readingValue = try #require(reading[key] as? Double)
+                #expect(
+                    abs(readingValue - editValue) <= 1,
+                    Comment(rawValue: "\(width) pt \(key): Review \(readingValue), Edit \(editValue)"))
+            }
+        }
+        _ = try await harness.session.send(.setScrollFraction(0.55), in: webView)
+        // The native observation deliberately trails the actual reader. A
+        // mounted mode handoff must capture the current Web viewport instead.
+        documentSession.observeScrollFraction(0, on: .read)
+        documentSession.observeScrollAnchor(nil, on: .read)
+        documentSession.beginEditing(in: .livePreview)
+        harness.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        func readingPosition() async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const api = window.scholiumReadScroll;
+                    return {top: document.querySelector('.cm-scroller').scrollTop, anchor: api.current(api.fraction())};
+                    """) as? [String: Any])
+        }
+        let before = try await readingPosition()
+        // Cross the former 80 ms restoration retry boundary after acknowledgement.
+        try await Task.sleep(for: .milliseconds(180))
+        let after = try await readingPosition()
+        let beforeTop = try #require(before["top"] as? Double)
+        let afterTop = try #require(after["top"] as? Double)
+        #expect(beforeTop > 0)
+        #expect(abs(beforeTop - afterTop) <= 1)
+        let beforeAnchor = try #require(before["anchor"] as? [String: Any])
+        let afterAnchor = try #require(after["anchor"] as? [String: Any])
+        #expect((beforeAnchor["sourceUTF16Offset"] as? Int ?? 0) > 0)
+        #expect(beforeAnchor["sourceUTF16Offset"] as? Int == afterAnchor["sourceUTF16Offset"] as? Int)
+        #expect(beforeAnchor["blockUTF16LowerBound"] as? Int == afterAnchor["blockUTF16LowerBound"] as? Int)
+        #expect(readerRestoreReceipts == 0)
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review and Edit preserve cumulative Callout geometry across exact source boundaries")
+    func reviewCalloutBoundariesMatchEditSourceSpacing() async throws {
+        let source =
+            "> [!state] FirstBoundary\n> FirstBody.\n\n> [!cite] SingleBoundary\n> SingleBody.\n\n\n\n> [!connect] MultipleBoundary\n> MultipleBody.\n\nBeforeZeroBoundary.\n> [!flag] FinalBoundary\n> FinalBody.\n"
+        let document = NoteDocument(relativePath: "Argument.md", rawContent: source)
+        let callouts = MarkdownSemanticDocument(parsing: document).callouts
+        try #require(callouts.count == 4)
+        let bodyMarkers = ["FirstBody.", "SingleBody.", "MultipleBody.", "FinalBody."]
+        let blocks: [[String: Any]] = callouts.enumerated().map { index, callout in
+            [
+                "from": callout.span.utf16LowerBound, "to": callout.span.utf16UpperBound,
+                "title": callout.title ?? "", "body": bodyMarkers[index],
+            ]
+        }
+        let parkingOffset = try #require(source.range(of: "\n\n")).lowerBound.utf16Offset(in: source) + 1
+        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
+        let size = NSSize(width: 760, height: 1_400)
+        let harness = EditorHarness(
+            source: source, initialPresentationCSS: presentationCSS,
+            initialSourceRange: parkingOffset..<parkingOffset,
+            initialWindowSize: size, fixedLayoutSize: size)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Argument", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+                presentationCSS: presentationCSS, userCSS: "",
+                configurationRevision: document.fingerprint.sha256,
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        func snapshot(review: Bool) async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise((resolve, reject) => {
+                      const timeout = setTimeout(() => reject(new Error(JSON.stringify({
+                        stage: 'Callout geometry fonts', mode: review ? 'Review' : 'Edit',
+                        visibility: document.visibilityState, fonts: document.fonts.status,
+                        viewport: document.querySelector('.cm-scroller')?.getBoundingClientRect().toJSON(),
+                      }))), 3000);
+                      document.fonts.ready.then(() => { clearTimeout(timeout); resolve(); }, error => {
+                        clearTimeout(timeout); reject(error);
+                      });
+                    });
+                    await new Promise(resolve => {
+                      requestAnimationFrame(() => requestAnimationFrame(resolve));
+                      setTimeout(resolve, 200);
+                    });
+                    const viewportTop = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                    function textBounds(root, text) {
+                      if (!root) throw new Error('Missing text owner: ' + text);
+                      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                      for (let node; node = walker.nextNode();) {
+                        const offset = node.textContent.indexOf(text);
+                        if (offset < 0) continue;
+                        const range = document.createRange();
+                        range.setStart(node, offset); range.setEnd(node, offset + text.length);
+                        const rect = range.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) return {top: rect.top - viewportTop, bottom: rect.bottom - viewportTop};
+                      }
+                      throw new Error('Missing rendered text: ' + text);
+                    }
+                    const lines = [...document.querySelectorAll('.cm-line')];
+                    const measured = blocks.map(block => {
+                      const root = review ? document.querySelector('.scholium-callout[data-source-utf16-start="' + block.from + '"][data-source-utf16-end="' + block.to + '"]') : null;
+                      const header = review ? root?.querySelector('header, summary')
+                        : lines.find(line => line.classList.contains('cm-live-callout-start') && line.textContent.includes(block.title));
+                      const body = review ? root?.querySelector('.scholium-callout-body')
+                        : lines.find(line => line.classList.contains('cm-live-callout-end') && line.textContent.includes(block.body));
+                      if (!header || !body) throw new Error('Missing exact Callout: ' + block.title);
+                      const title = textBounds(header.querySelector('.scholium-callout-title'), block.title);
+                      const paragraph = textBounds(body, block.body);
+                      const top = (review ? root : header).getBoundingClientRect().top - viewportTop;
+                      const bottom = (review ? root : body).getBoundingClientRect().bottom - viewportTop;
+                      return {sourceLower: review ? Number(root.dataset.sourceUtf16Start) : block.from,
+                        sourceUpper: review ? Number(root.dataset.sourceUtf16End) : block.to,
+                        blockTop: top, blockBottom: bottom, titleTop: title.top, titleBottom: title.bottom,
+                        bodyTop: paragraph.top, bodyBottom: paragraph.bottom};
+                    });
+                    const after = review ? [...document.querySelectorAll('main#scholium-document > p')]
+                        .find(node => node.textContent === 'BeforeZeroBoundary.')
+                      : lines.find(line => line.textContent === 'BeforeZeroBoundary.');
+                    return {blocks: measured, after: textBounds(after, 'BeforeZeroBoundary.')};
+                    """, arguments: ["review": review, "blocks": blocks]) as? [String: Any])
+        }
+        _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+        let editing = try await snapshot(review: false)
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+        let reading = try await snapshot(review: true)
+        let editBlocks = try #require(editing["blocks"] as? [[String: Any]])
+        let readBlocks = try #require(reading["blocks"] as? [[String: Any]])
+        try #require(editBlocks.count == callouts.count && readBlocks.count == callouts.count)
+        for index in callouts.indices {
+            let expected = callouts[index].span
+            #expect(readBlocks[index]["sourceLower"] as? Int == expected.utf16LowerBound)
+            #expect(readBlocks[index]["sourceUpper"] as? Int == expected.utf16UpperBound)
+            for key in ["blockTop", "blockBottom", "titleTop", "titleBottom", "bodyTop", "bodyBottom"] {
+                let edit = try #require(editBlocks[index][key] as? Double)
+                let read = try #require(readBlocks[index][key] as? Double)
+                #expect(
+                    abs(read - edit) <= 1,
+                    Comment(rawValue: "Callout \(index + 1) \(key): Review \(read), Edit \(edit)"))
+            }
+        }
+        let editAfter = try #require(editing["after"] as? [String: Any])
+        let readAfter = try #require(reading["after"] as? [String: Any])
+        for key in ["top", "bottom"] {
+            let edit = try #require(editAfter[key] as? Double)
+            let read = try #require(readAfter[key] as? Double)
+            #expect(
+                abs(read - edit) <= 1,
+                Comment(rawValue: "Paragraph before zero blank lines, \(key): Review \(read), Edit \(edit)"))
+        }
+        let adaptedRhythm = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const main = document.querySelector('main#scholium-document');
+                main.style.fontSize = '20px'; main.style.lineHeight = '2';
+                await new Promise(resolve => {
+                  requestAnimationFrame(() => requestAnimationFrame(resolve));
+                  setTimeout(resolve, 200);
+                });
+                const callouts = blocks.map(block => main.querySelector('.scholium-callout[data-source-utf16-start="'
+                  + block.from + '"][data-source-utf16-end="' + block.to + '"]'));
+                const paragraph = [...main.querySelectorAll(':scope > p')].find(node => node.textContent === 'BeforeZeroBoundary.');
+                const pairs = [[callouts[0], callouts[1]], [callouts[1], callouts[2]],
+                  [callouts[2], paragraph], [paragraph, callouts[3]]];
+                const style = getComputedStyle(main);
+                return {fontSize: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight),
+                  gaps: pairs.map(([previous, next]) => ({
+                    margin: parseFloat(getComputedStyle(next).marginBlockStart),
+                    actual: next.getBoundingClientRect().top - previous.getBoundingClientRect().bottom,
+                  }))};
+                """, arguments: ["blocks": blocks]) as? [String: Any])
+        #expect(abs(try #require(adaptedRhythm["fontSize"] as? Double) - 20) <= 1)
+        #expect(abs(try #require(adaptedRhythm["lineHeight"] as? Double) - 40) <= 1)
+        let adaptedGaps = try #require(adaptedRhythm["gaps"] as? [[String: Double]])
+        try #require(adaptedGaps.count == 4)
+        for (index, expected) in [40.0, 120.0, 40.0, 23.6].enumerated() {
+            for key in ["margin", "actual"] {
+                let actual = try #require(adaptedGaps[index][key])
+                #expect(
+                    abs(actual - expected) <= 1,
+                    Comment(rawValue: "Dynamic Review boundary \(index + 1) \(key): \(actual), expected \(expected)"))
+            }
+        }
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review reload retains its observed viewport and replays an interrupted Find request")
+    func reviewReloadReplaysViewportAndFind() async throws {
+        let source =
+            "\u{FEFF}# Review recovery\r\n\r\nneedle first.\r\n\r\n"
+            + (0..<100).map {
+                "Paragraph \($0). Exact 中文 e\u{301} 🦉 reading position.\r\n\r\n"
+            }.joined() + "needle last.\r\n"
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        var findResults: [DocumentFindResult] = []
+        var review = SafeMarkdownReadWebView(
+            documentID: harness.documentID, documentTitle: "Review recovery", document: document,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+            configurationRevision: document.fingerprint.sha256, onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+            onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) },
+            onFindResult: { _, result in
+                switch result {
+                case .success(let value): findResults.append(value)
+                case .failure(let error): Issue.record(Comment(rawValue: String(describing: error)))
+                }
+            })
+        harness.configureReview(review)
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.review)
+        let webView = try #require(harness.session.webView)
+        _ = try await harness.callPageJavaScript("window.scholiumReadScroll.setFraction(0.55);")
+        let observationDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while (harness.session.retainedScrollAnchor?.sourceUTF16Offset ?? 0) == 0
+            || (harness.session.retainedScrollAnchor?.fallbackFraction ?? 0) < 0.2
+        {
+            try #require(ContinuousClock.now < observationDeadline)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let observed = try #require(harness.session.retainedScrollAnchor)
+        #expect(observed.fallbackFraction > 0.2)
+        _ = try await harness.callPageJavaScript(
+            """
+            window.__reviewFindEntered = false;
+            window.scholiumReviewFind.perform = async () => {
+              window.__reviewFindEntered = true;
+              return await new Promise(resolve => { window.__pendingReviewFind = resolve; });
+            };
+            """)
+        review.findRequest = DocumentFindPresentationRequest(
+            id: 17, operation: .execute(.present), query: "needle", replacement: "",
+            caseSensitive: false, wholeWord: false)
+        harness.configureReview(review)
+        let findDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript("return window.__reviewFindEntered;") as? Bool != true {
+            try #require(ContinuousClock.now < findDeadline)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(findResults.isEmpty)
+        #expect(harness.session.testingSimulateWebContentProcessTermination())
+        #expect(!harness.session.isLoaded)
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.review)
+        let recoveryDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while findResults.isEmpty {
+            try #require(ContinuousClock.now < recoveryDeadline)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(findResults == [DocumentFindResult(current: 1, total: 2)])
+        let recovered = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const api = window.scholiumReadScroll;
+                return {top: document.querySelector('.cm-scroller').scrollTop, anchor: api.current(api.fraction())};
+                """) as? [String: Any])
+        #expect((recovered["top"] as? Double ?? 0) > 0)
+        let recoveredAnchor = try #require(recovered["anchor"] as? [String: Any])
+        #expect(recoveredAnchor["blockUTF16LowerBound"] as? Int == observed.blockUTF16LowerBound)
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review permits only matching citation cancellation and preserves future citation availability")
+    func reviewCancelsMatchingCitationTransaction() async throws {
+        let source = "# Citation cleanup\n\nUnchanged exact writing e\u{301} 🦉.\n"
+        let harness = EditorHarness(source: source, initialMode: .source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Citation cleanup", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                configurationRevision: document.fingerprint.sha256, onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        func citationRequest(_ operation: MarkdownEditorOperation) async throws -> [String: Any] {
+            let request = MarkdownEditorRequest(
+                sessionID: harness.session.sessionID, documentID: harness.session.documentID,
+                startingFingerprint: harness.session.startingFingerprint, knownGeneration: harness.session.generation,
+                expiresAt: Int64(Date().timeIntervalSince1970 * 1_000) + 5_000, operation: operation)
+            let encoded = try JSONEncoder().encode(request)
+            return try #require(
+                try await WKWebViewMarkdownEditorBridgeDispatcher().dispatch(
+                    requestJSON: String(decoding: encoded, as: UTF8.self), in: webView) as? [String: Any])
+        }
+        func requireAccepted(_ operation: MarkdownEditorOperation) async throws {
+            let result = try await harness.session.send(operation, in: webView)
+            #expect(result.accepted)
+        }
+        let firstID = "citation_" + UUID().uuidString
+        let nextID = "citation_" + UUID().uuidString
+        try await requireAccepted(.beginCitation(transactionID: firstID, command: "refresh", reference: nil))
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        for operation in [
+            MarkdownEditorOperation.citationCallback(transactionID: firstID, value: try MarkdownEditorCitationCallback(.getDocumentData)),
+            .finishCitation(transactionID: firstID),
+        ] {
+            do {
+                _ = try await harness.session.send(operation, in: webView)
+                Issue.record("Review admitted a writable citation callback or commit.")
+            } catch { #expect(error is MarkdownEditorSession.SessionError) }
+            let result = try await citationRequest(operation)
+            #expect(result["accepted"] as? Bool == false)
+        }
+        try await requireAccepted(.cancelCitation(transactionID: "citation_unrelated_" + UUID().uuidString))
+        harness.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let refused = try await citationRequest(.beginCitation(transactionID: nextID, command: "refresh", reference: nil))
+        #expect(refused["accepted"] as? Bool == false, "An unrelated ID must leave the original transaction active.")
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        try await requireAccepted(.cancelCitation(transactionID: firstID))
+        harness.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        try await requireAccepted(.beginCitation(transactionID: nextID, command: "refresh", reference: nil))
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        try await requireAccepted(.cancelCitation(transactionID: nextID))
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Clean navigation retains both history branches without a WebView until explicit Close")
     func cleanUnleasedNavigationRetainsHistory() async throws {
         let store = DocumentSessionStore()
@@ -4416,18 +5010,45 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("A newer editor-mode request converges after an in-flight acknowledgement")
-    func newerModeRequestConvergesAfterInflightAcknowledgement() async throws {
-        let dispatcher = SuspendingModeBridgeDispatcher()
-        let harness = EditorHarness(
-            source: "# Mode convergence\n\nExact **Markdown**.\n",
-            bridgeDispatcher: dispatcher
-        )
+    @Test("A newer editor-mode request converges after an in-flight acknowledgement", arguments: [MarkdownEditorMode.source, .review])
+    func newerModeRequestConvergesAfterInflightAcknowledgement(intermediateMode: MarkdownEditorMode) async throws {
+        let dispatcher = SuspendingModeBridgeDispatcher(suspendsAfterApplication: true)
+        let original = "\u{FEFF}# Mode convergence\r\n\r\nExact **Markdown** e\u{301} 🦉.\r\n"
+        let harness = EditorHarness(source: original, bridgeDispatcher: dispatcher)
         defer { harness.close() }
         try await harness.waitUntilReady()
-
-        harness.session.setMode(.source)
+        let webView = try #require(harness.session.webView)
+        try await harness.session.perform(.pastePlain, argument: "First ")
+        let first = try await harness.session.currentText()
+        try await harness.session.perform(.pastePlain, argument: "Second ")
+        let second = try await harness.session.currentText()
+        func historyKey(redo: Bool) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true});
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
+            #expect(handled == true)
+        }
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(first)
+        _ = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: first, committedText: first, fingerprint: DocumentFingerprint(content: first), documentID: harness.documentID)
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: first)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Argument", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                configurationRevision: document.fingerprint.sha256, onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        harness.setMode(intermediateMode)
         try await dispatcher.waitUntilSuspended()
+        #expect(harness.session.presentedMode == .livePreview)
+        // The intermediate DOM is applied but its native acknowledgement is held.
+        harness.setMode(.livePreview)
         harness.session.setMode(.livePreview)
         dispatcher.resume()
 
@@ -4439,7 +5060,17 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.gutterCount == 0
         }
         #expect(final.label == "Markdown editor, Edit mode")
-        #expect(dispatcher.requestedModes == [.source, .livePreview])
+        #expect(dispatcher.requestedModes == [intermediateMode, .livePreview])
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(first.utf8))
+        #expect(try await harness.callPageJavaScript("return document.querySelector('.scholium-review-projection') === null;") as? Bool == true)
+        try await historyKey(redo: true)
+        try await harness.waitUntilText(second)
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(first)
+        try await historyKey(redo: false)
+        try await harness.waitUntilText(original)
         await harness.closeAndDrain()
     }
 
@@ -10167,6 +10798,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var hostingController: NSViewController?
         private var isClosed = false
 
+        func configureReview(_ review: SafeMarkdownReadWebView) { sourceBox.review = review }
+        func setMode(_ mode: MarkdownEditorMode) { sourceBox.mode = mode }
+
         func synchronizeLifecycleSourceFromSession() {
             sourceBox.source = session.checkedSource
         }
@@ -10312,8 +10946,22 @@ struct MarkdownEditorWebViewIntegrationTests {
                         return JSON.stringify({visibility: document.visibilityState,
                           width: innerWidth, height: innerHeight,
                           scroller: scroller?.getBoundingClientRect().toJSON(),
-                          fonts: document.fonts.status});
+                          fonts: document.fonts.status,
+                          mode: document.querySelector('.cm-editor')?.className,
+                          pendingWidgets: document.querySelectorAll('.scholium-mermaid:not(.scholium-mermaid-rendered):not(.scholium-mermaid-error)').length,
+                          mathRuntime: window.scholiumMath?.version ?? 0,
+                          mermaidRuntime: window.scholiumMermaid?.version ?? 0});
                         """)
+                    var preparationDiagnostics = "unavailable"
+                    if let webView = session.webView,
+                        let result = try? await session.send(.queryPerformance, in: webView),
+                        let samples = result.performanceSamples,
+                        let data = try? JSONEncoder().encode(
+                            Array(samples.filter { $0.name == "opening-preparation" }.suffix(4)))
+                    {
+                        preparationDiagnostics =
+                            "generation=\(result.resultingGeneration), samples=\(String(decoding: data, as: UTF8.self))"
+                    }
                     Issue.record(
                         Comment(
                             rawValue: session.errorMessage
@@ -10321,7 +10969,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     Issue.record(
                         Comment(
                             rawValue:
-                                "Opening geometry: \(String(describing: geometry)); native window visible: \(window.isVisible), webView hidden: \(String(describing: session.webView?.isHidden))."
+                                "Opening geometry: \(String(describing: geometry)); native window visible: \(window.isVisible), occlusion visible: \(window.occlusionState.contains(.visible)), frame: \(window.frame), screen: \(String(describing: window.screen?.visibleFrame)), app active: \(NSApp.isActive), webView hidden: \(String(describing: session.webView?.isHidden)), native generation: \(session.generation). Preparation: \(preparationDiagnostics)."
                         ))
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
@@ -10462,11 +11110,16 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
-        func waitUntilText(_ expected: String) async throws {
+        func waitUntilText(_ expected: String, stage: String = "requested exact source") async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(4))
             while try await session.currentText(for: documentID) != expected {
                 guard ContinuousClock.now < deadline else {
-                    Issue.record("Native synthetic writing did not reach its expected exact source")
+                    let actual = try await session.currentText(for: documentID)
+                    Issue.record(
+                        Comment(
+                            rawValue:
+                                "Native synthetic writing did not reach \(stage); expected UTF8 \(expected.utf8.count), actual UTF8 \(actual.utf8.count), mode \(String(describing: session.presentedMode)), Undo \(String(describing: session.context?.undoLabel)), Redo \(String(describing: session.context?.redoLabel)); actual: \(String(reflecting: String(actual.prefix(512))))"
+                        ))
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -11113,9 +11766,14 @@ struct MarkdownEditorWebViewIntegrationTests {
     @MainActor
     private final class SuspendingModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
         private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private let suspendsAfterApplication: Bool
         private var didSuspend = false
         private var continuation: CheckedContinuation<Void, Never>?
         private(set) var requestedModes: [MarkdownEditorMode] = []
+
+        init(suspendsAfterApplication: Bool = false) {
+            self.suspendsAfterApplication = suspendsAfterApplication
+        }
 
         func dispatch(
             requestJSON: String,
@@ -11129,6 +11787,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                 requestedModes.append(mode)
                 if !didSuspend {
                     didSuspend = true
+                    if suspendsAfterApplication {
+                        let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+                        await withCheckedContinuation { continuation = $0 }
+                        return result
+                    }
                     await withCheckedContinuation { continuation = $0 }
                 }
             }
@@ -11213,7 +11876,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         var previewedImages: [String] = []
         var documentActivityCount = 0
         var requestSaveCount = 0
-        let mode: MarkdownEditorMode
+        @Published var mode: MarkdownEditorMode
+        @Published var review: SafeMarkdownReadWebView?
         init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
             self.source = source
             self.mode = mode
@@ -11318,7 +11982,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 writingContinuationQuery: sourceBox.writingContinuationQuery,
                 imageResourceContextKey: sourceBox.imageResourceContextKey,
                 imageResourcesQuery: sourceBox.imageResourcesQuery,
-                citationSnapshot: citationSnapshot
+                citationSnapshot: citationSnapshot,
+                review: sourceBox.review
             )
         }
     }

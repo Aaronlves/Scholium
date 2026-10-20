@@ -4,6 +4,7 @@ import WebKit
 /// Owns the native-to-Reader selection-surface activity state.
 @MainActor
 final class SafeMarkdownReadSelectionCoordinator {
+    var bridgeContentWorld = SafeMarkdownReadWebView.bridgeContentWorld
     private(set) var isActive: Bool
     private var appliedIsActive: Bool?
     private var activityTask: Task<Void, Never>?
@@ -65,7 +66,7 @@ final class SafeMarkdownReadSelectionCoordinator {
                 """,
                 arguments: ["active": requestedActive],
                 in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                contentWorld: self.bridgeContentWorld
             )
             guard !Task.isCancelled,
                 result as? Bool == true,

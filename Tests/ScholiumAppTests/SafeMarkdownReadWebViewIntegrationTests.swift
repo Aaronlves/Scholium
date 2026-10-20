@@ -1010,75 +1010,93 @@ extension MarkdownEditorWebViewIntegrationTests {
             initialScrollFraction: 0
         )
         defer { harness.close() }
-        try await harness.waitUntilReady()
-        let mermaidRuntime =
-            try await harness.callBridgeJavaScript(
-                "return window.scholiumMermaid?.version || 0"
-            ) as? Int
-        #expect(mermaidRuntime == 0)
-        _ = try await harness.waitUntilCapturedAnchor(stage: "initial one-shot restore") {
-            $0.blockUTF16LowerBound == fixture.anchorLowerBound
-                && $0.blockUTF16UpperBound == fixture.anchorUpperBound
+        var stage = "initial readiness"
+        do {
+            try await harness.waitUntilReady()
+            stage = "initial runtime and one-shot anchor"
+            let mermaidRuntime =
+                try await harness.callBridgeJavaScript(
+                    "return window.scholiumMermaid?.version || 0"
+                ) as? Int
+            #expect(mermaidRuntime == 0)
+            _ = try await harness.waitUntilCapturedAnchor(stage: "initial one-shot restore") {
+                $0.blockUTF16LowerBound == fixture.anchorLowerBound
+                    && $0.blockUTF16UpperBound == fixture.anchorUpperBound
+            }
+            let registry = try await harness.scrollRegistrySnapshot()
+            #expect(registry.count > 80)
+            #expect(registry.visualOrderIsMonotonic)
+
+            stage = "consumed request reapplication"
+            let consumedCount = try await harness.restoreInvocationCount()
+            harness.reapplyCurrentRestoreRequest()
+            try await Task.sleep(for: .milliseconds(150))
+            let countAfterReapplication = try await harness.restoreInvocationCount()
+            #expect(countAfterReapplication == consumedCount)
+            harness.clearRestoreRequest()
+
+            stage = "scroll observation without restoration"
+            try await harness.scroll(toFraction: 0.2)
+            try await Task.sleep(for: .milliseconds(250))
+            let countAfterObservation = try await harness.restoreInvocationCount()
+            #expect(countAfterObservation == consumedCount)
+
+            let observedBeforeRebuild = harness.latestObservedScrollPosition
+            let observedAnchor = try #require(observedBeforeRebuild.anchor)
+            stage = "rebuild readiness"
+            harness.recreateSurface()
+            try await harness.waitUntilReady()
+            stage = "rebuild semantic anchor"
+            let rebuiltAnchor = try await harness.waitUntilCapturedAnchor(stage: "WebView rebuild") {
+                $0.blockUTF16LowerBound == observedAnchor.blockUTF16LowerBound
+                    && $0.blockUTF16UpperBound == observedAnchor.blockUTF16UpperBound
+            }
+            #expect(rebuiltAnchor.sourceFingerprint == fingerprint)
+
+            stage = "rapid presentation revisions"
+            try await harness.applyRapidPresentationRevisions()
+
+            stage = "source-line rebuild readiness"
+            harness.recreateSurface(
+                restoring: anchor,
+                fallbackFraction: 0.65,
+                targetSourceLine: 3
+            )
+            try await harness.waitUntilReady()
+            stage = "initial source-line request"
+            try await harness.waitUntilSourceLineReached(3)
+            let requestedLineTop = try await harness.sourceLineTop(3)
+            #expect(abs(requestedLineTop) <= 16)
+            let requestedLineRange = try await harness.sourceLineRange(3)
+            let observedAfterSourceLine = harness.latestObservedScrollPosition
+            let sourceLineAnchor = try #require(observedAfterSourceLine.anchor)
+            #expect(sourceLineAnchor.blockUTF16LowerBound == requestedLineRange.lowerBound)
+            #expect(sourceLineAnchor.blockUTF16UpperBound == requestedLineRange.upperBound)
+            #expect(sourceLineAnchor.fallbackFraction == observedAfterSourceLine.fraction)
+
+            // A consumed locator must not suppress a later navigation to the same
+            // source line in the retained Review page.
+            stage = "repeated source-line request"
+            try await harness.scroll(toFraction: 0.7)
+            harness.requestSourceLine(3)
+            try await harness.waitUntilSourceLineReached(3)
+            #expect(abs(try await harness.sourceLineTop(3)) <= 16)
+
+            stage = "fallback restoration"
+            let beforeFallbackRestore = try await harness.restoreInvocationCount()
+            harness.apply(initialAnchor: nil, fallbackFraction: 0.55)
+            _ = try await harness.waitUntilCapturedAnchor(stage: "fallback restore") {
+                $0.fallbackFraction > 0.4
+            }
+            let afterFallbackRestore = try await harness.restoreInvocationCount()
+            #expect(afterFallbackRestore == beforeFallbackRestore + 1)
+            stage = "cleanup"
+            await harness.closeAndDrain()
+        } catch {
+            await harness.emitScrollRestorationFailure(stage: stage, error: error)
+            Issue.record(Comment(rawValue: "Read scroll restoration journey failed during \(stage): \(error)"))
+            throw error
         }
-        let registry = try await harness.scrollRegistrySnapshot()
-        #expect(registry.count > 80)
-        #expect(registry.visualOrderIsMonotonic)
-
-        let consumedCount = try await harness.restoreInvocationCount()
-        harness.reapplyCurrentRestoreRequest()
-        try await Task.sleep(for: .milliseconds(150))
-        let countAfterReapplication = try await harness.restoreInvocationCount()
-        #expect(countAfterReapplication == consumedCount)
-        harness.clearRestoreRequest()
-
-        try await harness.scroll(toFraction: 0.2)
-        try await Task.sleep(for: .milliseconds(250))
-        let countAfterObservation = try await harness.restoreInvocationCount()
-        #expect(countAfterObservation == consumedCount)
-
-        let observedBeforeRebuild = harness.latestObservedScrollPosition
-        let observedAnchor = try #require(observedBeforeRebuild.anchor)
-        harness.recreateSurface()
-        try await harness.waitUntilReady()
-        let rebuiltAnchor = try await harness.waitUntilCapturedAnchor(stage: "WebView rebuild") {
-            $0.blockUTF16LowerBound == observedAnchor.blockUTF16LowerBound
-                && $0.blockUTF16UpperBound == observedAnchor.blockUTF16UpperBound
-        }
-        #expect(rebuiltAnchor.sourceFingerprint == fingerprint)
-
-        try await harness.applyRapidPresentationRevisions()
-
-        harness.recreateSurface(
-            restoring: anchor,
-            fallbackFraction: 0.65,
-            targetSourceLine: 3
-        )
-        try await harness.waitUntilReady()
-        try await harness.waitUntilSourceLineReached(3)
-        let requestedLineTop = try await harness.sourceLineTop(3)
-        #expect(abs(requestedLineTop) <= 16)
-        let requestedLineRange = try await harness.sourceLineRange(3)
-        let observedAfterSourceLine = harness.latestObservedScrollPosition
-        let sourceLineAnchor = try #require(observedAfterSourceLine.anchor)
-        #expect(sourceLineAnchor.blockUTF16LowerBound == requestedLineRange.lowerBound)
-        #expect(sourceLineAnchor.blockUTF16UpperBound == requestedLineRange.upperBound)
-        #expect(sourceLineAnchor.fallbackFraction == observedAfterSourceLine.fraction)
-
-        // A consumed locator must not suppress a later navigation to the same
-        // source line in the retained Review page.
-        try await harness.scroll(toFraction: 0.7)
-        harness.requestSourceLine(3)
-        try await harness.waitUntilSourceLineReached(3)
-        #expect(abs(try await harness.sourceLineTop(3)) <= 16)
-
-        let beforeFallbackRestore = try await harness.restoreInvocationCount()
-        harness.apply(initialAnchor: nil, fallbackFraction: 0.55)
-        _ = try await harness.waitUntilCapturedAnchor(stage: "fallback restore") {
-            $0.fallbackFraction > 0.4
-        }
-        let afterFallbackRestore = try await harness.restoreInvocationCount()
-        #expect(afterFallbackRestore == beforeFallbackRestore + 1)
-        await harness.closeAndDrain()
     }
 
     @Test("Review preserves the visible document title at the document start")
@@ -2918,10 +2936,47 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         private static let gateScript = """
             (() => {
-              const state = window.__scholiumPreviewPreparationGate = {entered:false, released:false};
+              const state = window.__scholiumPreviewPreparationGate = {entered:false, released:false, trace:[]};
+              // Failure-only evidence for this held-initialization journey. Keep
+              // the real event, graph update and native presentation paths intact.
+              let builder;
+              const describe = target => target instanceof Element
+                ? `${target.tagName.toLowerCase()}${target.id ? '#'+target.id : ''}${target.className ? '.'+String(target.className).trim().replace(/\\s+/g,'.') : ''}`.slice(0,160)
+                : target === window ? 'window' : target === document ? 'document' : null;
+              const record = (type, extra = {}) => {
+                state.trace.push({type, time:performance.now(), scrollX:window.scrollX, scrollY:window.scrollY,
+                  builder:builder ? {hidden:builder.hidden, title:builder.querySelector('.scholium-preview-title')?.textContent || ''} : null,
+                  ...extra});
+                if (state.trace.length > 32) state.trace.shift();
+              };
+              const observeBuilder = candidate => {
+                if (builder || !(candidate instanceof Element)) return;
+                const found = candidate.id === 'scholium-preview-popover'
+                  ? candidate : candidate.querySelector('#scholium-preview-popover');
+                if (!found) return;
+                builder = found;
+                record('builderFound');
+                new MutationObserver(records => {
+                  for (const mutation of records) record('builderMutation', {
+                    mutation:mutation.type, attribute:mutation.attributeName, oldValue:mutation.oldValue
+                  });
+                }).observe(builder, {subtree:true, childList:true, characterData:true,
+                  attributes:true, attributeFilter:['hidden'], attributeOldValue:true});
+              };
+              new MutationObserver(records => {
+                observeBuilder(document.documentElement);
+                for (const mutation of records) for (const node of mutation.addedNodes) observeBuilder(node);
+              }).observe(document, {subtree:true, childList:true});
+              observeBuilder(document.documentElement);
+              for (const type of ['pointerover','pointerout','focusin','focusout']) document.addEventListener(type, event => {
+                record(type, {target:describe(event.target), relatedTarget:describe(event.relatedTarget), trusted:event.isTrusted});
+              }, true);
+              for (const type of ['scroll','resize']) window.addEventListener(type, event => {
+                record(type, {target:describe(event.target), width:innerWidth, height:innerHeight});
+              }, {capture:true, passive:true});
               let release;
               const gate = new Promise(resolve => {release=resolve;});
-              state.release=()=>{state.released=true; release();};
+              state.release=()=>{record('release'); state.released=true; release();};
               const wrap=runtime=>!runtime || runtime.version!==3 ? runtime : {
                 ...runtime,
                 async render(request) {
@@ -3170,6 +3225,86 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
         }
 
+        func emitScrollRestorationFailure(stage: String, error: any Error) async {
+            func anchorValue(_ anchor: EditorScrollAnchor?) -> Any {
+                guard let anchor else { return NSNull() }
+                return [
+                    "fingerprint": anchor.sourceFingerprint,
+                    "offset": anchor.sourceUTF16Offset,
+                    "lower": anchor.blockUTF16LowerBound,
+                    "upper": anchor.blockUTF16UpperBound,
+                    "relative": anchor.relativeBlockPosition,
+                    "fallback": anchor.fallbackFraction,
+                ] as [String: Any]
+            }
+            let observed = sourceBox.observedScrollPosition
+            var extra: [String: Any] = [
+                "phase": stage, "surface_identity": sourceBox.surfaceIdentity,
+                "observed_fraction": observed.fraction, "observed_anchor": anchorValue(observed.anchor),
+                "captured_anchor": anchorValue(sourceBox.capturedAnchor),
+                "reached_source_line": sourceBox.reachedSourceLine.map { $0 as Any } ?? NSNull(),
+                "source_range_unavailable": sourceBox.sourceRangeUnavailable,
+                "source_revision_changed": sourceBox.sourceRevisionChanged,
+                "caller_presentation_css": sourceBox.presentationCSS,
+            ]
+            if let request = sourceBox.restoration {
+                extra["caller_restore"] = [
+                    "id": request.id, "fraction": request.fraction, "anchor": anchorValue(request.anchor),
+                ]
+            }
+            if let request = sourceBox.sourceLocationRequest {
+                extra["caller_source_location"] = ["id": request.id.uuidString, "line": request.line.map { $0 as Any } ?? NSNull()]
+            }
+            if let root = window.contentViewController?.view, let webView = findWebView(in: root) {
+                extra["webview_bounds"] = NSStringFromRect(webView.bounds)
+                extra["webview_hidden"] = webView.isHiddenOrHasHiddenAncestor
+                if let coordinator = webView.navigationDelegate as? SafeMarkdownReadWebView.Coordinator {
+                    let fields = Dictionary(
+                        uniqueKeysWithValues: Mirror(reflecting: coordinator).children.compactMap { child in
+                            child.label.map { ($0, child.value) }
+                        })
+                    for name in ["sourceLineNavigationTask", "sourceLocationRequest", "lastReachedSourceLocationID", "presentationStyleRevision"] {
+                        if let value = fields[name] { extra["native_" + name] = String(String(describing: value).prefix(1024)) }
+                    }
+                    for (desired, applied) in [("desiredPresentationCSS", "appliedPresentationCSS"), ("desiredUserCSS", "appliedUserCSS")] {
+                        extra["native_" + desired + "_is_applied"] = (fields[desired] as? String) == (fields[applied] as? String)
+                    }
+                    if let restoration = fields["scrollRestoration"] as? SafeMarkdownReadScrollRestoration {
+                        for child in Mirror(reflecting: restoration).children {
+                            guard let name = child.label, ["request", "ownership", "inFlightClaim", "consumed"].contains(name) else { continue }
+                            extra["native_restore_" + name] = String(String(describing: child.value).prefix(1024))
+                        }
+                    }
+                }
+            }
+            // Observe already-settled promises without waiting for preparation,
+            // fonts, animation frames or another restoration after the failure.
+            let snapshot = try? await callBridgeJavaScript(
+                """
+                const promises = {};
+                for (const [name, value] of [['reader',window.scholiumReadReady],['mermaid',window.scholiumMermaidReady]]) {
+                  promises[name] = value ? 'pending' : 'notInstalled';
+                  if (value) Promise.resolve(value).then(
+                    () => {promises[name]='resolved';}, error => {promises[name]='rejected: '+String(error);});
+                }
+                await Promise.resolve();
+                const extent = Math.max(0, document.documentElement.scrollHeight-innerHeight);
+                const fraction = window.scholiumReadScroll?.fraction?.() ?? (extent > 0 ? scrollY/extent : 0);
+                const target = document.querySelector('[data-source-line="3"]');
+                const rect = target?.getBoundingClientRect();
+                return {readyState:document.readyState, promises, fonts:document.fonts?.status,
+                  scrollY, extent, fraction, width:innerWidth, height:innerHeight,
+                  anchor:window.scholiumReadScroll?.current(fraction) ?? null,
+                  restoreCount:window.scholiumReadScroll?.restoreCount ?? null,
+                  registry:window.scholiumReadScroll?.testingSnapshot() ?? null,
+                  presentationRevision:getComputedStyle(document.documentElement).getPropertyValue('--qa-load-revision').trim(),
+                  sourceLine3:target ? {top:rect.top, height:rect.height,
+                    lower:target.dataset.sourceUtf16Start, upper:target.dataset.sourceUtf16End} : null};
+                """)
+            extra["viewport"] = snapshot ?? NSNull()
+            emitFormatDiagnostic(event: "scroll_restoration_failure", error: String(describing: error), extra: extra)
+        }
+
         private func startFormatBridgeProbe() {
             guard formatProbeTask == nil else { return }
             let requestID = UUID()
@@ -3406,6 +3541,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     range: [link.dataset.sourceUtf16Start, link.dataset.sourceUtf16End],
                     rect: [rect.left, rect.top, rect.width, rect.height]
                   } : null,
+                  preparationTrace: window.__scholiumPreviewPreparationGate?.trace ?? null,
                   builder: builder ? {
                     hidden: builder.hidden,
                     title: builder.querySelector('.scholium-preview-title')?.textContent || '',

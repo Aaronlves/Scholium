@@ -672,40 +672,13 @@ struct WindowControllerArchitectureTests {
                 fallbackFraction: 0.41
             ), on: .read)
 
-        #expect(session.scrollRestoreRequest == nil)
         #expect(invalidationCount == 0)
         #expect(session.scrollFraction == 0.41)
-
-        let first = session.requestReadScrollRestore(
-            fingerprint: "scroll-fixture",
-            reason: .documentLoad
-        )
-        let invalidationsAfterRequest = invalidationCount
+        #expect(session.readScrollPosition.anchor?.sourceUTF16Offset == 8)
         session.observeScrollFraction(0.73, on: .read)
-
-        #expect(session.scrollRestoreRequest == first)
-        #expect(invalidationCount == invalidationsAfterRequest)
-        let second = session.requestReadScrollRestore(
-            fingerprint: "scroll-fixture",
-            reason: .modeHandoff
-        )
-        #expect(second.id == first.id + 1)
-        #expect(second.position.fraction == 0.73)
-        session.acknowledgeScrollRestoreRequest(
-            id: first.id,
-            fingerprint: first.fingerprint
-        )
-        #expect(session.scrollRestoreRequest == second)
-        session.acknowledgeScrollRestoreRequest(
-            id: second.id,
-            fingerprint: "stale-fingerprint"
-        )
-        #expect(session.scrollRestoreRequest == second)
-        session.acknowledgeScrollRestoreRequest(
-            id: second.id,
-            fingerprint: second.fingerprint
-        )
-        #expect(session.scrollRestoreRequest == nil)
+        #expect(session.readScrollPosition.fraction == 0.73)
+        #expect(session.readScrollPosition.anchor?.sourceUTF16Offset == 8)
+        #expect(invalidationCount == 0)
         _ = observation
     }
 

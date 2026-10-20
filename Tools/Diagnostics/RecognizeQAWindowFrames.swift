@@ -32,6 +32,17 @@ for line in lines {
     try VNImageRequestHandler(url: url).perform([request])
     let text = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ").lowercased().filter { $0.isLetter || $0.isNumber } ?? ""
     value["body_sentinel_visible"] = text.contains(phrase)
+    // Numeric line geometry supports offline transition-stability inspection;
+    // no recognized prose is retained, and a wrapped aggregate match does not
+    // invent a single-line position.
+    value["body_sentinel_bounds"] =
+        request.results?.compactMap { observation -> [String: Double]? in
+            guard let candidate = observation.topCandidates(1).first,
+                candidate.string.lowercased().filter({ $0.isLetter || $0.isNumber }).contains(phrase)
+            else { return nil }
+            let box = observation.boundingBox
+            return ["x": box.minX, "y": box.minY, "width": box.width, "height": box.height]
+        } ?? []
     observations.append(value)
 }
 try JSONSerialization.data(withJSONObject: observations, options: [.prettyPrinted, .sortedKeys]).write(

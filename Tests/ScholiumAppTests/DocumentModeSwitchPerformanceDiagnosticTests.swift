@@ -262,9 +262,9 @@ import WebKit
                     vaultRole: workspace == nil ? .sourceCorpus : snapshot.vaultRole)
                 let model = owner.session(for: .workspace(.init(vaultID: vaultID, noteID: noteID)))
                 session = model
-                model.requestReadScrollRestore(
-                    fingerprint: snapshot.fingerprint.sha256, reason: .explicitNavigation,
-                    position: ObservedScrollPosition(fraction: 0.5, anchor: anchor))
+                model.restoreNavigationPosition(
+                    ObservedScrollPosition(fraction: 0.5, anchor: anchor),
+                    fingerprint: snapshot.fingerprint.sha256)
                 window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
                     styleMask: [.titled], backing: .buffered, defer: false)
@@ -492,9 +492,9 @@ import WebKit
 
             private func prepareViewport(in mode: NotePresentationMode) async throws {
                 if mode == .read {
-                    session.requestReadScrollRestore(
-                        fingerprint: note.fingerprint.sha256, reason: .explicitNavigation,
-                        position: ObservedScrollPosition(fraction: 0.5, anchor: viewportAnchor))
+                    session.restoreNavigationPosition(
+                        ObservedScrollPosition(fraction: 0.5, anchor: viewportAnchor),
+                        fingerprint: note.fingerprint.sha256)
                 } else {
                     let editor = session.editorSession
                     let web = try #require(editor.webView)
@@ -552,7 +552,7 @@ import WebKit
                     let ready =
                         mode == .read
                         ? !session.isEditing && session.renderedReadReadyFingerprint == note.fingerprint.sha256
-                            && session.failedReadFingerprint == nil && session.scrollRestoreRequest == nil
+                            && session.failedReadFingerprint == nil && editor.isLoaded && editor.presentedMode == .review
                         : session.activeEditorMode == mode.editorMode && editor.isReady && editor.isLoaded
                             && editor.presentedMode == mode.editorMode && editor.errorMessage == nil
                             && editor.detachmentSuspensionID == nil
@@ -744,7 +744,7 @@ import WebKit
                 Issue.record(
                     Comment(
                         rawValue:
-                            "Native mode diagnostic timed out fixture=\(data.name) target=\(mode.rawValue) requireTargetTopAnchor=\(requireTargetTopAnchor) editing=\(session.isEditing) loaded=\(session.editorSession.isLoaded) ready=\(session.editorSession.isReady) editorError=\(session.editorSession.errorMessage ?? "none") featureErrors=\(projection.errorCount) geometryReads=\(geometryReads) restorationReads=\(restorationReads) expectedLower=\(data.viewportRange.location) expectedUpper=\(data.viewportRange.location + data.viewportRange.length) targetVisible=\(lastTargetVisible) geometry=\(lastGeometry) anchor=\(lastAnchor) pendingReadRestore=\(session.scrollRestoreRequest != nil)"
+                            "Native mode diagnostic timed out fixture=\(data.name) target=\(mode.rawValue) requireTargetTopAnchor=\(requireTargetTopAnchor) editing=\(session.isEditing) loaded=\(session.editorSession.isLoaded) ready=\(session.editorSession.isReady) editorError=\(session.editorSession.errorMessage ?? "none") featureErrors=\(projection.errorCount) geometryReads=\(geometryReads) restorationReads=\(restorationReads) expectedLower=\(data.viewportRange.location) expectedUpper=\(data.viewportRange.location + data.viewportRange.length) targetVisible=\(lastTargetVisible) geometry=\(lastGeometry) anchor=\(lastAnchor)"
                     ))
                 throw MarkdownEditorSession.SessionError.unavailable
             }

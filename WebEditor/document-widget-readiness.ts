@@ -10,6 +10,26 @@ interface PendingWidget extends DocumentWidgetPreparation {
 
 const pendingWidgets = new WeakMap<Document, Map<HTMLElement, PendingWidget>>();
 
+function widgetIsVisible(entry: PendingWidget, root: HTMLElement, viewport: HTMLElement) {
+  if (!root.isConnected || !entry.node.isConnected || !root.contains(entry.node)) return false;
+  const bounds = viewport.getBoundingClientRect();
+  const rect = entry.node.getBoundingClientRect();
+  return rect.right >= bounds.left && rect.left <= bounds.right
+    && rect.bottom >= bounds.top && rect.top <= bounds.bottom;
+}
+
+/** Counts the actual readiness registry, including mathematics source fallbacks. */
+export function pendingVisibleDocumentWidgetCounts(root: HTMLElement, viewport: HTMLElement) {
+  const counts = {math: 0, mermaid: 0, other: 0};
+  for (const entry of pendingWidgets.get(root.ownerDocument)?.values() ?? []) {
+    if (!widgetIsVisible(entry, root, viewport)) continue;
+    if (entry.node.matches(".scholium-math")) counts.math++;
+    else if (entry.node.matches(".cm-live-mermaid-widget")) counts.mermaid++;
+    else counts.other++;
+  }
+  return counts;
+}
+
 /** Tracks work owned by a real widget, without changing its DOM or geometry. */
 export function beginDocumentWidgetPreparation(node: HTMLElement): DocumentWidgetPreparation {
   const document = node.ownerDocument;
@@ -43,13 +63,7 @@ export async function awaitVisibleDocumentWidgets(
   requireCurrent: () => void,
 ): Promise<boolean> {
   requireCurrent();
-  const visible = (entry: PendingWidget) => {
-    if (!root.isConnected || !entry.node.isConnected || !root.contains(entry.node)) return false;
-    const bounds = viewport.getBoundingClientRect();
-    const rect = entry.node.getBoundingClientRect();
-    return rect.right >= bounds.left && rect.left <= bounds.right
-      && rect.bottom >= bounds.top && rect.top <= bounds.bottom;
-  };
+  const visible = (entry: PendingWidget) => widgetIsVisible(entry, root, viewport);
   const pending = new Set(Array.from(pendingWidgets.get(root.ownerDocument)?.values() ?? [])
     .filter(visible));
   if (pending.size === 0) return false;

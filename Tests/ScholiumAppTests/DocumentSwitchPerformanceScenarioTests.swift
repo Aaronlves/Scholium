@@ -728,10 +728,11 @@ import WebKit
                         onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },
                         onLinkActivation: { _ in }, onImagePreview: { _ in },
                         onScrollFractionChange: { model.observeScrollFraction($0, on: .editor) },
-                        onScrollAnchorChange: { model.observeScrollAnchor($0, on: .editor) })
-                        .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
-                            if let editorVisibility { visibility = editorVisibility }
-                        }
+                        onScrollAnchorChange: { model.observeScrollAnchor($0, on: .editor) }
+                    )
+                    .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
+                        if let editorVisibility { visibility = editorVisibility }
+                    }
                 }
             }
         }

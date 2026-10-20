@@ -687,8 +687,6 @@ struct ScholiumWindowRoot: View {
 struct ScholiumWindowObservedRoot: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
-    @Environment(\.scholiumReduceTransparency) private var reduceTransparency
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @ObservedObject private var appState: WindowModel
@@ -744,10 +742,7 @@ struct ScholiumWindowObservedRoot: View {
         .navigationSubtitle(workspaceWindowSubtitle)
         .toolbar(removing: .sidebarToggle)
         .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(
-            increasedContrast || reduceTransparency ? .visible : .hidden,
-            for: .windowToolbar
-        )
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .buttonStyle(.automatic)
         .focusedSceneObject(appState)
         .focusedSceneObject(appState.commandObservation)

@@ -16,11 +16,10 @@ positions; vaults remain distinct.
 editor/flush identity, checked exact mirror, committed revision, presentation/
 intent, configuration, source-bound scroll and save/conflict/retry state across
 mode/layout/theme changes. Visible hosts alone receive input/accessibility;
-preparation measures behind a native skeleton. Mount committed Review
-only for Review/read recovery; reconstruct after Edit/Source. Mode presentation
-awaits acknowledgment; unsafe Review retains editor/recovery. Review and editor
-observe separate viewports; mode handoff alone copies anchors or fallback fractions.
-Review restores its saved position.
+preparation measures behind a native skeleton. One CodeMirror host/state presents
+all modes. Review mounts committed read-only DOM; unsafe handoff retains
+editor/recovery. Readiness gates presentation. Review/editing retain viewport observations;
+the shared mode operation transfers source anchors or fallback fractions.
 
 Detachment atomically freezes input and captures exact source/selection/history;
 incomplete capture retains the editor. Source-bounded history records insertion
@@ -47,8 +46,8 @@ authorized local-image revisions. Document alone owns writable position/focus.
 
 ### Editor boundary contract
 
-Edit and Source share CodeMirror state, selection, composition and Undo; Review
-projects committed source. Writable authority remains exact Markdown, never HTML.
+Modes retain CodeMirror state/history. Read-only Review projects committed source.
+Exact Markdown alone owns writable authority.
 LF editor, exact UTF-16 source and UTF-8 coordinates remain distinct. The immutable
 exact-source StateField and inverse effects preserve BOM/newlines through Undo/Redo.
 Trusted paste reads original AppKit Unicode, avoiding WebKit NFC, through a
@@ -84,8 +83,9 @@ recovery uses the checked mirror/last selection, never disk over dirty source.
 Undo-history loss is distinct from source loss. Invalid reconstruction cannot
 silently normalize or repair source.
 
-Atomic CodeMirror configuration owns Edit/Source facets and projection
-extensions/listeners. Initialization or absent facet fails closed to Source.
+Atomic CodeMirror configuration owns mode facets and projection extensions/listeners.
+Review requires document/fingerprint-bound committed output. Cold Review defers
+the editing parser/index; first Edit/Source installs them for subsequent modes.
 Source has no semantic widgets or Edit overlays, keeping
 exact navigation/editing. Pending native input cannot independently toggle DOM
 mode. Lezer topology completion is bounded; incomplete parsing remains incomplete
@@ -107,17 +107,17 @@ native moves; errors remain.
 
 ### Source locations and transient interaction
 
-The document session owns fingerprint-bound semantic scroll continuity and fallback
-fraction for each document surface. Only lifecycle edges create restoration
-requests; ordinary reports update only the active surface and do not publish a
-second scroll state. A mode handoff explicitly transfers the current source
-anchor before Review restoration. One tokenized claim is acknowledged only after
-successful current-load restoration. Cancellation/failure/report echoes cannot
-consume or recreate requests. Review and editor map the same exact source contract
-to native geometry; invalid mappings fall back, never guess textual matches.
+The document session owns fingerprint-bound viewport observations.
+`MarkdownEditorSession` alone restores the shared host on opening and navigation;
+its mode operation transfers the source anchor before acknowledgement. Embedded
+Review never starts a reader restoration. Find and exact-source locators wait for
+the current Review acknowledgement, then validate request, document, fingerprint
+and load identity. Standalone readers retain tokenized current-load restoration.
+Ordinary reports update only the active observation; invalid mappings fall back
+without textual guesses.
 Arrival requires matching document/load identity and actual destination completion.
 
-Review selection maps only source-identical complete blocks. Formatted/synthesized
+Review maps selections only within source-identical complete blocks. Formatted/synthesized
 content remains unmappable rather than searched back into source. Document-bound
 locations recheck revisions and generations before selection/reveal. Superseded
 requests fail; unmappable editable passage requests may use Source. Current-Note
@@ -170,7 +170,7 @@ presentation only; CodeMirror owns geometry, remeasurement and exact-source acti
 ### Shared document rendering
 
 Contracts owns the committed semantic document and immutable editing dialect.
-Swift supplies committed Review, graph and diagnostic meaning. TypeScript may
+Swift supplies committed Review, graph and diagnostics. TypeScript may
 incrementally parse uncommitted source for immediate projection/transformation
 only. Shared fixtures require agreeing spans/meanings; unsupported dialects fail
 closed. Source syntax remains owned by the Specification, not adapter heuristics.
@@ -182,7 +182,7 @@ infers them outside proved syntax ranges. Normalized parser views map every node
 back to exact original half-open UTF-16 coordinates, preserving BOM, CRLF, Unicode
 and final newlines. Marker/visible/parent ranges distinguish source from layout.
 
-Review and Edit use one YAML presentation contract, with representative roles and
+Review/Edit share one YAML presentation contract, with representative roles and
 CSS classes pinned by the shared frontmatter parity fixture. `FrontmatterPresentation`
 is Review's bounded lexical projection for already bounded authored YAML lines; Edit
 uses the equivalent CodeMirror projection and rejects implicit bare keys that Review
@@ -207,13 +207,14 @@ without scroll/pointer ownership.
 
 Review/Edit share semantic components/presentation. Application owns byte-checked
 Appearance/snippet storage and explicit reload. Stale/invalid external edits preserve
-loaded state and reject stale GUI saves. Both hosts transport protected components,
+loaded state and reject stale GUI saves. Mode configurations transport protected components,
 dynamic presentation and sanitized user CSS in distinct ordered layers. Document-bound
 style/font measurement preserves WebView, EditorState, source, composition and Undo.
-Source fonts configure the same editor.
 
-Review emits sanitized read-only DOM. In-page projection updates preserve selection
-and scroll; only source/style/capability page identity can replace the page.
+Review embeds sanitized native DOM in a CodeMirror block widget. Scoped reader
+behavior preserves native selection, copy, Find, links and source anchors;
+in-place updates preserve selection/scroll. Adjacent top-level Callout/prose spacing
+follows verified source whitespace.
 Inactive Edit constructs map to source; activation exposes exact Markdown in the
 same EditorState. Tables and mathematical/diagram output never become writable
 round-trip models. Callout folds are session-local and source-neutral; hiding a
@@ -265,4 +266,4 @@ Status owns dated results. Focused checks cannot pass the complete gate.
 | Native environment | `DocumentWebEnvironment`: attached-page system-color/inset projection; no source, scroll or hit-testing. |
 | Web presentation | Semantic projections, `scroll-coordinator.ts`, `live-presentation-layout.ts`: rendering/restoration; no save authority. |
 | Independent controls | `document-title.ts`: filename drafts/rename receipts, shared composition gate; no Markdown edits. `EditorWritingContinuationController`: cancellable requests/publications, bridge-owned admission. |
-| Read capabilities | `SafeMarkdownReadWebView` / `ScholiumReadPageExtension`: committed projection; Chat owns reply extensions. |
+| Read capabilities | Notes: `committed-review-projection.ts` / `reader-runtime.ts`. Shared behavior/standalone pages: `SafeMarkdownReadWebView`; Chat owns reply extensions. |

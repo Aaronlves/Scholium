@@ -347,7 +347,8 @@ private final class ConflictBufferBridge: MarkdownEditorBridgeDispatching {
             var payload: [String: Any] = [
                 "documentID": request.documentID, "fingerprint": request.startingFingerprint,
                 "generation": generation, "ranges": selections.map { ["anchor": $0.anchor, "head": $0.head] },
-                "source": source, "undoHistoryPreserved": preservesHistory, "dirty": generation > 0, "focusTarget": "editor",
+                "source": source, "undoHistoryPreserved": preservesHistory, "hasHistory": generation > 0,
+                "dirty": generation > 0, "focusTarget": "editor",
             ]
             if preservesHistory { payload["stateJSON"] = "{}" }
             if let citationSnapshot { payload["citationSnapshot"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(citationSnapshot)) }

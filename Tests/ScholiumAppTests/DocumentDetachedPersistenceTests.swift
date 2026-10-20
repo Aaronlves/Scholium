@@ -426,7 +426,8 @@ struct DocumentDetachedPersistenceTests {
         arguments: [false, true])
     func cleanSnapshotPublishesOnlyByteDistinctRetainedSource(staleMirror: Bool) async throws {
         let source = "\u{FEFF}# Cafe\u{301}\r\nunknown: keep\n尾 🦉\r\nEnd"
-        let retainedSource = staleMirror
+        let retainedSource =
+            staleMirror
             ? "\u{FEFF}# Café\r\nunknown: keep\n尾 🦉\r\nEnd"
             : source
         try #require(retainedSource == source)
@@ -811,7 +812,9 @@ struct DocumentDetachedPersistenceTests {
                 }
             case .suspendForDetachment(let id):
                 suspensionID = id
-                recovery = snapshot(request)
+                let capturedRecovery = snapshot(request)
+                recovery = capturedRecovery
+                text = capturedRecovery.source
                 if holdNextSuspensionReply {
                     holdNextSuspensionReply = false
                     await withCheckedContinuation { reply in
@@ -876,6 +879,7 @@ struct DocumentDetachedPersistenceTests {
                     "ranges": recovery.ranges.map { ["anchor": $0.anchor, "head": $0.head] },
                     "source": recovery.source,
                     "undoHistoryPreserved": recovery.undoHistoryPreserved,
+                    "hasHistory": recovery.generation > 0,
                     "dirty": recovery.dirty,
                     "focusTarget": "editor",
                 ]

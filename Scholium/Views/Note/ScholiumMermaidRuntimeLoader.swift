@@ -9,7 +9,9 @@ enum ScholiumMermaidRuntimeLoader {
         in webView: WKWebView,
         contentWorld: WKContentWorld = .page
     ) async {
+        guard !Task.isCancelled else { return }
         let loaded = await install(in: webView, contentWorld: contentWorld)
+        guard !Task.isCancelled else { return }
         _ = try? await webView.callAsyncJavaScript(
             "window.scholiumMermaidRuntimeDidLoad?.(loaded)",
             arguments: ["loaded": loaded],
@@ -23,16 +25,20 @@ enum ScholiumMermaidRuntimeLoader {
         in webView: WKWebView,
         contentWorld: WKContentWorld
     ) async -> Bool {
-        if let installed = try? await webView.callAsyncJavaScript(
+        guard !Task.isCancelled else { return false }
+        let installed = try? await webView.callAsyncJavaScript(
             "return window.scholiumMermaid?.version === 3",
             arguments: [:],
             in: nil,
             contentWorld: contentWorld
-        ), installed as? Bool == true {
+        )
+        guard !Task.isCancelled else { return false }
+        if installed as? Bool == true {
             return true
         }
         guard !ScholiumMermaidAssets.runtimeJavaScript.isEmpty else { return false }
         do {
+            guard !Task.isCancelled else { return false }
             // WebKit explicitly supports evaluateJavaScript for installing
             // content-world libraries whose globals later calls rely on.
             _ = try await webView.evaluateJavaScript(
@@ -40,12 +46,14 @@ enum ScholiumMermaidRuntimeLoader {
                 in: nil,
                 contentWorld: contentWorld
             )
+            guard !Task.isCancelled else { return false }
             let installed = try await webView.callAsyncJavaScript(
                 "return window.scholiumMermaid?.version === 3",
                 arguments: [:],
                 in: nil,
                 contentWorld: contentWorld
             )
+            guard !Task.isCancelled else { return false }
             return installed as? Bool == true
         } catch {
             return false

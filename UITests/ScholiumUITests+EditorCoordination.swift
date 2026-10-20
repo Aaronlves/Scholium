@@ -6,6 +6,73 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testReviewReadingSelectionCopyAndModeHistoryPreserveExactSource() throws {
+        let pasteboard = NSPasteboard.general
+        let clipboard = clipboardPreservation ?? QAClipboardPreservation(pasteboard: pasteboard)
+        clipboardPreservation = clipboard
+        func copyAndVerify(_ expected: String) throws {
+            let beforeCopy = try clipboard.prepareForCopy()
+            app.typeKey("c", modifierFlags: .command)
+            XCTAssertTrue(waitUntil(timeout: 5) { pasteboard.changeCount != beforeCopy })
+            try clipboard.claimCopiedText(expected, after: beforeCopy)
+        }
+        let source = "\u{FEFF}# Reading fixture\r\n\r\nSelectionprobe\r\n\r\nUnicode 中文 😀 e\u{301} remains exact.\r\n"
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        try Data(source.utf8).write(to: noteURL, options: .atomic)
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { (editor.value as? String)?.contains("Selectionprobe") == true })
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.isHittable })
+        editor.click()
+        app.typeKey(.downArrow, modifierFlags: .command)
+        app.typeKey(.leftArrow, modifierFlags: [])
+        app.typeKey(.leftArrow, modifierFlags: .command)
+        for _ in "Unicode" { app.typeKey(.rightArrow, modifierFlags: .shift) }
+        try copyAndVerify("Unicode")
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        let passage = app.staticTexts["Selectionprobe"].firstMatch
+        XCTAssertTrue(passage.waitForExistence(timeout: 10))
+        passage.doubleClick()
+        try copyAndVerify("Selectionprobe")
+        app.typeKey("9", modifierFlags: [])
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8), "Reading selection never grants input authority.")
+        let reading = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        reading.name = "Review — native reading selection in shared CodeMirror"
+        reading.lifetime = .keepAlways
+        add(reading)
+
+        selectDocumentMode("Edit")
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.isHittable })
+        // Copy proves the mode handoff restored both keyboard focus and the
+        // existing exact selection without clicking and moving its caret.
+        try copyAndVerify("Unicode")
+        app.typeKey("4", modifierFlags: [])
+        app.typeKey("s", modifierFlags: .command)
+        let edited = source.replacingOccurrences(of: "Unicode", with: "4")
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { (try? Data(contentsOf: noteURL)) == Data(edited.utf8) },
+            "Returning from Review must preserve the existing exact Edit selection.")
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Source")
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Edit")
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 10) { editor.isHittable })
+        editor.click()
+        app.typeKey("z", modifierFlags: .command)
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: noteURL)) == Data(source.utf8) })
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: noteURL)) == Data(edited.utf8) })
+        app.typeKey("z", modifierFlags: .command)
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 10) { (try? Data(contentsOf: noteURL)) == Data(source.utf8) })
+    }
+
+    @MainActor
     func testWrappedEditorKeyboardSelectionRetainsVisualLineAndUnicode() throws {
         let source =
             String(repeating: "Writing 中文 keeps **meaning** beside e\u{301} and 👩🏽‍🔬. ", count: 16)
@@ -436,12 +503,15 @@ extension ScholiumUITests {
         app.terminate()
         sessionID = UUID()
         app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900, appearance: .dark)
+        app.launchEnvironment["SCHOLIUM_UI_TEST_INCREASE_CONTRAST"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_TRANSPARENCY"] = "1"
+        app.launchEnvironment["SCHOLIUM_UI_TEST_REDUCE_MOTION"] = "1"
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
         selectDocumentMode("Review")
         waitForCurrentDocumentSurface()
-        attachWindowScreenshot("Callouts — Dark Review — narrow width")
+        attachWindowScreenshot("Callouts — Dark Review — narrow width — app accessibility overrides")
         selectDocumentMode("Edit")
         waitForCurrentDocumentSurface()
         attachWindowScreenshot("Callouts — Dark Edit — narrow width")
@@ -451,6 +521,9 @@ extension ScholiumUITests {
     @MainActor
     func testNativeCompletionPreservesFocusAndUndo() throws {
         try enterLivePreviewAndAppend("\n\ncompletionprobe\n\n")
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Edit")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
         let viewport = app.webViews.firstMatch
         let frame = viewport.frame

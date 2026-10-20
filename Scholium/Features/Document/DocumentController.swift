@@ -3103,6 +3103,15 @@ final class DocumentController: ObservableObject {
             session.editingSource = diskSource
             session.originalEditingSource = diskSource
             session.editingRevision = snapshot.fingerprint
+            if !session.editorSession.documentID.isEmpty,
+                !session.editorSession.checkedSource.utf8.elementsEqual(diskSource.utf8)
+                    || session.editorSession.committedCitationSnapshot != snapshot.document.citationSnapshot
+            {
+                session.editorSession.loadDocument(
+                    diskSource, documentID: session.editorSession.bridgeDocumentID,
+                    mode: session.isEditing ? session.retainedEditorMode : .review,
+                    citationSnapshot: snapshot.document.citationSnapshot)
+            }
             return
         }
         let citationChanged =
@@ -3126,7 +3135,8 @@ final class DocumentController: ObservableObject {
         }
 
         if !editorIsFrozen, session.editorSession.hasAttachedWebView,
-            !session.hasUnsavedChanges, !session.editorSession.isComposing
+            !session.hasUnsavedChanges, !session.editorSession.isComposing,
+            !session.editorSession.canReplaceUninitializedReview
         {
             scheduleEditorReconciliation(session: session, snapshot: snapshot)
             return
@@ -3188,7 +3198,7 @@ final class DocumentController: ObservableObject {
             session.editorSession.loadDocument(
                 diskSource,
                 documentID: session.editorSession.bridgeDocumentID,
-                mode: session.retainedEditorMode,
+                mode: session.isEditing ? session.retainedEditorMode : .review,
                 initialSourceRange: managedBodyStart.map { $0..<$0 },
                 citationSnapshot: snapshot.document.citationSnapshot
             )

@@ -623,26 +623,12 @@ struct NoteContentView<ShellNotices: View>: View {
             let citationSnapshot = note.document.citationSnapshot
             if !isEditing {
                 documentSession.readSelection = nil
-                // Entering Review now starts this task too. Preserve an
-                // explicit mode-handoff or navigation request for this exact
-                // revision instead of replacing its restoration identity.
-                if documentSession.scrollRestoreRequest?.fingerprint != fingerprint.sha256 {
-                    documentSession.requestReadScrollRestore(
-                        fingerprint: fingerprint.sha256,
-                        reason: .documentLoad
-                    )
-                }
             }
             if note.document.hasExactEmptyBody {
-                // A header-only Note is already a complete Review state. Do
-                // not start WebKit merely to render an exact empty body or
-                // imply that source loading is still in progress.
+                // Empty content uses the same shared host. The committed
+                // empty projection still receives actual renderer readiness.
                 renderedReadHTML = ""
                 renderedReadFingerprint = fingerprint.sha256
-                documentSession.renderedReadReadyFingerprint = fingerprint.sha256
-                if !isEditing {
-                    markReadPresentationReady(documentID: relativePath)
-                }
                 return
             }
             let html = await documentSession.loadReadProjectionIfNeeded {
@@ -889,8 +875,8 @@ struct NoteContentView<ShellNotices: View>: View {
                 documentID: editorSession.bridgeDocumentID,
                 documentTitle: note.summary.title,
                 performanceDocumentID: note.id.relativePath,
-                source: editingSource,
-                mode: documentSession.retainedEditorMode,
+                source: isEditing ? editingSource : note.document.rawContent,
+                mode: isEditing ? documentSession.retainedEditorMode : .review,
                 presentationCSS: documentPresentationCSS,
                 userCSS: state.livePreviewCSS,
                 requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
@@ -898,8 +884,8 @@ struct NoteContentView<ShellNotices: View>: View {
                 ),
                 linkCompletionQuery: queryEditorLinkCompletions,
                 linkPreviews: documentSession.previewCatalog?.links ?? [],
-                initialScrollFraction: documentSession.editorScrollFraction,
-                initialScrollAnchor: editorScrollAnchor,
+                initialScrollFraction: isEditing ? documentSession.editorScrollFraction : documentSession.readScrollPosition.fraction,
+                initialScrollAnchor: isEditing ? editorScrollAnchor : documentSession.readScrollPosition.anchor,
                 onDocumentActivity: {
                     controller.editorSourceDidChange(
                         session: documentSession,
@@ -947,11 +933,12 @@ struct NoteContentView<ShellNotices: View>: View {
                 writingContinuationQuery: actions.writingContinuation,
                 imageResourceContextKey: "\(note.id.vaultID):\(note.id.relativePath):\(indexedImageAvailabilityGeneration)",
                 imageResourcesQuery: queryEditorImageResources,
-                citationSnapshot: note.document.citationSnapshot
+                citationSnapshot: note.document.citationSnapshot,
+                review: renderedReadFingerprint == noteFingerprint.sha256 ? readDocumentConfiguration : nil
             )
             .id(editorSession.viewReconstructionID)
-            .allowsHitTesting(!returnToReadAfterSave)
-            .accessibilityHidden(returnToReadAfterSave)
+            .allowsHitTesting(!returnToReadAfterSave && !presentsEmptyReviewState && (isEditing || editorSession.presentedMode == .review))
+            .accessibilityHidden(returnToReadAfterSave || presentsEmptyReviewState)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1))
     }
@@ -960,17 +947,22 @@ struct NoteContentView<ShellNotices: View>: View {
     private var documentBodySurface: some View {
         DocumentEditorHost(
             documentID: editorSession.openingPresentationID.uuidString,
-            presentsEditor: isEditing || documentSession.pendingEditorMode != nil,
-            retainsEditor: documentSession.retainsEditorSurface,
+            presentsEditor: true,
+            retainsEditor: documentSession.retainsEditorSurface || editorSession.hasAttachedWebView
+                || isEditing || renderedReadFingerprint == noteFingerprint.sha256,
             editorIsLoaded: editorSession.isLoaded,
             editorIsReady: editorSession.isLoaded
-                && editorSession.presentedMode == documentSession.activeEditorMode,
+                && editorSession.presentedMode == (isEditing ? documentSession.activeEditorMode : .review)
+                && (isEditing
+                    || (editorSession.startingFingerprint == noteFingerprint.sha256
+                        && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256)),
+            keepsPresentedSurfaceWhilePreparing: isEditing,
             allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil,
             preparationTitle: note.summary.title,
             preparationPresentation: documentPresentation,
             preparationAppearance: state.documentAppearance
         ) {
-            readSurface
+            if let error = editorSession.errorMessage { editorFailure(error) } else { readProjectionPlaceholder }
         } editor: {
             bodyEditor
         }
@@ -1013,9 +1005,8 @@ struct NoteContentView<ShellNotices: View>: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
             }
-            if !isEditing,
-                note.document.hasExactEmptyBody
-                    || documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
+            if !isEditing, editorSession.isLoaded, editorSession.presentedMode == .review,
+                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             {
                 PerformanceReadyBoundary(
                     generation: "read:\(noteFingerprint.sha256)"
@@ -1025,6 +1016,9 @@ struct NoteContentView<ShellNotices: View>: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
             }
+        }
+        .overlay {
+            if presentsEmptyReviewState { emptyReviewState }
         }
         .overlay(alignment: .trailing) {
             documentOutlineOverlay
@@ -1121,51 +1115,18 @@ struct NoteContentView<ShellNotices: View>: View {
         outlineSelectionEntryID = nil
     }
 
-    @ViewBuilder
-    private var readSurface: some View {
-        if isEditing, !editorSession.isLoaded, let error = editorSession.errorMessage {
-            editorFailure(error)
-        } else if documentSession.isEnteringManagedCreation {
-            // The host covers preparation until the editor acknowledges its mode.
-            Color.clear.accessibilityHidden(true)
-        } else if note.document.hasExactEmptyBody {
-            emptyReviewState
-        } else {
-            let hasWebProjection =
-                renderedReadFingerprint == noteFingerprint.sha256
-                && failedReadFingerprint != noteFingerprint.sha256
-            let webProjectionIsReady =
-                hasWebProjection
-                && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
-
-            ZStack {
-                if !webProjectionIsReady {
-                    readProjectionPlaceholder
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .layoutPriority(1)
-                        .zIndex(1)
-                }
-
-                if hasWebProjection {
-                    readDocumentSurface
-                        .environment(
-                            \.scholiumDocumentSurfaceVisibility,
-                            webProjectionIsReady ? .active : .preparing
-                        )
-                        .allowsHitTesting(webProjectionIsReady && !isEditing)
-                        .accessibilityHidden(!webProjectionIsReady)
-                }
-            }
-        }
+    private var presentsEmptyReviewState: Bool {
+        !isEditing && note.document.hasExactEmptyBody
+            && editorSession.isLoaded && editorSession.presentedMode == .review
+            && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
     }
 
     private var emptyReviewState: some View {
         ScholiumContentStateView(
-            "Empty Note",
-            detail: Text("This note has no body content."),
-            indicator: .symbol("doc")
+            "Empty Note", detail: Text("This note has no body content."), indicator: .symbol("doc")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ScholiumColorRole.documentBackground.color)
         .accessibilityIdentifier("scholium.emptyRenderedReview")
     }
 
@@ -1216,7 +1177,7 @@ struct NoteContentView<ShellNotices: View>: View {
         }
     }
 
-    private var readDocumentSurface: some View {
+    private var readDocumentConfiguration: SafeMarkdownReadWebView {
         SafeMarkdownReadWebView(
             documentID: note.id.relativePath,
             documentTitle: note.summary.title,
@@ -1265,14 +1226,6 @@ struct NoteContentView<ShellNotices: View>: View {
                     documentFind.fail(error, for: requestID)
                 }
             },
-            observedScrollPosition: documentSession.readScrollPosition,
-            scrollRestoreRequest: documentSession.scrollRestoreRequest,
-            onScrollRestoreConsumed: { id, fingerprint in
-                documentSession.acknowledgeScrollRestoreRequest(
-                    id: id,
-                    fingerprint: fingerprint
-                )
-            },
             onScrollFractionChange: {
                 guard !isEditing,
                     editorSession.openingPresentationID == openingPresentationID
@@ -1310,8 +1263,6 @@ struct NoteContentView<ShellNotices: View>: View {
                 actions.consumeSourceLocation(id)
             }
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .layoutPriority(1)
     }
 
     private func markReadPresentationReady(documentID: String) {
@@ -1824,11 +1775,6 @@ struct NoteContentView<ShellNotices: View>: View {
                     documentSession.adoptEditorScrollPositionForReview(anchor: handoffAnchor)
                     actions.rememberScrollPosition(
                         handoffAnchor?.fallbackFraction ?? documentSession.readScrollFraction
-                    )
-                    documentSession.requestReadScrollRestore(
-                        fingerprint: handoffAnchor?.sourceFingerprint
-                            ?? DocumentFingerprint(content: editingSource).sha256,
-                        reason: .modeHandoff
                     )
                     await editorSession.resignFocusAndWait()
                     guard documentSession.reviewHandoffID == handoffID,

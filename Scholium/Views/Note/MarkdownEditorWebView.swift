@@ -67,6 +67,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     var imageResourceContextKey = ""
     var imageResourcesQuery: EditorImageResourceQuery = { _ in [:] }
     var citationSnapshot: ZoteroCitationSnapshot? = nil
+    var review: SafeMarkdownReadWebView? = nil
 
     static func requiresMathRuntime(linkPreviews: [DocumentLinkPreview]) -> Bool {
         linkPreviews.contains {
@@ -286,6 +287,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.noteOpeningSessionID = openingSessionID
         session.installImageResourceQuery(imageResourcesQuery, contextKey: imageResourceContextKey)
         session.webViewPool?.registerAttached(webView)
+        coordinator.updateReview(review, documentID: documentID, mode: mode, in: webView)
         session.prepareForViewAttachment(attachmentSource, documentID: documentID, mode: mode, citationSnapshot: citationSnapshot)
         PerformanceProbe.shared.markNoteOpeningMilestone(
             .sessionPrepared, attemptID: openingMeasurement, editorSessionID: openingSessionID
@@ -364,6 +366,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         mount.pendingRepresentation = nil
         container.toolbarUnderlapEnabled = toolbarUnderlap
         let webView = container.webView
+        if mode != .review {
+            webView.setAccessibilityLabel(nil)
+            webView.setAccessibilityIdentifier(nil)
+        }
         container.setSurfaceVisibility(surfaceVisibility)
         context.coordinator.activeWebView = webView
         context.coordinator.surfaceVisibility = surfaceVisibility
@@ -421,6 +427,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 context.coordinator.requestMathRuntimeIfNeeded(in: webView)
             }
         }
+        context.coordinator.updateReview(review, documentID: documentID, mode: mode, in: webView)
         if context.coordinator.documentID != documentID {
             context.coordinator.writingContinuation.cancel(reason: .document)
             context.coordinator.cancelLinkCompletionQuery()
@@ -457,6 +464,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView?.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
             webView?.navigationDelegate = nil
         }
+        coordinator.reviewCoordinator?.cancelPendingPageWork()
         coordinator.activeWebView = nil
         coordinator.session.removeSourceChangeHandler(owner: coordinator)
         if ownsSession { coordinator.session.removeImageResourceQuery() }
@@ -580,6 +588,40 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         /// It never supplies initialization or recovery state and never writes
         /// a bridge acknowledgement back into the Document model.
         var lastModeInput: MarkdownEditorMode = .livePreview
+        var reviewCoordinator: SafeMarkdownReadWebView.Coordinator?
+
+        func updateReview(_ review: SafeMarkdownReadWebView?, documentID: String, mode: MarkdownEditorMode, in webView: WKWebView) {
+            guard let review, mode == .review, review.selectionSurfaceIsActive else {
+                reviewCoordinator?.setEmbeddedSurfaceActive(false)
+                return
+            }
+            let publishesPresenter = reviewCoordinator == nil || reviewCoordinator?.activeWebView !== webView
+            let coordinator = reviewCoordinator ?? review.makeCoordinator()
+            reviewCoordinator = coordinator
+            coordinator.setEmbeddedSurfaceActive(true)
+            coordinator.surfaceVisibility = surfaceVisibility
+            let fingerprint = review.document.fingerprint.sha256
+            coordinator.onEmbeddedScrollPositionChange = { [weak self, weak webView] position in
+                guard let self, let webView, self.surfaceVisibility.isActive,
+                    self.activeWebView === webView, self.session.webView === webView,
+                    self.documentID == documentID, self.session.documentID == documentID,
+                    self.lastModeInput == .review, self.session.startingFingerprint == fingerprint
+                else { return }
+                self.session.recordReviewScrollPosition(position)
+            }
+            coordinator.setEmbeddedPresentationReady(
+                session.isLoaded && session.presentedMode == .review
+                    && session.documentID == documentID
+                    && session.startingFingerprint == fingerprint)
+            var projection = review.embeddedProjection(using: coordinator, in: webView)
+            projection.documentID = documentID
+            session.setReviewProjection(projection)
+            if publishesPresenter {
+                let presenter = coordinator.selectionActionPresenter(in: webView)
+                Task { @MainActor in review.onSelectionActionPresenterReady?(presenter) }
+            }
+        }
+
         var presentationCSS = ""
         var userCSS = ""
         var linkPreviews: [DocumentLinkPreview] = []
@@ -598,6 +640,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var mathRuntimeLoadTask: Task<Void, Never>?
+        private var mathRuntimeLoadID: UUID?
         private var linkCompletionQueryTask: Task<Void, Never>?
         private var linkCompletionQueryTaskID: UUID?
         private var linkCompletionQueryKind: EditorLinkCompletionKind?
@@ -697,6 +740,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             #endif
 
             switch payload {
+            case .reviewEvent(let envelope, let payloadJSON):
+                guard validEnvelope(envelope), session.presentedMode == .review || lastModeInput == .review,
+                    let webView = message.webView, activeWebView === webView,
+                    let event = (try? JSONSerialization.jsonObject(with: payloadJSON)) as? [String: Any]
+                else { return }
+                reviewCoordinator?.receiveEmbedded(event, in: webView)
             case .floatingSurface(let request):
                 guard surfaceVisibility.isActive,
                     validEnvelope(request.envelope), let webView = message.webView,
@@ -905,13 +954,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     }
                 }
             case .requestMermaidRuntime(let envelope):
-                guard validEnvelope(envelope),
+                // Recovery installs its retained generation in setState before
+                // native receives the initialization acknowledgement.
+                guard validEnvelope(envelope, allowingFutureGeneration: true),
                     let webView = message.webView,
                     activeWebView === webView
                 else { return }
                 requestMermaidRuntime(in: webView)
             case .requestMathRuntime(let envelope):
-                guard validEnvelope(envelope),
+                guard validEnvelope(envelope, allowingFutureGeneration: true),
                     let webView = message.webView ?? activeWebView,
                     activeWebView === webView
                 else { return }
@@ -1104,11 +1155,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            if activeWebView === webView, session.webView === webView {
-                PerformanceProbe.shared.invalidateNoteOpeningPage(editorSessionID: session.sessionID)
-            }
+            guard activeWebView === webView, session.webView === webView else { return }
+            PerformanceProbe.shared.invalidateNoteOpeningPage(editorSessionID: session.sessionID)
+            reviewCoordinator?.setEmbeddedSurfaceActive(false)
             pageGeneration &+= 1
             session.webContentProcessTerminated()
+            session.setReviewProjection(nil)
             cancelMermaidRuntimeLoad()
             cancelMathRuntimeLoad()
             cancelLinkCompletionQuery()
@@ -1150,9 +1202,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             guard activeWebView === webView,
                 mathRuntimeLoadTask == nil
             else { return }
+            let loadID = UUID()
+            mathRuntimeLoadID = loadID
             mathRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
                 guard let self else { return }
-                defer { self.mathRuntimeLoadTask = nil }
+                defer {
+                    if self.mathRuntimeLoadID == loadID {
+                        self.mathRuntimeLoadTask = nil
+                        self.mathRuntimeLoadID = nil
+                    }
+                }
                 guard let webView,
                     webView.navigationDelegate === self,
                     self.activeWebView === webView,
@@ -1175,6 +1234,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         func cancelMathRuntimeLoad() {
             mathRuntimeLoadTask?.cancel()
             mathRuntimeLoadTask = nil
+            mathRuntimeLoadID = nil
         }
 
         @discardableResult
@@ -1343,6 +1403,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
+            if navigationAction.navigationType == .linkActivated,
+                surfaceVisibility.isActive, activeWebView === webView, session.webView === webView,
+                lastModeInput == .review, session.presentedMode == .review, !session.isDirty,
+                session.documentID == documentID, let url = navigationAction.request.url
+            {
+                reviewCoordinator?.openEmbeddedExternalLink(
+                    url, sourceFingerprint: session.startingFingerprint, in: webView)
+            }
             decisionHandler(
                 Self.navigationPolicy(
                     url: navigationAction.request.url,

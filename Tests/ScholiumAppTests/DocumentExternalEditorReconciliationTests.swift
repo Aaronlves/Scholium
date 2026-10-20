@@ -396,7 +396,7 @@ struct DocumentExternalEditorReconciliationTests {
                 result["recovery"] = [
                     "documentID": request.documentID, "fingerprint": request.startingFingerprint,
                     "generation": generation, "ranges": selections.map { ["anchor": $0.anchor, "head": $0.head] }, "source": source,
-                    "stateJSON": "{}", "undoHistoryPreserved": true, "dirty": generation > 0,
+                    "stateJSON": "{}", "undoHistoryPreserved": true, "hasHistory": generation > 0, "dirty": generation > 0,
                 ]
                 if let invalid = invalidNextFreeze {
                     invalidNextFreeze = nil

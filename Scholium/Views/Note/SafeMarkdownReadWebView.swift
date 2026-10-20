@@ -10,9 +10,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility)
     private var surfaceVisibility
     @Environment(\.documentToolbarUnderlap) private var toolbarUnderlap
-    /// App-owned bridge scripts and the native message handler live in a
-    /// named content world. Research-authored CSS and Markdown never enter
-    /// that world, and the page world exposes no native handler or script.
+    /// Standalone readers isolate app-owned bridge scripts and their native
+    /// handler in this named world. Embedded Review uses the editor page world
+    /// and transports reader events through the editor's bound envelope.
     static let bridgeContentWorldName = "ScholiumRead"
     static let bridgeContentWorld = WKContentWorld.world(name: bridgeContentWorldName)
 
@@ -212,6 +212,44 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         )
     }
 
+    /// Binds the existing Reader interaction owner to the shared editor page.
+    /// It installs neither a WebView, navigation delegate, script nor handler.
+    func embeddedProjection(using coordinator: Coordinator, in webView: WKWebView) -> MarkdownEditorReviewProjection {
+        coordinator.onAskAgent = onAskAgent
+        coordinator.floatingPreviewFailure = onPreviewFailure
+        coordinator.onPassageAction = onPassageAction
+        coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
+        coordinator.onSourceRevisionChanged = onSourceRevisionChanged
+        coordinator.update(
+            documentID: documentID,
+            fingerprint: fingerprint,
+            onLinkClick: onLinkClick,
+            onImagePreview: onImagePreview,
+            onOpenExternalURL: onOpenExternalURL,
+            onSelectionChange: onSelectionChange,
+            selectionSurfaceIsActive: selectionSurfaceIsActive,
+            renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
+            onRenderingFailure: onRenderingFailure,
+            onRenderingLoading: onRenderingLoading,
+            onRenderingReady: onRenderingReady,
+            findRequest: findRequest,
+            onFindResult: onFindResult,
+            observedScrollPosition: observedScrollPosition,
+            scrollRestoreRequest: scrollRestoreRequest,
+            onScrollRestoreConsumed: onScrollRestoreConsumed,
+            onScrollFractionChange: onScrollFractionChange,
+            onScrollAnchorChange: onScrollAnchorChange,
+            sourceLocationRequest: sourceLocationRequest,
+            onSourceLocationReached: onSourceLocationReached,
+            webView: webView
+        )
+        let projection = coordinator.prepareEmbeddedProjection(
+            body: htmlBody, documentTitle: documentTitle, document: document,
+            presentationCSS: presentationCSS, userCSS: userCSS, linkPreviews: linkPreviews,
+            configurationRevision: configurationRevision, linkPreviewRevision: linkPreviewRevision, in: webView)
+        return projection
+    }
+
     static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
         let webView = container.webView
         Task { @MainActor [weak webView] in
@@ -261,7 +299,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         if (window.scholiumReadReady) await window.scholiumReadReady;
                         return await window.scholiumShowSelectionActions?.();
                         """,
-                        arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                        arguments: [:], in: nil, contentWorld: self.bridgeContentWorld
                     )
                     guard self.loadGeneration == expectedGeneration,
                         self.activeWebView === webView, self.surfaceVisibility.isActive
@@ -311,6 +349,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadedSignature: String?
         private var finalizedSignature: String?
         private var pageIsReady = false
+        private var isEmbeddedProjection = false
+        private var embeddedSurfaceIsActive = false
+        private var embeddedPresentationIsReady = false
+        var onEmbeddedScrollPositionChange: ((ObservedScrollPosition) -> Void)?
+
+        /// Session preparation owns the shared viewport until its current
+        /// Review mode is acknowledged. Find and source locators are explicit
+        /// navigation intents and run only after that restoration completes.
+        private var canApplyReadingNavigation: Bool {
+            !isEmbeddedProjection
+                || (embeddedSurfaceIsActive && embeddedPresentationIsReady && surfaceVisibility.isActive)
+        }
+        private var cachedEmbeddedProjection: MarkdownEditorReviewProjection?
+        private var cachedEmbeddedProjectionIdentity: String?
+        var bridgeContentWorld = SafeMarkdownReadWebView.bridgeContentWorld
         weak var activeWebView: WKWebView?
         var surfaceVisibility: DocumentSurfaceVisibility = .active
         #if DEBUG
@@ -437,6 +490,98 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             schedulePostLoadPositioningIfNeeded(in: webView)
             applySelectionCommandsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
+        }
+
+        func setEmbeddedSurfaceActive(_ active: Bool) {
+            defer { embeddedSurfaceIsActive = active }
+            guard !active else { return }
+            embeddedPresentationIsReady = false
+            surfaceVisibility = .retained
+            guard isEmbeddedProjection, embeddedSurfaceIsActive else { return }
+            // A new mount has a new event/Find/selection lifetime, even when
+            // its committed source revision is unchanged.
+            loadGeneration &+= 1
+            cachedEmbeddedProjectionIdentity = nil
+            pageIsReady = false
+            finalizedSignature = nil
+            floatingSurfaces.reset()
+            selectionCoordinator.resetForDocumentChange()
+            findCoordinator.resetForDocumentChange()
+            sourceLineNavigationTask?.cancel()
+            sourceLineNavigationTask = nil
+            loadFinalizationTask?.cancel()
+            loadFinalizationTask = nil
+            scrollRestoration.cancelClaim()
+        }
+
+        func setEmbeddedPresentationReady(_ ready: Bool) {
+            embeddedPresentationIsReady = ready
+            guard ready else {
+                sourceLineNavigationTask?.cancel()
+                sourceLineNavigationTask = nil
+                return
+            }
+        }
+
+        func prepareEmbeddedProjection(
+            body: String, documentTitle: String, document: NoteDocument,
+            presentationCSS: String, userCSS: String, linkPreviews: [DocumentLinkPreview],
+            configurationRevision: String?, linkPreviewRevision: String?, in webView: WKWebView
+        ) -> MarkdownEditorReviewProjection {
+            isEmbeddedProjection = true
+            bridgeContentWorld = .page
+            findCoordinator.bridgeContentWorld = .page
+            runtimeCoordinator.bridgeContentWorld = .page
+            selectionCoordinator.bridgeContentWorld = .page
+            activeWebView = webView
+            let signature = "embedded:\(documentID):\(fingerprint)"
+            let projectionIdentity = [
+                signature, documentTitle, configurationRevision ?? String(body.hashValue),
+                linkPreviewRevision ?? String(linkPreviews.hashValue),
+                String(presentationCSS.hashValue), String(userCSS.hashValue),
+            ].joined(separator: ":")
+            if cachedEmbeddedProjectionIdentity == projectionIdentity, let cachedEmbeddedProjection {
+                return cachedEmbeddedProjection
+            }
+            if activeLoadSignature != signature {
+                loadGeneration &+= 1
+                pageIsReady = false
+                finalizedSignature = nil
+                activeLoadSignature = signature
+                loadedSignature = signature
+                selectionSource = document.rawContent
+                sourceUTF16Length = document.rawContent.utf16.count
+            }
+            let localization = WebKitInterfaceLocalization.current()
+            let complete = Self.documentHTML(
+                body: body, frontmatter: document.rawFrontmatter,
+                frontmatterHasAuthoredBodyBlankLine: !document.body.isEmpty
+                    && document.body.prefix { !$0.isNewline }.allSatisfy(\.isWhitespace),
+                documentTitle: documentTitle, localization: localization)
+            let lower = complete.range(of: "<body>")!.upperBound
+            let upper = complete.range(of: "</body>")!.lowerBound
+            let markup = String(complete[lower..<upper])
+            let cssLower = complete.range(of: "<style>")!.upperBound
+            let cssUpper = complete.range(of: "</style>")!.lowerBound
+            let css = String(complete[cssLower..<cssUpper])
+            if let previous = cachedEmbeddedProjection,
+                previous.sourceFingerprint == fingerprint,
+                previous.htmlBody != markup || previous.css != css
+            {
+                loadGeneration &+= 1
+                pageIsReady = false
+                finalizedSignature = nil
+            }
+            let configuration = Self.bridgeConfiguration(
+                documentID: documentID, fingerprint: fingerprint, loadGeneration: loadGeneration,
+                selectionEnabled: onSelectionChange != nil, imagePreviewsEnabled: onImagePreview != nil,
+                replyProjection: false, linkPreviews: linkPreviews,
+                presentationCSS: presentationCSS, userCSS: userCSS, localization: localization)
+            let projection = MarkdownEditorReviewProjection(
+                sourceFingerprint: fingerprint, htmlBody: markup, css: css, configuration: configuration)
+            cachedEmbeddedProjection = projection
+            cachedEmbeddedProjectionIdentity = projectionIdentity
+            return projection
         }
 
         func loadIfNeeded(
@@ -649,7 +794,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         source: ScholiumMathAssets.runtimeJavaScript,
                         injectionTime: .atDocumentStart,
                         forMainFrameOnly: true,
-                        in: SafeMarkdownReadWebView.bridgeContentWorld
+                        in: bridgeContentWorld
                     ))
             }
             if let readerScript = Self.readerScript {
@@ -658,7 +803,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         source: readerScript,
                         injectionTime: .atDocumentEnd,
                         forMainFrameOnly: true,
-                        in: SafeMarkdownReadWebView.bridgeContentWorld
+                        in: bridgeContentWorld
                     ))
             }
             contentController.addUserScript(
@@ -677,19 +822,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     ),
                     injectionTime: .atDocumentEnd,
                     forMainFrameOnly: true,
-                    in: SafeMarkdownReadWebView.bridgeContentWorld
+                    in: bridgeContentWorld
                 ))
         }
 
         private func applyFindRequestIfNeeded(in webView: WKWebView) {
             let generation = loadGeneration
             findCoordinator.applyIfNeeded(
-                pageIsReady: pageIsReady && selectionCoordinator.isActive,
+                pageIsReady: pageIsReady && canApplyReadingNavigation && selectionCoordinator.isActive,
                 in: webView,
                 isCurrent: { [weak self, weak webView] in
                     guard let self, let webView else { return false }
                     return self.activeWebView === webView
                         && self.pageIsReady
+                        && self.canApplyReadingNavigation
                         && self.loadGeneration == generation
                         && self.selectionCoordinator.isActive
                 }
@@ -724,7 +870,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     """,
                     arguments: [:],
                     in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    contentWorld: self.bridgeContentWorld
                 )
                 guard ready as? Bool == true else { return }
                 while !Task.isCancelled,
@@ -737,7 +883,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         "return window.scholiumSetLinkPreviews?.(previews) === true",
                         arguments: ["previews": previews],
                         in: nil,
-                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                        contentWorld: self.bridgeContentWorld
                     )
                     guard !Task.isCancelled,
                         result as? Bool == true,
@@ -775,7 +921,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         "userCSS": userCSS,
                     ],
                     in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    contentWorld: self.bridgeContentWorld
                 )
             } catch {
                 #if DEBUG
@@ -842,15 +988,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard let signature = activeLoadSignature else { return }
             let generation = loadGeneration
             selectionCoordinator.applyIfNeeded(
-                pageIsReady: pageIsReady,
+                pageIsReady: pageIsReady && canApplyReadingNavigation,
                 in: webView,
                 isCurrent: { [weak self, weak webView] in
                     guard let self, let webView else { return false }
-                    return self.isCurrentLoad(
-                        generation: generation,
-                        signature: signature,
-                        in: webView
-                    )
+                    return self.canApplyReadingNavigation
+                        && self.isCurrentLoad(
+                            generation: generation,
+                            signature: signature,
+                            in: webView
+                        )
                 }
             )
         }
@@ -867,7 +1014,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 extensionMessageIsCurrent = activeWebView === messageWebView
             }
             guard message.name == Self.messageHandlerName,
-                let payload = message.body as? [String: Any],
+                let payload = message.body as? [String: Any]
+            else { return }
+            receive(payload, in: message.webView, extensionMessageIsCurrent: extensionMessageIsCurrent)
+        }
+
+        func receiveEmbedded(_ payload: [String: Any], in webView: WKWebView) {
+            guard isEmbeddedProjection, activeWebView === webView else { return }
+            receive(payload, in: webView, extensionMessageIsCurrent: true)
+        }
+
+        private func receive(_ payload: [String: Any], in webView: WKWebView?, extensionMessageIsCurrent: Bool) {
+            guard
                 payload["version"] as? Int == SafeMarkdownReadWebView.configurationVersion,
                 payload["documentID"] as? String == documentID,
                 (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
@@ -877,15 +1035,27 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     || pageExtension?.acceptsMessageWithoutCurrentFingerprint(type: type) == true
             else { return }
 
-            if pageExtension?.handleMessage(type: type, payload: payload, webView: message.webView) == true {
+            if pageExtension?.handleMessage(type: type, payload: payload, webView: webView) == true {
                 return
             }
 
             switch type {
+            case "ready":
+                guard isEmbeddedProjection, let webView else { return }
+                pageIsReady = true
+                finalizedSignature = activeLoadSignature
+                renderingReadinessIsAcknowledged = true
+                webView.setAccessibilityLabel(ScholiumL10n.string("Rendered Markdown"))
+                webView.setAccessibilityIdentifier("scholium.renderedDocument.\(documentID)")
+                onRenderingReady?()
+                applySelectionCommandsIfNeeded(in: webView)
+                applyFindRequestIfNeeded(in: webView)
+                schedulePostLoadPositioningIfNeeded(in: webView)
+
             case "floatingSurface":
                 guard surfaceVisibility.isActive,
                     let event = DocumentFloatingEvent.decode(payload["event"]),
-                    event.kind != .suggestions, let webView = message.webView,
+                    event.kind != .suggestions, let webView = webView,
                     !event.allowsAgentInquiry || onAskAgent != nil
                 else { return }
                 let expectedGeneration = loadGeneration
@@ -901,12 +1071,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     let accepted = try? await webView.callAsyncJavaScript(
                         "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                         arguments: ["id": id, "action": action.rawValue, "index": index],
-                        in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                        in: nil, contentWorld: self.bridgeContentWorld
                     )
                     return accepted as? Bool == true && self.loadGeneration == expectedGeneration
                 }
+            case "requestMathRuntime":
+                guard isEmbeddedProjection, let webView, activeWebView === webView else { return }
+                runtimeCoordinator.requestMath(in: webView) { [weak self, weak webView] in
+                    guard let self, let webView else { return false }
+                    return self.activeWebView === webView && self.isEmbeddedProjection
+                }
             case "requestMermaidRuntime":
-                guard let webView = message.webView,
+                guard let webView = webView,
                     activeWebView === webView
                 else { return }
                 requestMermaidRuntime(in: webView)
@@ -920,7 +1096,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
             case "imagePreview":
                 guard surfaceVisibility.isActive,
-                    let webView = message.webView, activeWebView === webView,
+                    let webView = webView, activeWebView === webView,
                     payload["fingerprint"] as? String == fingerprint,
                     let target = imagePreviewTarget(payload)
                 else { return }
@@ -929,13 +1105,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             case "imageContextMenu":
                 guard surfaceVisibility.isActive,
                     payload["payloadFingerprint"] as? String == fingerprint,
-                    let webView = message.webView
+                    let webView = webView
                 else { return }
                 presentImageContextMenu(payload, in: webView)
 
             case "passageContextMenu":
                 guard surfaceVisibility.isActive else { return }
-                if let webView = message.webView { presentPassageMenu(payload, in: webView) }
+                if let webView = webView { presentPassageMenu(payload, in: webView) }
             case "selectionChanged":
                 guard surfaceVisibility.isActive else { return }
                 guard payload["text"] != nil else {
@@ -1139,7 +1315,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         """,
                         arguments: [:],
                         in: nil,
-                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                        contentWorld: self.bridgeContentWorld
                     )
                     guard result as? Bool == true,
                         self.isCurrentLoad(
@@ -1211,7 +1387,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                                     "expiresAt": expiresAt,
                                 ],
                                 in: nil,
-                                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                                contentWorld: self.bridgeContentWorld
                             )
                             guard let geometry = settled as? [String: Any],
                                 geometry["settled"] as? Bool == true,
@@ -1345,7 +1521,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 (() => { const svg = document.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
                   const box = svg?.viewBox?.baseVal;
                   return box ? [box.width, box.height] : null; })()
-                """, in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                """, in: nil, contentWorld: self.bridgeContentWorld)
             guard activeWebView === webView, loadedSignature == signature,
                 let values = result as? [Double], values.count == 2,
                 values.allSatisfy({ $0.isFinite && $0 > 0 && $0 < 1_000_000 })
@@ -1383,7 +1559,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             in webView: WKWebView
         ) async -> Bool {
             let request = claim.request
-            guard request.fingerprint == fingerprint,
+            guard !isEmbeddedProjection, request.fingerprint == fingerprint,
                 scrollRestoration.owns(claim),
                 isCurrentLoad(
                     generation: generation,
@@ -1419,9 +1595,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 window.scholiumReadScroll?.recordRestoreAttempt?.();
                 const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
                 if (!restored) {
-                  window.scrollTo({top: fallbackFraction === 0 ? 0 : extent * fallbackFraction, behavior: 'auto'});
+                  if (window.scholiumReadScroll?.setFraction) window.scholiumReadScroll.setFraction(fallbackFraction);
+                  else window.scrollTo({top: fallbackFraction === 0 ? 0 : extent * fallbackFraction, behavior: 'auto'});
                 }
-                const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+                const fraction = window.scholiumReadScroll?.fraction?.() ?? (extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0);
                 return {
                   restored,
                   fraction,
@@ -1433,7 +1610,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "fallbackFraction": fraction,
                 ],
                 in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                contentWorld: self.bridgeContentWorld
             )
             guard activeWebView === webView,
                 loadGeneration == generation,
@@ -1460,13 +1637,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         private func schedulePostLoadPositioningIfNeeded(in webView: WKWebView) {
-            guard pageIsReady,
-                let navigation = activeNavigation,
+            let navigation = activeNavigation
+            guard pageIsReady, canApplyReadingNavigation, isEmbeddedProjection || navigation != nil,
                 let signature = activeLoadSignature
             else { return }
-            let hasPendingRequest = scrollRestoration.hasPendingRequest(
-                fingerprint: fingerprint
-            )
+            let hasPendingRequest =
+                !isEmbeddedProjection
+                && scrollRestoration.hasPendingRequest(
+                    fingerprint: fingerprint
+                )
             let hasPendingLocation =
                 sourceLocationRequest.map { $0.id != lastReachedSourceLocationID } == true
             guard hasPendingRequest || hasPendingLocation else { return }
@@ -1476,7 +1655,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask?.cancel()
             sourceLineNavigationTask = Task { @MainActor [weak self, weak webView] in
                 await finalization?.value
-                guard let self, let webView,
+                guard !Task.isCancelled, let self, let webView, self.canApplyReadingNavigation,
                     self.isCurrentLoad(
                         navigation: navigation,
                         generation: generation,
@@ -1484,10 +1663,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         in: webView
                     )
                 else { return }
-                let restoreClaim = self.scrollRestoration.claimIfReady(
-                    pageIsReady: self.pageIsReady,
-                    fingerprint: self.fingerprint
-                )
+                let restoreClaim =
+                    self.isEmbeddedProjection
+                    ? nil
+                    : self.scrollRestoration.claimIfReady(
+                        pageIsReady: self.pageIsReady,
+                        fingerprint: self.fingerprint
+                    )
                 var claimWasFinished = false
                 defer {
                     if let restoreClaim, !claimWasFinished {
@@ -1550,7 +1732,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             if let navigation {
                 return activeNavigation === navigation
             }
-            return activeNavigation != nil
+            return isEmbeddedProjection || activeNavigation != nil
         }
 
         func cancelPendingPageWork(keepingLoadIdentity: Bool = false) {
@@ -1586,6 +1768,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fraction.isFinite,
                 (0...1).contains(fraction)
             else { return }
+            var observation = ObservedScrollPosition(fraction: fraction)
+            defer {
+                if isEmbeddedProjection, canApplyReadingNavigation {
+                    onEmbeddedScrollPositionChange?(observation)
+                }
+            }
             scrollRestoration.observedPosition.updateFraction(fraction)
             onScrollFractionChange?(fraction)
             guard let raw = anchorValue as? [String: Any],
@@ -1605,6 +1793,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fallbackFraction: fraction
             )
             if anchor.isValid(forUTF16Length: sourceUTF16Length) {
+                observation.anchor = anchor
                 scrollRestoration.observedPosition.anchor = anchor
                 onScrollAnchorChange?(anchor)
             }
@@ -1641,7 +1830,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             in webView: WKWebView,
             repositioningForPreparation: Bool = false
         ) async -> Bool {
-            guard let request = sourceLocationRequest,
+            guard !Task.isCancelled, let request = sourceLocationRequest,
+                canApplyReadingNavigation,
                 repositioningForPreparation || request.id != lastReachedSourceLocationID
             else {
                 return false
@@ -1669,7 +1859,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 """
                 if (!await window.scholiumReadNavigation?.reveal(requested)) return false;
                 const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+                const fraction = window.scholiumReadScroll?.fraction?.() ?? (extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0);
                 return {
                   reached: true,
                   fraction,
@@ -1678,9 +1868,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 """,
                 arguments: ["requested": line],
                 in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                contentWorld: self.bridgeContentWorld
             )
-            guard let payload = result as? [String: Any],
+            guard !Task.isCancelled, canApplyReadingNavigation, let payload = result as? [String: Any],
                 payload["reached"] as? Bool == true,
                 sourceLocationRequest?.id == request.id,
                 isCurrentLoad(
@@ -1705,7 +1895,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             signature: String, in webView: WKWebView
         ) async -> Bool {
             func isCurrent() -> Bool {
-                !Task.isCancelled && sourceLocationRequest?.id == requestID
+                !Task.isCancelled && canApplyReadingNavigation && sourceLocationRequest?.id == requestID
                     && isCurrentLoad(generation: generation, signature: signature, in: webView)
             }
             guard isCurrent() else { return false }
@@ -1714,7 +1904,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let candidate = try? await webView.callAsyncJavaScript(
                 "return window.scholiumReadNavigation?.rangeCandidate(lower, upper) ?? null;",
                 arguments: ["lower": lower, "upper": upper], in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                contentWorld: self.bridgeContentWorld)
             guard isCurrent() else { return false }
             var reached = false
             if lower >= 0, upper > lower, upper <= selectionSource.utf16.count,
@@ -1731,7 +1921,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 let result = try? await webView.callAsyncJavaScript(
                     "return window.scholiumReadNavigation?.revealRange(lower, upper, expected) === true;",
                     arguments: ["lower": lower, "upper": upper, "expected": block], in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                    contentWorld: self.bridgeContentWorld)
                 reached = result as? Bool == true
             }
             guard isCurrent() else { return false }
@@ -1778,6 +1968,26 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure?(error.localizedDescription)
         }
 
+        static func allowsExternalLink(_ url: URL) -> Bool {
+            guard url.absoluteString.utf8.count <= 8_192,
+                let scheme = url.scheme?.lowercased()
+            else { return false }
+            return ["http", "https", "mailto", "zotero"].contains(scheme)
+        }
+
+        /// The shared editor page remains navigation-closed. Only its active,
+        /// committed Reader can hand the existing external-link action to native.
+        @discardableResult
+        func openEmbeddedExternalLink(_ url: URL, sourceFingerprint: String, in webView: WKWebView) -> Bool {
+            guard isEmbeddedProjection, activeWebView === webView,
+                surfaceVisibility.isActive, selectionCoordinator.isActive,
+                pageIsReady, finalizedSignature == activeLoadSignature,
+                fingerprint == sourceFingerprint, Self.allowsExternalLink(url)
+            else { return false }
+            onOpenExternalURL(url)
+            return true
+        }
+
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
@@ -1791,10 +2001,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 decisionHandler(.allow)
                 return
             }
-            if navigationAction.navigationType == .linkActivated,
-                let scheme = url.scheme?.lowercased(),
-                ["http", "https", "mailto", "zotero"].contains(scheme)
-            {
+            if navigationAction.navigationType == .linkActivated, Self.allowsExternalLink(url) {
                 onOpenExternalURL(url)
             }
             decisionHandler(.cancel)
@@ -1926,7 +2133,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         /// Starts the generated, type-checked Read runtime with one bounded
         /// configuration value in the named content world. Research text never
         /// enters executable JavaScript.
-        private struct ReadBridgeConfiguration: Encodable {
+        struct ReadBridgeConfiguration: Codable, Hashable, Sendable {
             let version: Int
             let documentID: String
             let fingerprint: String
@@ -1955,6 +2162,30 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             userCSS: String,
             localization: WebKitInterfaceLocalization = .current()
         ) -> String {
+            let configuration = bridgeConfiguration(
+                documentID: documentID, fingerprint: fingerprint, loadGeneration: loadGeneration,
+                selectionEnabled: selectionEnabled, imagePreviewsEnabled: imagePreviewsEnabled,
+                replyProjection: replyProjection, linkPreviews: linkPreviews,
+                presentationCSS: presentationCSS, userCSS: userCSS, localization: localization)
+            let payload = base64JSON(configuration)
+            return """
+                const encodedConfiguration = "\(payload)";
+                const configuration = JSON.parse(new TextDecoder().decode(
+                  Uint8Array.from(atob(encodedConfiguration), character => character.charCodeAt(0))
+                ));
+                if (!window.scholiumRead || typeof window.scholiumRead.initialize !== 'function') {
+                  throw new Error('The bundled Read runtime could not start.');
+                }
+                window.scholiumRead.initialize(configuration);
+                """
+        }
+
+        private static func bridgeConfiguration(
+            documentID: String, fingerprint: String, loadGeneration: UInt64,
+            selectionEnabled: Bool, imagePreviewsEnabled: Bool, replyProjection: Bool,
+            linkPreviews: [DocumentLinkPreview], presentationCSS: String, userCSS: String,
+            localization: WebKitInterfaceLocalization
+        ) -> ReadBridgeConfiguration {
             #if DEBUG
                 let testingEnabled = true
             #else
@@ -1974,7 +2205,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         : String($0.htmlBody.prefix(24_000))
                 )
             }
-            let configuration = ReadBridgeConfiguration(
+            return ReadBridgeConfiguration(
                 version: SafeMarkdownReadWebView.configurationVersion,
                 documentID: documentID,
                 fingerprint: fingerprint,
@@ -1988,20 +2219,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 localization: localization,
                 linkPreviews: previews
             )
-            let payload = base64JSON(configuration)
-            return """
-                const encodedConfiguration = "\(payload)";
-                const configuration = JSON.parse(new TextDecoder().decode(
-                  Uint8Array.from(atob(encodedConfiguration), character => character.charCodeAt(0))
-                ));
-                if (!window.scholiumRead || typeof window.scholiumRead.initialize !== 'function') {
-                  throw new Error('The bundled Read runtime could not start.');
-                }
-                window.scholiumRead.initialize(configuration);
-                """
         }
 
-        private struct ReadLinkPreview: Encodable {
+        struct ReadLinkPreview: Codable, Hashable, Sendable {
             let utf16LowerBound: Int
             let utf16UpperBound: Int
             let title: String

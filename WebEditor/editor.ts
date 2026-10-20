@@ -1,5 +1,8 @@
+import {createDeferredEditingInfrastructure} from "./deferred-editing-infrastructure";
+import {createCommittedReviewProjection, reviewProjectionMatches} from "./committed-review-projection";
+import type {ReaderWindow} from "./reader-runtime";
 import {writingCaretIsReadable} from "./writing-readable-context";
-import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets} from "./document-widget-readiness";
+import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, pendingVisibleDocumentWidgetCounts} from "./document-widget-readiness";
 import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
 import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
@@ -133,7 +136,7 @@ import {
   updateEditorAccessibility,
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
-import {createMarkdownDocumentState, createMarkdownEditor, measureMarkdownEditor, restoreMarkdownDocumentState} from "./bootstrap";
+import {awaitMarkdownFontLoading, createMarkdownDocumentState, createMarkdownEditor, measureMarkdownEditor, restoreMarkdownDocumentState} from "./bootstrap";
 import {createMermaidRuntimeLoader} from "./mermaid-runtime-loader";
 import {
   clearEditorPerformanceSamples,
@@ -144,7 +147,7 @@ import {
 } from "./performance";
 import {createPreviewPopoverController, renderPreviewMathNodes} from "./preview-popover";
 import {appendMarkdownBlocks} from "./markdown-fragment";
-import {createEditorScrollCoordinator, documentToolbarScrollMargin} from "./scroll-coordinator";
+import {createEditorScrollCoordinator, currentDocumentScrollAnchor, documentToolbarScrollMargin} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {createEditorInputSuggestions} from "./input-suggestions";
 import {boundedUUID} from "./uuid";
@@ -252,7 +255,7 @@ let citationCompositionRevision = 0;
 let citationTransaction: ZoteroMarkdownTransaction | null = null;
 let citationTransactionID: string | null = null;
 function citationContext(transactionID: string): ZoteroTransactionContext {
-  return {transactionID, mode: configuredEditorMode(editor.state),
+  return {transactionID, mode: configuredEditorMode(editor.state) === "review" ? "source" : configuredEditorMode(editor.state) as "livePreview" | "source",
     interactionRevision: citationInsertionRevision, compositionRevision: citationCompositionRevision,
     composing: editor.composing || compositionGate.active};
 }
@@ -1822,7 +1825,7 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
 const nativeFloating = createNativeFloatingPorts(event => post({type: "floatingSurface", event}));
 let selectingForAgent = false;
 function selectionActionSourceRange(state = editor.state, view = editor) {
-  if (selectingForAgent || view.composing || compositionGate.active || lastDocumentFocusTarget === "title") return null;
+  if (configuredEditorMode(state) === "review" || selectingForAgent || view.composing || compositionGate.active || lastDocumentFocusTarget === "title") return null;
   return projectedSelectionActionRange(state, liveProjectionIndex.index(state));
 }
 function selectionActionKey(range = selectionActionSourceRange()) {
@@ -1934,6 +1937,23 @@ const inputSuggestions = createEditorInputSuggestions({
   },
 });
 
+const reviewProjection = createCommittedReviewProjection({
+  nativeFloating,
+  mirror: () => editor.state.field(exactSourceState),
+  projection: () => reviewProjectionMatches(appliedPresentation?.reviewProjection,
+    bridgeDocumentID, bridgeFingerprint, dirty) ? appliedPresentation!.reviewProjection! : null,
+  postMessage: event => post({type: "reviewEvent", event}),
+});
+const reviewMode = [
+  editorModeFacet.of("review"),
+  EditorView.editorAttributes.of({class: "scholium-review-mode"}),
+  EditorView.contentAttributes.of(editorAccessibilityAttributes("review")),
+  reviewProjection.extension,
+];
+function modeExtensions(mode: EditorMode) {
+  return mode === "review" ? reviewMode : mode === "livePreview" ? livePreviewMode : sourceMode;
+}
+
 // One CodeMirror compartment is the complete presentation-mode boundary.
 // Source shares the derived semantic index, but no Live presentation state field, view plugin, widget provider,
 // navigation keymap, preview overlay, or semantic class.
@@ -1986,8 +2006,9 @@ const editorContextMenu = createEditorContextMenuExtension({
 });
 
 const initialModeExtension = modeCompartment.of(sourceMode);
+const editingInfrastructure = createDeferredEditingInfrastructure([scholiumNoteLanguage, liveProjectionIndex.extension]);
+const initialParsingExtension = editingInfrastructure.forDocument("source");
 const editorExtensions = [
-  liveProjectionIndex.extension,
   citationHistory,
   editorArrivalHighlight,
   highlightSpecialChars(),
@@ -2019,7 +2040,9 @@ const editorExtensions = [
   // prefixes before the base Markdown command can consume Return.
   Prec.high(structuralInteractionKeymap),
   Prec.high(lineBoundaryKeymap),
-  scholiumNoteLanguage,
+  // The language installs its own Prec.high Markdown keymap. Keep its retained
+  // compartment after the Scholium bindings, including deferred activation.
+  initialParsingExtension,
   indentUnit.of("  "),
   keymap.of([
     ...closeBracketsKeymap,
@@ -2087,11 +2110,10 @@ const scrollCoordinator = createEditorScrollCoordinator(editor, {
   // The content key route must see the visible control before dismissing it,
   // so Escape can consume dismissal instead of collapsing the source range.
   onViewportInput: event => { if (event.type !== "keydown") selectionActions.dismiss(); },
-  post: (scrollAnchor) => post({
-    type: "scrollChanged",
-    scrollFraction: scrollAnchor.fallbackFraction,
-    scrollAnchor,
-  }),
+  post: (scrollAnchor) => {
+    if (configuredEditorMode(editor.state) === "review") return;
+    post({type: "scrollChanged", scrollFraction: scrollAnchor.fallbackFraction, scrollAnchor});
+  },
   flushPresentationGeometry: flushPresentationStyleAndGeometry,
 });
 for (const mediaQuery of [
@@ -2178,6 +2200,10 @@ function citationInsertionAvailable(state: EditorState) {
 
 function currentEditorContext(view = editor): EditorContext {
   const state = view.state;
+  if (configuredEditorMode(state) === "review") return {
+    selections: editorSelections(state), activeInlineConstructs: [], activeBlockConstructs: [],
+    composing: false, availableCommands: [], undoLabel: lastUndoLabel, redoLabel: lastRedoLabel,
+  };
   const inline = new Set<string>();
   const block = new Set<string>();
   for (const selection of state.selection.ranges) {
@@ -2332,6 +2358,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   if (operation.type === "initialize") {
     const loadStartedAt = performance.now();
     if (request.knownGeneration !== 0
+        || (operation.mode === "review" && (operation.recovery?.dirty === true
+          || Boolean(operation.recovery && (operation.recovery.source !== operation.text
+            || operation.recovery.fingerprint !== request.startingFingerprint))
+          || !reviewProjectionMatches(operation.presentation.reviewProjection, request.documentID, request.startingFingerprint, false)))
         || !exactSourceFits(operation.text)
         || (operation.citationSnapshot?.status === "available" && operation.citationSnapshot.sourceFingerprint?.sha256 !== request.startingFingerprint)) {
       return rejected(request.requestID, documentVersion, "invalid initialization");
@@ -2372,15 +2402,54 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }, exactEditorSource(), dirty)!;
     return {...successfulResult(request.requestID), ...replay};
   }
+  if (configuredEditorMode(editor.state) === "review" && new Set([
+    "command", "insertReference", "replacePassage", "beginCitation", "citationCallback",
+    "finishCitation", "pasteClipboard", "focusTitle",
+  ]).has(operation.type)) return rejected(request.requestID, documentVersion, localized("Review is read-only."));
+  if (operation.type === "setMode" && operation.mode === "review"
+      && (dirty || editor.composing || compositionGate.active
+        || !reviewProjectionMatches(appliedPresentation?.reviewProjection, bridgeDocumentID, bridgeFingerprint, dirty))) {
+    return rejected(request.requestID, documentVersion, localized("Finish input and save the note before entering Review."));
+  }
   switch (operation.type) {
-  case "setMode": editorOperations.setMode(operation.mode); break;
+  case "setMode": {
+    const attachment = documentAttachment;
+    const expectedGeneration = documentVersion;
+    const sourcePosition = editorOperations.setMode(operation.mode);
+    if (operation.mode === "review") {
+      const requireCurrent = () => {
+        if (request.expiresAt <= Date.now() || attachment !== documentAttachment
+            || expectedGeneration !== documentVersion || request.sessionID !== bridgeSessionID
+            || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint
+            || configuredEditorMode(editor.state) !== "review") throw new Error("stale Review mode preparation");
+      };
+      await reviewProjection.prepare(request.expiresAt);
+      requireCurrent();
+      if (!sourcePosition.anchor || !reviewProjection.setAnchor(sourcePosition.anchor)) {
+        reviewProjection.setFraction(sourcePosition.fraction);
+      }
+      await reviewProjection.prepare(request.expiresAt);
+      requireCurrent();
+    }
+    break;
+  }
   case "setPresentation": applyPresentationConfiguration(operation.value); break;
   case "completePreparation": {
+    if (configuredEditorMode(editor.state) === "review") {
+      const preparationStartedAt = performance.now();
+      await reviewProjection.prepare(request.expiresAt);
+      if (operation.anchor) reviewProjection.setAnchor(operation.anchor);
+      else if (operation.fraction !== undefined) reviewProjection.setFraction(operation.fraction);
+      await reviewProjection.prepare(request.expiresAt);
+      recordEditorMetric("opening-preparation", preparationStartedAt, {review: 1, completed: 1});
+      break;
+    }
     const preparationStartedAt = performance.now();
     const phases = {
       styleWorkMilliseconds: 0, fontsWaitMilliseconds: 0, projectionWorkMilliseconds: 0,
-      measureWorkMilliseconds: 0, scrollWorkMilliseconds: 0, measureCount: 0, loopCount: 0,
+      measureWorkMilliseconds: 0, scrollWorkMilliseconds: 0, measureCount: 0, measureCompletedCount: 0, loopCount: 0,
       widgetWaitMilliseconds: 0, widgetWaitCount: 0, imageWaitMilliseconds: 0, imageWaitCount: 0,
+      widgetWaitEnteredCount: 0, pendingMathWidgetCount: 0, pendingMermaidWidgetCount: 0, pendingOtherWidgetCount: 0,
     };
     let completed = false;
     const attachment = documentAttachment;
@@ -2397,7 +2466,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       });
       phases.measureWorkMilliseconds += performance.now() - startedAt;
       phases.measureCount += 1;
-      return measured;
+      return measured.then(() => { phases.measureCompletedCount++; });
     };
     const styleStartedAt = performance.now();
     flushPresentationStyleAndGeometry();
@@ -2426,14 +2495,18 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
             if (configuredEditorMode(editor.state) !== "livePreview") break;
             if (document.fonts.status !== "loaded") {
               const startedAt = performance.now();
-              await document.fonts.ready;
+              await awaitMarkdownFontLoading(document.fonts, requireCurrent);
               phases.fontsWaitMilliseconds += performance.now() - startedAt;
-              requireCurrent();
               await measure();
               requireCurrent();
               continue;
             }
             const widgetsStartedAt = performance.now();
+            const pendingWidgets = pendingVisibleDocumentWidgetCounts(editor.contentDOM, editor.scrollDOM);
+            phases.widgetWaitEnteredCount++;
+            phases.pendingMathWidgetCount = pendingWidgets.math;
+            phases.pendingMermaidWidgetCount = pendingWidgets.mermaid;
+            phases.pendingOtherWidgetCount = pendingWidgets.other;
             const waitedForWidgets = await awaitVisibleDocumentWidgets(editor.contentDOM, editor.scrollDOM, requireCurrent);
             phases.widgetWaitMilliseconds += performance.now() - widgetsStartedAt;
             if (waitedForWidgets) {
@@ -2485,13 +2558,22 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     // Native covers the opening through this final authorized focus and
     // geometry handoff, then exposes the active document surface.
     if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({preventScroll: true});
+    else if (operation.focusTarget && configuredEditorMode(editor.state) === "review") reviewProjection.focus();
     else if (operation.focusTarget) editor.focus();
-    editor.coordsAtPos(editor.state.selection.main.head);
+    // Review preparation measures its committed DOM at the restored viewport;
+    // its retained source selection has no displayed writable caret to probe.
+    if (configuredEditorMode(editor.state) !== "review") editor.coordsAtPos(editor.state.selection.main.head);
     recordEditorMetric("opening-release", releaseStartedAt);
     break;
   }
-  case "showPreview": previewPopover.showAtSelection(); break;
+  case "showPreview":
+    if (configuredEditorMode(editor.state) !== "review") previewPopover.showAtSelection();
+    break;
   case "showSelectionActions": {
+    if (configuredEditorMode(editor.state) === "review") return {
+      ...successfulResult(request.requestID),
+      selectionSurfaceID: await (window as ReaderWindow).scholiumShowSelectionActions?.() ?? undefined,
+    };
     const shown = showCurrentSelectionActions(request.expiresAt);
     return {...successfulResult(request.requestID), selectionSurfaceID: shown ? selectionActions.surfaceID! : undefined};
   }
@@ -2509,14 +2591,37 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     break;
   }
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
-  case "goToLine": editorOperations.goToLine(operation.line, operation.focusesEditor); break;
-  case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;
+  case "goToLine":
+    if (configuredEditorMode(editor.state) === "review") await (window as ReaderWindow).scholiumReadNavigation?.reveal(operation.line);
+    else editorOperations.goToLine(operation.line, operation.focusesEditor);
+    break;
+  case "revealSourceRange": {
+    if (configuredEditorMode(editor.state) === "review") {
+      const navigation = (window as ReaderWindow).scholiumReadNavigation;
+      const mirror = editor.state.field(exactSourceState);
+      const from = mirror.exactOffset(operation.fromUTF16), to = mirror.exactOffset(operation.toUTF16);
+      if (from === null || to === null) return rejected(request.requestID, documentVersion, localized("The selected Review passage has no matching source."));
+      const candidate = navigation?.rangeCandidate(from, to);
+      if (!candidate || mirror.text.slice(candidate.blockLower, candidate.blockUpper) !== candidate.blockText
+          || !navigation?.revealRange(from, to, candidate)) {
+        return rejected(request.requestID, documentVersion, localized("The selected Review passage has no matching source."));
+      }
+    } else editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16);
+    break;
+  }
   case "selectAll":
     // A queued menu intent cannot take selection back from another input.
-    if (document.activeElement === editor.contentDOM) selectAll(editor);
+    if (configuredEditorMode(editor.state) === "review") reviewProjection.selectAll();
+    else if (document.activeElement === editor.contentDOM) selectAll(editor);
     break;
-  case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
-  case "setScrollAnchor": editorOperations.setScrollAnchor(operation.anchor); break;
+  case "setScrollFraction":
+    if (configuredEditorMode(editor.state) === "review") reviewProjection.setFraction(operation.fraction);
+    else editorOperations.setScrollFraction(operation.fraction);
+    break;
+  case "setScrollAnchor":
+    if (configuredEditorMode(editor.state) === "review") reviewProjection.setAnchor(operation.anchor);
+    else editorOperations.setScrollAnchor(operation.anchor);
+    break;
   case "queryText": return {...successfulResult(request.requestID), text: exactEditorSource()};
   case "querySelection": {
     const snapshot = {documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion, ranges: editorSelections()};
@@ -2525,7 +2630,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "queryContext": return {...successfulResult(request.requestID), context: currentEditorContext()};
   case "queryScrollAnchor": return {
     ...successfulResult(request.requestID),
-    scrollAnchor: scrollCoordinator.currentAnchor(),
+    scrollAnchor: currentDocumentScrollAnchor(configuredEditorMode(editor.state), scrollCoordinator, reviewProjection),
   };
   case "queryPerformance": {
     recordBootstrapInterval();
@@ -2551,7 +2656,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     let scrollAnchor: EditorScrollAnchor | undefined;
     try {
-      scrollAnchor = scrollCoordinator.currentAnchor();
+      scrollAnchor = currentDocumentScrollAnchor(configuredEditorMode(editor.state), scrollCoordinator, reviewProjection);
     } catch {
       // Geometry remains optional after the exact source/history freeze.
     }
@@ -2566,6 +2671,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return {...successfulResult(request.requestID), text: exactEditorSource()};
   }
   case "acknowledgeCommittedSnapshot": {
+    if (configuredEditorMode(editor.state) === "review"
+        && (operation.expectedText !== exactEditorSource() || operation.committedText !== exactEditorSource())) {
+      return rejected(request.requestID, documentVersion, localized("Review cannot replace the saved source."));
+    }
     // Equal expected/committed snapshots only advance the disk base: they
     // either mark this captured source clean or leave newer input dirty.
     if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {
@@ -2716,6 +2825,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID, changed, changed ? lastUndoLabel : undefined);
   }
   case "documentFind": {
+    if (configuredEditorMode(editor.state) === "review") {
+      if (operation.value.action === "replaceCurrent" || operation.value.action === "replaceAll") {
+        return rejected(request.requestID, documentVersion, localized("Review does not support replacement."));
+      }
+      const found = (window as ReaderWindow).scholiumReviewFind?.perform({...operation.value, action: operation.value.action as "present" | "update" | "next" | "previous"}) ?? {current: 0, total: 0};
+      return {...successfulResult(request.requestID), find: {...found, replaceable: 0, canReplaceCurrent: false}};
+    }
     previewPopover.hide();
     const result = performDocumentFind(editor, operation.value);
     if (result.undoLabel) {
@@ -2728,9 +2844,14 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         canReplaceCurrent: result.canReplaceCurrent, replacement: result.replacement},
     };
   }
-  case "clearDocumentFind": clearDocumentFind(editor); break;
-  case "markClean": editorOperations.markClean(); break;
-  case "focus": editorOperations.focus(); break;
+  case "clearDocumentFind":
+    if (configuredEditorMode(editor.state) === "review") (window as ReaderWindow).scholiumReviewFind?.perform({operation: "clear", query: "", caseSensitive: false, wholeWord: false});
+    else clearDocumentFind(editor);
+    break;
+  case "focus":
+    if (configuredEditorMode(editor.state) === "review") reviewProjection.focus();
+    else editorOperations.focus();
+    break;
   case "focusTitle": {
     const attachment = documentAttachment;
     await measureMarkdownEditor(editor, () => {
@@ -2926,8 +3047,11 @@ function applyPresentationConfiguration(requested: EditorPresentationConfigurati
   const previous = appliedPresentation;
   const value = admitPresentationSources(requested, documentVersion, previous);
   if (previous?.documentTitle !== value.documentTitle) documentTitle.setTitle(value.documentTitle);
-  if (previous?.presentationCSS !== value.presentationCSS) editorOperations.setPresentationCSS(value.presentationCSS);
-  if (previous?.userCSS !== value.userCSS) editorOperations.setUserCSS(value.userCSS);
+  const readerOwnsAppearance = configuredEditorMode(editor.state) === "review" && Boolean(value.reviewProjection);
+  if (!readerOwnsAppearance) {
+    if (previous?.presentationCSS !== value.presentationCSS) editorOperations.setPresentationCSS(value.presentationCSS);
+    if (previous?.userCSS !== value.userCSS) editorOperations.setUserCSS(value.userCSS);
+  }
   if (previous?.linkPreviewGeneration !== value.linkPreviewGeneration
       || JSON.stringify(previous?.linkPreviews) !== JSON.stringify(value.linkPreviews)) {
     editorOperations.setLinkPreviews(value.linkPreviews);
@@ -2947,6 +3071,13 @@ function applyPresentationConfiguration(requested: EditorPresentationConfigurati
     inputSuggestions.configureWritingIndexContext(value.writingIndexContextKey);
   }
   appliedPresentation = value;
+  if (configuredEditorMode(editor.state) === "review") {
+    const projection = reviewProjectionMatches(value.reviewProjection, bridgeDocumentID, bridgeFingerprint, dirty)
+      ? value.reviewProjection : null;
+    if (JSON.stringify(previous?.reviewProjection) !== JSON.stringify(value.reviewProjection)) {
+      if (!reviewProjection.updateInPlace(projection)) editor.dispatch({effects: reviewProjection.setProjection.of(projection)});
+    }
+  }
 }
 
 function setDynamicStyle(id: string, css: string) {
@@ -3132,8 +3263,11 @@ const editorOperations = {
     linkPreviews = presentation.linkPreviewGeneration === 0
       ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
     linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
+    dirty = recovery?.dirty ?? false;
+    appliedPresentation = presentation;
     const extensions = editorExtensions.map(extension => extension === initialModeExtension
-      ? modeCompartment.of(mode === "livePreview" ? livePreviewMode : sourceMode) : extension);
+      ? modeCompartment.of(modeExtensions(mode))
+      : extension === initialParsingExtension ? editingInfrastructure.forDocument(mode) : extension);
     // Both branches construct against the incoming presentation and mode.
     // The live view sees only the final exact source, history and selections.
     const restored = recovery ? restoreMarkdownDocumentState(recovery, extensions) : undefined;
@@ -3166,14 +3300,30 @@ const editorOperations = {
     const transitionSequence = ++modeTransitionSequence;
     const attachment = documentAttachment;
     previewPopover.hide();
-    const scrollAnchor = scrollCoordinator.captureGeometry().anchor;
-    const nextMode = mode === "livePreview" ? "livePreview" : "source";
+    const scrollAnchor = currentDocumentScrollAnchor(configuredEditorMode(editor.state), scrollCoordinator, reviewProjection);
+    const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+    const scrollFraction = scrollAnchor?.fallbackFraction
+      ?? (extent > 0 ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent)) : 0);
+    // The shared scroller is about to use another mode's geometry. A prior
+    // Edit font/frame retry must not reposition the newly mounted Review.
+    scrollCoordinator.cancelPendingRestoration();
+    const nextMode: EditorMode = mode === "review" ? "review" : mode === "livePreview" ? "livePreview" : "source";
     if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
-    editor.dispatch({
-      effects: [
-        modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
-      ],
-    });
+    if (nextMode !== "review" && appliedPresentation) {
+      // Review and Edit use separately compiled protected user selectors. The
+      // reader intentionally installs its reading styles in these shared nodes.
+      document.getElementById("scholium-presentation-css")!.textContent = appliedPresentation.presentationCSS;
+      document.getElementById("scholium-user-css")!.textContent = appliedPresentation.userCSS;
+    }
+    const activationEffects = editingInfrastructure.activationEffects(editor.state, nextMode);
+    if (activationEffects.length) {
+      // CodeMirror creates newly configured fields and then updates them with
+      // the same transaction. Install the shared index while Review still
+      // owns presentation, so Live fields can query both transaction states.
+      // Both dispatches finish in this bridge call before native can reveal it.
+      editor.dispatch({effects: activationEffects});
+    }
+    editor.dispatch({effects: modeCompartment.reconfigure(modeExtensions(nextMode))});
     const appliedMode = configuredEditorMode(editor.state);
     updateEditorAccessibility(editor.contentDOM, appliedMode, currentEditorContext());
     scheduleEditorInteractionReport(true);
@@ -3194,13 +3344,16 @@ const editorOperations = {
     if (appliedMode === "livePreview") convergeLivePreviewProjection();
     // Modes change the document inset and block heights. Restore the same
     // source block through the shared geometry owner before native reveals it.
-    scrollCoordinator.setAnchor(scrollAnchor);
-    editor.coordsAtPos(scrollAnchor.sourceUTF16Offset);
+    if (appliedMode === "review") {
+      if (!scrollAnchor || !reviewProjection.setAnchor(scrollAnchor)) reviewProjection.setFraction(scrollFraction);
+    } else if (scrollAnchor) scrollCoordinator.setAnchor(scrollAnchor);
+    else scrollCoordinator.setFraction(scrollFraction);
+    if (scrollAnchor) editor.coordsAtPos(scrollAnchor.sourceUTF16Offset);
     // The typed response is the native visibility boundary. Ensure the
     // compartment, semantic projection, cascade, and representative geometry
     // belong to the same completed configuration before acknowledging it.
     flushPresentationStyleAndGeometry();
-
+    return {anchor: scrollAnchor, fraction: scrollFraction};
   },
 
   setPresentationCSS(css: string) {
@@ -3307,10 +3460,6 @@ const editorOperations = {
     dirty = false;
     scheduleEditorInteractionReport(true);
     return false;
-  },
-
-  markClean() {
-    dirty = false;
   },
 
   focus() {

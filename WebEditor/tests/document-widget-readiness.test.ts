@@ -1,6 +1,6 @@
 import {parseHTML} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
-import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, beginDocumentWidgetPreparation} from "../document-widget-readiness";
+import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, beginDocumentWidgetPreparation, pendingVisibleDocumentWidgetCounts} from "../document-widget-readiness";
 
 function harness() {
   const {document} = parseHTML("<html><body><div id='viewport'><div id='root'></div></div><div id='popover'></div></body></html>");
@@ -17,6 +17,23 @@ function harness() {
 }
 
 describe("document viewport widget readiness", () => {
+  it("reports actual pending visible Math and Mermaid until their preparation ends", () => {
+    const {root, viewport, node} = harness();
+    const mathNode = node();
+    mathNode.className = "scholium-math";
+    const math = beginDocumentWidgetPreparation(mathNode);
+    const mermaidNode = node();
+    mermaidNode.className = "cm-live-mermaid-widget";
+    const mermaid = beginDocumentWidgetPreparation(mermaidNode);
+    const offscreen = beginDocumentWidgetPreparation(node(root, 500));
+    expect(pendingVisibleDocumentWidgetCounts(root, viewport)).toEqual({math: 1, mermaid: 1, other: 0});
+    math.finish();
+    mermaidNode.remove();
+    expect(pendingVisibleDocumentWidgetCounts(root, viewport)).toEqual({math: 0, mermaid: 0, other: 0});
+    mermaid.finish();
+    offscreen.finish();
+  });
+
   it("waits for visible real widgets while excluding offscreen widgets and popovers", async () => {
     const {document, root, viewport, node} = harness();
     const visible = beginDocumentWidgetPreparation(node());

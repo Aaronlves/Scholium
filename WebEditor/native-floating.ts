@@ -73,6 +73,7 @@ export interface NativeFloatingPorts {
   preview: NativePreviewPort;
   suggestions: NativeSuggestionPort;
   selection: NativeSelectionPort;
+  forOwner(post: (event: NativeFloatingEvent) => void): NativeFloatingPorts;
 }
 
 type ActivePresentation = {
@@ -80,6 +81,7 @@ type ActivePresentation = {
   id: number;
   dismiss(): void;
   event(id: number, action: string, index: number): boolean;
+  owner: (event: NativeFloatingEvent) => void;
 };
 
 /**
@@ -96,74 +98,78 @@ export function createNativeFloatingPorts(
     kind: NativeFloatingKind,
     callbacks: {dismiss(): void},
     event: (id: number, action: string, index: number) => boolean,
+    owner: (event: NativeFloatingEvent) => void,
   ) {
-    if (active && active.kind !== kind) active.dismiss();
+    if (active && (active.kind !== kind || active.owner !== owner)) active.dismiss();
     const id = ++serial;
-    active = {kind, id, dismiss: callbacks.dismiss, event};
+    active = {kind, id, dismiss: callbacks.dismiss, event, owner};
     return id;
   }
 
-  function hide(kind: NativeFloatingKind, id: number) {
-    if (active?.kind !== kind || active.id !== id) return;
-    post({type: "dismissSurface", kind, id});
-    active = null;
+  function portsForOwner(ownerPost: (event: NativeFloatingEvent) => void): NativeFloatingPorts {
+    function hide(kind: NativeFloatingKind, id: number) {
+      if (active?.kind !== kind || active.id !== id || active.owner !== ownerPost) return;
+      ownerPost({type: "dismissSurface", kind, id});
+      active = null;
+    }
+
+    const preview: NativePreviewPort = {
+      show(surface, callbacks) {
+        const id = activate("preview", callbacks, (currentID, action, _index) => {
+          if (currentID !== id) return false;
+          if (action === "enter") callbacks.enter?.();
+          else if (action === "leave") callbacks.leave?.();
+          else if (action === "dismiss") callbacks.dismiss();
+          else return false;
+          return true;
+        }, ownerPost);
+        ownerPost({type: "previewSurface", surface: {...surface, id}});
+        return id;
+      },
+      hide(id) { hide("preview", id); },
+    };
+
+    const suggestions: NativeSuggestionPort = {
+      show(surface, callbacks) {
+        const id = activate("suggestions", callbacks, (currentID, action, index) => {
+          if (currentID !== id || !Number.isInteger(index)) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
+          else if (action === "choose" && index >= 0 && index < surface.items.length) {
+            if (surface.items[index].disabled) return false;
+            return callbacks.choose?.(index) !== false;
+          } else return false;
+          return true;
+        }, ownerPost);
+        ownerPost({type: "suggestionSurface", surface: {...surface, id}});
+        return id;
+      },
+      hide(id) { hide("suggestions", id); },
+    };
+
+    const selection: NativeSelectionPort = {
+      show(surface, callbacks) {
+        const id = activate("selection", callbacks, (currentID, action, index) => {
+          if (currentID !== id) return false;
+          if (action === "dismiss") callbacks.dismiss();
+          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
+          else return false;
+          return true;
+        }, ownerPost);
+        ownerPost({type: "selectionSurface", surface: {...surface, id}});
+        return id;
+      },
+      hide(id) { hide("selection", id); },
+    };
+    return {preview, suggestions, selection, forOwner: portsForOwner};
   }
-
-  const preview: NativePreviewPort = {
-    show(surface, callbacks) {
-      const id = activate("preview", callbacks, (currentID, action, _index) => {
-        if (currentID !== id) return false;
-        if (action === "enter") callbacks.enter?.();
-        else if (action === "leave") callbacks.leave?.();
-        else if (action === "dismiss") callbacks.dismiss();
-        else return false;
-        return true;
-      });
-      post({type: "previewSurface", surface: {...surface, id}});
-      return id;
-    },
-    hide(id) { hide("preview", id); },
-  };
-
-  const suggestions: NativeSuggestionPort = {
-    show(surface, callbacks) {
-      const id = activate("suggestions", callbacks, (currentID, action, index) => {
-        if (currentID !== id || !Number.isInteger(index)) return false;
-        if (action === "dismiss") callbacks.dismiss();
-        else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
-        else if (action === "choose" && index >= 0 && index < surface.items.length) {
-          if (surface.items[index].disabled) return false;
-          return callbacks.choose?.(index) !== false;
-        } else return false;
-        return true;
-      });
-      post({type: "suggestionSurface", surface: {...surface, id}});
-      return id;
-    },
-    hide(id) { hide("suggestions", id); },
-  };
-
-  const selection: NativeSelectionPort = {
-    show(surface, callbacks) {
-      const id = activate("selection", callbacks, (currentID, action, index) => {
-        if (currentID !== id) return false;
-        if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
-        else return false;
-        return true;
-      });
-      post({type: "selectionSurface", surface: {...surface, id}});
-      return id;
-    },
-    hide(id) { hide("selection", id); },
-  };
 
   const event = (id: number, action: string, index: number) =>
     active?.id === id ? active.event(id, action, index) : false;
   (window as Window & {scholiumNativeFloatingEvent?: typeof event})
     .scholiumNativeFloatingEvent = event;
 
-  return {preview, suggestions, selection};
+  return portsForOwner(post);
 }
 
 export function previewSurface(

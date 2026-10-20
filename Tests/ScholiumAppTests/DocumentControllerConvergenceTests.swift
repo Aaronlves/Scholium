@@ -89,6 +89,7 @@ struct DocumentControllerConvergenceTests {
             }
             #expect(session.hasUnsavedChanges)
         }
+        let beforePublication = session.editorSession.testingReviewPreparationDiagnostics
         gate.release()
         await controller.waitForPendingHydrations()
         #expect(controller.activeSnapshot?.fingerprint == external.fingerprint)
@@ -99,7 +100,23 @@ struct DocumentControllerConvergenceTests {
             #expect(
                 session.conflict?.diskSource.utf8.elementsEqual(external.document.rawContent.utf8) == true)
         } else {
-            try await waitForPresentation { session.renderedReadHTML.contains("External revision") }
+            // Review now owns a CodeMirror source mirror too. Hydration can
+            // publish its derived HTML before the separately frozen native
+            // editor reconciliation commits the corresponding source base.
+            let page = try? await session.editorSession.webView?.callAsyncJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                return {label: content?.getAttribute('aria-label'), role: content?.getAttribute('role'),
+                  review: Boolean(document.getElementById('scholium-document')),
+                  excerpt: document.getElementById('scholium-document')?.textContent?.slice(-160)};
+                """, arguments: [:], in: nil, contentWorld: .page)
+            try await waitForPresentation(
+                diagnostics:
+                    "before publication: \(beforePublication); after: \(session.editorSession.testingReviewPreparationDiagnostics); editingRevision \(session.editingRevision?.sha256 ?? "none"), expected \(external.fingerprint.sha256), rendered \(session.renderedReadFingerprint), checked \(DocumentFingerprint(content: session.editorSession.checkedSource).sha256), editError \(session.editError ?? "none"), conflict \(session.conflict != nil), pending \(controller.pendingHydrationCount), page \(String(describing: page))"
+            ) {
+                session.renderedReadHTML.contains("External revision")
+                    && session.editingRevision == external.fingerprint
+            }
             #expect(session.renderedReadFingerprint == external.fingerprint.sha256)
             #expect(session.renderedReadHTML.contains("Saved BACKGROUND paragraph"))
             #expect(session.conflict == nil)
@@ -107,10 +124,10 @@ struct DocumentControllerConvergenceTests {
         }
     }
 
-    private func waitForPresentation(_ ready: () -> Bool) async throws {
+    private func waitForPresentation(diagnostics: @autoclosure () -> String = "", _ ready: () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         while !ready(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        try #require(ready())
+        try #require(ready(), Comment(rawValue: diagnostics()))
     }
 
     private final class RetainedPresentationProjection: ObservableObject {

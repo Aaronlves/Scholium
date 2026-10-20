@@ -1,6 +1,6 @@
 import {EditorView} from "@codemirror/view";
 import {EditorSelection, type Text} from "@codemirror/state";
-import type {EditorScrollAnchor} from "./protocol";
+import type {EditorMode, EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
 import {AnimationFrameCoalescer} from "./interaction-reporting";
 
@@ -22,6 +22,7 @@ export interface EditorGeometrySnapshot {
 
 export interface EditorScrollCoordinator {
   resetDocument(): void;
+  cancelPendingRestoration(): void;
   captureGeometry(): EditorGeometrySnapshot;
   currentAnchor(): EditorScrollAnchor;
   postCurrent(): void;
@@ -29,6 +30,17 @@ export interface EditorScrollCoordinator {
   setAnchor(anchor: EditorScrollAnchor): void;
   setFraction(fraction: number): void;
   revealPosition(position: number): void;
+}
+
+/** Snapshot the visible document, rather than Review's whole-source CM widget. */
+export function currentDocumentScrollAnchor(
+  mode: EditorMode,
+  editing: Pick<EditorScrollCoordinator, "currentAnchor">,
+  review: {currentAnchor(): EditorScrollAnchor | null},
+): EditorScrollAnchor | undefined {
+  // An unmounted/empty reader has no source anchor. Do not fabricate one from
+  // CodeMirror's replacement block; native retains its last valid position.
+  return mode === "review" ? review.currentAnchor() ?? undefined : editing.currentAnchor();
 }
 
 /** Owns scroll observation, metrics, and restoration for one retained view. */
@@ -206,6 +218,13 @@ export function createEditorScrollCoordinator(
   let geometryReportScheduled = false;
   let geometryReportGeneration = 0;
   let pendingGeometrySnapshot: EditorGeometrySnapshot | undefined;
+  function cancelPendingRestoration() {
+    scrollRevision += 1;
+    revealedScroll = null;
+    geometryReportGeneration += 1;
+    geometryReportScheduled = false;
+    pendingGeometrySnapshot = undefined;
+  }
   function scheduleGeometryReport(snapshot?: EditorGeometrySnapshot) {
     if (snapshot && snapshot.revision !== scrollRevision) return;
     pendingGeometrySnapshot ??= snapshot;
@@ -339,11 +358,7 @@ export function createEditorScrollCoordinator(
 
   return {
     resetDocument() {
-      revealedScroll = null;
-      scrollRevision += 1;
-      geometryReportGeneration += 1;
-      geometryReportScheduled = false;
-      pendingGeometrySnapshot = undefined;
+      cancelPendingRestoration();
       scrollReports.cancel();
       lastPostedAnchor = null;
       window.clearTimeout(sessionTimer);
@@ -359,6 +374,7 @@ export function createEditorScrollCoordinator(
       editor.scrollDOM.scrollLeft = 0;
     },
     captureGeometry,
+    cancelPendingRestoration,
     currentAnchor,
     postCurrent,
     scheduleGeometryReport,

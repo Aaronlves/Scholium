@@ -18,11 +18,15 @@ export function readerSourceRangeCandidate(root: HTMLElement, lower: number, upp
     blockUpper: Number(element.dataset.sourceUtf16End), blockText: element.textContent ?? ''} : null;
 }
 
-export function createReaderArrival(root: HTMLElement) {
+export function createReaderArrival(root: HTMLElement, scrollDOM?: HTMLElement) {
   let marker: HTMLElement | null = null;
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const owner = root.ownerDocument.defaultView;
+  const scrollTop = () => scrollDOM?.scrollTop ?? owner?.scrollY ?? 0;
+  const viewportHeight = () => scrollDOM?.clientHeight ?? owner?.innerHeight ?? 0;
+  const viewportTop = () => scrollDOM?.getBoundingClientRect().top ?? 0;
+  const scrollTo = (options: ScrollToOptions) => scrollDOM ? scrollDOM.scrollTo(options) : owner?.scrollTo(options);
   function clear() {
     generation += 1;
     clearTimeout(timer);
@@ -47,11 +51,11 @@ export function createReaderArrival(root: HTMLElement) {
     if (!target) return false;
     const reduceMotion = typeof owner.matchMedia === "function"
       && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const extent = Math.max(0, root.ownerDocument.documentElement.scrollHeight - owner.innerHeight);
-    const destination = Math.max(0, Math.min(extent, owner.scrollY + target.getBoundingClientRect().top));
-    if (!reduceMotion && Math.abs(destination - owner.scrollY) > owner.innerHeight) {
-      const travel = Math.sign(destination - owner.scrollY) * owner.innerHeight;
-      owner.scrollTo({top: destination - travel, behavior: "auto"});
+    const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+    const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+    if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
+      const travel = Math.sign(destination - scrollTop()) * viewportHeight();
+      scrollTo({top: destination - travel, behavior: "auto"});
     }
     target.scrollIntoView({
       block: "start",
@@ -61,7 +65,7 @@ export function createReaderArrival(root: HTMLElement) {
     // destination before capturing the anchor or displaying arrival feedback.
     // A bounded timer also works in a background WebView where frames pause.
     const deadline = Date.now() + 2000;
-    while (Math.abs(owner.scrollY - destination) > 1) {
+    while (Math.abs(scrollTop() - destination) > 1) {
       if (generation !== requestGeneration || Date.now() >= deadline) return false;
       await new Promise<void>(resolve => setTimeout(resolve, 16));
     }
@@ -111,7 +115,7 @@ export function createReaderArrival(root: HTMLElement) {
     if (!selection) return false;
     clear(); selection.removeAllRanges(); selection.addRange(range);
     const rect = range.getBoundingClientRect();
-    owner.scrollBy({top: rect.top - owner.innerHeight / 3, behavior: 'auto'});
+    scrollTo({top: scrollTop() + rect.top - viewportTop() - viewportHeight() / 3, behavior: 'auto'});
     return true;
   }
   return {reveal, rangeCandidate: (lower: number, upper: number) => readerSourceRangeCandidate(root, lower, upper), revealRange, clear, destroy};

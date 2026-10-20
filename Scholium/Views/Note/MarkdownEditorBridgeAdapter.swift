@@ -228,6 +228,7 @@ struct EditorFloatingSurfaceMessage: Equatable, Sendable {
 
 enum EditorBridgeMessage: Equatable, Sendable {
     case floatingSurface(EditorFloatingSurfaceMessage)
+    case reviewEvent(envelope: EditorBridgeEnvelope, payloadJSON: Data)
     case ready
     case documentEnded(editorReady: Bool)
     case editorError(EditorErrorMessage)
@@ -255,6 +256,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     var envelope: EditorBridgeEnvelope? {
         switch self {
         case .floatingSurface(let message): message.envelope
+        case .reviewEvent(let envelope, _): envelope
         case .ready, .documentEnded: nil
         case .editorError(let message): message.envelope
         case .interactionChanged(let message): message.envelope
@@ -570,6 +572,13 @@ enum EditorBridgeMessageDecoder {
                     context: context,
                     mode: mode
                 ))
+        case "reviewEvent":
+            guard hasOnlyKeys(object, additional: ["type", "event"]),
+                let event = object["event"] as? [String: Any],
+                JSONSerialization.isValidJSONObject(event),
+                let data = try? JSONSerialization.data(withJSONObject: event)
+            else { return nil }
+            return .reviewEvent(envelope: envelope, payloadJSON: data)
         case "scrollChanged":
             guard hasOnlyKeys(object, additional: ["type", "scrollFraction", "scrollAnchor"]),
                 let fraction = finiteDouble(object["scrollFraction"]),

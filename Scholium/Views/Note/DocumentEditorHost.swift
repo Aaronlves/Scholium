@@ -75,16 +75,16 @@ struct DocumentEditorPresentationGate: Equatable {
     }
 }
 
-/// Owns the presentation boundary between the committed Read projection and
-/// the exact-source editor. The read-only WebKit surface is mounted only while
-/// Review or pending read recovery is presented. The editor remains retained
-/// after allocation so its source, selection, composition, and Undo stay live.
+/// Owns visibility and input eligibility while a document projection prepares.
+/// A retained host keeps its source, selection, composition, and Undo live;
+/// callers choose whether a previously presented projection can remain visible.
 struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     let documentID: String
     let presentsEditor: Bool
     let retainsEditor: Bool
     let editorIsLoaded: Bool
     let editorIsReady: Bool
+    let keepsPresentedSurfaceWhilePreparing: Bool
     let allowsPendingReadRecovery: Bool
     let preparationTitle: String
     let preparationPresentation: ScholiumDocumentPresentationConfiguration
@@ -99,6 +99,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         retainsEditor: Bool,
         editorIsLoaded: Bool,
         editorIsReady: Bool,
+        keepsPresentedSurfaceWhilePreparing: Bool = true,
         allowsPendingReadRecovery: Bool = false,
         preparationTitle: String = "",
         preparationPresentation: ScholiumDocumentPresentationConfiguration = .init(textScale: 1),
@@ -111,6 +112,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         self.retainsEditor = retainsEditor
         self.editorIsLoaded = editorIsLoaded
         self.editorIsReady = editorIsReady
+        self.keepsPresentedSurfaceWhilePreparing = keepsPresentedSurfaceWhilePreparing
         self.allowsPendingReadRecovery = allowsPendingReadRecovery
         self.preparationTitle = preparationTitle
         self.preparationPresentation = preparationPresentation
@@ -121,6 +123,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
     private var showsEditor: Bool {
         !allowsPendingReadRecovery
+            && (keepsPresentedSurfaceWhilePreparing || editorIsReady)
             && presentationGate.showsEditor(
                 documentID: documentID,
                 presentsEditor: presentsEditor,

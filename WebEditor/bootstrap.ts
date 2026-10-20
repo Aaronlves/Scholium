@@ -103,3 +103,20 @@ export function measureMarkdownEditor(view: EditorView, read: () => void): Promi
     } catch (error) { reject(error); }
   });
 }
+
+/** Let WebKit publish newly discovered font loads before rereading its ready promise. */
+export async function awaitMarkdownFontLoading(
+  fonts: Pick<FontFaceSet, "status" | "ready">,
+  requireCurrent: () => void,
+): Promise<void> {
+  requireCurrent();
+  if (fonts.status === "loading") {
+    // A layout read can discover fonts while the previous ready promise is
+    // already fulfilled. Reawaiting it only runs microtasks, starving WebKit's
+    // font state update and the preparation deadline, especially when hidden.
+    await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+    requireCurrent();
+  }
+  await fonts.ready;
+  requireCurrent();
+}

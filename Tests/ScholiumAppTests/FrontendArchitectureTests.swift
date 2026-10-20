@@ -315,19 +315,17 @@ struct FrontendArchitectureTests {
         #expect(
             noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel")
         )
-        #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface"))
+        #expect(noteSource.contains("retainsEditor: documentSession.retainsEditorSurface || editorSession.hasAttachedWebView"))
         #expect(noteSource.contains("editorIsReady: editorSession.isLoaded"))
         #expect(
             noteSource.contains(
-                "editorSession.presentedMode == documentSession.activeEditorMode"
+                "editorSession.presentedMode == (isEditing ? documentSession.activeEditorMode : .review)"
             ))
-        #expect(noteSource.contains("mode: documentSession.retainedEditorMode"))
+        #expect(noteSource.contains("mode: isEditing ? documentSession.retainedEditorMode : .review"))
         #expect(noteSource.contains("renderedReadReadyFingerprint"))
         #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
         #expect(noteSource.contains("noteFingerprint.sha256"))
         #expect(noteSource.contains("if note.document.hasExactEmptyBody"))
-        #expect(noteSource.contains("scholium.emptyRenderedReview"))
-        #expect(noteSource.contains("This note has no body content."))
         #expect(noteSource.contains("documentSession.isEnteringManagedCreation"))
         #expect(noteSource.contains("Retry Edit"))
         #expect(noteSource.contains("managedCreationBodyStartUTF16"))
@@ -449,7 +447,8 @@ struct FrontendArchitectureTests {
         #expect(webViewSource.contains("case \"floatingSurface\":\n                guard surfaceVisibility.isActive"))
         #expect(webViewSource.contains("case \"internalLink\":\n                guard surfaceVisibility.isActive"))
         #expect(webViewSource.contains("case \"passageContextMenu\":\n                guard surfaceVisibility.isActive"))
-        #expect(noteSource.contains("if !webProjectionIsReady"))
+        #expect(noteSource.contains("keepsPresentedSurfaceWhilePreparing: isEditing"))
+        #expect(noteSource.contains("editorSession.startingFingerprint == noteFingerprint.sha256"))
         #expect(!noteSource.contains(".accessibilityHidden(webProjectionIsReady)"))
         #expect(uiSupport.contains("identifier BEGINSWITH %@"))
         #expect(uiSupport.contains("scholium.renderedDocument.loading"))
@@ -1060,6 +1059,7 @@ struct FrontendArchitectureTests {
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
         #expect(!contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
         #expect(!contentSource.contains(".toolbarBackgroundVisibility(.visible, for: .windowToolbar)"))
+        #expect(appSource.contains(".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"))
         #expect(appSource.contains(".windowToolbarStyle(.unified(showsTitle: true))"))
         #expect(windowManagementSource.contains("window.toolbarStyle = .unified"))
         #expect(!appSource.contains("Collapse Note"))
@@ -2001,7 +2001,9 @@ struct FrontendArchitectureTests {
         #expect(!appearanceSource.contains(".scholium-document h1 + p"))
         #expect(!appearanceSource.contains(".scholium-document h2 + p"))
         #expect(noteSource.contains("DocumentEditorHost("))
-        #expect(noteSource.contains("SafeMarkdownReadWebView("))
+        #expect(noteSource.contains("private var readDocumentConfiguration: SafeMarkdownReadWebView"))
+        #expect(!noteSource.contains("private var readDocumentSurface:"))
+        #expect(noteSource.contains("review: renderedReadFingerprint == noteFingerprint.sha256 ? readDocumentConfiguration : nil"))
         #expect(noteSource.contains("MarkdownEditorWebView("))
         #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
@@ -2956,9 +2958,11 @@ struct FrontendArchitectureTests {
                 return entry == entryName + "," || entry == "Prec.high(" + entryName + "),"
             }.count
         }
-        // Both modes reuse the derived semantic index without installing any
-        // Live presentation field, widget or navigation provider in Source.
-        #expect(installedEntryCount("liveProjectionIndex.extension", in: staticExtensions) == 1)
+        // Writable modes install one shared language/index compartment lazily;
+        // cold Review never constructs unneeded full-source editing analysis.
+        #expect(editorSource.contains("createDeferredEditingInfrastructure([scholiumNoteLanguage, liveProjectionIndex.extension])"))
+        #expect(installedEntryCount("initialParsingExtension", in: staticExtensions) == 1)
+        #expect(installedEntryCount("liveProjectionIndex.extension", in: staticExtensions) == 0)
         #expect(installedEntryCount("liveProjectionIndex.extension", in: liveModeExtensions) == 0)
         #expect(installedEntryCount("liveProjectionIndex.extension", in: sourceModeExtensions) == 0)
         for liveOnlyExtension in [
@@ -2984,17 +2988,16 @@ struct FrontendArchitectureTests {
         }
         #expect(editorSource.contains("const initialModeExtension = modeCompartment.of(sourceMode);"))
         #expect(installedEntryCount("initialModeExtension", in: staticExtensions) == 1)
-        #expect(editorSource.contains("createMarkdownDocumentState(text, editorExtensions.map(extension =>"))
-        #expect(
-            editorSource.contains(
-                "extension === initialModeExtension ? modeCompartment.of(mode === \"livePreview\" ? livePreviewMode : sourceMode) : extension"
-            ))
+        #expect(editorSource.contains("createMarkdownDocumentState(text, extensions, {"))
+        #expect(editorSource.contains("const extensions = editorExtensions.map(extension => extension === initialModeExtension"))
+        #expect(editorSource.contains("? modeCompartment.of(modeExtensions(mode))"))
+        #expect(editorSource.contains("extension === initialParsingExtension ? editingInfrastructure.forDocument(mode) : extension"))
         #expect(staticExtensions.contains("bidiIsolates()"))
         #expect(staticExtensions.contains("EditorView.perLineTextDirection.of(true)"))
         #expect(editorSource.contains(#"combine: (modes) => modes[0] ?? "source""#))
         #expect(
             editorSource.contains(
-                "modeCompartment.reconfigure(nextMode === \"livePreview\" ? livePreviewMode : sourceMode)"
+                "modeCompartment.reconfigure(modeExtensions(nextMode))"
             ))
         #expect(!editorSource.contains("highlightSelectionMatches()"))
         #expect(!editorSource.contains("update.focusChanged"))
@@ -4026,7 +4029,7 @@ struct FrontendArchitectureTests {
             body: #"<pre><code class="language-mermaid">flowchart LR\nA --&gt; B</code></pre>"#,
         )
         let readRuntime = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            contentsOf: repository.appendingPathComponent("WebEditor/reader-runtime.ts"),
             encoding: .utf8
         )
         let css = ScholiumMermaidAssets.css
@@ -4047,7 +4050,7 @@ struct FrontendArchitectureTests {
         #expect(readRuntime.contains("readerWindow.scholiumMermaidReady"))
         #expect(readRuntime.contains("post('requestMermaidRuntime')"))
         #expect(readRuntime.contains("runtime.mount(output, result.svg)"))
-        #expect(readRuntime.contains("document.querySelectorAll('pre > code')"))
+        #expect(readRuntime.contains("documentRoot.querySelectorAll('pre > code')"))
         #expect(readRuntime.contains("name.toLowerCase() === 'language-mermaid'"))
         #expect(!readRuntime.contains("diagnostic.setAttribute('role', 'status')"))
     }
@@ -4149,7 +4152,7 @@ struct FrontendArchitectureTests {
                 #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
         )
         let readRuntime = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            contentsOf: repository.appendingPathComponent("WebEditor/reader-runtime.ts"),
             encoding: .utf8
         )
         let previewController = try String(
@@ -4214,7 +4217,7 @@ struct FrontendArchitectureTests {
                 #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#
         )
         let readRuntime = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            contentsOf: repository.appendingPathComponent("WebEditor/reader-runtime.ts"),
             encoding: .utf8
         )
         #expect(readHTML.contains(css))

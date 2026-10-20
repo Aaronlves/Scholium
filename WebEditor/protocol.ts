@@ -1,4 +1,5 @@
-export const EDITOR_PROTOCOL_VERSION = 54;
+import {validCommittedReviewProjection, type CommittedReviewProjection} from "./committed-review-contract";
+export const EDITOR_PROTOCOL_VERSION = 55;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {maximumCitationDataBytes, validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";
@@ -17,9 +18,9 @@ export const MAX_RECOVERY_ACTION_LABEL_BYTES = 1_024;
 export const MAX_RECOVERY_ENVELOPE_BYTES = MAX_SOURCE_ENVELOPE_BYTES
   + MAX_RECOVERY_HISTORY_BYTES * 2 + maximumCitationDataBytes * 3;
 
-export const MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12_000_000 + MAX_INBOUND_BYTES + 512_000;
+export const MAX_PRESENTATION_ENVELOPE_BYTES = MAX_IMAGE_ENVELOPE_BYTES + 12_000_000 + MAX_INBOUND_BYTES + 512_000 + 24_000_000;
 
-export type EditorMode = "livePreview" | "source";
+export type EditorMode = "review" | "livePreview" | "source";
 export type MarkdownEditorCommand =
   | "bold" | "emphasis" | "strikethrough" | "highlight" | "inlineCode" | "markdownComment"
   | "standardLink" | "wikilink" | "annotatedWikilink"
@@ -133,6 +134,7 @@ export interface EditorPresentationConfiguration {
   writingContinuationEnabled: boolean;
   writingContinuationContextKey: string;
   writingIndexContextKey: string;
+  reviewProjection?: CommittedReviewProjection | null;
 }
 
 /** Appearance can advance across input; source ranges and image reads cannot. */
@@ -186,7 +188,7 @@ export type EditorOperation =
   | {type: "pasteClipboard"; plainText: string; selections: SelectionRange[]}
   | {type: "suspendForDetachment"; suspensionID: string}
   | {type: "resumeAfterDetachment"; suspensionID: string}
-  | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
+  | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
 export interface EditorRequest {
   protocolVersion: number;
   requestID: string;
@@ -225,7 +227,7 @@ const operationTypes = new Set([
   "setPresentation", "completePreparation", "releasePreparation",
   "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "showPreview", "showSelectionActions", "measureVisibleProjection", "announceStatus",
   "goToLine", "revealSourceRange", "selectAll", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "captureRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "beginCitation", "citationCallback", "finishCitation", "cancelCitation", "command", "pasteClipboard", "documentFind", "clearDocumentFind", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -239,7 +241,7 @@ const commandTypes = new Set<MarkdownEditorCommand>([
   "linkSelectedText", "insertCitation", "insertBibliography", "refreshCitations", "citationStyle", "cancelCitation", "previewAtSelection",
 ]);
 function validMode(value: unknown): value is EditorMode {
-  return value === "livePreview" || value === "source";
+  return value === "review" || value === "livePreview" || value === "source";
 }
 function validInitialSelection(value: unknown, normalizedLength: number) {
   if (value === undefined) return true;
@@ -367,7 +369,8 @@ function validPresentation(value: unknown): value is EditorPresentationConfigura
   return typeof configuration.documentTitle === "string" && configuration.documentTitle.length <= 1_024
     && typeof configuration.presentationCSS === "string" && configuration.presentationCSS.length <= 1_000_000
     && typeof configuration.userCSS === "string" && configuration.userCSS.length <= 1_000_000
-    && Object.keys(configuration).length === 10
+    && (Object.keys(configuration).length === 10 || Object.keys(configuration).length === 11)
+    && (configuration.reviewProjection == null || validCommittedReviewProjection(configuration.reviewProjection))
     && Array.isArray(configuration.linkPreviews) && encodedByteLength(configuration.linkPreviews) <= MAX_INBOUND_BYTES
     && Number.isSafeInteger(configuration.linkPreviewGeneration) && Number(configuration.linkPreviewGeneration) >= 0
     && validImageResources(configuration.imageResources)
@@ -468,7 +471,7 @@ function validOperation(operation: Record<string, unknown>): boolean {
       && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
-  case "selectAll": case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
+  case "selectAll": case "clearDocumentFind": case "focus": case "focusTitle": case "blur": return true;
   case "showSelectionActions": return Object.keys(operation).length === 1;
   default: return false;
   }

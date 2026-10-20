@@ -102,12 +102,13 @@ recovery notices retain actions at 300/520 points. Original private-Note/install
 binary reproduction and human VoiceOver remain unverified. Evidence:
 `.build/image-inline-evidence/RESULTS.md`.
 
-**2026-10-16 — Full gate (`992740ad`):** Default `verify.sh` passes all
-14 phases, including measurement/display, WebKit and clean Release compilation.
-`.build/performance-evidence/current-settings-phase-summary.json` binds exact-source
-proof, verified local dependencies and retained failures; earlier performance
-comparisons remain in `current-performance-phase-summary.json`. Declared skips
-remain; packaged, real-service and human acceptance are unproved.
+**2026-10-21 — Full gate (working tree, `9c6a99b0` base):** Default `verify.sh`
+passes all 14 phases, including measurement/display, WebKit and clean Release
+compilation: `.build/ci-verification/runs/full-20261020T214014-38151/summary.md`.
+Prior Settings/exact-source and performance comparisons remain in
+`.build/performance-evidence/current-settings-phase-summary.json` and
+`current-performance-phase-summary.json`. Declared skips remain; packaged,
+real-service and human acceptance are unproved.
 
 **2026-10-05 — Saving/recovery and presentation:** Prior native fixture QA preserves
 accepted bytes through switching, caret return, closure and graceful relaunch.
@@ -200,13 +201,18 @@ native publication; they are not G7 or click-to-paint acceptance.
   `.build/performance-evidence/related-query-allocator-comparison.json`.
   This establishes neither RSS, retained memory, leaks, exact peak nor native
   latency; no practical speed gain is claimed.
-- **2026-10-16 editor-state proxy:** Production TypeScript under Node/V8;
-  18 edit/position series, three warmups/20 samples. Series medians for state
-  transaction plus citation catalog: 0.247–0.518 ms (51,843-byte prose),
-  1.307–11.201 ms (1,096,763-byte CJK). Complete-tree, exact-source and
-  Undo/Redo oracles pass. The summary binds raw results. This excludes WebKit
-  plugins, native input, layout, paint and save; no paired improvement claim.
-  Historical attached-editor preparation retains its prior scope.
+- **2026-10-21 shared editor:** Review/Edit/Source share one CodeMirror/WK host
+  and history. WK checks preserve exact Unicode/newline bytes, read-only Review,
+  cold Edit activation and mode reversal; reload restores viewport/interrupted
+  Find. Titles/measures at 600/1040 points and Callout/prose boundaries agree
+  within one CSS pixel. Native journeys cover selection/copy, completion,
+  conflict/recovery and light/dark adaptations. Regression checks cover cancelled
+  resource loads, deferred keymaps, font waiting and input superseding appearance
+  restoration. Evidence: `.build/review-codemirror/`. Earlier foreground timing
+  captures are superseded; final runtime remeasurement awaits macOS UI-automation
+  authentication. No final timing gain is claimed. Review still mounts committed
+  HTML; shared parsing, DOM virtualization, retained memory and human acceptance
+  are unproved.
 
 Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
 0.601/0.641 → 0.635/0.717; material recall 0.625 → 0.688/0.750. Agent-authored cases are

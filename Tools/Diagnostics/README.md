@@ -14,6 +14,34 @@ The initial-alternate option starts with B loaded before the first measured A cl
 Without it, the app is already open with no selected document; process launch is
 outside the measurement. Neither option proves a cold OS/WebKit process cache.
 
+Set `SCHOLIUM_FOREGROUND_OPEN_MODE=Review` to measure committed reading;
+`Edit` is the default. `SCHOLIUM_FOREGROUND_OPEN_INCLUDE_NEW_TAB=1` adds a
+fourth opening after the first opening and two ordinary returns, using a fresh
+Tab action. This combined journey starts without a selected document and cannot
+combine with the initial-alternate, retained-target or new-tab-only flags.
+`SCHOLIUM_FOREGROUND_OPEN_INCLUDE_MODES=1` then captures Review/Edit/Source
+transitions and verifies exact save, a Review round trip, navigation, Undo and
+Redo outside timing. Run identical fresh-process counts and frame rates before
+and after.
+
+Cross-mode opening comparisons use action-request uptime to the first matching
+WindowServer body frame, including XCTest action transport. Edit additionally
+retains its native AppKit click duration. Review's existing `first_read_activation`
+starts after source resolution and ends at reader readiness; it must not be
+compared directly with the broader Edit native interval.
+The journey leaves one passive second after native/AX readiness before taking
+an active screenshot. A body match arriving after that screenshot begins is
+invalid for passive display timing; extend capture and repeat that sample.
+
+For mode changes, `CompareQAModeFrames.swift` requires the mode-control crop
+and settled document-body pixels in the same passive frame. Run it offline with
+one `mode-*/` observation directory. Its report retains pixel errors, thresholds,
+reference/matching/preceding frames and interval. Inspect representative frames.
+A mode control change with unchanged body is explicitly flagged and cannot
+establish a discriminating body-reconfiguration latency. AX readiness remains
+a separate upper bound. Synthetic comparator tests exercise old and blank bodies,
+unchanged mode indicators and capture overflow.
+
 For a fresh Open in New Tab action, set `SCHOLIUM_FOREGROUND_OPEN_NEW_TAB=1`,
 `SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE=1` and
 `SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET=1`. Each process records one new A Tab
@@ -62,6 +90,10 @@ xcrun swiftc -module-cache-path .build/foreground-opening/module-cache \
   "$PWD/Tools/Diagnostics/RecognizeQAWindowFrames.swift" -o .build/foreground-opening/recognize-frames
 .build/foreground-opening/recognize-frames /absolute/repository/.build/run/sample-0/frames 'synthetic body phrase'
 ```
+
+The recognizer also retains normalized bounding boxes for complete single-line
+sentinel matches. These numeric positions support offline inspection of vertical
+drift across mode frames; wrapped aggregate matches have no inferred position.
 
 The report supplies the actual body phrase and each sample's native completion
 uptime and duration. Their difference is the AppKit action start; compare it with

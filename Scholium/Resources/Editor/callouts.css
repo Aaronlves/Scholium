@@ -2,7 +2,8 @@
    Native-resolved title colors identify research roles; body prose retains ink.
    Authored titles take precedence, with a source-neutral fallback when absent. */
 .scholium-callout,
-#editor .cm-editor.scholium-live-mode {
+#editor .cm-editor.scholium-live-mode,
+#editor .cm-editor.scholium-review-mode {
   --scholium-callout-block-gap: 1.18em;
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);

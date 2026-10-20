@@ -6,8 +6,13 @@ import WebKit
 enum ScholiumMathRuntimeLoader {
     @MainActor
     static func installAndRefresh(in webView: WKWebView) async -> Bool {
+        guard !Task.isCancelled else { return false }
         let installed = await install(in: webView)
-        if installed { await refresh(in: webView) }
+        guard !Task.isCancelled else { return false }
+        if installed {
+            await refresh(in: webView)
+            guard !Task.isCancelled else { return false }
+        }
         // Successful refresh replaces pending source projections before the
         // geometry barrier proceeds. Failure settles their exact-source fallback.
         _ = try? await webView.callAsyncJavaScript(
@@ -21,21 +26,26 @@ enum ScholiumMathRuntimeLoader {
 
     @MainActor
     private static func install(in webView: WKWebView) async -> Bool {
-        if let installed = try? await webView.callAsyncJavaScript(
+        guard !Task.isCancelled else { return false }
+        let installed = try? await webView.callAsyncJavaScript(
             "return window.scholiumMath?.version === 1",
             arguments: [:],
             in: nil,
             contentWorld: .page
-        ), installed as? Bool == true {
+        )
+        guard !Task.isCancelled else { return false }
+        if installed as? Bool == true {
             return true
         }
         guard !ScholiumMathAssets.runtimeJavaScript.isEmpty else { return false }
         do {
+            guard !Task.isCancelled else { return false }
             _ = try await webView.evaluateJavaScript(
                 ScholiumMathAssets.runtimeJavaScript,
                 in: nil,
                 contentWorld: .page
             )
+            guard !Task.isCancelled else { return false }
             return true
         } catch {
             // Exact mathematics source remains visible through the existing
@@ -46,6 +56,7 @@ enum ScholiumMathRuntimeLoader {
 
     @MainActor
     private static func refresh(in webView: WKWebView) async {
+        guard !Task.isCancelled else { return }
         _ = try? await webView.callAsyncJavaScript(
             "return window.scholiumEditor?.refreshMathRuntime?.() === true",
             arguments: [:],

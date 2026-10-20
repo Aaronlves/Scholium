@@ -21,6 +21,7 @@ function highlightRegistry(): HighlightRegistry | null {
 export function createReviewSelectionPresentation(
   selectionEnabled: boolean,
   testingEnabled: boolean,
+  presentationRoot: HTMLElement = document.documentElement,
 ): SelectionPresentation {
   const registry = highlightRegistry();
   const supported = selectionEnabled
@@ -84,6 +85,6 @@ export function createReviewSelectionPresentation(
       };
     };
   }
-  if (supported) document.documentElement.classList.add("scholium-review-custom-selection");
+  if (supported) presentationRoot.classList.add("scholium-review-custom-selection");
   return presentation;
 }

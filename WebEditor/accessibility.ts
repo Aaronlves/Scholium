@@ -7,12 +7,12 @@ export function unsupportedFilePasteMessage() {
 
 export function editorAccessibilityAttributes(mode: EditorMode) {
   return {
-    "aria-label": mode === "livePreview"
+    "aria-label": mode === "review" ? localized("Review") : mode === "livePreview"
       ? localized("Markdown editor, Edit mode")
       : localized("Markdown source editor"),
-    role: "textbox",
-    "aria-multiline": "true",
-    spellcheck: "true",
+    role: mode === "review" ? "document" : "textbox",
+    "aria-multiline": mode === "review" ? "false" : "true",
+    spellcheck: mode === "review" ? "false" : "true",
     autocapitalize: "sentences",
   } as const;
 }

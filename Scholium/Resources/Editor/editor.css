@@ -66,6 +66,17 @@ body,
   cursor: text;
 }
 
+/* The committed reading document owns its reading measure and top/trailing
+   insets. Its CodeMirror replacement parent must not add the source insets
+   a second time. Keep this alongside the resource rule above: generated
+   CodeMirror themes precede it in the page cascade. */
+.cm-editor.scholium-review-mode .cm-scroller .cm-content {
+  padding: 0;
+  min-height: 100%;
+  display: block;
+  white-space: normal;
+}
+
 /* Source's gutter and text share a centered work measure. Continuation rows
    indent within their logical line without inserting a character. */
 .cm-editor.scholium-source-mode .cm-line {

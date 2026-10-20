@@ -43,7 +43,15 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let startWithAlternate = environment["SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE"] == "1"
         let retainTarget = environment["SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET"] == "1"
         let opensNewTab = environment["SCHOLIUM_FOREGROUND_OPEN_NEW_TAB"] == "1"
-        let sampleCount = opensNewTab ? 1 : 3
+        let openingMode = environment["SCHOLIUM_FOREGROUND_OPEN_MODE"] ?? "Edit"
+        XCTAssertTrue(["Edit", "Review"].contains(openingMode))
+        let includesNewTab = environment["SCHOLIUM_FOREGROUND_OPEN_INCLUDE_NEW_TAB"] == "1"
+        let includesModes = environment["SCHOLIUM_FOREGROUND_OPEN_INCLUDE_MODES"] == "1"
+        XCTAssertFalse(
+            includesNewTab && (opensNewTab || startWithAlternate || retainTarget),
+            "The combined journey starts without a selected document and finishes with one new-tab opening.")
+        let sampleCount = includesNewTab ? 4 : (opensNewTab ? 1 : 3)
+        let nativeMetric = openingMode == "Review" ? "first_read_activation" : "note_open_to_visible"
         if opensNewTab { XCTAssertTrue(startWithAlternate && retainTarget) }
         try requireQAPreferencePreservation()
         continueAfterFailure = false
@@ -104,7 +112,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1380",
             "SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS": "300000",
             "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
-            "SCHOLIUM_PERFORMANCE_METRIC": "note_open_to_visible",
+            "SCHOLIUM_PERFORMANCE_METRIC": nativeMetric,
             "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
             "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": String(sampleCount),
             "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": targetID,
@@ -114,15 +122,25 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let window = application.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 30))
         let editor = application.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let modeControl = documentModeControl(in: application)
+        func openingSurfaceIsReady(_ documentID: String) -> Bool {
+            guard self.documentModeState(modeControl) == openingMode else { return false }
+            return openingMode == "Review"
+                ? self.waitForRenderedDocument(documentID, in: application, timeout: 0.1)
+                : editor.exists
+        }
         let target = nativeLibraryRow("scholium.noteRow.\(targetID)", in: application)
         let other = nativeLibraryRow("scholium.noteRow.\(alternateID)", in: application)
         XCTAssertTrue(target.waitForExistence(timeout: 60))
         XCTAssertTrue(other.waitForExistence(timeout: 10))
+        // first_read_activation arms Review in the workspace-opening owner
+        // before Library readiness. An empty workspace intentionally has no mode
+        // toolbar control, so observing that absent control cannot be a barrier.
         if startWithAlternate {
             XCTAssertTrue(
                 waitUntil(timeout: 60) {
-                    window.title == "QA Autosave B" && editor.exists
-                        && NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor)
+                    window.title == "QA Autosave B" && openingSurfaceIsReady(alternateID)
+                        && (openingMode == "Review" || NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
                 }, "Initial alternate setup must finish loading and focus the real editor before measurement.")
         } else {
             XCTAssertTrue(application.descendants(matching: .any)["scholium.noDocumentState"].waitForExistence(timeout: 30))
@@ -153,14 +171,17 @@ final class ScholiumPerformanceUITests: XCTestCase {
             menu.menuItems["Open in New Tab"].click()
         }
         for sample in 0..<sampleCount {
+            let sampleOpensNewTab = opensNewTab || (includesNewTab && sample == sampleCount - 1)
             if sample > 0 {
                 if retainTarget && sample == 1 { openAlternateInNewTab() } else { other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click() }
                 XCTAssertTrue(
                     waitUntil(timeout: 60) {
-                        window.title == "QA Autosave B" && other.isSelected && editor.exists
+                        window.title == "QA Autosave B" && other.isSelected && openingSurfaceIsReady(alternateID)
                     })
-                editor.click()
-                XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
+                if openingMode == "Edit" {
+                    editor.click()
+                    XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
+                }
                 XCTAssertEqual(lineCount(at: result.path), sample, "Alternate clicks must not complete target attempts.")
             }
             let directory = raw.appendingPathComponent("sample-\(sample)")
@@ -177,7 +198,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "The actual Library row must have on-window geometry before capture starts.")
             let point = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             let targetMenu = application.menus["scholium.noteRow.\(targetID)"]
-            if opensNewTab {
+            if sampleOpensNewTab {
                 point.rightClick()
                 XCTAssertTrue(targetMenu.waitForExistence(timeout: 3))
             }
@@ -227,7 +248,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             XCTAssertEqual(application.state, .runningForeground, "Display measurements require the QA application in the foreground.")
             let refreshVisible = application.descendants(matching: .any)["scholium.refreshStatus"].exists
             let actionStarted = DispatchTime.now().uptimeNanoseconds
-            if opensNewTab { targetMenu.menuItems["Open in New Tab"].click() } else { point.click() }
+            if sampleOpensNewTab { targetMenu.menuItems["Open in New Tab"].click() } else { point.click() }
             let actionReturned = DispatchTime.now().uptimeNanoseconds
             let nativeCompleted = waitUntil(timeout: 10) { self.lineCount(at: result.path) == sample + 1 }
             if !nativeCompleted {
@@ -240,7 +261,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "Each target click must complete exactly one current native opening attempt.")
             // Keep screenshot capture and Vision away from the measured render.
             // Offline analysis rejects any match arriving after this quiet period.
-            Thread.sleep(forTimeInterval: 0.25)
+            // Reader readiness can precede shared-host publication. Keep the
+            // recorder passive through that handoff before taking a screenshot.
+            Thread.sleep(forTimeInterval: 1)
             let firstScreenshotStarted = DispatchTime.now().uptimeNanoseconds
             var captures: [[String: Any]] = []
             var recognized = false
@@ -266,18 +289,26 @@ final class ScholiumPerformanceUITests: XCTestCase {
             let native = try foregroundLastRecord(at: result)
             XCTAssertEqual(native["run_id"] as? String, runID)
             XCTAssertEqual(native["sample"] as? Int, sample)
-            XCTAssertEqual(native["metric"] as? String, "note_open_to_visible")
+            XCTAssertEqual(native["metric"] as? String, nativeMetric)
+            let surfaceIsAccessible = waitUntil(timeout: 10) { openingSurfaceIsReady(targetID) }
+            if !surfaceIsAccessible {
+                let labels = application.textViews.allElementsBoundByIndex.prefix(8).map(\.label)
+                print("FOREGROUND_OPEN_AX_FAILURE mode=\(openingMode) reported_mode=\(modeControl.label) text_views=\(labels)")
+            }
+            XCTAssertTrue(surfaceIsAccessible, "The mode-specific document surface must become accessible after native readiness.")
             let nativeEnd = try XCTUnwrap((native["completed_uptime_ns"] as? NSNumber)?.uint64Value)
             XCTAssertGreaterThanOrEqual(nativeEnd, actionStarted)
             XCTAssertNotNil(native["duration_ms"] as? Double)
-            XCTAssertEqual(notify_post("com.scholium.qa.performance-note-opening-web-samples"), UInt32(NOTIFY_STATUS_OK))
-            XCTAssertTrue(
-                waitUntil(timeout: 30) { self.lineCount(at: webResult.path) == sample + 1 },
-                "Collect Web phases before the alternate click invalidates this completed attempt.")
-            let web = try foregroundLastRecord(at: webResult)
-            XCTAssertEqual(web["run_id"] as? String, runID)
-            XCTAssertEqual(web["sample"] as? Int, sample)
-            XCTAssertFalse(try XCTUnwrap(web["samples"] as? [[String: Any]]).isEmpty)
+            if openingMode == "Edit" {
+                XCTAssertEqual(notify_post("com.scholium.qa.performance-note-opening-web-samples"), UInt32(NOTIFY_STATUS_OK))
+                XCTAssertTrue(
+                    waitUntil(timeout: 30) { self.lineCount(at: webResult.path) == sample + 1 },
+                    "Collect Web phases before the alternate click invalidates this completed attempt.")
+                let web = try foregroundLastRecord(at: webResult)
+                XCTAssertEqual(web["run_id"] as? String, runID)
+                XCTAssertEqual(web["sample"] as? Int, sample)
+                XCTAssertFalse(try XCTUnwrap(web["samples"] as? [[String: Any]]).isEmpty)
+            }
             if let captureRequest {
                 XCTAssertFalse(
                     FileManager.default.fileExists(atPath: captureRequest.finished.path),
@@ -296,12 +327,18 @@ final class ScholiumPerformanceUITests: XCTestCase {
             }
             let observation: [String: Any] = [
                 "sample": sample,
-                "kind": opensNewTab
+                "mode": openingMode,
+                "kind": sampleOpensNewTab
                     ? "new_tab_first_open"
                     : (sample == 0 ? (startWithAlternate ? "first_switch" : "cold_first_open") : (retainTarget ? "retained_tab_return" : "replace_return")),
                 "driver_action_start_uptime_ns": actionStarted, "driver_action_return_uptime_ns": actionReturned,
                 "screenshot_observation_upper_bound_ms": Double(observed - actionStarted) / 1_000_000,
                 "target_body_recognized": recognized, "captures": captures, "native": native,
+                "native_boundary": openingMode == "Review"
+                    ? "Committed Read activation after source resolution to reader readiness."
+                    : sampleOpensNewTab
+                        ? "Native Open in New Tab handler to validated native stable-visible layout."
+                        : "AppKit Library mouseDown handler to validated native stable-visible layout.",
                 "first_screenshot_start_uptime_ns": firstScreenshotStarted,
                 "passive_frame_interval_before_screenshot": true,
                 "window_server_frames_enabled": requestDirectory != nil,
@@ -313,7 +350,18 @@ final class ScholiumPerformanceUITests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: note), prepared)
             XCTAssertEqual(try Data(contentsOf: alternate), alternateOriginal)
         }
-        // This correctness phase is deliberately outside all three opening samples.
+        var modeObservations: [[String: Any]] = []
+        if includesModes {
+            modeObservations = try foregroundModeSwitches(
+                in: application, window: window, documentID: targetID,
+                raw: raw, requestDirectory: requestDirectory, pid: process.processIdentifier,
+                modeControl: modeControl, originalSource: prepared, sourceURL: note)
+        }
+        // This correctness phase is deliberately outside every timed sample.
+        if documentModeState(modeControl) != "Edit" {
+            requestPerformanceEditorAction("activation")
+            XCTAssertTrue(waitUntil(timeout: 60) { self.documentModeState(modeControl) == "Edit" && editor.exists })
+        }
         editor.click()
         XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
         let beforeEditValue = try XCTUnwrap(editor.value as? String)
@@ -325,6 +373,18 @@ final class ScholiumPerformanceUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 60) { (try? Data(contentsOf: note)) == edited })
         let afterEditValue = try XCTUnwrap(editor.value as? String)
         XCTAssertNotEqual(afterEditValue, beforeEditValue)
+        if includesModes {
+            // Review must flush the exact current source without ending history.
+            requestPerformanceEditorAction("review")
+            XCTAssertTrue(
+                waitUntil(timeout: 60) {
+                    self.documentModeState(modeControl) == "Review"
+                        && self.waitForRenderedDocument(targetID, in: application, timeout: 0.1)
+                })
+            XCTAssertEqual(try Data(contentsOf: note), edited)
+            requestPerformanceEditorAction("activation")
+            XCTAssertTrue(waitUntil(timeout: 60) { self.documentModeState(modeControl) == "Edit" && editor.exists })
+        }
         if retainTarget { openAlternateInNewTab() } else { other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click() }
         XCTAssertTrue(waitUntil(timeout: 60) { window.title == "QA Autosave B" && other.isSelected })
         target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
@@ -355,16 +415,19 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let report: [String: Any] = [
             "label": label, "run_id": runID, "fixture_notes": 500, "target": targetID, "alternate": alternateID,
             "body_sentinel": recognitionSentinel, "initial_alternate": startWithAlternate, "retain_target": retainTarget,
-            "opens_new_tab": opensNewTab, "samples": observations,
+            "opens_new_tab": opensNewTab, "includes_new_tab": includesNewTab,
+            "mode": openingMode, "samples": observations, "mode_samples": modeObservations,
             "source_sha256": SHA256.hash(data: prepared).map { String(format: "%02x", $0) }.joined(),
             "qa_binary_sha256": SHA256.hash(data: try Data(contentsOf: bundle.appendingPathComponent("Contents/MacOS/Scholium"))).map {
                 String(format: "%02x", $0)
             }.joined(),
             "post_measurement_exact_save_navigation_undo_redo": true,
-            "native_boundary":
-                opensNewTab
-                ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
-                : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
+            "post_measurement_review_preserves_undo": includesModes,
+            "native_boundary": openingMode == "Review"
+                ? "Native committed Read activation after source resolution to reader readiness; excludes earlier click/event/source work. Not comparable to Edit native click duration."
+                : opensNewTab
+                    ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
+                    : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
             "screenshot_boundary":
                 "Before XCTest Library click to recognized screenshot return; includes XCTest transport/idling, capture and earlier OCR/write work. Conservative upper bound only.",
             "frame_boundary":
@@ -372,7 +435,119 @@ final class ScholiumPerformanceUITests: XCTestCase {
         ]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
             .write(to: raw.appendingPathComponent("observations.json"), options: .atomic)
-        print("FOREGROUND_OPEN_DIAGNOSTIC label=\(label) samples=\(sampleCount) initial_alternate=\(startWithAlternate) new_tab=\(opensNewTab) raw=\(raw.path)")
+        print("FOREGROUND_OPEN_DIAGNOSTIC label=\(label) mode=\(openingMode) samples=\(sampleCount) mode_samples=\(modeObservations.count) raw=\(raw.path)")
+    }
+
+    /// Shares the opening recorder but measures mode requests independently.
+    /// Pixel timing is established offline from both the mode-control crop and
+    /// a settled body reference; a persistent body phrase alone cannot prove a mode change.
+    @MainActor
+    private func foregroundModeSwitches(
+        in application: XCUIApplication, window: XCUIElement, documentID: String,
+        raw: URL, requestDirectory: URL?, pid: pid_t, modeControl: XCUIElement,
+        originalSource: Data, sourceURL: URL
+    ) throws -> [[String: Any]] {
+        var observations: [[String: Any]] = []
+        for destination in ["Review", "Edit", "Source", "Edit", "Review", "Edit"] {
+            let origin = try XCTUnwrap(documentModeState(modeControl))
+            if origin == destination { continue }
+            let directory = raw.appendingPathComponent("mode-\(observations.count)-\(origin.lowercased())-\(destination.lowercased())")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var request: (stop: URL, finished: URL)?
+            func stopCapture() throws {
+                guard let active = request else { return }
+                request = nil
+                try Data().write(to: active.stop, options: .atomic)
+                XCTAssertTrue(waitUntil(timeout: 20) { FileManager.default.fileExists(atPath: active.finished.path) })
+                let receipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: active.finished)) as? [String: Any])
+                XCTAssertEqual(receipt["exit_code"] as? Int, 0)
+                let summaryURL = directory.appendingPathComponent("frames/capture-summary.json")
+                let summary = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: summaryURL)) as? [String: Any])
+                XCTAssertGreaterThan(try XCTUnwrap(summary["captured_frames"] as? Int), 0)
+                XCTAssertEqual(summary["errors"] as? Int, 0)
+                XCTAssertEqual(summary["overflow_frames"] as? Int, 0)
+            }
+            defer {
+                if request != nil {
+                    do { try stopCapture() } catch { XCTFail("Mode frame capture cleanup failed: \(error)") }
+                }
+            }
+            if let requestDirectory {
+                let identifier = UUID().uuidString
+                let frames = directory.appendingPathComponent("frames")
+                let finished = requestDirectory.appendingPathComponent("\(identifier).finished.json")
+                request = (requestDirectory.appendingPathComponent("\(identifier).stop"), finished)
+                try JSONSerialization.data(withJSONObject: ["schema": 1, "pid": pid, "output": frames.path], options: [.sortedKeys])
+                    .write(to: requestDirectory.appendingPathComponent("\(identifier).request.json"), options: .atomic)
+                XCTAssertTrue(
+                    waitUntil(timeout: 15) {
+                        FileManager.default.fileExists(atPath: frames.appendingPathComponent("ready").path)
+                            || FileManager.default.fileExists(atPath: finished.path)
+                    })
+                XCTAssertFalse(FileManager.default.fileExists(atPath: finished.path))
+                XCTAssertTrue(FileManager.default.fileExists(atPath: frames.appendingPathComponent("ready").path))
+            }
+            XCTAssertEqual(application.state, .runningForeground)
+            let controlFrame = modeControl.frame
+            let windowFrame = window.frame
+            let modeCrop: [String: Double] = [
+                "x": (controlFrame.minX - windowFrame.minX) / windowFrame.width,
+                "y": (controlFrame.minY - windowFrame.minY) / windowFrame.height,
+                "width": controlFrame.width / windowFrame.width,
+                "height": controlFrame.height / windowFrame.height,
+            ]
+            let actionStarted = DispatchTime.now().uptimeNanoseconds
+            switch destination {
+            case "Review": requestPerformanceEditorAction("review")
+            case "Edit": requestMeasuredEditorMode("Edit")
+            default: requestMeasuredEditorMode("Source")
+            }
+            let actionReturned = DispatchTime.now().uptimeNanoseconds
+            let accessible = waitUntil(timeout: 60) {
+                guard self.documentModeState(modeControl) == destination else { return false }
+                switch destination {
+                case "Review": return self.waitForRenderedDocument(documentID, in: application, timeout: 0.1)
+                case "Edit": return application.descendants(matching: .any)["Markdown editor, Edit mode"].exists
+                default: return application.descendants(matching: .any)["Markdown source editor"].exists
+                }
+            }
+            let accessibleObserved = DispatchTime.now().uptimeNanoseconds
+            if !accessible {
+                let hierarchy = String(application.debugDescription.prefix(30_000))
+                let failure = XCTAttachment(string: hierarchy)
+                failure.name = "Unavailable mode surface — \(origin) to \(destination)"
+                failure.lifetime = .keepAlways
+                add(failure)
+                print("FOREGROUND_MODE_AX_FAILURE \(hierarchy)")
+            }
+            XCTAssertTrue(accessible, "The requested mode and its real document surface must become accessible.")
+            // Capture only passive frames through this quiet interval. Screenshot
+            // and offline comparison start after the recorder has released its stream.
+            Thread.sleep(forTimeInterval: 1)
+            let passiveIntervalEnded = DispatchTime.now().uptimeNanoseconds
+            try stopCapture()
+            let firstScreenshotStarted = DispatchTime.now().uptimeNanoseconds
+            try window.screenshot().pngRepresentation.write(to: directory.appendingPathComponent("settled.png"))
+            XCTAssertEqual(try Data(contentsOf: sourceURL), originalSource, "A display-mode change must preserve exact source.")
+            let observation: [String: Any] = [
+                "sample": observations.count, "origin": origin, "mode": destination,
+                "kind": "mode_switch", "driver_action_start_uptime_ns": actionStarted,
+                "driver_action_return_uptime_ns": actionReturned,
+                "ax_ready_observed_uptime_ns": accessibleObserved,
+                "ax_ready_upper_bound_ms": Double(accessibleObserved - actionStarted) / 1_000_000,
+                "passive_interval_end_uptime_ns": passiveIntervalEnded,
+                "first_screenshot_start_uptime_ns": firstScreenshotStarted,
+                "window_server_frames_enabled": requestDirectory != nil,
+                "mode_control_crop_top_left_normalized": modeCrop,
+                "body_crop_top_left_normalized": ["x": 0.27, "y": 0.14, "width": 0.72, "height": 0.85],
+                "pixel_endpoint_requires_offline_mode_and_body_validation": true,
+                "source_preserved": true, "raw_directory": directory.path,
+            ]
+            try JSONSerialization.data(withJSONObject: observation, options: [.prettyPrinted, .sortedKeys])
+                .write(to: directory.appendingPathComponent("observations.json"), options: .atomic)
+            observations.append(observation)
+        }
+        return observations
     }
 
     private func foregroundScreenshotContains(_ sentinel: String, png: Data) throws -> Bool {

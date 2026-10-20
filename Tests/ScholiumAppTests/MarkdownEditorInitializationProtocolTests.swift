@@ -36,7 +36,7 @@ struct MarkdownEditorInitializationProtocolTests {
         let encoded = try JSONEncoder().encode(request)
         let decoded = try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded)
         #expect(decoded == request)
-        #expect(decoded.protocolVersion == 54)
+        #expect(decoded.protocolVersion == 55)
         guard case .initialize(let text, _, _, _, let baseline, let restored, _) = decoded.operation else {
             Issue.record("The recovery request did not decode as initialization.")
             return

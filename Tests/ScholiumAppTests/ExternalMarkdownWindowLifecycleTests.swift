@@ -1521,6 +1521,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                 MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             var text: String?
             var recovery: MarkdownEditorRecoverySnapshot?
+            var responseScrollAnchor: MarkdownEditorWireScrollAnchor?
             var recoveryHistoryPreserved: Bool?
             var superseded: Bool?
             switch request.operation {
@@ -1547,6 +1548,8 @@ struct ExternalMarkdownWindowLifecycleTests {
                 }
             case .setScrollAnchor(let anchor):
                 scrollAnchor = anchor
+            case .queryScrollAnchor:
+                responseScrollAnchor = scrollAnchor
             case .queryText:
                 textQueryCount += 1
                 if let pause = nextTextQueryPause {
@@ -1558,7 +1561,10 @@ struct ExternalMarkdownWindowLifecycleTests {
                 recovery = recoverySnapshot(request)
             case .suspendForDetachment(let id):
                 suspensionID = id
-                recovery = recoverySnapshot(request)
+                let capturedRecovery = recoverySnapshot(request)
+                recovery = capturedRecovery
+                text = capturedRecovery.source
+                responseScrollAnchor = scrollAnchor
                 if let pause = nextFrozenCapturePause {
                     nextFrozenCapturePause = nil
                     // WebKit froze and captured the exact source, but its
@@ -1587,7 +1593,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                 "selections": selections.map { ["anchor": $0.anchor, "head": $0.head] },
                 "accepted": true,
             ]
-            if case .queryScrollAnchor = request.operation, let scrollAnchor {
+            if let scrollAnchor = responseScrollAnchor {
                 result["scrollAnchor"] = [
                     "sourceUTF16Offset": scrollAnchor.sourceUTF16Offset,
                     "blockUTF16LowerBound": scrollAnchor.blockUTF16LowerBound,
@@ -1604,6 +1610,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     "documentID": recovery.documentID, "fingerprint": recovery.fingerprint,
                     "generation": recovery.generation, "ranges": recovery.ranges.map { ["anchor": $0.anchor, "head": $0.head] },
                     "source": recovery.source, "undoHistoryPreserved": false,
+                    "hasHistory": recovery.generation > 0,
                     "dirty": recovery.dirty, "focusTarget": "editor",
                 ]
                 if case .suspendForDetachment = request.operation {

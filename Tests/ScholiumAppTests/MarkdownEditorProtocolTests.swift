@@ -660,16 +660,78 @@ struct MarkdownEditorProtocolTests {
         #expect(decoded == request)
     }
 
-    @Test("The CodeMirror protocol cannot represent Review as an editor mode")
-    func reviewIsNotAnEditorMode() throws {
-        let invalid = try #require(
-            #"{"type":"setMode","mode":"read"}"#.data(using: .utf8)
-        )
-        do {
-            _ = try JSONDecoder().decode(MarkdownEditorOperation.self, from: invalid)
-            Issue.record("Review crossed the editor-only mode boundary.")
-        } catch {
-            #expect(error is DecodingError)
+    @Test("Committed Review has a shared-host mode without writable source authority")
+    @MainActor
+    func reviewSharedHostMode() throws {
+        let operation = MarkdownEditorOperation.setMode(.review)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: JSONEncoder().encode(operation)) == operation)
+        #expect(MarkdownEditorMode.review.presentationMode == .read)
+        var presentation = DocumentPresentationState()
+        presentation.beginEditing(.review)
+        #expect(!presentation.isEditing)
+        #expect(presentation.activeMode == .read)
+        presentation.beginEditing(.livePreview)
+        presentation.switchEditorMode(to: .review)
+        #expect(presentation.activeMode == .livePreview)
+        #expect(MarkdownEditorOperation.command(.bold, argument: nil).requiresWritableSource)
+        #expect(!operation.requiresWritableSource)
+        let session = MarkdownEditorSession()
+        let source = "\u{FEFF}paragraph e\u{301} 🦉\r\n"
+        session.loadDocument(source, documentID: "committed-review", mode: .review)
+        #expect(
+            !session.acceptEditorChanges(
+                [.init(from: 0, to: 0, insert: "changed", exactInsert: "changed")], baseGeneration: 0, resultingGeneration: 1))
+        #expect(Data(session.checkedSource.utf8) == Data(source.utf8))
+        #expect(!session.isDirty)
+    }
+
+    @Test("Citation cancellation releases staged work without writable source authority")
+    func citationCancellationIsSourceNeutral() throws {
+        let operation = MarkdownEditorOperation.cancelCitation(transactionID: "pending-citation")
+        #expect(!operation.requiresWritableSource)
+        #expect(!operation.serializesSourceMutation)
+        let data = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+        #expect(
+            MarkdownEditorOperation.beginCitation(
+                transactionID: "pending-citation", command: "refresh", reference: nil
+            ).requiresWritableSource)
+        #expect(MarkdownEditorOperation.finishCitation(transactionID: "pending-citation").requiresWritableSource)
+    }
+
+    @Test("Review event decoding retains the normal envelope and bounded reader payload")
+    func reviewEventDecoding() throws {
+        let object: [String: Any] = [
+            "type": "reviewEvent", "protocolVersion": markdownEditorProtocolVersion,
+            "sessionID": UUID().uuidString, "documentID": "shared-editor", "startingFingerprint": "fingerprint", "documentVersion": 0,
+            "event": [
+                "type": "selectionChanged", "version": 8, "documentID": "note.md", "fingerprint": "fingerprint", "loadGeneration": 1,
+                "text": "paragraph e\u{301} 🦉", "blockLower": 1, "blockUpper": 20,
+            ],
+        ]
+        guard case .reviewEvent(let envelope, let payload) = try #require(EditorBridgeMessageDecoder.decode(object)) else {
+            Issue.record("Review event was not decoded through the shared session envelope.")
+            return
+        }
+        #expect(envelope.documentID == "shared-editor")
+        let event = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        #expect(event["documentID"] as? String == "note.md")
+        #expect(event["text"] as? String == "paragraph e\u{301} 🦉")
+        var malformed = object
+        malformed["event"] = "untyped"
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+    }
+
+    @Test("Review external links retain the bounded native allowlist")
+    @MainActor
+    func reviewExternalLinkPolicy() throws {
+        for target in [
+            "https://example.invalid/reading", "http://example.invalid/", "mailto:reader@example.invalid", "zotero://select/library/items/SYNTHETIC",
+        ] {
+            #expect(SafeMarkdownReadWebView.Coordinator.allowsExternalLink(try #require(URL(string: target))))
+        }
+        for target in ["javascript:alert(1)", "data:text/plain,source", "file:///Users/example/private", "scholium-note:Note.md", "about:blank"] {
+            #expect(!SafeMarkdownReadWebView.Coordinator.allowsExternalLink(try #require(URL(string: target))))
         }
     }
 

@@ -102,9 +102,6 @@ final class DocumentSessionModel: ObservableObject {
     /// one surface can never overwrite the other surface's viewport.
     private(set) var readScrollPosition = ObservedScrollPosition()
     private(set) var editorScrollPosition = ObservedScrollPosition()
-    /// Only an explicit lifecycle or navigation transition creates a request.
-    /// Coordinators consume each monotonically increasing ID at most once.
-    @Published private(set) var scrollRestoreRequest: ScrollRestoreRequest?
     @Published var returnToReadAfterSave = false
     var reviewHandoffID: UUID?
     @Published var suppressAutosave = false
@@ -142,7 +139,6 @@ final class DocumentSessionModel: ObservableObject {
     var detachmentPreparationTask: Task<Void, Error>?
     var detachmentPreparationToken: UUID?
     private var editorCancellable: AnyCancellable?
-    private var nextScrollRestoreRequestID: UInt64 = 0
 
     init(key: DocumentSessionKey?, editorSession: MarkdownEditorSession = MarkdownEditorSession()) {
         self.key = key
@@ -302,10 +298,14 @@ final class DocumentSessionModel: ObservableObject {
         // Entering Edit is an explicit projection handoff from the active
         // Review viewport. The editor keeps its own subsequent position.
         editorScrollPosition = readScrollPosition
-        editorSession.setScrollPosition(
-            anchor: editorScrollPosition.anchor,
-            fallbackFraction: editorScrollPosition.fraction
-        )
+        // A mounted host captures its actual viewport inside setMode. Native
+        // observations may trail the most recent scroll and cannot restore it.
+        if !editorSession.hasAttachedWebView {
+            editorSession.setScrollPosition(
+                anchor: editorScrollPosition.anchor,
+                fallbackFraction: editorScrollPosition.fraction
+            )
+        }
         updatePresentation { $0.beginEditing(mode) }
     }
 
@@ -458,34 +458,9 @@ final class DocumentSessionModel: ObservableObject {
         readScrollPosition = editorScrollPosition
     }
 
-    @discardableResult
-    func requestReadScrollRestore(
-        fingerprint: String,
-        reason: ScrollRestoreReason,
-        position: ObservedScrollPosition? = nil
-    ) -> ScrollRestoreRequest {
-        nextScrollRestoreRequestID &+= 1
-        let observed = position ?? readScrollPosition
-        let matchingAnchor = observed.anchor.flatMap { anchor in
-            anchor.sourceFingerprint == fingerprint ? anchor : nil
-        }
-        let request = ScrollRestoreRequest(
-            id: nextScrollRestoreRequestID,
-            fingerprint: fingerprint,
-            position: ObservedScrollPosition(
-                fraction: observed.fraction,
-                anchor: matchingAnchor
-            ),
-            reason: reason
-        )
-        scrollRestoreRequest = request
-        return request
-    }
-
     func resetScrollPosition() {
         readScrollPosition = ObservedScrollPosition()
         editorScrollPosition = ObservedScrollPosition()
-        scrollRestoreRequest = nil
     }
 
     func restoreNavigationPosition(
@@ -498,11 +473,6 @@ final class DocumentSessionModel: ObservableObject {
         )
         readScrollPosition = admitted
         editorScrollPosition = admitted
-        requestReadScrollRestore(
-            fingerprint: fingerprint,
-            reason: .explicitNavigation,
-            position: admitted
-        )
         editorSession.setScrollPosition(
             anchor: admitted.anchor,
             fallbackFraction: admitted.fraction
@@ -525,12 +495,6 @@ final class DocumentSessionModel: ObservableObject {
         hasBeenActivated = false
     }
 
-    func acknowledgeScrollRestoreRequest(id: UInt64, fingerprint: String) {
-        guard scrollRestoreRequest?.id == id,
-            scrollRestoreRequest?.fingerprint == fingerprint
-        else { return }
-        scrollRestoreRequest = nil
-    }
 }
 
 /// Per-window retention for document sessions. `DocumentController` owns one

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Researcher-facing Document modes. Review is a committed renderer; Edit and
-/// Source are two configurations of the same retained exact-source editor.
+/// Researcher-facing modes share one exact document session. Review remains a
+/// committed read-only projection; Edit and Source grant editing authority.
 enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     case read
     case livePreview
@@ -34,14 +34,16 @@ enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable
     }
 }
 
-/// The Web editor has exactly two configurations. Review cannot cross the
-/// CodeMirror bridge and therefore cannot become a runtime-rejected mode.
+/// The shared CodeMirror host presents committed Review or either writable
+/// configuration without replacing its exact-source state or history.
 enum MarkdownEditorMode: String, Codable, Hashable, Sendable {
+    case review
     case livePreview
     case source
 
     var presentationMode: NotePresentationMode {
         switch self {
+        case .review: .read
         case .livePreview: .livePreview
         case .source: .source
         }
@@ -120,13 +122,14 @@ struct DocumentPresentationState: Equatable, Sendable {
     }
 
     mutating func beginEditing(_ mode: MarkdownEditorMode) {
+        guard mode != .review else { return }
         retainedEditorMode = mode
         retainsEditorSurface = true
         phase = .editing(mode)
     }
 
     mutating func switchEditorMode(to mode: MarkdownEditorMode) {
-        guard isEditing else { return }
+        guard isEditing, mode != .review else { return }
         retainedEditorMode = mode
         phase = .editing(mode)
     }

@@ -7,7 +7,7 @@ import Foundation
 /// compile to ordinary `.strings` tables; loading the table as a property list
 /// keeps WebKit copy under the same application-language choice as native UI
 /// without creating a second localization owner in JavaScript.
-struct WebKitInterfaceLocalization: Codable, Equatable, Sendable {
+struct WebKitInterfaceLocalization: Codable, Hashable, Sendable {
     let languageTag: String
     let strings: [String: String]
 

@@ -451,11 +451,15 @@
       blockText: element.textContent ?? ""
     } : null;
   }
-  function createReaderArrival(root) {
+  function createReaderArrival(root, scrollDOM) {
     let marker = null;
     let generation = 0;
     let timer;
     const owner = root.ownerDocument.defaultView;
+    const scrollTop = () => scrollDOM?.scrollTop ?? owner?.scrollY ?? 0;
+    const viewportHeight = () => scrollDOM?.clientHeight ?? owner?.innerHeight ?? 0;
+    const viewportTop = () => scrollDOM?.getBoundingClientRect().top ?? 0;
+    const scrollTo = (options) => scrollDOM ? scrollDOM.scrollTo(options) : owner?.scrollTo(options);
     function clear() {
       generation += 1;
       clearTimeout(timer);
@@ -472,18 +476,18 @@
       const target = candidates[0];
       if (!target) return false;
       const reduceMotion = typeof owner.matchMedia === "function" && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const extent = Math.max(0, root.ownerDocument.documentElement.scrollHeight - owner.innerHeight);
-      const destination = Math.max(0, Math.min(extent, owner.scrollY + target.getBoundingClientRect().top));
-      if (!reduceMotion && Math.abs(destination - owner.scrollY) > owner.innerHeight) {
-        const travel = Math.sign(destination - owner.scrollY) * owner.innerHeight;
-        owner.scrollTo({ top: destination - travel, behavior: "auto" });
+      const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+      const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+      if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
+        const travel = Math.sign(destination - scrollTop()) * viewportHeight();
+        scrollTo({ top: destination - travel, behavior: "auto" });
       }
       target.scrollIntoView({
         block: "start",
         behavior: reduceMotion ? "auto" : "smooth"
       });
       const deadline = Date.now() + 2e3;
-      while (Math.abs(owner.scrollY - destination) > 1) {
+      while (Math.abs(scrollTop() - destination) > 1) {
         if (generation !== requestGeneration || Date.now() >= deadline) return false;
         await new Promise((resolve) => setTimeout(resolve, 16));
       }
@@ -545,7 +549,7 @@
       selection.removeAllRanges();
       selection.addRange(range);
       const rect = range.getBoundingClientRect();
-      owner.scrollBy({ top: rect.top - owner.innerHeight / 3, behavior: "auto" });
+      scrollTo({ top: scrollTop() + rect.top - viewportTop() - viewportHeight() / 3, behavior: "auto" });
       return true;
     }
     return { reveal, rangeCandidate: (lower, upper) => readerSourceRangeCandidate(root, lower, upper), revealRange, clear, destroy };
@@ -555,72 +559,75 @@
   function createNativeFloatingPorts(post) {
     let serial = 0;
     let active = null;
-    function activate(kind, callbacks, event2) {
-      if (active && active.kind !== kind) active.dismiss();
+    function activate(kind, callbacks, event2, owner) {
+      if (active && (active.kind !== kind || active.owner !== owner)) active.dismiss();
       const id = ++serial;
-      active = { kind, id, dismiss: callbacks.dismiss, event: event2 };
+      active = { kind, id, dismiss: callbacks.dismiss, event: event2, owner };
       return id;
     }
-    function hide(kind, id) {
-      if (active?.kind !== kind || active.id !== id) return;
-      post({ type: "dismissSurface", kind, id });
-      active = null;
+    function portsForOwner(ownerPost) {
+      function hide(kind, id) {
+        if (active?.kind !== kind || active.id !== id || active.owner !== ownerPost) return;
+        ownerPost({ type: "dismissSurface", kind, id });
+        active = null;
+      }
+      const preview = {
+        show(surface, callbacks) {
+          const id = activate("preview", callbacks, (currentID, action, _index) => {
+            if (currentID !== id) return false;
+            if (action === "enter") callbacks.enter?.();
+            else if (action === "leave") callbacks.leave?.();
+            else if (action === "dismiss") callbacks.dismiss();
+            else return false;
+            return true;
+          }, ownerPost);
+          ownerPost({ type: "previewSurface", surface: { ...surface, id } });
+          return id;
+        },
+        hide(id) {
+          hide("preview", id);
+        }
+      };
+      const suggestions = {
+        show(surface, callbacks) {
+          const id = activate("suggestions", callbacks, (currentID, action, index) => {
+            if (currentID !== id || !Number.isInteger(index)) return false;
+            if (action === "dismiss") callbacks.dismiss();
+            else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
+            else if (action === "choose" && index >= 0 && index < surface.items.length) {
+              if (surface.items[index].disabled) return false;
+              return callbacks.choose?.(index) !== false;
+            } else return false;
+            return true;
+          }, ownerPost);
+          ownerPost({ type: "suggestionSurface", surface: { ...surface, id } });
+          return id;
+        },
+        hide(id) {
+          hide("suggestions", id);
+        }
+      };
+      const selection = {
+        show(surface, callbacks) {
+          const id = activate("selection", callbacks, (currentID, action, index) => {
+            if (currentID !== id) return false;
+            if (action === "dismiss") callbacks.dismiss();
+            else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
+            else return false;
+            return true;
+          }, ownerPost);
+          ownerPost({ type: "selectionSurface", surface: { ...surface, id } });
+          return id;
+        },
+        hide(id) {
+          hide("selection", id);
+        }
+      };
+      return { preview, suggestions, selection, forOwner: portsForOwner };
     }
-    const preview = {
-      show(surface, callbacks) {
-        const id = activate("preview", callbacks, (currentID, action, _index) => {
-          if (currentID !== id) return false;
-          if (action === "enter") callbacks.enter?.();
-          else if (action === "leave") callbacks.leave?.();
-          else if (action === "dismiss") callbacks.dismiss();
-          else return false;
-          return true;
-        });
-        post({ type: "previewSurface", surface: { ...surface, id } });
-        return id;
-      },
-      hide(id) {
-        hide("preview", id);
-      }
-    };
-    const suggestions = {
-      show(surface, callbacks) {
-        const id = activate("suggestions", callbacks, (currentID, action, index) => {
-          if (currentID !== id || !Number.isInteger(index)) return false;
-          if (action === "dismiss") callbacks.dismiss();
-          else if (action === "select" && index >= 0 && index < surface.items.length) callbacks.select?.(index);
-          else if (action === "choose" && index >= 0 && index < surface.items.length) {
-            if (surface.items[index].disabled) return false;
-            return callbacks.choose?.(index) !== false;
-          } else return false;
-          return true;
-        });
-        post({ type: "suggestionSurface", surface: { ...surface, id } });
-        return id;
-      },
-      hide(id) {
-        hide("suggestions", id);
-      }
-    };
-    const selection = {
-      show(surface, callbacks) {
-        const id = activate("selection", callbacks, (currentID, action, index) => {
-          if (currentID !== id) return false;
-          if (action === "dismiss") callbacks.dismiss();
-          else if (action === "choose" && index === 0) return callbacks.choose?.(index) !== false;
-          else return false;
-          return true;
-        });
-        post({ type: "selectionSurface", surface: { ...surface, id } });
-        return id;
-      },
-      hide(id) {
-        hide("selection", id);
-      }
-    };
     const event = (id, action, index) => active?.id === id ? active.event(id, action, index) : false;
     window.scholiumNativeFloatingEvent = event;
-    return { preview, suggestions, selection };
+    return portsForOwner(post);
   }
   function previewSurface(anchor, root) {
     const css = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
@@ -4383,16 +4390,15 @@
     range.setEnd(endNode, endOffset);
     return range;
   }
-  function searchableLines() {
-    const root = document.querySelector("main");
+  function searchableLines(root) {
     if (!root) return [];
     const lines = Array.from(root.querySelectorAll("[data-source-line]")).filter((element) => !element.querySelector("[data-source-line]"));
     return lines.length > 0 ? lines : [root];
   }
-  function rangesFor(request) {
+  function rangesFor(request, root) {
     if (!request.query) return [];
     const result = [];
-    for (const line of searchableLines()) {
+    for (const line of searchableLines(root)) {
       const nodes = textNodesIn(line);
       const text = nodes.map((node) => node.data).join("");
       for (const match of documentFindMatches(text, {
@@ -4406,7 +4412,7 @@
     }
     return result;
   }
-  function installReviewFind() {
+  function installReviewFind(root = document.querySelector("main")) {
     const allName = "scholium-review-find";
     const currentName = "scholium-review-find-current";
     const registry = highlightRegistry();
@@ -4446,6 +4452,11 @@
       }
     };
     return {
+      destroy() {
+        clear();
+        style.remove();
+        matches = [];
+      },
       perform(request) {
         if (!request || request.operation === "clear") {
           signature = "";
@@ -4461,7 +4472,7 @@
         ]);
         if (nextSignature !== signature || request.action === "update") {
           signature = nextSignature;
-          matches = rangesFor(request);
+          matches = rangesFor(request, root);
           current = matches.length > 0 ? 0 : -1;
         } else if (request.action === "next" && matches.length > 0) {
           current = (current + 1) % matches.length;
@@ -4596,7 +4607,7 @@
     const value = CSS.highlights;
     return value ?? null;
   }
-  function createReviewSelectionPresentation(selectionEnabled, testingEnabled) {
+  function createReviewSelectionPresentation(selectionEnabled, testingEnabled, presentationRoot = document.documentElement) {
     const registry = highlightRegistry2();
     const supported = selectionEnabled && typeof Highlight === "function" && registry !== null;
     let textRanges = [];
@@ -4652,7 +4663,7 @@
         };
       };
     }
-    if (supported) document.documentElement.classList.add("scholium-review-custom-selection");
+    if (supported) presentationRoot.classList.add("scholium-review-custom-selection");
     return presentation;
   }
 
@@ -4703,6 +4714,12 @@
     "File and image paste is not supported in Editor 1.0.",
     "Markdown editor, Edit mode",
     "Markdown source editor",
+    "Review",
+    "Review is read-only.",
+    "Finish input and save the note before entering Review.",
+    "The selected Review passage has no matching source.",
+    "Review cannot replace the saved source.",
+    "Review does not support replacement.",
     "Note title",
     "Empty Note",
     "This note has no body content.",
@@ -5209,14 +5226,66 @@
     };
   }
 
-  // reader.ts
-  var readerWindow = window;
-  function requiredElement(id) {
-    const element = document.getElementById(id);
-    if (!(element instanceof HTMLElement)) throw new Error(`Missing reader element: ${id}`);
-    return element;
-  }
-  async function initializeReader(value) {
+  // reader-runtime.ts
+  async function initializeReader(value, host) {
+    const readerWindow2 = window;
+    const signal = host?.signal;
+    const cleanups = [];
+    const alive = () => !signal?.aborted;
+    const listenWindow = ((type, listener, options) => {
+      const target = type === "scroll" && host ? host.scrollDOM : window;
+      target.addEventListener(type, listener, {
+        ...typeof options === "boolean" ? { capture: options } : options,
+        ...signal ? { signal } : {}
+      });
+    });
+    const listenDocument = ((type, listener, options) => {
+      const target = type === "selectionchange" || !host ? document : host.root;
+      target.addEventListener(type, listener, {
+        ...typeof options === "boolean" ? { capture: options } : options,
+        ...signal ? { signal } : {}
+      });
+    });
+    function requiredElement(id) {
+      const element = document.getElementById(id);
+      if (!(element instanceof HTMLElement)) throw new Error(`Missing reader element: ${id}`);
+      return element;
+    }
+    const documentRoot = host?.root ?? requiredElement("scholium-document");
+    const elementByID = (id) => {
+      if (!host) return document.getElementById(id);
+      return documentRoot.id === id ? documentRoot : documentRoot.querySelector(`[id="${CSS.escape(id)}"]`);
+    };
+    const scrollTop = () => host?.scrollDOM.scrollTop ?? window.scrollY;
+    const scrollLeft = () => host?.scrollDOM.scrollLeft ?? window.scrollX;
+    const viewportHeight = () => host?.scrollDOM.clientHeight ?? window.innerHeight;
+    const viewportTop = () => host?.scrollDOM.getBoundingClientRect().top ?? 0;
+    const scrollHeight = () => host?.scrollDOM.scrollHeight ?? document.documentElement.scrollHeight;
+    const scrollTo = (options) => host ? host.scrollDOM.scrollTo(options) : window.scrollTo(options);
+    const dispose = () => {
+      for (const cleanup of cleanups) cleanup();
+      readerWindow2.scholiumReadNavigation?.destroy();
+      readerWindow2.scholiumReviewImages?.destroy();
+      readerWindow2.scholiumReviewSelection?.clear();
+      (host?.root.closest(".scholium-review-projection") ?? document.documentElement).classList.remove("scholium-review-custom-selection");
+      for (const key of [
+        "scholiumReadPreparation",
+        "scholiumReadNavigation",
+        "scholiumReviewFind",
+        "scholiumReviewSelection",
+        "scholiumReviewImages",
+        "scholiumSetLinkPreviews",
+        "scholiumSetPresentationCSS",
+        "scholiumSetReviewSelectionSurfaceActive",
+        "scholiumShowSelectionActions",
+        "scholiumReadScroll",
+        "scholiumReadReady",
+        "scholiumMermaidReady"
+      ]) {
+        delete readerWindow2[key];
+      }
+    };
+    signal?.addEventListener("abort", dispose, { once: true });
     const config = validatedReaderConfiguration(value);
     if (!config) throw new Error("Invalid reader configuration.");
     const {
@@ -5231,18 +5300,22 @@
       testingEnabled
     } = config;
     let fingerprint = config.fingerprint;
-    const presentationStyle = requiredElement("scholium-presentation-css");
-    const userStyle = requiredElement("scholium-user-css");
-    presentationStyle.textContent = presentationCSS;
-    userStyle.textContent = userCSS;
-    const documentRoot = requiredElement("scholium-document");
+    const presentationStyle = host?.presentationStyle ?? requiredElement("scholium-presentation-css");
+    const userStyle = host?.userStyle ?? requiredElement("scholium-user-css");
+    const setPresentationStyles = (presentationCSS2, userCSS2) => {
+      const presentation = host?.scopeStyles?.presentation(presentationCSS2) ?? presentationCSS2;
+      const user = host?.scopeStyles?.user(userCSS2) ?? userCSS2;
+      if (presentationStyle.textContent !== presentation) presentationStyle.textContent = presentation;
+      if (userStyle.textContent !== user) userStyle.textContent = user;
+    };
+    setPresentationStyles(presentationCSS, userCSS);
     const decodedImages = /* @__PURE__ */ new Set();
     async function settleLayout(requireCurrent) {
       requireCurrent();
       const before = documentRoot.getBoundingClientRect();
-      const previousHeight = document.documentElement.scrollHeight;
-      if (readerWindow.scholiumReadReady) await readerWindow.scholiumReadReady;
-      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+      const previousHeight = scrollHeight();
+      await mathReady;
+      if (readerWindow2.scholiumMermaidReady) await readerWindow2.scholiumMermaidReady;
       requireCurrent();
       documentRoot.getBoundingClientRect();
       const awaitedFonts = document.fonts.status === "loading";
@@ -5252,33 +5325,51 @@
         left: 0,
         right: window.innerWidth,
         top: 0,
-        bottom: window.innerHeight
-      }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image));
+        bottom: viewportHeight()
+      }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image));
       documentRoot.getBoundingClientRect();
       await document.fonts.ready;
       requireCurrent();
       const after = documentRoot.getBoundingClientRect();
-      return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== document.documentElement.scrollHeight };
+      return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== scrollHeight() };
     }
     const readPreparation = {
       async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
         const requireCurrent = () => {
-          if (readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+          if (readerWindow2.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
             throw new Error("stale reader preparation");
           }
         };
         return await settleLayout(requireCurrent);
       }
     };
-    readerWindow.scholiumReadPreparation = readPreparation;
+    readerWindow2.scholiumReadPreparation = readPreparation;
     let presentationUpdateSequence = 0;
+    let viewportInputRevision = 0;
+    const viewportInputTarget = host?.scrollDOM ?? window;
+    const abandonAppearanceRestoration = () => {
+      viewportInputRevision++;
+    };
+    const viewportInputEvents = ["wheel", "pointerdown", "touchstart", "keydown"];
+    for (const type of viewportInputEvents) {
+      viewportInputTarget.addEventListener(type, abandonAppearanceRestoration, { capture: true, passive: true });
+    }
+    const disposeViewportInput = () => {
+      viewportInputRevision++;
+      for (const type of viewportInputEvents) {
+        viewportInputTarget.removeEventListener(type, abandonAppearanceRestoration, true);
+      }
+      window.removeEventListener("pagehide", disposeViewportInput);
+    };
+    cleanups.push(disposeViewportInput);
+    window.addEventListener("pagehide", disposeViewportInput, { once: true });
     let mermaidThemeRevision = 0;
     const replyProjection = config.replyProjection ? createReplyProjection(documentRoot) : null;
     decorateAttachmentLinks(documentRoot);
     if (config.replyProjection) decorateChatReplyLinks(documentRoot);
-    readerWindow.scholiumReadNavigation?.destroy();
-    readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
-    window.addEventListener("pagehide", () => readerWindow.scholiumReadNavigation?.destroy(), { once: true });
+    readerWindow2.scholiumReadNavigation?.destroy();
+    readerWindow2.scholiumReadNavigation = createReaderArrival(documentRoot, host?.scrollDOM);
+    listenWindow("pagehide", () => readerWindow2.scholiumReadNavigation?.destroy(), { once: true });
     documentRoot.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
       const level = Number(heading.tagName.slice(1));
       heading.setAttribute("role", "heading");
@@ -5286,8 +5377,8 @@
     });
     const localized = createInterfaceLocalizer(localization);
     localizeRenderedInterface(documentRoot, localized);
-    const handler = readerWindow.webkit?.messageHandlers?.scholiumRead;
-    const post = (type, extra = {}) => handler?.postMessage({
+    const handler = host ? { postMessage: host.postMessage } : readerWindow2.webkit?.messageHandlers?.scholiumRead;
+    const post = (type, extra = {}) => alive() && handler?.postMessage({
       version,
       documentID,
       fingerprint,
@@ -5295,8 +5386,8 @@
       type,
       ...extra
     });
-    readerWindow.scholiumReviewImages?.destroy();
-    readerWindow.scholiumReviewImages = installReviewImageActivation(documentRoot, config.imagePreviewsEnabled ? {
+    readerWindow2.scholiumReviewImages?.destroy();
+    readerWindow2.scholiumReviewImages = installReviewImageActivation(documentRoot, config.imagePreviewsEnabled ? {
       label: (name) => localized("Preview image {name}", { name }),
       preview: (target) => post("imagePreview", { target }),
       contextMenu: (target, clientX, clientY) => post("imageContextMenu", {
@@ -5306,56 +5397,75 @@
         payloadFingerprint: fingerprint
       })
     } : null);
-    window.addEventListener("pagehide", () => readerWindow.scholiumReviewImages?.destroy(), { once: true });
-    const popover = requiredElement("scholium-preview-popover");
+    listenWindow("pagehide", () => readerWindow2.scholiumReviewImages?.destroy(), { once: true });
+    const popover = host?.popover ?? requiredElement("scholium-preview-popover");
     popover.remove();
-    const nativeFloating = createNativeFloatingPorts((event) => post("floatingSurface", { event }));
+    const postFloating = (event) => post("floatingSurface", { event });
+    const nativeFloating = host?.nativeFloating.forOwner(postFloating) ?? createNativeFloatingPorts(postFloating);
     let nativePreviewID = 0;
     let nativePreviewHovered = false;
     const previewTitle = popover.querySelector(".scholium-preview-title");
     const previewMetadata = popover.querySelector(".scholium-preview-metadata");
     const previewBody = popover.querySelector(".scholium-preview-body");
-    const viewportRoot = document.documentElement;
-    const viewportResizeScrollBarClass = "scholium-viewport-resize-suppresses-overlay-scrollbar";
-    const viewportResizeSettleDelay = 80;
-    const viewportGeometryProbe = document.createElement("span");
-    viewportGeometryProbe.setAttribute("aria-hidden", "true");
-    viewportGeometryProbe.style.cssText = "position:fixed;inline-size:100vw;block-size:100vh;visibility:hidden;pointer-events:none";
-    document.body.append(viewportGeometryProbe);
-    const viewportGeometry = () => viewportGeometryProbe.getBoundingClientRect();
-    let viewportResizeGeneration = 0;
-    let viewportResizeTimer;
-    let viewportBounds = viewportGeometry();
-    const viewportDidResize = () => {
-      const nextBounds = viewportGeometry();
-      if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
-      viewportBounds = nextBounds;
-      const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
-      if (!overlayScrollBar) {
-        viewportRoot.classList.remove(viewportResizeScrollBarClass);
-        return;
-      }
-      const generation = ++viewportResizeGeneration;
-      viewportRoot.classList.add(viewportResizeScrollBarClass);
-      clearTimeout(viewportResizeTimer);
-      viewportResizeTimer = setTimeout(() => {
-        if (generation === viewportResizeGeneration) {
-          window.removeEventListener("resize", viewportDidResize);
+    if (!host) {
+      const viewportRoot = document.documentElement;
+      const viewportResizeScrollBarClass = "scholium-viewport-resize-suppresses-overlay-scrollbar";
+      const viewportResizeSettleDelay = 80;
+      const viewportGeometryProbe = document.createElement("span");
+      viewportGeometryProbe.setAttribute("aria-hidden", "true");
+      viewportGeometryProbe.style.cssText = "position:fixed;inline-size:100vw;block-size:100vh;visibility:hidden;pointer-events:none";
+      document.body.append(viewportGeometryProbe);
+      const viewportGeometry = () => viewportGeometryProbe.getBoundingClientRect();
+      let viewportResizeGeneration = 0;
+      let viewportResizeTimer;
+      let viewportRearmTimer;
+      let viewportBounds = viewportGeometry();
+      const viewportDidResize = () => {
+        const nextBounds = viewportGeometry();
+        if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
+        viewportBounds = nextBounds;
+        const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
+        if (!overlayScrollBar) {
           viewportRoot.classList.remove(viewportResizeScrollBarClass);
-          setTimeout(() => {
-            viewportBounds = viewportGeometry();
-            window.addEventListener("resize", viewportDidResize);
-          }, 0);
+          return;
         }
-      }, viewportResizeSettleDelay);
-    };
-    window.addEventListener("resize", viewportDidResize);
-    readerWindow.scholiumReviewFind = installReviewFind();
+        const generation = ++viewportResizeGeneration;
+        viewportRoot.classList.add(viewportResizeScrollBarClass);
+        clearTimeout(viewportResizeTimer);
+        viewportResizeTimer = setTimeout(() => {
+          if (generation === viewportResizeGeneration) {
+            window.removeEventListener("resize", viewportDidResize);
+            viewportRoot.classList.remove(viewportResizeScrollBarClass);
+            viewportRearmTimer = setTimeout(() => {
+              if (generation !== viewportResizeGeneration) return;
+              viewportBounds = viewportGeometry();
+              window.addEventListener("resize", viewportDidResize);
+            }, 0);
+          }
+        }, viewportResizeSettleDelay);
+      };
+      const disposeViewportResize = () => {
+        viewportResizeGeneration++;
+        clearTimeout(viewportResizeTimer);
+        clearTimeout(viewportRearmTimer);
+        window.removeEventListener("resize", viewportDidResize);
+        window.removeEventListener("pagehide", disposeViewportResize);
+        viewportRoot.classList.remove(viewportResizeScrollBarClass);
+        viewportGeometryProbe.remove();
+      };
+      cleanups.push(disposeViewportResize);
+      window.addEventListener("pagehide", disposeViewportResize, { once: true });
+      window.addEventListener("resize", viewportDidResize);
+    }
+    const reviewFind = installReviewFind(documentRoot);
+    readerWindow2.scholiumReviewFind = reviewFind;
+    cleanups.push(() => reviewFind.destroy());
     const reviewSelectionPresentation = createReviewSelectionPresentation(
       selectionEnabled,
-      testingEnabled
+      testingEnabled,
+      host?.root.closest(".scholium-review-projection") ?? void 0
     );
-    readerWindow.scholiumReviewSelection = reviewSelectionPresentation;
+    readerWindow2.scholiumReviewSelection = reviewSelectionPresentation;
     let reviewPointerSelectionActive = false;
     let reviewSelectionSurfaceActive = true;
     let previewByRange = new Map(linkPreviews.map((preview) => [
@@ -5364,9 +5474,9 @@
     ]));
     const origins = /* @__PURE__ */ new Map();
     function renderMathNodes() {
-      const runtime = readerWindow.scholiumMath;
+      const runtime = readerWindow2.scholiumMath;
       if (!runtime || runtime.version !== 1) return;
-      document.querySelectorAll(".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)").forEach((element) => {
+      documentRoot.querySelectorAll(".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)").forEach((element) => {
         try {
           const encodedSource = element.dataset.mathSource;
           const kind = element.dataset.mathKind;
@@ -5395,6 +5505,26 @@
       });
     }
     renderMathNodes();
+    let finishMath;
+    let mathReady = Promise.resolve();
+    if (host && documentRoot.querySelector(".scholium-math[data-math-source][data-math-kind]") && !readerWindow2.scholiumMath) {
+      mathReady = new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          finishMath?.();
+        }, 8e3);
+        finishMath = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        cleanups.push(() => finishMath?.());
+        post("requestMathRuntime");
+      });
+    }
+    listenWindow("scholium-math-runtime-settled", () => {
+      if (!alive()) return;
+      renderMathNodes();
+      finishMath?.();
+    });
     function mermaidDiagnostic(wrapper, message) {
       const diagnostic = document.createElement("p");
       diagnostic.className = "scholium-mermaid-diagnostic";
@@ -5406,7 +5536,7 @@
     }
     let mermaidRuntimePromise = null;
     function ensureMermaidRuntime() {
-      const current = readerWindow.scholiumMermaid;
+      const current = readerWindow2.scholiumMermaid;
       if (current?.version === 3) return Promise.resolve(current);
       if (!handler) return Promise.resolve(null);
       if (mermaidRuntimePromise) return mermaidRuntimePromise;
@@ -5416,13 +5546,14 @@
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
-          readerWindow.scholiumMermaidRuntimeDidLoad = void 0;
-          const loaded = readerWindow.scholiumMermaid;
+          readerWindow2.scholiumMermaidRuntimeDidLoad = void 0;
+          const loaded = readerWindow2.scholiumMermaid;
           if (loaded?.version !== 3) mermaidRuntimePromise = null;
           resolve(loaded?.version === 3 ? loaded : null);
         };
         const timeout = setTimeout(finish, 8e3);
-        readerWindow.scholiumMermaidRuntimeDidLoad = finish;
+        cleanups.push(finish);
+        readerWindow2.scholiumMermaidRuntimeDidLoad = finish;
         post("requestMermaidRuntime");
       });
       return mermaidRuntimePromise;
@@ -5435,6 +5566,7 @@
       }
       wrapper.classList.remove("scholium-mermaid-rendered", "scholium-mermaid-error");
       const runtime = await ensureMermaidRuntime();
+      if (!alive()) return;
       if (!runtime) {
         wrapper.classList.add("scholium-mermaid-error");
         mermaidDiagnostic(
@@ -5445,6 +5577,7 @@
       }
       try {
         const result = await render(runtime, source);
+        if (!alive()) return;
         if (!result.ok) {
           wrapper.classList.add("scholium-mermaid-error");
           mermaidDiagnostic(
@@ -5484,7 +5617,7 @@
       }
     }
     async function renderMermaidNodes() {
-      const nodes = [...document.querySelectorAll("pre > code")].filter((code) => isMermaidCode(code) && !code.closest(".scholium-mermaid"));
+      const nodes = [...documentRoot.querySelectorAll("pre > code")].filter((code) => isMermaidCode(code) && !code.closest(".scholium-mermaid"));
       const render = createReaderMermaidPass(
         nodes.map((code) => code.textContent || ""),
         document.documentElement,
@@ -5509,7 +5642,7 @@
       }
     }
     async function refreshMermaidNodes() {
-      const wrappers = [...document.querySelectorAll(".scholium-mermaid")];
+      const wrappers = [...documentRoot.querySelectorAll(".scholium-mermaid")];
       const render = createReaderMermaidPass(
         wrappers.map((wrapper) => wrapper.querySelector(".scholium-mermaid-source > code")?.textContent || ""),
         document.documentElement,
@@ -5522,27 +5655,23 @@
     }
     function scheduleMermaidRefresh() {
       mermaidThemeRevision++;
-      const current = readerWindow.scholiumMermaidReady || Promise.resolve();
-      readerWindow.scholiumMermaidReady = current.catch(() => {
+      const current = readerWindow2.scholiumMermaidReady || Promise.resolve();
+      readerWindow2.scholiumMermaidReady = current.catch(() => {
       }).then(refreshMermaidNodes);
     }
-    readerWindow.scholiumSetPresentationCSS = async (nextPresentationCSS, nextUserCSS) => {
+    readerWindow2.scholiumSetPresentationCSS = async (nextPresentationCSS, nextUserCSS) => {
       if (typeof nextPresentationCSS !== "string" || typeof nextUserCSS !== "string" || nextPresentationCSS.length > 8e6 || nextUserCSS.length > 8e6) {
         return false;
       }
       const sequence = ++presentationUpdateSequence;
-      const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const fallbackTop = window.scrollY;
+      const inputRevision = viewportInputRevision;
+      const extent = Math.max(0, scrollHeight() - viewportHeight());
+      const fallbackTop = scrollTop();
       const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
       const anchor = currentReadScrollAnchor(fraction);
-      if (presentationStyle.textContent !== nextPresentationCSS) {
-        presentationStyle.textContent = nextPresentationCSS;
-      }
-      if (userStyle.textContent !== nextUserCSS) {
-        userStyle.textContent = nextUserCSS;
-      }
+      setPresentationStyles(nextPresentationCSS, nextUserCSS);
       scheduleMermaidRefresh();
-      const isCurrent = () => sequence === presentationUpdateSequence && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
+      const isCurrent = () => sequence === presentationUpdateSequence && readerWindow2.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
       try {
         await settleLayout(() => {
           if (!isCurrent()) throw new Error("stale presentation update");
@@ -5552,19 +5681,21 @@
         throw error;
       }
       if (!isCurrent()) return false;
+      if (inputRevision !== viewportInputRevision) return true;
       if (anchor) {
         restoreReadScrollAnchor(anchor);
       } else {
-        window.scrollTo({ top: Math.max(0, fallbackTop), behavior: "auto" });
+        scrollTo({ top: Math.max(0, fallbackTop), behavior: "auto" });
       }
       return true;
     };
-    readerWindow.scholiumMermaidReady = renderMermaidNodes();
-    await readerWindow.scholiumMermaidReady;
+    readerWindow2.scholiumMermaidReady = renderMermaidNodes();
+    await Promise.all([mathReady, readerWindow2.scholiumMermaidReady]);
+    if (!alive()) return;
     if (config.replyProjection === true) {
       const disposeReply = installChatReply(documentRoot, post);
       replyProjection.commit();
-      readerWindow.scholiumUpdateReply = async (value2) => {
+      readerWindow2.scholiumUpdateReply = async (value2) => {
         if (!value2 || typeof value2 !== "object") return false;
         const update = value2;
         if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== "string" || !update.fingerprint || update.fingerprint.length > 256 || typeof update.html !== "string" || update.html.length > 16777216 || typeof update.presentationCSS !== "string" || typeof update.userCSS !== "string") return false;
@@ -5572,13 +5703,12 @@
         localizeRenderedInterface(documentRoot, localized);
         decorateAttachmentLinks(documentRoot);
         decorateChatReplyLinks(documentRoot);
-        readerWindow.scholiumReviewImages?.refresh();
+        readerWindow2.scholiumReviewImages?.refresh();
         fingerprint = update.fingerprint;
-        if (presentationStyle.textContent !== update.presentationCSS) presentationStyle.textContent = update.presentationCSS;
-        if (userStyle.textContent !== update.userCSS) userStyle.textContent = update.userCSS;
+        setPresentationStyles(update.presentationCSS, update.userCSS);
         renderMathNodes();
-        readerWindow.scholiumMermaidReady = renderMermaidNodes();
-        await readerWindow.scholiumMermaidReady;
+        readerWindow2.scholiumMermaidReady = renderMermaidNodes();
+        await readerWindow2.scholiumMermaidReady;
         documentRoot.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
           heading.setAttribute("role", "heading");
           heading.setAttribute("aria-level", String(bodyHeadingAccessibilityLevel(Number(heading.tagName.slice(1)))));
@@ -5588,15 +5718,15 @@
         restoreSelection();
         return true;
       };
-      window.addEventListener("pagehide", disposeReply, { once: true });
+      listenWindow("pagehide", disposeReply, { once: true });
     }
     for (const mediaQuery of [
       matchMedia("(prefers-color-scheme: dark)"),
       matchMedia("(prefers-contrast: more)")
     ]) {
-      mediaQuery.addEventListener("change", scheduleMermaidRefresh);
+      mediaQuery.addEventListener("change", scheduleMermaidRefresh, signal ? { signal } : void 0);
     }
-    document.querySelectorAll("button[data-link-annotation]").forEach((button) => {
+    documentRoot.querySelectorAll("button[data-link-annotation]").forEach((button) => {
       const linkName = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localized("linked note");
       button.dataset.linkAnnotationTarget = linkName;
       button.setAttribute(
@@ -5751,9 +5881,7 @@
       shell.replaceWith(fallback);
     }
     function renderEmbeddedNotes() {
-      const documentRoot2 = document.getElementById("scholium-document");
-      if (!documentRoot2) return;
-      for (const shell of documentRoot2.querySelectorAll(
+      for (const shell of documentRoot.querySelectorAll(
         ".scholium-embedded-note[data-preview-range]"
       )) {
         if (shell.parentElement?.closest(".scholium-embedded-note")) continue;
@@ -5780,7 +5908,7 @@
           localized("Embedded note {title}", { title: preview.title })
         );
       }
-      const anchors = [...documentRoot2.querySelectorAll("a.scholium-embed")].filter((anchor) => !anchor.parentElement?.closest(".scholium-embedded-note"));
+      const anchors = [...documentRoot.querySelectorAll("a.scholium-embed")].filter((anchor) => !anchor.parentElement?.closest(".scholium-embedded-note"));
       for (const anchor of anchors) {
         const key = anchor.dataset.sourceUtf16Start + ":" + anchor.dataset.sourceUtf16End;
         const preview = previewByRange.get(key);
@@ -5788,12 +5916,12 @@
         anchor.replaceWith(embeddedNoteFor(anchor, preview, key));
       }
       renderMathNodes();
-      const current = readerWindow.scholiumMermaidReady || Promise.resolve();
-      readerWindow.scholiumMermaidReady = current.catch(() => {
+      const current = readerWindow2.scholiumMermaidReady || Promise.resolve();
+      readerWindow2.scholiumMermaidReady = current.catch(() => {
       }).then(renderMermaidNodes);
-      readerWindow.scholiumReviewImages?.refresh();
+      readerWindow2.scholiumReviewImages?.refresh();
     }
-    readerWindow.scholiumSetLinkPreviews = (previews) => {
+    readerWindow2.scholiumSetLinkPreviews = (previews) => {
       previewByRange = new Map(previews.map((preview) => [
         preview.utf16LowerBound + ":" + preview.utf16UpperBound,
         preview
@@ -5804,7 +5932,9 @@
     };
     function positionPopover(anchor) {
       popover.hidden = false;
-      nativePreviewID = nativeFloating.preview.show(previewSurface(anchor.getBoundingClientRect(), popover), {
+      const surface = previewSurface(anchor.getBoundingClientRect(), popover);
+      if (host) surface.html = `<div class="scholium-review-projection">${surface.html}</div>`;
+      nativePreviewID = nativeFloating.preview.show(surface, {
         dismiss: hidePopover,
         enter: () => {
           nativePreviewHovered = true;
@@ -5822,7 +5952,7 @@
         hidePopover();
         return;
       }
-      const definition = document.getElementById("fn-" + ordinal);
+      const definition = elementByID("fn-" + ordinal);
       const content = definition && definition.querySelector(".footnote-content");
       if (!content) {
         hidePopover();
@@ -5862,7 +5992,7 @@
     function showLinkAnnotationPopover(button) {
       const identifier = button.dataset.linkAnnotation;
       const marker = button.closest(".scholium-link-annotation-marker");
-      const template = identifier ? document.getElementById(`${identifier}-template`) : marker?.querySelector(":scope > template") ?? null;
+      const template = identifier ? elementByID(`${identifier}-template`) : marker?.querySelector(":scope > template") ?? null;
       if (!template) {
         hidePopover();
         return;
@@ -5900,21 +6030,21 @@
     function remainsInsidePreviewAnchor(anchor, relatedTarget) {
       return relatedTarget instanceof Node && anchor.contains(relatedTarget);
     }
-    document.addEventListener("pointerover", (event) => {
+    listenDocument("pointerover", (event) => {
       const anchor = previewAnchorFor(event.target);
       if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
       if (pinnedAnnotationButton && anchor !== pinnedAnnotationButton) return;
       cancelPopoverHide();
       showPreviewFor(anchor);
     });
-    document.addEventListener("focusin", (event) => {
+    listenDocument("focusin", (event) => {
       const anchor = previewAnchorFor(event.target);
       if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
       if (pinnedAnnotationButton && anchor !== pinnedAnnotationButton) return;
       cancelPopoverHide();
       showPreviewFor(anchor);
     });
-    document.addEventListener("pointerout", (event) => {
+    listenDocument("pointerout", (event) => {
       const anchor = previewAnchorFor(event.target);
       if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
       if (event.relatedTarget instanceof Node && popover.contains(event.relatedTarget)) {
@@ -5923,16 +6053,17 @@
         schedulePopoverHide();
       }
     });
-    document.addEventListener("focusout", (event) => {
+    listenDocument("focusout", (event) => {
       const anchor = previewAnchorFor(event.target);
       if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) schedulePopoverHide();
     });
     popover.addEventListener("pointerenter", cancelPopoverHide);
     popover.addEventListener("pointerleave", schedulePopoverHide);
-    window.addEventListener("scroll", hidePopover, { passive: true });
-    window.addEventListener("resize", hidePopover);
+    listenWindow("scroll", hidePopover, { passive: true });
+    listenWindow("resize", hidePopover);
     renderEmbeddedNotes();
-    document.addEventListener("click", (event) => {
+    cleanups.push(hidePopover);
+    listenDocument("click", (event) => {
       const eventElement = event.target instanceof Element ? event.target : null;
       const annotationButton = eventElement?.closest(
         ".scholium-link-annotation-button"
@@ -5954,7 +6085,7 @@
       if (reference && !reference.disabled) {
         const ordinal = reference.dataset.footnote;
         const targetID = reference.dataset.target;
-        const target = targetID ? document.getElementById(targetID) : null;
+        const target = targetID ? elementByID(targetID) : null;
         if (target) {
           const origin = reference.closest(".footnote-reference-wrap") || reference;
           origins.set(ordinal, origin.id);
@@ -5970,7 +6101,7 @@
       if (back) {
         const ordinal = back.dataset.footnote;
         const originID = origins.get(ordinal) || "fnref-" + ordinal + "-1";
-        const origin = document.getElementById(originID);
+        const origin = elementByID(originID);
         if (origin) {
           const focusTarget = origin.matches(".footnote-reference") ? origin : origin.querySelector(".footnote-reference");
           origin.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -5986,12 +6117,12 @@
         event.preventDefault();
       }
     });
-    document.addEventListener("keydown", (event) => {
+    listenDocument("keydown", (event) => {
       if (event.key === "Escape") {
         hidePopover();
       }
     });
-    readerWindow.scholiumSetReviewSelectionSurfaceActive = (active) => {
+    readerWindow2.scholiumSetReviewSelectionSurfaceActive = (active) => {
       const nextActive = Boolean(active);
       if (nextActive === reviewSelectionSurfaceActive) return true;
       reviewSelectionSurfaceActive = nextActive;
@@ -6002,9 +6133,9 @@
       }
       return true;
     };
-    readerWindow.scholiumShowSelectionActions = async () => null;
+    readerWindow2.scholiumShowSelectionActions = async () => null;
     if (selectionEnabled) {
-      const reviewDocument = document.getElementById("scholium-document");
+      const reviewDocument = documentRoot;
       const reviewMermaidElements = reviewDocument ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
       const isBodySelection = (range) => {
         const frontmatter = reviewDocument?.querySelector('[data-scholium-protected="frontmatter"]');
@@ -6037,26 +6168,27 @@
         if (!selected) return null;
         const { range, utf16Count } = selected;
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
+        if (rect.bottom < 0 || rect.top > viewportHeight()) return null;
         return {
           key: selectionActionKey(selected),
           utf16Count,
           anchor: { left: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom }
         };
       }, selectionActionKey);
+      cleanups.push(() => selectionActions.dismiss());
       let revealedSelectionScroll = null;
-      window.addEventListener("scroll", () => {
-        if (revealedSelectionScroll?.top === window.scrollY && revealedSelectionScroll.left === window.scrollX) return;
+      listenWindow("scroll", () => {
+        if (revealedSelectionScroll?.top === scrollTop() && revealedSelectionScroll.left === scrollLeft()) return;
         revealedSelectionScroll = null;
         selectionActions.dismissForScroll();
       }, { passive: true });
       for (const event of ["wheel", "touchstart", "pointerdown"]) {
-        window.addEventListener(event, () => {
+        listenWindow(event, () => {
           revealedSelectionScroll = null;
           selectionActions.dismiss();
         }, { capture: true, passive: true });
       }
-      document.addEventListener("keydown", (event) => {
+      listenDocument("keydown", (event) => {
         const dismissed = selectionActions.dismissForKey(event);
         if (event.key === "Escape" && !event.isComposing && dismissed) {
           event.preventDefault();
@@ -6152,18 +6284,18 @@
         const expectedKey = selectionActionKey(selected);
         const range = selected.range.cloneRange();
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        if (rect.bottom < 0 || rect.top > viewportHeight()) {
           const target = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
           target?.scrollIntoView({ block: "center", behavior: "auto" });
           range.getBoundingClientRect();
-          revealedSelectionScroll = { top: window.scrollY, left: window.scrollX };
+          revealedSelectionScroll = { top: scrollTop(), left: scrollLeft() };
         }
-        if (selectionActions.presentationRevision !== presentationRevision || readerWindow.scholiumShowSelectionActions !== showSelectionActions || selectionActionKey() !== expectedKey) return null;
+        if (selectionActions.presentationRevision !== presentationRevision || readerWindow2.scholiumShowSelectionActions !== showSelectionActions || selectionActionKey() !== expectedKey) return null;
         updateReviewSelection();
         if (selectionActions.presentationRevision !== presentationRevision) return null;
         return selectionActions.presentCurrent() ? selectionActions.surfaceID : null;
       };
-      readerWindow.scholiumShowSelectionActions = showSelectionActions;
+      readerWindow2.scholiumShowSelectionActions = showSelectionActions;
       reviewDocument?.addEventListener("contextmenu", (event) => {
         if (!reviewSelectionSurfaceActive) return;
         const target = event.target instanceof Element ? event.target : null;
@@ -6190,25 +6322,25 @@
           paragraphUpper: Number(paragraph.dataset.sourceUtf16End)
         });
       });
-      document.addEventListener("selectionchange", updateReviewSelection);
+      listenDocument("selectionchange", updateReviewSelection);
       reviewDocument?.addEventListener("pointerdown", (event) => {
         if (!reviewSelectionSurfaceActive || event.button !== 0) return;
         reviewPointerSelectionActive = true;
       }, true);
-      window.addEventListener("pointerup", (event) => {
+      listenWindow("pointerup", (event) => {
         if (!reviewPointerSelectionActive || event.button !== 0) return;
         reviewPointerSelectionActive = false;
         queueMicrotask(updateReviewSelection);
       }, true);
-      window.addEventListener("pointercancel", () => {
+      listenWindow("pointercancel", () => {
         reviewPointerSelectionActive = false;
       }, true);
-      window.addEventListener("blur", () => {
+      listenWindow("blur", () => {
         reviewPointerSelectionActive = false;
       });
     }
     const scrollBlockRegistry = (() => {
-      const root = document.getElementById("scholium-document");
+      const root = documentRoot;
       const entries = [];
       const byElement = /* @__PURE__ */ new WeakMap();
       const byExactRange = /* @__PURE__ */ new Map();
@@ -6370,7 +6502,7 @@
       return null;
     }
     function currentReadScrollAnchor(fraction) {
-      const probe = 8;
+      const probe = viewportTop() + 8;
       const selected = scrollEntryAtProbe(probe);
       if (!selected) return null;
       const rect = selected.element.getBoundingClientRect();
@@ -6400,7 +6532,7 @@
       lastPostedScroll = null;
       const fallback = Number(anchor.fallbackFraction);
       if (Number.isFinite(fallback) && fallback <= 0) {
-        window.scrollTo({ top: 0, behavior: "auto" });
+        scrollTo({ top: 0, behavior: "auto" });
         return true;
       }
       const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
@@ -6410,12 +6542,19 @@
       const height = Math.max(1, rect.height);
       const requestedOffset = Math.max(0, Math.min(1, relative)) * height;
       const interiorOffset = height > 8 ? Math.max(4, Math.min(height - 4, requestedOffset)) : requestedOffset;
-      const requestedTop = window.scrollY + rect.top + interiorOffset - 8;
-      window.scrollTo({ top: Math.max(0, requestedTop), behavior: "auto" });
+      const requestedTop = scrollTop() + rect.top + interiorOffset - viewportTop() - 8;
+      scrollTo({ top: Math.max(0, requestedTop), behavior: "auto" });
       return true;
     }
-    readerWindow.scholiumReadScroll = {
+    readerWindow2.scholiumReadScroll = {
       restoreCount: 0,
+      fraction() {
+        const extent = Math.max(0, scrollHeight() - viewportHeight());
+        return extent > 0 ? Math.max(0, Math.min(1, scrollTop() / extent)) : 0;
+      },
+      setFraction(fraction) {
+        scrollTo({ top: Math.max(0, Math.min(1, fraction)) * Math.max(0, scrollHeight() - viewportHeight()), behavior: "auto" });
+      },
       recordRestoreAttempt() {
         this.restoreCount += 1;
       },
@@ -6445,20 +6584,24 @@
       (callback, delay) => window.setTimeout(callback, delay),
       (identifier) => window.clearTimeout(identifier)
     );
+    cleanups.push(() => scrollReports.cancel());
     let lastPostedScroll = null;
     const sameAnchor = (left, right) => left === right || Boolean(left && right && left.sourceUTF16Offset === right.sourceUTF16Offset && left.blockUTF16LowerBound === right.blockUTF16LowerBound && left.blockUTF16UpperBound === right.blockUTF16UpperBound && left.relativeBlockPosition === right.relativeBlockPosition && left.fallbackFraction === right.fallbackFraction);
     const postCurrentScroll = () => {
-      const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
+      const extent = Math.max(0, scrollHeight() - viewportHeight());
+      const fraction = extent > 0 ? Math.max(0, Math.min(1, scrollTop() / extent)) : 0;
       const anchor = currentReadScrollAnchor(fraction);
       if (lastPostedScroll && lastPostedScroll.fraction === fraction && sameAnchor(lastPostedScroll.anchor, anchor)) return;
       lastPostedScroll = { fraction, anchor };
       post("scrollChanged", { fraction, anchor });
     };
-    window.addEventListener("scroll", () => {
+    listenWindow("scroll", () => {
       scrollReports.schedule(postCurrentScroll);
     }, { passive: true });
   }
+
+  // reader.ts
+  var readerWindow = window;
   readerWindow.scholiumRead = {
     initialize(value) {
       const ready = initializeReader(value);

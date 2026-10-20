@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 54
+let markdownEditorProtocolVersion = 55
 let markdownEditorMaximumInteractionRevision = 9_007_199_254_740_991
 
 func markdownEditorInteractionRevisionIsValid(_ revision: Int) -> Bool {
@@ -28,7 +28,7 @@ let markdownEditorMaximumImageResourceEnvelopeBytes =
 
 let markdownEditorMaximumPresentationEnvelopeBytes =
     markdownEditorMaximumImageResourceEnvelopeBytes
-    + 12_000_000 + markdownEditorMaximumInboundBytes + 512_000
+    + 12_000_000 + markdownEditorMaximumInboundBytes + 512_000 + 24_000_000
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
@@ -252,7 +252,17 @@ struct DocumentFindResult: Codable, Hashable, Sendable {
     }
 }
 
+/// A committed native projection; rendered HTML never owns writable source.
+struct MarkdownEditorReviewProjection: Codable, Hashable, Sendable {
+    var documentID = ""
+    let sourceFingerprint: String
+    let htmlBody: String
+    let css: String
+    let configuration: SafeMarkdownReadWebView.Coordinator.ReadBridgeConfiguration
+}
+
 struct MarkdownEditorPresentationConfiguration: Codable, Hashable, Sendable {
+    var reviewProjection: MarkdownEditorReviewProjection? = nil
     var documentTitle = ""
     var presentationCSS = ""
     var userCSS = ""
@@ -304,7 +314,20 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case cancelCitation(transactionID: String)
     case command(MarkdownEditorCommand, argument: String?)
     case pasteClipboard(plainText: String, selections: [MarkdownEditorSelectionRange])
-    case markClean, focus, focusTitle, blur
+    case focus, focusTitle, blur
+
+    /// Review permits source-neutral presentation, reads, and transaction cleanup.
+    var requiresWritableSource: Bool {
+        switch self {
+        case .replacePassage, .insertReference, .beginCitation, .citationCallback, .finishCitation,
+            .command, .pasteClipboard:
+            true
+        case .documentFind(let query):
+            query.action == .replaceCurrent || query.action == .replaceAll
+        default:
+            false
+        }
+    }
 
     /// Only operations that can replace or mutate authoritative source need
     /// transport ordering. Snapshot reads and presentation intents must not
@@ -350,7 +373,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             queryPerformance
         case captureRecovery, suspendForDetachment, resumeAfterDetachment, acknowledgeCommittedSnapshot, replacePassage, insertReference,
             beginCitation, citationCallback, finishCitation, cancelCitation, command, pasteClipboard, documentFind, clearDocumentFind,
-            markClean, focus,
+            focus,
             focusTitle, blur
     }
 
@@ -453,7 +476,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                     forKey: .plainText, in: container, debugDescription: "Clipboard source or selection exceeds the editor bounds")
             }
             self = .pasteClipboard(plainText: plainText, selections: selections)
-        case .markClean: self = .markClean
         case .focus: self = .focus
         case .focusTitle: self = .focusTitle
         case .blur: self = .blur
@@ -560,7 +582,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(plainText, forKey: .plainText)
             try container.encode(selections, forKey: .selections)
         case .selectAll: try container.encode(Kind.selectAll, forKey: .type)
-        case .markClean: try container.encode(Kind.markClean, forKey: .type)
         case .focus: try container.encode(Kind.focus, forKey: .type)
         case .focusTitle: try container.encode(Kind.focusTitle, forKey: .type)
         case .blur: try container.encode(Kind.blur, forKey: .type)

@@ -16,7 +16,8 @@ import WebKit
                 if self == .small {
                     return prefix + (0..<60).map { "Paragraph \($0): 中文 😀 e\u{301} synthetic source.\r\n\r\n" }.joined()
                 }
-                let paragraph = self == .plain
+                let paragraph =
+                    self == .plain
                     ? "Synthetic manuscript paragraph preserves 中文、🦉 and cafe\u{301}; no private research content.\r\n\r\n"
                     : "## Synthetic structure\r\n\r\nA **bold** and *emphasized* claim links [[Target]] and cites [@synthetic2026, p. 12].\r\n\r\n> [!note] A disposable callout\r\n> 中文 🦉 cafe\u{301} preserved.\r\n\r\n- First point\r\n- Second point with footnote[^fixture]\r\n\r\n| Claim | Source |\r\n| --- | --- |\r\n| Synthetic | [[Target]] |\r\n\r\n[^fixture]: Synthetic footnote.\r\n\r\n"
                 let repetitions = (200 * 1_024 - prefix.utf8.count) / paragraph.utf8.count
@@ -36,8 +37,9 @@ import WebKit
 
         static func label() throws -> String {
             let label = ProcessInfo.processInfo.environment["SCHOLIUM_EDITOR_RESTORATION_LABEL"] ?? "unlabeled"
-            try #require((1...48).contains(label.utf8.count)
-                && label.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 || $0 == 95 })
+            try #require(
+                (1...48).contains(label.utf8.count)
+                    && label.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 || $0 == 95 })
             return label
         }
 
@@ -50,14 +52,15 @@ import WebKit
             let web = try #require(session.webView)
             let end = EditorSourceOffsetMap(source: session.checkedSource).editorUTF16Length
             _ = try await session.send(.revealSourceRange(fromUTF16: end, toUTF16: end), in: web)
-            let prevented = try await web.callAsyncJavaScript(
-                """
-                const content = document.querySelector('.cm-content');
-                const event = new KeyboardEvent('keydown', {key:'ArrowUp', code:'ArrowUp', keyCode:38, which:38,
-                    metaKey:true, altKey:true, bubbles:true, cancelable:true});
-                content.dispatchEvent(event);
-                return event.defaultPrevented;
-                """, arguments: [:], in: nil, contentWorld: .page) as? Bool
+            let prevented =
+                try await web.callAsyncJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    const event = new KeyboardEvent('keydown', {key:'ArrowUp', code:'ArrowUp', keyCode:38, which:38,
+                        metaKey:true, altKey:true, bubbles:true, cancelable:true});
+                    content.dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: [:], in: nil, contentWorld: .page) as? Bool
             try #require(prevented == true)
             let receipt = try await session.send(.querySelection, in: web)
             try #require(receipt.selection?.ranges.count == 2)
@@ -76,12 +79,16 @@ import WebKit
                     try #require(status.observed["nonemptyBuildAttempts"] == 0)
                 }
             }
-            print("EDITOR_PROJECTION_BUILDS label=\(label) boundary=\(boundary) sample=\(sample) count=\(builds.count) duration_ms=\(builds.reduce(0) { $0 + $1.durationMilliseconds })")
+            print(
+                "EDITOR_PROJECTION_BUILDS label=\(label) boundary=\(boundary) sample=\(sample) count=\(builds.count) duration_ms=\(builds.reduce(0) { $0 + $1.durationMilliseconds })"
+            )
             for phase in phases {
                 let observations = phase.observed.keys.sorted().compactMap { key in
                     phase.observed[key].map { "\(key)=\($0)" }
                 }.joined(separator: " ")
-                print("EDITOR_RESTORATION_PHASE label=\(label) boundary=\(boundary) sample=\(sample) name=\(phase.name) duration_ms=\(phase.durationMilliseconds) \(observations)")
+                print(
+                    "EDITOR_RESTORATION_PHASE label=\(label) boundary=\(boundary) sample=\(sample) name=\(phase.name) duration_ms=\(phase.durationMilliseconds) \(observations)"
+                )
             }
         }
     }
@@ -112,7 +119,9 @@ import WebKit
                 let coldMilliseconds = Self.milliseconds(coldStarted.duration(to: .now))
                 let coldBridges = dispatcher.endSample()
                 try await emitPhases(in: harness, label: label, boundary: "cold-first-ready", sample: 0)
-                print("EDITOR_COLD_OPEN label=\(label) mode=\(mode.rawValue) fixture=\(fixture.rawValue) source_bytes=\(source.utf8.count) ready_ms=\(coldMilliseconds) initialize_bridge_ms=\(coldBridges.initializeMilliseconds)")
+                print(
+                    "EDITOR_COLD_OPEN label=\(label) mode=\(mode.rawValue) fixture=\(fixture.rawValue) source_bytes=\(source.utf8.count) ready_ms=\(coldMilliseconds) initialize_bridge_ms=\(coldBridges.initializeMilliseconds)"
+                )
                 if EditorAblationDiagnosticConfiguration.expectsDeferredIndex {
                     let demandStarted = ContinuousClock.now
                     let receipt = try await harness.session.send(.queryContext, in: #require(harness.session.webView))
@@ -121,7 +130,9 @@ import WebKit
                     let phases = try await harness.session.queryPerformanceSamples()
                     let status = try #require(phases.last { $0.name == "ablation-index-status" })
                     try #require((status.observed["nonemptyBuildAttempts"] ?? 0) > 0)
-                    print("EDITOR_SEMANTIC_DEMAND label=\(label) elapsed_ms=\(demandMilliseconds) index_ms=\(phases.filter { $0.name == "projection-index" }.reduce(0) { $0 + $1.durationMilliseconds })")
+                    print(
+                        "EDITOR_SEMANTIC_DEMAND label=\(label) elapsed_ms=\(demandMilliseconds) index_ms=\(phases.filter { $0.name == "projection-index" }.reduce(0) { $0 + $1.durationMilliseconds })"
+                    )
                 }
                 let editorEnd = EditorSourceOffsetMap(source: source).editorUTF16Length
                 _ = try await harness.session.send(
@@ -242,7 +253,9 @@ import WebKit
                     }
                     #expect(try await harness.session.currentText().utf8.elementsEqual(edited.utf8))
                     #expect(harness.session.context?.selections == selection)
-                    print("EDITOR_SAME_PAGE label=\(label) mode=\(mode.rawValue) fixture=\(fixture.rawValue) sample=\(sample) source_bytes=\(edited.utf8.count) ready_ms=\(elapsed) initialize_bridge_ms=\(bridges.initializeMilliseconds)")
+                    print(
+                        "EDITOR_SAME_PAGE label=\(label) mode=\(mode.rawValue) fixture=\(fixture.rawValue) sample=\(sample) source_bytes=\(edited.utf8.count) ready_ms=\(elapsed) initialize_bridge_ms=\(bridges.initializeMilliseconds)"
+                    )
                 }
                 await harness.closeAndDrain()
             } catch {
@@ -258,16 +271,17 @@ import WebKit
         }
 
         private func applyHistory(in harness: Harness, redo: Bool) async throws {
-            let prevented = try await harness.callPageJavaScript(
-                """
-                const content = document.querySelector('.cm-content');
-                const event = new KeyboardEvent('keydown', {
-                    key: redo ? 'Z' : 'z', code: 'KeyZ', keyCode: 90, which: 90,
-                    metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
-                });
-                content.dispatchEvent(event);
-                return event.defaultPrevented;
-                """, arguments: ["redo": redo]) as? Bool
+            let prevented =
+                try await harness.callPageJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    const event = new KeyboardEvent('keydown', {
+                        key: redo ? 'Z' : 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                        metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
+                    });
+                    content.dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
             try #require(prevented == true)
         }
 

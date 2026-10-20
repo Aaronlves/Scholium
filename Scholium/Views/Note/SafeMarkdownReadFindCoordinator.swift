@@ -63,6 +63,7 @@ final class DocumentFindFocusReturnAuthority: NSObject {
 /// WebKit query. Page load identity remains supplied by the parent coordinator.
 @MainActor
 final class SafeMarkdownReadFindCoordinator {
+    var bridgeContentWorld = SafeMarkdownReadWebView.bridgeContentWorld
     private var request: DocumentFindPresentationRequest?
     private var report: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?
     private var appliedRequestID: UInt64?
@@ -124,7 +125,7 @@ final class SafeMarkdownReadFindCoordinator {
                     "return window.scholiumReviewFind?.perform(request)",
                     arguments: ["request": arguments],
                     in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    contentWorld: self.bridgeContentWorld
                 )
                 guard !Task.isCancelled,
                     isCurrent(),

@@ -36,6 +36,7 @@ function anchorRestorationHarness(fontsReady: Promise<void>) {
     scrollDOM,
     emit: (event: string) => listeners.get(event)?.(),
     setBlockTop: (top: number) => { blockTop = top; },
+    cancelRestoration: () => coordinator.cancelPendingRestoration(),
     restore: () => coordinator.setAnchor({
       sourceUTF16Offset: 300, blockUTF16LowerBound: 300, blockUTF16UpperBound: 320,
       relativeBlockPosition: 0, fallbackFraction: 0.2,
@@ -232,6 +233,29 @@ describe("scroll coordination across runtime reuse", () => {
     await Promise.resolve();
 
     expect(harness.scrollDOM.scrollTop).toBe(493);
+  });
+
+  it("retires Edit frame/font restorations before another mode owns the same scroller", async () => {
+    vi.useFakeTimers();
+    let finishFonts!: () => void;
+    const harness = anchorRestorationHarness(new Promise<void>(resolve => { finishFonts = resolve; }));
+    harness.restore();
+    expect(harness.scrollDOM.scrollTop).toBe(293);
+
+    // Review uses the same source and scroll DOM with a different height map.
+    // Cancel old Edit geometry without resetting the incoming reading position.
+    harness.cancelRestoration();
+    expect(harness.scrollDOM.scrollTop).toBe(293);
+    harness.scrollDOM.scrollTop = 640;
+    harness.setBlockTop(1_100);
+    vi.advanceTimersByTime(150);
+    finishFonts();
+    await Promise.resolve();
+    expect(harness.scrollDOM.scrollTop).toBe(640);
+
+    // The next Edit entry owns a fresh restoration on that retained document.
+    harness.restore();
+    expect(harness.scrollDOM.scrollTop).toBe(1_093);
   });
 
   it("updates and clears the covered caret region when native toolbar overlap changes", () => {

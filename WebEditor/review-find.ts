@@ -69,18 +69,17 @@ function rangeFor(nodes: Text[], start: number, end: number): Range | null {
   return range;
 }
 
-function searchableLines(): Element[] {
-  const root = document.querySelector("main");
+function searchableLines(root: Element | null): Element[] {
   if (!root) return [];
   const lines = Array.from(root.querySelectorAll("[data-source-line]"))
     .filter((element) => !element.querySelector("[data-source-line]"));
   return lines.length > 0 ? lines : [root];
 }
 
-function rangesFor(request: ReviewFindRequest): Range[] {
+function rangesFor(request: ReviewFindRequest, root: Element | null): Range[] {
   if (!request.query) return [];
   const result: Range[] = [];
-  for (const line of searchableLines()) {
+  for (const line of searchableLines(root)) {
     const nodes = textNodesIn(line);
     const text = nodes.map((node) => node.data).join("");
     for (const match of documentFindMatches(text, {
@@ -93,8 +92,9 @@ function rangesFor(request: ReviewFindRequest): Range[] {
   return result;
 }
 
-export function installReviewFind(): {
+export function installReviewFind(root: Element | null = document.querySelector("main")): {
   perform(request: ReviewFindRequest): ReviewFindResult;
+  destroy(): void;
 } {
   const allName = "scholium-review-find";
   const currentName = "scholium-review-find-current";
@@ -138,6 +138,7 @@ export function installReviewFind(): {
   };
 
   return {
+    destroy() { clear(); style.remove(); matches = []; },
     perform(request) {
       if (!request || request.operation === "clear") {
         signature = "";
@@ -151,7 +152,7 @@ export function installReviewFind(): {
       ]);
       if (nextSignature !== signature || request.action === "update") {
         signature = nextSignature;
-        matches = rangesFor(request);
+        matches = rangesFor(request, root);
         current = matches.length > 0 ? 0 : -1;
       } else if (request.action === "next" && matches.length > 0) {
         current = (current + 1) % matches.length;

@@ -246,6 +246,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
+    private var pendingReviewProjection: MarkdownEditorReviewProjection?
+    /// A newer committed HTML projection may arrive before reconciliation has
+    /// frozen and replaced the current CM source. Finish the current load with
+    /// its own projection; only a source rebase can admit the newer one.
+    private var currentReviewProjection: MarkdownEditorReviewProjection?
     private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
     private var pendingSourceRangeIsDefault = false
@@ -327,6 +332,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var detachmentSuspensionID: String? {
         pendingDetachmentSuspensionID ?? detachmentCapture?.suspensionID
     }
+
+    /// A fresh, hidden Review has never admitted writable source or history.
+    /// An external revision may replace its pending initialization directly;
+    /// waiting for the superseded HTML would prevent it from ever loading.
+    var canReplaceUninitializedReview: Bool {
+        pendingMode == .review && pendingSource != nil && !isLoaded && !isDirty && !isComposing
+            && generation == 0 && context == nil && recoverySnapshot == nil
+            && detachmentSuspensionID == nil
+            && (webView as? DocumentNativeWebView)?.documentSurfaceAllowsInput == false
+    }
     private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
     private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
     private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget? {
@@ -340,6 +355,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         )
         private var qaTerminationObserverInstalled = false
         var testingOpeningImageWaitID: UUID? { openingImageWaitID }
+
+        var testingReviewPreparationDiagnostics: [String: String] {
+            [
+                "source": startingFingerprint,
+                "pendingSource": pendingSource.map { DocumentFingerprint(content: $0).sha256 } ?? "none",
+                "pendingProjection": pendingReviewProjection?.sourceFingerprint ?? "none",
+                "currentProjection": currentReviewProjection?.sourceFingerprint ?? "none",
+                "deliveredProjection": deliveredPresentationConfiguration?.reviewProjection?.sourceFingerprint ?? "none",
+                "pendingMode": pendingMode.rawValue,
+                "loaded": String(isLoaded), "ready": String(isReady),
+                "suspension": detachmentSuspensionID ?? "none",
+                "error": errorMessage ?? "none",
+            ]
+        }
 
         struct TestingEditorChangeTiming: Sendable {
             let baseGeneration: Int
@@ -607,6 +636,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingSourceRangeIsDefault = false
         pendingDocumentID = ""
         pendingDocumentTitle = ""
+        pendingReviewProjection = nil
+        currentReviewProjection = nil
         pendingLinkPreviews = []
         pendingLinkPreviewGeneration = 0
         pendingImageResources = [:]
@@ -887,6 +918,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         startingFingerprint =
             retainedStartingFingerprint
             ?? nextFingerprint
+        currentReviewProjection = reviewProjectionForCurrentSource
         checkedSourceBuffer.replace(with: source)
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
@@ -923,6 +955,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         if !preservesRecovery { updatePublished(\.isDirty, to: false) }
         flushPendingState()
+    }
+
+    func setReviewProjection(_ projection: MarkdownEditorReviewProjection?) {
+        guard pendingReviewProjection != projection else { return }
+        pendingReviewProjection = projection
+        if projection == nil { currentReviewProjection = nil } else { currentReviewProjection = reviewProjectionForCurrentSource }
+        flushPendingState()
+        reconvergePendingPresentationState()
+        if pendingMode == .review, isReady, isLoaded, let webView {
+            startModeConvergence(in: webView)
+        }
     }
 
     func setMode(_ mode: MarkdownEditorMode) {
@@ -966,6 +1009,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         self.webView === webView
                     else { return }
                     let targetMode = self.pendingMode
+                    if targetMode == .review {
+                        guard !self.isDirty,
+                            self.reviewProjectionForCurrentSource != nil
+                        else { return }
+                        try await self.convergePendingPresentationState(
+                            in: webView, requiringRequestEpoch: self.requestEpoch, documentID: self.documentID)
+                    }
                     guard self.presentedMode != targetMode else { return }
                     PerformanceProbe.shared.markEditorModeBridgeStarted(
                         mode: targetMode
@@ -1061,7 +1111,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func pasteClipboard(plainText: String, selections: [MarkdownEditorSelectionRange]) async throws {
-        guard isReady, isLoaded, !isComposing, let webView else { return }
+        guard pendingMode != .review, presentedMode != .review, isReady, isLoaded, !isComposing, let webView else { return }
         guard plainText.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
             let message = WebKitInterfaceLocalization.current().string("The edited Markdown document exceeds the supported editor size.")
             _ = try? await send(.announceStatus(message), in: webView)
@@ -1191,6 +1241,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func recordScrollFraction(_ fraction: Double) {
         pendingScrollFraction = min(1, max(0, fraction))
+    }
+
+    /// An acknowledged Review reports exact-source coordinates. Remember its
+    /// current viewport without creating a navigation or restoration intent.
+    func recordReviewScrollPosition(_ position: ObservedScrollPosition) {
+        guard isReady, isLoaded, pendingMode == .review, presentedMode == .review,
+            position.fraction.isFinite, (0...1).contains(position.fraction)
+        else { return }
+        pendingScrollFraction = position.fraction
+        reconstructionScrollAnchor = nil
+        pendingScrollAnchor = position.anchor.flatMap { anchor in
+            anchor.sourceFingerprint == startingFingerprint
+                && anchor.isValid(forUTF16Length: checkedSourceBuffer.utf16Length) ? anchor : nil
+        }
     }
 
     func recordScrollPosition(
@@ -2105,14 +2169,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceChangeHandler = nil
     }
 
-    func markClean() {
-        updatePublished(\.isDirty, to: false)
-        guard isReady, let webView else { return }
-        Task {
-            _ = try? await send(.markClean, in: webView)
-        }
-    }
-
     func focus() {
         requestFocus(.editor)
     }
@@ -2600,7 +2656,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
             }
         #endif
-        guard !rawChanges.isEmpty || citationManaged == true,
+        guard pendingMode != .review, presentedMode != .review,
+            !rawChanges.isEmpty || citationManaged == true,
             rawChanges.count <= 512,
             baseGeneration == generation,
             resultingGeneration == baseGeneration + 1,
@@ -2812,6 +2869,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     private func flushPendingState() {
         guard isReady, let source = pendingSource, let webView else { return }
+        if pendingMode == .review {
+            guard reviewProjectionForCurrentSource != nil else { return }
+        }
         pendingSource = nil
         let mode = pendingMode
         let documentID = pendingDocumentID
@@ -3090,8 +3150,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    private var reviewProjectionForCurrentSource: MarkdownEditorReviewProjection? {
+        for projection in [pendingReviewProjection, currentReviewProjection] {
+            if let projection, projection.documentID == documentID,
+                projection.sourceFingerprint == startingFingerprint
+            {
+                return projection
+            }
+        }
+        return nil
+    }
+
     private var pendingPresentationConfiguration: MarkdownEditorPresentationConfiguration {
         .init(
+            reviewProjection: reviewProjectionForCurrentSource,
             documentTitle: pendingDocumentTitle,
             presentationCSS: pendingPresentationCSS,
             userCSS: pendingUserCSS,
@@ -3236,6 +3308,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         observingOnly: Bool = false,
         admittingFocus: (@MainActor () -> Bool)? = nil
     ) async throws -> MarkdownEditorCommandResult {
+        guard !operation.requiresWritableSource || (pendingMode != .review && presentedMode != .review)
+        else { throw SessionError.unavailable }
         if observingOnly {
             guard case .queryText = operation else { throw SessionError.invalidResult }
         }

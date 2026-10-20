@@ -16,7 +16,7 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
     }
     expect(compositionRequestPolicy("cancelCitation")).toBe("allow");
     for (const operation of [
-      "queryText", "querySelection", "captureRecovery", "markClean",
+      "queryText", "querySelection", "captureRecovery",
       "setMode", "goToLine", "acknowledgeCommittedSnapshot", "command",
       "setPresentation",
       "revealSourceRange", "suspendForDetachment",

@@ -55,12 +55,14 @@ final class QAClipboardPreservation {
     private let pasteboard: NSPasteboard
     private var originalItems: [Item]?
     private var ownedChangeCount: Int?
+    private var pendingCopyChangeCount: Int?
 
     init(pasteboard: NSPasteboard) {
         self.pasteboard = pasteboard
     }
 
     func setText(_ text: String) throws {
+        pendingCopyChangeCount = nil
         let changeCount = pasteboard.changeCount
         let items = try snapshot()
         guard pasteboard.changeCount == changeCount else {
@@ -78,10 +80,42 @@ final class QAClipboardPreservation {
         }
     }
 
+    func prepareForCopy() throws -> Int {
+        pendingCopyChangeCount = nil
+        let changeCount = pasteboard.changeCount
+        let items = try snapshot()
+        guard pasteboard.changeCount == changeCount else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        if ownedChangeCount != changeCount {
+            originalItems = items
+        }
+        pendingCopyChangeCount = changeCount
+        return changeCount
+    }
+
+    /// A Copy action may claim only its one observed write. Unexpected content
+    /// or intervening writes remain externally owned and cannot be restored over.
+    func claimCopiedText(_ expected: String, after changeCount: Int) throws {
+        defer { pendingCopyChangeCount = nil }
+        let (expectedChangeCount, overflow) = changeCount.addingReportingOverflow(1)
+        let copiedChangeCount = pasteboard.changeCount
+        guard pendingCopyChangeCount == changeCount, !overflow,
+            copiedChangeCount == expectedChangeCount,
+            let copiedText = pasteboard.string(forType: .string),
+            copiedText.utf8.elementsEqual(expected.utf8),
+            pasteboard.changeCount == copiedChangeCount
+        else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        ownedChangeCount = copiedChangeCount
+    }
+
     func restoreIfOwned() throws {
         defer {
             originalItems = nil
             ownedChangeCount = nil
+            pendingCopyChangeCount = nil
         }
         guard let originalItems, let ownedChangeCount,
             pasteboard.changeCount == ownedChangeCount
@@ -325,7 +359,9 @@ final class ScholiumUITests: XCTestCase {
                 "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
             ),
             autosaveDelayMS: 5_000,
-            appearance: name.contains("testSettingsNavigationRetainsDraftsAndWindowGeometry") ? .dark : nil,
+            appearance: name.contains("testSettingsNavigationRetainsDraftsAndWindowGeometry")
+                ? .dark
+                : name.contains("testCalloutModesPreserveSemanticOrderAndExactSource") ? .light : nil,
             openNote: initialOpenNoteForCurrentTest
         )
         if name.contains("testAgentChangesShowsExactUpdateAndRestoresOriginalBytes") {
@@ -525,6 +561,78 @@ final class QAClipboardPreservationTests: XCTestCase {
         XCTAssertTrue(pasteboard.setString("Later external text", forType: .string))
         try clipboard.setText("Second QA text")
         try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.string(forType: .string), "Later external text")
+    }
+
+    @MainActor
+    func testVerifiedCopyRestoresOriginalRepresentations() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let original = NSPasteboardItem()
+        XCTAssertTrue(original.setString("Original", forType: .string))
+        XCTAssertTrue(original.setData(Data("<b>Original</b>".utf8), forType: .html))
+        XCTAssertTrue(pasteboard.writeObjects([original]))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        let beforeCopy = try clipboard.prepareForCopy()
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Expected QA copy", forType: .string))
+        try clipboard.claimCopiedText("Expected QA copy", after: beforeCopy)
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.string(forType: .string), "Original")
+        XCTAssertEqual(pasteboard.data(forType: .html), Data("<b>Original</b>".utf8))
+    }
+
+    @MainActor
+    func testCopyClaimRejectsUnchangedOrUnexpectedClipboard() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        let unchanged = try clipboard.prepareForCopy()
+        XCTAssertThrowsError(try clipboard.claimCopiedText("Original", after: unchanged))
+        let beforeCopy = try clipboard.prepareForCopy()
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Unexpected external text", forType: .string))
+        let externalChangeCount = pasteboard.changeCount
+        XCTAssertThrowsError(try clipboard.claimCopiedText("Expected QA copy", after: beforeCopy))
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.changeCount, externalChangeCount)
+        XCTAssertEqual(pasteboard.string(forType: .string), "Unexpected external text")
+    }
+
+    @MainActor
+    func testCopyClaimRejectsInterveningWriteEvenWhenFinalTextMatches() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        let beforeCopy = try clipboard.prepareForCopy()
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Intervening external text", forType: .string))
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Expected QA copy", forType: .string))
+        let externalChangeCount = pasteboard.changeCount
+        XCTAssertThrowsError(try clipboard.claimCopiedText("Expected QA copy", after: beforeCopy))
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.changeCount, externalChangeCount)
+        XCTAssertEqual(pasteboard.string(forType: .string), "Expected QA copy")
+    }
+
+    @MainActor
+    func testExternalChangeAfterVerifiedCopyIsNotOverwritten() throws {
+        let pasteboard = NSPasteboard(name: .init("com.scholium.qa.clipboard.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        XCTAssertTrue(pasteboard.setString("Original", forType: .string))
+        let clipboard = QAClipboardPreservation(pasteboard: pasteboard)
+        let beforeCopy = try clipboard.prepareForCopy()
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Expected QA copy", forType: .string))
+        try clipboard.claimCopiedText("Expected QA copy", after: beforeCopy)
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("Later external text", forType: .string))
+        let externalChangeCount = pasteboard.changeCount
+        try clipboard.restoreIfOwned()
+        XCTAssertEqual(pasteboard.changeCount, externalChangeCount)
         XCTAssertEqual(pasteboard.string(forType: .string), "Later external text")
     }
 }
