@@ -23,43 +23,28 @@ extension EnvironmentValues {
     }
 }
 
-/// Owns the editor acknowledgement and recovery handoff. Initial Review ->
-/// editor entry waits for the requested bridge mode, while an already
-/// presented CodeMirror surface stays visible during its atomic Edit <->
-/// Source compartment reconfiguration.
+/// Owns the shared host's acknowledgement and recovery handoff. Initial
+/// presentation waits for the requested bridge mode; a previously presented
+/// CodeMirror surface can stay visible during an atomic mode reconfiguration.
 struct DocumentEditorPresentationGate: Equatable {
     private(set) var presentedDocumentID: String?
 
-    mutating func reconcile(documentID: String, presentsEditor: Bool, editorIsReady: Bool) {
-        if !presentsEditor {
-            presentedDocumentID = nil
-        } else if editorIsReady {
+    mutating func reconcile(documentID: String, editorIsReady: Bool) {
+        if editorIsReady {
             presentedDocumentID = documentID
         }
     }
 
-    func showsEditor(documentID: String, presentsEditor: Bool, editorIsLoaded: Bool, editorIsReady: Bool) -> Bool {
-        presentsEditor && editorIsLoaded && (presentedDocumentID == documentID || editorIsReady)
+    mutating func reset() {
+        presentedDocumentID = nil
     }
 
-    func mountsReadSurface(presentsEditor: Bool, allowsPendingRecovery: Bool) -> Bool {
-        !presentsEditor || allowsPendingRecovery
+    func showsEditor(documentID: String, editorIsLoaded: Bool, editorIsReady: Bool) -> Bool {
+        editorIsLoaded && (presentedDocumentID == documentID || editorIsReady)
     }
 
-    func allowsReadHitTesting(
-        documentID: String,
-        presentsEditor: Bool,
-        editorIsLoaded: Bool,
-        editorIsReady: Bool,
-        allowsPendingRecovery: Bool
-    ) -> Bool {
-        (allowsPendingRecovery && !editorIsReady)
-            || !showsEditor(
-                documentID: documentID,
-                presentsEditor: presentsEditor,
-                editorIsLoaded: editorIsLoaded,
-                editorIsReady: editorIsReady
-            ) && (!presentsEditor || allowsPendingRecovery)
+    func allowsRecoveryHitTesting(editorIsLoaded: Bool, editorIsReady: Bool) -> Bool {
+        !editorIsLoaded || !editorIsReady
     }
 
     func allowsEditorFocus(
@@ -78,55 +63,51 @@ struct DocumentEditorPresentationGate: Equatable {
 /// Owns visibility and input eligibility while a document projection prepares.
 /// A retained host keeps its source, selection, composition, and Undo live;
 /// callers choose whether a previously presented projection can remain visible.
-struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
+struct DocumentEditorHost<RecoverySurface: View, EditorSurface: View>: View {
     let documentID: String
-    let presentsEditor: Bool
     let retainsEditor: Bool
     let editorIsLoaded: Bool
     let editorIsReady: Bool
     let keepsPresentedSurfaceWhilePreparing: Bool
-    let allowsPendingReadRecovery: Bool
+    let presentsRecovery: Bool
     let preparationTitle: String
     let preparationPresentation: ScholiumDocumentPresentationConfiguration
     let preparationAppearance: DocumentAppearanceSettings
-    private let readSurface: ReadSurface
+    private let recoverySurface: RecoverySurface
     private let editorSurface: EditorSurface
     @State private var presentationGate = DocumentEditorPresentationGate()
 
     init(
         documentID: String,
-        presentsEditor: Bool,
         retainsEditor: Bool,
         editorIsLoaded: Bool,
         editorIsReady: Bool,
         keepsPresentedSurfaceWhilePreparing: Bool = true,
-        allowsPendingReadRecovery: Bool = false,
+        presentsRecovery: Bool = false,
         preparationTitle: String = "",
         preparationPresentation: ScholiumDocumentPresentationConfiguration = .init(textScale: 1),
         preparationAppearance: DocumentAppearanceSettings = .defaultSettings,
-        @ViewBuilder read: () -> ReadSurface,
+        @ViewBuilder recovery: () -> RecoverySurface,
         @ViewBuilder editor: () -> EditorSurface
     ) {
         self.documentID = documentID
-        self.presentsEditor = presentsEditor
         self.retainsEditor = retainsEditor
         self.editorIsLoaded = editorIsLoaded
         self.editorIsReady = editorIsReady
         self.keepsPresentedSurfaceWhilePreparing = keepsPresentedSurfaceWhilePreparing
-        self.allowsPendingReadRecovery = allowsPendingReadRecovery
+        self.presentsRecovery = presentsRecovery
         self.preparationTitle = preparationTitle
         self.preparationPresentation = preparationPresentation
         self.preparationAppearance = preparationAppearance
-        readSurface = read()
+        recoverySurface = recovery()
         editorSurface = editor()
     }
 
     private var showsEditor: Bool {
-        !allowsPendingReadRecovery
+        !presentsRecovery
             && (keepsPresentedSurfaceWhilePreparing || editorIsReady)
             && presentationGate.showsEditor(
                 documentID: documentID,
-                presentsEditor: presentsEditor,
                 editorIsLoaded: editorIsLoaded,
                 editorIsReady: editorIsReady
             )
@@ -134,19 +115,13 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
     var body: some View {
         ZStack {
-            if presentationGate.mountsReadSurface(
-                presentsEditor: presentsEditor,
-                allowsPendingRecovery: allowsPendingReadRecovery
-            ) {
-                readSurface
+            if presentsRecovery {
+                recoverySurface
                     .environment(\.scholiumDocumentSurfaceVisibility, .active)
                     .allowsHitTesting(
-                        presentationGate.allowsReadHitTesting(
-                            documentID: documentID,
-                            presentsEditor: presentsEditor,
+                        presentationGate.allowsRecoveryHitTesting(
                             editorIsLoaded: editorIsLoaded,
-                            editorIsReady: editorIsReady,
-                            allowsPendingRecovery: allowsPendingReadRecovery
+                            editorIsReady: editorIsReady
                         )
                     )
                     .accessibilityHidden(false)
@@ -159,13 +134,13 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
                         \.scholiumDocumentSurfaceVisibility,
                         showsEditor
                             ? .active
-                            : presentsEditor && !allowsPendingReadRecovery ? .preparing : .retained
+                            : presentsRecovery ? .retained : .preparing
                     )
                     .allowsHitTesting(showsEditor)
                     .accessibilityHidden(!showsEditor)
                     .zIndex(showsEditor ? 1 : 0)
             }
-            if presentsEditor && !showsEditor && !allowsPendingReadRecovery {
+            if !showsEditor && !presentsRecovery {
                 DocumentPreparationStatus(
                     title: preparationTitle,
                     identifier: "scholium.documentPreparing",
@@ -178,33 +153,22 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transaction { $0.animation = nil }
         .onChange(of: documentID) { _, _ in
-            presentationGate.reconcile(documentID: documentID, presentsEditor: presentsEditor, editorIsReady: editorIsReady)
+            presentationGate.reconcile(documentID: documentID, editorIsReady: editorIsReady)
         }
         .onAppear {
             presentationGate.reconcile(
                 documentID: documentID,
-                presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )
         }
-        .onChange(of: presentsEditor) { _, _ in
-            presentationGate.reconcile(
-                documentID: documentID,
-                presentsEditor: presentsEditor,
-                editorIsReady: editorIsReady
-            )
-        }
-        .onChange(of: allowsPendingReadRecovery) { _, allowsRecovery in
-            if allowsRecovery {
-                presentationGate.reconcile(
-                    documentID: documentID, presentsEditor: false, editorIsReady: false
-                )
+        .onChange(of: presentsRecovery) { _, showsRecovery in
+            if showsRecovery {
+                presentationGate.reset()
             }
         }
         .onChange(of: editorIsReady) { _, _ in
             presentationGate.reconcile(
                 documentID: documentID,
-                presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )
         }

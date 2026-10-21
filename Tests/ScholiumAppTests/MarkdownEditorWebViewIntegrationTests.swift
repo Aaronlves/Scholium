@@ -10,6 +10,36 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Embedded Review rendering failure reaches its native recovery callback and preserves Source")
+    func unifiedReviewReportsRenderingFailure() async throws {
+        let source = "\u{FEFF}# Review\r\n\r\nExact 中文 e\u{301} 🦉.\r\n"
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        var failures: [String] = []
+        func readingConfiguration(css: String = "") -> SafeMarkdownReadWebView {
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Review", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: css, userCSS: "",
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onRenderingFailure: { failures.append($0) })
+        }
+        harness.configureReview(readingConfiguration())
+        try await harness.waitUntilReady()
+        try await harness.waitUntilPresentedMode(.review)
+        _ = try await harness.callPageJavaScript(
+            "window.scholiumSetPresentationCSS = async () => { throw new Error('forced Review presentation failure'); };")
+        harness.configureReview(readingConfiguration(css: ".scholium-document { --failure-probe: 1; }"))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while failures.isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(failures.count == 1, "The embedded event must reach the existing CSS Safe Mode/recovery callback once.")
+        harness.setMode(.source)
+        harness.session.retryUnavailablePresentation()
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Review shares the live CodeMirror page, native reading selection and complete Undo/Redo")
     func unifiedReviewPreservesReadingAndHistory() async throws {
         let source =
@@ -12075,7 +12105,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var editorSurface: some View {
             DocumentEditorHost(
                 documentID: session.openingPresentationID.uuidString,
-                presentsEditor: true,
                 retainsEditor: true,
                 editorIsLoaded: session.isLoaded,
                 editorIsReady: session.isLoaded

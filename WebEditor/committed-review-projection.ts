@@ -27,6 +27,13 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
   let mountedView: EditorView | null = null;
   let mountRevision = 0;
 
+  function reportFailure(projection: CommittedReviewProjection, abort: AbortController) {
+    if (abort.signal.aborted || mountedProjection !== projection) return;
+    options.postMessage({version: projection.configuration.version,
+      documentID: projection.configuration.documentID, fingerprint: projection.configuration.fingerprint,
+      loadGeneration: projection.configuration.loadGeneration, type: "renderingFailed"});
+  }
+
   class ReviewWidget extends WidgetType {
     constructor(readonly projection: CommittedReviewProjection | null) { super(); }
     eq(other: ReviewWidget) { return this.projection === other.projection; }
@@ -96,6 +103,9 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
         options.postMessage({version: projection.configuration.version,
           documentID: projection.configuration.documentID, fingerprint: projection.configuration.fingerprint,
           loadGeneration: projection.configuration.loadGeneration, type: "ready"});
+      }).catch(error => {
+        reportFailure(projection, abort);
+        throw error;
       });
       (window as ReaderWindow).scholiumReadReady = ready;
       // Native preparation observes the rejection; avoid an unhandled rejection
@@ -173,6 +183,9 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
         }
         if (abort.signal.aborted) throw new Error("stale Review update");
         view.requestMeasure();
+      }).catch(error => {
+        reportFailure(projection, abort);
+        throw error;
       });
       (window as ReaderWindow).scholiumReadReady = ready;
       void ready.catch(() => {});
@@ -186,11 +199,19 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
         await Promise.race([ready, new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => reject(new Error("Review preparation expired")), Math.max(0, expiresAt - Date.now()));
         })]);
+      } catch (error) {
+        if (mountedAbort) reportFailure(expected, mountedAbort);
+        throw error;
       } finally { clearTimeout(timeout); }
       const reader = window as ReaderWindow;
       if (expected !== mountedProjection || !reader.scholiumReadPreparation) throw new Error("stale Review preparation");
       const config = expected.configuration;
-      return reader.scholiumReadPreparation.settle(config.documentID, config.fingerprint, config.loadGeneration, expiresAt);
+      try {
+        return await reader.scholiumReadPreparation.settle(config.documentID, config.fingerprint, config.loadGeneration, expiresAt);
+      } catch (error) {
+        if (mountedAbort) reportFailure(expected, mountedAbort);
+        throw error;
+      }
     },
     focus() { root?.focus({preventScroll: true}); },
     selectAll() {

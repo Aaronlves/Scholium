@@ -135,6 +135,12 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   const scrollLeft = () => host?.scrollDOM.scrollLeft ?? window.scrollX;
   const viewportHeight = () => host?.scrollDOM.clientHeight ?? window.innerHeight;
   const viewportTop = () => host?.scrollDOM.getBoundingClientRect().top ?? 0;
+  const viewportBounds = () => host?.scrollDOM.getBoundingClientRect()
+    ?? {left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight};
+  const outsideViewport = (rect: Pick<DOMRectReadOnly, 'top' | 'bottom'>) => {
+    const bounds = viewportBounds();
+    return rect.bottom < bounds.top || rect.top > bounds.bottom;
+  };
   const scrollHeight = () => host?.scrollDOM.scrollHeight ?? document.documentElement.scrollHeight;
   const scrollTo = (options: ScrollToOptions) => host ? host.scrollDOM.scrollTo(options) : window.scrollTo(options);
   const dispose = () => {
@@ -198,9 +204,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       requireCurrent();
       phaseStartedAt = recordMetric ? performance.now() : 0;
       let decodedVisibleImages = false;
-      while (await awaitVisibleDocumentImages(documentRoot, {
-        left: 0, right: window.innerWidth, top: 0, bottom: viewportHeight(),
-      }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image))) {
+      while (await awaitVisibleDocumentImages(documentRoot, viewportBounds(),
+        decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image))) {
         decodedVisibleImages = true;
         phases.imageWaitCount++;
         requireCurrent();
@@ -497,7 +502,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     const nodes = [...documentRoot.querySelectorAll('pre > code')]
       .filter(code => isMermaidCode(code) && !code.closest('.scholium-mermaid'));
     const render = createReaderMermaidPass(
-      nodes.map(code => code.textContent || ''), document.documentElement, () => mermaidThemeRevision);
+      nodes.map(code => code.textContent || ''), documentRoot, () => mermaidThemeRevision);
     for (const code of nodes) {
       const original = code.parentElement;
       if (!original) continue;
@@ -521,7 +526,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     const wrappers = [...documentRoot.querySelectorAll<HTMLElement>('.scholium-mermaid')];
     const render = createReaderMermaidPass(
       wrappers.map(wrapper => wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || ''),
-      document.documentElement, () => mermaidThemeRevision);
+      documentRoot, () => mermaidThemeRevision);
     for (const wrapper of wrappers) {
       const source = wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || '';
       await renderMermaidWrapper(wrapper, source, render);
@@ -1073,7 +1078,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       if (!selected) return null;
       const {range, utf16Count} = selected;
       const rect = range.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > viewportHeight()) return null;
+      if (outsideViewport(rect)) return null;
       return {key: selectionActionKey(selected)!,
         utf16Count,
         anchor: {left: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom}};
@@ -1187,7 +1192,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       const expectedKey = selectionActionKey(selected);
       const range = selected.range.cloneRange();
       const rect = range.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > viewportHeight()) {
+      if (outsideViewport(rect)) {
         const target = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
         target?.scrollIntoView({block: "center", behavior: "auto"});
         // DOM geometry completes the synchronous reveal. A delayed scroll

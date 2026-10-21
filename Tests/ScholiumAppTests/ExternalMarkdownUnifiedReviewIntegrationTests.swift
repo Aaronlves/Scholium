@@ -110,7 +110,11 @@ extension ExternalMarkdownWindowLifecycleTests {
             #expect(!model.isDirty)
             #expect(editor.webView === webView)
 
-            _ = try await editor.send(.setScrollFraction(0.55), in: webView)
+            try await host.waitUntil("Review scrolling waits for save and refresh to release input") {
+                guard !model.isBusy, editor.detachmentSuspensionID == nil else { return false }
+                _ = try await editor.send(.setScrollFraction(0.55), in: webView)
+                return true
+            }
             try await host.waitUntil("external Review observes its nonzero viewport") {
                 (model.readScrollPosition.anchor?.sourceUTF16Offset ?? 0) > 0
             }

@@ -951,7 +951,6 @@ struct NoteContentView<ShellNotices: View>: View {
     private var documentBodySurface: some View {
         DocumentEditorHost(
             documentID: editorSession.openingPresentationID.uuidString,
-            presentsEditor: true,
             retainsEditor: documentSession.retainsEditorSurface || editorSession.hasAttachedWebView
                 || isEditing || renderedReadFingerprint == noteFingerprint.sha256,
             editorIsLoaded: editorSession.isLoaded,
@@ -961,12 +960,17 @@ struct NoteContentView<ShellNotices: View>: View {
                     || (editorSession.startingFingerprint == noteFingerprint.sha256
                         && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256)),
             keepsPresentedSurfaceWhilePreparing: isEditing,
-            allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil,
+            presentsRecovery: (!isEditing && failedReadFingerprint == noteFingerprint.sha256)
+                || (!editorSession.isLoaded && editorSession.errorMessage != nil),
             preparationTitle: note.summary.title,
             preparationPresentation: documentPresentation,
             preparationAppearance: state.documentAppearance
         ) {
-            if let error = editorSession.errorMessage { editorFailure(error) } else { readProjectionPlaceholder }
+            if !isEditing && documentSession.pendingEditorMode == nil {
+                readProjectionFailure
+            } else if let error = editorSession.errorMessage {
+                editorFailure(error)
+            }
         } editor: {
             bodyEditor
         }
@@ -1174,24 +1178,14 @@ struct NoteContentView<ShellNotices: View>: View {
         )
     }
 
-    @ViewBuilder
-    private var readProjectionPlaceholder: some View {
-        if failedReadFingerprint == noteFingerprint.sha256 {
-            ScholiumContentStateView(
-                "Review Mode Unavailable",
-                detail: Text("Use Source mode while the rendered document is unavailable."),
-                indicator: .symbol("exclamationmark.triangle", role: .attention)
-            ) {
-                Button("Source") { beginEditing(mode: .source) }
-                    .disabled(!editingIsAvailable)
-            }
-        } else {
-            DocumentPreparationStatus(
-                title: note.summary.title,
-                identifier: "scholium.documentReadPreparing",
-                presentation: documentPresentation,
-                appearance: state.documentAppearance
-            )
+    private var readProjectionFailure: some View {
+        ScholiumContentStateView(
+            "Review Mode Unavailable",
+            detail: Text("Use Source mode while the rendered document is unavailable."),
+            indicator: .symbol("exclamationmark.triangle", role: .attention)
+        ) {
+            Button("Source") { retryEditor(in: .source) }
+                .disabled(!editingIsAvailable)
         }
     }
 
@@ -1226,10 +1220,8 @@ struct NoteContentView<ShellNotices: View>: View {
                 failedReadFingerprint = noteFingerprint.sha256
                 documentSession.renderedReadReadyFingerprint = ""
             },
-            onRenderingLoading: {
-                documentSession.renderedReadReadyFingerprint = ""
-            },
             onRenderingReady: {
+                failedReadFingerprint = nil
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
                 if !isEditing {
                     markReadPresentationReady(documentID: note.id.relativePath)
@@ -1958,7 +1950,11 @@ struct NoteContentView<ShellNotices: View>: View {
                 toUTF16: bodyStart
             )
         }
-        documentSession.switchEditorMode(to: mode)
+        if documentSession.isEditing {
+            documentSession.switchEditorMode(to: mode)
+        } else {
+            beginEditing(mode: mode)
+        }
         actions.rememberPresentationMode(mode.presentationMode)
         editorSession.retryUnavailablePresentation()
     }

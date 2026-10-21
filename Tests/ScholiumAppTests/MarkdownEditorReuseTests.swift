@@ -1666,7 +1666,7 @@ struct MarkdownEditorReuseTests {
         var body: some View {
             DocumentEditorHost(
                 documentID: session.openingPresentationID.uuidString,
-                presentsEditor: true, retainsEditor: true, editorIsLoaded: session.isLoaded, editorIsReady: session.isLoaded
+                retainsEditor: true, editorIsLoaded: session.isLoaded, editorIsReady: session.isLoaded
             ) {
                 Color.clear
             } editor: {

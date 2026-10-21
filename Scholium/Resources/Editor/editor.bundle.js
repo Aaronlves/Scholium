@@ -16389,6 +16389,11 @@
     const scrollLeft = () => host?.scrollDOM.scrollLeft ?? window.scrollX;
     const viewportHeight = () => host?.scrollDOM.clientHeight ?? window.innerHeight;
     const viewportTop = () => host?.scrollDOM.getBoundingClientRect().top ?? 0;
+    const viewportBounds = () => host?.scrollDOM.getBoundingClientRect() ?? { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+    const outsideViewport = (rect) => {
+      const bounds = viewportBounds();
+      return rect.bottom < bounds.top || rect.top > bounds.bottom;
+    };
     const scrollHeight = () => host?.scrollDOM.scrollHeight ?? document.documentElement.scrollHeight;
     const scrollTo = (options) => host ? host.scrollDOM.scrollTo(options) : window.scrollTo(options);
     const dispose = () => {
@@ -16474,12 +16479,13 @@
         requireCurrent();
         phaseStartedAt = recordMetric ? performance.now() : 0;
         let decodedVisibleImages = false;
-        while (await awaitVisibleDocumentImages(documentRoot, {
-          left: 0,
-          right: window.innerWidth,
-          top: 0,
-          bottom: viewportHeight()
-        }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image))) {
+        while (await awaitVisibleDocumentImages(
+          documentRoot,
+          viewportBounds(),
+          decodedImages,
+          requireCurrent,
+          (image) => readerWindow.scholiumReviewImages?.refreshImage(image)
+        )) {
           decodedVisibleImages = true;
           phases.imageWaitCount++;
           requireCurrent();
@@ -16589,11 +16595,11 @@
       let viewportResizeGeneration = 0;
       let viewportResizeTimer;
       let viewportRearmTimer;
-      let viewportBounds = viewportGeometry();
+      let viewportBounds2 = viewportGeometry();
       const viewportDidResize = () => {
         const nextBounds = viewportGeometry();
-        if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
-        viewportBounds = nextBounds;
+        if (Math.abs(nextBounds.width - viewportBounds2.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds2.height) < 0.5) return;
+        viewportBounds2 = nextBounds;
         const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
         if (!overlayScrollBar) {
           viewportRoot.classList.remove(viewportResizeScrollBarClass);
@@ -16608,7 +16614,7 @@
             viewportRoot.classList.remove(viewportResizeScrollBarClass);
             viewportRearmTimer = setTimeout(() => {
               if (generation !== viewportResizeGeneration) return;
-              viewportBounds = viewportGeometry();
+              viewportBounds2 = viewportGeometry();
               window.addEventListener("resize", viewportDidResize);
             }, 0);
           }
@@ -16770,7 +16776,7 @@
       const nodes = [...documentRoot.querySelectorAll("pre > code")].filter((code2) => isMermaidCode(code2) && !code2.closest(".scholium-mermaid"));
       const render = createReaderMermaidPass(
         nodes.map((code2) => code2.textContent || ""),
-        document.documentElement,
+        documentRoot,
         () => mermaidThemeRevision2
       );
       for (const code2 of nodes) {
@@ -16795,7 +16801,7 @@
       const wrappers = [...documentRoot.querySelectorAll(".scholium-mermaid")];
       const render = createReaderMermaidPass(
         wrappers.map((wrapper) => wrapper.querySelector(".scholium-mermaid-source > code")?.textContent || ""),
-        document.documentElement,
+        documentRoot,
         () => mermaidThemeRevision2
       );
       for (const wrapper of wrappers) {
@@ -17321,7 +17327,7 @@
         if (!selected) return null;
         const { range, utf16Count } = selected;
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > viewportHeight()) return null;
+        if (outsideViewport(rect)) return null;
         return {
           key: selectionActionKey2(selected),
           utf16Count,
@@ -17437,7 +17443,7 @@
         const expectedKey = selectionActionKey2(selected);
         const range = selected.range.cloneRange();
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > viewportHeight()) {
+        if (outsideViewport(rect)) {
           const target = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
           target?.scrollIntoView({ block: "center", behavior: "auto" });
           range.getBoundingClientRect();
@@ -17993,6 +17999,16 @@
     let mountedAbort = null;
     let mountedView = null;
     let mountRevision = 0;
+    function reportFailure(projection, abort) {
+      if (abort.signal.aborted || mountedProjection !== projection) return;
+      options.postMessage({
+        version: projection.configuration.version,
+        documentID: projection.configuration.documentID,
+        fingerprint: projection.configuration.fingerprint,
+        loadGeneration: projection.configuration.loadGeneration,
+        type: "renderingFailed"
+      });
+    }
     class ReviewWidget extends WidgetType {
       constructor(projection) {
         super();
@@ -18081,6 +18097,9 @@
             loadGeneration: projection.configuration.loadGeneration,
             type: "ready"
           });
+        }).catch((error) => {
+          reportFailure(projection, abort);
+          throw error;
         });
         window.scholiumReadReady = ready;
         void ready.catch(() => {
@@ -18160,6 +18179,9 @@
           }
           if (abort.signal.aborted) throw new Error("stale Review update");
           view.requestMeasure();
+        }).catch((error) => {
+          reportFailure(projection, abort);
+          throw error;
         });
         window.scholiumReadReady = ready;
         void ready.catch(() => {
@@ -18174,13 +18196,21 @@
           await Promise.race([ready, new Promise((_resolve, reject) => {
             timeout = setTimeout(() => reject(new Error("Review preparation expired")), Math.max(0, expiresAt - Date.now()));
           })]);
+        } catch (error) {
+          if (mountedAbort) reportFailure(expected, mountedAbort);
+          throw error;
         } finally {
           clearTimeout(timeout);
         }
         const reader = window;
         if (expected !== mountedProjection || !reader.scholiumReadPreparation) throw new Error("stale Review preparation");
         const config2 = expected.configuration;
-        return reader.scholiumReadPreparation.settle(config2.documentID, config2.fingerprint, config2.loadGeneration, expiresAt);
+        try {
+          return await reader.scholiumReadPreparation.settle(config2.documentID, config2.fingerprint, config2.loadGeneration, expiresAt);
+        } catch (error) {
+          if (mountedAbort) reportFailure(expected, mountedAbort);
+          throw error;
+        }
       },
       focus() {
         root?.focus({ preventScroll: true });

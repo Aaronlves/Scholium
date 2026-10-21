@@ -111,6 +111,119 @@ async function appearanceFixture(kind: "embedded" | "standalone") {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("reader installation in a CodeMirror-owned viewport", () => {
+  it.each(["initialize", "appearance", "cancelled"] as const)("reports current %s rendering failure without treating departure as failure", async stage => {
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    const source = "Body";
+    const committed: CommittedReviewProjection = {documentID: "editor-document", sourceFingerprint: "fingerprint",
+      htmlBody: '<main id="scholium-document"><p>Body</p></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>',
+      css: "", configuration: {...f.config, version: 8}};
+    const projection = createCommittedReviewProjection({projection: () => committed,
+      mirror: () => new ExactSourceMirror(source), imageResources: () => ({}),
+      nativeFloating: f.host.nativeFloating, postMessage: f.postMessage});
+    const state = EditorState.create({doc: source, extensions: projection.extension});
+    const decorations = state.facet(EditorView.decorations).find(value => typeof value !== "function") as DecorationSet;
+    const widget = decorations.iter().value!.spec.widget;
+    const dom = widget.toDOM({state, scrollDOM: f.scroll, requestMeasure() {}} as unknown as EditorView);
+    f.scroll.replaceChildren(dom);
+    if (stage === "initialize") {
+      vi.spyOn(f.document.head, "appendChild").mockImplementationOnce(() => { throw new Error("forced reader initialization failure"); });
+    } else if (stage === "cancelled") {
+      widget.destroy(dom);
+    } else {
+      await projection.prepare(Date.now() + 2000);
+      f.window.scholiumSetPresentationCSS = async () => { throw new Error("forced reading style failure"); };
+      expect(projection.updateInPlace({...committed,
+        configuration: {...committed.configuration, presentationCSS: "p {color: red}"}})).toBe(true);
+    }
+    await expect(projection.prepare(Date.now() + 2000)).rejects.toThrow();
+    const failures = f.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === "renderingFailed");
+    if (stage === "cancelled") expect(failures).toHaveLength(0);
+    else expect(failures).toContainEqual({version: 8, documentID: "note.md", fingerprint: "fingerprint",
+      loadGeneration: 3, type: "renderingFailed"});
+    if (stage !== "cancelled") widget.destroy(dom);
+  });
+
+  it("waits for a visible image at the bottom of an offset host viewport", async () => {
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    f.scroll.getBoundingClientRect = () => ({left: 40, right: 440, top: 100, bottom: 500,
+      width: 400, height: 400} as DOMRect);
+    f.host.root.insertAdjacentHTML("beforeend", '<img src="data:image/png;base64,AAAA">');
+    const image = f.host.root.querySelector("img")!;
+    image.getBoundingClientRect = () => ({left: 40, right: 240, top: 450, bottom: 490,
+      width: 200, height: 40} as DOMRect);
+    let finishDecode!: () => void;
+    let enteredDecode!: () => void;
+    const decoded = new Promise<void>(resolve => { finishDecode = resolve; });
+    const entered = new Promise<void>(resolve => { enteredDecode = resolve; });
+    image.decode = vi.fn(() => { enteredDecode(); return decoded; });
+    await initializeReader(f.config, f.host);
+    const settling = f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+    try {
+      expect(await Promise.race([entered.then(() => true), settling.then(() => false)])).toBe(true);
+      expect(image.decode).toHaveBeenCalledOnce();
+    } finally {
+      finishDecode();
+      await settling;
+      f.signal.abort();
+    }
+  });
+
+  it("shows actions for a visible bottom selection without scrolling an offset host", async () => {
+    const f = fixture();
+    vi.stubGlobal("Text", (f.window as ReaderWindow & typeof globalThis).Text);
+    vi.stubGlobal("ShadowRoot", (f.window as ReaderWindow & typeof globalThis).ShadowRoot);
+    f.scroll.getBoundingClientRect = () => ({left: 40, right: 440, top: 100, bottom: 500,
+      width: 400, height: 400} as DOMRect);
+    const paragraph = f.host.root.querySelector("p")!;
+    const text = paragraph.firstChild!;
+    const bounds = {left: 50, right: 150, top: 450, bottom: 470, width: 100, height: 20} as DOMRect;
+    const range = {startContainer: text, endContainer: text, commonAncestorContainer: text,
+      startOffset: 0, endOffset: 4, toString: () => "Body", intersectsNode: () => true,
+      getBoundingClientRect: () => bounds, cloneRange: () => range} as unknown as Range;
+    f.window.getSelection = () => ({rangeCount: 1, isCollapsed: false, getRangeAt: () => range} as unknown as Selection);
+    f.document.createRange = () => ({selectNodeContents() {}, setEnd() {}, toString: () => ""} as unknown as Range);
+    paragraph.scrollIntoView = vi.fn();
+    await initializeReader({...f.config, selectionEnabled: true}, f.host);
+    const surfaceID = await f.window.scholiumShowSelectionActions!();
+    expect(surfaceID).toBeTypeOf("number");
+    expect(paragraph.scrollIntoView).not.toHaveBeenCalled();
+    expect(f.postMessage.mock.calls.map(([message]) => message).find(message =>
+      message.type === "floatingSurface" && message.event.type === "selectionSurface")?.event.surface)
+      .toMatchObject({top: 450, bottom: 470, utf16Count: 4});
+    f.signal.abort();
+  });
+
+  it("renders and refreshes Mermaid with the hosted document's current local typography", async () => {
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    f.host.root.insertAdjacentHTML("beforeend", '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>');
+    f.document.documentElement.style.setProperty("--scholium-document-body-font-family", "Old Edit Font");
+    const fontFor = (element: Element) => element === f.host.root
+      ? f.host.presentationStyle.textContent!.match(/--scholium-document-body-font-family:\s*([^;}]+)/)?.[1]?.trim() ?? ""
+      : f.document.documentElement.style.getPropertyValue("--scholium-document-body-font-family");
+    vi.stubGlobal("getComputedStyle", (element: Element) => ({display: "block", visibility: "visible",
+      getPropertyValue: (name: string) => name === "--scholium-document-body-font-family" ? fontFor(element) : ""}));
+    const fonts: string[] = [];
+    const render = vi.fn(async ({themeRoot}: {themeRoot?: Element}) => {
+      fonts.push(getComputedStyle(themeRoot!).getPropertyValue("--scholium-document-body-font-family"));
+      return {ok: false as const, reason: "unsupported-diagram" as const};
+    });
+    f.window.scholiumMermaid = {version: 3, render, copy: () => null, mount: () => false};
+    await initializeReader({...f.config,
+      presentationCSS: ":root { --scholium-document-body-font-family: First Review Font; }"}, f.host);
+    expect(fonts).toEqual(["First Review Font"]);
+    expect(render).toHaveBeenLastCalledWith(expect.objectContaining({themeRoot: f.host.root}));
+    expect(await f.window.scholiumSetPresentationCSS!(
+      ":root { --scholium-document-body-font-family: Updated Review Font; }", "")).toBe(true);
+    expect(fonts).toEqual(["First Review Font", "Updated Review Font"]);
+    expect(render).toHaveBeenLastCalledWith(expect.objectContaining({themeRoot: f.host.root}));
+    expect(f.document.documentElement.style.getPropertyValue("--scholium-document-body-font-family")).toBe("Old Edit Font");
+    f.signal.abort();
+  });
+
   it("records numeric Review registry and layout phases only when the host opts in", async () => {
     clearEditorPerformanceSamples();
     const f = fixture();

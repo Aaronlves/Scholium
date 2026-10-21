@@ -270,10 +270,7 @@ final class DocumentSessionModel: ObservableObject {
 
     var requiresReadProjection: Bool {
         !isEnteringManagedCreation
-            && presentation.requiresReadProjection(
-                editorIsLoaded: editorSession.isLoaded,
-                hasEditorError: editorSession.errorMessage != nil
-            )
+            && presentation.requiresReadProjection
     }
 
     func readProjectionTaskIdentity(relativePath: String, fingerprint: DocumentFingerprint) -> String? {

@@ -1368,7 +1368,10 @@ struct ExternalMarkdownWindowLifecycleTests {
 
         func waitForEditor(containing expectedBodyText: String) async throws {
             try await waitUntil("\(model?.mode.rawValue ?? "unknown") editor readiness and native visibility") {
-                guard let model = self.model, model.editorReady, let webView = model.editorSession.webView else { return false }
+                guard let model = self.model, !model.isBusy, model.inputResumeError == nil,
+                    model.editorSession.detachmentSuspensionID == nil,
+                    model.editorReady, let webView = model.editorSession.webView
+                else { return false }
                 return webView.window === self.window && !webView.isHiddenOrHasHiddenAncestor
                     && webView.bounds.width > 0 && webView.bounds.height > 0
             }

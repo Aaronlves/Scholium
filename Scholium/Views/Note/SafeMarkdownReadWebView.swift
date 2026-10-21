@@ -1020,7 +1020,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 let payload = message.body as? [String: Any]
             else { return }
             // Standalone readers have no editing-session resource catalog.
-            receive(payload, in: message.webView, extensionMessageIsCurrent: extensionMessageIsCurrent,
+            receive(
+                payload, in: message.webView, extensionMessageIsCurrent: extensionMessageIsCurrent,
                 resolveImageResources: { _ in [:] })
         }
 
@@ -1051,6 +1052,17 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
 
             switch type {
+            case "renderingFailed":
+                guard isEmbeddedProjection, let webView else { return }
+                pageIsReady = false
+                finalizedSignature = nil
+                renderingReadinessIsAcknowledged = false
+                cancelPendingPageWork()
+                cachedEmbeddedProjectionIdentity = nil
+                webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
+                onRenderingFailure?(
+                    WebKitInterfaceLocalization.current().string("The Review renderer stopped unexpectedly.")
+                )
             case "ready":
                 guard isEmbeddedProjection, let webView else { return }
                 pageIsReady = true

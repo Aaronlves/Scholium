@@ -57,13 +57,12 @@ struct ExternalMarkdownWindowView: View {
                 let documentID = model.documentID
                 DocumentEditorHost(
                     documentID: documentID,
-                    presentsEditor: true,
                     retainsEditor: true,
                     editorIsLoaded: model.editorSession.isLoaded,
                     editorIsReady: model.editorReady
                         && (model.mode != .read || readReadyFingerprint == snapshot.fingerprint.sha256),
                     keepsPresentedSurfaceWhilePreparing: model.mode != .read,
-                    allowsPendingReadRecovery: (model.mode == .read
+                    presentsRecovery: (model.mode == .read
                         && (readFailureMessage != nil || model.editorSession.errorMessage != nil))
                         || (!model.editorSession.isLoaded && model.editorSession.errorMessage != nil),
                     preparationTitle: model.title,

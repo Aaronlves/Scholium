@@ -288,7 +288,7 @@ struct FrontendArchitectureTests {
         #expect(!requests.contains("#if DEBUG"))
     }
 
-    @Test("EditorHost presentation preserves mounted Read and editor surfaces")
+    @Test("EditorHost retains one shared surface with preparation and failure recovery")
     func editorHostRetainsMountedSurfaces() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -307,8 +307,10 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(hostSource.contains("if retainsEditor"))
-        #expect(hostSource.contains("if presentsEditor && !showsEditor && !allowsPendingReadRecovery"))
-        #expect(hostSource.contains("allowsPendingReadRecovery"))
+        #expect(hostSource.contains("if !showsEditor && !presentsRecovery"))
+        #expect(hostSource.contains("if presentsRecovery"))
+        #expect(!hostSource.contains("ReadSurface"))
+        #expect(!hostSource.contains("presentsEditor"))
         #expect(hostSource.contains("presentedDocumentID == documentID || editorIsReady"))
         #expect(hostSource.contains("scholiumDocumentSurfaceVisibility"))
         #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
@@ -461,58 +463,26 @@ struct FrontendArchitectureTests {
     func editorHostPresentationGate() {
         var gate = DocumentEditorPresentationGate()
 
-        #expect(gate.mountsReadSurface(presentsEditor: false, allowsPendingRecovery: false))
-        #expect(!gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: false))
-        #expect(gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: true))
+        gate.reconcile(documentID: "A", editorIsReady: false)
+        #expect(!gate.showsEditor(documentID: "A", editorIsLoaded: true, editorIsReady: false))
+        #expect(gate.allowsRecoveryHitTesting(editorIsLoaded: true, editorIsReady: false))
 
-        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsLoaded: true, editorIsReady: false))
+        gate.reconcile(documentID: "A", editorIsReady: true)
+        #expect(gate.showsEditor(documentID: "A", editorIsLoaded: true, editorIsReady: true))
+        #expect(!gate.allowsRecoveryHitTesting(editorIsLoaded: true, editorIsReady: true))
+        #expect(!gate.showsEditor(documentID: "B", editorIsLoaded: true, editorIsReady: false))
 
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
-        #expect(
-            !gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsLoaded: true, editorIsReady: false,
-                allowsPendingRecovery: false
-            ))
-        #expect(
-            gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsLoaded: true, editorIsReady: false,
-                allowsPendingRecovery: true
-            ))
+        // A bridge-confirmed host can stay visible during an atomic mode change.
+        gate.reconcile(documentID: "A", editorIsReady: false)
+        #expect(gate.showsEditor(documentID: "A", editorIsLoaded: true, editorIsReady: false))
 
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: true)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: true))
-        #expect(
-            !gate.allowsReadHitTesting(
-                documentID: "A",
-                presentsEditor: true,
-                editorIsLoaded: true, editorIsReady: true,
-                allowsPendingRecovery: true
-            ))
+        // An uninitialized revision remains covered even with the same native identity.
+        #expect(!gate.showsEditor(documentID: "A", editorIsLoaded: false, editorIsReady: false))
+        #expect(gate.allowsRecoveryHitTesting(editorIsLoaded: false, editorIsReady: true))
 
-        #expect(!gate.showsEditor(documentID: "B", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
-
-        // A bridge-confirmed editor remains the visible surface while the
-        // retained CodeMirror state atomically changes Edit <-> Source.
-        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
-        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false))
-
-        // A new source revision closes the cover even when native identity stays the same.
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsLoaded: false, editorIsReady: false))
-
-        #expect(
-            gate.allowsReadHitTesting(
-                documentID: "A", presentsEditor: true, editorIsLoaded: true, editorIsReady: false,
-                allowsPendingRecovery: true
-            ))
-
-        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsLoaded: true, editorIsReady: false))
+        // Entering failure recovery discards the previous presentation acknowledgement.
+        gate.reset()
+        #expect(!gate.showsEditor(documentID: "A", editorIsLoaded: true, editorIsReady: false))
 
         #expect(
             gate.allowsEditorFocus(

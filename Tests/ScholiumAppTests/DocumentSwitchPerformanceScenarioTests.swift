@@ -696,7 +696,6 @@ import WebKit
                 let fingerprint = DocumentFingerprint(content: document.source).sha256
                 DocumentEditorHost(
                     documentID: editor.openingPresentationID.uuidString,
-                    presentsEditor: true,
                     retainsEditor: model.retainsEditorSurface || editor.hasAttachedWebView
                         || model.isEditing || model.renderedReadFingerprint == fingerprint,
                     editorIsLoaded: editor.isLoaded,

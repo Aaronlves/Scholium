@@ -72,27 +72,23 @@ struct DocumentReadProjectionDemandTests {
         #expect(session.renderedReadReadyFingerprint == fingerprint.sha256)
     }
 
-    @Test("Failed initial editor preparation retains the existing committed read fallback")
-    func initialEditorFailureNeedsReview() async {
+    @Test("Failed initial editor preparation uses native recovery without rendering a discarded Review")
+    func initialEditorFailureDoesNotRenderReview() async {
         let session = DocumentSessionModel(key: nil)
         session.preparePresentationMode(.livePreview)
         #expect(!session.requiresReadProjection)
         session.editorSession.reportError("Synthetic startup failure")
         #expect(!session.isEditing && session.pendingEditorMode == .livePreview)
-        #expect(session.requiresReadProjection)
+        #expect(!session.requiresReadProjection)
         let gate = DocumentEditorPresentationGate()
-        #expect(gate.mountsReadSurface(presentsEditor: true, allowsPendingRecovery: true))
         #expect(
-            gate.allowsReadHitTesting(
-                documentID: "fixture", presentsEditor: true, editorIsLoaded: true, editorIsReady: false, allowsPendingRecovery: true))
-        let document = NoteDocument(relativePath: "Fallback.md", rawContent: "A readable committed paragraph.\n")
-        let cache = DocumentReadProjectionCache()
-        let key = DocumentReadProjectionKey(
-            workspaceID: nil, stableTarget: "fallback", relativePath: document.relativePath, fingerprint: document.fingerprint)
+            gate.allowsRecoveryHitTesting(editorIsLoaded: true, editorIsReady: false))
+        var renderCount = 0
         let html = await session.loadReadProjectionIfNeeded {
-            await cache.html(for: key, source: document.rawContent)
+            renderCount += 1
+            return "Unused Review"
         }
-        #expect(html?.contains("A readable committed paragraph.") == true)
+        #expect(html == nil && renderCount == 0)
         session.beginEditing(in: .livePreview)
         #expect(!session.requiresReadProjection, "An active editor error presents editorFailure, not Review HTML.")
 

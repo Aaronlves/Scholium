@@ -101,14 +101,12 @@ struct DocumentPresentationState: Equatable, Sendable {
 
     var isEditing: Bool { activeEditorMode != nil }
 
-    /// Preparing Edit/Source is not a request to render Review. If that
-    /// initial editor cannot load, the existing read-recovery surface still
-    /// needs the committed projection. An active editor's error surface owns
-    /// its own recovery and does not present Review content.
-    func requiresReadProjection(editorIsLoaded: Bool, hasEditorError: Bool) -> Bool {
+    /// Only a requested Review needs committed HTML. Failed Edit/Source
+    /// preparation uses the shared host's native recovery surface.
+    var requiresReadProjection: Bool {
         switch phase {
         case .review(let editorIntent):
-            editorIntent == nil || (!editorIsLoaded && hasEditorError)
+            editorIntent == nil
         case .editing:
             false
         }

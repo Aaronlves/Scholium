@@ -5351,6 +5351,11 @@
     const scrollLeft = () => host?.scrollDOM.scrollLeft ?? window.scrollX;
     const viewportHeight = () => host?.scrollDOM.clientHeight ?? window.innerHeight;
     const viewportTop = () => host?.scrollDOM.getBoundingClientRect().top ?? 0;
+    const viewportBounds = () => host?.scrollDOM.getBoundingClientRect() ?? { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+    const outsideViewport = (rect) => {
+      const bounds = viewportBounds();
+      return rect.bottom < bounds.top || rect.top > bounds.bottom;
+    };
     const scrollHeight = () => host?.scrollDOM.scrollHeight ?? document.documentElement.scrollHeight;
     const scrollTo = (options) => host ? host.scrollDOM.scrollTo(options) : window.scrollTo(options);
     const dispose = () => {
@@ -5436,12 +5441,13 @@
         requireCurrent();
         phaseStartedAt = recordMetric ? performance.now() : 0;
         let decodedVisibleImages = false;
-        while (await awaitVisibleDocumentImages(documentRoot, {
-          left: 0,
-          right: window.innerWidth,
-          top: 0,
-          bottom: viewportHeight()
-        }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image))) {
+        while (await awaitVisibleDocumentImages(
+          documentRoot,
+          viewportBounds(),
+          decodedImages,
+          requireCurrent,
+          (image) => readerWindow2.scholiumReviewImages?.refreshImage(image)
+        )) {
           decodedVisibleImages = true;
           phases.imageWaitCount++;
           requireCurrent();
@@ -5551,11 +5557,11 @@
       let viewportResizeGeneration = 0;
       let viewportResizeTimer;
       let viewportRearmTimer;
-      let viewportBounds = viewportGeometry();
+      let viewportBounds2 = viewportGeometry();
       const viewportDidResize = () => {
         const nextBounds = viewportGeometry();
-        if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
-        viewportBounds = nextBounds;
+        if (Math.abs(nextBounds.width - viewportBounds2.width) < 0.5 && Math.abs(nextBounds.height - viewportBounds2.height) < 0.5) return;
+        viewportBounds2 = nextBounds;
         const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
         if (!overlayScrollBar) {
           viewportRoot.classList.remove(viewportResizeScrollBarClass);
@@ -5570,7 +5576,7 @@
             viewportRoot.classList.remove(viewportResizeScrollBarClass);
             viewportRearmTimer = setTimeout(() => {
               if (generation !== viewportResizeGeneration) return;
-              viewportBounds = viewportGeometry();
+              viewportBounds2 = viewportGeometry();
               window.addEventListener("resize", viewportDidResize);
             }, 0);
           }
@@ -5732,7 +5738,7 @@
       const nodes = [...documentRoot.querySelectorAll("pre > code")].filter((code) => isMermaidCode(code) && !code.closest(".scholium-mermaid"));
       const render = createReaderMermaidPass(
         nodes.map((code) => code.textContent || ""),
-        document.documentElement,
+        documentRoot,
         () => mermaidThemeRevision
       );
       for (const code of nodes) {
@@ -5757,7 +5763,7 @@
       const wrappers = [...documentRoot.querySelectorAll(".scholium-mermaid")];
       const render = createReaderMermaidPass(
         wrappers.map((wrapper) => wrapper.querySelector(".scholium-mermaid-source > code")?.textContent || ""),
-        document.documentElement,
+        documentRoot,
         () => mermaidThemeRevision
       );
       for (const wrapper of wrappers) {
@@ -6283,7 +6289,7 @@
         if (!selected) return null;
         const { range, utf16Count } = selected;
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > viewportHeight()) return null;
+        if (outsideViewport(rect)) return null;
         return {
           key: selectionActionKey(selected),
           utf16Count,
@@ -6399,7 +6405,7 @@
         const expectedKey = selectionActionKey(selected);
         const range = selected.range.cloneRange();
         const rect = range.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > viewportHeight()) {
+        if (outsideViewport(rect)) {
           const target = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
           target?.scrollIntoView({ block: "center", behavior: "auto" });
           range.getBoundingClientRect();
