@@ -3,6 +3,12 @@ import {localized, localizedCallout} from "./localization";
 
 export type ResolvedCallout = MarkdownEditingDialect["callouts"][number];
 
+/** A role's inter-block gap uses the surrounding prose em, not its scaled content. */
+export function calloutSourceGapCSS(identifier: string): string {
+  const role = /^[a-z][a-z0-9-]{0,31}$/.test(identifier) ? identifier : "neutral";
+  return `calc(var(--scholium-callout-${role}-gap-ems, var(--scholium-callout-gap-ems)) * var(--scholium-callout-source-em))`;
+}
+
 export function calloutDefinition(
   dialect: MarkdownEditingDialect | null,
   rawKind: string,

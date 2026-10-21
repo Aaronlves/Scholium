@@ -16349,27 +16349,61 @@
     setPresentationStyles(presentationCSS, userCSS);
     const decodedImages = /* @__PURE__ */ new Set();
     async function settleLayout(requireCurrent) {
-      requireCurrent();
-      const before = documentRoot.getBoundingClientRect();
-      const previousHeight = scrollHeight();
-      await mathReady;
-      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
-      requireCurrent();
-      documentRoot.getBoundingClientRect();
-      const awaitedFonts = document.fonts.status === "loading";
-      await document.fonts.ready;
-      requireCurrent();
-      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
-        left: 0,
-        right: window.innerWidth,
-        top: 0,
-        bottom: viewportHeight()
-      }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image));
-      documentRoot.getBoundingClientRect();
-      await document.fonts.ready;
-      requireCurrent();
-      const after = documentRoot.getBoundingClientRect();
-      return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== scrollHeight() };
+      const recordMetric = host?.recordMetric;
+      const startedAt = recordMetric ? performance.now() : 0;
+      const phases = {
+        mathWaitMilliseconds: 0,
+        mermaidWaitMilliseconds: 0,
+        fontsWaitMilliseconds: 0,
+        imageWaitMilliseconds: 0,
+        imageWaitCount: 0,
+        measureCount: 0,
+        geometryChanged: 0,
+        completed: 0
+      };
+      try {
+        requireCurrent();
+        const before = documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const previousHeight = scrollHeight();
+        let phaseStartedAt = recordMetric ? performance.now() : 0;
+        await mathReady;
+        if (recordMetric) phases.mathWaitMilliseconds += performance.now() - phaseStartedAt;
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+        if (recordMetric) phases.mermaidWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const awaitedFonts = document.fonts.status === "loading";
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        await document.fonts.ready;
+        if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+          left: 0,
+          right: window.innerWidth,
+          top: 0,
+          bottom: viewportHeight()
+        }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image));
+        if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
+        phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
+        documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        await document.fonts.ready;
+        if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        const after = documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const geometryChanged = decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== scrollHeight();
+        phases.geometryChanged = geometryChanged ? 1 : 0;
+        phases.completed = 1;
+        return { settled: true, geometryChanged };
+      } finally {
+        recordMetric?.("review-layout-settle", startedAt, { review: 1, ...phases });
+      }
     }
     const readPreparation = {
       async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
@@ -17128,7 +17162,7 @@
           const origin = reference.closest(".footnote-reference-wrap") || reference;
           origins.set(ordinal, origin.id);
           target.tabIndex = -1;
-          target.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          target.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           target.focus({ preventScroll: true });
         }
         hidePopover();
@@ -17378,6 +17412,8 @@
       });
     }
     const scrollBlockRegistry = (() => {
+      const recordMetric = host?.recordMetric;
+      const startedAt = recordMetric ? performance.now() : 0;
       const root = documentRoot;
       const entries = [];
       const byElement = /* @__PURE__ */ new WeakMap();
@@ -17393,13 +17429,17 @@
       const candidates = root.querySelectorAll(
         "[data-source-utf16-start][data-source-utf16-end]"
       );
+      let styleReadCount = 0;
+      let measureCount = 0;
       for (const element of candidates) {
         const lower = Number(element.dataset.sourceUtf16Start);
         const upper = Number(element.dataset.sourceUtf16End);
         if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper < lower) continue;
         const style = getComputedStyle(element);
+        styleReadCount++;
         if (style.display === "inline" || style.display === "contents" || style.display === "none" || style.visibility === "hidden") continue;
         const initialRect = element.getBoundingClientRect();
+        measureCount++;
         if (initialRect.height <= 0) continue;
         const entry = { element, lower, upper, span: Math.max(0, upper - lower) };
         element.dataset.scholiumScrollAnchor = String(entries.length);
@@ -17414,6 +17454,13 @@
       const sourcePrefixMaximumUpper = bySource.map((entry) => {
         maximumUpper = Math.max(maximumUpper, entry.upper);
         return maximumUpper;
+      });
+      recordMetric?.("review-scroll-registry", startedAt, {
+        review: 1,
+        candidateCount: candidates.length,
+        registeredBlockCount: entries.length,
+        styleReadCount,
+        measureCount
       });
       return {
         root,
@@ -17688,6 +17735,24 @@
     });
   }
 
+  // callout-presentation.ts
+  function calloutSourceGapCSS(identifier5) {
+    const role = /^[a-z][a-z0-9-]{0,31}$/.test(identifier5) ? identifier5 : "neutral";
+    return `calc(var(--scholium-callout-${role}-gap-ems, var(--scholium-callout-gap-ems)) * var(--scholium-callout-source-em))`;
+  }
+  function calloutDefinition(dialect, rawKind) {
+    const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
+    const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? {
+      identifier: "neutral",
+      label: localized("Note"),
+      meaning: localized("Preserves an unsupported callout without assigning a research role.")
+    };
+    return { ...definition, ...localizedCallout(definition.identifier, definition) };
+  }
+  function calloutHeader(text) {
+    return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
+  }
+
   // committed-review-rhythm.ts
   var committedReviewRhythmCSS = `
 @property --scholium-review-source-row {
@@ -17706,13 +17771,13 @@
 }
 .scholium-document > :where([data-scholium-review-gap-before]),
 .scholium-document > p:where([data-scholium-review-gap-before]) {
-  margin-block-start: var(--scholium-review-callout-gap);
+  margin-block-start: var(--scholium-review-boundary-callout-gap, var(--scholium-review-callout-gap));
 }
 .scholium-document > :where([data-scholium-review-gap-after]) { margin-block-end: 0; }
 .scholium-document > p:where([data-scholium-review-gap-after]) { padding-block-end: 0; }
 .scholium-document > :where([data-scholium-review-gap-before]:not([data-scholium-review-source-gap="0"])),
 .scholium-document > p:where([data-scholium-review-gap-before]:not([data-scholium-review-source-gap="0"])) {
-  margin-block-start: calc((var(--scholium-review-source-blank-lines) - 1) * var(--scholium-review-source-row) + max(var(--scholium-review-source-row), var(--scholium-review-callout-gap)));
+  margin-block-start: calc((var(--scholium-review-source-blank-lines) - 1) * var(--scholium-review-source-row) + max(var(--scholium-review-source-row), var(--scholium-review-boundary-callout-gap, var(--scholium-review-callout-gap))));
 }
 `;
   function projectCommittedReviewCalloutRhythm(root, mirror, source) {
@@ -17738,11 +17803,75 @@
       if (firstLine.number <= lastLine.number || !/^[\t \n]*$/.test(source.sliceString(lastLine.to, firstLine.from))) continue;
       const blankLines = firstLine.number - lastLine.number - 1;
       const block = current;
+      const gaps = [previous, current].filter(callout).map((element) => {
+        const role = [...element.classList].find((name2) => name2.startsWith("scholium-callout-"));
+        return calloutSourceGapCSS(role?.slice("scholium-callout-".length) ?? "neutral");
+      });
+      block.style.setProperty("--scholium-review-boundary-callout-gap", gaps.length > 1 ? `max(${gaps.join(", ")})` : gaps[0]);
       block.dataset.scholiumReviewSourceGap = String(blankLines);
       block.style.setProperty("--scholium-review-source-blank-lines", String(blankLines));
       previous.setAttribute("data-scholium-review-gap-after", "");
       current.setAttribute("data-scholium-review-gap-before", "");
     }
+  }
+
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}, endedAt = performance.now()) {
+    const durationMilliseconds = Math.max(0, endedAt - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    const startedAt = performance.now();
+    requestFrame(() => {
+      const frameAt = performance.now();
+      scheduleTask(() => callback({
+        frameWaitMilliseconds: Math.max(0, frameAt - startedAt),
+        taskWaitMilliseconds: Math.max(0, performance.now() - frameAt)
+      }));
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
   }
 
   // committed-review-projection.ts
@@ -17785,7 +17914,9 @@
         rhythmStyle.textContent = wrapReviewCSS(committedReviewRhythmCSS);
         shell.append(presentationStyle, rhythmStyle, userStyle);
         const content2 = document.createElement("div");
+        const insertionStartedAt = performance.now();
         content2.innerHTML = projection.htmlBody;
+        recordEditorMetric("review-html-insertion", insertionStartedAt, { review: 1, htmlUTF16Length: projection.htmlBody.length });
         shell.append(content2);
         const main = content2.querySelector("main#scholium-document");
         const popover = content2.querySelector("#scholium-preview-popover");
@@ -17812,17 +17943,25 @@
         const revision = ++mountRevision;
         ready = Promise.resolve().then(async () => {
           if (abort.signal.aborted || revision !== mountRevision) throw new Error("stale Review mount");
-          await initializeReader(projection.configuration, {
-            root: main,
-            scrollDOM: view.scrollDOM,
-            popover,
-            signal: abort.signal,
-            nativeFloating: options.nativeFloating,
-            presentationStyle,
-            userStyle,
-            scopeStyles: { presentation: (css2) => scopedReviewCSS(css2, "local"), user: wrapReviewCSS },
-            postMessage: options.postMessage
-          });
+          const initializationStartedAt = performance.now();
+          let completed = false;
+          try {
+            await initializeReader(projection.configuration, {
+              root: main,
+              scrollDOM: view.scrollDOM,
+              popover,
+              signal: abort.signal,
+              nativeFloating: options.nativeFloating,
+              presentationStyle,
+              userStyle,
+              scopeStyles: { presentation: (css2) => scopedReviewCSS(css2, "local"), user: wrapReviewCSS },
+              postMessage: options.postMessage,
+              recordMetric: recordEditorMetric
+            });
+            completed = !abort.signal.aborted && revision === mountRevision;
+          } finally {
+            recordEditorMetric("review-reader-initialization", initializationStartedAt, { review: 1, completed: completed ? 1 : 0 });
+          }
           if (abort.signal.aborted || revision !== mountRevision) throw new Error("stale Review mount");
           view.requestMeasure();
           options.postMessage({
@@ -35687,65 +35826,6 @@ ${blankRow(table.position.columnCount)}`;
     appendBlockChildren(cursor, source, parent, options);
   }
 
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}, endedAt = performance.now()) {
-    const durationMilliseconds = Math.max(0, endedAt - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    const startedAt = performance.now();
-    requestFrame(() => {
-      const frameAt = performance.now();
-      scheduleTask(() => callback({
-        frameWaitMilliseconds: Math.max(0, frameAt - startedAt),
-        taskWaitMilliseconds: Math.max(0, performance.now() - frameAt)
-      }));
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
-  }
-  function clearEditorPerformanceSamples() {
-    samples.length = 0;
-    sampleStart = 0;
-    sampleCount = 0;
-  }
-
   // source-capacity.ts
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
@@ -42354,20 +42434,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     };
   }
 
-  // callout-presentation.ts
-  function calloutDefinition(dialect, rawKind) {
-    const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-    const definition = dialect?.callouts.find((callout) => callout.identifier === kind) ?? {
-      identifier: "neutral",
-      label: localized("Note"),
-      meaning: localized("Preserves an unsupported callout without assigning a research role.")
-    };
-    return { ...definition, ...localizedCallout(definition.identifier, definition) };
-  }
-  function calloutHeader(text) {
-    return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
-  }
-
   // previews.ts
   function validatedLinkPreviews(value, documentLength) {
     if (!Array.isArray(value)) return [];
@@ -42617,15 +42683,19 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
   }
   var SemanticBlockGapWidget = class extends WidgetType {
-    constructor(previous, next) {
+    constructor(previous, next, previousCalloutGap = null, nextCalloutGap = null) {
       super();
       this.previous = previous;
       this.next = next;
+      this.previousCalloutGap = previousCalloutGap;
+      this.nextCalloutGap = nextCalloutGap;
     }
     previous;
     next;
+    previousCalloutGap;
+    nextCalloutGap;
     eq(other) {
-      return other.previous === this.previous && other.next === this.next;
+      return other.previous === this.previous && other.next === this.next && other.previousCalloutGap === this.previousCalloutGap && other.nextCalloutGap === this.nextCalloutGap;
     }
     toDOM() {
       const gap = document.createElement("div");
@@ -42634,6 +42704,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         `cm-live-semantic-gap-after-${this.previous}`,
         `cm-live-semantic-gap-before-${this.next}`
       ].join(" ");
+      if (this.previousCalloutGap) gap.style.setProperty("--scholium-live-callout-gap-after", this.previousCalloutGap);
+      if (this.nextCalloutGap) gap.style.setProperty("--scholium-live-callout-gap-before", this.nextCalloutGap);
       gap.setAttribute("aria-hidden", "true");
       return gap;
     }
@@ -42931,10 +43003,17 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
       const frontmatterEnd = index.frontmatterRange?.to ?? 0;
       const ranges = [];
+      const calloutGap = (block) => {
+        if (block?.kind !== "callout") return null;
+        const header = calloutHeader(state.doc.lineAt(block.from).text);
+        return calloutSourceGapCSS(calloutDefinition(options.editingDialect(), header?.[2] ?? "neutral").identifier);
+      };
       let previous = null;
+      let previousCalloutGap = null;
       for (const current of topLevelBlocks) {
         const previousSpacing = previous ? semanticBlockSpacing(previous) : frontmatterEnd > 0 ? "frontmatter" : "none";
         const nextSpacing = semanticBlockSpacing(current);
+        const nextCalloutGap = calloutGap(current);
         const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : frontmatterEnd > 0 ? state.doc.lineAt(frontmatterEnd - 1).number : 0;
         const currentLineNumber = state.doc.lineAt(current.from).number;
         let authoredSeparatorLine = null;
@@ -42952,23 +43031,30 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
                 "cm-live-semantic-blank-gap",
                 `cm-live-semantic-gap-after-${previousSpacing}`,
                 `cm-live-semantic-gap-before-${nextSpacing}`
-              ].join(" ")
+              ].join(" "),
+              ...previousCalloutGap || nextCalloutGap ? {
+                style: [
+                  previousCalloutGap ? `--scholium-live-callout-gap-after: ${previousCalloutGap};` : "",
+                  nextCalloutGap ? `--scholium-live-callout-gap-before: ${nextCalloutGap};` : ""
+                ].join("")
+              } : {}
             }
           }).range(authoredSeparatorLine));
         } else if (previousSpacing !== "none" || nextSpacing !== "none") {
           ranges.push(Decoration.widget({
-            widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
+            widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing, previousCalloutGap, nextCalloutGap),
             block: true,
             side: -1
           }).range(current.from));
         }
         previous = current;
+        previousCalloutGap = nextCalloutGap;
       }
       if (previous) {
         const spacing = semanticBlockSpacing(previous);
         if (spacing !== "none") {
           ranges.push(Decoration.widget({
-            widget: new SemanticBlockGapWidget(spacing, "none"),
+            widget: new SemanticBlockGapWidget(spacing, "none", previousCalloutGap),
             block: true,
             side: 1
           }).range(previous.to));

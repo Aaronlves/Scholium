@@ -252,7 +252,9 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var findObservation: AnyCancellable?
     private var findFocusObservation: AnyCancellable?
     private var openingID = UUID()
-    private var didAllocateEditor = false
+    // Reading now mounts the same CodeMirror host. This records an explicit
+    // editing entry, which owns writable-history and first-selection policy.
+    private var hasEnteredEditing = false
     private var pendingAcknowledgement: (MarkdownEditorPersistenceSnapshot, ExternalMarkdownFileSnapshot)?
     private var closeAuthorized = false
     private var closesOnAttachment = false
@@ -286,8 +288,6 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     private var readSelection: BoundReadSelection?
     private(set) var readScrollPosition = ObservedScrollPosition()
     private(set) var editorScrollPosition = ObservedScrollPosition()
-    @Published private(set) var readScrollRestoreRequest: ScrollRestoreRequest?
-    private var nextReadScrollRestoreID: UInt64 = 0
     private weak var window: NSWindow?
     private weak var previousDelegate: (any NSWindowDelegate)?
     private var nativeToolbar: ExternalMarkdownWindowToolbar?
@@ -431,9 +431,12 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         }
     }
 
-    var retainsEditor: Bool { didAllocateEditor }
+    var retainsEditor: Bool {
+        hasEnteredEditing || editorSession.hasRecoverableBuffer || editorSession.hasRetainedHistory
+    }
+    var rendererMode: MarkdownEditorMode { mode.editorMode ?? .review }
     var editorReady: Bool {
-        editorSession.isLoaded && editorSession.presentedMode == mode.editorMode
+        editorSession.isLoaded && editorSession.presentedMode == rendererMode
     }
     var editorFocusExecutionID: UUID? { editorReady ? editorFocusIntent?.id : nil }
 
@@ -609,8 +612,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         prepareReadProjection(for: loaded)
         openingID = UUID()
         mode = previousMode
-        didAllocateEditor = mode != .read
-        requestReadScrollRestore(reason: .documentLoad)
+        hasEnteredEditing = mode != .read
         window?.isDocumentEdited = false
         error = nil
         hasConflict = false
@@ -644,7 +646,6 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                         await editorSession.resignFocusAndWait()
                         if !isClosed {
                             readScrollPosition = editorScrollPosition
-                            requestReadScrollRestore(reason: .modeHandoff)
                             mode = .read
                         }
                     }
@@ -660,10 +661,14 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
         if requested != .read {
             if mode == .read {
                 editorScrollPosition = readScrollPosition
-                editorSession.setScrollPosition(
-                    anchor: editorScrollPosition.anchor,
-                    fallbackFraction: editorScrollPosition.fraction)
-                if let readSelection, readSelection.documentID == documentID,
+                // A mounted CodeMirror mode operation transfers its actual
+                // viewport. Native observations are only cold-entry fallback.
+                if !editorSession.hasAttachedWebView {
+                    editorSession.setScrollPosition(
+                        anchor: editorScrollPosition.anchor,
+                        fallbackFraction: editorScrollPosition.fraction)
+                }
+                if !hasEnteredEditing, let readSelection, readSelection.documentID == documentID,
                     let snapshot, readSelection.fingerprint == snapshot.fingerprint,
                     let range = readSelection.value.exactUTF16Range,
                     range.lowerBound >= 0, range.upperBound <= snapshot.source.utf16.count,
@@ -674,7 +679,7 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
                     editorSession.prepareReadSelection(range)
                 }
             }
-            didAllocateEditor = true
+            hasEnteredEditing = true
             readSelection = nil
             if let window, window.isKeyWindow, isApplicationActive() {
                 editorFocusIntent = EditorFocusIntent(
@@ -910,24 +915,6 @@ final class ExternalMarkdownWindowModel: NSObject, ObservableObject, NSWindowDel
     ) -> Bool {
         !isClosed && self.documentID == documentID && snapshot?.fingerprint.sha256 == fingerprint
             && (surface == .read ? mode == .read : mode != .read)
-    }
-
-    private func requestReadScrollRestore(reason: ScrollRestoreReason) {
-        guard let snapshot else { return }
-        nextReadScrollRestoreID &+= 1
-        var position = readScrollPosition
-        if position.anchor?.sourceFingerprint != snapshot.fingerprint.sha256 { position.anchor = nil }
-        readScrollRestoreRequest = ScrollRestoreRequest(
-            id: nextReadScrollRestoreID, fingerprint: snapshot.fingerprint.sha256,
-            position: position, reason: reason)
-    }
-
-    func consumeReadScrollRestore(_ id: UInt64, fingerprint: String, documentID: String) {
-        guard !isClosed, self.documentID == documentID,
-            readScrollRestoreRequest?.id == id,
-            readScrollRestoreRequest?.fingerprint == fingerprint
-        else { return }
-        readScrollRestoreRequest = nil
     }
 
     func acceptReadSelection(

@@ -28,7 +28,7 @@ import {
   type LiveProjectionIndexController,
   type SemanticCodeBlockRange,
 } from "./live-projection-index";
-import {calloutDefinition, calloutHeader} from "./callout-presentation";
+import {calloutDefinition, calloutHeader, calloutSourceGapCSS} from "./callout-presentation";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
 
 interface SemanticPhysicalLine {
@@ -154,10 +154,13 @@ class SemanticBlockGapWidget extends WidgetType {
   constructor(
     readonly previous: SemanticBlockSpacing,
     readonly next: SemanticBlockSpacing,
+    readonly previousCalloutGap: string | null = null,
+    readonly nextCalloutGap: string | null = null,
   ) { super(); }
 
   eq(other: SemanticBlockGapWidget) {
-    return other.previous === this.previous && other.next === this.next;
+    return other.previous === this.previous && other.next === this.next
+      && other.previousCalloutGap === this.previousCalloutGap && other.nextCalloutGap === this.nextCalloutGap;
   }
 
   toDOM() {
@@ -167,6 +170,8 @@ class SemanticBlockGapWidget extends WidgetType {
       `cm-live-semantic-gap-after-${this.previous}`,
       `cm-live-semantic-gap-before-${this.next}`,
     ].join(" ");
+    if (this.previousCalloutGap) gap.style.setProperty("--scholium-live-callout-gap-after", this.previousCalloutGap);
+    if (this.nextCalloutGap) gap.style.setProperty("--scholium-live-callout-gap-before", this.nextCalloutGap);
     gap.setAttribute("aria-hidden", "true");
     return gap;
   }
@@ -535,12 +540,19 @@ export function createLiveSemanticLayout(options: {
     const topLevelBlocks = semanticSpacingBlocks(index.syntax.blocks, index.frontmatterRange?.to);
     const frontmatterEnd = index.frontmatterRange?.to ?? 0;
     const ranges: Range<Decoration>[] = [];
+    const calloutGap = (block: SemanticBlockProjection | null): string | null => {
+      if (block?.kind !== "callout") return null;
+      const header = calloutHeader(state.doc.lineAt(block.from).text);
+      return calloutSourceGapCSS(calloutDefinition(options.editingDialect(), header?.[2] ?? "neutral").identifier);
+    };
     let previous: SemanticBlockProjection | null = null;
+    let previousCalloutGap: string | null = null;
     for (const current of topLevelBlocks) {
       const previousSpacing = previous
         ? semanticBlockSpacing(previous)
         : frontmatterEnd > 0 ? "frontmatter" : "none";
       const nextSpacing = semanticBlockSpacing(current);
+      const nextCalloutGap = calloutGap(current);
       const previousLineNumber = previous
         ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
         : frontmatterEnd > 0 ? state.doc.lineAt(frontmatterEnd - 1).number : 0;
@@ -564,22 +576,27 @@ export function createLiveSemanticLayout(options: {
               `cm-live-semantic-gap-after-${previousSpacing}`,
               `cm-live-semantic-gap-before-${nextSpacing}`,
             ].join(" "),
+            ...(previousCalloutGap || nextCalloutGap ? {
+              style: [previousCalloutGap ? `--scholium-live-callout-gap-after: ${previousCalloutGap};` : "",
+                nextCalloutGap ? `--scholium-live-callout-gap-before: ${nextCalloutGap};` : ""].join(""),
+            } : {}),
           },
         }).range(authoredSeparatorLine));
       } else if (previousSpacing !== "none" || nextSpacing !== "none") {
         ranges.push(Decoration.widget({
-          widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
+          widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing, previousCalloutGap, nextCalloutGap),
           block: true,
           side: -1,
         }).range(current.from));
       }
       previous = current;
+      previousCalloutGap = nextCalloutGap;
     }
     if (previous) {
       const spacing = semanticBlockSpacing(previous);
       if (spacing !== "none") {
         ranges.push(Decoration.widget({
-          widget: new SemanticBlockGapWidget(spacing, "none"),
+          widget: new SemanticBlockGapWidget(spacing, "none", previousCalloutGap),
           block: true,
           side: 1,
         }).range(previous.to));

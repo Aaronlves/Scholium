@@ -9,6 +9,7 @@ import {createNativeFloatingPorts} from "../native-floating";
 import {initializeReader, type ReaderWindow} from "../reader-runtime";
 import {currentDocumentScrollAnchor} from "../scroll-coordinator";
 import {installConstructableStylesheet} from "./stylesheet-fixture";
+import {clearEditorPerformanceSamples, editorPerformanceSamples, recordEditorMetric} from "../performance";
 
 function fixture() {
   const {document, window} = parseHTML('<html><head><style id="presentation"></style><style id="user"></style></head><body><div id="outside"><p>Outside</p><div class="scholium-math" data-math-source="eA==" data-math-kind="inline"></div></div><div id="scroll"><main id="scholium-document"><p data-source-line="1" data-source-utf16-start="0" data-source-utf16-end="4">Body</p></main></div><aside id="popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside></body></html>');
@@ -108,6 +109,49 @@ async function appearanceFixture(kind: "embedded" | "standalone") {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("reader installation in a CodeMirror-owned viewport", () => {
+  it("records numeric Review registry and layout phases only when the host opts in", async () => {
+    clearEditorPerformanceSamples();
+    const f = fixture();
+    let clock = 10;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    let finishFonts!: () => void;
+    let fontsEntered!: () => void;
+    const ready = new Promise<void>(resolve => { finishFonts = resolve; });
+    const entered = new Promise<void>(resolve => { fontsEntered = resolve; });
+    const fonts = {status: "loading", get ready() { fontsEntered(); return ready; }};
+    Object.defineProperty(f.document, "fonts", {configurable: true, value: fonts});
+    await initializeReader(f.config, {...f.host, recordMetric: recordEditorMetric});
+    const settling = f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+    await entered;
+    clock = 45;
+    fonts.status = "loaded";
+    finishFonts();
+    expect(await settling).toEqual({settled: true, geometryChanged: true});
+    const samples = editorPerformanceSamples();
+    expect(samples.map(sample => sample.name)).toEqual(["review-scroll-registry", "review-layout-settle"]);
+    expect(samples[0].observed).toEqual({review: 1, candidateCount: 1,
+      registeredBlockCount: 1, styleReadCount: 1, measureCount: 1});
+    expect(samples[1].durationMilliseconds).toBe(35);
+    expect(samples[1].observed).toEqual({review: 1, completed: 1, geometryChanged: 1,
+      mathWaitMilliseconds: 0, mermaidWaitMilliseconds: 0, fontsWaitMilliseconds: 35,
+      imageWaitMilliseconds: 0, imageWaitCount: 0, measureCount: 4});
+    expect(samples.every(sample => Object.values(sample.observed).every(value => Number.isFinite(value) && value >= 0))).toBe(true);
+    expect(f.scroll.scrollTop).toBe(200);
+    expect(f.scroll.scrollTo).not.toHaveBeenCalled();
+    f.signal.abort();
+    clearEditorPerformanceSamples();
+  });
+
+  it.each(["embedded", "standalone"] as const)("leaves the editor performance ring untouched for an unobserved %s reader", async kind => {
+    clearEditorPerformanceSamples();
+    const f = await appearanceFixture(kind);
+    await f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+    expect(editorPerformanceSamples()).toEqual([]);
+    f.dispose();
+  });
+
   for (const kind of ["embedded", "standalone"] as const) {
     it(`keeps the researcher's new ${kind} viewport when input interrupts appearance resource waiting`, async () => {
       vi.useFakeTimers();
@@ -154,6 +198,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
   }
 
   it("captures the reading paragraph for detachment and restores it after mounting a fresh Review widget", async () => {
+    clearEditorPerformanceSamples();
     const f = fixture();
     Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
     const source = "\uFEFFFirst.\r\n\r\nMiddle 😀 paragraph.\r\n\r\nLast.\r\n";
@@ -180,6 +225,13 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     f.scroll.scrollTop = 367;
     const firstDOM = mount();
     await projection.prepare(Date.now() + 2000);
+    const samples = editorPerformanceSamples();
+    expect(samples.find(sample => sample.name === "review-html-insertion")?.observed)
+      .toEqual({review: 1, htmlUTF16Length: committed.htmlBody.length});
+    expect(samples.find(sample => sample.name === "review-reader-initialization")?.observed)
+      .toEqual({review: 1, completed: 1});
+    expect(samples.some(sample => sample.name === "review-scroll-registry")).toBe(true);
+    expect(samples.some(sample => sample.name === "review-layout-settle")).toBe(true);
     // CM sees a single replacement spanning all source. That geometry cannot
     // identify the paragraph displayed inside its native committed HTML.
     const wholeWidgetAnchor = {sourceUTF16Offset: 0, blockUTF16LowerBound: 0,
@@ -205,6 +257,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     }
     expect(editing.currentAnchor).toHaveBeenCalledTimes(2);
     widget.destroy(restoredDOM);
+    clearEditorPerformanceSamples();
   });
 
   it("uses the host scroll container and clears its APIs/styles/probes when the mode leaves", async () => {

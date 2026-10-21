@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import type {MarkdownEditingDialect} from "../protocol";
-import {calloutDefinition} from "../callout-presentation";
+import {calloutDefinition, calloutSourceGapCSS} from "../callout-presentation";
 
 const dialect: MarkdownEditingDialect = {
   version: 6,
@@ -26,6 +26,10 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("Callout presentation vocabulary", () => {
+  it("keeps role-specific spacing bound to the source body's measured em", () => {
+    expect(calloutSourceGapCSS("flag")).toBe("calc(var(--scholium-callout-flag-gap-ems, var(--scholium-callout-gap-ems)) * var(--scholium-callout-source-em))");
+    expect(calloutSourceGapCSS("flag);color:red")).toBe(calloutSourceGapCSS("neutral"));
+  });
   it("assigns semantics only to built-in names and keeps unknown names neutral", () => {
     expect(calloutDefinition(dialect, "state").identifier).toBe("state");
     for (const unknown of ["mini", "bibliography", "project", "theorem", "objection", "case", "author", "torn", "bespoke"]) {

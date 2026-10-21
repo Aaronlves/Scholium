@@ -5,7 +5,6 @@ import WebKit
 /// bounded page capability without entering the Review coordinator's policy.
 @MainActor
 protocol ScholiumReadPageExtension: AnyObject {
-    var requiresDedicatedWebView: Bool { get }
     var requiresMathRuntime: Bool { get }
     var replyProjectionEnabled: Bool { get }
 

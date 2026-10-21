@@ -611,6 +611,8 @@ struct NoteContentView<ShellNotices: View>: View {
         }
         .task(id: readProjectionTaskIdentity) {
             guard documentSession.requiresReadProjection, !Task.isCancelled else { return }
+            let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: note.id.relativePath)
+            PerformanceProbe.shared.markNoteOpeningMilestone(.readProjectionStarted, attemptID: openingMeasurement)
             PerformanceProbe.shared.markReadTaskStarted(
                 documentID: note.id.relativePath
             )
@@ -629,6 +631,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 // empty projection still receives actual renderer readiness.
                 renderedReadHTML = ""
                 renderedReadFingerprint = fingerprint.sha256
+                PerformanceProbe.shared.markNoteOpeningMilestone(.readProjectionReady, attemptID: openingMeasurement)
                 return
             }
             let html = await documentSession.loadReadProjectionIfNeeded {
@@ -646,6 +649,7 @@ struct NoteContentView<ShellNotices: View>: View {
                 citationSnapshot == note.document.citationSnapshot
             else { return }
             PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
+            PerformanceProbe.shared.markNoteOpeningMilestone(.readProjectionReady, attemptID: openingMeasurement)
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
         }
@@ -1008,9 +1012,23 @@ struct NoteContentView<ShellNotices: View>: View {
             if !isEditing, editorSession.isLoaded, editorSession.presentedMode == .review,
                 documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             {
+                let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: note.id.relativePath)
                 PerformanceReadyBoundary(
-                    generation: "read:\(noteFingerprint.sha256)"
+                    generation: "read:\(noteFingerprint.sha256):\(openingMeasurement?.uuidString ?? "none")"
                 ) {
+                    if let openingMeasurement,
+                        controller.selectedDocument?.editingTarget == target,
+                        let nativeWebView = editorSession.webView as? DocumentNativeWebView,
+                        !nativeWebView.isHiddenOrHasHiddenAncestor,
+                        let window = nativeWebView.window, window.isVisible, window.isKeyWindow,
+                        window.attachedSheet == nil,
+                        PerformanceProbe.shared.bindNoteOpening(
+                            attemptID: openingMeasurement, documentID: note.id.relativePath,
+                            editorSessionID: editorSession.sessionID)
+                    {
+                        PerformanceProbe.shared.markNoteOpeningEditorPhase(
+                            .stableVisible, editorSessionID: editorSession.sessionID, attemptID: openingMeasurement)
+                    }
                     actions.openingDocumentPresentationDidComplete()
                 }
                 .frame(width: 0, height: 0)

@@ -190,7 +190,7 @@ import WebKit
             private var closed = false
             private var expectedSelection: [MarkdownEditorSelectionRange]?
             private var editorIdentity: ObjectIdentifier?
-            private var readerIdentities = Set<ObjectIdentifier>()
+            private var hostIdentities = Set<ObjectIdentifier>()
             private let sourceFile: URL?
             private let seedHistory: Bool
             private let workspaceAfterCommit: (@MainActor (Int) async throws -> WorkspaceSnapshot)?
@@ -343,7 +343,7 @@ import WebKit
                             "targetGeometry": endpoint.targetGeometry, "observedAnchor": endpoint.observedAnchor,
                             "anchorOverlapsTarget": endpoint.anchorOverlapsTarget,
                             "webSamples": web, "webRingAtCapacity": after.count == 256,
-                            "readerPagesObserved": readerIdentities.count,
+                            "sharedHostsObserved": hostIdentities.count,
                             "retainedSessions": stats.retainedSessions, "attachedEditors": stats.attachedWebViewSessions,
                             "readProjectionEntries": stats.readProjectionEntries,
                             "readProjectionHTMLUTF8Bytes": stats.readProjectionHTMLUTF8Bytes,
@@ -558,7 +558,7 @@ import WebKit
                             && editor.detachmentSuspensionID == nil
                     if ready, controller.currentPresentationMode == mode,
                         controller.requestedPresentationMode == nil, !session.returnToReadAfterSave,
-                        let container = activeContainer(for: mode),
+                        let container = activeContainer(),
                         container.webView.window === window, !container.isHidden, !container.webView.isHidden
                     {
                         let web = container.webView
@@ -578,8 +578,8 @@ import WebKit
                                 const targetIsExact = (read ? target?.textContent === text : editorTexts.includes(target?.textContent))
                                   && (!read || Number(target.getAttribute('data-source-utf16-end')) >= to);
                                 const targetRect = targetIsExact ? target.getBoundingClientRect() : null;
-                                const scrollElement = read ? document.scrollingElement : node?.querySelector('.cm-scroller');
-                                const scroller = read ? null : scrollElement?.getBoundingClientRect();
+                                const scrollElement = document.querySelector('.cm-scroller');
+                                const scroller = scrollElement?.getBoundingClientRect();
                                 const documentFitsViewport = !!scrollElement
                                   && scrollElement.scrollHeight <= scrollElement.clientHeight + 1;
                                 const scrollClampedAtEnd = !!scrollElement
@@ -634,39 +634,22 @@ import WebKit
                         if geometry?["nonzero"] as? Bool == true {
                             if firstLayout == nil { firstLayout = .now }
                             restorationReads += 1
-                            let validAnchor: Bool
-                            if mode == .read {
-                                let anchor =
-                                    try await web.callAsyncJavaScript(
-                                        "const extent = Math.max(0, document.documentElement.scrollHeight - innerHeight); return window.scholiumReadScroll?.current(extent ? scrollY / extent : 0) ?? null;",
-                                        arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? [String: Any]
-                                lastAnchor = Self.numericValues(anchor ?? [:])
-                                if let lower = anchor?["blockUTF16LowerBound"] as? Int,
-                                    let upper = anchor?["blockUTF16UpperBound"] as? Int,
-                                    let offset = anchor?["sourceUTF16Offset"] as? Int
-                                {
-                                    validAnchor =
-                                        lower >= 0 && upper >= lower && upper <= data.source.utf16.count
-                                        && offset >= lower && offset <= upper
-                                } else {
-                                    validAnchor = false
-                                }
-                            } else {
-                                let anchor = try await editor.currentScrollAnchor()
-                                lastAnchor =
-                                    anchor.map {
-                                        [
-                                            "blockUTF16LowerBound": Double($0.blockUTF16LowerBound),
-                                            "blockUTF16UpperBound": Double($0.blockUTF16UpperBound),
-                                            "sourceUTF16Offset": Double($0.sourceUTF16Offset),
-                                            "relativeBlockPosition": $0.relativeBlockPosition,
-                                            "fallbackFraction": $0.fallbackFraction,
-                                        ]
-                                    } ?? [:]
-                                validAnchor =
-                                    anchor?.sourceFingerprint == note.fingerprint.sha256
-                                    && anchor?.isValid(forUTF16Length: data.source.utf16.count) == true
-                            }
+                            // The shared bridge returns the visible projection's
+                            // exact-source anchor in every mode, including Review.
+                            let anchor = try await editor.currentScrollAnchor()
+                            lastAnchor =
+                                anchor.map {
+                                    [
+                                        "blockUTF16LowerBound": Double($0.blockUTF16LowerBound),
+                                        "blockUTF16UpperBound": Double($0.blockUTF16UpperBound),
+                                        "sourceUTF16Offset": Double($0.sourceUTF16Offset),
+                                        "relativeBlockPosition": $0.relativeBlockPosition,
+                                        "fallbackFraction": $0.fallbackFraction,
+                                    ]
+                                } ?? [:]
+                            let validAnchor =
+                                anchor?.sourceFingerprint == note.fingerprint.sha256
+                                && anchor?.isValid(forUTF16Length: data.source.utf16.count) == true
                             // The task-level oracle requires the exact target
                             // to remain visibly in context after reflow. The top
                             // block may differ; report that drift independently.
@@ -681,7 +664,8 @@ import WebKit
                                 && (!requireTargetTopAnchor || anchorOverlapsTarget || geometry?["documentFitsViewport"] as? Bool == true
                                     || geometry?["scrollClampedAtEnd"] as? Bool == true)
                             {
-                                if mode == .read { readerIdentities.insert(ObjectIdentifier(web)) }
+                                hostIdentities.insert(ObjectIdentifier(web))
+                                #expect(hostIdentities.count == 1)
                                 #expect(!window.isVisible)
                                 return Endpoint(
                                     layout: firstLayout ?? .now, restored: .now,
@@ -793,11 +777,11 @@ import WebKit
                 return view.subviews.flatMap { containers(in: $0) }
             }
 
-            private func activeContainer(for mode: NotePresentationMode) -> DocumentWebViewContainer? {
+            private func activeContainer() -> DocumentWebViewContainer? {
                 guard let root = window.contentView else { return nil }
                 return containers(in: root).first {
                     $0.surfaceVisibility == .active
-                        && (mode == .read ? $0.webView !== session.editorSession.webView : $0.webView === session.editorSession.webView)
+                        && $0.webView === session.editorSession.webView
                 }
             }
 

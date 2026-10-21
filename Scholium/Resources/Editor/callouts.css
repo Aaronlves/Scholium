@@ -1,10 +1,20 @@
 /* One semantic presentation for Review and the exact-source Edit projection.
    Native-resolved title colors identify research roles; body prose retains ink.
    Authored titles take precedence, with a source-neutral fallback when absent. */
+@property --scholium-callout-source-em {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.scholium-document,
+.cm-editor.scholium-live-mode .cm-content {
+  --scholium-callout-source-em: 1em;
+}
 .scholium-callout,
 #editor .cm-editor.scholium-live-mode,
 #editor .cm-editor.scholium-review-mode {
-  --scholium-callout-block-gap: 1.18em;
+  --scholium-callout-gap-ems: 1.18;
+  --scholium-callout-block-gap: calc(var(--scholium-callout-gap-ems) * 1em);
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
   --scholium-callout-live-start-inset: .65em;

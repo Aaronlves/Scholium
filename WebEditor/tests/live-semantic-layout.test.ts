@@ -1,11 +1,14 @@
 import {EditorSelection, EditorState} from "@codemirror/state";
 import {EditorView} from "@codemirror/view";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {scholiumNoteLanguage} from "../language";
 import {createLiveProjectionIndexController} from "../live-projection-index";
 import {createLiveSemanticLayout, semanticSpacingBlocks} from "../live-semantic-layout";
 import {transactionChangedSyntaxTree} from "../projection-update";
 import type {SemanticBlockProjection} from "../semantic-projection";
+import type {MarkdownEditingDialect} from "../protocol";
+import {calloutSourceGapCSS} from "../callout-presentation";
+import {parseHTML} from "linkedom";
 
 function block(kind: SemanticBlockProjection["kind"], from: number, to: number,
   parent: string | null = null): SemanticBlockProjection {
@@ -28,9 +31,9 @@ function exhaustiveOwners(blocks: readonly SemanticBlockProjection[], end: numbe
     .sort((a, b) => a.from - b.from || a.to - b.to);
 }
 
-function layoutState(source: string, selection = EditorSelection.cursor(0)) {
-  const projections = createLiveProjectionIndexController({editingDialect: () => null, recordMetric: () => {}});
-  const layout = createLiveSemanticLayout({projections, editingDialect: () => null, selection: {
+function layoutState(source: string, selection = EditorSelection.cursor(0), dialect: MarkdownEditingDialect | null = null) {
+  const projections = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+  const layout = createLiveSemanticLayout({projections, editingDialect: () => dialect, selection: {
     extension: [], selection: state => state.selection,
     changed: (a, b) => !a.selection.eq(b.selection),
   }});
@@ -57,6 +60,29 @@ function snapshot(state: EditorState) {
 }
 
 describe("semantic block spacing ownership", () => {
+  it("carries both neighboring Callout roles to authored separators and source-less gaps", () => {
+    const dialect = {callouts: [{identifier: "flag"}, {identifier: "state"}]} as MarkdownEditingDialect;
+    const source = "Before.\n> [!flag] First\n> Body.\n\n> [!state] Next\n> Body.\n\n\nTail.";
+    const {state} = layoutState(source, EditorSelection.cursor(source.length), dialect);
+    const entries = spacingEntries(state);
+    const first = entries.find(entry => entry.from === source.indexOf("> [!flag]"))!.decoration.spec.widget;
+    expect(first.previousCalloutGap).toBeNull();
+    expect(first.nextCalloutGap).toBe(calloutSourceGapCSS("flag"));
+    const between = entries.find(entry => entry.from === source.indexOf("\n\n") + 1)!.decoration.spec.attributes;
+    expect(between.style).toContain(`--scholium-live-callout-gap-after: ${calloutSourceGapCSS("flag")};`);
+    expect(between.style).toContain(`--scholium-live-callout-gap-before: ${calloutSourceGapCSS("state")};`);
+    const tail = entries.find(entry => entry.from === source.lastIndexOf("\n\n") + 1)!.decoration.spec.attributes;
+    expect(tail.style).toContain(`--scholium-live-callout-gap-after: ${calloutSourceGapCSS("state")};`);
+    expect(tail.style).not.toContain("--scholium-live-callout-gap-before:");
+    const {document} = parseHTML("<html></html>");
+    vi.stubGlobal("document", document);
+    try {
+      expect(first.toDOM().style.getPropertyValue("--scholium-live-callout-gap-before")).toBe(calloutSourceGapCSS("flag"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(state.doc.toString()).toBe(source);
+  });
   it.each(["# Heading", "Body.", "```ts\nconst x = 1;\n```", "> [!state] Claim\n> Body."])(
     "keeps metadata spacing outside the first block: %s", body => {
       const prefix = "---\nsummary: Fixture\n\ncustom: value\n---\n";

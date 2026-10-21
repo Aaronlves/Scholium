@@ -461,6 +461,120 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review and Edit retain custom Callout gaps without scaling authored separator rows", arguments: [false, true])
+    func reviewCalloutProfileGapsPreserveSourceRows(enlarged: Bool) async throws {
+        let source =
+            "BeforeZero.\n> [!flag] ZeroBoundary\n> ZeroBody.\n\nAfterOne.\n\n> [!flag] OneBoundary\n> OneBody.\n\n\n\nAfterThree.\n\nParking.\n"
+        let document = NoteDocument(relativePath: "CustomCalloutGaps.md", rawContent: source)
+        let callouts = MarkdownSemanticDocument(parsing: document).callouts
+        try #require(callouts.count == 2)
+        var profile = DocumentAppearanceProfile(name: "Custom Callout gaps")
+        profile.settings.body.fontSizePoints = enlarged ? 20 : 16
+        profile.settings.body.lineHeight = 1.7
+        let flagIndex = try #require(profile.settings.callouts.firstIndex { $0.role == .caution })
+        profile.settings.callouts[flagIndex].blockGapEm = 3
+        profile.settings.callouts[flagIndex].fontScale = enlarged ? 1.25 : 1
+        let presentationCSS =
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css
+            + "\n" + DocumentAppearanceStyles.css(for: profile)
+        let parkingOffset = try #require(source.range(of: "Parking.")).lowerBound.utf16Offset(in: source)
+        let size = NSSize(width: 760, height: 1_600)
+        let harness = EditorHarness(
+            source: source, initialPresentationCSS: presentationCSS,
+            initialSourceRange: parkingOffset..<parkingOffset,
+            initialWindowSize: size, fixedLayoutSize: size)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Custom Callout gaps", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+                presentationCSS: presentationCSS, userCSS: "",
+                configurationRevision: document.fingerprint.sha256,
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        let blockArguments = callouts.map { ["from": $0.span.utf16LowerBound, "to": $0.span.utf16UpperBound] }
+        func snapshot(review: Bool) async throws -> [String: Any] {
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise((resolve, reject) => {
+                      const timeout = setTimeout(() => reject(new Error('Custom Callout gap fonts did not settle')), 3000);
+                      document.fonts.ready.then(() => { clearTimeout(timeout); resolve(); }, error => {
+                        clearTimeout(timeout); reject(error);
+                      });
+                    });
+                    await new Promise(resolve => {
+                      requestAnimationFrame(() => requestAnimationFrame(resolve));
+                      setTimeout(resolve, 200);
+                    });
+                    const main = document.querySelector(review ? 'main#scholium-document' : '.cm-content');
+                    const lines = [...document.querySelectorAll('.cm-line')];
+                    const paragraph = text => review
+                      ? [...main.querySelectorAll(':scope > p')].find(node => node.textContent === text)
+                      : lines.find(line => line.textContent === text);
+                    const readingBlocks = review ? blocks.map(block => main.querySelector(
+                      '.scholium-callout[data-source-utf16-start="' + block.from + '"][data-source-utf16-end="' + block.to + '"]')) : [];
+                    const first = (index, title) => review ? readingBlocks[index]
+                      : lines.find(line => line.classList.contains('cm-live-callout-start') && line.textContent.includes(title));
+                    const last = (index, body) => review ? readingBlocks[index]
+                      : lines.find(line => line.classList.contains('cm-live-callout-end') && line.textContent.includes(body));
+                    const before = paragraph('BeforeZero.'), afterOne = paragraph('AfterOne.'), afterThree = paragraph('AfterThree.');
+                    const zero = first(0, 'ZeroBoundary'), zeroEnd = last(0, 'ZeroBody.');
+                    const one = first(1, 'OneBoundary'), oneEnd = last(1, 'OneBody.');
+                    if (![main, before, afterOne, afterThree, zero, zeroEnd, one, oneEnd].every(Boolean))
+                      throw new Error('Custom Callout boundary is not rendered in ' + (review ? 'Review' : 'Edit'));
+                    const style = getComputedStyle(main), flagStyle = getComputedStyle(zero);
+                    const gap = (previous, next) => next.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+                    return {fontSize: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight),
+                      flagFontSize: parseFloat(flagStyle.fontSize),
+                      gaps: [gap(before, zero), gap(zeroEnd, afterOne), gap(afterOne, one), gap(oneEnd, afterThree)]};
+                    """, arguments: ["review": review, "blocks": blockArguments]) as? [String: Any])
+        }
+        _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+        let editing = try await snapshot(review: false)
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        _ = try await harness.session.send(.setScrollFraction(0), in: webView)
+        let reading = try await snapshot(review: true)
+        let expectedBodySize = profile.settings.body.fontSizePoints * (96.0 / 72.0)
+        let expectedRow = expectedBodySize * profile.settings.body.lineHeight
+        // The existing shared rhythm resolves inter-block em against body
+        // typography. Role fontScale changes content, never boundary/source rows.
+        let expectedFlagSize = expectedBodySize * profile.settings.callouts[flagIndex].fontScale
+        let expectedRoleGap = expectedBodySize * profile.settings.callouts[flagIndex].blockGapEm
+        let expectedGaps = [
+            expectedRoleGap, max(expectedRoleGap, expectedRow),
+            max(expectedRoleGap, expectedRow), 2 * expectedRow + max(expectedRoleGap, expectedRow),
+        ]
+        let editGaps = try #require(editing["gaps"] as? [Double])
+        let readGaps = try #require(reading["gaps"] as? [Double])
+        try #require(editGaps.count == expectedGaps.count && readGaps.count == expectedGaps.count)
+        print("CUSTOM_CALLOUT_PROFILE_GAPS enlarged=\(enlarged) expected=\(expectedGaps) Edit=\(editGaps) Review=\(readGaps)")
+        for (mode, measured) in [("Edit", editing), ("Review", reading)] {
+            for (key, expected) in [("fontSize", expectedBodySize), ("lineHeight", expectedRow), ("flagFontSize", expectedFlagSize)] {
+                let actual = try #require(measured[key] as? Double)
+                #expect(abs(actual - expected) <= 1, Comment(rawValue: "\(mode) custom profile \(key): \(actual), expected \(expected)"))
+            }
+            let gaps = try #require(measured["gaps"] as? [Double])
+            for index in expectedGaps.indices {
+                #expect(
+                    abs(gaps[index] - expectedGaps[index]) <= 1,
+                    Comment(rawValue: "\(mode) custom Callout boundary \(index + 1): \(gaps[index]), expected \(expectedGaps[index])"))
+            }
+        }
+        for index in expectedGaps.indices {
+            #expect(
+                abs(readGaps[index] - editGaps[index]) <= 1,
+                Comment(rawValue: "Custom Callout boundary \(index + 1): Review \(readGaps[index]), Edit \(editGaps[index])"))
+        }
+        #expect(harness.session.webView === webView)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Review reload retains its observed viewport and replays an interrupted Find request")
     func reviewReloadReplaysViewportAndFind() async throws {
         let source =

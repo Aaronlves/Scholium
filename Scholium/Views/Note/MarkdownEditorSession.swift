@@ -101,6 +101,9 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
 
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    private static let modeChangeRecoveryMessage = ScholiumL10n.string(
+        "The document mode change was not applied because the editor changed during text composition.")
+
     private static let rejectedChangeRecoveryMessage = String(
         localized: "The editor buffer could not be synchronized. Autosave will retry without discarding your text.",
         table: "Localizable",
@@ -240,7 +243,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingDocumentID = ""
     private var pendingDocumentTitle = ""
     private var deliveredPresentationConfiguration: MarkdownEditorPresentationConfiguration?
-    private var presentationConvergenceTask: Task<Void, Never>?
+    private var presentationConvergenceTask: Task<Void, Error>?
     private var presentationConvergenceID: UUID?
     private var pendingLinkPreviewGeneration = 0
     private var pendingMode: MarkdownEditorMode = .livePreview
@@ -254,6 +257,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
     private var pendingSourceRangeIsDefault = false
+    private var pendingSourceRangeRequiresEditing = false
+    private var hasPresentedWritableMode = false
     private var navigationRequestRevision: UInt64 = 0
     private var pendingSourceRangeRevision: UInt64 = 0
     private struct ScrollIntent {
@@ -301,6 +306,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var modeTransitionEpoch: UInt64 = 0
     private var modeTransitionTask: Task<Void, Never>?
     private var modeTransitionID: UUID?
+    private var modeNeedsReassertion = false
     private var rejectedChangeRecoveryTask: Task<Void, Never>?
     private var rejectedChangeRecoveryID: UUID?
     private var pendingRejectedChangeGeneration: Int?
@@ -634,6 +640,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingSource = nil
         pendingSourceRange = nil
         pendingSourceRangeIsDefault = false
+        pendingSourceRangeRequiresEditing = false
+        hasPresentedWritableMode = false
         pendingDocumentID = ""
         pendingDocumentTitle = ""
         pendingReviewProjection = nil
@@ -781,6 +789,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             lastKnownSelectionSnapshot = nil
             pendingSourceRange = nil
             pendingSourceRangeIsDefault = false
+            pendingSourceRangeRequiresEditing = false
             pendingLine = nil
         }
         pendingScrollFraction = nil
@@ -836,6 +845,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         initialSourceRange: Range<Int>? = nil,
         citationSnapshot: ZoteroCitationSnapshot? = nil
     ) {
+        if !self.documentID.isEmpty,
+            self.documentID != documentID || !checkedSource.utf8.elementsEqual(source.utf8),
+            pendingSourceRangeRequiresEditing
+        {
+            // A first-edit selection belongs to the Review source that
+            // supplied it; a later revision cannot inherit that locator.
+            pendingSourceRange = nil
+            pendingSourceRangeRequiresEditing = false
+        }
+        if self.documentID != documentID { hasPresentedWritableMode = false }
         let preservesLinkPreviews =
             self.documentID == documentID
             && checkedSource.utf8.elementsEqual(source.utf8) && pendingLinkPreviewGeneration == generation
@@ -932,6 +951,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingMode = mode
         if let initialSourceRange {
             pendingSourceRangeIsDefault = false
+            pendingSourceRangeRequiresEditing = false
             navigationRequestRevision &+= 1
             pendingSourceRangeRevision = navigationRequestRevision
             let lowerBound = max(0, initialSourceRange.lowerBound)
@@ -945,6 +965,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         {
             pendingSourceRange = 0..<0
             pendingSourceRangeIsDefault = true
+            pendingSourceRangeRequiresEditing = false
             pendingSourceRangeRevision = 0
         }
         cancelModeTransition()
@@ -970,7 +991,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setMode(_ mode: MarkdownEditorMode) {
         if pendingMode != mode { citationInteractionRevision &+= 1 }
-        let requiresConvergence = pendingMode != mode || presentedMode != mode
+        let requiresConvergence = pendingMode != mode || presentedMode != mode || modeNeedsReassertion
         pendingMode = mode
         if mode == .source { openingImageWaitTask?.cancel() }
         guard requiresConvergence else { return }
@@ -994,10 +1015,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         modeTransitionID = transitionID
         let transitionTask = Task.immediate { [weak self, weak webView] in
             guard let self, let webView else { return }
+            var failedMode: MarkdownEditorMode?
+            var attemptedMode = self.pendingMode
             defer {
                 if self.modeTransitionID == transitionID {
                     self.modeTransitionTask = nil
                     self.modeTransitionID = nil
+                    // Recovery can arrive while the failure announcement is
+                    // awaiting its bridge reply. Converge that newer request,
+                    // without automatically retrying the failed mode forever.
+                    if let failedMode, self.pendingMode != failedMode {
+                        self.startModeConvergence(in: webView)
+                    }
                 }
             }
             do {
@@ -1009,6 +1038,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         self.webView === webView
                     else { return }
                     let targetMode = self.pendingMode
+                    attemptedMode = targetMode
                     if targetMode == .review {
                         guard !self.isDirty,
                             self.reviewProjectionForCurrentSource != nil
@@ -1016,7 +1046,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         try await self.convergePendingPresentationState(
                             in: webView, requiringRequestEpoch: self.requestEpoch, documentID: self.documentID)
                     }
-                    guard self.presentedMode != targetMode else { return }
+                    guard self.presentedMode != targetMode || self.modeNeedsReassertion else { return }
                     PerformanceProbe.shared.markEditorModeBridgeStarted(
                         mode: targetMode
                     )
@@ -1037,7 +1067,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
                         self.webView === webView
                     else { return }
-                    self.updatePresentation { $0.complete(targetMode) }
+                    self.modeNeedsReassertion = false
+                    self.updatePresentation {
+                        $0.complete(targetMode)
+                        $0.clearReport(matching: Self.modeChangeRecoveryMessage)
+                    }
                     if self.pendingMode == targetMode { return }
                 }
             } catch is CancellationError {
@@ -1048,7 +1082,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
                     self.webView === webView
                 else { return }
-                let message = ScholiumL10n.string("The document mode change was not applied because the editor changed during text composition.")
+                // A rejected acknowledgement may follow an applied Web mode.
+                // Reassert the next requested mode even if the last native
+                // acknowledgement already names it.
+                self.modeNeedsReassertion = true
+                failedMode = attemptedMode
+                let message = Self.modeChangeRecoveryMessage
                 self.updatePresentation { $0.report(message) }
                 _ = try? await self.send(.announceStatus(message), in: webView)
             }
@@ -1061,6 +1100,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         modeTransitionTask?.cancel()
         modeTransitionTask = nil
         modeTransitionID = nil
+        modeNeedsReassertion = false
     }
 
     func setUserCSS(_ css: String) {
@@ -1093,6 +1133,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
+        queueSourceRange(fromUTF16: fromUTF16, toUTF16: toUTF16, requiresEditing: false)
+    }
+
+    private func queueSourceRange(fromUTF16: Int, toUTF16: Int, requiresEditing: Bool) {
         focusRequestRevision &+= 1
         pendingFocusIntentRevision = nil
         preferredDocumentFocusTarget = .editor
@@ -1100,6 +1144,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let lowerBound = max(0, fromUTF16)
         pendingSourceRange = lowerBound..<max(lowerBound, toUTF16)
         pendingSourceRangeIsDefault = false
+        pendingSourceRangeRequiresEditing = requiresEditing
         navigationRequestRevision &+= 1
         pendingSourceRangeRevision = navigationRequestRevision
         flushPendingSourceRange()
@@ -1190,11 +1235,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = flushPendingNavigationIntents()
     }
 
+    private var canApplyPendingSourceRange: Bool {
+        pendingSourceRange != nil
+            && (!pendingSourceRangeRequiresEditing || (pendingMode != .review && presentedMode != .review))
+    }
+
     @discardableResult
     private func flushPendingNavigationIntents() -> Task<Void, Never>? {
         if let navigationIntentTask { return navigationIntentTask }
         guard isReady, isLoaded, !isComposing, let webView,
-            pendingSourceRange != nil || pendingScrollIntent != nil
+            canApplyPendingSourceRange || pendingScrollIntent != nil
         else { return nil }
         let epoch = requestEpoch
         let intendedDocumentID = documentID
@@ -1210,7 +1260,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             }
             while self.requestEpoch == epoch, self.documentID == intendedDocumentID,
                 self.webView === webView, self.isLoaded, !self.isComposing,
-                self.pendingSourceRange != nil || self.pendingScrollIntent != nil
+                self.canApplyPendingSourceRange || self.pendingScrollIntent != nil
             {
                 do {
                     try await self.applyPendingSourceRange(in: webView, requiringRequestEpoch: epoch)
@@ -2196,8 +2246,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func prepareReadSelection(_ range: Range<Int>) {
-        guard pendingSourceRange == nil, lastKnownSelectionSnapshot == nil else { return }
-        revealSourceRange(fromUTF16: range.lowerBound, toUTF16: range.upperBound)
+        // Cold Review has a CodeMirror selection snapshot too. Only an actual
+        // writable presentation, rather than that default snapshot, means an
+        // editing selection must be retained on later Review handoffs.
+        guard !hasPresentedWritableMode,
+            pendingSourceRange == nil || pendingSourceRangeIsDefault || pendingSourceRangeRequiresEditing
+        else { return }
+        queueSourceRange(fromUTF16: range.lowerBound, toUTF16: range.upperBound, requiresEditing: true)
     }
 
     func focusPreferred() {
@@ -2904,7 +2959,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         ? snapshot
                         : nil
                 }
-                let requestedInitialRange = pendingSourceRange
+                let requestedInitialRange = pendingSourceRangeRequiresEditing && mode == .review ? nil : pendingSourceRange
                 let initialRangeIsDefault = pendingSourceRangeIsDefault
                 let initialRangeRevision = pendingSourceRangeRevision
                 let initialSelection =
@@ -2949,6 +3004,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 {
                     pendingSourceRange = nil
                     pendingSourceRangeIsDefault = false
+                    pendingSourceRangeRequiresEditing = false
                 }
                 if let handoff {
                     try Task.checkCancellation()
@@ -3018,7 +3074,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                             requiringRequestEpoch: intendedRequestEpoch)
                         appliedMode = requestedMode
                     }
-                    if let range = pendingSourceRange {
+                    if let range = pendingSourceRange, !pendingSourceRangeRequiresEditing || appliedMode != .review {
                         let selection = try editorSelection(for: range)
                         let rangeRevision = pendingSourceRangeRevision
                         let rangeIsDefault = pendingSourceRangeIsDefault
@@ -3031,6 +3087,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         {
                             pendingSourceRange = nil
                             pendingSourceRangeIsDefault = false
+                            pendingSourceRangeRequiresEditing = false
                         }
                     }
                     let navigationRevision = navigationRequestRevision
@@ -3060,7 +3117,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         pendingMode == appliedMode,
                         configuration == pendingPresentationConfiguration,
                         configuration == deliveredPresentationConfiguration,
-                        pendingSourceRange == nil,
+                        pendingSourceRange == nil || (pendingSourceRangeRequiresEditing && appliedMode == .review),
                         !automaticFocusIsAuthorized || (focused && focusRevision == focusRequestRevision && focusTarget == automaticFocusTarget)
                     {
                         break
@@ -3180,23 +3237,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, isLoaded, context?.composing != true,
             presentationConvergenceTask == nil, let webView
         else { return }
-        let intendedRequestEpoch = requestEpoch
-        let documentID = documentID
-        let convergenceID = UUID()
-        presentationConvergenceID = convergenceID
-        presentationConvergenceTask = Task { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            defer {
-                if intendedRequestEpoch == self.requestEpoch, self.presentationConvergenceID == convergenceID {
-                    self.presentationConvergenceTask = nil
-                    self.presentationConvergenceID = nil
-                }
-            }
-            try? await self.convergePendingPresentationState(
-                in: webView,
-                requiringRequestEpoch: intendedRequestEpoch,
-                documentID: documentID)
-        }
+        _ = startPresentationConvergence(
+            in: webView, requiringRequestEpoch: requestEpoch, documentID: documentID)
     }
 
     private func convergePendingPresentationState(
@@ -3205,23 +3247,63 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         documentID: String
     ) async throws {
         while true {
+            try Task.checkCancellation()
             guard intendedRequestEpoch == requestEpoch,
                 self.documentID == documentID, self.webView === webView
             else { throw SessionError.staleRequest }
-            let configuration = pendingPresentationConfiguration
-            if configuration == deliveredPresentationConfiguration { return }
-            let delivered = try await send(
-                .setPresentation(configuration), in: webView,
-                requiringRequestEpoch: intendedRequestEpoch)
-            guard intendedRequestEpoch == requestEpoch,
-                self.documentID == documentID, self.webView === webView
-            else { throw SessionError.staleRequest }
-            deliveredPresentationConfiguration = configuration
-            if delivered.resultingGeneration == configuration.imageResourceGeneration {
-                deliveredImageResources = configuration.imageResources
+            if presentationConvergenceTask == nil,
+                pendingPresentationConfiguration == deliveredPresentationConfiguration
+            {
+                return
             }
-            if pendingPresentationConfiguration == configuration { return }
+            // Review mode admission and ordinary appearance updates can both
+            // arrive before one bridge response. Join its owner rather than
+            // queueing the same source-sized configuration a second time.
+            let convergence = startPresentationConvergence(
+                in: webView, requiringRequestEpoch: intendedRequestEpoch, documentID: documentID)
+            try await convergence.value
         }
+    }
+
+    private func startPresentationConvergence(
+        in webView: WKWebView,
+        requiringRequestEpoch intendedRequestEpoch: UInt64,
+        documentID: String
+    ) -> Task<Void, Error> {
+        if let presentationConvergenceTask { return presentationConvergenceTask }
+        let convergenceID = UUID()
+        presentationConvergenceID = convergenceID
+        let convergence = Task { [weak self, weak webView] in
+            defer {
+                if let self, intendedRequestEpoch == self.requestEpoch, self.presentationConvergenceID == convergenceID {
+                    self.presentationConvergenceTask = nil
+                    self.presentationConvergenceID = nil
+                }
+            }
+            guard let self, let webView else { throw SessionError.unavailable }
+            while true {
+                try Task.checkCancellation()
+                guard intendedRequestEpoch == self.requestEpoch,
+                    self.documentID == documentID, self.webView === webView
+                else { throw SessionError.staleRequest }
+                let configuration = self.pendingPresentationConfiguration
+                if configuration == self.deliveredPresentationConfiguration { return }
+                let delivered = try await self.send(
+                    .setPresentation(configuration), in: webView,
+                    requiringRequestEpoch: intendedRequestEpoch)
+                try Task.checkCancellation()
+                guard intendedRequestEpoch == self.requestEpoch,
+                    self.documentID == documentID, self.webView === webView
+                else { throw SessionError.staleRequest }
+                self.deliveredPresentationConfiguration = configuration
+                if delivered.resultingGeneration == configuration.imageResourceGeneration {
+                    self.deliveredImageResources = configuration.imageResources
+                }
+                if self.pendingPresentationConfiguration == configuration { return }
+            }
+        }
+        presentationConvergenceTask = convergence
+        return convergence
     }
 
     private func flushPendingLine() {
@@ -3278,14 +3360,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     private func applyPendingSourceRange(in webView: WKWebView, requiringRequestEpoch epoch: UInt64) async throws {
-        guard isReady, isLoaded, !isComposing, epoch == requestEpoch, self.webView === webView,
+        guard canApplyPendingSourceRange, isReady, isLoaded, !isComposing, epoch == requestEpoch, self.webView === webView,
             let range = pendingSourceRange
         else { return }
         let selection = try editorSelection(for: range)
         let isDefault = pendingSourceRangeIsDefault
+        let requiresEditing = pendingSourceRangeRequiresEditing
         let revision = pendingSourceRangeRevision
         pendingSourceRange = nil
         pendingSourceRangeIsDefault = false
+        pendingSourceRangeRequiresEditing = false
         do {
             _ = try await send(
                 .revealSourceRange(fromUTF16: selection.anchor, toUTF16: selection.head),
@@ -3296,6 +3380,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             {
                 pendingSourceRange = range
                 pendingSourceRangeIsDefault = isDefault
+                pendingSourceRangeRequiresEditing = requiresEditing
             }
             throw error
         }
@@ -3667,6 +3752,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         update(&next)
         guard next != presentation else { return }
         presentation = next
+        if let mode = next.presentedMode, mode != .review {
+            hasPresentedWritableMode = true
+            if canApplyPendingSourceRange { flushPendingSourceRange() }
+        }
     }
 
     private func updatePublished<Value: Equatable>(

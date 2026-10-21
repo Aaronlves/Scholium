@@ -83,6 +83,20 @@ export interface ReaderRuntimeHost {
   postMessage(message: Record<string, unknown>): void;
   signal: AbortSignal;
   nativeFloating: NativeFloatingPorts;
+  recordMetric?: (name: "review-scroll-registry" | "review-layout-settle", startedAt: number, observed: {
+    review: number;
+    completed?: number;
+    candidateCount?: number;
+    registeredBlockCount?: number;
+    styleReadCount?: number;
+    measureCount?: number;
+    mathWaitMilliseconds?: number;
+    mermaidWaitMilliseconds?: number;
+    fontsWaitMilliseconds?: number;
+    imageWaitMilliseconds?: number;
+    imageWaitCount?: number;
+    geometryChanged?: number;
+  }) => void;
 }
 
 /** One disposable reader installation, hosted by either a page or a CodeMirror widget. */
@@ -155,27 +169,56 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   setPresentationStyles(presentationCSS, userCSS);
   const decodedImages = new Set<HTMLImageElement>();
   async function settleLayout(requireCurrent: () => void): Promise<{settled: true; geometryChanged: boolean}> {
-    requireCurrent();
-    const before = documentRoot.getBoundingClientRect();
-    const previousHeight = scrollHeight();
-    // Initialization itself may still be settling; never await its own ready promise.
-    await mathReady;
-    if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
-    requireCurrent();
-    documentRoot.getBoundingClientRect();
-    const awaitedFonts = document.fonts.status === 'loading';
-    await document.fonts.ready;
-    requireCurrent();
-    const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
-      left: 0, right: window.innerWidth, top: 0, bottom: viewportHeight(),
-    }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image));
-    documentRoot.getBoundingClientRect();
-    await document.fonts.ready;
-    requireCurrent();
-    const after = documentRoot.getBoundingClientRect();
-    return {settled: true, geometryChanged: decodedVisibleImages || awaitedFonts
-      || before.height !== after.height || before.width !== after.width
-      || previousHeight !== scrollHeight()};
+    const recordMetric = host?.recordMetric;
+    const startedAt = recordMetric ? performance.now() : 0;
+    const phases = {mathWaitMilliseconds: 0, mermaidWaitMilliseconds: 0,
+      fontsWaitMilliseconds: 0, imageWaitMilliseconds: 0, imageWaitCount: 0,
+      measureCount: 0, geometryChanged: 0, completed: 0};
+    try {
+      requireCurrent();
+      const before = documentRoot.getBoundingClientRect();
+      phases.measureCount++;
+      const previousHeight = scrollHeight();
+      // Initialization itself may still be settling; never await its own ready promise.
+      let phaseStartedAt = recordMetric ? performance.now() : 0;
+      await mathReady;
+      if (recordMetric) phases.mathWaitMilliseconds += performance.now() - phaseStartedAt;
+      phaseStartedAt = recordMetric ? performance.now() : 0;
+      if (readerWindow.scholiumMermaidReady) await readerWindow.scholiumMermaidReady;
+      if (recordMetric) phases.mermaidWaitMilliseconds += performance.now() - phaseStartedAt;
+      requireCurrent();
+      documentRoot.getBoundingClientRect();
+      phases.measureCount++;
+      const awaitedFonts = document.fonts.status === 'loading';
+      phaseStartedAt = recordMetric ? performance.now() : 0;
+      await document.fonts.ready;
+      if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+      requireCurrent();
+      phaseStartedAt = recordMetric ? performance.now() : 0;
+      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+        left: 0, right: window.innerWidth, top: 0, bottom: viewportHeight(),
+      }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image));
+      if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
+      phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
+      documentRoot.getBoundingClientRect();
+      phases.measureCount++;
+      phaseStartedAt = recordMetric ? performance.now() : 0;
+      await document.fonts.ready;
+      if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+      requireCurrent();
+      const after = documentRoot.getBoundingClientRect();
+      phases.measureCount++;
+      const geometryChanged = decodedVisibleImages || awaitedFonts
+        || before.height !== after.height || before.width !== after.width
+        || previousHeight !== scrollHeight();
+      phases.geometryChanged = geometryChanged ? 1 : 0;
+      phases.completed = 1;
+      return {settled: true, geometryChanged};
+    } finally {
+      // Only the shared Review host opts into the editor's bounded ring.
+      // measureCount counts this owner's root reads, excluding image helpers.
+      recordMetric?.("review-layout-settle", startedAt, {review: 1, ...phases});
+    }
   }
   const readPreparation: NonNullable<ReaderWindow['scholiumReadPreparation']> = {
     async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
@@ -948,7 +991,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
         const origin = reference.closest('.footnote-reference-wrap') || reference;
         origins.set(ordinal, origin.id);
         target.tabIndex = -1;
-        target.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+        target.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
         target.focus({preventScroll: true});
       }
       hidePopover();
@@ -1212,6 +1255,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   }
 
   const scrollBlockRegistry = (() => {
+    const recordMetric = host?.recordMetric;
+    const startedAt = recordMetric ? performance.now() : 0;
     const root = documentRoot;
     const entries: ReaderScrollEntry[] = [];
     const byElement = new WeakMap<HTMLElement, ReaderScrollEntry>();
@@ -1227,14 +1272,18 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     const candidates = root.querySelectorAll<HTMLElement>(
       '[data-source-utf16-start][data-source-utf16-end]',
     );
+    let styleReadCount = 0;
+    let measureCount = 0;
     for (const element of candidates) {
       const lower = Number(element.dataset.sourceUtf16Start);
       const upper = Number(element.dataset.sourceUtf16End);
       if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper < lower) continue;
       const style = getComputedStyle(element);
+      styleReadCount++;
       if (style.display === 'inline' || style.display === 'contents'
           || style.display === 'none' || style.visibility === 'hidden') continue;
       const initialRect = element.getBoundingClientRect();
+      measureCount++;
       if (initialRect.height <= 0) continue;
       const entry = {element, lower, upper, span: Math.max(0, upper - lower)};
       element.dataset.scholiumScrollAnchor = String(entries.length);
@@ -1251,6 +1300,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       maximumUpper = Math.max(maximumUpper, entry.upper);
       return maximumUpper;
     });
+    recordMetric?.("review-scroll-registry", startedAt, {review: 1,
+      candidateCount: candidates.length, registeredBlockCount: entries.length, styleReadCount, measureCount});
     return {
       root,
       entries,

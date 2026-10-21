@@ -51,7 +51,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             includesNewTab && (opensNewTab || startWithAlternate || retainTarget),
             "The combined journey starts without a selected document and finishes with one new-tab opening.")
         let sampleCount = includesNewTab ? 4 : (opensNewTab ? 1 : 3)
-        let nativeMetric = openingMode == "Review" ? "first_read_activation" : "note_open_to_visible"
+        let nativeMetric = "note_open_to_visible"
         if opensNewTab { XCTAssertTrue(startWithAlternate && retainTarget) }
         try requireQAPreferencePreservation()
         continueAfterFailure = false
@@ -116,6 +116,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
             "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": String(sampleCount),
             "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": targetID,
+            "SCHOLIUM_PERFORMANCE_INITIAL_REVIEW": openingMode == "Review" ? "1" : "0",
         ]
         if startWithAlternate { application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = alternateID }
         application.launch()
@@ -133,7 +134,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let other = nativeLibraryRow("scholium.noteRow.\(alternateID)", in: application)
         XCTAssertTrue(target.waitForExistence(timeout: 60))
         XCTAssertTrue(other.waitForExistence(timeout: 10))
-        // first_read_activation arms Review in the workspace-opening owner
+        // The explicit probe setup arms Review in the workspace-opening owner
         // before Library readiness. An empty workspace intentionally has no mode
         // toolbar control, so observing that absent control cannot be a barrier.
         if startWithAlternate {
@@ -299,7 +300,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             let nativeEnd = try XCTUnwrap((native["completed_uptime_ns"] as? NSNumber)?.uint64Value)
             XCTAssertGreaterThanOrEqual(nativeEnd, actionStarted)
             XCTAssertNotNil(native["duration_ms"] as? Double)
-            if openingMode == "Edit" {
+            do {
                 XCTAssertEqual(notify_post("com.scholium.qa.performance-note-opening-web-samples"), UInt32(NOTIFY_STATUS_OK))
                 XCTAssertTrue(
                     waitUntil(timeout: 30) { self.lineCount(at: webResult.path) == sample + 1 },
@@ -334,9 +335,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "driver_action_start_uptime_ns": actionStarted, "driver_action_return_uptime_ns": actionReturned,
                 "screenshot_observation_upper_bound_ms": Double(observed - actionStarted) / 1_000_000,
                 "target_body_recognized": recognized, "captures": captures, "native": native,
-                "native_boundary": openingMode == "Review"
-                    ? "Committed Read activation after source resolution to reader readiness."
-                    : sampleOpensNewTab
+                "native_boundary": sampleOpensNewTab
                         ? "Native Open in New Tab handler to validated native stable-visible layout."
                         : "AppKit Library mouseDown handler to validated native stable-visible layout.",
                 "first_screenshot_start_uptime_ns": firstScreenshotStarted,
@@ -423,9 +422,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             }.joined(),
             "post_measurement_exact_save_navigation_undo_redo": true,
             "post_measurement_review_preserves_undo": includesModes,
-            "native_boundary": openingMode == "Review"
-                ? "Native committed Read activation after source resolution to reader readiness; excludes earlier click/event/source work. Not comparable to Edit native click duration."
-                : opensNewTab
+            "native_boundary": opensNewTab
                     ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
                     : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
             "screenshot_boundary":

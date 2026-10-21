@@ -3982,36 +3982,6 @@ struct FrontendArchitectureTests {
             ) == nil)
     }
 
-    @Test("Initial WebKit prewarm is nonpersistent, source-free, and bounded")
-    func initialWebKitPrewarmIsBounded() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Styling/ScholiumWebKitRuntime.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(source.contains("WKWebsiteDataStore.nonPersistent()"))
-        #expect(source.contains("default-src 'none'"))
-        #expect(source.contains("font-src scholium-font:"))
-        #expect(source.contains("ScholiumWebFonts.css"))
-        #expect(source.contains("Task.sleep(for: .seconds(5))"))
-        #expect(source.contains("func takeReadWebView() -> WKWebView?"))
-        #expect(!source.contains("WKProcessPool"))
-        #expect(!source.contains("URLSession"))
-
-        let readSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(readSource.contains("takeReadWebView()"))
-    }
-
     @Test("Review and Edit share one offline fail-closed Mermaid runtime")
     func sharedMermaidRuntime() throws {
         let repository = URL(fileURLWithPath: #filePath)

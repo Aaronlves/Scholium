@@ -84,6 +84,11 @@ enum DocumentAppearanceStyles {
                 }
                 """
         }.joined(separator: "\n")
+        // Shared boundary owners resolve these role-specific numbers against
+        // the body em. A Callout's content scale never resizes source rows.
+        let calloutGapDeclarations = settings.callouts.map { callout in
+            "--scholium-callout-\(selectors(for: callout.role).identifier)-gap-ems: \(number(callout.blockGapEm));"
+        }.joined(separator: "\n")
 
         var rules = """
             :root {
@@ -97,6 +102,7 @@ enum DocumentAppearanceStyles {
               --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
               \(headingLevelDeclarations)
               --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
+              \(calloutGapDeclarations)
             }
             .scholium-document,
             .cm-editor.scholium-live-mode .cm-content {
@@ -323,7 +329,7 @@ enum DocumentAppearanceStyles {
               font-weight: \(callout.titleWeight);
             }
             \(selectors.review) {
-              --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
+              --scholium-callout-block-gap: calc(\(number(callout.blockGapEm)) * var(--scholium-callout-source-em));
               margin-block: var(--scholium-callout-block-gap);
               font-size: \(number(callout.fontScale))em;
             }
@@ -420,28 +426,29 @@ enum DocumentAppearanceStyles {
     }
 
     private struct CalloutSelectors {
-        let review: String
-        let live: String
+        let identifier: String
+        var review: String { ".scholium-callout-\(identifier)" }
+        var live: String { "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-\(identifier)" }
     }
 
     private static func selectors(for role: DocumentCalloutAppearanceRole) -> CalloutSelectors {
         switch role {
         case .orientation:
-            .init(review: ".scholium-callout-orient", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-orient")
+            .init(identifier: "orient")
         case .connections:
-            .init(review: ".scholium-callout-connect", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect")
+            .init(identifier: "connect")
         case .statement:
-            .init(review: ".scholium-callout-state", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state")
+            .init(identifier: "state")
         case .illustration:
-            .init(review: ".scholium-callout-illustrate", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate")
+            .init(identifier: "illustrate")
         case .caution:
-            .init(review: ".scholium-callout-flag", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag")
+            .init(identifier: "flag")
         case .folded:
-            .init(review: ".scholium-callout-neutral", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral")
+            .init(identifier: "neutral")
         case .quotation:
-            .init(review: ".scholium-callout-quote", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote")
+            .init(identifier: "quote")
         case .source:
-            .init(review: ".scholium-callout-cite", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite")
+            .init(identifier: "cite")
         }
     }
 

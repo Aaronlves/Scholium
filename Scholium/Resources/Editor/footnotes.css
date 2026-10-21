@@ -135,6 +135,7 @@
   min-inline-size: 0;
   padding-inline-start: .18em;
   overflow-wrap: anywhere;
+  scroll-margin-block-start: calc(var(--scholium-document-toolbar-inset, 0px) + var(--scholium-document-content-top-inset, 0px));
 }
 
 .scholium-document .footnotes li + li { margin-block-start: .68em; }

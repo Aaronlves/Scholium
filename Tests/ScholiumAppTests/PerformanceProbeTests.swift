@@ -626,8 +626,30 @@ struct PerformanceProbeTests {
             ],
             bundleID: "com.scholium.qa"
         )
-        #expect(memory.measuresEditorRetainedMemory)
         #expect(!memory.requiresInitialReviewPresentation)
+    }
+
+    @Test("Full opening diagnostics can request Review without changing unrelated metrics")
+    func fullOpeningReviewSetupIsScoped() throws {
+        let runID = "opening_mode_\(UUID().uuidString)"
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/performance-\(runID)")
+        let directory = root.appendingPathComponent("app-state/raw")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for metric in [PerformanceProbe.Metric.noteOpenToVisible, .noteOpenToInput, .indexedSearch] {
+            for requested in ["0", "1"] {
+                let probe = PerformanceProbe(
+                    environment: [
+                        "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory.appendingPathComponent("sample.jsonl").path,
+                        "SCHOLIUM_PERFORMANCE_METRIC": metric.rawValue,
+                        "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+                        "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                        "SCHOLIUM_PERFORMANCE_INITIAL_REVIEW": requested,
+                    ], arguments: [], bundleID: "com.scholium.qa")
+                #expect(probe.requiresInitialReviewPresentation == (requested == "1" && metric != .indexedSearch))
+            }
+        }
     }
 
     @Test("Packaged probe writes only inside its explicit performance run")
@@ -1883,6 +1905,24 @@ struct PerformanceProbeTests {
         // Mirror the numeric keys emitted by current production producers;
         // source, paths, vendor payloads and identifiers are never export keys.
         let producers: [(String, [String: Double])] = [
+            ("review-html-insertion", ["htmlUTF16Length": 12, "review": 1]),
+            ("review-reader-initialization", ["completed": 1, "review": 1]),
+            ("review-scroll-registry", ["candidateCount": 2, "registeredBlockCount": 2, "styleReadCount": 2, "review": 1]),
+            ("review-layout-settle", ["mathWaitMilliseconds": 1, "mermaidWaitMilliseconds": 2, "geometryChanged": 1, "review": 1]),
+            (
+                "opening-preparation",
+                [
+                    "styleWorkMilliseconds": 0.2, "fontsWaitMilliseconds": 0.1, "projectionWorkMilliseconds": 0.3,
+                    "measureWorkMilliseconds": 4, "scrollWorkMilliseconds": 0.1,
+                    "measureCount": 3, "measureCompletedCount": 3, "loopCount": 1,
+                    "widgetWaitMilliseconds": 0.1, "widgetWaitCount": 0,
+                    "imageWaitMilliseconds": 0.1, "imageWaitCount": 0,
+                    "widgetWaitEnteredCount": 1, "pendingMathWidgetCount": 0,
+                    "pendingMermaidWidgetCount": 0, "pendingOtherWidgetCount": 0,
+                    "completed": 1, "expired": 0,
+                ]
+            ),
+            ("opening-preparation", ["review": 1, "completed": 1]),
             (
                 "recovery-restore",
                 [
@@ -1980,6 +2020,8 @@ struct PerformanceProbeTests {
             MarkdownEditorPerformanceSample(name: "recovery-composition", durationMilliseconds: .infinity, observed: [:]),
             MarkdownEditorPerformanceSample(name: "bridge-dispatch-stages", durationMilliseconds: 1, observed: ["accepted": .nan]),
             MarkdownEditorPerformanceSample(name: "interaction-context", durationMilliseconds: 1, observed: ["generation": -1]),
+            MarkdownEditorPerformanceSample(name: "opening-preparation", durationMilliseconds: 1, observed: ["pendingMathWidgetCount": .infinity]),
+            MarkdownEditorPerformanceSample(name: "opening-preparation", durationMilliseconds: 1, observed: ["review": -1]),
         ] {
             probe.recordNoteOpeningWebSamples(samples + [invalid], documentID: "Fixture.md", sample: sample)
             #expect(!FileManager.default.fileExists(atPath: web.path))

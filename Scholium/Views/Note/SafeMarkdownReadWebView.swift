@@ -106,23 +106,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> DocumentWebViewContainer {
-        let webView: WKWebView
-        let contentController: WKUserContentController
-        if pageExtension == nil, let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
-            webView = prepared
-            contentController = prepared.configuration.userContentController
-        } else {
-            contentController = WKUserContentController()
-            let configuration = WKWebViewConfiguration()
-            configuration.userContentController = contentController
-            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-            ScholiumWebFontResources.install(in: configuration)
-            webView =
-                pageExtension?.makeWebView(configuration: configuration)
-                ?? DocumentNativeWebView(frame: .zero, configuration: configuration)
-        }
+        let contentController = WKUserContentController()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = contentController
+        configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        ScholiumWebFontResources.install(in: configuration)
+        let webView =
+            pageExtension?.makeWebView(configuration: configuration)
+            ?? DocumentNativeWebView(frame: .zero, configuration: configuration)
         contentController.add(
             context.coordinator,
             contentWorld: Self.bridgeContentWorld,

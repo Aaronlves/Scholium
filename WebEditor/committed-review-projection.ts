@@ -5,6 +5,7 @@ import {initializeReader, type ReaderWindow} from "./reader-runtime";
 import type {ExactSourceMirror} from "./state";
 import {mapReviewAnchor, readLinkPreviewsEqual, reviewConfigurationSharesDOM, scopedReviewCSS, wrapReviewCSS, type CommittedReviewProjection} from "./committed-review-contract";
 import {committedReviewRhythmCSS, projectCommittedReviewCalloutRhythm} from "./committed-review-rhythm";
+import {recordEditorMetric} from "./performance";
 export {reviewProjectionMatches} from "./committed-review-contract";
 
 interface ReviewProjectionOptions {
@@ -46,7 +47,9 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       shell.append(presentationStyle, rhythmStyle, userStyle);
       const content = document.createElement("div");
       // Only native sanitized HTML reaches this boundary. It cannot write source.
+      const insertionStartedAt = performance.now();
       content.innerHTML = projection.htmlBody;
+      recordEditorMetric("review-html-insertion", insertionStartedAt, {review: 1, htmlUTF16Length: projection.htmlBody.length});
       shell.append(content);
       const main = content.querySelector<HTMLElement>("main#scholium-document");
       const popover = content.querySelector<HTMLElement>("#scholium-preview-popover");
@@ -72,12 +75,19 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       // CodeMirror has attached the same DOM and has finished its update.
       ready = Promise.resolve().then(async () => {
         if (abort.signal.aborted || revision !== mountRevision) throw new Error("stale Review mount");
-        await initializeReader(projection.configuration, {
-          root: main, scrollDOM: view.scrollDOM, popover, signal: abort.signal, nativeFloating: options.nativeFloating,
-          presentationStyle, userStyle,
-          scopeStyles: {presentation: css => scopedReviewCSS(css, "local"), user: wrapReviewCSS},
-          postMessage: options.postMessage,
-        });
+        const initializationStartedAt = performance.now();
+        let completed = false;
+        try {
+          await initializeReader(projection.configuration, {
+            root: main, scrollDOM: view.scrollDOM, popover, signal: abort.signal, nativeFloating: options.nativeFloating,
+            presentationStyle, userStyle,
+            scopeStyles: {presentation: css => scopedReviewCSS(css, "local"), user: wrapReviewCSS},
+            postMessage: options.postMessage, recordMetric: recordEditorMetric,
+          });
+          completed = !abort.signal.aborted && revision === mountRevision;
+        } finally {
+          recordEditorMetric("review-reader-initialization", initializationStartedAt, {review: 1, completed: completed ? 1 : 0});
+        }
         if (abort.signal.aborted || revision !== mountRevision) throw new Error("stale Review mount");
         view.requestMeasure();
         options.postMessage({version: projection.configuration.version,

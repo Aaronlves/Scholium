@@ -279,7 +279,7 @@ import WebKit
         }
 
         @Test(
-            "Measure clean Review/Edit/Review demand with one retained editor and bounded derived HTML",
+            "Measure clean Review/Edit/Review demand with one shared host and bounded derived HTML",
             .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_DOCUMENT_SWITCH"] == "1"))
         func reviewEditorCycles() async throws {
             try await withHarness { harness in
@@ -289,15 +289,15 @@ import WebKit
                 try await harness.show(document)
                 try await harness.readReady(document)
                 print("DocumentReview boundary=first-projection-layout milliseconds=\(Self.milliseconds(initialStart.duration(to: .now)))")
-                #expect(!document.model.editorSession.hasAttachedWebView)
-                #expect(harness.totalInitializations == 0)
-                var editorIdentity: ObjectIdentifier?
+                let editorIdentity = ObjectIdentifier(try #require(document.model.editorSession.webView))
+                let transport = document.model.editorSession.sessionID
+                #expect(harness.totalInitializations == 1)
                 var expectedSelection: [MarkdownEditorSelectionRange]?
                 let nativeSessionIdentity = ObjectIdentifier(document.model.editorSession)
 
                 // Two excluded warmup cycles, twenty retained cycles. The
-                // first Edit allocation is explicitly cold. Review uses the
-                // actual finalized Read page, never a forced-ready flag.
+                // first Edit activates its editing extensions in the same host
+                // that already presented the finalized Review projection.
                 for index in 0..<22 {
                     let start = ContinuousClock.now
                     document.model.beginEditing(in: .livePreview)
@@ -305,11 +305,8 @@ import WebKit
                     let selection = try await harness.selection(document)
                     let entered = ContinuousClock.now
                     let web = try #require(document.model.editorSession.webView)
-                    if let editorIdentity {
-                        #expect(ObjectIdentifier(web) == editorIdentity)
-                    } else {
-                        editorIdentity = ObjectIdentifier(web)
-                    }
+                    #expect(ObjectIdentifier(web) == editorIdentity)
+                    #expect(document.model.editorSession.sessionID == transport)
                     if let expectedSelection { #expect(selection == expectedSelection) } else { expectedSelection = selection }
                     #expect(ObjectIdentifier(document.model.editorSession) == nativeSessionIdentity)
                     #expect(harness.totalInitializations == 1)
@@ -319,6 +316,7 @@ import WebKit
                     try await harness.readReady(document)
                     let returned = ContinuousClock.now
                     #expect(document.model.editorSession.webView === web)
+                    #expect(document.model.editorSession.sessionID == transport)
                     #expect(document.model.editorSession.detachmentSuspensionID == nil)
                     #expect(document.model.editorSession.checkedSource.utf8.elementsEqual(document.source.utf8))
                     #expect(harness.store.qaDiagnosticCounts.attachedWebView == 1)
@@ -327,9 +325,9 @@ import WebKit
                     #expect(stats.htmlUTF8ByteCount == document.model.renderedReadHTML.utf8.count)
                     print(
                         "DocumentReview boundary=edit-read-layout index=\(index) phase=\(index < 2 ? "warmup" : "retained") "
-                            + "editPage=\(index == 0 ? "cold" : "retained") editMs=\(Self.milliseconds(start.duration(to: entered))) "
+                            + "host=shared editing=\(index == 0 ? "first" : "retained") editMs=\(Self.milliseconds(start.duration(to: entered))) "
                             + "reviewMs=\(Self.milliseconds(entered.duration(to: returned))) initialize=1 rendererRequests=\(harness.rendererCalls) "
-                            + "readPages=\(document.readPage.creationCount) reviewEntries=\(stats.entryCount) htmlBytes=\(stats.htmlUTF8ByteCount)")
+                            + "attachedHosts=1 reviewEntries=\(stats.entryCount) htmlBytes=\(stats.htmlUTF8ByteCount)")
                 }
             }
         }
@@ -370,7 +368,6 @@ import WebKit
             let readDocument: NoteDocument
             let model: DocumentSessionModel
             let dispatcher: CountingDispatcher
-            let readPage = DedicatedReadPage()
 
             init(key: DocumentSessionKey, label: String, fixture: EditorAblationDiagnosticConfiguration.Fixture) {
                 source = fixture.source(label: label)
@@ -447,12 +444,12 @@ import WebKit
                 let oldTransport = document.model.editorSession.sessionID
                 attachment.current = document
                 hosting?.view.layoutSubtreeIfNeeded()
+                try await wait("new target transport attachment") {
+                    document.model.editorSession.hasAttachedWebView
+                        && document.model.editorSession.sessionID != oldTransport
+                        && document.model.editorSession.documentID == document.model.editorSession.bridgeDocumentID
+                }
                 if document.model.isEditing {
-                    try await wait("new target transport attachment") {
-                        document.model.editorSession.hasAttachedWebView
-                            && document.model.editorSession.sessionID != oldTransport
-                            && document.model.editorSession.documentID == document.model.editorSession.bridgeDocumentID
-                    }
                     try await editorReady(
                         document, expectedSource: expectedSource ?? document.source,
                         expectedMode: document.model.retainedEditorMode, verifySource: verifySource)
@@ -596,24 +593,25 @@ import WebKit
 
             func readReady(_ document: FixtureDocument) async throws {
                 let fingerprint = DocumentFingerprint(content: document.source).sha256
+                let editor = document.model.editorSession
                 try await wait("current finalized Review revision") {
                     attachment.current === document && !document.model.isEditing
                         && document.model.renderedReadReadyFingerprint == fingerprint
-                        && document.readPage.finalizedFingerprint == fingerprint
-                        && document.readPage.webView?.window === window
+                        && editor.isReady && editor.isLoaded && editor.presentedMode == .review
+                        && editor.startingFingerprint == fingerprint && editor.webView?.window === window
+                        && editor.errorMessage == nil && editor.detachmentSuspensionID == nil
                         && document.model.failedReadFingerprint == nil
-                        && self.container(for: document.readPage.webView)?.surfaceVisibility == .active
-                        && document.readPage.webView?.isHidden == false
-                        && (!document.model.retainsEditorSurface
-                            || self.container(for: document.model.editorSession.webView)?.surfaceVisibility == .retained)
+                        && self.container(for: editor.webView)?.surfaceVisibility == .active
+                        && editor.webView?.isHidden == false
                 }
                 hosting?.view.layoutSubtreeIfNeeded()
-                let web = try #require(document.readPage.webView)
+                let web = try #require(editor.webView)
                 let laidOut =
                     try await web.callAsyncJavaScript(
                         "const rect = document.querySelector('#scholium-document')?.getBoundingClientRect(); return !!rect && rect.width > 0 && rect.height > 0 && document.querySelector('#scholium-document')?.textContent.includes('Paragraph 0');",
                         arguments: [:], in: nil, contentWorld: .page) as? Bool
                 #expect(laidOut == true)
+                try await assertExactSource(document, expected: document.source)
                 #expect(document.model.renderedReadFingerprint == fingerprint)
                 #expect(!window.isVisible)
             }
@@ -698,42 +696,67 @@ import WebKit
                 let fingerprint = DocumentFingerprint(content: document.source).sha256
                 DocumentEditorHost(
                     documentID: editor.openingPresentationID.uuidString,
-                    presentsEditor: model.isEditing, retainsEditor: model.retainsEditorSurface,
+                    presentsEditor: true,
+                    retainsEditor: model.retainsEditorSurface || editor.hasAttachedWebView
+                        || model.isEditing || model.renderedReadFingerprint == fingerprint,
                     editorIsLoaded: editor.isLoaded,
-                    editorIsReady: editor.isReady && editor.isLoaded && editor.presentedMode == model.retainedEditorMode
+                    editorIsReady: editor.isReady && editor.isLoaded
+                        && editor.presentedMode == (model.isEditing ? model.retainedEditorMode : .review)
+                        && (model.isEditing || model.renderedReadReadyFingerprint == fingerprint),
+                    keepsPresentedSurfaceWhilePreparing: model.isEditing
                 ) {
-                    SafeMarkdownReadWebView(
-                        documentID: editor.bridgeDocumentID, document: document.readDocument,
-                        htmlBody: model.renderedReadHTML, presentationCSS: "", userCSS: "",
-                        onLinkClick: { _ in }, onOpenExternalURL: { _ in },
-                        renderingReadinessIsAcknowledged: model.renderedReadReadyFingerprint == fingerprint,
-                        onRenderingFailure: { _ in model.failedReadFingerprint = fingerprint },
-                        onRenderingLoading: { model.renderedReadReadyFingerprint = "" },
-                        onRenderingReady: {
-                            guard !model.isEditing, model.renderedReadFingerprint == fingerprint else { return }
-                            model.renderedReadReadyFingerprint = fingerprint
-                        },
-                        pageExtension: document.readPage,
-                        observedScrollPosition: model.readScrollPosition,
-                        onScrollFractionChange: { model.observeScrollFraction($0, on: .read) },
-                        onScrollAnchorChange: { model.observeScrollAnchor($0, on: .read) })
+                    EmptyView()
                 } editor: {
                     MarkdownEditorWebView(
                         session: editor, documentID: editor.bridgeDocumentID, documentTitle: "Synthetic",
-                        performanceDocumentID: "synthetic-hidden-switch", source: document.source, mode: model.retainedEditorMode,
+                        performanceDocumentID: "synthetic-hidden-switch", source: document.source,
+                        mode: model.isEditing ? model.retainedEditorMode : .review,
                         presentationCSS: "", userCSS: "", requiresMathRuntime: false,
                         linkCompletionQuery: { _, _ in .current([]) }, linkPreviews: [],
                         initialScrollFraction: model.editorScrollFraction, initialScrollAnchor: model.editorScrollAnchor,
                         onDocumentActivity: {}, onRequestSave: {}, onRequestFind: { _ in },
                         onRequestDocumentTitleRename: { _, requested in requested }, onPasteImage: { _ in false },
                         onLinkActivation: { _ in }, onImagePreview: { _ in },
-                        onScrollFractionChange: { model.observeScrollFraction($0, on: .editor) },
-                        onScrollAnchorChange: { model.observeScrollAnchor($0, on: .editor) }
+                        onScrollFractionChange: {
+                            guard model.isEditing else { return }
+                            model.observeScrollFraction($0, on: .editor)
+                        },
+                        onScrollAnchorChange: {
+                            guard model.isEditing else { return }
+                            model.observeScrollAnchor($0, on: .editor)
+                        },
+                        review: model.renderedReadFingerprint == fingerprint ? reviewConfiguration(fingerprint: fingerprint) : nil
                     )
                     .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
                         if let editorVisibility { visibility = editorVisibility }
                     }
                 }
+            }
+
+            private func reviewConfiguration(fingerprint: String) -> SafeMarkdownReadWebView {
+                SafeMarkdownReadWebView(
+                    documentID: model.editorSession.bridgeDocumentID, document: document.readDocument,
+                    htmlBody: model.renderedReadHTML, presentationCSS: "", userCSS: "",
+                    onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                    renderingReadinessIsAcknowledged: model.renderedReadReadyFingerprint == fingerprint,
+                    onRenderingFailure: { _ in
+                        model.failedReadFingerprint = fingerprint
+                        model.renderedReadReadyFingerprint = ""
+                    },
+                    onRenderingLoading: { model.renderedReadReadyFingerprint = "" },
+                    onRenderingReady: {
+                        guard model.renderedReadFingerprint == fingerprint else { return }
+                        model.renderedReadReadyFingerprint = fingerprint
+                    },
+                    observedScrollPosition: model.readScrollPosition,
+                    onScrollFractionChange: {
+                        guard !model.isEditing else { return }
+                        model.observeScrollFraction($0, on: .read)
+                    },
+                    onScrollAnchorChange: {
+                        guard !model.isEditing else { return }
+                        model.observeScrollAnchor($0, on: .read)
+                    })
             }
         }
 
@@ -758,41 +781,6 @@ import WebKit
                 return .init(status: .unavailable, remoteCleanupConfirmed: false, callbackCount: 0, message: nil)
             }
             func cancelCurrentTransaction(transactionID: String) async {}
-        }
-
-        /// Forces a fixture-owned nonpersistent page rather than consuming the
-        /// global prewarmer. All extension policy is neutral; actual Read load
-        /// finalization, widgets, source mapping and readiness stay production.
-        @MainActor
-        private final class DedicatedReadPage: ScholiumReadPageExtension {
-            let requiresDedicatedWebView = true
-            let requiresMathRuntime = false
-            let replyProjectionEnabled = false
-            private(set) weak var webView: WKWebView?
-            private(set) var creationCount = 0
-            private(set) var finalizedFingerprint: String?
-            func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
-                let web = DocumentNativeWebView(frame: .zero, configuration: configuration)
-                webView = web
-                creationCount += 1
-                finalizedFingerprint = nil
-                return web
-            }
-            func preservesPage(currentDocumentID: String, nextDocumentID: String, hasLoadedPage: Bool) -> Bool { false }
-            func canUpdateInPlace(currentDocumentID: String, nextDocumentID: String, hasLoadedPage: Bool) -> Bool { false }
-            func acceptsMessageWithoutCurrentFingerprint(type: String) -> Bool { false }
-            func willBeginLoad(fingerprint: String) { finalizedFingerprint = nil }
-            func updateIfNeeded(
-                body: String, source: String, fingerprint: String, signature: String, documentID: String,
-                loadGeneration: UInt64, presentationCSS: String, userCSS: String, in webView: WKWebView,
-                isCurrent: @escaping @MainActor () -> Bool,
-                didApply: @escaping @MainActor (String, String) -> Void,
-                didFail: @escaping @MainActor (any Error) -> Void
-            ) -> Bool { false }
-            func didFinishNavigation(_ navigation: WKNavigation?, isCurrent: @escaping @MainActor () -> Bool) {}
-            func didFinalizePage(fingerprint: String) { finalizedFingerprint = fingerprint }
-            func handleMessage(type: String, payload: [String: Any], webView: WKWebView?) -> Bool { false }
-            func cancel() {}
         }
     }
 #endif

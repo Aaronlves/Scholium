@@ -76,6 +76,8 @@ final class PerformanceProbe {
         case presentationConverged = "presentation_converged"
         case preparationCompleted = "preparation_completed"
         case sessionLoaded = "session_loaded"
+        case readProjectionStarted = "read_projection_started"
+        case readProjectionReady = "read_projection_ready"
     }
 
     enum NoteOpeningWork: String {
@@ -149,6 +151,7 @@ final class PerformanceProbe {
         let expectedDocument: String?
         let expectedCount: Int?
         let externalStartNanoseconds: UInt64?
+        let initialReviewPresentation: Bool
     }
 
     private let configuration: Configuration?
@@ -277,7 +280,8 @@ final class PerformanceProbe {
             expectedQuery: environment["SCHOLIUM_PERFORMANCE_EXPECTED_QUERY"],
             expectedDocument: environment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"],
             expectedCount: environment["SCHOLIUM_PERFORMANCE_EXPECTED_COUNT"].flatMap(Int.init),
-            externalStartNanoseconds: environment["SCHOLIUM_PERFORMANCE_STARTED_NS"].flatMap(UInt64.init)
+            externalStartNanoseconds: environment["SCHOLIUM_PERFORMANCE_STARTED_NS"].flatMap(UInt64.init),
+            initialReviewPresentation: environment["SCHOLIUM_PERFORMANCE_INITIAL_REVIEW"] == "1"
         )
     }
 
@@ -550,15 +554,19 @@ final class PerformanceProbe {
             "recovery-restore", "recovery-composition", "recovery-live-install",
             "bridge-dispatch-stages", "bridge-message-post", "interaction-report-queue", "interaction-context",
             "citation-projection-admission", "citation-catalog", "citation-field-validation",
+            "review-html-insertion", "review-reader-initialization", "review-scroll-registry", "review-layout-settle",
         ]
         let allowedObserved: Set<String> = [
             "documentLength", "visibleRangeCount", "decorationCount", "projectionWindowUTF16Count",
             "changeCount",
             "requestBytes", "resultBytes", "styleWorkMilliseconds", "fontsWaitMilliseconds",
             "projectionWorkMilliseconds",
-            "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "loopCount",
+            "measureWorkMilliseconds", "scrollWorkMilliseconds", "measureCount", "measureCompletedCount", "loopCount",
             "widgetWaitMilliseconds",
             "widgetWaitCount", "imageWaitMilliseconds", "imageWaitCount", "completed", "expired",
+            // Unified-host preparation reports completed measurements, pending
+            // visible widgets and Review without exposing document content.
+            "widgetWaitEnteredCount", "pendingMathWidgetCount", "pendingMermaidWidgetCount", "pendingOtherWidgetCount", "review",
             "selectionScoped", "viewportIncremental", "widgetReuseCount", "usedJSHeapBytes", "frameCount",
             "longestFrameMilliseconds", "droppedFrameCount", "transitionSequence", "composing",
             "literalCount", "tableCount", "calloutCount", "footnoteCount",
@@ -583,6 +591,8 @@ final class PerformanceProbe {
             "ensureTreeMilliseconds", "languageStateReadMilliseconds", "ensureTreeAfterStateReadMilliseconds",
             "previousLocalPreparationMilliseconds", "nextSemanticMilliseconds", "signatureMilliseconds",
             "fullTextMaterializationMilliseconds", "fullTextMaterializationUTF16Count",
+            "htmlUTF16Length", "candidateCount", "registeredBlockCount", "styleReadCount",
+            "mathWaitMilliseconds", "mermaidWaitMilliseconds", "geometryChanged",
         ]
         guard
             samples.allSatisfy({ value in
@@ -877,13 +887,11 @@ final class PerformanceProbe {
     var exercisesLargeCJKCorrectness: Bool {
         configuration?.metric == .editorLargeCJKCorrectness
     }
-    var measuresEditorRetainedMemory: Bool {
-        configuration?.metric == .editorRetainedMemory
-    }
     var requiresInitialReviewPresentation: Bool {
         configuration?.metric == .warmReadActivation
             || configuration?.metric == .firstReadActivation
             || configuration?.metric == .firstEditActivation
+            || (measuresNoteOpeningLifecycle && configuration?.initialReviewPresentation == true)
     }
 
     func markWarmLibraryWindowModelInitializationStarted() {

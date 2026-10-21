@@ -8,9 +8,9 @@ import WebKit
 
 extension MarkdownEditorWebViewIntegrationTests {
     @Test(
-        "Opt-in exact Format Matrix reader mount and mode-return diagnostic",
+        "Opt-in exact Format Matrix standalone reader preparation diagnostic",
         .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_FORMAT_READER_DIAGNOSTIC"] == "1"))
-    func exactFormatMatrixReaderModeReturnDiagnostic() async throws {
+    func exactFormatMatrixStandaloneReaderDiagnostic() async throws {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let buildRoot = repository.appendingPathComponent(".build", isDirectory: true).resolvingSymlinksInPath().path + "/"
         let fixture = URL(
@@ -39,19 +39,18 @@ extension MarkdownEditorWebViewIntegrationTests {
         let harness = ReadHarness(
             source: source, htmlBody: rendered.htmlBody, fingerprint: fingerprint.sha256,
             initialAnchor: nil, initialScrollFraction: 0, documentTitle: "Stress Format Matrix",
-            presentsDocumentPreparation: true, laysOutForNativePreview: true,
-            modelsSourceReviewMounting: true, relativePath: relativePath)
+            presentsDocumentPreparation: true, laysOutForNativePreview: true, relativePath: relativePath)
         defer {
             harness.close()
             #expect((try? Data(contentsOf: file)) == bytes)
         }
-        harness.beginFormatDiagnostic(phase: "initial_review")
+        harness.beginFormatDiagnostic(phase: "standalone_reader")
         harness.emitFormatDiagnostic(
             event: "fixture",
             extra: [
                 "source_bytes": bytes.count, "source_sha256": fingerprint.sha256, "mermaid_source_blocks": 120,
                 "boundary":
-                    "Exact source and production reader/coordinator/DocumentEditorHost; synthetic Source placeholder models reader teardown only. No CodeMirror, editor save, catalog, previews or full app mode handoff.",
+                    "Exact source and production standalone reader/coordinator preparation. No CodeMirror, editor save, catalog, previews or app mode handoff.",
                 "failure_boundary":
                     "onRenderingFailure exposes its original String only; no underlying NSError domain, code or userInfo is available through that production callback.",
             ])
@@ -59,12 +58,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.installFormatWorkMetrics()
         try await harness.waitForFormatDiagnosticReady()
         try await harness.emitFormatWorkMetrics()
-        let originalCoordinator = try harness.formatDiagnosticCoordinator()
         try await harness.scroll(toFraction: 0.06128792086696526)
         _ = try await harness.callBridgeJavaScript("window.dispatchEvent(new Event('scroll'));")
         let anchorDeadline = ContinuousClock.now.advanced(by: .seconds(5))
         while harness.latestObservedScrollPosition.anchor == nil || harness.latestObservedScrollPosition.fraction <= 0 {
-            try #require(ContinuousClock.now < anchorDeadline, "Initial Review must publish an actual nonzero reading position and anchor")
+            try #require(ContinuousClock.now < anchorDeadline, "The standalone reader must publish an actual nonzero reading position and anchor")
             try await Task.sleep(for: .milliseconds(25))
         }
         let position = harness.latestObservedScrollPosition
@@ -75,26 +73,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                 "fraction": position.fraction, "source_utf16_offset": anchor.sourceUTF16Offset,
                 "block_utf16_start": anchor.blockUTF16LowerBound, "block_utf16_end": anchor.blockUTF16UpperBound,
             ])
-        try await harness.unmountReviewForFormatDiagnostic()
-        #expect(originalCoordinator.activeWebView == nil)
-        harness.remountReviewForFormatDiagnostic(position: position)
-        try await harness.waitUntilReadPreparationAvailable()
-        try await harness.installFormatWorkMetrics()
-        try await harness.waitForFormatDiagnosticReady()
-        try await harness.emitFormatWorkMetrics()
-        #expect(try harness.formatDiagnosticCoordinator() !== originalCoordinator)
         #expect(!harness.hasPendingRestoreRequest)
-        let restored = try await harness.waitUntilCapturedAnchor(stage: "Format Matrix return-to-Review restoration") {
-            $0.blockUTF16LowerBound == anchor.blockUTF16LowerBound && $0.blockUTF16UpperBound == anchor.blockUTF16UpperBound
-        }
-        #expect(restored.sourceFingerprint == fingerprint.sha256)
-        #expect(restored.blockUTF16LowerBound == anchor.blockUTF16LowerBound)
-        #expect(restored.blockUTF16UpperBound == anchor.blockUTF16UpperBound)
-        harness.emitFormatDiagnostic(
-            event: "restoration_verified",
-            extra: [
-                "fraction": restored.fallbackFraction, "source_utf16_offset": restored.sourceUTF16Offset,
-            ])
+        #expect(anchor.sourceFingerprint == fingerprint.sha256)
+        #expect(anchor.isValid(forUTF16Length: source.utf16.count))
         await harness.closeAndDrain()
     }
 
@@ -625,47 +606,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["unchanged"] as? Bool == true)
         #expect(snapshot["preservesScroll"] as? Bool == true)
         #expect(snapshot["stable"] as? Bool == true)
-    }
-
-    @Test("Initial Review consumes only a finished source-free prewarmed WebView")
-    func readConsumesPreparedWebView() async throws {
-        let prewarmer = ScholiumWebKitProcessPrewarmer.shared
-        prewarmer.finish()
-        prewarmer.start()
-        let preparedIdentity = try #require(prewarmer.testingPreparedWebViewIdentity)
-        #expect(!prewarmer.testingPreparedWebViewIsReady)
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        while !prewarmer.testingPreparedWebViewIsReady {
-            try #require(
-                clock.now < deadline,
-                "The isolated prewarm page did not finish before the bounded handoff window."
-            )
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        let source = "# Prepared Review\n\nThe exact source remains authoritative.\n"
-        let document = NoteDocument(relativePath: "Prepared.md", rawContent: source)
-        let harness = ReadHarness(
-            source: source,
-            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
-            fingerprint: document.fingerprint.sha256,
-            initialAnchor: nil,
-            initialScrollFraction: 0,
-            userCSS: "#scholium-document p { background-color: rgb(0, 0, 255); box-shadow: none; }"
-        )
-        defer {
-            harness.close()
-            prewarmer.finish()
-        }
-
-        try await harness.waitUntilReady()
-
-        #expect(try harness.webViewIdentity() == preparedIdentity)
-        #expect(!prewarmer.isActive)
-        #expect(
-            try harness.webViewAccessibilityIdentifier()
-                == "scholium.renderedDocument.ReadFixture.md"
-        )
     }
 
     @Test("Review Mermaid passes keep distinct source locations, isolated references and current themes")
@@ -2781,9 +2721,6 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         @Published var isReady = false
         var presentsDocumentPreparation = false
-        var modelsSourceReviewMounting = false
-        @Published var presentsDiagnosticSource = false
-        var diagnosticRestorationReason = ScrollRestoreReason.explicitNavigation
         var diagnosticEvent: ((String, String?) -> Void)?
         var diagramSize: CGSize?
         var replyEvents: [ReadReplyEvent] = []
@@ -2898,7 +2835,6 @@ extension MarkdownEditorWebViewIntegrationTests {
     /// catalog convergence and finalization policies remain the product's.
     @MainActor
     private final class PreviewPreparationGatePage: ScholiumReadPageExtension {
-        let requiresDedicatedWebView = true
         let requiresMathRuntime = false
         let replyProjectionEnabled = false
 
@@ -3023,7 +2959,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             replyProjection: Bool = false,
             imagePreviewsEnabled: Bool = false,
             onAskAgent: AgentSelectionInquiryHandler? = nil,
-            modelsSourceReviewMounting: Bool = false,
             relativePath: String = "ReadFixture.md",
             pageExtension: (any ScholiumReadPageExtension)? = nil
         ) {
@@ -3042,7 +2977,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             )
             sourceBox.imagePreviewsEnabled = imagePreviewsEnabled
             sourceBox.presentsDocumentPreparation = presentsDocumentPreparation
-            sourceBox.modelsSourceReviewMounting = modelsSourceReviewMounting
             if replyProjection {
                 let box = sourceBox
                 sourceBox.chatPageExtension = AgentChatReadPageExtension {
@@ -3376,25 +3310,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 try await Task.sleep(for: .milliseconds(25))
             }
             emitFormatDiagnostic(event: "phase_ready")
-        }
-
-        func unmountReviewForFormatDiagnostic() async throws {
-            beginFormatDiagnostic(phase: "source_placeholder_unmount")
-            sourceBox.presentsDiagnosticSource = true
-            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-            while (window.contentViewController?.view).flatMap({ findWebView(in: $0) }) != nil {
-                try #require(ContinuousClock.now < deadline, "Production DocumentEditorHost did not dismantle the reader")
-                try await Task.sleep(for: .milliseconds(25))
-            }
-            emitFormatDiagnostic(event: "reader_unmounted")
-        }
-
-        func remountReviewForFormatDiagnostic(position: ObservedScrollPosition) {
-            beginFormatDiagnostic(phase: "return_review")
-            sourceBox.diagnosticRestorationReason = .modeHandoff
-            sourceBox.capturedAnchor = nil
-            sourceBox.requestRestore(anchor: position.anchor, fraction: position.fraction)
-            sourceBox.presentsDiagnosticSource = false
         }
 
         func nativeSelectionActionBar() -> SelectionActionBar? {
@@ -4474,7 +4389,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                             fraction: restoration.fraction,
                             anchor: restoration.anchor
                         ),
-                        reason: sourceBox.diagnosticRestorationReason
+                        reason: .explicitNavigation
                     )
                 },
                 onScrollRestoreConsumed: sourceBox.acknowledgeRestoreRequest,
@@ -4514,21 +4429,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     DocumentPreparationStatus(title: documentTitle)
                 }
             }
-            return Group {
-                if sourceBox.modelsSourceReviewMounting {
-                    DocumentEditorHost(
-                        documentID: "format-reader-diagnostic", presentsEditor: sourceBox.presentsDiagnosticSource,
-                        retainsEditor: true, editorIsLoaded: true, editorIsReady: true
-                    ) {
-                        reader
-                    } editor: {
-                        Color.clear.accessibilityLabel("Synthetic Source placeholder; no editor")
-                    }
-                } else {
-                    reader
-                }
-            }
-            .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
+            return reader.frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
         }
     }
 }

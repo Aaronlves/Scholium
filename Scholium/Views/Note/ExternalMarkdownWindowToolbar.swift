@@ -91,6 +91,10 @@ final class ExternalMarkdownWindowToolbar: NSObject, NSToolbarDelegate, NSToolba
     func install(in window: NSWindow) {
         guard !isInvalidated else { return }
         self.window = window
+        window.styleMask.insert(.fullSizeContentView)
+        window.toolbarStyle = .unified
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.toolbar = toolbar
         refreshPresentation()
     }

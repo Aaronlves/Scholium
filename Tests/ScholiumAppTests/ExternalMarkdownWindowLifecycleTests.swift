@@ -97,12 +97,6 @@ struct ExternalMarkdownWindowLifecycleTests {
             #expect(model.readScrollPosition.fraction == 0.6)
             #expect(model.readScrollPosition.anchor?.sourceUTF16Offset == sourceRange.location)
             #expect(model.readScrollPosition.anchor?.sourceFingerprint == snapshot.fingerprint.sha256)
-            let restore = try #require(model.readScrollRestoreRequest)
-            #expect(restore.reason == .modeHandoff && restore.position == model.readScrollPosition)
-            model.consumeReadScrollRestore(restore.id - 1, fingerprint: restore.fingerprint, documentID: model.documentID)
-            #expect(model.readScrollRestoreRequest == restore)
-            model.consumeReadScrollRestore(restore.id, fingerprint: restore.fingerprint, documentID: model.documentID)
-            #expect(model.readScrollRestoreRequest == nil)
 
             let readPosition = ObservedScrollPosition(
                 fraction: 0.8,
@@ -114,8 +108,8 @@ struct ExternalMarkdownWindowLifecycleTests {
                     relativeBlockPosition: 0.5, fallbackFraction: 0.8))
             model.observeScrollFraction(0.8, on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
             model.observeScrollAnchor(try #require(readPosition.anchor), on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
-            // A hidden editor and an old reader revision cannot replace the
-            // active Review position before its next explicit mode handoff.
+            // Inactive editing observations and an old revision cannot replace
+            // the active Review position before its explicit mode handoff.
             model.observeScrollFraction(0.1, on: .editor, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
             model.observeScrollFraction(0.2, on: .read, documentID: "old-document", fingerprint: snapshot.fingerprint.sha256)
             model.observeScrollFraction(0.3, on: .read, documentID: model.documentID, fingerprint: "old-fingerprint")
@@ -125,6 +119,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     startLine: 5, endLine: 5, excerpt: "First 😀 e\u{301} paragraph.",
                     utf16LowerBound: sourceRange.location, utf16UpperBound: sourceRange.location + sourceRange.length),
                 documentID: model.documentID, fingerprint: snapshot.fingerprint)
+            let restorationsBeforeHandoff = fixture.bridge.scrollRestorationCount
             try await selectModeWhenAvailable(model, .livePreview)
             fixture.editor.setMode(.livePreview)
             try await waitForEditorMode(model)
@@ -132,13 +127,9 @@ struct ExternalMarkdownWindowLifecycleTests {
                 while fixture.bridge.selections != [.init(anchor: retainedLower, head: retainedUpper)] { await Task.yield() }
             }
             #expect(model.editorScrollPosition == readPosition)
-            #expect(fixture.editor.retainedScrollAnchor == readPosition.anchor)
-            let expectedEditorAnchor = MarkdownEditorWireScrollAnchor(
-                sourceUTF16Offset: editorLower, blockUTF16LowerBound: editorLower,
-                blockUTF16UpperBound: editorUpper, relativeBlockPosition: 0.5, fallbackFraction: 0.8)
-            try await withScholiumLifecycleDeadline(phase: .bridgeRequest, timeout: .seconds(3)) {
-                while fixture.bridge.scrollAnchor != expectedEditorAnchor { await Task.yield() }
-            }
+            // Native observations may trail actual scrolling. The mounted
+            // CodeMirror mode operation, rather than this model, restores it.
+            #expect(fixture.bridge.scrollRestorationCount == restorationsBeforeHandoff)
             model.observeScrollFraction(0.1, on: .read, documentID: model.documentID, fingerprint: snapshot.fingerprint.sha256)
             #expect(model.editorScrollPosition == readPosition)
             try await selectModeWhenAvailable(model, .source)
@@ -151,7 +142,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         }
     }
 
-    @Test("First external editor allocation maps an exact BOM, CRLF and Unicode Review selection")
+    @Test("First external editing entry maps an exact BOM, CRLF and Unicode Review selection")
     func firstAllocationMapsExactReviewSelection() async throws {
         let source = "\u{FEFF}---\r\nunknown: 'keep' # fixture\r\n---\r\nFirst 😀 e\u{301} paragraph.\r\n\r\nTail without newline"
         let range = (source as NSString).range(of: "First 😀 e\u{301} paragraph.")
@@ -441,19 +432,20 @@ struct ExternalMarkdownWindowLifecycleTests {
                 }
                 let model = try #require(host.model)
                 #expect(model.mode == .read && !model.retainsEditor)
-                #expect(!model.editorSession.hasAttachedWebView)
                 let projection = try #require(model.readProjection)
                 #expect(projection.document.sourceBytes == Data(source.utf8))
                 #expect(projection.document.fingerprint == model.snapshot?.fingerprint)
                 #expect(projection.html == SafeMarkdownRenderer.render(projection.document).htmlBody)
                 try await host.waitForReadText(expectedBodyText)
+                let initialWebView = try #require(model.editorSession.webView)
+                #expect(model.editorSession.presentedMode == .review)
 
-                // The production view, not this test, must allocate, attach and
-                // initialize the editor when its owning model first requests Edit.
+                // The production view changes the existing CodeMirror mode.
                 try await host.selectModeWhenAvailable(.livePreview)
                 try await host.waitForEditor(containing: expectedBodyText)
                 let editor = model.editorSession
                 let webView = try #require(editor.webView)
+                #expect(webView === initialWebView)
                 let expectedCaret = try #require(
                     EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: 0))
                 try await host.waitUntil("initial Markdown beginning caret") {
@@ -474,7 +466,8 @@ struct ExternalMarkdownWindowLifecycleTests {
                 try await host.waitUntil("return to Review") { model.mode == .read && !model.isBusy }
                 try await host.waitForReadText(expectedBodyText)
                 #expect(model.editorSession === editor && editor.webView === webView)
-                #expect(webView.isHidden && webView.isHiddenOrHasHiddenAncestor)
+                #expect(!webView.isHidden && !webView.isHiddenOrHasHiddenAncestor)
+                #expect(editor.presentedMode == .review)
 
                 try await host.selectModeWhenAvailable(.livePreview)
                 try await host.waitForEditor(containing: expectedBodyText)
@@ -1129,7 +1122,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         }
     }
 
-    private func withFile(_ operation: @MainActor (URL, String) async throws -> Void) async throws {
+    func withFile(_ operation: @MainActor (URL, String) async throws -> Void) async throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(
@@ -1325,10 +1318,10 @@ struct ExternalMarkdownWindowLifecycleTests {
     }
 
     /// Uses the complete external window view. Its production attachment owns
-    /// the model/window connection, and SwiftUI alone constructs both surfaces.
+    /// the model/window connection, and SwiftUI constructs the shared surface.
     /// The window is never ordered or activated.
     @MainActor
-    private final class OffscreenExternalWindow {
+    final class OffscreenExternalWindow {
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var retainedModel: ExternalMarkdownWindowModel?
@@ -1393,17 +1386,13 @@ struct ExternalMarkdownWindowLifecycleTests {
 
         func waitForReadText(_ text: String) async throws {
             try await waitUntil("rendered Review text") {
-                guard let root = self.hostingController?.view else { return false }
-                for webView in self.descendants(root).compactMap({ $0 as? WKWebView })
-                where webView !== self.model?.editorSession.webView && !webView.isHiddenOrHasHiddenAncestor {
-                    if try await webView.callAsyncJavaScript(
-                        "return document.querySelector('#scholium-document')?.textContent.includes(expected) === true;",
-                        arguments: ["expected": text], in: nil, contentWorld: .page) as? Bool == true
-                    {
-                        return true
-                    }
-                }
-                return false
+                guard let model = self.model, model.mode == .read, model.editorReady,
+                    model.editorSession.presentedMode == .review,
+                    let webView = model.editorSession.webView, !webView.isHiddenOrHasHiddenAncestor
+                else { return false }
+                return try await webView.callAsyncJavaScript(
+                    "return document.querySelector('#scholium-document')?.textContent.includes(expected) === true;",
+                    arguments: ["expected": text], in: nil, contentWorld: .page) as? Bool == true
             }
         }
 
@@ -1465,9 +1454,6 @@ struct ExternalMarkdownWindowLifecycleTests {
             }.value
         }
 
-        private func descendants(_ root: NSView) -> [NSView] {
-            [root] + root.subviews.flatMap(descendants)
-        }
     }
 
     @MainActor
@@ -1507,6 +1493,7 @@ struct ExternalMarkdownWindowLifecycleTests {
         var nextFindClearPause: PausedBridgeRequest?
         var nextInitializePause: PausedBridgeRequest?
         var scrollAnchor: MarkdownEditorWireScrollAnchor?
+        var scrollRestorationCount = 0
         var selections = [MarkdownEditorSelectionRange(anchor: 0, head: 0)]
         var focusCount = 0
         var textQueryCount = 0
@@ -1547,6 +1534,7 @@ struct ExternalMarkdownWindowLifecycleTests {
                     await pause.suspend()
                 }
             case .setScrollAnchor(let anchor):
+                scrollRestorationCount += 1
                 scrollAnchor = anchor
             case .queryScrollAnchor:
                 responseScrollAnchor = scrollAnchor

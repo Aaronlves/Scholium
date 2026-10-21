@@ -86,7 +86,6 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         nativeView?.setChatInteractive(isInteractive)
     }
 
-    var requiresDedicatedWebView: Bool { true }
     var requiresMathRuntime: Bool { true }
     var replyProjectionEnabled: Bool { true }
 

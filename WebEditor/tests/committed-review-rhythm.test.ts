@@ -6,6 +6,7 @@ import {ExactSourceMirror} from "../state";
 import {readerSourceRangeCandidate} from "../arrival-highlight";
 import {installReviewFind} from "../review-find";
 import {boundedReviewRangeText} from "../review-selection-text";
+import {calloutSourceGapCSS} from "../callout-presentation";
 
 const fixtureSource = "> [!state] FirstBoundary\n> FirstBody.\n\n> [!cite] SingleBoundary\n> SingleBody.\n\n\n\n> [!connect] MultipleBoundary\n> MultipleBody.\n\nBeforeZeroBoundary.\n> [!flag] FinalBoundary\n> FinalBody.\n";
 
@@ -44,6 +45,11 @@ describe("exact-source Callout separation in the committed Review adapter", () =
     projectCommittedReviewCalloutRhythm(f.root, f.mirror, f.doc);
     const boundaries = Array.from(f.root.querySelectorAll<HTMLElement>("[data-scholium-review-gap-before]"));
     expect(boundaries.map(block => block.dataset.scholiumReviewSourceGap)).toEqual(["1", "3", "1", "0"]);
+    expect(boundaries.map(block => block.style.getPropertyValue("--scholium-review-boundary-callout-gap"))).toEqual([
+      `max(${calloutSourceGapCSS("state")}, ${calloutSourceGapCSS("cite")})`,
+      `max(${calloutSourceGapCSS("cite")}, ${calloutSourceGapCSS("connect")})`,
+      calloutSourceGapCSS("connect"), calloutSourceGapCSS("flag"),
+    ]);
     expect(blocks[0].hasAttribute("data-scholium-review-gap-before")).toBe(false);
     expect(blocks.at(-1)!.hasAttribute("data-scholium-review-gap-after")).toBe(false);
     expect(blocks[3].hasAttribute("data-scholium-review-gap-before")).toBe(true);

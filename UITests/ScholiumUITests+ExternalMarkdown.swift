@@ -423,7 +423,7 @@ extension ScholiumUITests {
         external.toolbars.buttons["Find"].click()
         let query = external.searchFields["scholium.documentFind.query"].firstMatch
         XCTAssertTrue(query.waitForExistence(timeout: 5))
-        typeCommittedText("Synthetic", into: query, in: app)
+        typeCommittedText("passage", into: query, in: app)
         let matches = external.descendants(matching: .any)["scholium.documentFind.matches"].firstMatch
         XCTAssertTrue(waitUntil(timeout: 5) { matches.value as? String == "Match 1 of 1" })
         mode.click()
@@ -433,7 +433,7 @@ extension ScholiumUITests {
         let editor = externalQASourceEditor(in: external)
         XCTAssertEqual(mode.value as? String, "Source")
         XCTAssertGreaterThan(mode.frame.width, 50, "The current mode label needs room beyond the native disclosure arrow.")
-        XCTAssertEqual(query.value as? String, "Synthetic")
+        XCTAssertEqual(query.value as? String, "passage")
         // Changing mode preserves the caret; a retained result need not already
         // be selected. Exercise explicit navigation before asserting its index.
         XCTAssertTrue(

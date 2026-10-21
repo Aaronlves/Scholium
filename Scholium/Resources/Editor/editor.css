@@ -458,8 +458,8 @@ body,
 .cm-live-semantic-gap-before-paragraph { --scholium-live-gap-before: var(--scholium-rhythm-paragraph-gap); }
 .cm-live-semantic-gap-after-standard { --scholium-live-gap-after: var(--scholium-rhythm-semantic-block-gap, 1em); }
 .cm-live-semantic-gap-before-standard { --scholium-live-gap-before: var(--scholium-rhythm-semantic-block-gap, 1em); }
-.cm-live-semantic-gap-after-callout { --scholium-live-gap-after: var(--scholium-callout-block-gap, 1.4em); }
-.cm-live-semantic-gap-before-callout { --scholium-live-gap-before: var(--scholium-callout-block-gap, 1.4em); }
+.cm-live-semantic-gap-after-callout { --scholium-live-gap-after: var(--scholium-live-callout-gap-after, var(--scholium-callout-block-gap)); }
+.cm-live-semantic-gap-before-callout { --scholium-live-gap-before: var(--scholium-live-callout-gap-before, var(--scholium-callout-block-gap)); }
 
 .cm-live-codeblock {
   /* Technical source uses the user-owned Source Text face and size.
@@ -548,8 +548,8 @@ body,
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-paragraph { --scholium-live-blank-gap-before: var(--scholium-rhythm-paragraph-gap); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-standard { --scholium-live-blank-gap-after: var(--scholium-rhythm-semantic-block-gap, 1em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-standard { --scholium-live-blank-gap-before: var(--scholium-rhythm-semantic-block-gap, 1em); }
-.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-callout { --scholium-live-blank-gap-after: var(--scholium-callout-block-gap, 1.4em); }
-.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-callout { --scholium-live-blank-gap-before: var(--scholium-callout-block-gap, 1.4em); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-after-callout { --scholium-live-blank-gap-after: var(--scholium-live-callout-gap-after, var(--scholium-callout-block-gap)); }
+.cm-line.cm-live-blank-line.cm-live-semantic-gap-before-callout { --scholium-live-blank-gap-before: var(--scholium-live-callout-gap-before, var(--scholium-callout-block-gap)); }
 
 .cm-line.cm-live-heading-marker-line {
   block-size: 1lh;

@@ -5311,27 +5311,61 @@
     setPresentationStyles(presentationCSS, userCSS);
     const decodedImages = /* @__PURE__ */ new Set();
     async function settleLayout(requireCurrent) {
-      requireCurrent();
-      const before = documentRoot.getBoundingClientRect();
-      const previousHeight = scrollHeight();
-      await mathReady;
-      if (readerWindow2.scholiumMermaidReady) await readerWindow2.scholiumMermaidReady;
-      requireCurrent();
-      documentRoot.getBoundingClientRect();
-      const awaitedFonts = document.fonts.status === "loading";
-      await document.fonts.ready;
-      requireCurrent();
-      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
-        left: 0,
-        right: window.innerWidth,
-        top: 0,
-        bottom: viewportHeight()
-      }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image));
-      documentRoot.getBoundingClientRect();
-      await document.fonts.ready;
-      requireCurrent();
-      const after = documentRoot.getBoundingClientRect();
-      return { settled: true, geometryChanged: decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== scrollHeight() };
+      const recordMetric = host?.recordMetric;
+      const startedAt = recordMetric ? performance.now() : 0;
+      const phases = {
+        mathWaitMilliseconds: 0,
+        mermaidWaitMilliseconds: 0,
+        fontsWaitMilliseconds: 0,
+        imageWaitMilliseconds: 0,
+        imageWaitCount: 0,
+        measureCount: 0,
+        geometryChanged: 0,
+        completed: 0
+      };
+      try {
+        requireCurrent();
+        const before = documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const previousHeight = scrollHeight();
+        let phaseStartedAt = recordMetric ? performance.now() : 0;
+        await mathReady;
+        if (recordMetric) phases.mathWaitMilliseconds += performance.now() - phaseStartedAt;
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        if (readerWindow2.scholiumMermaidReady) await readerWindow2.scholiumMermaidReady;
+        if (recordMetric) phases.mermaidWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const awaitedFonts = document.fonts.status === "loading";
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        await document.fonts.ready;
+        if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+          left: 0,
+          right: window.innerWidth,
+          top: 0,
+          bottom: viewportHeight()
+        }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image));
+        if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
+        phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
+        documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        phaseStartedAt = recordMetric ? performance.now() : 0;
+        await document.fonts.ready;
+        if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
+        requireCurrent();
+        const after = documentRoot.getBoundingClientRect();
+        phases.measureCount++;
+        const geometryChanged = decodedVisibleImages || awaitedFonts || before.height !== after.height || before.width !== after.width || previousHeight !== scrollHeight();
+        phases.geometryChanged = geometryChanged ? 1 : 0;
+        phases.completed = 1;
+        return { settled: true, geometryChanged };
+      } finally {
+        recordMetric?.("review-layout-settle", startedAt, { review: 1, ...phases });
+      }
     }
     const readPreparation = {
       async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
@@ -6090,7 +6124,7 @@
           const origin = reference.closest(".footnote-reference-wrap") || reference;
           origins.set(ordinal, origin.id);
           target.tabIndex = -1;
-          target.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          target.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           target.focus({ preventScroll: true });
         }
         hidePopover();
@@ -6340,6 +6374,8 @@
       });
     }
     const scrollBlockRegistry = (() => {
+      const recordMetric = host?.recordMetric;
+      const startedAt = recordMetric ? performance.now() : 0;
       const root = documentRoot;
       const entries = [];
       const byElement = /* @__PURE__ */ new WeakMap();
@@ -6355,13 +6391,17 @@
       const candidates = root.querySelectorAll(
         "[data-source-utf16-start][data-source-utf16-end]"
       );
+      let styleReadCount = 0;
+      let measureCount = 0;
       for (const element of candidates) {
         const lower = Number(element.dataset.sourceUtf16Start);
         const upper = Number(element.dataset.sourceUtf16End);
         if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper < lower) continue;
         const style = getComputedStyle(element);
+        styleReadCount++;
         if (style.display === "inline" || style.display === "contents" || style.display === "none" || style.visibility === "hidden") continue;
         const initialRect = element.getBoundingClientRect();
+        measureCount++;
         if (initialRect.height <= 0) continue;
         const entry = { element, lower, upper, span: Math.max(0, upper - lower) };
         element.dataset.scholiumScrollAnchor = String(entries.length);
@@ -6376,6 +6416,13 @@
       const sourcePrefixMaximumUpper = bySource.map((entry) => {
         maximumUpper = Math.max(maximumUpper, entry.upper);
         return maximumUpper;
+      });
+      recordMetric?.("review-scroll-registry", startedAt, {
+        review: 1,
+        candidateCount: candidates.length,
+        registeredBlockCount: entries.length,
+        styleReadCount,
+        measureCount
       });
       return {
         root,

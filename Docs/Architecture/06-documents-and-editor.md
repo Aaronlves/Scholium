@@ -16,9 +16,10 @@ positions; vaults remain distinct.
 editor/flush identity, checked exact mirror, committed revision, presentation/
 intent, configuration, source-bound scroll and save/conflict/retry state across
 mode/layout/theme changes. Visible hosts alone receive input/accessibility;
-preparation measures behind a native skeleton. One CodeMirror host/state presents
-all modes. Review mounts committed read-only DOM; unsafe handoff retains
-editor/recovery. Readiness gates presentation. Review/editing retain viewport observations;
+preparation measures behind a native skeleton. Triptych Notes and external Markdown
+windows each use one CodeMirror host/state for all modes. Review mounts committed
+read-only DOM; unsafe handoff retains editor/recovery. Readiness gates presentation.
+Review/editing retain viewport observations;
 the shared mode operation transfers source anchors or fallback fractions.
 
 Detachment atomically freezes input and captures exact source/selection/history;
@@ -250,8 +251,7 @@ provenance follows the actual build graph.
 
 Bounded content-free diagnostics exclude researcher identifiers. Visible-paint
 samples end at native/WebKit presentation. Process attribution verifies launchd
-ownership/executable identity, never names/PPID guesses. Source-free network-denied
-priming grants no source/runtime authority. Isolated performance driving and
+ownership/executable identity, never names/PPID guesses. Isolated performance driving and
 packaged evidence follow [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 Status owns dated results. Focused checks cannot pass the complete gate.
 

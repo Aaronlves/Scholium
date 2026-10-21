@@ -1,5 +1,6 @@
 import type {Text} from "@codemirror/state";
 import type {ExactSourceMirror} from "./state";
+import {calloutSourceGapCSS} from "./callout-presentation";
 
 // This adapter only bridges source whitespace between adjacent top-level prose
 // and Callouts. Native HTML remains the semantic/reading content authority.
@@ -23,13 +24,13 @@ export const committedReviewRhythmCSS = `
 }
 .scholium-document > :where([data-scholium-review-gap-before]),
 .scholium-document > p:where([data-scholium-review-gap-before]) {
-  margin-block-start: var(--scholium-review-callout-gap);
+  margin-block-start: var(--scholium-review-boundary-callout-gap, var(--scholium-review-callout-gap));
 }
 .scholium-document > :where([data-scholium-review-gap-after]) { margin-block-end: 0; }
 .scholium-document > p:where([data-scholium-review-gap-after]) { padding-block-end: 0; }
 .scholium-document > :where([data-scholium-review-gap-before]:not([data-scholium-review-source-gap="0"])),
 .scholium-document > p:where([data-scholium-review-gap-before]:not([data-scholium-review-source-gap="0"])) {
-  margin-block-start: calc((var(--scholium-review-source-blank-lines) - 1) * var(--scholium-review-source-row) + max(var(--scholium-review-source-row), var(--scholium-review-callout-gap)));
+  margin-block-start: calc((var(--scholium-review-source-blank-lines) - 1) * var(--scholium-review-source-row) + max(var(--scholium-review-source-row), var(--scholium-review-boundary-callout-gap, var(--scholium-review-callout-gap))));
 }
 `;
 
@@ -62,6 +63,11 @@ export function projectCommittedReviewCalloutRhythm(root: HTMLElement, mirror: E
         || !/^[\t \n]*$/.test(source.sliceString(lastLine.to, firstLine.from))) continue;
     const blankLines = firstLine.number - lastLine.number - 1;
     const block = current as HTMLElement;
+    const gaps = [previous, current].filter(callout).map(element => {
+      const role = [...element.classList].find(name => name.startsWith("scholium-callout-"));
+      return calloutSourceGapCSS(role?.slice("scholium-callout-".length) ?? "neutral");
+    });
+    block.style.setProperty("--scholium-review-boundary-callout-gap", gaps.length > 1 ? `max(${gaps.join(", ")})` : gaps[0]);
     block.dataset.scholiumReviewSourceGap = String(blankLines);
     block.style.setProperty("--scholium-review-source-blank-lines", String(blankLines));
     previous.setAttribute("data-scholium-review-gap-after", "");
