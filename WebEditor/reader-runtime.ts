@@ -21,7 +21,7 @@ import {decorateAttachmentLinks} from "./attachment-presentation";
 import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 import {installReviewImageActivation} from "./review-image-activation";
-import {awaitVisibleDocumentImages} from "./document-widget-readiness";
+import {awaitVisibleDocumentImages, createDocumentImageReadiness} from "./document-widget-readiness";
 import {createReaderMermaidPass, type ReaderMermaidPass} from "./reader-mermaid-pass";
 
 interface ReaderMessageHandler {
@@ -167,7 +167,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     if (userStyle.textContent !== user) userStyle.textContent = user;
   };
   setPresentationStyles(presentationCSS, userCSS);
-  const decodedImages = new Set<HTMLImageElement>();
+  const decodedImages = createDocumentImageReadiness();
   async function settleLayout(requireCurrent: () => void): Promise<{settled: true; geometryChanged: boolean}> {
     const recordMetric = host?.recordMetric;
     const startedAt = recordMetric ? performance.now() : 0;
@@ -195,11 +195,15 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
       requireCurrent();
       phaseStartedAt = recordMetric ? performance.now() : 0;
-      const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+      let decodedVisibleImages = false;
+      while (await awaitVisibleDocumentImages(documentRoot, {
         left: 0, right: window.innerWidth, top: 0, bottom: viewportHeight(),
-      }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image));
+      }, decodedImages, requireCurrent, image => readerWindow.scholiumReviewImages?.refreshImage(image))) {
+        decodedVisibleImages = true;
+        phases.imageWaitCount++;
+        requireCurrent();
+      }
       if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
-      phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
       documentRoot.getBoundingClientRect();
       phases.measureCount++;
       phaseStartedAt = recordMetric ? performance.now() : 0;

@@ -117,8 +117,8 @@ struct DocumentReadProjectionCacheTests {
         #expect(firstDocument.sourceBytes == Data(source.utf8))
     }
 
-    @Test("Authorized image availability and content participate in cache validity", arguments: [false, true])
-    func imageRevisionControlsReuse(reuseSemantic: Bool) async throws {
+    @Test("Authorized image admission controls HTML while replacement bytes reuse it", arguments: [false, true])
+    func imageAdmissionControlsReuse(reuseSemantic: Bool) async throws {
         let cache = DocumentReadProjectionCache()
         let source = "\u{FEFF}---\r\ncustom: preserved\r\n---\r\n\r\n![Figure & Sample](Attachments/fixture/Figure%20Sample.png)\r\n"
         let document = NoteDocument(relativePath: "Image.md", rawContent: source)
@@ -127,30 +127,62 @@ struct DocumentReadProjectionCacheTests {
         let destination = "Attachments/fixture/Figure Sample.png"
         let pngHeader: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
         let firstImage = try RenderedMarkdownImage(data: Data(pngHeader + [0]), mimeType: "image/png")
-        let changedImage = try RenderedMarkdownImage(data: Data(pngHeader + [1]), mimeType: "image/png")
+        let changedImage = try RenderedMarkdownImage(data: Data([0xFF, 0xD8, 0xFF, 1]), mimeType: "image/jpeg")
         let unavailable = await cache.html(for: key, source: source, semantic: semantic)
         #expect(!unavailable.contains("<img "))
 
         let available = await cache.html(
             for: key, source: source, semantic: semantic, embeddedImages: [destination: firstImage])
         #expect(available.contains("alt=\"Figure &amp; Sample\""))
-        #expect(available.contains("src=\"data:image/png;base64,\(firstImage.data.base64EncodedString())\""))
+        #expect(available.contains("data-scholium-image-resource=\"Attachments/fixture/Figure Sample.png\""))
+        #expect(available.contains("data-scholium-image-target=\"Attachments/fixture/Figure%20Sample.png\""))
+        #expect(!available.contains("src="))
+        #expect(!available.contains("base64,"))
         #expect(
             await cache.html(
                 for: key, source: source, semantic: semantic, embeddedImages: [destination: firstImage]) == available)
 
         let changed = await cache.html(
             for: key, source: source, semantic: semantic, embeddedImages: [destination: changedImage])
-        #expect(changed != available)
-        #expect(changed.contains("src=\"data:image/png;base64,\(changedImage.data.base64EncodedString())\""))
-        #expect(!changed.contains(firstImage.data.base64EncodedString()))
+        #expect(changed == available)
+        #expect(!changed.contains("image/jpeg"))
         #expect(
             await cache.html(
                 for: key, source: source + "Changed", semantic: semantic, embeddedImages: [destination: firstImage]
             ).isEmpty)
         #expect(await cache.html(for: key, source: source, semantic: semantic).contains("<img ") == false)
+        #expect(
+            await cache.html(
+                for: key, source: source, semantic: semantic, embeddedImages: [destination: changedImage]) == available)
         #expect(await cache.entryCount(workspaceID: key.workspaceID) == 1)
         #expect(document.rawContent == source)
+    }
+
+    @Test("A 28 MiB admitted image catalog keeps repeated gallery HTML bounded")
+    func largeCatalogDoesNotExpandHTML() async throws {
+        let cache = DocumentReadProjectionCache()
+        let imageByteCount = 7 * 1_024 * 1_024
+        var images: [String: RenderedMarkdownImage] = [:]
+        for index in 0..<4 {
+            var bytes = Data(repeating: UInt8(index), count: imageByteCount)
+            bytes.replaceSubrange(0..<8, with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            images["Attachments/Figure \(index).png"] = try RenderedMarkdownImage(data: bytes, mimeType: "image/png")
+        }
+        let source =
+            "\u{FEFF}---\r\nunknown: 'e\u{301} 🦉' # unchanged\r\n---\r\n\r\n"
+            + (0..<52).map { "![Figure \($0)](Attachments/Figure%20\($0 % 4).png)\r\n\r\n" }.joined()
+        let document = NoteDocument(relativePath: "Gallery.md", rawContent: source)
+        let key = key(workspaceID: UUID(), target: "gallery", path: document.relativePath, source: source)
+        let html = await cache.html(for: key, source: source, embeddedImages: images)
+
+        #expect(images.values.reduce(0) { $0 + $1.data.count } == 28 * 1_024 * 1_024)
+        #expect(html.components(separatedBy: "<img ").count - 1 == 52)
+        #expect(html.components(separatedBy: "data-scholium-image-resource=").count - 1 == 52)
+        #expect(html.utf8.count < 100_000)
+        #expect(!html.contains("src=") && !html.contains("base64,"))
+        #expect(await cache.html(for: key, source: source, embeddedImages: images) == html)
+        #expect(await cache.retainedHTMLByteCount(workspaceID: key.workspaceID) == html.utf8.count)
+        #expect(document.sourceBytes == Data(source.utf8))
     }
 
     @MainActor
@@ -191,7 +223,8 @@ struct DocumentReadProjectionCacheTests {
             }
             let available = await render()
             #expect(available.contains("alt=\"Figure Sample\""))
-            #expect(available.contains("src=\"data:image/png;base64,\(png.base64EncodedString())\""))
+            #expect(available.contains("data-scholium-image-resource=\"Attachments/fixture/Figure Sample.png\""))
+            #expect(!available.contains("src="))
             #expect(!available.contains("src=\"https://"))
             try FileManager.default.removeItem(at: imageURL)
             #expect(await render().contains("<img ") == false)

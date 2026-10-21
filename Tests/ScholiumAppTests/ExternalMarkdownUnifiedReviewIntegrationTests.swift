@@ -59,7 +59,8 @@ extension ExternalMarkdownWindowLifecycleTests {
             #expect(editor.webView === webView)
             #expect(model.editorSession === editor)
             model.documentFind.dismiss()
-            try await host.waitUntil("Find clearing before a retained editing selection") { !model.documentFind.hasPendingRequest }
+            // The dismissed panel queues a source-neutral Web clear. It does
+            // not authorize replacing this subsequent editing selection.
             let retained = (source as NSString).range(of: "Another Plain paragraph.")
             let retainedFrom = try #require(offsetMap.editorUTF16Offset(forSourceUTF16Offset: retained.location))
             let retainedTo = try #require(offsetMap.editorUTF16Offset(forSourceUTF16Offset: retained.location + retained.length))
@@ -69,6 +70,7 @@ extension ExternalMarkdownWindowLifecycleTests {
             }
             try await host.selectModeWhenAvailable(.read)
             try await host.waitForReadText("Another Plain paragraph.")
+            #expect(editor.context?.selections == [.init(anchor: retainedFrom, head: retainedTo)])
             model.acceptReadSelection(
                 .init(
                     startLine: 5, endLine: 5, excerpt: "Plain", utf16LowerBound: sourceRange.location,
@@ -76,6 +78,9 @@ extension ExternalMarkdownWindowLifecycleTests {
                 documentID: model.documentID, fingerprint: try #require(model.snapshot).fingerprint)
             try await host.selectModeWhenAvailable(.livePreview)
             try await host.waitForEditor(containing: "Another Plain paragraph.")
+            try await host.waitUntil("the retained editing selection returns after Review") {
+                editor.context?.selections == [.init(anchor: retainedFrom, head: retainedTo)]
+            }
             #expect(editor.context?.selections == [.init(anchor: retainedFrom, head: retainedTo)])
             #expect(editor.webView === webView)
             #expect(!model.isDirty)

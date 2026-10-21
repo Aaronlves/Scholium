@@ -2,7 +2,7 @@ import {createDeferredEditingInfrastructure} from "./deferred-editing-infrastruc
 import {createCommittedReviewProjection, reviewProjectionMatches} from "./committed-review-projection";
 import type {ReaderWindow} from "./reader-runtime";
 import {writingCaretIsReadable} from "./writing-readable-context";
-import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, pendingVisibleDocumentWidgetCounts} from "./document-widget-readiness";
+import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, createDocumentImageReadiness, pendingVisibleDocumentWidgetCounts} from "./document-widget-readiness";
 import {citationState, citationHistory, setCitationSnapshot, setCitationData, citationDataEqual, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {ZoteroMarkdownTransaction, type ZoteroTransactionContext, unsupportedNoteCitationStyleMessage} from "./zotero-transaction";
 import {fieldOperationTransaction, fieldMetadataRanges, citationInsertionContextSupported} from "./zotero-fields";
@@ -1940,6 +1940,7 @@ const inputSuggestions = createEditorInputSuggestions({
 const reviewProjection = createCommittedReviewProjection({
   nativeFloating,
   mirror: () => editor.state.field(exactSourceState),
+  imageResources: () => appliedPresentation?.imageResources ?? {},
   projection: () => reviewProjectionMatches(appliedPresentation?.reviewProjection,
     bridgeDocumentID, bridgeFingerprint, dirty) ? appliedPresentation!.reviewProjection! : null,
   postMessage: event => post({type: "reviewEvent", event}),
@@ -2483,7 +2484,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
           phases.projectionWorkMilliseconds += performance.now() - projectionStartedAt;
           await measure();
           requireCurrent();
-          const decoded = new Set<HTMLImageElement>();
+          const decoded = createDocumentImageReadiness();
           while (true) {
             phases.loopCount += 1;
             const scrollStartedAt = performance.now();
@@ -3058,9 +3059,10 @@ function applyPresentationConfiguration(requested: EditorPresentationConfigurati
   }
   const previousImages = previous?.imageResources ?? {};
   const keys = Object.keys(value.imageResources);
-  if (previous?.imageResourceGeneration !== value.imageResourceGeneration
+  const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration
       || keys.length !== Object.keys(previousImages).length
-      || keys.some(key => previousImages[key] !== value.imageResources[key])) {
+      || keys.some(key => previousImages[key] !== value.imageResources[key]);
+  if (imagesChanged) {
     liveImageProjection.setResources(value.imageResources, editor);
   }
   if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled
@@ -3072,6 +3074,7 @@ function applyPresentationConfiguration(requested: EditorPresentationConfigurati
   }
   appliedPresentation = value;
   if (configuredEditorMode(editor.state) === "review") {
+    if (imagesChanged) reviewProjection.refreshImageResources();
     const projection = reviewProjectionMatches(value.reviewProjection, bridgeDocumentID, bridgeFingerprint, dirty)
       ? value.reviewProjection : null;
     if (JSON.stringify(previous?.reviewProjection) !== JSON.stringify(value.reviewProjection)) {
@@ -3218,6 +3221,7 @@ const editorOperations = {
     mode: EditorMode, presentation: EditorPresentationConfiguration,
     initialSelection?: {anchor: number; head: number}, citationSnapshot?: ZoteroCitationSnapshot,
     recovery?: RecoverySnapshot) {
+    presentation = admitPresentationSources(presentation, recovery?.generation ?? 0, null);
     appliedPresentation = null;
     citationTransaction?.cancel(); citationTransaction = null; citationTransactionID = null; citationInsertionRevision++;
     documentAttachment += 1;
@@ -3242,7 +3246,7 @@ const editorOperations = {
     documentTitle.resetDocument();
     lastDocumentFocusTarget = undefined;
     linkPreviews = [];
-    liveImageProjection.setResources(presentation.imageResourceGeneration === 0 ? presentation.imageResources : {});
+    liveImageProjection.setResources(presentation.imageResources);
     linkPreviewIndexByRange = new Map();
     lastUndoLabel = undefined;
     lastRedoLabel = undefined;
@@ -3260,8 +3264,7 @@ const editorOperations = {
     document.getElementById("scholium-presentation-css")!.textContent = presentation.presentationCSS;
     document.getElementById("scholium-user-css")!.textContent = presentation.userCSS;
     documentTitle.setTitle(presentation.documentTitle);
-    linkPreviews = presentation.linkPreviewGeneration === 0
-      ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
+    linkPreviews = validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length);
     linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
     dirty = recovery?.dirty ?? false;
     appliedPresentation = presentation;

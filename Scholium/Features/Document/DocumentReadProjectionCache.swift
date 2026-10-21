@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 
 struct DocumentReadProjectionKey: Hashable, Sendable {
-    static let rendererContractVersion = 2
+    static let rendererContractVersion = 3
 
     let workspaceID: UUID?
     let stableTarget: String
@@ -40,15 +40,10 @@ actor DocumentReadProjectionCache {
         }
     #endif
 
-    private struct ImageRevision: Equatable, Sendable {
-        let mimeType: String
-        let fingerprint: DocumentFingerprint
-    }
-
     private struct Entry: Sendable {
         let html: String
         let byteCount: Int
-        let imageRevisions: [String: ImageRevision]
+        let admittedImageKeys: Set<String>
         var access: UInt64
     }
 
@@ -86,11 +81,12 @@ actor DocumentReadProjectionCache {
         }) {
             entries.removeValue(forKey: previous)
         }
-        let imageRevisions = embeddedImages.mapValues {
-            ImageRevision(mimeType: $0.mimeType, fingerprint: DocumentFingerprint(data: $0.data))
-        }
+        // Image bytes travel through the generation-bound resource catalog.
+        // HTML only records admission and a resource key; replacing admitted
+        // bytes or MIME at that same key does not change this projection.
+        let admittedImageKeys = Set(embeddedImages.keys)
         nextAccess &+= 1
-        if var cached = entries[key], cached.imageRevisions == imageRevisions {
+        if var cached = entries[key], cached.admittedImageKeys == admittedImageKeys {
             cached.access = nextAccess
             entries[key] = cached
             return cached.html
@@ -104,13 +100,15 @@ actor DocumentReadProjectionCache {
         )
         let html =
             if let semantic, citationSnapshot == nil {
-                SafeMarkdownRenderer.render(document, semantic: semantic, embeddedImages: embeddedImages).htmlBody
+                SafeMarkdownRenderer.render(
+                    document, semantic: semantic, embeddedImages: embeddedImages, imageDelivery: .resourceCatalog
+                ).htmlBody
             } else {
-                SafeMarkdownRenderer.render(document, embeddedImages: embeddedImages).htmlBody
+                SafeMarkdownRenderer.render(document, embeddedImages: embeddedImages, imageDelivery: .resourceCatalog).htmlBody
             }
         let byteCount = html.utf8.count
         guard byteCount <= maximumBytesPerWorkspace else { return html }
-        entries[key] = Entry(html: html, byteCount: byteCount, imageRevisions: imageRevisions, access: nextAccess)
+        entries[key] = Entry(html: html, byteCount: byteCount, admittedImageKeys: admittedImageKeys, access: nextAccess)
         evictIfNeeded(workspaceID: key.workspaceID)
         return html
     }

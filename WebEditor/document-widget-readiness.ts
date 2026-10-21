@@ -105,18 +105,36 @@ export async function awaitVisibleDocumentWidgets(
 /** Native notifies after refreshing installed math, or retaining source on failure. */
 export const mathRuntimeSettledEvent = "scholium-math-runtime-settled";
 
+interface DocumentImageResource {
+  source: string | null;
+  revision: number;
+}
+const imageResourceRevisions = new WeakMap<HTMLImageElement, number>();
+
+export function createDocumentImageReadiness() {
+  return new WeakMap<HTMLImageElement, DocumentImageResource>();
+}
+
+/** Catalog replacement retains the image node, including when a filename is
+ * removed and restored before the next layout preparation observes it. */
+export function invalidateDocumentImageReadiness(image: HTMLImageElement) {
+  imageResourceRevisions.set(image, (imageResourceRevisions.get(image) ?? 0) + 1);
+}
+
 /** The same visible, source-backed media barrier serves Edit and Review. */
 export async function awaitVisibleDocumentImages(
   root: HTMLElement,
   viewport: Pick<DOMRectReadOnly, "left" | "right" | "top" | "bottom">,
-  decoded: Set<HTMLImageElement>,
+  decoded: ReturnType<typeof createDocumentImageReadiness>,
   requireCurrent: () => void,
   applyDecoded: (image: HTMLImageElement) => void,
 ): Promise<boolean> {
   requireCurrent();
   const pending = Array.from(root.querySelectorAll<HTMLImageElement>("img"))
-    .filter(image => {
-      if (!image.isConnected || decoded.has(image)) return false;
+    .map(image => ({image, source: image.getAttribute("src"), revision: imageResourceRevisions.get(image) ?? 0}))
+    .filter(({image, source, revision}) => {
+      const previous = decoded.get(image);
+      if (!image.isConnected || previous?.source === source && previous.revision === revision) return false;
       const imageRect = image.getBoundingClientRect();
       // Undecoded images can have no size; their actual owner locates them
       // without introducing an invented placeholder or a second layout.
@@ -126,10 +144,17 @@ export async function awaitVisibleDocumentImages(
         && rect.right >= viewport.left && rect.left <= viewport.right;
     });
   if (pending.length === 0) return false;
-  pending.forEach(image => decoded.add(image));
+  for (const {image} of pending) decoded.delete(image);
   // Failure keeps the existing image/alt presentation and exact source.
-  await Promise.all(pending.map(image => image.decode().catch(() => {})));
+  await Promise.all(pending.map(({image}) => image.decode().catch(() => {})));
   requireCurrent();
-  for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+  for (const {image, source, revision} of pending) {
+    // Catalog refresh retains this DOM node. A decode of its previous src
+    // cannot settle the replacement resource or apply its old dimensions.
+    if (!image.isConnected || !root.contains(image) || image.getAttribute("src") !== source
+        || (imageResourceRevisions.get(image) ?? 0) !== revision) continue;
+    decoded.set(image, {source, revision});
+    applyDecoded(image);
+  }
   return true;
 }

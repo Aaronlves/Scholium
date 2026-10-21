@@ -798,7 +798,7 @@ struct SidebarTreeTests {
     }
 
     @MainActor
-    @Test("An open menu ends when its exact Note snapshot changes, while unrelated updates retain it")
+    @Test("An open menu ends when its Note source revision changes, while unrelated updates retain it")
     func contextualMenuSnapshotInvalidation() throws {
         let vaultID = UUID()
         let firstID = UUID()
@@ -840,6 +840,62 @@ struct SidebarTreeTests {
         #expect(menu.delegate == nil)
         menu.performActionForItem(at: copyIndex)
         #expect(copied == ["First.md"])
+    }
+
+    @MainActor
+    @Test("Derived Note refresh keeps the menu and opens its current Note, while replacement identity revokes it")
+    func contextualMenuSurvivesDerivedRefresh() throws {
+        let vaultID = UUID()
+        let stableID = UUID()
+        let note = workspaceNote(vaultID: vaultID, stableID: stableID, path: "Note.md", source: "# Note\n")
+        var opened: [(note: WindowDocumentLocation, disposition: WindowOpenDisposition)] = []
+        func refreshedNote(stableID: UUID) -> WindowDocumentLocation {
+            let summary = note.summary
+            return .workspace(
+                WorkspaceNoteSummary(
+                    id: summary.id, vaultRole: summary.vaultRole, stableIdentity: .resolved(stableID),
+                    fingerprint: summary.fingerprint, fileMetadata: summary.fileMetadata,
+                    graphCounts: .init(incoming: 2, outgoing: 3, broken: 0, ambiguous: 0),
+                    linkCatalog: summary.linkCatalog, title: summary.title,
+                    validationWarnings: summary.validationWarnings, propertyTextValues: summary.propertyTextValues,
+                    canonicalAliases: summary.canonicalAliases, canonicalKeywords: summary.canonicalKeywords,
+                    derivedProjectionState: .sourceAhead))
+        }
+        func configuration(note: WindowDocumentLocation, revision: UInt64) -> SidebarOutlineSourceList {
+            makeSidebarCoordinatorConfiguration(
+                roots: LibraryTreeProjection(preorderedNotes: [note]).roots, notes: [note],
+                scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+                revealRequest: nil, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+                selectedRowIDs: ["Note.md"], onOpenNote: { opened.append(($0, $1)) },
+                projectionRevision: revision)
+        }
+        let initial = configuration(note: note, revision: 1)
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: initial)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer {
+            coordinator.detach(from: fixture.scrollView)
+            fixture.window.close()
+        }
+        coordinator.apply(configuration: initial)
+        let menu = try #require(fixture.outlineView.contextMenu(forRow: 0))
+        let openIndex = try #require(menu.items.firstIndex { $0.title == "Open in New Tab" })
+        let refreshed = refreshedNote(stableID: stableID)
+        #expect(refreshed != note)
+        #expect(refreshed.summary.fingerprint == note.summary.fingerprint)
+        coordinator.apply(configuration: configuration(note: refreshed, revision: 2))
+        #expect(menu.delegate === coordinator)
+        menu.performActionForItem(at: openIndex)
+        #expect(opened.count == 1)
+        #expect(opened.first?.note == refreshed)
+        #expect(opened.first?.disposition == .newTab)
+
+        let replacement = refreshedNote(stableID: UUID())
+        #expect(replacement.summary.fingerprint == refreshed.summary.fingerprint)
+        coordinator.apply(configuration: configuration(note: replacement, revision: 3))
+        #expect(menu.delegate == nil)
+        menu.performActionForItem(at: openIndex)
+        #expect(opened.count == 1)
     }
 
     @MainActor
@@ -2102,6 +2158,7 @@ private func makeSidebarCoordinatorConfiguration(
     canMutate: Bool = false,
     onSelectionChange: @escaping (Set<String>) -> Void = { _ in },
     onSelect: @escaping (WindowDocumentLocation) -> Void = { _ in },
+    onOpenNote: @escaping (WindowDocumentLocation, WindowOpenDisposition) -> Void = { _, _ in },
     onBatchMove: @escaping ([NoteMutationTarget]) -> Void = { _ in },
     onBatchTrash: @escaping ([NoteMutationTarget]) -> Void = { _ in },
     copyRelativePath: @escaping (String) -> Void = { _ in },
@@ -2116,7 +2173,7 @@ private func makeSidebarCoordinatorConfiguration(
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
         currentVaultRole: .other,
-        openNote: { _, _ in },
+        openNote: onOpenNote,
         canAddNoteToChat: canAddNoteToChat,
         addNoteToChat: addNoteToChat,
         requestFileOperation: { _ in },

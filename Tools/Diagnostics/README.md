@@ -1,5 +1,16 @@
 # Foreground note-opening diagnostics
 
+Mixed syntax pressure uses the existing generated Triptych, with dense links,
+nested Callouts, code, mathematics, tables and 120 Mermaid blocks in its format
+matrix. Generate a new disposable fixture with
+`python3 Tools/Scripts/generate-stress-vaults.py .build/mixed-pressure --notes 508 --images 48`,
+then run `SCHOLIUM_TEST_VAULTS="$PWD/.build/mixed-pressure" Tools/Scripts/run-ui-tests.sh stress`.
+The focused native diagnostic is enabled by `SCHOLIUM_MIXED_SYNTAX_STRESS=1`
+with `swift test --scratch-path .build/mixed-pressure-tests --filter MixedSyntaxStressTests`;
+the Web suite is `npm --prefix WebEditor test -- tests/mixed-syntax-stress.test.ts`.
+These diagnostics retain individual contract failures and observation bounds;
+they do not establish a release performance result.
+
 Run the opt-in XCTest journey through the QA wrapper:
 
 ```sh

@@ -40,7 +40,7 @@ function command(state: EditorState, action: typeof undo) {
 function harness(source: string, reviewInitially = false, realLiveFields = false) {
   vi.stubGlobal("window", {});
   const mode = new Compartment();
-  const review = createCommittedReviewProjection({nativeFloating: createNativeFloatingPorts(() => {}), projection: () => projection, mirror: () => new ExactSourceMirror(source), postMessage: () => {}});
+  const review = createCommittedReviewProjection({nativeFloating: createNativeFloatingPorts(() => {}), projection: () => projection, mirror: () => new ExactSourceMirror(source), imageResources: () => ({}), postMessage: () => {}});
   const samples: string[] = [];
   const index = createLiveProjectionIndexController({editingDialect: () => null,
     recordMetric: name => { samples.push(name); }});
@@ -74,6 +74,28 @@ function harness(source: string, reviewInitially = false, realLiveFields = false
 afterEach(() => vi.unstubAllGlobals());
 
 describe("committed Review inside the persistent CodeMirror state", () => {
+  it("keeps the writable selection when Review DOM selectionchange maps to the replacement boundary", () => {
+    const source = "\uFEFF# Selection\r\n\r\nFirst passage.\r\n\r\nRetained passage.\r\n";
+    const h = harness(source);
+    let state = h.state.update({selection: EditorSelection.single(15, 28)}).state;
+    const retained = state.selection;
+    state = h.changeMode(state, "review");
+    const history = captureExactHistory(state);
+    // A real WebKit DOM selectionchange over the whole-document replacement
+    // is reported by CodeMirror as a selection-only `select` transaction.
+    state = state.update({selection: EditorSelection.single(state.doc.length), userEvent: "select"}).state;
+    expect(state.selection.eq(retained)).toBe(true);
+    expect(captureExactHistory(state)).toBe(history);
+    expect(state.field(exactSourceState).text).toBe(source);
+    for (const target of ["source", "review", "livePreview"] as const) {
+      state = h.changeMode(state, target);
+      expect(state.selection.eq(retained)).toBe(true);
+    }
+    // Editing still admits an ordinary caret move after leaving Review.
+    state = state.update({selection: EditorSelection.single(5), userEvent: "select"}).state;
+    expect(state.selection.main.head).toBe(5);
+  });
+
   it("keeps exact Unicode/newlines, selection and both Undo branches through repeated modes", () => {
     const source = "\uFEFF# Title\r\n\r\nBody 中文😀 e\u0301\r\n";
     const h = harness(source);

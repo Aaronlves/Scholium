@@ -139,6 +139,13 @@ def image_link(path, number, large=False):
 def format_blocks(number):
     return (
         f"### Format block {number:04d}\n\n"
+        "**bold** *emphasis* ~~deleted~~ ==highlight== `inline [[literal]]` "
+        "\\*escaped\\* 中文 café é 🧭 αβγ & < >.\n\n"
+        f"[[QA Topic|Resolved {number}]]{{{{Synthetic annotation {number}.}}}} "
+        f"[[Stress Missing Matrix {number}]] [[同名笔记]]\n\n"
+        f"> [!state] Mixed Callout {number}\n"
+        "> **formatted** [[QA Topic]] and $x^2$.\n>\n"
+        "> > [!flag] Nested\n> > `literal` and [[QA Work]].\n\n"
         "| Synthetic key | 中文 | Value |\n| :--- | :---: | ---: |\n"
         f"| stress-{number:04d} | 合成内容 | {number * 17} |\n"
         "| escaped \\| pipe | **bold** | `code` |\n\n"
@@ -222,17 +229,17 @@ def generate(root, notes=5000, images=240):
             for index in range(2400):
                 target = targets[index % len(targets)]
                 body += (f"### Link batch {index:04d}\n\n"
-                         f"[[{target}]]{{Synthetic navigation annotation {index:04d}.}} "
+                         f"[[{target}]]{{{{Synthetic navigation annotation {index:04d}.}}}} "
                          f"[[Stress Missing Dense {index:04d}]] [[同名笔记]] [[QA Topic|Baseline target]]\n\n")
         elif scenario == "nested_callouts":
-            kinds = ("NOTE", "WARNING", "TIP", "QUESTION")
+            kinds = ("orient", "cite", "connect", "state", "illustrate", "quote", "flag", "NOTE")
             parts = []
             for index in range(640):
                 depth = 1 + index % 4
                 lines = [f"## Callout group {index:04d}\n\n"]
                 for level in range(1, depth + 1):
                     prefix = "> " * level
-                    lines.extend((f"{prefix}[!{kinds[(index + level) % 4]}] Synthetic {index}-{level}\n",
+                    lines.extend((f"{prefix}[!{kinds[(index + level) % len(kinds)]}] Synthetic {index}-{level}\n",
                                   f"{prefix}Mixed 中文 English **content**, `code`, and [[QA Topic]].\n",
                                   f"{prefix}\n"))
                 parts.append("".join(lines) + "\n")

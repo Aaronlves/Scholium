@@ -43,7 +43,7 @@ Clean external publication replaces source/boundary together.
 Hydration failures recheck source binding, retained session and revision without
 clearing owner errors; stale snapshots join active saves before revalidation.
 Revision changes invalidate readiness. Review/recovery HTML caches source and
-authorized local-image revisions. Document alone owns writable position/focus.
+authorized image keys. Document alone owns writable position/focus.
 
 ### Editor boundary contract
 
@@ -165,8 +165,8 @@ Automatic uses lowest advertised effort; unsupported choices never substitute.
 Attachment preparation joins the existing editor insertion and scoped rollback
 in [Source Storage](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
 Quick Look retains only its scoped URL lease until dismissal/replacement/teardown.
-Review/Edit share native image admission. Generation-bound catalogs alter
-presentation only; CodeMirror owns geometry, remeasurement and exact-source activation.
+Review/Edit share native image admission and generation-bound catalogs; Review HTML
+references admitted keys. CodeMirror owns geometry, remeasurement and exact-source activation.
 
 ### Shared document rendering
 

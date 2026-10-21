@@ -455,14 +455,36 @@ public enum MarkdownSemanticParser {
     private static let wikilinkRegex = try? NSRegularExpression(pattern: #"\[\[([^\]\r\n]+)\]\]"#)
     private static let quotePrefixRegex = try? NSRegularExpression(pattern: #"^\s*((?:>\s*)+)"#)
 
+    private static let commentOpeningRegex = try? NSRegularExpression(pattern: "%%|<!--")
+
     /// Shared source-literal exclusions for derived identity and presentation planners.
-    public static func commentRanges(in document: NoteDocument) -> [Range<Int>] {
-        parseComments(
+    /// A matching semantic snapshot reuses its code spans; standalone callers
+    /// need only the Markdown tree, never another complete semantic parse.
+    public static func commentRanges(
+        in document: NoteDocument,
+        semantic: MarkdownSemanticDocument? = nil
+    ) -> [Range<Int>] {
+        let body = document.body
+        guard body.contains("%%") || body.contains("<!--") else { return [] }
+        let offset = document.bodyUTF16Offset
+        let bodyLength = (body as NSString).length
+        let protectedCode: [NSRange]
+        if let semantic, semantic.fingerprint == document.fingerprint,
+            let reused = codeRanges(in: semantic, bodyUTF16Offset: offset, bodyLength: bodyLength)
+        {
+            protectedCode = reused
+        } else {
+            let bodyMapper = SemanticSourceMapper(body)
+            protectedCode = codeRanges(
+                in: Document(parsing: body, options: [.parseBlockDirectives]), mapper: bodyMapper)
+        }
+        return parseComments(
             body: document.body,
-            bodyUTF16Offset: document.bodyUTF16Offset,
-            sourceMapper: SemanticSourceMapper(document.rawContent)
+            bodyUTF16Offset: offset,
+            sourceMapper: SemanticSourceMapper(document.rawContent),
+            codeRanges: protectedCode
         ).ranges.map {
-            ($0.location + document.bodyUTF16Offset)..<(NSMaxRange($0) + document.bodyUTF16Offset)
+            ($0.location + offset)..<(NSMaxRange($0) + offset)
         }
     }
 
@@ -498,7 +520,11 @@ public enum MarkdownSemanticParser {
         let commentResult = parseComments(
             body: document.body,
             bodyUTF16Offset: bodyOffset,
-            sourceMapper: sourceMapper
+            sourceMapper: sourceMapper,
+            codeRanges: (blocks.filter { $0.kind == .code }.map(\.span)
+                + inlines.filter { $0.kind == .code }.map(\.span)).map {
+                    shifted($0.nsRange, by: -bodyOffset)
+                }
         )
         literalRanges.append(contentsOf: commentResult.ranges)
         literalRanges.append(contentsOf: inlineCodeRanges(in: document.body))
@@ -1504,68 +1530,97 @@ public enum MarkdownSemanticParser {
         let diagnostics: [MarkdownDiagnostic]
     }
 
+    private static func codeRanges(
+        in semantic: MarkdownSemanticDocument,
+        bodyUTF16Offset: Int,
+        bodyLength: Int
+    ) -> [NSRange]? {
+        let spans =
+            semantic.blocks.filter { $0.kind == .code }.map(\.span)
+            + semantic.inlines.filter { $0.kind == .code }.map(\.span)
+        guard
+            spans.allSatisfy({
+                $0.utf16LowerBound >= bodyUTF16Offset && $0.utf16UpperBound >= $0.utf16LowerBound
+                    && $0.utf16UpperBound - bodyUTF16Offset <= bodyLength
+            })
+        else { return nil }
+        return spans.map { shifted($0.nsRange, by: -bodyUTF16Offset) }
+    }
+
+    private static func codeRanges(in markup: Markup, mapper: SemanticSourceMapper) -> [NSRange] {
+        if markup is CodeBlock || markup is InlineCode {
+            return markup.range.flatMap { mapper.nsRange(for: $0) }.map { [$0] } ?? []
+        }
+        return markup.children.flatMap { codeRanges(in: $0, mapper: mapper) }
+    }
+
     private static func parseComments(
         body: String,
         bodyUTF16Offset: Int,
-        sourceMapper: SemanticSourceMapper
+        sourceMapper: SemanticSourceMapper,
+        codeRanges: @autoclosure () -> [NSRange]
     ) -> CommentParseResult {
-        guard body.utf8.contains(0x25) || body.utf8.contains(0x3C) else {
+        guard body.contains("%%") || body.contains("<!--"),
+            let expression = commentOpeningRegex
+        else {
             return CommentParseResult(ranges: [], diagnostics: [])
         }
         let source = body as NSString
         var ranges: [NSRange] = []
         var diagnostics: [MarkdownDiagnostic] = []
-        let delimiters = [
-            (opening: "%%", closing: "%%", name: "Obsidian comment"),
-            (opening: "<!--", closing: "-->", name: "HTML comment"),
-        ]
+        let code = codeRanges().sorted { $0.location < $1.location }
+        var codeIndex = 0
+        var cursor = 0
+        while cursor < source.length,
+            let match = expression.firstMatch(
+                in: body, range: NSRange(location: cursor, length: source.length - cursor))
+        {
+            let opening = match.range
+            // The source's first construct owns its interior. A code opener
+            // inside a real comment cannot extend past that comment's close;
+            // conversely a comment opener inside code remains literal.
+            while codeIndex < code.count,
+                code[codeIndex].location < cursor || NSMaxRange(code[codeIndex]) <= opening.location
+            {
+                codeIndex += 1
+            }
+            if codeIndex < code.count, code[codeIndex].location <= opening.location {
+                cursor = NSMaxRange(code[codeIndex])
+                codeIndex += 1
+                continue
+            }
 
-        for delimiter in delimiters {
-            var cursor = 0
-            while cursor < source.length {
-                let searchRange = NSRange(location: cursor, length: source.length - cursor)
-                let opening = source.range(of: delimiter.opening, options: [], range: searchRange)
-                guard opening.location != NSNotFound else { break }
-
-                let closingSearchStart = NSMaxRange(opening)
-                let closingSearchRange = NSRange(
-                    location: closingSearchStart,
-                    length: source.length - closingSearchStart
-                )
-                let closing = source.range(
-                    of: delimiter.closing,
-                    options: [],
-                    range: closingSearchRange
-                )
-                guard closing.location != NSNotFound else {
-                    ranges.append(
-                        NSRange(
-                            location: opening.location,
-                            length: source.length - opening.location
-                        ))
-                    diagnostics.append(
-                        MarkdownDiagnostic(
-                            code: .malformedComment,
-                            severity: .warning,
-                            message: "\(delimiter.name) has no closing \(delimiter.closing) delimiter.",
-                            span: sourceMapper.span(for: shifted(opening, by: bodyUTF16Offset))
-                        ))
-                    break
-                }
-
+            let isObsidian = opening.length == 2
+            let closingDelimiter = isObsidian ? "%%" : "-->"
+            let name = isObsidian ? "Obsidian comment" : "HTML comment"
+            let closingStart = NSMaxRange(opening)
+            let closing = source.range(
+                of: closingDelimiter,
+                options: [],
+                range: NSRange(location: closingStart, length: source.length - closingStart)
+            )
+            guard closing.location != NSNotFound else {
                 ranges.append(
                     NSRange(
                         location: opening.location,
-                        length: NSMaxRange(closing) - opening.location
+                        length: source.length - opening.location
                     ))
-                cursor = NSMaxRange(closing)
+                diagnostics.append(
+                    MarkdownDiagnostic(
+                        code: .malformedComment,
+                        severity: .warning,
+                        message: "\(name) has no closing \(closingDelimiter) delimiter.",
+                        span: sourceMapper.span(for: shifted(opening, by: bodyUTF16Offset))
+                    ))
+                break
             }
+
+            ranges.append(
+                NSRange(location: opening.location, length: NSMaxRange(closing) - opening.location))
+            cursor = NSMaxRange(closing)
         }
 
-        return CommentParseResult(
-            ranges: ranges.sorted { $0.location < $1.location },
-            diagnostics: diagnostics
-        )
+        return CommentParseResult(ranges: ranges, diagnostics: diagnostics)
     }
 
     private static func inlineCodeRanges(in body: String) -> [NSRange] {

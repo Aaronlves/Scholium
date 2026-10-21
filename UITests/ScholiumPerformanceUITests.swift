@@ -33,12 +33,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
         guard let label = environment["SCHOLIUM_FOREGROUND_OPEN_LABEL"] else {
             throw XCTSkip("The isolated foreground note-opening diagnostic is not configured.")
         }
-        guard !label.isEmpty, label.utf8.count <= 48,
+        guard !label.isEmpty, label.utf8.count <= 32,
             label.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") })
         else {
             throw NSError(
                 domain: "ScholiumUITests.ForegroundOpening", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "A short ASCII diagnostic label is required."])
+                userInfo: [NSLocalizedDescriptionKey: "An ASCII diagnostic label of at most 32 characters is required."])
         }
         let startWithAlternate = environment["SCHOLIUM_FOREGROUND_OPEN_INITIAL_ALTERNATE"] == "1"
         let retainTarget = environment["SCHOLIUM_FOREGROUND_OPEN_RETAIN_TARGET"] == "1"
@@ -118,7 +118,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": targetID,
             "SCHOLIUM_PERFORMANCE_INITIAL_REVIEW": openingMode == "Review" ? "1" : "0",
         ]
-        if startWithAlternate { application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = alternateID }
         application.launch()
         let window = application.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 30))
@@ -137,15 +136,24 @@ final class ScholiumPerformanceUITests: XCTestCase {
         // The explicit probe setup arms Review in the workspace-opening owner
         // before Library readiness. An empty workspace intentionally has no mode
         // toolbar control, so observing that absent control cannot be a barrier.
+        XCTAssertTrue(application.descendants(matching: .any)["scholium.noDocumentState"].waitForExistence(timeout: 30))
+        XCTAssertFalse(editor.exists, "Setup must start without an editor before the first real Library selection.")
         if startWithAlternate {
+            // Warm only B through the ordinary Library route; A must remain
+            // unseen until the measured new-tab action.
+            other.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
             XCTAssertTrue(
                 waitUntil(timeout: 60) {
-                    window.title == "QA Autosave B" && openingSurfaceIsReady(alternateID)
-                        && (openingMode == "Review" || NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
-                }, "Initial alternate setup must finish loading and focus the real editor before measurement.")
-        } else {
-            XCTAssertTrue(application.descendants(matching: .any)["scholium.noDocumentState"].waitForExistence(timeout: 30))
-            XCTAssertFalse(editor.exists, "Cold first-open setup must not instantiate an editor in advance.")
+                    window.title == "QA Autosave B" && other.isSelected && modeControl.exists
+                        && openingSurfaceIsReady(alternateID)
+                }, "The initial Library selection must finish loading B in the requested mode before measurement.")
+            XCTAssertTrue(
+                waitUntil(timeout: 60) { !application.descendants(matching: .any)["scholium.refreshStatus"].exists },
+                "Untimed setup must finish derived-state refresh before presenting the new-tab menu.")
+            if openingMode == "Edit" {
+                editor.click()
+                XCTAssertTrue(NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: editor))
+            }
         }
         XCTAssertEqual(lineCount(at: result.path), 0)
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.qa")
@@ -199,9 +207,15 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "The actual Library row must have on-window geometry before capture starts.")
             let point = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             let targetMenu = application.menus["scholium.noteRow.\(targetID)"]
+            var newTabPoint: XCUICoordinate?
             if sampleOpensNewTab {
                 point.rightClick()
                 XCTAssertTrue(targetMenu.waitForExistence(timeout: 3))
+                let item = targetMenu.menuItems["Open in New Tab"]
+                XCTAssertTrue(item.exists && item.frame.width > 0 && item.frame.height > 0)
+                // Use the observed menu item's real pointer position, matching
+                // the Library row's pointer route.
+                newTabPoint = item.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             }
             var captureRequest: (stop: URL, finished: URL)?
             func stopRecorder() {
@@ -249,7 +263,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             XCTAssertEqual(application.state, .runningForeground, "Display measurements require the QA application in the foreground.")
             let refreshVisible = application.descendants(matching: .any)["scholium.refreshStatus"].exists
             let actionStarted = DispatchTime.now().uptimeNanoseconds
-            if sampleOpensNewTab { targetMenu.menuItems["Open in New Tab"].click() } else { point.click() }
+            if let newTabPoint { newTabPoint.click() } else { point.click() }
             let actionReturned = DispatchTime.now().uptimeNanoseconds
             let nativeCompleted = waitUntil(timeout: 10) { self.lineCount(at: result.path) == sample + 1 }
             if !nativeCompleted {
@@ -336,8 +350,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "screenshot_observation_upper_bound_ms": Double(observed - actionStarted) / 1_000_000,
                 "target_body_recognized": recognized, "captures": captures, "native": native,
                 "native_boundary": sampleOpensNewTab
-                        ? "Native Open in New Tab handler to validated native stable-visible layout."
-                        : "AppKit Library mouseDown handler to validated native stable-visible layout.",
+                    ? "Native Open in New Tab handler to validated native stable-visible layout."
+                    : "AppKit Library mouseDown handler to validated native stable-visible layout.",
                 "first_screenshot_start_uptime_ns": firstScreenshotStarted,
                 "passive_frame_interval_before_screenshot": true,
                 "window_server_frames_enabled": requestDirectory != nil,
@@ -423,8 +437,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "post_measurement_exact_save_navigation_undo_redo": true,
             "post_measurement_review_preserves_undo": includesModes,
             "native_boundary": opensNewTab
-                    ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
-                    : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
+                ? "Native Open in New Tab handler to validated native stable-visible layout; excludes prior event/menu transport, does not require keyboard focus and does not acknowledge pixels."
+                : "AppKit Library mouseDown handler to validated native stable-visible layout; excludes prior OS event queue, does not require keyboard focus and does not acknowledge pixels.",
             "screenshot_boundary":
                 "Before XCTest Library click to recognized screenshot return; includes XCTest transport/idling, capture and earlier OCR/write work. Conservative upper bound only.",
             "frame_boundary":

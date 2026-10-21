@@ -136,6 +136,25 @@ class StressFixtureTests(unittest.TestCase):
             self.assertEqual(len(zlib.decompress(compressed)), height * (1 + width * 3))
         self.assertNotEqual(GENERATOR.png(0), GENERATOR.png(256))
 
+    def test_format_matrix_combines_dense_syntax_in_one_document(self):
+        path = self.first["scenarios"]["format_matrix"]
+        source = (self.root / "first" / path).read_text()
+        # Authored construction counts, independent of the application parser.
+        self.assertEqual(source.count("### Format block "), 120)
+        self.assertEqual(source.count("```mermaid\n"), 120)
+        self.assertEqual(source.count("```text\n"), 120)
+        self.assertEqual(source.count("> [!state] Mixed Callout "), 120)
+        self.assertEqual(source.count("> > [!flag] Nested"), 120)
+        self.assertEqual(source.count("{{Synthetic annotation "), 120)
+        self.assertEqual(source.count("[[Stress Missing Matrix "), 120)
+        self.assertEqual(source.count("`inline [[literal]]`"), 120)
+        self.assertEqual(source.count("\\*escaped\\*"), 120)
+        dense = (self.root / "first" / self.first["scenarios"]["dense_links"]).read_text()
+        self.assertEqual(dense.count("{{Synthetic navigation annotation "), 2400)
+        callouts = (self.root / "first" / self.first["scenarios"]["nested_callouts"]).read_text()
+        for kind in ("orient", "cite", "connect", "state", "illustrate", "quote", "flag", "NOTE"):
+            self.assertIn(f"[!{kind}]", callouts)
+
     def test_existing_directory_and_symlink_are_refused_without_changes(self):
         root = self.root / "first"
         before = (root / "stress-manifest.json").read_bytes()

@@ -46,15 +46,15 @@ public enum ParagraphAnchorPlanner {
             supplied.flatMap {
                 $0.fingerprint == document.fingerprint && validSourceSpans(in: $0, source: source, mapper: mapper) ? $0 : nil
             } ?? MarkdownSemanticDocument(parsing: document)
-        let comments = MarkdownSemanticParser.commentRanges(in: document)
+        let comments = MarkdownSemanticParser.commentRanges(in: document, semantic: semantic)
         let pattern = #"(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         var anchors: [ParagraphAnchor] = []
         for block in semantic.blocks where block.kind == .paragraph {
             let text = source.substring(with: block.span.nsRange)
-            guard !comments.contains(where: { $0.overlaps(block.span.utf16Range) }),
-                !isProtected(block.span, semantic: semantic, text: text),
-                let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+            guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)),
+                !comments.contains(where: { $0.overlaps(block.span.utf16Range) }),
+                !isProtected(block.span, semantic: semantic, text: text)
             else { continue }
             let identifierRange = match.range(at: 1)
             let markerRange = NSRange(
@@ -105,7 +105,7 @@ public enum ParagraphAnchorPlanner {
         guard
             let block = semantic.blocks.first(where: {
                 $0.kind == .paragraph && $0.span.utf16LowerBound <= offset && offset <= $0.span.utf16UpperBound
-            }), !MarkdownSemanticParser.commentRanges(in: document).contains(where: { $0.overlaps(block.span.utf16Range) }),
+            }), !MarkdownSemanticParser.commentRanges(in: document, semantic: semantic).contains(where: { $0.overlaps(block.span.utf16Range) }),
             !isProtected(block.span, semantic: semantic, text: source.substring(with: block.span.nsRange))
         else { throw ParagraphAnchorError.unsupportedParagraph }
         let matching = anchors(in: document, semantic: semantic).filter {

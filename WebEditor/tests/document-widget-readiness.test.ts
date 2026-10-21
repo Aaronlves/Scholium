@@ -1,6 +1,6 @@
 import {parseHTML} from "linkedom";
 import {describe, expect, it, vi} from "vitest";
-import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, beginDocumentWidgetPreparation, pendingVisibleDocumentWidgetCounts} from "../document-widget-readiness";
+import {awaitVisibleDocumentImages, awaitVisibleDocumentWidgets, beginDocumentWidgetPreparation, createDocumentImageReadiness, pendingVisibleDocumentWidgetCounts} from "../document-widget-readiness";
 
 function harness() {
   const {document} = parseHTML("<html><body><div id='viewport'><div id='root'></div></div><div id='popover'></div></body></html>");
@@ -103,7 +103,7 @@ describe("shared visible image readiness", () => {
     const zeroSize = image(node(), 0, true);
     const later = image(root, 500);
     const popover = image(document.getElementById("popover")!, 20);
-    const decoded = new Set<HTMLImageElement>();
+    const decoded = createDocumentImageReadiness();
     const apply = vi.fn();
     expect(await awaitVisibleDocumentImages(root, viewport.getBoundingClientRect(), decoded, () => {}, apply)).toBe(true);
     expect(cached.decode).toHaveBeenCalledOnce();
@@ -124,7 +124,7 @@ describe("shared visible image readiness", () => {
     failed.decode = vi.fn(() => Promise.reject(new Error("invalid pixels")));
     failed.getBoundingClientRect = () => ({width: 0, height: 0} as DOMRect);
     node().append(failed);
-    const decoded = new Set<HTMLImageElement>();
+    const decoded = createDocumentImageReadiness();
     const apply = vi.fn();
     expect(await awaitVisibleDocumentImages(root, viewport.getBoundingClientRect(), decoded, () => {}, apply)).toBe(true);
     expect(failed.alt).toBe("Authored alt");

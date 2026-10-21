@@ -390,7 +390,7 @@ private struct ZoteroMarkdownFieldParser {
         let exactSource = document.rawContent as NSString
         source = exactSource
         mapper = SemanticSourceMapper(document.rawContent)
-        comments = MarkdownSemanticParser.commentRanges(in: document)
+        comments = MarkdownSemanticParser.commentRanges(in: document, semantic: semantic)
         ignoredInlineHTML = Self.inlineHTMLContainers(in: exactSource, spans: inlineHTMLSpans)
         sourceHTMLSpans = Array(
             Set(

@@ -119,6 +119,76 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
     }
 
+    @Test("A positive-generation recovery converges its admitted images before exposure without losing exact source or Undo")
+    func recoveredImageCatalogConvergesBeforeExposure() async throws {
+        let image = try InlineImageFixture.landscapePNG.image()
+        let source = "\u{FEFF}Before 中文 e\u{301} 🦉.\r\n\r\n![fixture](Attachments/figure)\r\n\r\nAfter fixture.\r\n"
+        let caret = try #require(source.range(of: "After")?.upperBound.utf16Offset(in: source))
+        let editorCaret = try #require(EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: caret))
+        let dispatcher = InlineImageRecoveryInitializationObserver()
+        let harness = EditorHarness(
+            source: source, bridgeDispatcher: dispatcher,
+            initialSourceRange: caret..<caret,
+            imageResourcesQuery: { _ in ["Attachments/figure": image] })
+        dispatcher.session = harness.session
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilSelection(head: editorCaret)
+        _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
+        try await harness.session.perform(.pastePlain, argument: " revised")
+        let changed = (source as NSString).replacingCharacters(in: NSRange(location: caret, length: 0), with: " revised")
+        try await harness.waitUntilText(changed)
+        let generation = harness.session.generation
+        try #require(generation > 0)
+        let selection = try #require(harness.session.context?.selections)
+        let undoLabel = try #require(harness.session.context?.undoLabel)
+        try await dispatcher.waitForCatalog(generation: generation)
+        harness.synchronizeLifecycleSourceFromSession()
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        #expect(harness.session.hasRetainedHistory)
+        #expect(harness.session.detachmentSuspensionID != nil)
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+
+        try #require(dispatcher.recoveryInitializations.count == 1)
+        let initialized = try #require(dispatcher.recoveryInitializations.first)
+        #expect(initialized.accepted)
+        #expect(initialized.recoveryGeneration == generation)
+        #expect(initialized.resultingGeneration == generation)
+        if initialized.catalogContainsImage, initialized.catalogGeneration == generation {
+            #expect(initialized.imageHasSource)
+            #expect(initialized.imageMatchesCatalog)
+        } else {
+            // Native may first resolve generation zero while reconstructing;
+            // Web must withhold that stale catalog until current admission.
+            #expect(!initialized.imageHasSource)
+        }
+        try #require(dispatcher.recoveryExposures.count == 1)
+        let exposure = try #require(dispatcher.recoveryExposures.first)
+        #expect(!exposure.nativeIsLoaded)
+        #expect(exposure.generation == generation)
+        #expect(exposure.catalogGeneration == generation)
+        #expect(exposure.imageMatchesCatalog)
+        #expect(exposure.imageDecoded)
+        #expect(exposure.naturalWidth == InlineImageFixture.landscapePNG.width)
+        print(
+            "Recovery image convergence: generation \(generation), initial catalog \(initialized.catalogGeneration), "
+                + "initial resource \(initialized.catalogContainsImage), exposure catalog \(String(describing: exposure.catalogGeneration)), "
+                + "decoded \(exposure.imageDecoded), native loaded before release \(exposure.nativeIsLoaded).")
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undoLabel)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(changed.utf8))
+        _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
+        try await inlineImageHistoryKey(harness, redo: false)
+        try await harness.waitUntilText(source, stage: "exact pre-edit source after recovered Undo")
+        try await inlineImageHistoryKey(harness, redo: true)
+        try await harness.waitUntilText(changed, stage: "exact edited source after recovered Redo")
+        _ = try await waitForInlineImage(harness, naturalWidth: InlineImageFixture.landscapePNG.width)
+        await harness.closeAndDrain()
+    }
+
     @Test("Source readiness does not wait for the background initial image catalog")
     func sourceOpeningDoesNotWaitForImageCatalog() async throws {
         let source = "Before.\r\n\r\n![fixture](Attachments/figure)\r\n\r\nAfter.\r\n"
@@ -900,6 +970,113 @@ private final class InlineImageStartupScrollBarrier: MarkdownEditorBridgeDispatc
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while continuation == nil {
             try #require(ContinuousClock.now < deadline, "Initial restoration did not reach its post-convergence barrier.")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
+@MainActor
+private final class InlineImageRecoveryInitializationObserver: MarkdownEditorBridgeDispatching {
+    struct Initialization {
+        let accepted: Bool
+        let recoveryGeneration: Int
+        let catalogGeneration: Int
+        let resultingGeneration: Int?
+        let catalogContainsImage: Bool
+        let imageHasSource: Bool
+        let imageMatchesCatalog: Bool
+    }
+
+    struct Exposure {
+        let nativeIsLoaded: Bool
+        let generation: Int
+        let catalogGeneration: Int?
+        let imageMatchesCatalog: Bool
+        let imageDecoded: Bool
+        let naturalWidth: Int
+    }
+
+    weak var session: MarkdownEditorSession?
+    private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+    private var acceptedCatalogGenerations: Set<Int> = []
+    private var recoveryGeneration: Int?
+    private var currentCatalogGeneration: Int?
+    private var currentImageResource: String?
+    private(set) var recoveryInitializations: [Initialization] = []
+    private(set) var recoveryExposures: [Exposure] = []
+
+    func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+        let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+        if case .initialize(_, _, _, _, _, let recovery, _) = request.operation {
+            recoveryGeneration = recovery.flatMap { $0.generation > 0 ? $0.generation : nil }
+            currentCatalogGeneration = nil
+            currentImageResource = nil
+        }
+        if case .releasePreparation = request.operation, recoveryGeneration != nil {
+            // Sample before production releases its preparation mask, without
+            // loading, decoding or repairing any image on the test's behalf.
+            let image = try await imageObservation(in: webView, resource: currentImageResource)
+            recoveryExposures.append(
+                Exposure(
+                    nativeIsLoaded: session?.isLoaded ?? true,
+                    generation: request.knownGeneration,
+                    catalogGeneration: currentCatalogGeneration,
+                    imageMatchesCatalog: image?["matches"] as? Bool == true,
+                    imageDecoded: image?["decoded"] as? Bool == true,
+                    naturalWidth: image?["naturalWidth"] as? Int ?? 0))
+        }
+        let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+        let reply = result as? [String: Any]
+        let configuration: MarkdownEditorPresentationConfiguration?
+        switch request.operation {
+        case .setPresentation(let value), .initialize(_, _, _, _, _, _, let value): configuration = value
+        default: configuration = nil
+        }
+        if let configuration,
+            configuration.imageResources["Attachments/figure"] != nil,
+            reply?["accepted"] as? Bool == true,
+            reply?["resultingGeneration"] as? Int == configuration.imageResourceGeneration
+        {
+            acceptedCatalogGenerations.insert(configuration.imageResourceGeneration)
+            currentCatalogGeneration = configuration.imageResourceGeneration
+            currentImageResource = configuration.imageResources["Attachments/figure"]
+        }
+        if case .initialize(_, _, _, _, _, let recovery?, let configuration) = request.operation,
+            recovery.generation > 0
+        {
+            // Observe the initialized DOM before Native receives this reply.
+            // A catalog from another generation must not set an image source.
+            let resource = configuration.imageResources["Attachments/figure"]
+            let image = try await imageObservation(in: webView, resource: resource)
+            recoveryInitializations.append(
+                Initialization(
+                    accepted: reply?["accepted"] as? Bool == true,
+                    recoveryGeneration: recovery.generation,
+                    catalogGeneration: configuration.imageResourceGeneration,
+                    resultingGeneration: reply?["resultingGeneration"] as? Int,
+                    catalogContainsImage: resource != nil,
+                    imageHasSource: image?["hasSource"] as? Bool == true,
+                    imageMatchesCatalog: image?["matches"] as? Bool == true))
+        }
+        return result
+    }
+
+    private func imageObservation(in webView: WKWebView, resource: String?) async throws -> [String: Any]? {
+        try await webView.callAsyncJavaScript(
+            """
+            const image = document.querySelector('.cm-live-image img[alt="fixture"]');
+            if (!image) return {hasSource: false, matches: false, decoded: false, naturalWidth: 0};
+            return {hasSource: image.hasAttribute('src'),
+              matches: image.getAttribute('src') === resource,
+              decoded: image.complete && image.naturalWidth > 0,
+              naturalWidth: image.naturalWidth};
+            """, arguments: ["resource": resource ?? ""], in: nil, contentWorld: .page) as? [String: Any]
+    }
+
+    func waitForCatalog(generation: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !acceptedCatalogGenerations.contains(generation) {
+            try #require(ContinuousClock.now < deadline, "The edited generation did not receive its admitted image catalog.")
             try await Task.sleep(for: .milliseconds(10))
         }
     }

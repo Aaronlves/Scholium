@@ -10,6 +10,7 @@ import {initializeReader, type ReaderWindow} from "../reader-runtime";
 import {currentDocumentScrollAnchor} from "../scroll-coordinator";
 import {installConstructableStylesheet} from "./stylesheet-fixture";
 import {clearEditorPerformanceSamples, editorPerformanceSamples, recordEditorMetric} from "../performance";
+import {bindCommittedReviewImageResources} from "../committed-review-images";
 
 function fixture() {
   const {document, window} = parseHTML('<html><head><style id="presentation"></style><style id="user"></style></head><body><div id="outside"><p>Outside</p><div class="scholium-math" data-math-source="eA==" data-math-kind="inline"></div></div><div id="scroll"><main id="scholium-document"><p data-source-line="1" data-source-utf16-start="0" data-source-utf16-end="4">Body</p></main></div><aside id="popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside></body></html>');
@@ -207,7 +208,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     const committed: CommittedReviewProjection = {documentID: "editor-document", sourceFingerprint: "fingerprint",
       htmlBody: `<main id="scholium-document"><p data-source-line="1" data-source-utf16-start="0" data-source-utf16-end="7">First.</p><p class="middle" data-source-line="3" data-source-utf16-start="${lower}" data-source-utf16-end="${upper}">Middle 😀 paragraph.</p><p data-source-line="5" data-source-utf16-start="${source.indexOf("Last")}" data-source-utf16-end="${source.length - 2}">Last.</p></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>`,
       css: "", configuration: {...f.config, version: 8}};
-    const projection = createCommittedReviewProjection({projection: () => committed, mirror: () => mirror,
+    const projection = createCommittedReviewProjection({projection: () => committed, mirror: () => mirror, imageResources: () => ({}),
       nativeFloating: f.host.nativeFloating, postMessage: f.postMessage});
     const state = EditorState.create({doc: source, extensions: projection.extension});
     const decorations = state.facet(EditorView.decorations).find(value => typeof value !== "function") as DecorationSet;
@@ -258,6 +259,138 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     expect(editing.currentAnchor).toHaveBeenCalledTimes(2);
     widget.destroy(restoredDOM);
     clearEditorPerformanceSamples();
+  });
+
+  it("binds catalog images before Reader initialization and refreshes their src in the existing Review DOM", async () => {
+    const f = fixture();
+    Object.defineProperty(f.window, "innerWidth", {configurable: true, value: 400});
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    const source = "Selected 图 e\u0301\r\n\r\n![](Attachments/a%2525.png)\r\n";
+    const committed: CommittedReviewProjection = {documentID: "editor-document", sourceFingerprint: "fingerprint",
+      htmlBody: '<main id="scholium-document"><p>Selected 图 é</p><img class="scholium-embedded-image" data-scholium-image-target="Attachments/a%2525.png" data-scholium-image-resource="Attachments/a%25.png"></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>',
+      css: "", configuration: {...f.config, version: 8}};
+    let resources: Record<string, string> = {"Attachments/a%25.png": "data:image/png;base64,AAAA"};
+    const mirror = new ExactSourceMirror(source);
+    const projection = createCommittedReviewProjection({projection: () => committed, mirror: () => mirror,
+      imageResources: () => resources, nativeFloating: f.host.nativeFloating, postMessage: f.postMessage});
+    const state = EditorState.create({doc: source, selection: {anchor: 1, head: 8}, extensions: projection.extension});
+    const decorations = state.facet(EditorView.decorations).find(value => typeof value !== "function") as DecorationSet;
+    const widget = decorations.iter().value!.spec.widget;
+    const dispatch = vi.fn(), requestMeasure = vi.fn();
+    const view = {state, scrollDOM: f.scroll, requestMeasure, dispatch} as unknown as EditorView;
+    const dom = widget.toDOM(view) as HTMLElement;
+    f.scroll.replaceChildren(dom);
+    const image = dom.querySelector("img")!;
+    image.decode = vi.fn(() => Promise.resolve());
+    // Binding is synchronous: Reader's visible-image barrier sees this src.
+    expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
+    await projection.prepare(Date.now() + 2000);
+    const preparation = f.window.scholiumReadPreparation;
+    const text = dom.querySelector("p")!.firstChild;
+    resources = {"Attachments/a%25.png": "data:image/png;base64,AQID"};
+    projection.refreshImageResources();
+    expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
+    await projection.prepare(Date.now() + 2000);
+    expect(image.decode).toHaveBeenCalledTimes(2);
+    expect(dom.querySelector("img")).toBe(image);
+    expect(dom.querySelector("p")!.firstChild).toBe(text);
+    expect(f.window.scholiumReadPreparation).toBe(preparation);
+    expect(view.state).toBe(state);
+    expect(state.selection.main.anchor).toBe(1);
+    expect(state.selection.main.head).toBe(8);
+    expect(mirror.text).toBe(source);
+    expect(dispatch).not.toHaveBeenCalled();
+    let releasePrevious!: () => void, releaseCurrent!: () => void;
+    image.decode = vi.fn().mockImplementationOnce(() => new Promise<void>(resolve => { releasePrevious = resolve; }))
+      .mockImplementationOnce(() => new Promise<void>(resolve => { releaseCurrent = resolve; }));
+    resources = {"Attachments/a%25.png": "data:image/png;base64,AAAA"};
+    projection.refreshImageResources();
+    let settled = false;
+    const settling = projection.prepare(Date.now() + 2000).then(() => { settled = true; });
+    await vi.waitFor(() => expect(image.decode).toHaveBeenCalledOnce());
+    resources = {"Attachments/a%25.png": "data:image/png;base64,AQID"};
+    projection.refreshImageResources();
+    releasePrevious();
+    await vi.waitFor(() => expect(image.decode).toHaveBeenCalledTimes(2));
+    expect(settled).toBe(false);
+    releaseCurrent();
+    await settling;
+    resources = {};
+    projection.refreshImageResources();
+    expect(image.hasAttribute("src")).toBe(false);
+    widget.destroy(dom);
+    const measurements = requestMeasure.mock.calls.length;
+    resources = {"Attachments/a%25.png": "data:image/png;base64,AAAA"};
+    projection.refreshImageResources();
+    expect(image.hasAttribute("src")).toBe(false);
+    expect(requestMeasure).toHaveBeenCalledTimes(measurements);
+  });
+
+  it("does not refresh a canceled mount and binds only the current catalog on its next mount", async () => {
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    const committed: CommittedReviewProjection = {documentID: "editor-document", sourceFingerprint: "fingerprint",
+      htmlBody: '<main id="scholium-document"><p>Body</p><img class="scholium-embedded-image" data-scholium-image-resource="a.png"></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>',
+      css: "", configuration: {...f.config, version: 8}};
+    let resources = {"a.png": "data:image/png;base64,AAAA"};
+    const projection = createCommittedReviewProjection({projection: () => committed,
+      mirror: () => new ExactSourceMirror("Body"), imageResources: () => resources,
+      nativeFloating: f.host.nativeFloating, postMessage: f.postMessage});
+    const state = EditorState.create({doc: "Body", extensions: projection.extension});
+    const decorations = state.facet(EditorView.decorations).find(value => typeof value !== "function") as DecorationSet;
+    const widget = decorations.iter().value!.spec.widget;
+    const view = {state, scrollDOM: f.scroll, requestMeasure: vi.fn()} as unknown as EditorView;
+    const canceled = widget.toDOM(view) as HTMLElement;
+    const previousImage = canceled.querySelector("img")!;
+    widget.destroy(canceled);
+    resources = {"a.png": "data:image/png;base64,AQID"};
+    projection.refreshImageResources();
+    expect(previousImage.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    const current = widget.toDOM(view) as HTMLElement;
+    f.scroll.replaceChildren(current);
+    const currentImage = current.querySelector("img")!;
+    currentImage.decode = vi.fn(() => Promise.resolve());
+    await projection.prepare(Date.now() + 2000);
+    expect(currentImage.getAttribute("src")).toBe(resources["a.png"]);
+    expect(currentImage).not.toBe(previousImage);
+    expect(f.postMessage.mock.calls.filter(([message]) => message.type === "ready")).toHaveLength(1);
+    widget.destroy(current);
+  });
+
+  it("clones admitted annotation template images into the actual Native preview after replacement or removal", async () => {
+    const f = fixture();
+    f.host.root.innerHTML = '<sup class="scholium-link-annotation-marker"><button class="scholium-link-annotation-button" data-link-annotation="annotation-1" data-link-annotation-target="Target">Annotation</button></sup>';
+    const button = f.host.root.querySelector("button")!;
+    const template = f.document.createElement("template");
+    template.id = "annotation-1-template";
+    const image = f.document.createElement("img");
+    image.className = "scholium-embedded-image";
+    image.alt = "Authored 图";
+    image.dataset.scholiumImageResource = "a%25&b.png";
+    image.dataset.scholiumImageTarget = "a%2525&b.png";
+    template.content.append(image);
+    button.parentElement!.append(template);
+    bindCommittedReviewImageResources(f.host.root, {"a%25&b.png": "data:image/png;base64,AAAA"});
+    await initializeReader(f.config, f.host);
+    const open = () => {
+      const event = f.document.createEvent("Event");
+      event.initEvent("focusin", true, false);
+      button.dispatchEvent(event);
+      const surface = f.postMessage.mock.calls.filter(([message]) => message.type === "floatingSurface"
+        && message.event.type === "previewSurface").at(-1)![0].event.surface;
+      return parseHTML(`<html><body>${surface.html}</body></html>`).document.querySelector("img")!;
+    };
+    const original = open();
+    expect(original.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    expect(original.alt).toBe("Authored 图");
+    expect(original).not.toBe(image);
+    bindCommittedReviewImageResources(f.host.root, {"a%25&b.png": "data:image/png;base64,AQID"});
+    expect(open().getAttribute("src")).toBe("data:image/png;base64,AQID");
+    bindCommittedReviewImageResources(f.host.root, {});
+    expect(open().hasAttribute("src")).toBe(false);
+    expect(template.content.firstChild).toBe(image);
+    expect(image.alt).toBe("Authored 图");
+    f.signal.abort();
   });
 
   it("uses the host scroll container and clears its APIs/styles/probes when the mode leaves", async () => {
@@ -360,7 +493,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     const initial: CommittedReviewProjection = {documentID: "editor-document", sourceFingerprint: "fingerprint",
       htmlBody: '<main id="scholium-document"><p data-source-line="1" data-source-utf16-start="0" data-source-utf16-end="10">Plain body</p></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>', css: "",
       configuration: {...f.config, version: 8, localization: {languageTag: "en", strings: {"Note title": "Note title", Copy: "Copy"}}}};
-    const projection = createCommittedReviewProjection({projection: () => initial, mirror: () => new ExactSourceMirror("Plain body"),
+    const projection = createCommittedReviewProjection({projection: () => initial, mirror: () => new ExactSourceMirror("Plain body"), imageResources: () => ({}),
       nativeFloating: f.host.nativeFloating, postMessage: f.postMessage});
     const state = EditorState.create({doc: "Plain body", extensions: projection.extension});
     const decorations = state.facet(EditorView.decorations).find(value => typeof value !== "function") as DecorationSet;

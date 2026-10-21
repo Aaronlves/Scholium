@@ -5,12 +5,14 @@ import {initializeReader, type ReaderWindow} from "./reader-runtime";
 import type {ExactSourceMirror} from "./state";
 import {mapReviewAnchor, readLinkPreviewsEqual, reviewConfigurationSharesDOM, scopedReviewCSS, wrapReviewCSS, type CommittedReviewProjection} from "./committed-review-contract";
 import {committedReviewRhythmCSS, projectCommittedReviewCalloutRhythm} from "./committed-review-rhythm";
+import {bindCommittedReviewImageResources} from "./committed-review-images";
 import {recordEditorMetric} from "./performance";
 export {reviewProjectionMatches} from "./committed-review-contract";
 
 interface ReviewProjectionOptions {
   projection(): CommittedReviewProjection | null;
   mirror(): ExactSourceMirror;
+  imageResources(): Readonly<Record<string, string>>;
   nativeFloating: NativeFloatingPorts;
   postMessage(message: Record<string, unknown>): void;
 }
@@ -54,6 +56,7 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       const main = content.querySelector<HTMLElement>("main#scholium-document");
       const popover = content.querySelector<HTMLElement>("#scholium-preview-popover");
       if (!main || !popover) throw new Error("Invalid committed Review document shell");
+      bindCommittedReviewImageResources(main, options.imageResources());
       projectCommittedReviewCalloutRhythm(main, options.mirror(), view.state.doc);
       main.tabIndex = -1;
       const abort = new AbortController();
@@ -125,7 +128,10 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
   });
   const extension: Extension = [field, EditorState.readOnly.of(true),
     Prec.highest(EditorView.editable.of(false)),
-    EditorState.transactionFilter.of(transaction => transaction.docChanged ? [] : transaction),
+    // Review's DOM Selection belongs to the reader. CodeMirror can otherwise
+    // map selectionchange from the replacement widget to the document end and
+    // overwrite the writable selection retained for the next editing entry.
+    EditorState.transactionFilter.of(transaction => transaction.docChanged || transaction.selection ? [] : transaction),
     EditorView.theme({
       "&.scholium-review-mode .cm-scroller": {display: "block", fontFamily: "inherit"},
       "&.scholium-review-mode .cm-selectionLayer, &.scholium-review-mode .cm-cursorLayer": {display: "none"},
@@ -134,6 +140,13 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
   ];
   return {
     extension, setProjection,
+    refreshImageResources() {
+      if (!root || !mountedView || !mountedAbort || mountedAbort.signal.aborted) return;
+      const changed = bindCommittedReviewImageResources(root, options.imageResources());
+      const reader = window as ReaderWindow;
+      for (const image of changed) reader.scholiumReviewImages?.refreshImage(image);
+      if (changed.length) mountedView.requestMeasure();
+    },
     updateInPlace(projection: CommittedReviewProjection | null) {
       const previous = mountedProjection;
       if (!previous || !projection || !root || !mountedView || !ready || !mountedAbort || mountedAbort.signal.aborted

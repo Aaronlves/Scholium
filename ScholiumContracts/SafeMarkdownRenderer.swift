@@ -87,12 +87,20 @@ private final class RenderedMarkdownObjects {
 /// Produces inert HTML from the shared semantic projection. The output contains
 /// no scripts, event-handler attributes, remote media, or user-authored raw HTML.
 public enum SafeMarkdownRenderer {
+    public enum ImageDelivery: Hashable, Sendable {
+        /// Standalone HTML/PDF contains the caller-authorized image bytes.
+        case inlineData
+        /// The shared document host supplies admitted resources separately.
+        case resourceCatalog
+    }
+
     public static func render(
         _ document: NoteDocument,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage] = [:],
+        imageDelivery: ImageDelivery = .inlineData
     ) -> RenderedMarkdownDocument {
         let semantic = MarkdownSemanticDocument(parsing: document)
-        return render(document, semantic: semantic, embeddedImages: embeddedImages)
+        return render(document, semantic: semantic, embeddedImages: embeddedImages, imageDelivery: imageDelivery)
     }
 
     /// Reuses an immutable source-bound semantic projection when its exact
@@ -101,15 +109,16 @@ public enum SafeMarkdownRenderer {
     public static func render(
         _ document: NoteDocument,
         semantic: MarkdownSemanticDocument,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage] = [:],
+        imageDelivery: ImageDelivery = .inlineData
     ) -> RenderedMarkdownDocument {
         guard semantic.fingerprint == document.fingerprint else {
-            return render(document, embeddedImages: embeddedImages)
+            return render(document, embeddedImages: embeddedImages, imageDelivery: imageDelivery)
         }
         let objects = RenderedMarkdownObjects()
         let html = renderBody(
             document: document, semantic: semantic, depth: 0,
-            objects: objects, embeddedImages: embeddedImages
+            objects: objects, embeddedImages: embeddedImages, imageDelivery: imageDelivery
         )
         return RenderedMarkdownDocument(htmlBody: html, semanticDocument: semantic, objects: objects.values)
     }
@@ -129,6 +138,7 @@ public enum SafeMarkdownRenderer {
         depth: Int,
         objects: RenderedMarkdownObjects?,
         embeddedImages: [String: RenderedMarkdownImage],
+        imageDelivery: ImageDelivery,
         locatedLinkSpans: [SourceSpan]? = nil,
         bibliographyStyle: ZoteroMarkdownBibliographyStyle? = nil
     ) -> String {
@@ -160,12 +170,14 @@ public enum SafeMarkdownRenderer {
         let removedDefinitionSpans = semantic.footnoteDefinitions
             .filter { !$0.isInline }
             .map(\.span)
+        let hiddenBlockSpans =
+            outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans
+            + semantic.zoteroFields.fields.filter { semantic.zoteroFields.canMutate && $0.kind == .bibliography }.map(\.span)
         let visibleBlocks = semantic.blocks.filter { block in
-            !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans
-                + semantic.zoteroFields.fields.filter { semantic.zoteroFields.canMutate && $0.kind == .bibliography }.map(\.span)).contains {
-                    $0.utf16LowerBound <= block.span.utf16LowerBound
-                        && $0.utf16UpperBound >= block.span.utf16UpperBound
-                }
+            !hiddenBlockSpans.contains {
+                $0.utf16LowerBound <= block.span.utf16LowerBound
+                    && $0.utf16UpperBound >= block.span.utf16UpperBound
+            }
         }
         let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]] =
             depth == 0
@@ -178,14 +190,14 @@ public enum SafeMarkdownRenderer {
             if field.kind == .citation {
                 let key = SafeMarkdownInlineTokens.key(nonce: nonce, component: "Z\(index)")
                 inlineHTML[key] =
-                    "<span class=\"scholium-zotero-citation\" \(attributes)>\(renderInlineMarkdown(field.fallbackMarkdown, embeddedImages: embeddedImages))</span>"
+                    "<span class=\"scholium-zotero-citation\" \(attributes)>\(renderInlineMarkdown(field.fallbackMarkdown, embeddedImages: embeddedImages, imageDelivery: imageDelivery))</span>"
                 replacements.append(Replacement(range: relative, text: key))
             } else {
                 let key = "\(nonce)-bibliography-\(index)"
                 let fragment = NoteDocument(relativePath: "bibliography.md", rawContent: field.fallbackMarkdown)
                 let fallback = renderBody(
                     document: fragment, semantic: MarkdownSemanticDocument(parsing: fragment),
-                    depth: depth + 1, objects: objects, embeddedImages: embeddedImages,
+                    depth: depth + 1, objects: objects, embeddedImages: embeddedImages, imageDelivery: imageDelivery,
                     bibliographyStyle: semantic.zoteroFields.documentState?.bibliographyStyle)
                 blockHTML[key] = "<section class=\"scholium-zotero-bibliography\" \(attributes)>\(fallback)</section>"
                 replacements.append(Replacement(range: relative, text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"))
@@ -214,7 +226,7 @@ public enum SafeMarkdownRenderer {
                 callout,
                 locatedLinkSpans: nestedLinkSpans,
                 depth: depth + 1, objects: objects,
-                embeddedImages: embeddedImages
+                embeddedImages: embeddedImages, imageDelivery: imageDelivery
             )
             replacements.append(
                 Replacement(
@@ -305,7 +317,7 @@ public enum SafeMarkdownRenderer {
                     fallback: link.linkSpan
                 ),
                 depth: depth + 1,
-                embeddedImages: embeddedImages
+                embeddedImages: embeddedImages, imageDelivery: imageDelivery
             )
             replacements.append(Replacement(range: relative, text: key))
         }
@@ -364,6 +376,7 @@ public enum SafeMarkdownRenderer {
             blockSourceSpans: blockSourceSpans,
             quoteDepths: quoteDepths,
             embeddedImages: embeddedImages,
+            imageDelivery: imageDelivery,
             source: transformed, objects: objects,
             tableSources: visibleBlocks.filter { $0.kind == .table }.map {
                 (document.rawContent as NSString).substring(with: $0.span.nsRange)
@@ -375,7 +388,7 @@ public enum SafeMarkdownRenderer {
         let footnoteSection = renderFootnoteSection(
             semantic.footnoteDefinitions,
             depth: depth + 1, objects: objects,
-            embeddedImages: embeddedImages
+            embeddedImages: embeddedImages, imageDelivery: imageDelivery
         )
         return visitor.renderedHTML(
             source: document.body,
@@ -387,7 +400,8 @@ public enum SafeMarkdownRenderer {
         _ callout: CalloutBlock,
         locatedLinkSpans: [SourceSpan],
         depth: Int, objects: RenderedMarkdownObjects?,
-        embeddedImages: [String: RenderedMarkdownImage]
+        embeddedImages: [String: RenderedMarkdownImage],
+        imageDelivery: ImageDelivery
     ) -> String {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
@@ -401,7 +415,7 @@ public enum SafeMarkdownRenderer {
             + "title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
         let titleHTML =
             if let title = callout.title {
-                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title, embeddedImages: embeddedImages))</span>"
+                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title, embeddedImages: embeddedImages, imageDelivery: imageDelivery))</span>"
             } else {
                 "<span class=\"scholium-callout-title scholium-callout-default-title\" dir=\"auto\">\(roleLabel)</span>"
             }
@@ -414,6 +428,7 @@ public enum SafeMarkdownRenderer {
             depth: depth,
             objects: objects,
             embeddedImages: embeddedImages,
+            imageDelivery: imageDelivery,
             locatedLinkSpans: fragmentSemantic.links.count == locatedLinkSpans.count
                 ? locatedLinkSpans
                 : nil
@@ -480,7 +495,8 @@ public enum SafeMarkdownRenderer {
 
     private static func renderInlineMarkdown(
         _ source: String,
-        embeddedImages: [String: RenderedMarkdownImage] = [:]
+        embeddedImages: [String: RenderedMarkdownImage],
+        imageDelivery: ImageDelivery
     ) -> String {
         let parsed = Document(parsing: source)
         var visitor = SafeHTMLVisitor(
@@ -488,7 +504,7 @@ public enum SafeMarkdownRenderer {
             inlineTokens: SafeMarkdownInlineTokens(replacements: [:]),
             blockSourceSpans: [:],
             quoteDepths: [:],
-            embeddedImages: embeddedImages
+            embeddedImages: embeddedImages, imageDelivery: imageDelivery
         )
         visitor.visit(parsed)
         let rendered = visitor.renderedHTML(source: source, bodyUTF16Offset: 0)
@@ -502,7 +518,8 @@ public enum SafeMarkdownRenderer {
     private static func renderFootnoteSection(
         _ definitions: [FootnoteDefinition],
         depth: Int, objects: RenderedMarkdownObjects?,
-        embeddedImages: [String: RenderedMarkdownImage]
+        embeddedImages: [String: RenderedMarkdownImage],
+        imageDelivery: ImageDelivery
     ) -> String {
         let referenced = definitions.filter { $0.ordinal != nil }
         guard !referenced.isEmpty else { return "" }
@@ -513,7 +530,7 @@ public enum SafeMarkdownRenderer {
                 document: fragment,
                 semantic: MarkdownSemanticDocument(parsing: fragment),
                 depth: depth, objects: objects,
-                embeddedImages: embeddedImages
+                embeddedImages: embeddedImages, imageDelivery: imageDelivery
             )
             return
                 "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
@@ -526,7 +543,8 @@ public enum SafeMarkdownRenderer {
         _ link: LinkOccurrence,
         locatedSpan: SourceSpan,
         depth: Int,
-        embeddedImages: [String: RenderedMarkdownImage]
+        embeddedImages: [String: RenderedMarkdownImage],
+        imageDelivery: ImageDelivery
     ) -> String {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
@@ -547,7 +565,7 @@ public enum SafeMarkdownRenderer {
             document: fragment,
             semantic: MarkdownSemanticDocument(parsing: fragment),
             depth: depth, objects: nil,
-            embeddedImages: embeddedImages
+            embeddedImages: embeddedImages, imageDelivery: imageDelivery
         )
         let label = escapeAttribute("Show link annotation for \(display)")
         let target = escapeAttribute(display)
@@ -1075,6 +1093,7 @@ private struct SafeHTMLVisitor: MarkupWalker {
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
     let quoteDepths: [SourceSpan: Int]
     var embeddedImages: [String: RenderedMarkdownImage] = [:]
+    var imageDelivery: SafeMarkdownRenderer.ImageDelivery = .inlineData
     var source = ""
     var sourceLines: [(text: String, ending: String)]? = nil
     var objects: RenderedMarkdownObjects? = nil
@@ -1213,8 +1232,16 @@ private struct SafeHTMLVisitor: MarkupWalker {
             // the thumbnail. Native attachment resolution owns percent decoding
             // and rechecks access when the researcher requests the original.
             let target = SafeMarkdownRenderer.escapeAttribute(source)
+            let delivery: String
+            switch imageDelivery {
+            case .inlineData:
+                delivery = "src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\""
+            case .resourceCatalog:
+                let resourceKey = SafeMarkdownRenderer.escapeAttribute(source.removingPercentEncoding ?? source)
+                delivery = "data-scholium-image-resource=\"\(resourceKey)\""
+            }
             result +=
-                "<img class=\"scholium-embedded-image\" data-scholium-image-target=\"\(target)\" data-scholium-image-layout=\"\(layout)\" src=\"data:\(embedded.mimeType);base64,\(embedded.data.base64EncodedString())\" alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
+                "<img class=\"scholium-embedded-image\" data-scholium-image-target=\"\(target)\" data-scholium-image-layout=\"\(layout)\" \(delivery) alt=\"\(SafeMarkdownRenderer.escapeAttribute(image.plainText))\"\(title)>"
             return
         }
         result += "<span class=\"scholium-media-placeholder\">Image"

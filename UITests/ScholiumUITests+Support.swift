@@ -777,7 +777,11 @@ extension ScholiumUITests {
                 XCTFail("Source requires the target workspace's native command focus before selection.")
                 return
             }
-            source.click()
+            // Menu AX frames can be nonfinite on the current macOS runner.
+            // Select the named enabled item, then activate through the native
+            // keyboard route instead of a synthetic click at that frame.
+            source.hover()
+            app.typeKey(.return, modifierFlags: [])
         default:
             XCTFail("Unsupported Document mode: \(title)")
             return

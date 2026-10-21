@@ -16218,20 +16218,32 @@
     return true;
   }
   var mathRuntimeSettledEvent = "scholium-math-runtime-settled";
+  var imageResourceRevisions = /* @__PURE__ */ new WeakMap();
+  function createDocumentImageReadiness() {
+    return /* @__PURE__ */ new WeakMap();
+  }
+  function invalidateDocumentImageReadiness(image) {
+    imageResourceRevisions.set(image, (imageResourceRevisions.get(image) ?? 0) + 1);
+  }
   async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
     requireCurrent();
-    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
-      if (!image.isConnected || decoded.has(image)) return false;
+    const pending = Array.from(root.querySelectorAll("img")).map((image) => ({ image, source: image.getAttribute("src"), revision: imageResourceRevisions.get(image) ?? 0 })).filter(({ image, source, revision }) => {
+      const previous = decoded.get(image);
+      if (!image.isConnected || previous?.source === source && previous.revision === revision) return false;
       const imageRect = image.getBoundingClientRect();
       const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
       return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
     });
     if (pending.length === 0) return false;
-    pending.forEach((image) => decoded.add(image));
-    await Promise.all(pending.map((image) => image.decode().catch(() => {
+    for (const { image } of pending) decoded.delete(image);
+    await Promise.all(pending.map(({ image }) => image.decode().catch(() => {
     })));
     requireCurrent();
-    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+    for (const { image, source, revision } of pending) {
+      if (!image.isConnected || !root.contains(image) || image.getAttribute("src") !== source || (imageResourceRevisions.get(image) ?? 0) !== revision) continue;
+      decoded.set(image, { source, revision });
+      applyDecoded(image);
+    }
     return true;
   }
 
@@ -16347,7 +16359,7 @@
       if (userStyle.textContent !== user) userStyle.textContent = user;
     };
     setPresentationStyles(presentationCSS, userCSS);
-    const decodedImages = /* @__PURE__ */ new Set();
+    const decodedImages = createDocumentImageReadiness();
     async function settleLayout(requireCurrent) {
       const recordMetric = host?.recordMetric;
       const startedAt = recordMetric ? performance.now() : 0;
@@ -16381,14 +16393,18 @@
         if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
         requireCurrent();
         phaseStartedAt = recordMetric ? performance.now() : 0;
-        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+        let decodedVisibleImages = false;
+        while (await awaitVisibleDocumentImages(documentRoot, {
           left: 0,
           right: window.innerWidth,
           top: 0,
           bottom: viewportHeight()
-        }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image));
+        }, decodedImages, requireCurrent, (image) => readerWindow.scholiumReviewImages?.refreshImage(image))) {
+          decodedVisibleImages = true;
+          phases.imageWaitCount++;
+          requireCurrent();
+        }
         if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
-        phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
         documentRoot.getBoundingClientRect();
         phases.measureCount++;
         phaseStartedAt = recordMetric ? performance.now() : 0;
@@ -17815,6 +17831,34 @@
     }
   }
 
+  // committed-review-images.ts
+  function bindCommittedReviewImageResources(root, resources) {
+    const changed = [];
+    const scopes = [root];
+    for (let index = 0; index < scopes.length; index++) {
+      for (const element of scopes[index].querySelectorAll(
+        "img.scholium-embedded-image[data-scholium-image-resource], template"
+      )) {
+        if (element.closest(".scholium-embedded-note")) continue;
+        if (element.localName === "template") {
+          scopes.push(element.content);
+          continue;
+        }
+        const image = element;
+        const key = image.getAttribute("data-scholium-image-resource");
+        const resource = Object.hasOwn(resources, key) ? resources[key] : void 0;
+        const previous = image.getAttribute("src");
+        if (resource === void 0 ? previous === null : previous === resource) continue;
+        invalidateDocumentImageReadiness(image);
+        image.style.removeProperty("--scholium-image-aspect-ratio");
+        if (resource === void 0) image.removeAttribute("src");
+        else image.setAttribute("src", resource);
+        changed.push(image);
+      }
+    }
+    return changed;
+  }
+
   // performance.ts
   var samples = [];
   var sampleCapacity = 256;
@@ -17921,6 +17965,7 @@
         const main = content2.querySelector("main#scholium-document");
         const popover = content2.querySelector("#scholium-preview-popover");
         if (!main || !popover) throw new Error("Invalid committed Review document shell");
+        bindCommittedReviewImageResources(main, options.imageResources());
         projectCommittedReviewCalloutRhythm(main, options.mirror(), view.state.doc);
         main.tabIndex = -1;
         const abort = new AbortController();
@@ -18009,7 +18054,10 @@
       field,
       EditorState.readOnly.of(true),
       Prec.highest(EditorView.editable.of(false)),
-      EditorState.transactionFilter.of((transaction) => transaction.docChanged ? [] : transaction),
+      // Review's DOM Selection belongs to the reader. CodeMirror can otherwise
+      // map selectionchange from the replacement widget to the document end and
+      // overwrite the writable selection retained for the next editing entry.
+      EditorState.transactionFilter.of((transaction) => transaction.docChanged || transaction.selection ? [] : transaction),
       EditorView.theme({
         "&.scholium-review-mode .cm-scroller": { display: "block", fontFamily: "inherit" },
         "&.scholium-review-mode .cm-selectionLayer, &.scholium-review-mode .cm-cursorLayer": { display: "none" },
@@ -18019,6 +18067,13 @@
     return {
       extension,
       setProjection,
+      refreshImageResources() {
+        if (!root || !mountedView || !mountedAbort || mountedAbort.signal.aborted) return;
+        const changed = bindCommittedReviewImageResources(root, options.imageResources());
+        const reader = window;
+        for (const image of changed) reader.scholiumReviewImages?.refreshImage(image);
+        if (changed.length) mountedView.requestMeasure();
+      },
       updateInPlace(projection) {
         const previous = mountedProjection;
         if (!previous || !projection || !root || !mountedView || !ready || !mountedAbort || mountedAbort.signal.aborted || previous.documentID !== projection.documentID || previous.sourceFingerprint !== projection.sourceFingerprint || previous.htmlBody !== projection.htmlBody || previous.css !== projection.css) return false;
@@ -36853,7 +36908,7 @@ ${blankRow(table.position.columnCount)}`;
   };
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 55;
+  var EDITOR_PROTOCOL_VERSION = 56;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
@@ -46363,6 +46418,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var reviewProjection = createCommittedReviewProjection({
     nativeFloating,
     mirror: () => editor.state.field(exactSourceState),
+    imageResources: () => appliedPresentation?.imageResources ?? {},
     projection: () => reviewProjectionMatches(
       appliedPresentation?.reviewProjection,
       bridgeDocumentID,
@@ -46955,7 +47011,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
               phases.projectionWorkMilliseconds += performance.now() - projectionStartedAt;
               await measure();
               requireCurrent();
-              const decoded = /* @__PURE__ */ new Set();
+              const decoded = createDocumentImageReadiness();
               while (true) {
                 phases.loopCount += 1;
                 const scrollStartedAt = performance.now();
@@ -47527,7 +47583,8 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     const previousImages = previous?.imageResources ?? {};
     const keys2 = Object.keys(value.imageResources);
-    if (previous?.imageResourceGeneration !== value.imageResourceGeneration || keys2.length !== Object.keys(previousImages).length || keys2.some((key) => previousImages[key] !== value.imageResources[key])) {
+    const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration || keys2.length !== Object.keys(previousImages).length || keys2.some((key) => previousImages[key] !== value.imageResources[key]);
+    if (imagesChanged) {
       liveImageProjection.setResources(value.imageResources, editor);
     }
     if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled || previous.writingContinuationContextKey !== value.writingContinuationContextKey) {
@@ -47538,6 +47595,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     appliedPresentation = value;
     if (configuredEditorMode(editor.state) === "review") {
+      if (imagesChanged) reviewProjection.refreshImageResources();
       const projection = reviewProjectionMatches(value.reviewProjection, bridgeDocumentID, bridgeFingerprint, dirty) ? value.reviewProjection : null;
       if (JSON.stringify(previous?.reviewProjection) !== JSON.stringify(value.reviewProjection)) {
         if (!reviewProjection.updateInPlace(projection)) editor.dispatch({ effects: reviewProjection.setProjection.of(projection) });
@@ -47652,6 +47710,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint, mode, presentation, initialSelection, citationSnapshot, recovery) {
+      presentation = admitPresentationSources(presentation, recovery?.generation ?? 0, null);
       appliedPresentation = null;
       citationTransaction?.cancel();
       citationTransaction = null;
@@ -47679,7 +47738,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       documentTitle.resetDocument();
       lastDocumentFocusTarget = void 0;
       linkPreviews = [];
-      liveImageProjection.setResources(presentation.imageResourceGeneration === 0 ? presentation.imageResources : {});
+      liveImageProjection.setResources(presentation.imageResources);
       linkPreviewIndexByRange = /* @__PURE__ */ new Map();
       lastUndoLabel = void 0;
       lastRedoLabel = void 0;
@@ -47694,7 +47753,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       document.getElementById("scholium-presentation-css").textContent = presentation.presentationCSS;
       document.getElementById("scholium-user-css").textContent = presentation.userCSS;
       documentTitle.setTitle(presentation.documentTitle);
-      linkPreviews = presentation.linkPreviewGeneration === 0 ? validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length) : [];
+      linkPreviews = validatedLinkPreviews(presentation.linkPreviews, normalizedDocumentText(text).length);
       linkPreviewIndexByRange = new Map(linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]));
       dirty = recovery?.dirty ?? false;
       appliedPresentation = presentation;

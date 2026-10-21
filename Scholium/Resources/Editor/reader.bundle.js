@@ -5180,20 +5180,29 @@
   }
 
   // document-widget-readiness.ts
+  var imageResourceRevisions = /* @__PURE__ */ new WeakMap();
+  function createDocumentImageReadiness() {
+    return /* @__PURE__ */ new WeakMap();
+  }
   async function awaitVisibleDocumentImages(root, viewport, decoded, requireCurrent, applyDecoded) {
     requireCurrent();
-    const pending = Array.from(root.querySelectorAll("img")).filter((image) => {
-      if (!image.isConnected || decoded.has(image)) return false;
+    const pending = Array.from(root.querySelectorAll("img")).map((image) => ({ image, source: image.getAttribute("src"), revision: imageResourceRevisions.get(image) ?? 0 })).filter(({ image, source, revision }) => {
+      const previous = decoded.get(image);
+      if (!image.isConnected || previous?.source === source && previous.revision === revision) return false;
       const imageRect = image.getBoundingClientRect();
       const rect = imageRect.width > 0 && imageRect.height > 0 ? imageRect : image.parentElement.getBoundingClientRect();
       return rect.bottom >= viewport.top && rect.top <= viewport.bottom && rect.right >= viewport.left && rect.left <= viewport.right;
     });
     if (pending.length === 0) return false;
-    pending.forEach((image) => decoded.add(image));
-    await Promise.all(pending.map((image) => image.decode().catch(() => {
+    for (const { image } of pending) decoded.delete(image);
+    await Promise.all(pending.map(({ image }) => image.decode().catch(() => {
     })));
     requireCurrent();
-    for (const image of pending) if (image.isConnected && root.contains(image)) applyDecoded(image);
+    for (const { image, source, revision } of pending) {
+      if (!image.isConnected || !root.contains(image) || image.getAttribute("src") !== source || (imageResourceRevisions.get(image) ?? 0) !== revision) continue;
+      decoded.set(image, { source, revision });
+      applyDecoded(image);
+    }
     return true;
   }
 
@@ -5309,7 +5318,7 @@
       if (userStyle.textContent !== user) userStyle.textContent = user;
     };
     setPresentationStyles(presentationCSS, userCSS);
-    const decodedImages = /* @__PURE__ */ new Set();
+    const decodedImages = createDocumentImageReadiness();
     async function settleLayout(requireCurrent) {
       const recordMetric = host?.recordMetric;
       const startedAt = recordMetric ? performance.now() : 0;
@@ -5343,14 +5352,18 @@
         if (recordMetric) phases.fontsWaitMilliseconds += performance.now() - phaseStartedAt;
         requireCurrent();
         phaseStartedAt = recordMetric ? performance.now() : 0;
-        const decodedVisibleImages = await awaitVisibleDocumentImages(documentRoot, {
+        let decodedVisibleImages = false;
+        while (await awaitVisibleDocumentImages(documentRoot, {
           left: 0,
           right: window.innerWidth,
           top: 0,
           bottom: viewportHeight()
-        }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image));
+        }, decodedImages, requireCurrent, (image) => readerWindow2.scholiumReviewImages?.refreshImage(image))) {
+          decodedVisibleImages = true;
+          phases.imageWaitCount++;
+          requireCurrent();
+        }
         if (recordMetric) phases.imageWaitMilliseconds += performance.now() - phaseStartedAt;
-        phases.imageWaitCount = decodedVisibleImages ? 1 : 0;
         documentRoot.getBoundingClientRect();
         phases.measureCount++;
         phaseStartedAt = recordMetric ? performance.now() : 0;

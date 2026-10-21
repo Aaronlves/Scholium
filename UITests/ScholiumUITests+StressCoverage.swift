@@ -542,6 +542,11 @@ extension ScholiumUITests {
                     "source_bytes": try XCTUnwrap(files[path]?["bytes"] as? Int),
                 ])
                 try saveSummary()
+                if kind == "image_gallery" {
+                    let preview = window.buttons["Preview image Synthetic image 0000 (image-0000.png)"]
+                    XCTAssertTrue(preview.waitForExistence(timeout: 15), "The admitted Review image must decode and expose its preview action.")
+                    XCTAssertTrue(preview.isEnabled)
+                }
                 if pass == 0, kind == "image_gallery" || kind == "format_matrix" {
                     let rendered = XCTAttachment(screenshot: window.screenshot())
                     rendered.name = "large-fixture-\(kind)-first-pass-ready"

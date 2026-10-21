@@ -201,18 +201,17 @@ native publication; they are not G7 or click-to-paint acceptance.
   `.build/performance-evidence/related-query-allocator-comparison.json`.
   This establishes neither RSS, retained memory, leaks, exact peak nor native
   latency; no practical speed gain is claimed.
-- **2026-10-21 shared editor:** Review/Edit/Source share one CodeMirror/WK host
-  and history. WK checks preserve exact Unicode/newline bytes, read-only Review,
-  cold Edit activation and mode reversal; reload restores viewport/interrupted
-  Find. Titles/measures at 600/1040 points and Callout/prose boundaries agree
-  within one CSS pixel. Native journeys cover selection/copy, completion,
-  conflict/recovery and light/dark adaptations. Regression checks cover cancelled
-  resource loads, deferred keymaps, font waiting and input superseding appearance
-  restoration. Evidence: `.build/review-codemirror/`. Earlier foreground timing
-  captures are superseded; final runtime remeasurement awaits macOS UI-automation
-  authentication. No final timing gain is claimed. Review still mounts committed
-  HTML; shared parsing, DOM virtualization, retained memory and human acceptance
-  are unproved.
+- **2026-10-21 shared editor:** Review/Edit/Source and external Markdown windows
+  retain one CodeMirror/WK host per session and complete history. WK checks preserve
+  exact Unicode/newline bytes, selection, Find, viewport and recovery; geometry
+  baseline: `.build/review-codemirror/`. Foreground Debug QA measures first opening,
+  unseen new-tab opening and returns through WindowServer frames, with exact
+  save/navigation/Undo/Redo oracles. Source-equivalent rendering changes reduce
+  long-fixture HTML median 3336→950 ms. Evidence: `.build/review-lifecycle/result.json`.
+  Derived-only menu updates retain targets; source/identity changes revoke them.
+  Code-literal regressions and two-pass mixed/gallery QA pass (`.build/syntax-repair/`).
+  Shared catalogs reduce gallery HTML 38.4 MB→34 KB. Release latency, DOM virtualization,
+  retained memory and human acceptance remain unproved.
 
 Synthetic quality cases split 18 development/18 heldout: distinct-material nDCG@6
 0.601/0.641 → 0.635/0.717; material recall 0.625 → 0.688/0.750. Agent-authored cases are

@@ -26,7 +26,7 @@ public struct MarkdownReadableWritingRange: Equatable, Sendable {
         let semantic = MarkdownSemanticDocument(parsing: document)
         let sourceMapper = SemanticSourceMapper(source)
         var protected = semantic.mathExpressions.map(\.span.utf16Range)
-        protected += MarkdownSemanticParser.commentRanges(in: document)
+        protected += MarkdownSemanticParser.commentRanges(in: document, semantic: semantic)
         var anchorMarkers = ParagraphAnchorPlanner.anchors(in: document, semantic: semantic).map(\.markerSpan.utf16Range)
         if anchorMarkers.isEmpty, bodyFragment.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("^") {
             // A capture containing only a standalone marker omits its preceding

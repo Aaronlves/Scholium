@@ -148,7 +148,7 @@ extension SidebarOutlineSourceList {
                 let needsInitialProjection = lastProjectionRevision == nil
                 let newStructure = sidebarOutlineStructure(from: configuration.roots)
                 reconcile(configuration.roots)
-                if contextualMenuNotes.contains(where: { itemsByID[$0.key]?.node.note != $0.value }) {
+                if contextualMenuNotes.contains(where: { !menuTargetMatches(itemsByID[$0.key]?.node.note, captured: $0.value) }) {
                     invalidateInteractions()
                 }
                 if needsInitialProjection || structure != newStructure {
@@ -243,6 +243,17 @@ extension SidebarOutlineSourceList {
             return targets
         }
 
+        private func menuTargetMatches(_ current: WindowDocumentLocation?, captured: WindowDocumentLocation) -> Bool {
+            guard let current else { return false }
+            // Derived projections can refresh while a menu is tracking. Only
+            // source, identity, location, or role changes revoke its Note target.
+            return current.vaultID == captured.vaultID
+                && current.relativePath.utf8.elementsEqual(captured.relativePath.utf8)
+                && current.summary.stableIdentity == captured.summary.stableIdentity
+                && current.vaultRole == captured.vaultRole
+                && current.summary.fingerprint == captured.summary.fingerprint
+        }
+
         private func makeSelectionMenu(for row: Int) -> NSMenu? {
             guard let outlineView, !outlineView.isHiddenOrHasHiddenAncestor else { return nil }
             isPreparingContextSelection = true
@@ -295,10 +306,11 @@ extension SidebarOutlineSourceList {
                             enabled: configuration.context.canPerform(command, note: note),
                             item: item
                         ) { [weak self, weak item] in
-                            guard let self, let item, item.node.note == note,
-                                self.configuration.context.canPerform(command, note: note)
+                            guard let self, let item, let current = item.node.note,
+                                self.menuTargetMatches(current, captured: note),
+                                self.configuration.context.canPerform(command, note: current)
                             else { return false }
-                            self.configuration.context.perform(command, note: note)
+                            self.configuration.context.perform(command, note: current)
                             return true
                         }
                     }

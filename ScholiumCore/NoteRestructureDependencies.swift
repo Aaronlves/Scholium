@@ -118,7 +118,7 @@ struct NoteRestructureDependencies {
     }
     static func literalRanges(in source: NoteDocument, semantic: MarkdownSemanticDocument) -> [Range<Int>] {
         let text = source.rawContent as NSString
-        let comments = MarkdownSemanticParser.commentRanges(in: source).map { range in
+        let comments = MarkdownSemanticParser.commentRanges(in: source, semantic: semantic).map { range in
             text.substring(to: range.lowerBound).utf8.count..<text.substring(to: range.upperBound).utf8.count
         }
         return comments + semantic.mathExpressions.map(\.span.utf8Range)
@@ -206,7 +206,7 @@ struct NoteRestructureMarkdownLinks {
     init(_ source: NoteDocument) throws {
         let semantic = MarkdownSemanticDocument(parsing: source)
         let text = source.rawContent as NSString
-        let comments = MarkdownSemanticParser.commentRanges(in: source).map {
+        let comments = MarkdownSemanticParser.commentRanges(in: source, semantic: semantic).map {
             text.substring(to: $0.lowerBound).utf8.count..<text.substring(to: $0.upperBound).utf8.count
         }
         let wikiRanges = semantic.links.filter {
