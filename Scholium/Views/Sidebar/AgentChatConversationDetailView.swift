@@ -46,7 +46,7 @@ struct AgentChatConversationDetailView: View {
     }
     let focusRequest: UUID?
     let consumeFocusRequest: (UUID) -> Void
-    let replyNavigation: AgentChatReplyNavigation?
+    @Binding var replyNavigation: AgentChatReplyNavigation?
     let openReply: (AgentChatReplyNavigation) -> Void
     let showList: () -> Void
     let newConversation: () -> Void
@@ -80,7 +80,7 @@ struct AgentChatConversationDetailView: View {
             }
         }
         .onDisappear {
-            fileSelectionTask?.cancel()
+            suspendTransientPresentation()
         }
         .onChange(of: focusRequest, initial: true) { _, request in
             guard let request, isVisible, isCurrentConversation else { return }
@@ -98,24 +98,28 @@ struct AgentChatConversationDetailView: View {
             }
             readingSession.setPresentationActive(visible && isCurrentConversation, for: transcriptMountID)
             if !visible {
-                if readingSession.ownsPresentation(transcriptMountID) { readingSession.endUserScroll() }
-                fileSelectionTask?.cancel()
-                presentation.completion.dismiss()
-                presentation.messageIsFocused = false
-                presentation.showsTurns = false
-                presentation.showsFiles = false
-                presentation.showsAgents = false
-                presentation.contextAnchor = nil
-                presentation.notePickerTarget = nil
-                presentation.pdfPagesTarget = nil
-                presentation.inspectedAgent = nil
-                presentation.comparisonRequest = nil
+                suspendTransientPresentation()
             }
         }
         .onChange(of: presentation.find.query) { _, _ in refreshFind(reset: true) }
         .onChange(of: displayedConversation?.messages) { _, _ in
             if presentation.showsFind { refreshFind() }
         }
+    }
+
+    private func suspendTransientPresentation() {
+        if readingSession.ownsPresentation(transcriptMountID) { readingSession.endUserScroll() }
+        fileSelectionTask?.cancel()
+        presentation.completion.dismiss()
+        presentation.messageIsFocused = false
+        presentation.showsTurns = false
+        presentation.showsFiles = false
+        presentation.showsAgents = false
+        presentation.contextAnchor = nil
+        presentation.notePickerTarget = nil
+        presentation.pdfPagesTarget = nil
+        presentation.inspectedAgent = nil
+        presentation.comparisonRequest = nil
     }
 
     /// Hiding dismisses the sheet presentation while its existing target keeps
@@ -229,10 +233,12 @@ struct AgentChatConversationDetailView: View {
     private var isHydratingHistory: Bool {
         isCurrentConversation && controller.isRefreshingHistory && displayedConversation?.threadID != nil
     }
-    private func revealMessage(_ id: String) {
-        guard let item = timelineItems.first(where: { $0.messages.contains(where: { $0.id == id }) }) else { return }
+    @discardableResult
+    private func revealMessage(_ id: String) -> Bool {
+        guard let item = timelineItems.first(where: { $0.messages.contains(where: { $0.id == id }) }) else { return false }
         if item.isProcess { expandedActivityIDs.insert(id) }
         readingSession.navigate(to: item.id, in: timelineItems.map(\.id))
+        return true
     }
 
     @ViewBuilder
@@ -427,8 +433,11 @@ struct AgentChatConversationDetailView: View {
             }
         }
         .task(id: replyNavigation) {
-            guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
-            revealMessage(target.messageID)
+            guard let target = replyNavigation, isCurrentConversation,
+                target.conversationID == nativeSession.conversationID,
+                revealMessage(target.messageID)
+            else { return }
+            if replyNavigation?.id == target.id { replyNavigation = nil }
         }
         .onChange(of: presentation.find.selectedID) { _, id in
             guard readingSession.ownsPresentation(transcriptMountID) else { return }
@@ -616,7 +625,8 @@ struct AgentChatConversationDetailView: View {
                     } else if !message.text.isEmpty {
                         AgentChatMarkdown(
                             text: message.text, readerID: message.id, isStreaming: message.isStreaming, expandsToFillWidth: message.role != .user,
-                            quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
+                            quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil,
+                            allowsNativeParagraph: message.role == .user)
                     }
                     if !message.attachments.isEmpty || !message.localMaterials.isEmpty {
                         ScrollView(.horizontal) {

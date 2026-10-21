@@ -69,7 +69,7 @@ struct AgentChatHistoryPageLayoutTests {
                     openAttachment: { _, _ in }, showChanges: { _ in },
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: reading,
                     nativeSession: native, focusRequest: nil, consumeFocusRequest: { _ in },
-                    replyNavigation: nil, openReply: { _ in }, showList: {}, newConversation: {},
+                    replyNavigation: .constant(nil), openReply: { _ in }, showList: {}, newConversation: {},
                     didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}))
             try await settle(host) {
                 reading.isInitialTranscriptReady && reading.areReadersHydrated(initialIDs)
@@ -78,7 +78,7 @@ struct AgentChatHistoryPageLayoutTests {
             }
             let initialReaders = try await sampleReaders(in: host, fixture: fixture)
             #expect(Set(initialReaders.keys) == initialIDs)
-            let retained = try #require(initialReaders["retained-answer-0"]?.view)
+            let retained = try #require(initialReaders["retained-answer-0"]?.view as? WKWebView)
             let selected = try #require(
                 try await retained.evaluateJavaScript(
                     """
@@ -162,11 +162,11 @@ struct AgentChatHistoryPageLayoutTests {
                 if !initialIDs.contains(id) {
                     #expect(
                         abs(before.width - first.width) < 2 && abs(before.height - first.height) < 2,
-                        "Removing the zero-height parent must not change the prepared WK size")
+                        "Removing the zero-height parent must not change the prepared reader size")
                     #expect(
                         abs(sample.viewportWidth - before.width) <= 1
                             && abs(sample.height - before.height) <= 1,
-                        "Publication requires the actual WK width and applied height to agree with the final DOM"
+                        "Publication requires the actual reader width and applied height to agree with its complete text layout"
                     )
                     #expect(
                         abs(sample.view.bounds.width - first.width) < 2
@@ -187,7 +187,7 @@ struct AgentChatHistoryPageLayoutTests {
                 }
                 if let old = initialReaders[id] {
                     #expect(
-                        sample.view === old.view, "Prepending and resizing must keep every existing WK instance"
+                        sample.view === old.view, "Prepending and resizing must keep every existing reader instance"
                     )
                 }
             }
@@ -288,7 +288,7 @@ struct AgentChatHistoryPageLayoutTests {
     }
 
     private struct ReaderSample {
-        let view: WKWebView
+        let view: NSView
         let nativeSize: CGSize
         let viewportWidth: CGFloat
         let height: CGFloat
@@ -299,8 +299,28 @@ struct AgentChatHistoryPageLayoutTests {
         ReaderSample]
     {
         var result: [String: ReaderSample] = [:]
-        for reader in readers(in: host) {
-            let nativeSize = reader.bounds.size
+        for view in readers(in: host) {
+            let nativeSize = view.bounds.size
+            try #require(nativeSize.width.isFinite && nativeSize.height.isFinite && nativeSize.width > 0 && nativeSize.height > 0)
+            if let paragraph = view as? AgentChatNativeParagraphView {
+                let message = try #require(
+                    fixture.conversation.messages.first {
+                        $0.role == .user && $0.text.utf8.elementsEqual(paragraph.string.utf8)
+                    })
+                try #require(fixture.sentinels[message.id] != nil)
+                try #require(result[message.id] == nil)
+                #expect(paragraph.string.utf8.elementsEqual(message.text.utf8))
+                let container = try #require(paragraph.textContainer)
+                let layout = try #require(paragraph.layoutManager)
+                layout.ensureLayout(for: container)
+                let used = layout.usedRect(for: container)
+                result[message.id] = ReaderSample(
+                    view: paragraph, nativeSize: nativeSize, viewportWidth: container.containerSize.width,
+                    height: max(ScholiumChatAppearance.messageLoadingHeight, ceil(used.height)),
+                    textWidth: ceil(used.width))
+                continue
+            }
+            let reader = try #require(view as? WKWebView)
             let value = try await reader.callAsyncJavaScript(
                 """
                 const root = document.querySelector('#scholium-document');
@@ -346,8 +366,8 @@ struct AgentChatHistoryPageLayoutTests {
             hydrated = session.areReadersHydrated(expectedReaderIDs)
             if let host {
                 func collect(_ view: NSView) {
-                    if let reader = view as? WKWebView {
-                        sizes[ObjectIdentifier(reader)] = reader.bounds.size
+                    if view is WKWebView || view is AgentChatNativeParagraphView {
+                        sizes[ObjectIdentifier(view)] = view.bounds.size
                     }
                     view.subviews.forEach(collect)
                 }
@@ -360,8 +380,9 @@ struct AgentChatHistoryPageLayoutTests {
         Dictionary(
             uniqueKeysWithValues: readers(in: host).map { (ObjectIdentifier($0), $0.bounds.size) })
     }
-    private func readers(in view: NSView) -> [WKWebView] {
-        (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap(readers)
+    private func readers(in view: NSView) -> [NSView] {
+        if view is WKWebView || view is AgentChatNativeParagraphView { return [view] }
+        return view.subviews.flatMap { readers(in: $0) }
     }
     private func verifyAnchor(
         _ session: AgentChatReadingSession, expected: AgentChatReadingSession.Anchor

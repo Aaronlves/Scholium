@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import ScholiumContracts
 import Testing
@@ -65,6 +66,8 @@ struct WorkspaceRefreshDiagnosticsTests {
             ))
         let setup = WorkspaceRuntime(configuration: configuration)
         let clock = ContinuousClock()
+        let beforeColdMemory = try processMemory()
+        FileHandle.standardOutput.write(Data("REFRESH_DIAGNOSTIC_PHASE cold_start\n".utf8))
         let coldStart = clock.now
         let configured: WorkspaceHandle
         do {
@@ -80,6 +83,8 @@ struct WorkspaceRefreshDiagnosticsTests {
             throw error
         }
         let coldElapsed = coldStart.duration(to: clock.now)
+        let coldMemory = try processMemory()
+        FileHandle.standardOutput.write(Data("REFRESH_DIAGNOSTIC_PHASE cold_complete\n".utf8))
         let assignment = configured.assignment
         let coldMeasurement = await configured.latestRefreshMeasurement
         await setup.shutdown()
@@ -174,6 +179,12 @@ struct WorkspaceRefreshDiagnosticsTests {
             "configuration": "\(buildConfiguration); presentation wait excluded",
             "cold_configuration_ms": milliseconds(coldElapsed),
             "cold_search_ms": milliseconds(coldMeasurement.searchDuration),
+            "cold_projection_work_ms": milliseconds(coldMeasurement.projectionDuration),
+            "cold_parse_work_ms": milliseconds(coldMeasurement.parseDuration),
+            "cold_graph_ms": milliseconds(coldMeasurement.graphDuration),
+            "cold_projected_documents": coldMeasurement.projectedDocuments,
+            "before_cold_process_memory": beforeColdMemory,
+            "cold_complete_process_memory": coldMemory,
             "cold_cache_read_work_ms": milliseconds(coldMeasurement.cacheReadDuration),
             "cold_cache_write_work_ms": milliseconds(coldMeasurement.cacheWriteDuration),
             "samples": samples,
@@ -187,6 +198,21 @@ struct WorkspaceRefreshDiagnosticsTests {
     private func milliseconds(_ duration: Duration) -> Double {
         let components = duration.components
         return Double(components.seconds) * 1_000 + Double(components.attoseconds) / 1e15
+    }
+
+    private func processMemory() throws -> [String: UInt64] {
+        var info = mach_task_basic_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let capacity = Int(count)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: capacity) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        try #require(result == KERN_SUCCESS)
+        var usage = rusage()
+        try #require(getrusage(RUSAGE_SELF, &usage) == 0)
+        return ["resident_bytes": UInt64(info.resident_size), "peak_resident_bytes": UInt64(usage.ru_maxrss)]
     }
 
     private enum DiagnosticError: Error {

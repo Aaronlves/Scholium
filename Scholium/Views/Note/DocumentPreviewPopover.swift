@@ -206,7 +206,8 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
             MainActor.assumeIsolated { self?.refreshAppearance() }
         }
         for name in [NSColor.systemColorsDidChangeNotification, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification] {
-            let center = name == NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+            let center =
+                name == NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
                 ? NSWorkspace.shared.notificationCenter : NotificationCenter.default
             // Each token retains its own center for symmetric cancellation.
             let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in

@@ -39,6 +39,87 @@ struct AgentChatReadPageExtensionTests {
         }
     }
 
+    @Test("An admission that expires during mathematics preparation cannot commit its reply")
+    func mathematicsPreparationRechecksCurrency() async throws {
+        _ = NSApplication.shared
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let page = AgentChatReadPageExtension()
+        defer {
+            page.cancel()
+            webView.stopLoading()
+        }
+        let world = SafeMarkdownReadWebView.bridgeContentWorld
+        func evaluate(_ script: String) async throws -> Any? {
+            try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: world)
+        }
+        webView.loadHTMLString("<html><body id='math-admission'>Original reply</body></html>", baseURL: nil)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while (try? await evaluate("return document.body?.id === 'math-admission';")) as? Bool != true {
+            try #require(ContinuousClock.now < deadline, "The mathematics admission page did not load")
+            await Task.yield()
+        }
+        _ = try await evaluate(
+            """
+            window.replyCommits = 0;
+            window.scholiumUpdateReply = async update => {
+                window.replyCommits++;
+                document.body.innerHTML = update.html;
+                return true;
+            };
+            """)
+        page.didFinalizePage(fingerprint: "original")
+        page.didFinishNavigation(nil, isCurrent: { true })
+        var admissionChecks = 0
+        var publications = 0
+        var failures = 0
+        let expiredAdmitted = page.updateIfNeeded(
+            body: #"<span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code>x</code></span>"#,
+            source: "$x$", fingerprint: "expired", signature: "expired", documentID: "reply", loadGeneration: 1,
+            presentationCSS: "", userCSS: "", in: webView,
+            // This controlled admission is valid when its task enters,
+            // then expires across the real asynchronous WebKit preparation.
+            isCurrent: {
+                admissionChecks += 1
+                return admissionChecks == 1
+            },
+            didApply: { _, _ in publications += 1 }, didFail: { _ in failures += 1 })
+        #expect(expiredAdmitted)
+        while admissionChecks < 2 {
+            try #require(ContinuousClock.now < deadline, "Mathematics preparation did not recheck its admission")
+            await Task.yield()
+        }
+        #expect(try await evaluate("return window.scholiumMath?.version === 1;") as? Bool == true)
+        #expect(try await evaluate("return document.querySelectorAll('#scholium-lazy-math-css').length;") as? Int == 1)
+        #expect(try await evaluate("return window.replyCommits;") as? Int == 0)
+        #expect(try await evaluate("return document.body.textContent;") as? String == "Original reply")
+        #expect(publications == 0 && failures == 0)
+        _ = try await evaluate(
+            """
+            window.mathMarkerReads = 0;
+            const prototype = Object.getPrototypeOf(getComputedStyle(document.documentElement));
+            const readProperty = prototype.getPropertyValue;
+            prototype.getPropertyValue = function(name) {
+                if (name === '--scholium-math-css-ready') window.mathMarkerReads++;
+                return readProperty.call(this, name);
+            };
+            """)
+        let currentAdmitted = page.updateIfNeeded(
+            body: #"<span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code>x</code></span>"#,
+            source: "$x$", fingerprint: "current", signature: "current", documentID: "reply", loadGeneration: 1,
+            presentationCSS: "", userCSS: "", in: webView, isCurrent: { true },
+            didApply: { _, _ in publications += 1 }, didFail: { _ in failures += 1 })
+        #expect(currentAdmitted)
+        while publications == 0 && failures == 0 {
+            try #require(ContinuousClock.now < deadline, "The current mathematics reply did not commit")
+            await Task.yield()
+        }
+        #expect(publications == 1 && failures == 0)
+        #expect(try await evaluate("return window.replyCommits;") as? Int == 1)
+        #expect(try await evaluate("return window.mathMarkerReads;") as? Int == 0, "A completed installation survives its source admission expiring.")
+    }
+
     @Test("A newer reply follows an in-flight DOM commit or replaced page without stale publication", arguments: [false, true])
     func overlappingReplyUpdates(replacePage: Bool) async throws {
         _ = NSApplication.shared
@@ -223,7 +304,7 @@ struct AgentChatReadPageExtensionTests {
             var failures = 0
             let sources = [
                 "A": "Repeated exact source — 中文 and 🦉.",
-                "B": "Superseded intermediate source.",
+                "B": #"<span class="scholium-math" data-math-source="eA==" data-math-kind="inline">Superseded intermediate source.</span>"#,
                 "D": "Current source after the repeated revision.",
                 "E": "Final exact source with **Markdown** and 🦉.",
             ]
@@ -276,6 +357,8 @@ struct AgentChatReadPageExtensionTests {
             #expect(overlap.isEmpty && rejected.isEmpty && failures == 0)
             #expect(applied == [sources["A"]!, sources["D"]!, sources["E"]!])
             #expect(result["fingerprint"] == "E" && result["body"] == sources["E"])
+            #expect(try await evaluate("return window.scholiumMath?.version === 1;") as? Bool == false)
+            #expect(try await evaluate("return document.querySelectorAll('#scholium-lazy-math-css').length;") as? Int == 0)
             _ = try await evaluate("window.releaseAllReplyGates();")
         } catch {
             // Failed assertions/bridge work must not strand either JavaScript

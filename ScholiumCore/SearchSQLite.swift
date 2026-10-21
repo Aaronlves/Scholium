@@ -67,7 +67,12 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
             { _ in Task<Never, Never>.isCancelled ? 1 : 0 },
             nil
         )
-        do { try execute("PRAGMA foreign_keys=ON;") } catch {
+        do {
+            try execute("PRAGMA foreign_keys=ON;")
+            // Spill at the connection's cache budget instead of retaining the
+            // platform's larger dirty-page threshold until transaction commit.
+            try execute("PRAGMA cache_spill=1;")
+        } catch {
             close()
             throw error
         }

@@ -10,9 +10,13 @@ struct RelatedContentBM25F {
         let fieldLengths: [String: Double]
         let textIndexes: [String: RelatedContentTextIndex]
         init(segments: [SearchTextSegment]) {
+            self.init(rankingText: segments.map(\.relatedRankingText))
+        }
+
+        init(rankingText: [[String: String]]) {
             var result: [String: String] = [:]
-            for segment in segments {
-                for (field, text) in segment.relatedRankingText {
+            for fields in rankingText {
+                for (field, text) in fields {
                     result[field, default: ""] += "\n" + text
                 }
             }

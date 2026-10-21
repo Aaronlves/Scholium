@@ -6,6 +6,31 @@ import Testing
 
 @Suite("Chat projection scheduling", .serialized) @MainActor
 struct AgentChatReplyProjectionTests {
+    @Test(
+        "Native paragraphs require exact completed plain source",
+        arguments: [
+            "Synthetic question 2000. 请核对来源和解释边界。", "Cafe\u{301} 中文😀👩‍🔬", "Ordinary < text & more > prose", "https://example.com",
+        ])
+    func nativeParagraphPreservesBytes(source: String) {
+        let snapshot = AgentChatReplyProjection.Snapshot(.init(source))
+        #expect(snapshot.nativeParagraph?.utf8.elementsEqual(source.utf8) == true)
+        #expect(!snapshot.html.contains("<a "), "Only text already unlinked by the safe renderer is eligible")
+        #expect(AgentChatReplyProjection.Snapshot(.init(source, isStreaming: true)).nativeParagraph == nil)
+        #expect(AgentChatReplyProjection.Snapshot(.init(source), displaySource: source + " suffix").nativeParagraph == nil)
+    }
+
+    @Test(
+        "Rich or whitespace-sensitive source remains in the safe reader",
+        arguments: [
+            "", " plain", "plain ", "two  spaces", "line\nnext", "line\r\nnext", "a\tb", "a\u{00a0}b", "a\u{2028}b", "a\u{0000}b",
+            "**strong**", "`code`", "# Heading", "- list", "> quote", "[link](https://example.com)", "<https://example.com>",
+            "x[^missing]", "text ^anchor", "[^n]: definition", "> [!note] callout", "$x$", "<b>html</b>", "<!-- comment -->",
+            "[[Note]]", "==highlight==", "![image](image.png)", "[citation](cite:item)",
+        ])
+    func nativeParagraphRejectsProjectedContent(source: String) {
+        #expect(AgentChatReplyProjection.Snapshot(.init(source)).nativeParagraph == nil)
+    }
+
     actor Gate {
         var sources: [String] = []
         var requests: [AgentChatReplyProjection.Request] = []

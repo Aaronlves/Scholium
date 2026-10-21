@@ -47,7 +47,7 @@ struct AgentChatFloatingComposerTests {
             openAttachment: { _, _ in }, showChanges: { _ in },
             showConversationChanges: { _ in }, presentation: presentation, readingSession: session,
             nativeSession: AgentChatComposerSession(conversationID: conversation.id),
-            focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+            focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: .constant(nil), openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {})
         let host = NSHostingView(

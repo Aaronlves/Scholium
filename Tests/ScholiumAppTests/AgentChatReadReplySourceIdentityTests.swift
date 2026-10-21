@@ -20,17 +20,127 @@ struct AgentChatReadReplySourceIdentityTests {
         let session: AgentChatReadingSession
         let presentationID: UUID
         var usesMarkdown = false
+        var isStreaming = false
 
         var body: some View {
             Group {
                 if usesMarkdown {
-                    AgentChatMarkdown(text: input.source.source, readerID: "exact-reply")
+                    AgentChatMarkdown(text: input.source.source, readerID: "exact-reply", isStreaming: isStreaming)
                 } else {
-                    AgentChatReadReply(source: input.source.source, readerID: "exact-reply", quote: nil, openLink: { _ in })
+                    AgentChatReadReply(source: input.source.source, readerID: "exact-reply", isStreaming: isStreaming, quote: nil, openLink: { _ in })
                 }
             }
             .environment(\.chatReadingPresentation, .init(id: presentationID, session: session))
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    @Test("Plain streamed replies load mathematics in place only when needed, preserving selection and world isolation")
+    func streamedMathematicsLoadsInRetainedPage() async throws {
+        _ = NSApplication.shared
+        let original = "Retained prefix 中文 e\u{301} 😀.\r\n\r\nOrdinary synthetic paragraph.\r\n"
+        let input = Input(original)
+        let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
+        let host = NSHostingView(rootView: Reply(input: input, session: session, presentationID: presentationID, isStreaming: true))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 480),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            session.endPresentation(presentationID)
+            window.contentView = nil
+            window.close()
+        }
+        func reader(_ view: NSView) -> WKWebView? {
+            (view as? WKWebView) ?? view.subviews.lazy.compactMap { reader($0) }.first
+        }
+        func settle(_ condition: () async throws -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while !(try await condition()) {
+                try #require(ContinuousClock.now < deadline, "The retained mathematics reader did not settle")
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try await settle { session.areReadersHydrated(["exact-reply"]) }
+        let web = try #require(reader(host))
+        let native = try #require(web.navigationDelegate as? SafeMarkdownReadWebView.Coordinator)
+        func bridge(_ script: String) async throws -> Any? {
+            try await web.callAsyncJavaScript(
+                script, arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+        }
+        func nativeSourceMatches(_ source: String) -> Bool {
+            let current = Mirror(reflecting: native).children.first { $0.label == "selectionSource" }?.value as? String
+            return current?.utf8.elementsEqual(source.utf8) == true
+        }
+        func expectSelectionAndLifetime() async throws {
+            #expect(reader(host) === web)
+            #expect(try await web.evaluateJavaScript("window.__scholiumSyntheticMathLifetime === true") as? Bool == true)
+            let selection = try #require(
+                try await bridge(
+                    """
+                    const selection = getSelection();
+                    return {text: selection?.toString(), anchor: selection?.anchorOffset, focus: selection?.focusOffset};
+                    """) as? [String: Any])
+            #expect(selection["text"] as? String == "Retained prefix")
+            #expect(selection["anchor"] as? Int == "Retained prefix".utf16.count)
+            #expect(selection["focus"] as? Int == 0)
+            #expect(try await web.evaluateJavaScript("window.scholiumMath?.version === 1") as? Bool == false)
+        }
+        #expect(try await bridge("return window.scholiumMath?.version === 1;") as? Bool == false)
+        #expect(try await bridge("return getComputedStyle(document.documentElement).getPropertyValue('--scholium-math-css-ready').trim();") as? String == "")
+        _ = try await web.evaluateJavaScript("window.__scholiumSyntheticMathLifetime = true")
+        // Establish a controlled backwards DOM selection. The separate pointer
+        // selection suite owns native event delivery and Copy availability.
+        let selected =
+            try await bridge(
+                """
+                const text = document.querySelector('#scholium-document p')?.firstChild;
+                if (!text || text.nodeType !== Node.TEXT_NODE) return false;
+                getSelection().setBaseAndExtent(text, 'Retained prefix'.length, text, 0);
+                return getSelection().toString() === 'Retained prefix';
+                """) as? Bool
+        try #require(selected == true)
+
+        let plain = original + "\r\nMore plain prose.\r\n"
+        input.source = .init(plain)
+        try await settle { nativeSourceMatches(plain) && session.areReadersHydrated(["exact-reply"]) }
+        #expect(try await bridge("return window.scholiumMath?.version === 1;") as? Bool == false)
+        #expect(try await bridge("return document.querySelectorAll('#scholium-lazy-math-css').length;") as? Int == 0)
+        try await expectSelectionAndLifetime()
+        _ = try await bridge(
+            """
+            window.__scholiumMathMarkerReads = 0;
+            const prototype = Object.getPrototypeOf(getComputedStyle(document.documentElement));
+            const readProperty = prototype.getPropertyValue;
+            prototype.getPropertyValue = function(name) {
+                if (name === '--scholium-math-css-ready') window.__scholiumMathMarkerReads++;
+                return readProperty.call(this, name);
+            };
+            """)
+
+        let mathematics = plain + "\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\nz^2 = x^2 + y^2\r\n$$\r\n"
+        for (source, count) in [(mathematics, 2), (mathematics + "\r\nAnother inline $a+b$.\r\n", 3)] {
+            input.source = .init(source)
+            try await settle {
+                let rendered = try await bridge("return document.querySelectorAll('#scholium-document .scholium-math-rendered .katex').length;") as? Int
+                return nativeSourceMatches(source) && session.areReadersHydrated(["exact-reply"]) && rendered == count
+            }
+            #expect(try await bridge("return window.scholiumMath?.version === 1;") as? Bool == true)
+            #expect(try await bridge("return document.querySelectorAll('#scholium-lazy-math-css').length;") as? Int == 1)
+            #expect(
+                try await bridge("return window.__scholiumMathMarkerReads;") as? Int == 1,
+                "Later mathematics must reuse the prepared page without invoking its loader.")
+            #expect(
+                try await bridge(
+                    """
+                    await document.fonts.ready;
+                    return getComputedStyle(document.querySelector('#scholium-document .katex')).fontFamily.includes('KaTeX_Main');
+                    """) as? Bool == true)
+            try await expectSelectionAndLifetime()
         }
     }
 

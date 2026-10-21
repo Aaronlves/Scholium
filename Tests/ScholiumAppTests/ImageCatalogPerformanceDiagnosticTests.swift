@@ -15,6 +15,153 @@ import WebKit
         "Image catalog performance diagnostics", .serialized,
         .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_GALLERY_DIAGNOSTIC_FIXTURE"] != nil))
     struct ImageCatalogPerformanceDiagnosticTests {
+        @Test("Ordinary gallery text edits revalidate the current image catalog")
+        func ordinaryTextImageRefresh() async throws {
+            let fixture = try Self.fixtureURL()
+            let relativePath = "02-topics/Stress/Stress Image Gallery.md"
+            let original = try Data(contentsOf: fixture.appendingPathComponent(relativePath))
+            let source = try #require(NoteDocument.decodeUTF8PreservingBOM(original))
+            let root = fixture.deletingLastPathComponent().appendingPathComponent(
+                "image-edit-runtime-\(UUID().uuidString.lowercased())", isDirectory: true)
+            let working = root.appendingPathComponent("fixture", isDirectory: true)
+            let roles = ["01-analyses", "02-topics", "03-works"]
+            let manager = FileManager.default
+            for role in roles {
+                try manager.createDirectory(
+                    at: working.appendingPathComponent(role), withIntermediateDirectories: true)
+            }
+            defer {
+                do { try manager.removeItem(at: root) } catch { Issue.record(error) }
+            }
+            let sourceFile = working.appendingPathComponent(relativePath)
+            try manager.createDirectory(at: sourceFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try manager.copyItem(at: fixture.appendingPathComponent(relativePath), to: sourceFile)
+            let attachments = "02-topics/Attachments"
+            try manager.copyItem(
+                at: fixture.appendingPathComponent(attachments), to: working.appendingPathComponent(attachments))
+            let runtime = WorkspaceRuntime(
+                configuration: .live(
+                    .init(
+                        applicationSupportURL: root.appendingPathComponent("state/Application Support", isDirectory: true),
+                        workspaceRegistryStorageURL: root.appendingPathComponent("state/Registry", isDirectory: true))))
+            do {
+                let handle = try await runtime.configureTriptych(
+                    paperAnalysisURL: working.appendingPathComponent(roles[0]),
+                    topicKnowledgeURL: working.appendingPathComponent(roles[1]),
+                    outputURL: working.appendingPathComponent(roles[2]),
+                    portableContainerURL: working, triptychName: "Image Edit Diagnostic")
+                let workspace = try await handle.snapshot()
+                let vault = try #require(
+                    workspace.vaults.first {
+                        $0.vault.canonicalPath == working.appendingPathComponent(roles[1]).path
+                    })
+                let note = try #require(vault.documents.first { $0.id.relativePath == "Stress/Stress Image Gallery.md" })
+                let recorder = ImageRefreshRecorder()
+                let dispatcher = TimedDispatcher()
+                let session = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+                session.testingImageRefreshObserver = { recorder.refreshes.append($0) }
+                let harness = MarkdownEditorWebViewIntegrationTests.EditorHarness(
+                    source: source, suppliedSession: session, initialMode: .source, ordersWindowFront: false,
+                    imageResourcesQuery: { currentSource in
+                        let start = ContinuousClock.now
+                        do {
+                            let images = try await handle.documents.exportImages(
+                                for: note.id, markdownSource: currentSource)
+                            recorder.queries.append(
+                                .init(
+                                    images: images.count, bytes: images.values.reduce(0) { $0 + $1.data.count },
+                                    elapsed: start.duration(to: .now)))
+                            return images
+                        } catch {
+                            Issue.record(error)
+                            return [:]
+                        }
+                    })
+                do {
+                    try await harness.waitUntilReady()
+                    try await recorder.waitForRefresh(generation: 0, session: session)
+                    let webView = try #require(session.webView)
+                    let sourceEnd = EditorSourceOffsetMap(source: source).editorUTF16Length
+                    harness.revealEditorRange(fromUTF16: sourceEnd, toUTF16: sourceEnd)
+                    try await harness.waitUntilSelection(anchor: sourceEnd, head: sourceEnd)
+                    var edited = source
+                    var expectedHead = sourceEnd
+                    for sample in 0..<4 {
+                        let beforeQueries = recorder.queries.count
+                        let beforeRefreshes = recorder.refreshes.count
+                        let generation = session.generation + 1
+                        let phase = sample == 0 ? "edit-warmup" : "edit-retained-\(sample)"
+                        dispatcher.begin(phase)
+                        let start = ContinuousClock.now
+                        let insertion = " Image catalog edit \(sample) e\u{301} 中文 🦉."
+                        try await session.perform(.pastePlain, argument: insertion)
+                        edited += insertion
+                        expectedHead += insertion.utf16.count
+                        try await harness.waitUntilSelection(anchor: expectedHead, head: expectedHead)
+                        let undoLabel = try #require(session.context?.undoLabel)
+                        try await recorder.waitForRefresh(generation: generation, session: session)
+                        let completedAt = ContinuousClock.now
+                        let timing = try #require(
+                            recorder.refreshes.dropFirst(beforeRefreshes).last {
+                                $0.generation == generation && $0.accepted
+                            })
+                        let queries = Array(recorder.queries.dropFirst(beforeQueries))
+                        try #require(queries.count == 1)
+                        try #require(queries.allSatisfy { $0.images == 244 && $0.bytes == 65_272_112 })
+                        let requests = dispatcher.records.filter { $0.phase == phase }
+                        let catalogs = requests.filter { $0.bytes > 1_000_000 }
+                        try Self.report([
+                            "metric": "gallery-text-image-refresh", "sample": sample,
+                            "retained": sample > 0, "mode": "source", "generation": generation,
+                            "queryCount": queries.count, "images": queries[0].images, "imageBytes": queries[0].bytes,
+                            "queryMilliseconds": Self.milliseconds(queries[0].elapsed),
+                            "sourceCaptureMilliseconds": Self.milliseconds(timing.sourceCapture),
+                            "containsAndQueryMilliseconds": timing.containsAndQuery.map(Self.milliseconds) ?? 0,
+                            "admissionMilliseconds": timing.admissionGuard.map(Self.milliseconds) ?? 0,
+                            "catalogPublicationMilliseconds": timing.publication.map(Self.milliseconds) ?? 0,
+                            "refreshMilliseconds": Self.milliseconds(timing.startedAt.duration(to: timing.completedAt)),
+                            "editThroughImageDeliveryMilliseconds": Self.milliseconds(start.duration(to: completedAt)),
+                            "bridgeRequests": requests.count, "bridgeRequestBytes": requests.reduce(0) { $0 + $1.bytes },
+                            "bridgeElapsedSumMilliseconds": requests.reduce(0) { $0 + Self.milliseconds($1.elapsed) },
+                            "largeCatalogRequests": catalogs.count, "largeCatalogRequestBytes": catalogs.reduce(0) { $0 + $1.bytes },
+                            "catalogToDispatchMilliseconds": catalogs.first.map {
+                                Self.milliseconds(timing.completedAt.duration(to: $0.startedAt))
+                            } ?? 0,
+                            "scope":
+                                "Current-image export/validation, catalog encoding and bridge receipts; excludes paint and RSS. One warmup, three retained edits.",
+                        ])
+                        // Exact-source and history oracles follow the measured interval.
+                        #expect(Data(try await session.currentText().utf8) == Data(edited.utf8))
+                        #expect(session.context?.selections == [.init(anchor: expectedHead, head: expectedHead)])
+                        #expect(session.context?.undoLabel == undoLabel)
+                        #expect(session.generation == generation)
+                    }
+                    // Replay the actual CodeMirror Undo route. Image presentation
+                    // must neither add history events nor move the exact caret.
+                    for _ in 0..<4 {
+                        _ = try await webView.callAsyncJavaScript(
+                            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', keyCode:90, which:90, metaKey:true, bubbles:true, cancelable:true}));",
+                            arguments: [:], in: nil, contentWorld: .page)
+                    }
+                    #expect(Data(try await session.currentText().utf8) == original)
+                    #expect(session.context?.selections == [.init(anchor: sourceEnd, head: sourceEnd)])
+                    #expect(session.context?.undoLabel == nil)
+                    #expect(session.context?.redoLabel != nil)
+                    session.testingImageRefreshObserver = nil
+                    await harness.closeAndDrain()
+                } catch {
+                    session.testingImageRefreshObserver = nil
+                    await harness.closeAndDrain()
+                    throw error
+                }
+                await runtime.shutdown()
+                #expect(try Data(contentsOf: sourceFile) == original)
+            } catch {
+                await runtime.shutdown()
+                throw error
+            }
+        }
+
         @Test("Generated image catalog is admitted in Source before live layout")
         func galleryAdmissionAndLayout() async throws {
             let (source, resources, _) = try Self.fixture()
@@ -361,7 +508,35 @@ import WebKit
         }
 
         @MainActor
+        private final class ImageRefreshRecorder {
+            struct Query {
+                let images: Int
+                let bytes: Int
+                let elapsed: Duration
+            }
+            var queries: [Query] = []
+            var refreshes: [MarkdownEditorSession.TestingImageRefreshTiming] = []
+
+            func waitForRefresh(generation: Int, session: MarkdownEditorSession) async throws {
+                let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+                while !refreshes.contains(where: { $0.accepted && $0.generation == generation }) {
+                    try #require(ContinuousClock.now < deadline, "The current gallery image query did not finish.")
+                    try await Task.sleep(for: .milliseconds(2))
+                }
+                try await session.testingAwaitImageResourceRefreshAndPresentation()
+                _ = try await session.send(.queryContext, in: #require(session.webView))
+            }
+        }
+
+        @MainActor
         private final class TimedDispatcher: MarkdownEditorBridgeDispatching {
+            struct Record {
+                let phase: String
+                let bytes: Int
+                let startedAt: ContinuousClock.Instant
+                let elapsed: Duration
+            }
+            private(set) var records: [Record] = []
             private var phase = "opening-source"
             private var phaseStart = ContinuousClock.now
 
@@ -371,10 +546,12 @@ import WebKit
             }
 
             func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+                let phase = self.phase
                 let start = ContinuousClock.now
                 let beforeDispatch = ImageCatalogPerformanceDiagnosticTests.milliseconds(
                     phaseStart.duration(to: start))
                 defer {
+                    records.append(.init(phase: phase, bytes: requestJSON.utf8.count, startedAt: start, elapsed: start.duration(to: .now)))
                     try? ImageCatalogPerformanceDiagnosticTests.report([
                         "metric": "gallery-probe-native-dispatch", "phase": phase,
                         "beforeDispatchMilliseconds": beforeDispatch, "requestBytes": requestJSON.utf8.count,

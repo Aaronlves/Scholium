@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 import ScholiumContracts
 import SwiftUI
@@ -280,6 +281,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var navigationIntentTaskID: UUID?
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     private var pendingImageResources: [String: String] = [:]
+    private struct ImageResourceIdentity: Equatable {
+        let mimeType: String
+        let digest: SHA256.Digest
+    }
+    // Exact destination bytes matter to JavaScript object keys even when Swift
+    // considers NFC and NFD paths canonically equivalent. Retain only compact
+    // identities, not another copy of the admitted raw image catalog.
+    private var pendingImageResourceIdentities: [Data: ImageResourceIdentity] = [:]
     private var pendingImageResourceGeneration = 0
     // Pending admission is not proof of delivery: typing may supersede its
     // generation while earlier presentation operations are still awaiting.
@@ -414,6 +423,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         /// Starts after debounce and initial identity admission; query time can
         /// include suspension and is elapsed time rather than main-actor CPU.
         var testingImageRefreshObserver: ((TestingImageRefreshTiming) -> Void)?
+
+        /// Join the current image owner and its acknowledged presentation,
+        /// without using a delay as evidence that an unchanged catalog drained.
+        func testingAwaitImageResourceRefreshAndPresentation() async throws {
+            let intendedEpoch = requestEpoch
+            let intendedDocumentID = documentID
+            while let query = imageResourceQueryTask {
+                await query.value
+                guard intendedEpoch == requestEpoch, intendedDocumentID == documentID else {
+                    throw SessionError.staleRequest
+                }
+            }
+            guard let webView else { throw SessionError.unavailable }
+            try await convergePendingPresentationState(
+                in: webView, requiringRequestEpoch: intendedEpoch, documentID: intendedDocumentID)
+        }
 
         struct TestingRecoveryRetentionStats: Sendable {
             let currentGeneration: Int
@@ -658,6 +683,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingLinkPreviews = []
         pendingLinkPreviewGeneration = 0
         pendingImageResources = [:]
+        pendingImageResourceIdentities = [:]
         deliveredImageResources = nil
         removeImageResourceQuery()
         pendingScrollFraction = nil
@@ -954,6 +980,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         if !preservesLinkPreviews { pendingLinkPreviews = [] }
         pendingLinkPreviewGeneration = 0
         pendingImageResources = [:]
+        pendingImageResourceIdentities = [:]
         pendingImageResourceGeneration = generation
         deliveredImageResources = nil
         refreshImageResources()
@@ -1508,6 +1535,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             expectedDocumentID == documentID, expectedGeneration == generation
         else { return }
         var resources: [String: String] = [:]
+        var identities: [Data: ImageResourceIdentity] = [:]
         var decodedBytes = 0
         var metadataBytes = 1_024
         for destination in images.keys.sorted() {
@@ -1516,17 +1544,31 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard image.data.count <= markdownEditorMaximumImageResourceBytes - decodedBytes,
                 keyBytes <= markdownEditorMaximumImageResourceMetadataBytes - metadataBytes
             else { continue }
-            resources[destination] = "data:\(image.mimeType);base64,\(image.data.base64EncodedString())"
+            let destinationBytes = Data(destination.utf8)
+            let identity = ImageResourceIdentity(mimeType: image.mimeType, digest: SHA256.hash(data: image.data))
+            identities[destinationBytes] = identity
+            if pendingImageResourceIdentities[destinationBytes] == identity,
+                let resource = pendingImageResources[destination]
+            {
+                resources[destination] = resource
+            } else {
+                resources[destination] = "data:\(image.mimeType);base64,\(image.data.base64EncodedString())"
+            }
             decodedBytes += image.data.count
             metadataBytes += keyBytes
         }
-        let requiresConvergence =
-            pendingImageResources != resources
-            || pendingImageResourceGeneration != expectedGeneration
-            || deliveredImageResources != resources
+        let catalogChanged = pendingImageResourceIdentities != identities
+        let catalogWasDelivered =
+            deliveredImageResources.map {
+                $0 == resources && Set($0.keys.map { Data($0.utf8) }) == Set(identities.keys)
+            } ?? false
+        // A current authorized query has revalidated these exact bytes. The Web
+        // host already retains this catalog across ordinary source transactions;
+        // advancing only its source generation would resend every data URL.
+        if !catalogChanged, catalogWasDelivered { return }
         pendingImageResources = resources
+        pendingImageResourceIdentities = identities
         pendingImageResourceGeneration = expectedGeneration
-        guard requiresConvergence else { return }
         reconvergePendingPresentationState()
     }
 
@@ -3327,8 +3369,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 else { throw SessionError.staleRequest }
                 let configuration = self.pendingPresentationConfiguration
                 if configuration == self.deliveredPresentationConfiguration { return }
+                var transportConfiguration = configuration
+                if configuration.imageResourceGeneration != self.generation {
+                    // The receiver ignores image resources from older source
+                    // generations and keeps its admitted catalog. Appearance or
+                    // link updates need not carry those ignored bytes again.
+                    transportConfiguration.imageResources = [:]
+                }
                 let delivered = try await self.send(
-                    .setPresentation(configuration), in: webView,
+                    .setPresentation(transportConfiguration), in: webView,
                     requiringRequestEpoch: intendedRequestEpoch)
                 try Task.checkCancellation()
                 guard intendedRequestEpoch == self.requestEpoch,

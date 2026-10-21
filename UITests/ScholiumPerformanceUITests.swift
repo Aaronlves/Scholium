@@ -764,6 +764,757 @@ final class ScholiumPerformanceUITests: XCTestCase {
     private let packagedIsolationArgument =
         "--scholium-performance-driver-isolation"
 
+    /// Opt-in diagnostic for one packaged Release process at a time. The caller
+    /// owns the disposable fixture/home, production-preference preservation and
+    /// continuous process-memory sampler. ACKs retain each ready surface while
+    /// that sampler settles; they are outside every reported action duration.
+    @MainActor
+    func testReleaseAppLifecycleDiagnostic() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_APP_LIFECYCLE_DIAGNOSTIC"] == "1" else {
+            throw XCTSkip("The isolated packaged App lifecycle diagnostic is not configured.")
+        }
+        continueAfterFailure = false
+        let manager = FileManager.default
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let buildRoot = repository.appendingPathComponent(".build").resolvingSymlinksInPath().path + "/"
+        func isolatedURL(_ key: String) throws -> URL {
+            let url = URL(fileURLWithPath: try required(key, in: environment)).standardizedFileURL.resolvingSymlinksInPath()
+            _ = try XCTUnwrap(url.path.hasPrefix(buildRoot) ? true : nil, "\(key) must stay in the disposable repository .build tree.")
+            return url
+        }
+        let bundle = try isolatedURL("SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH")
+        let output = try isolatedURL("SCHOLIUM_APP_LIFECYCLE_OUTPUT")
+        let acknowledgment = try isolatedURL("SCHOLIUM_APP_LIFECYCLE_ACK_PATH")
+        let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let runPrefix = "release-lifecycle-"
+        _ = try XCTUnwrap(runID.hasPrefix(runPrefix) ? true : nil)
+        _ = try XCTUnwrap(UUID(uuidString: String(runID.dropFirst(runPrefix.count))))
+        // Reuse the existing packaged Release protocol: the sandbox can access
+        // this App-owned Application Support root, unlike an arbitrary .build
+        // home. Only this precreated, uniquely named disposable run is admitted.
+        let runRoot = manager.homeDirectoryForCurrentUser.standardizedFileURL.resolvingSymlinksInPath()
+            .appendingPathComponent("Library/Application Support/Scholium/Performance Runs")
+            .appendingPathComponent(runID).standardizedFileURL
+        _ = try XCTUnwrap(runRoot.resolvingSymlinksInPath().path == runRoot.path ? true : nil, "The packaged run root must not redirect through a symlink.")
+        let rootValues = try runRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        _ = try XCTUnwrap(rootValues.isDirectory == true && rootValues.isSymbolicLink == false ? true : nil)
+        func packagedRunDirectory(_ key: String, component: String) throws -> URL {
+            let expected = runRoot.appendingPathComponent(component).standardizedFileURL
+            let supplied = URL(fileURLWithPath: try required(key, in: environment)).standardizedFileURL
+            _ = try XCTUnwrap(
+                supplied.path == expected.path && supplied.resolvingSymlinksInPath().path == expected.path ? true : nil,
+                "\(key) must be exactly the precreated packaged run's \(component) directory.")
+            let values = try supplied.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            _ = try XCTUnwrap(values.isDirectory == true && values.isSymbolicLink == false ? true : nil)
+            return supplied
+        }
+        let fixture = try packagedRunDirectory("SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT", component: "fixtures")
+        let home = try packagedRunDirectory("SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT", component: "home")
+        let longTurns =
+            try environment["SCHOLIUM_APP_LIFECYCLE_CHAT_TURNS"].map { raw in
+                let count = try XCTUnwrap(Int(raw), "The diagnostic Chat turn count must be an integer.")
+                return try XCTUnwrap((36...2_000).contains(count) ? count : nil, "The diagnostic Chat turn count must be within 36...2000.")
+            } ?? 36
+        XCTAssertEqual(Bundle(url: bundle)?.bundleIdentifier, "com.scholium.app")
+        XCTAssertTrue(NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app").isEmpty)
+        XCTAssertTrue(try manager.contentsOfDirectory(atPath: home.path).isEmpty, "Cold launch requires a new isolated home.")
+        XCTAssertFalse(manager.fileExists(atPath: output.path))
+        XCTAssertFalse(manager.fileExists(atPath: acknowledgment.path))
+        try manager.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let raw = home.deletingLastPathComponent().appendingPathComponent("raw")
+        try manager.createDirectory(at: raw, withIntermediateDirectories: true)
+
+        func sourceDigests() throws -> [String: Data] {
+            var result: [String: Data] = [:]
+            for (role, expectedCount) in [("01-analyses", 160), ("02-topics", 220), ("03-works", 120)] {
+                let directory = fixture.appendingPathComponent(role)
+                let enumerator = try XCTUnwrap(manager.enumerator(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]))
+                let notes = enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "md" }
+                XCTAssertEqual(notes.count, expectedCount, "Use the complete standard 500-note Triptych in three separate vaults.")
+                for note in notes {
+                    result[String(note.path.dropFirst(fixture.path.count))] = Data(SHA256.hash(data: try Data(contentsOf: note)))
+                }
+            }
+            return result
+        }
+        let originalDigests = try sourceDigests()
+        let note = fixture.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: note)
+        let originalSource = try XCTUnwrap(String(data: originalBytes, encoding: .utf8))
+        let application = XCUIApplication(url: bundle)
+        defer { application.terminate() }
+        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES", packagedIsolationArgument]
+        application.launchEnvironment = [
+            "SCHOLIUM_HOME": home.path, "CFFIXED_USER_HOME": home.path,
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixture.path,
+            "SCHOLIUM_UI_TEST_OPEN_SLOT": "paper_analysis",
+            "SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1380",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+            "SCHOLIUM_PERFORMANCE_METRIC": "warm_library_launch",
+            "SCHOLIUM_PERFORMANCE_EXPECTED_COUNT": "160",
+            "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+        ]
+        var sequence = 0
+        var windowEntry = "automatic"
+        var startupSampleExcluded = false
+        var warmAutomaticWindowPresent: Bool?
+        func mark(_ phase: String, ready: Bool = false, started: UInt64? = nil, fields: [String: Any] = [:]) throws {
+            let now = DispatchTime.now().uptimeNanoseconds
+            let index = sequence
+            sequence += 1
+            let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app")
+                .filter { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == bundle }
+            XCTAssertLessThanOrEqual(processes.count, 1, "Only one process may own this diagnostic bundle.")
+            var record: [String: Any] = [
+                "schema_version": 1, "run_id": runID, "sequence": index,
+                "phase": phase, "ready": ready, "awaiting_ack": ready,
+                "event": ready ? "ready" : (phase.hasSuffix("started") ? "started" : "completed"),
+                "wall_time_unix_s": Date().timeIntervalSince1970, "uptime_ns": now,
+                "app_pid": processes.first?.processIdentifier ?? 0,
+                "bundle_path": bundle.path,
+                "source_accessibility_oracle": environment["SCHOLIUM_APP_LIFECYCLE_EXPANDED_FIXTURE"] == "1"
+                    ? "exact_viewport_prefix_and_file_bytes" : "full_accessibility_value_and_file_bytes",
+                "window_entry": windowEntry, "startup_sample_excluded": startupSampleExcluded,
+            ]
+            if let warmAutomaticWindowPresent { record["warm_auto_window_present"] = warmAutomaticWindowPresent }
+            if let started {
+                record["action_begin_uptime_ns"] = started
+                record["driver_observed_upper_bound_ms"] = Double(now - started) / 1_000_000
+                record["timing_boundary"] =
+                    "Before driver action to complete asserted readiness; includes LaunchServices/XCTest transport and idle waits, excludes sampler ACK. Not paint latency."
+            }
+            for (key, value) in fields { record[key] = value }
+            let line = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]) + Data([0x0A])
+            if !manager.fileExists(atPath: output.path) { XCTAssertTrue(manager.createFile(atPath: output.path, contents: nil)) }
+            let handle = try FileHandle(forWritingTo: output)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line)
+            try handle.close()
+            print("APP_LIFECYCLE_DIAGNOSTIC sequence=\(index) phase=\(phase) ready=\(ready)")
+            if ready {
+                XCTAssertTrue(
+                    waitUntil(timeout: 45) {
+                        guard let bytes = try? Data(contentsOf: acknowledgment),
+                            let line = String(data: bytes, encoding: .utf8)?.split(separator: "\n").last
+                        else { return false }
+                        return Int(line) == index
+                    }, "The memory sampler must append \(index) and a newline after sampling \(phase).")
+            }
+        }
+        @MainActor
+        func launch(_ phase: String) async throws {
+            let probe = raw.appendingPathComponent("\(phase)-library.jsonl")
+            XCTAssertFalse(manager.fileExists(atPath: probe.path))
+            _ = try XCTUnwrap(
+                NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app").isEmpty ? true : nil,
+                "LaunchServices must start the sole diagnostic App from a fully stopped state.")
+            application.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = probe.path
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.arguments = application.launchArguments
+            configuration.activates = true
+            configuration.addsToRecentItems = false
+            configuration.allowsRunningApplicationSubstitution = false
+            try mark("\(phase)_launch_started")
+            let started = DispatchTime.now().uptimeNanoseconds
+            application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(started)
+            configuration.environment = application.launchEnvironment
+            let running = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
+            _ = try XCTUnwrap(running.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == bundle ? true : nil)
+            let executable = try XCTUnwrap(Bundle(url: bundle)?.executableURL?.standardizedFileURL.resolvingSymlinksInPath())
+            _ = try XCTUnwrap(running.executableURL?.standardizedFileURL.resolvingSymlinksInPath() == executable ? true : nil)
+            _ = try XCTUnwrap(running.processIdentifier > 0 && !running.isTerminated ? true : nil)
+            try mark(
+                "\(phase)_launch_returned",
+                fields: [
+                    "launch_transport": "launchservices", "launched_pid": running.processIdentifier,
+                    "launch_action_begin_uptime_ns": started,
+                ])
+            var measurementStarted = started
+            if phase == "warm" {
+                let automaticWindowPresent = application.windows.firstMatch.waitForExistence(timeout: 3)
+                warmAutomaticWindowPresent = automaticWindowPresent
+                if !automaticWindowPresent {
+                    startupSampleExcluded = true
+                    windowEntry = "explicit_reopen"
+                    try mark("warm_automatic_window_absent", fields: ["explicit_recovery": true])
+                    measurementStarted = DispatchTime.now().uptimeNanoseconds
+                    try mark(
+                        "warm_explicit_reopen_started",
+                        fields: [
+                            "action_begin_uptime_ns": measurementStarted, "launch_action_begin_uptime_ns": started,
+                            "explicit_recovery": true,
+                        ])
+                    let reopen = NSWorkspace.OpenConfiguration()
+                    reopen.activates = true
+                    reopen.addsToRecentItems = false
+                    reopen.allowsRunningApplicationSubstitution = false
+                    let reopened = try await NSWorkspace.shared.openApplication(at: bundle, configuration: reopen)
+                    _ = try XCTUnwrap(
+                        reopened.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == bundle
+                            && reopened.processIdentifier == running.processIdentifier && !reopened.isTerminated ? true : nil,
+                        "Explicit reopening must reuse the original diagnostic process.")
+                    let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app")
+                    _ = try XCTUnwrap(
+                        processes.count == 1 && processes.first?.processIdentifier == running.processIdentifier ? true : nil,
+                        "Explicit reopening must leave exactly the original App process running.")
+                    try mark(
+                        "warm_explicit_reopen_returned", fields: ["first_launch_pid": running.processIdentifier, "reopened_pid": reopened.processIdentifier])
+                }
+            }
+            _ = try XCTUnwrap(
+                application.windows.firstMatch.waitForExistence(timeout: 45) ? true : nil,
+                "The launch must present a window before any later readiness can be measured.")
+            declinePackagedAutomaticUpdateChecksIfOffered(in: application)
+            _ = try XCTUnwrap(
+                packagedNoteRow(in: application).waitForExistence(timeout: 90) ? true : nil,
+                "The launch must present its fixture Library before reading a readiness sample.")
+            _ = try XCTUnwrap(
+                waitUntil(timeout: 30) { self.lineCount(at: probe.path) == 1 } ? true : nil,
+                "The App must independently publish Library readiness for all 160 Analyses.")
+            let data = try Data(contentsOf: probe)
+            let sample = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(data.dropLast())) as? [String: Any])
+            XCTAssertEqual(sample["metric"] as? String, "warm_library_launch")
+            XCTAssertEqual(sample["run_id"] as? String, runID)
+            XCTAssertEqual(sample["observed_count"] as? Int, 160)
+            try mark(
+                "\(phase)_library_ready", ready: true, started: measurementStarted,
+                fields: [
+                    "native_library_probe": probe.path, "expected_analysis_count": 160,
+                    "launch_action_begin_uptime_ns": started,
+                ])
+        }
+        func verifyIndex(_ phase: String) throws {
+            try mark("\(phase)_index_started")
+            let started = DispatchTime.now().uptimeNanoseconds
+            let field = application.searchFields["scholium.searchField"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            replaceCommittedText("scopeSetup", in: field, application: application)
+            selectResearchSearchScope("Triptych", in: application)
+            replaceCommittedText("title:\"QA Autosave A\" OR title:\"QA Topic\" OR title:\"QA Work\"", in: field, application: application)
+            for title in ["QA Autosave A", "QA Topic", "QA Work"] {
+                let result = application.descendants(matching: .any).matching(
+                    NSPredicate(
+                        format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "scholium.searchResult.", "\(title),"
+                    )
+                ).firstMatch
+                XCTAssertTrue(result.waitForExistence(timeout: 90), "The full Triptych query must resolve a current Note in each role.")
+            }
+            XCTAssertTrue(
+                waitUntil(timeout: 90) {
+                    application.descendants(matching: .any)["scholium.searchResults"].exists
+                        && !application.descendants(matching: .any)["scholium.searchLoading"].exists
+                        && !application.descendants(matching: .any)["scholium.searchUnavailable"].exists
+                        && !application.descendants(matching: .any)["scholium.refreshStatus"].exists
+                }, "Index readiness requires a completed Triptych query and completed Library refresh.")
+            try mark("\(phase)_index_ready", ready: true, started: started, fields: ["query_roles": 3, "refresh_finished": true])
+            clearSearchField(field, application: application)
+            XCTAssertTrue(packagedNoteRow(in: application).waitForExistence(timeout: 10))
+        }
+        func verifySource() throws {
+            packagedNoteRow(in: application).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            let mode = documentModeControl(in: application)
+            XCTAssertTrue(mode.waitForExistence(timeout: 20))
+            selectPackagedMode("Source", in: application, control: mode)
+            let editor = application.descendants(matching: .any)["Markdown source editor"]
+            XCTAssertTrue(editor.waitForExistence(timeout: 20))
+            let expandedFixture = environment["SCHOLIUM_APP_LIFECYCLE_EXPANDED_FIXTURE"] == "1"
+            if expandedFixture {
+                // CodeMirror virtualizes long Source documents. Accessibility
+                // exposes its current viewport; it is not a full-buffer oracle.
+                // No editing occurs here, and every fixture file is checked by
+                // exact digest before and after the complete journey.
+                _ = try XCTUnwrap(
+                    waitUntil(timeout: 20) {
+                        guard let visible = editor.value as? String,
+                            visible.contains("# QA Autosave A"), visible.utf8.count >= 128
+                        else { return false }
+                        return originalSource.hasPrefix(visible)
+                            || (visible.hasSuffix("\n") && originalSource.hasPrefix(String(visible.dropLast())))
+                    } ? true : nil, "The long Source viewport must be an exact prefix of this copied fixture.")
+            } else {
+                _ = try XCTUnwrap(waitUntil(timeout: 20) { self.packagedSourceAccessibilityMatches(originalSource, in: editor) } ? true : nil)
+            }
+            XCTAssertEqual(try Data(contentsOf: note), originalBytes)
+        }
+        func stop(_ phase: String) async throws {
+            try mark("\(phase)_stop_started")
+            let appMenu = application.menuBars.menuBarItems["Scholium"].firstMatch
+            _ = try XCTUnwrap(appMenu.waitForExistence(timeout: 5) ? true : nil)
+            appMenu.click()
+            let quit = application.menuItems["Quit Scholium"].firstMatch
+            _ = try XCTUnwrap(quit.waitForExistence(timeout: 5) && quit.isEnabled ? true : nil)
+            try mark("\(phase)_beforeQuit", fields: ["quit_transport": "app_menu"])
+            quit.click()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+            var stopped = false
+            repeat {
+                stopped =
+                    NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app")
+                    .filter { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == bundle }.isEmpty
+                    && application.state == .notRunning
+                if stopped { break }
+                // NSWorkspace's application cache also needs the main run loop
+                // to receive termination notifications; do not block it while
+                // checking whether the external Release process has exited.
+                try await Task.sleep(for: .milliseconds(100))
+            } while ContinuousClock.now < deadline
+            _ = try XCTUnwrap(
+                stopped ? true : nil, "Quit Scholium must finish the App's termination owner within 20 seconds; otherwise this diagnostic run is invalid.")
+            try mark("\(phase)_stopped", ready: true)
+        }
+
+        try mark("driver_started", fields: ["markdown_count": originalDigests.count, "artifact_kind": "packaged_release", "long_chat_turns": longTurns])
+        try await launch("cold")
+        try verifyIndex("cold")
+        try verifySource()
+        try await stop("cold")
+
+        // Current v12 local archive, identical to seedChatEntryFixture's format:
+        // no runtime thread, connection, account, outgoing request or source edit.
+        let manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.appendingPathComponent(".scholium/manifest.json"))) as? [String: Any])
+        let triptychID = try XCTUnwrap(manifest["id"] as? String)
+        let seeds = [
+            (id: UUID().uuidString, turns: 1, draft: "Short unsent draft — 尚未发送。"),
+            (id: UUID().uuidString, turns: longTurns, draft: "Long unsent draft — 保留输入、历史和选择。"),
+        ]
+        let conversations: [[String: Any]] = seeds.map { item in
+            let messages = (0..<item.turns).flatMap { index -> [[String: Any]] in
+                let turn = "synthetic-turn-\(index)"
+                return [
+                    [
+                        "id": "question-\(index)", "role": "user", "turnID": turn,
+                        "text": "Synthetic question \(index + 1). 请核对来源和解释边界。", "attachments": [], "localMaterials": [],
+                    ],
+                    [
+                        "id": "reply-\(index)", "role": "assistant", "phase": "final_answer", "turnID": turn,
+                        "text": "## Synthetic reply \(index + 1)\n\n"
+                            + String(repeating: "A disposable source-faithful paragraph. 中文与 English 合成材料，保留研究者控制。\n\n", count: 4)
+                            + "| Claim | Status |\n|---|---|\n| Synthetic | Reported |\n\nFinal retained passage \(index + 1).",
+                        "attachments": [], "localMaterials": [],
+                    ],
+                ]
+            }
+            return [
+                "id": item.id, "triptychID": triptychID, "title": "QA \(item.turns)-exchange conversation", "permission": "ask",
+                "preferences": ["webSearch": "runtimeDefault"], "turns": [:], "childDrafts": [:], "draft": item.draft,
+                "attachments": [], "localMaterials": [], "messages": messages, "queuedMessages": [], "updatedAt": Date().timeIntervalSinceReferenceDate,
+            ]
+        }
+        let archive = home.appendingPathComponent("ApplicationSupport/Chat/\(triptychID)/conversations.json")
+        _ = try XCTUnwrap(
+            application.state == .notRunning
+                && NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app").isEmpty ? true : nil,
+            "Only a fully stopped App may have its disposable Chat archive seeded.")
+        try manager.createDirectory(at: archive.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if manager.fileExists(atPath: archive.path) || (try? manager.destinationOfSymbolicLink(atPath: archive.path)) != nil {
+            let values = try archive.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            _ = try XCTUnwrap(
+                values.isRegularFile == true && values.isSymbolicLink == false ? true : nil,
+                "The initial empty archive must be a regular file, never a symlink.")
+            let initial = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: archive)) as? [String: Any])
+            _ = try XCTUnwrap(Set(initial.keys) == ["version", "conversations"] ? true : nil)
+            _ = try XCTUnwrap(initial["version"] as? Int == 12 ? true : nil)
+            let records = try XCTUnwrap(initial["conversations"] as? [[String: Any]])
+            _ = try XCTUnwrap(records.count == 1 ? true : nil, "Only the automatically created initial empty conversation may be replaced.")
+            let record = try XCTUnwrap(records.first)
+            // AgentChatConversation.init(triptychID:) encodes these nonoptional
+            // defaults. All optional execution, delivery and material context
+            // fields are absent; unknown fields must not acquire seed authority.
+            let initialKeys: Set<String> = [
+                "id", "triptychID", "title", "permission", "preferences", "turns", "childDrafts",
+                "draft", "attachments", "localMaterials", "messages", "queuedMessages", "updatedAt",
+            ]
+            _ = try XCTUnwrap(Set(record.keys) == initialKeys ? true : nil, "An initial conversation must contain only its ordinary encoded defaults.")
+            _ = try XCTUnwrap((record["id"] as? String).flatMap(UUID.init(uuidString:)))
+            _ = try XCTUnwrap(record["triptychID"] as? String == triptychID ? true : nil)
+            _ = try XCTUnwrap(record["title"] as? String == "" && record["draft"] as? String == "" && record["permission"] as? String == "ask" ? true : nil)
+            for key in ["attachments", "localMaterials", "messages", "queuedMessages"] {
+                _ = try XCTUnwrap((record[key] as? [Any])?.isEmpty == true ? true : nil, "The initial \(key) must be empty.")
+            }
+            for key in ["turns", "childDrafts"] {
+                _ = try XCTUnwrap((record[key] as? [String: Any])?.isEmpty == true ? true : nil, "The initial \(key) must be empty.")
+            }
+            let preferences = try XCTUnwrap(record["preferences"] as? [String: String])
+            _ = try XCTUnwrap(preferences == ["webSearch": "runtimeDefault"] ? true : nil)
+            _ = try XCTUnwrap(record["updatedAt"] as? NSNumber)
+        }
+        try JSONSerialization.data(withJSONObject: ["version": 12, "conversations": conversations]).write(to: archive, options: .atomic)
+        application.launchArguments += ["-agent.codex.connected.\(triptychID)", "NO"]
+        try await launch("warm")
+        try verifyIndex("warm")
+        try verifySource()
+        try mark("warm_document_ready", ready: true, fields: ["exact_source": true])
+
+        let chat = application.toolbars.firstMatch.descendants(matching: .any).matching(identifier: "Chat").firstMatch
+        XCTAssertTrue(
+            chat.waitForExistence(timeout: 10),
+            "The caller must enable the real Boolean Chat preference inside its preserved production-preference transaction.")
+        chat.click()
+        let list = application.descendants(matching: .any)["scholium.chat.conversations"].firstMatch
+        let composer = application.textViews["scholium.chat.message"].firstMatch
+        let transcript = application.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch
+        func question(_ number: Int) -> XCUIElement {
+            let text = "Synthetic question \(number). 请核对来源和解释边界。"
+            // Rich WebKit text and native read-only text retain their accurate
+            // accessibility roles. Use one query for both compared artifacts.
+            return application.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "label == %@ OR value == %@", text, text)
+            ).firstMatch
+        }
+        func listReady() -> Bool {
+            list.exists && !application.descendants(matching: .any)["scholium.chat.loading"].exists
+                && !composer.exists && !transcript.exists
+                && seeds.allSatisfy { application.descendants(matching: .any)["scholium.chat.conversation.\($0.id)"].exists }
+        }
+        XCTAssertTrue(waitUntil(timeout: 30) { listReady() })
+        try mark("chat_list_ready", ready: true, fields: ["conversation_count": 2])
+        let repeatedChatCycles = environment["SCHOLIUM_APP_LIFECYCLE_UNDO_PROBE"] == "1" ? 0 : 6
+        for iteration in 0...repeatedChatCycles {
+            for item in seeds {
+                let label = "chat_\(item.turns == 1 ? "short" : "long")_\(iteration)"
+                try mark("\(label)_open_started")
+                let started = DispatchTime.now().uptimeNanoseconds
+                application.descendants(matching: .any)["scholium.chat.conversation.\(item.id)"].firstMatch.click()
+                XCTAssertTrue(composer.waitForExistence(timeout: 20))
+                XCTAssertTrue(
+                    waitUntil(timeout: 30) {
+                        transcript.exists && !application.descendants(matching: .any)["scholium.chat.transcript.hydrating"].exists
+                            && composer.value as? String == item.draft
+                            && question(item.turns).exists
+                    }, "A mounted transcript must finish hydrating the correct history and exact draft before sampling.")
+                XCTAssertFalse(application.descendants(matching: .any)["scholium.chat.queue"].exists)
+                try mark(
+                    "\(label)_detail_ready", ready: true, started: started,
+                    fields: ["turns": item.turns, "iteration": iteration, "draft_exact": true, "first_open": iteration == 0])
+                if iteration == 6 && item.turns > 1 {
+                    let screenshot = application.windows.firstMatch.screenshot()
+                    try screenshot.pngRepresentation.write(to: output.deletingPathExtension().appendingPathExtension("chat.png"))
+                    let attachment = XCTAttachment(screenshot: screenshot)
+                    attachment.name = "Packaged Release long Chat after six returns"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+                let back = application.buttons["scholium.chat.back"].firstMatch
+                XCTAssertTrue(back.waitForExistence(timeout: 5))
+                let returnStarted = DispatchTime.now().uptimeNanoseconds
+                back.click()
+                XCTAssertTrue(waitUntil(timeout: 15) { listReady() })
+                try mark("\(label)_list_ready", ready: true, started: returnStarted, fields: ["iteration": iteration, "hidden_detail_inert": true])
+            }
+        }
+        if environment["SCHOLIUM_APP_LIFECYCLE_UNDO_PROBE"] == "1" {
+            // This optional round proves Release correctness only. None of its
+            // timings or memory samples belong to a retained performance series.
+            let long = try XCTUnwrap(seeds.first { $0.turns == longTurns })
+            let suffix = " UndoProbeASCII"
+            let editedDraft = long.draft + suffix
+            let excluded: [String: Any] = [
+                "correctness_only": true, "performance_sample_excluded": true, "undo_probe": true,
+            ]
+            let hydrating = application.descendants(matching: .any)["scholium.chat.transcript.hydrating"].firstMatch
+            let queue = application.descendants(matching: .any)["scholium.chat.queue"].firstMatch
+            let back = application.buttons["scholium.chat.back"].firstMatch
+            let longRow = application.descendants(matching: .any)["scholium.chat.conversation.\(long.id)"].firstMatch
+            func undoDraftMatches(_ expected: String) -> Bool {
+                guard let actual = composer.value as? String else { return false }
+                return Data(actual.utf8) == Data(expected.utf8)
+            }
+            func requireUndoDetail(_ expected: String, _ reason: String) throws {
+                let ready = waitUntil(timeout: 30) {
+                        composer.exists
+                            && transcript.exists && !hydrating.exists && !queue.exists
+                            && question(long.turns).exists && undoDraftMatches(expected)
+                    }
+                if !ready {
+                    let flags: [String: Any] = [
+                        "composer_exists": composer.exists, "composer_enabled": composer.isEnabled,
+                        "composer_hittable": composer.isHittable, "transcript": transcript.exists,
+                        "hydrating": hydrating.exists, "queue": queue.exists,
+                        "question": question(long.turns).exists, "draft_exact": undoDraftMatches(expected),
+                    ]
+                    print("CHAT_UNDO_PRECONDITION \(flags)")
+                    try application.debugDescription.write(
+                        to: output.deletingPathExtension().appendingPathExtension("undo-failure-ax.txt"),
+                        atomically: true, encoding: .utf8)
+                    try application.windows.firstMatch.screenshot().pngRepresentation.write(
+                        to: output.deletingPathExtension().appendingPathExtension("undo-failure.png"))
+                }
+                _ = try XCTUnwrap(ready ? true : nil, reason)
+            }
+            func focusUndoComposer() throws {
+                let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app")
+                let process = try XCTUnwrap(processes.count == 1 ? processes.first : nil)
+                _ = try XCTUnwrap(process.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == bundle ? true : nil)
+                application.activate()
+                _ = try XCTUnwrap(
+                    waitUntil(timeout: 5) { NSWorkspace.shared.frontmostApplication?.processIdentifier == process.processIdentifier } ? true : nil)
+                let frame = composer.frame
+                let center = CGPoint(x: frame.midX, y: frame.midY)
+                let chatFrame = application.descendants(matching: .any)["scholium.chatSurface"].firstMatch.frame
+                _ = try XCTUnwrap(
+                    !frame.isEmpty && !frame.isInfinite && !frame.isNull
+                        && application.windows.firstMatch.frame.contains(center) && chatFrame.contains(center) ? true : nil,
+                    "Only the finite visible composer inside this exact diagnostic window may receive keyboard input.")
+                // Reuse the repository's native input route. An AX hittable
+                // proxy does not replace an actual click and keyboard-focus proof.
+                composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+                let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: composer)
+                _ = try XCTUnwrap(XCTWaiter.wait(for: [focused], timeout: 5) == .completed ? true : nil,
+                    "The identified native composer must acquire keyboard focus before typing or Undo.")
+            }
+            func undoBackToList() throws {
+                _ = try XCTUnwrap(back.waitForExistence(timeout: 5) && back.isHittable ? true : nil)
+                back.click()
+                _ = try XCTUnwrap(waitUntil(timeout: 15) { listReady() } ? true : nil,
+                    "Undo navigation must reach the inert conversation list.")
+            }
+            func openUndoLong() throws {
+                _ = try XCTUnwrap(longRow.waitForExistence(timeout: 5) && longRow.isHittable ? true : nil)
+                longRow.click()
+            }
+
+            _ = try XCTUnwrap(listReady() ? true : nil, "The optional Undo probe must start at the conversation list.")
+            try mark("chat_undo_probe_started", fields: excluded)
+            try openUndoLong()
+            try requireUndoDetail(long.draft, "Undo must start with the exact seeded long-conversation draft and completed history.")
+            try mark("chat_undo_input_precondition", fields: excluded.merging([
+                "xcui_textview_enabled": composer.isEnabled, "hittable": composer.isHittable,
+            ]) { _, current in current })
+            // Use the native text input route; never set the accessibility value
+            // or replace the draft through an App/fixture-only hook.
+            try focusUndoComposer()
+            composer.typeKey(.downArrow, modifierFlags: .command)
+            composer.typeText(suffix)
+            try requireUndoDetail(editedDraft, "Native typing must append the complete ASCII suffix to the seeded draft.")
+            try mark("chat_undo_typed", fields: excluded)
+            try undoBackToList()
+            try openUndoLong()
+            try requireUndoDetail(editedDraft, "Back and reopen must retain the exact typed draft before Undo is attempted.")
+            try mark("chat_undo_reopened", fields: excluded)
+
+            try focusUndoComposer()
+            application.typeKey("z", modifierFlags: .command)
+            try requireUndoDetail(long.draft, "One real Command-Z must restore the seeded draft after Back and reopen.")
+            try mark("chat_undo_restored", fields: excluded)
+            application.typeKey("z", modifierFlags: [.command, .shift])
+            try requireUndoDetail(editedDraft, "Real Command-Shift-Z must restore the exact typed suffix.")
+            try mark("chat_undo_redone", fields: excluded)
+
+            let libraryControl = application.toolbars.firstMatch.descendants(matching: .any).matching(identifier: "Library").firstMatch
+            _ = try XCTUnwrap(libraryControl.exists && libraryControl.isHittable ? true : nil)
+            libraryControl.click()
+            _ = try XCTUnwrap(
+                waitUntil(timeout: 15) {
+                    self.packagedNoteRow(in: application).exists && !composer.exists && !transcript.exists
+                } ? true : nil, "Library must hide the native Chat composer before its Undo lifetime is tested.")
+            try mark("chat_undo_hidden", fields: excluded)
+            _ = try XCTUnwrap(chat.exists && chat.isHittable ? true : nil)
+            chat.click()
+            try requireUndoDetail(editedDraft, "Returning from Library must retain the redone draft and the current long detail.")
+            try focusUndoComposer()
+            application.typeKey("z", modifierFlags: .command)
+            try requireUndoDetail(long.draft, "Undo after Library/Chat hiding must restore the exact seeded draft.")
+            try mark("chat_undo_probe_passed", fields: excluded.merging([
+                "draft_exact": true, "native_input": true, "undo_after_back": true,
+                "redo_exact": true, "undo_after_hide": true, "queue_absent": true,
+            ]) { _, current in current })
+            // Leave the draft byte-identical to its seed, then restore the list
+            // expected by the existing expanded-reader probe. The original
+            // source/history/drafts archive oracle remains authoritative below.
+            try undoBackToList()
+            try mark("chat_undo_list_restored", fields: excluded)
+        }
+        if environment["SCHOLIUM_APP_LIFECYCLE_CHAT_RELEASE_PROBE"] == "1" {
+            let long = try XCTUnwrap(seeds.first { $0.turns == longTurns })
+            let short = try XCTUnwrap(seeds.first { $0.turns == 1 })
+            let scrollView = application.scrollViews["scholium.chat.transcript"].firstMatch
+            let hydrating = application.descendants(matching: .any)["scholium.chat.transcript.hydrating"].firstMatch
+            let earlier = application.buttons["scholium.chat.earlier"].firstMatch
+            let back = application.buttons["scholium.chat.back"].firstMatch
+            func exactDraft(_ expected: String) -> Bool {
+                guard let actual = composer.value as? String else { return false }
+                return Data(actual.utf8) == Data(expected.utf8)
+            }
+            func detailReady(draft: String) -> Bool {
+                transcript.exists && scrollView.exists && !hydrating.exists && exactDraft(draft)
+            }
+            func visiblyHittable(_ element: XCUIElement) -> Bool {
+                guard element.isHittable else { return false }
+                let intersection = element.frame.intersection(scrollView.frame)
+                return !intersection.isNull && intersection.width >= 8 && intersection.height >= 8
+            }
+            // Reuse the QA paging journey's bounded native-swipe/hit-test
+            // policy locally; its helper belongs to the other XCTestCase.
+            // Wait for observed movement instead of adding a settling sleep.
+            func scrollUntilHittable(_ element: XCUIElement) {
+                for _ in 0..<24 where !visiblyHittable(element) {
+                    let previousFrame = element.frame
+                    if previousFrame.midY < scrollView.frame.midY {
+                        scrollView.swipeDown(velocity: .slow)
+                    } else {
+                        scrollView.swipeUp(velocity: .slow)
+                    }
+                    XCTAssertTrue(
+                        waitUntil(timeout: 5) { visiblyHittable(element) || element.frame != previousFrame },
+                        "A native history swipe must visibly advance toward its mounted control.")
+                }
+                XCTAssertTrue(visiblyHittable(element), "The mounted history control must become visibly reachable.")
+            }
+            let sameDetailStarted = DispatchTime.now().uptimeNanoseconds
+            application.descendants(matching: .any)["scholium.chat.conversation.\(long.id)"].firstMatch.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    detailReady(draft: long.draft)
+                        && question(longTurns).exists
+                }, "Reopening the same long detail must preserve its exact latest history and draft.")
+            try mark(
+                "chat_same_detail_ready", ready: true, started: sameDetailStarted,
+                fields: ["turns": longTurns, "draft_exact": true])
+
+            // Each seeded turn has exactly two timeline items (question/reply).
+            // Four initial items plus one 24-item page expose the last 14 turns.
+            let olderNumber = longTurns - 13
+            let olderQuestion = question(olderNumber)
+            XCTAssertFalse(olderQuestion.exists, "The probe must expand beyond the initial four-item history window.")
+            XCTAssertTrue(earlier.waitForExistence(timeout: 5))
+            scrollUntilHittable(earlier)
+            let expandedStarted = DispatchTime.now().uptimeNanoseconds
+            earlier.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 45) {
+                    detailReady(draft: long.draft) && earlier.exists && earlier.isEnabled && olderQuestion.exists
+                }, "Earlier Messages must finish its pending page before the expanded detail is sampled.")
+            scrollUntilHittable(olderQuestion)
+            var observedAnchorY: CGFloat?
+            var stableAnchorObservations = 0
+            XCTAssertTrue(
+                waitUntil(timeout: 10) {
+                    guard detailReady(draft: long.draft), earlier.isEnabled, visiblyHittable(olderQuestion) else { return false }
+                    let y = olderQuestion.frame.minY
+                    if observedAnchorY == y {
+                        stableAnchorObservations += 1
+                    } else {
+                        observedAnchorY = y
+                        stableAnchorObservations = 0
+                    }
+                    return stableAnchorObservations >= 3
+                }, "The expanded reading anchor must stop moving before its retained position is recorded.")
+            let olderY = try XCTUnwrap(observedAnchorY)
+            XCTAssertTrue(olderY.isFinite)
+            try mark(
+                "chat_expanded_detail_ready", ready: true, started: expandedStarted,
+                fields: [
+                    "initial_items": 4, "expanded_items": 28, "older_question": olderNumber,
+                    "anchor_y": Double(olderY), "draft_exact": true,
+                ])
+            if environment["SCHOLIUM_APP_LIFECYCLE_UNDO_PROBE"] == "1" {
+                let chatSurface = application.descendants(matching: .any)["scholium.chatSurface"].firstMatch
+                _ = try XCTUnwrap(
+                    chatSurface.exists && chatSurface.frame.width > 0 && chatSurface.frame.height > 0 ? true : nil,
+                    "The expanded native/WebKit Chat surface must have actual on-screen geometry before capture.")
+                try application.windows.firstMatch.screenshot().pngRepresentation.write(
+                    to: output.deletingPathExtension().appendingPathExtension("native-webkit.png"))
+            }
+
+            let expandedListStarted = DispatchTime.now().uptimeNanoseconds
+            back.click()
+            XCTAssertTrue(waitUntil(timeout: 15) { listReady() })
+            try mark(
+                "chat_expanded_list_ready", ready: true, started: expandedListStarted,
+                fields: ["older_question": olderNumber, "hidden_detail_inert": true])
+
+            let anchorTolerance: CGFloat = 24
+            func expandedDetailRestored() -> Bool {
+                detailReady(draft: long.draft) && earlier.exists && earlier.isEnabled
+                    && olderQuestion.exists && visiblyHittable(olderQuestion)
+                    && abs(olderQuestion.frame.minY - olderY) <= anchorTolerance
+            }
+            let reopenedStarted = DispatchTime.now().uptimeNanoseconds
+            application.descendants(matching: .any)["scholium.chat.conversation.\(long.id)"].firstMatch.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 30) { expandedDetailRestored() },
+                "The same detail must restore its loaded older question, reading position and exact draft without another page request.")
+            try mark(
+                "chat_expanded_reopened_ready", ready: true, started: reopenedStarted,
+                fields: [
+                    "older_question": olderNumber, "anchor_y": Double(olderQuestion.frame.minY),
+                    "anchor_delta_y": Double(olderQuestion.frame.minY - olderY), "anchor_tolerance_points": Double(anchorTolerance),
+                    "draft_exact": true,
+                ])
+
+            let libraryControl = application.toolbars.firstMatch.descendants(matching: .any).matching(identifier: "Library").firstMatch
+            XCTAssertTrue(libraryControl.exists)
+            let hiddenStarted = DispatchTime.now().uptimeNanoseconds
+            libraryControl.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 15) { self.packagedNoteRow(in: application).exists && !composer.exists && !transcript.exists },
+                "Library must hide the expanded Chat detail before its retained memory is sampled.")
+            try mark(
+                "chat_expanded_hidden_ready", ready: true, started: hiddenStarted,
+                fields: ["older_question": olderNumber, "hidden_detail_inert": true])
+
+            let unhiddenStarted = DispatchTime.now().uptimeNanoseconds
+            chat.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 30) { !list.exists && expandedDetailRestored() },
+                "Showing Chat must preserve the expanded detail, its original anchor and exact draft.")
+            try mark(
+                "chat_expanded_unhidden_ready", ready: true, started: unhiddenStarted,
+                fields: [
+                    "older_question": olderNumber, "anchor_y": Double(olderQuestion.frame.minY),
+                    "anchor_delta_y": Double(olderQuestion.frame.minY - olderY), "anchor_tolerance_points": Double(anchorTolerance),
+                    "draft_exact": true,
+                ])
+
+            back.click()
+            XCTAssertTrue(waitUntil(timeout: 15) { listReady() })
+            let replacedStarted = DispatchTime.now().uptimeNanoseconds
+            application.descendants(matching: .any)["scholium.chat.conversation.\(short.id)"].firstMatch.click()
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    detailReady(draft: short.draft)
+                        && question(1).exists
+                        && !olderQuestion.exists
+                }, "Replacing the visible detail must show only the short conversation and its exact draft.")
+            try mark(
+                "chat_replaced_short_ready", ready: true, started: replacedStarted,
+                fields: ["turns": short.turns, "draft_exact": true, "replaced_visible_detail": true])
+            back.click()
+            XCTAssertTrue(waitUntil(timeout: 15) { listReady() })
+        }
+        let library = application.toolbars.firstMatch.descendants(matching: .any).matching(identifier: "Library").firstMatch
+        XCTAssertTrue(library.exists)
+        library.click()
+        XCTAssertTrue(packagedNoteRow(in: application).waitForExistence(timeout: 10))
+        try verifySource()
+        try mark("final_document_ready", ready: true, fields: ["exact_source": true, "chat_returns": repeatedChatCycles])
+        try application.windows.firstMatch.screenshot().pngRepresentation.write(to: output.deletingPathExtension().appendingPathExtension("library.png"))
+        try await stop("final")
+        let retained = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: archive)) as? [String: Any])
+        XCTAssertEqual(retained["version"] as? Int, 12)
+        let records = try XCTUnwrap(retained["conversations"] as? [[String: Any]])
+        XCTAssertEqual(records.count, conversations.count)
+        for expected in conversations {
+            let record = try XCTUnwrap(records.first { $0["id"] as? String == expected["id"] as? String })
+            XCTAssertEqual(record["triptychID"] as? String, triptychID)
+            XCTAssertEqual(Data(try XCTUnwrap(record["draft"] as? String).utf8), Data(try XCTUnwrap(expected["draft"] as? String).utf8))
+            XCTAssertEqual(
+                try JSONSerialization.data(withJSONObject: try XCTUnwrap(record["messages"]), options: [.sortedKeys]),
+                try JSONSerialization.data(withJSONObject: try XCTUnwrap(expected["messages"]), options: [.sortedKeys]))
+            XCTAssertTrue(try XCTUnwrap(record["queuedMessages"] as? [Any]).isEmpty)
+        }
+        XCTAssertEqual(try sourceDigests(), originalDigests, "All 500 authoritative Markdown byte streams must remain unchanged.")
+        try mark(
+            "oracles_passed",
+            fields: [
+                "markdown_count": 500, "exact_markdown": true, "exact_history": true, "exact_drafts": true,
+                "timing_scope": "Library uses the App probe; Chat uses driver observation upper bounds. Limited repeated returns do not prove absence of leaks.",
+            ])
+    }
+
     private enum Metric: String {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"

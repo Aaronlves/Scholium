@@ -19,9 +19,10 @@ struct DocumentPreviewResourceTests {
         var missing = surface
         missing.removeValue(forKey: "imageResourceKeys")
         #expect(DocumentFloatingEvent.decode(["type": "previewSurface", "surface": missing]) == nil)
-        for invalid in [[""], ["same", "same"], [String(repeating: "x", count: 16_385)],
-            (0...8_192).map(String.init)]
-        {
+        for invalid in [
+            [""], ["same", "same"], [String(repeating: "x", count: 16_385)],
+            (0...8_192).map(String.init),
+        ] {
             var value = surface
             value["imageResourceKeys"] = invalid
             #expect(DocumentFloatingEvent.decode(["type": "previewSurface", "surface": value]) == nil)
@@ -76,12 +77,14 @@ struct DocumentPreviewResourceTests {
         fixture.controller.present(.preview(value), in: fixture.owner, imageResources: ["a%25&b.png": resource]) { _, _, _ in true }
         try await fixture.waitForShown()
         let preview = try #require(fixture.controller.previewWebView)
-        let actual = try #require(try await preview.evaluateJavaScript("""
-            [document.images[0].complete, document.images[0].naturalWidth,
-             document.images[0].getAttribute('data-scholium-image-resource'),
-             document.querySelector('.peer').getAttribute('src'),
-             document.querySelector('.scholium-media-placeholder').textContent]
-            """) as? [Any])
+        let actual = try #require(
+            try await preview.evaluateJavaScript(
+                """
+                [document.images[0].complete, document.images[0].naturalWidth,
+                 document.images[0].getAttribute('data-scholium-image-resource'),
+                 document.querySelector('.peer').getAttribute('src'),
+                 document.querySelector('.scholium-media-placeholder').textContent]
+                """) as? [Any])
         #expect(actual[0] as? Bool == true)
         #expect(actual[1] as? Int == 400)
         #expect(actual[2] as? String == "a%25&b.png")
@@ -95,17 +98,20 @@ struct DocumentPreviewResourceTests {
         let fixture = Fixture()
         defer { fixture.close() }
         func resource(_ width: Int) throws -> String {
-            let bitmap = try #require(NSBitmapImageRep(
-                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: width,
-                bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
-                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+            let bitmap = try #require(
+                NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: width,
+                    bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
             let pixels = try #require(bitmap.bitmapData)
             for index in 0..<(bitmap.bytesPerRow * bitmap.pixelsHigh) { pixels[index] = UInt8(width * 30) }
             let png = try #require(bitmap.representation(using: .png, properties: [:]))
             return "data:image/png;base64,\(png.base64EncodedString())"
         }
         let html = "<img class='scholium-embedded-image' data-scholium-image-resource='same.png' alt='Current raster'>"
-        let first = try resource(2), second = try resource(3), latest = try resource(4)
+        let first = try resource(2)
+        let second = try resource(3)
+        let latest = try resource(4)
         func present(_ id: Int, _ bytes: String) {
             fixture.controller.present(
                 .preview(.init(id: id, left: 20, top: 40, bottom: 60, html: html, css: "", imageResourceKeys: ["same.png"])),
@@ -134,7 +140,8 @@ struct DocumentPreviewResourceTests {
         let fixture = Fixture()
         defer { fixture.close() }
         fixture.owner.appearance = NSAppearance(named: .aqua)
-        let html = "<h2>Preview</h2><div class='scholium-preview-body scholium-document'>"
+        let html =
+            "<h2>Preview</h2><div class='scholium-preview-body scholium-document'>"
             + String(repeating: "<p>Synthetic long reading content.</p>", count: 80) + "</div>"
         fixture.controller.present(
             .preview(.init(id: 1, left: 20, top: 40, bottom: 60, html: html, css: "")), in: fixture.owner
@@ -157,7 +164,8 @@ struct DocumentPreviewResourceTests {
         #expect(try await preview.evaluateJavaScript("document.body.dataset.identity") as? String == "retained")
         _ = try await preview.evaluateJavaScript("document.getElementById('scholium-native-preview-css').textContent += '/* stale-color-proof */';")
         NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
-        let refreshed = try await preview.evaluateJavaScript("!document.getElementById('scholium-native-preview-css').textContent.includes('stale-color-proof')") as? Bool
+        let refreshed =
+            try await preview.evaluateJavaScript("!document.getElementById('scholium-native-preview-css').textContent.includes('stale-color-proof')") as? Bool
         #expect(refreshed == true)
         #expect(try await preview.evaluateJavaScript("window.scrollY") as? Double == offset)
         #expect(fixture.window.firstResponder === fixture.originalResponder)
@@ -205,10 +213,11 @@ struct DocumentPreviewResourceTests {
 
 @MainActor
 fileprivate func previewNoisePNG(width: Int = 400, height: Int = 400) throws -> Data {
-    let bitmap = try #require(NSBitmapImageRep(
-        bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-        bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
-        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+    let bitmap = try #require(
+        NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
     let pixels = try #require(bitmap.bitmapData)
     var random: UInt32 = 0x1234_5678
     for index in 0..<(bitmap.bytesPerRow * bitmap.pixelsHigh) {
@@ -229,11 +238,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         if mode == .review {
             let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
-            harness.configureReview(SafeMarkdownReadWebView(
-                documentID: harness.documentID, document: document,
-                htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
-                presentationCSS: "", userCSS: "", onLinkClick: { _ in }, onOpenExternalURL: { _ in },
-                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+            harness.configureReview(
+                SafeMarkdownReadWebView(
+                    documentID: harness.documentID, document: document,
+                    htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+                    presentationCSS: "", userCSS: "", onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                    onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
             harness.setMode(.review)
             try await harness.waitUntilPresentedMode(.review)
         }
@@ -246,10 +256,13 @@ extension MarkdownEditorWebViewIntegrationTests {
             "protocolVersion": markdownEditorProtocolVersion, "sessionID": session.sessionID.uuidString,
             "documentID": harness.documentID, "startingFingerprint": session.startingFingerprint,
             "documentVersion": generation, "type": "floatingSurface",
-            "event": ["type": "suggestionSurface", "surface": [
-                "id": 9_000, "left": 20, "top": 30, "bottom": 50,
-                "items": [["label": "Departed Edit candidate", "detail": "", "disabled": false]], "selected": 0,
-            ]],
+            "event": [
+                "type": "suggestionSurface",
+                "surface": [
+                    "id": 9_000, "left": 20, "top": 30, "bottom": 50,
+                    "items": [["label": "Departed Edit candidate", "detail": "", "disabled": false]], "selected": 0,
+                ],
+            ],
         ]
         try #require(DocumentFloatingEvent.decode(payload["event"]) != nil)
         _ = try await harness.callPageJavaScript(
@@ -269,7 +282,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         try #require(resource.utf8.count > 500_000)
         let key = "Attachments/large.png"
         let annotationProse = String(repeating: "Synthetic annotation reading content. ", count: 120)
-        let original = "\u{FEFF}Opening 图 e\u{0301} paragraph.\r\n\r\nReference[^image].\r\n\r\n"
+        let original =
+            "\u{FEFF}Opening 图 e\u{0301} paragraph.\r\n\r\nReference[^image].\r\n\r\n"
             + "[[Peer]]{{![Annotation image](\(key))\r\n\r\n\(annotationProse)}}\r\n\r\n"
             + "[^image]: ![Footnote image](\(key))\r\n\r\n"
             + (0..<24).map { "    Synthetic footnote reading paragraph \($0).\r\n\r\n" }.joined()
@@ -292,12 +306,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
         let html = SafeMarkdownRenderer.render(document, embeddedImages: [key: image], imageDelivery: .resourceCatalog).htmlBody
         try #require(!html.contains("base64,") && html.components(separatedBy: "data-scholium-image-resource=").count - 1 == 2)
-        harness.configureReview(SafeMarkdownReadWebView(
-            documentID: harness.documentID, document: document, htmlBody: html,
-            presentationCSS: "", userCSS: "", configurationRevision: document.fingerprint.sha256,
-            onLinkClick: { _ in }, onOpenExternalURL: { _ in },
-            onPreviewFailure: { Issue.record(Comment(rawValue: $0.message)) },
-            onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, document: document, htmlBody: html,
+                presentationCSS: "", userCSS: "", configurationRevision: document.fingerprint.sha256,
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onPreviewFailure: { Issue.record(Comment(rawValue: $0.message)) },
+                onSelectionChange: { _ in }, onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
         harness.setMode(.review)
         try await harness.waitUntilPresentedMode(.review)
         try await harness.waitUntilNativeInputIsEnabled()
@@ -310,7 +325,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         let undo = try #require(harness.session.context?.undoLabel)
         let redo = harness.session.context?.redoLabel
         #expect(harness.session.deliveredPreviewImageResources(for: [key])[key] == resource)
-        let viewport = try #require(try await harness.callPageJavaScript("return [document.querySelector('.cm-scroller').scrollLeft, document.querySelector('.cm-scroller').scrollTop];") as? [Double])
+        let viewport = try #require(
+            try await harness.callPageJavaScript(
+                "return [document.querySelector('.cm-scroller').scrollLeft, document.querySelector('.cm-scroller').scrollTop];") as? [Double])
 
         for (selector, expectedAlt) in [
             (".footnote-reference", "Footnote image"), (".scholium-link-annotation-button", "Annotation image"),
@@ -347,15 +364,18 @@ extension MarkdownEditorWebViewIntegrationTests {
                     """, arguments: ["selector": selector])
                 let readerPreview = readerCoordinator.testingPreviewWebView
                 let previewState = try? await readerPreview?.evaluateJavaScript(
-                    "({title:document.querySelector('.scholium-preview-title')?.textContent, images:document.images.length, placeholders:document.querySelectorAll('.scholium-media-placeholder').length, firstAlt:document.images[0]?.alt, text:document.body.textContent.slice(0,200)})")
-                print("SHARED_PREVIEW_FAILURE", [
-                    "selector": selector, "expected_alt": expectedAlt,
-                    "editor_shown": harness.session.floatingSurfaces.isPreviewShown,
-                    "editor_preview_present": harness.session.floatingSurfaces.previewWebView != nil,
-                    "reader_shown": readerCoordinator.testingIsPreviewShown,
-                    "reader_preview_present": readerPreview != nil,
-                    "page": page ?? "nil", "reader_preview": previewState as Any,
-                ])
+                    "({title:document.querySelector('.scholium-preview-title')?.textContent, images:document.images.length, placeholders:document.querySelectorAll('.scholium-media-placeholder').length, firstAlt:document.images[0]?.alt, text:document.body.textContent.slice(0,200)})"
+                )
+                print(
+                    "SHARED_PREVIEW_FAILURE",
+                    [
+                        "selector": selector, "expected_alt": expectedAlt,
+                        "editor_shown": harness.session.floatingSurfaces.isPreviewShown,
+                        "editor_preview_present": harness.session.floatingSurfaces.previewWebView != nil,
+                        "reader_shown": readerCoordinator.testingIsPreviewShown,
+                        "reader_preview_present": readerPreview != nil,
+                        "page": page ?? "nil", "reader_preview": previewState as Any,
+                    ])
             }
             try #require(currentTargetIsShown)
             let preview = try #require(readerCoordinator.testingPreviewWebView)
@@ -375,12 +395,15 @@ extension MarkdownEditorWebViewIntegrationTests {
             #expect(harness.session.generation == generation)
             #expect(harness.session.context?.selections == selection)
             #expect(harness.session.context?.undoLabel == undo && harness.session.context?.redoLabel == redo)
-            #expect(try await harness.callPageJavaScript("return [document.querySelector('.cm-scroller').scrollLeft, document.querySelector('.cm-scroller').scrollTop];") as? [Double] == viewport)
+            #expect(
+                try await harness.callPageJavaScript(
+                    "return [document.querySelector('.cm-scroller').scrollLeft, document.querySelector('.cm-scroller').scrollTop];") as? [Double] == viewport)
             _ = try await harness.callPageJavaScript("window.scholiumDismissPreview();")
         }
         // The reader's popover is a separate native window. Hiding its shared
         // editor host must revoke both that window and the retained Web target.
-        _ = try await harness.callPageJavaScript("document.querySelector('.footnote-reference').dispatchEvent(new PointerEvent('pointerover', {bubbles:true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.footnote-reference').dispatchEvent(new PointerEvent('pointerover', {bubbles:true}));")
         let shownDeadline = ContinuousClock.now.advanced(by: .seconds(3))
         while !readerCoordinator.testingIsPreviewShown && ContinuousClock.now < shownDeadline {
             try await Task.sleep(for: .milliseconds(20))
@@ -398,7 +421,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         while !container.surfaceVisibility.isActive && ContinuousClock.now < activeDeadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        _ = try await harness.callPageJavaScript("document.querySelector('.footnote-reference').dispatchEvent(new PointerEvent('pointerover', {bubbles:true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.footnote-reference').dispatchEvent(new PointerEvent('pointerover', {bubbles:true}));")
         let reopenedDeadline = ContinuousClock.now.advanced(by: .seconds(3))
         while !readerCoordinator.testingIsPreviewShown && ContinuousClock.now < reopenedDeadline {
             try await Task.sleep(for: .milliseconds(20))
@@ -412,13 +436,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(!readerCoordinator.testingIsPreviewShown)
         try await harness.session.focusAndWait()
         for (isRedo, expected) in [(false, original), (true, source)] {
-            let handled = try await harness.callPageJavaScript(
-                """
-                const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
-                  metaKey: true, shiftKey: redo, bubbles: true, cancelable: true});
-                document.querySelector('.cm-content').dispatchEvent(event);
-                return event.defaultPrevented;
-                """, arguments: ["redo": isRedo]) as? Bool
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true});
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": isRedo]) as? Bool
             #expect(handled == true)
             try await harness.waitUntilText(expected)
             #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))

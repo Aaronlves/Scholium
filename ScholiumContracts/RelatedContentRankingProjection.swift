@@ -4,6 +4,18 @@ import Foundation
 /// owned by SearchTextSegment; these strings never become writable source.
 public enum RelatedContentRankingField: String, Codable, CaseIterable, Sendable {
     case annotation, link, keyword, title, summary, heading, body
+
+    init?(searchField: SearchMatchedField) {
+        switch searchField {
+        case .linkAnnotation: self = .annotation
+        case .title, .alias: self = .title
+        case .tag: self = .keyword
+        case .summary: self = .summary
+        case .heading: self = .heading
+        case .body, .footnote, .callout: self = .body
+        default: return nil
+        }
+    }
 }
 
 /// One immutable source-range lookup for a document's segment attribution.
@@ -63,16 +75,7 @@ struct RelatedContentSourceAttribution: Sendable {
 
 extension SearchTextSegment {
     func attributingRelatedContent(using sourceAttribution: RelatedContentSourceAttribution) -> SearchTextSegment {
-        let base: RelatedContentRankingField
-        switch field {
-        case .linkAnnotation: base = .annotation
-        case .title, .alias: base = .title
-        case .tag: base = .keyword
-        case .summary: base = .summary
-        case .heading: base = .heading
-        case .body, .footnote, .callout: base = .body
-        default: return self
-        }
+        guard let base = RelatedContentRankingField(searchField: field) else { return self }
         let usesLinks = base == .body
         let excludesAnnotations = base != .annotation
         if normalizedText.isEmpty || offsetMap.isEmpty

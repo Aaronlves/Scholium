@@ -20,6 +20,7 @@ import SwiftUI
         let document: NoteDocument
         let html: String
         let previewText: String
+        let nativeParagraph: String?
         let presentationRevision: String
         let objects: [String: RenderedMarkdownObject]
         nonisolated init(_ request: Request, displaySource: String? = nil) {
@@ -45,6 +46,25 @@ import SwiftUI
                     of: "href=\"scholium-note:streamdown%3Aincomplete-link\"",
                     with: "data-scholium-pending-link=\"\" aria-disabled=\"true\"")
             previewText = MarkdownVisibleText.render(display)
+            // Reuse the safe renderer's semantic proof; never reconstruct source
+            // or maintain a second Markdown grammar for the native fast path.
+            let semantic = rendered.semanticDocument
+            nativeParagraph =
+                !request.isStreaming && exactDisplay && !request.source.isEmpty
+                    && ScholiumExactUTF8.equal(previewText, request.source)
+                    && semantic.fingerprint == document.fingerprint
+                    && semantic.blocks.count == 1 && semantic.blocks.first?.kind == .paragraph
+                    && semantic.inlines.isEmpty && semantic.links.isEmpty && semantic.headings.isEmpty
+                    && semantic.callouts.isEmpty && semantic.footnoteDefinitions.isEmpty && semantic.footnoteReferences.isEmpty
+                    && semantic.mathExpressions.isEmpty && semantic.diagnostics.isEmpty && rendered.objects.isEmpty
+                    && semantic.zoteroFields.fields.isEmpty && semantic.zoteroFields.documentState == nil
+                    && semantic.zoteroFields.diagnostics.isEmpty
+                    && !request.source.contains("^") && !request.source.contains("  ")
+                    && request.source.unicodeScalars.allSatisfy {
+                        (!CharacterSet.controlCharacters.contains($0) || $0 == "\u{200D}" || $0 == "\u{200C}")
+                            && (!CharacterSet.whitespacesAndNewlines.contains($0) || $0 == " ")
+                    }
+                ? request.source : nil
             presentationRevision =
                 document.fingerprint.sha256 + (request.isStreaming ? ":stream:" : ":settled:")
                 + DocumentFingerprint(content: html).sha256

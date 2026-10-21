@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Darwin
 import Foundation
+import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 import Testing
@@ -42,49 +43,93 @@ struct AgentChatPerformanceDiagnosticTests {
             let observation = controller.$conversations.dropFirst().sink { _ in publications += 1 }
             defer { observation.cancel() }
             var projectionTimes: [Double] = []
+            var decodeTimes: [Double] = []
             var changedTimes: [Double] = []
             var unchangedTimes: [Double] = []
+            print(
+                "CHAT_HISTORY_BOUNDARIES messages=\(messageCount) decode=public_transcript_from_predecoded_mcp_value "
+                    + "hydrate=full_hydrate_including_transcript_decode decode_and_hydrate=independent_samples "
+                    + "memory_capture_and_oracles=outside_timing diagnostic_only=true")
             for sample in 0..<(Self.warmups + Self.retainedSamples) {
-                let projectionStart = ContinuousClock.now
-                let projection = AgentChatTimelineProjection(messages)
-                let projectionTime = Self.milliseconds(since: projectionStart)
-                let orderedIDsMatch = projection.ids == expectedIDs
-                try #require(orderedIDsMatch)
-                try #require(projection.items.count == messageCount)
+                var memory: [ProcessMemoryReading] = []
+                memory.reserveCapacity(8)
+                memory.append(try Self.currentProcessMemory())
+                // Release sample-local projections, request snapshots and
+                // autoreleased diagnostics before sampling the next boundary.
+                // The controller's actual public history remains retained.
+                try autoreleasepool {
+                    let projectionStart = ContinuousClock.now
+                    let projection = AgentChatTimelineProjection(messages)
+                    let projectionTime = Self.milliseconds(since: projectionStart)
+                    let orderedIDsMatch = projection.ids == expectedIDs
+                    try #require(orderedIDsMatch)
+                    try #require(projection.items.count == messageCount)
 
-                controller.update(in: id) {
-                    $0.threadID = "synthetic-thread"
-                    $0.messages = messages
-                    $0.turns = [:]
-                    $0.draft = draft
+                    let (decodeTime, decodedMemory) = try autoreleasepool {
+                        let start = ContinuousClock.now
+                        let decoded = try CodexChatTranscript.history(history, threadID: "synthetic-thread")
+                        let elapsed = Self.milliseconds(since: start)
+                        let alive = try withExtendedLifetime(decoded) { try Self.currentProcessMemory() }
+                        try #require(decoded.count == messageCount)
+                        let exactDecodedSources = decoded.enumerated().allSatisfy { index, turn in
+                            guard turn.id == "turn-\(index)", turn.status == .completed, turn.items.count == 1,
+                                let item = turn.items.first,
+                                case .assistant(let text, let phase) = item.content
+                            else { return false }
+                            return item.id == messages[index].id && phase == .finalAnswer && !item.isStreaming
+                                && text.utf8.elementsEqual((messages[index].text + "已刷新\r\n").utf8)
+                        }
+                        try #require(exactDecodedSources)
+                        return (elapsed, alive)
+                    }
+                    memory.append(decodedMemory)
+                    memory.append(try Self.currentProcessMemory())
+
+                    controller.update(in: id) {
+                        $0.threadID = "synthetic-thread"
+                        $0.messages = messages
+                        $0.turns = [:]
+                        $0.draft = draft
+                    }
+                    publications = 0
+                    let changedRead = try controller.beginHistoryRead(in: id)
+                    memory.append(try Self.currentProcessMemory())
+                    let changedStart = ContinuousClock.now
+                    try controller.hydrate(history, in: id, after: changedRead)
+                    let changedTime = Self.milliseconds(since: changedStart)
+                    memory.append(try Self.currentProcessMemory())
+                    try #require(publications == 1)
+                    let reconciled = try #require(controller.selected)
+                    try #require(reconciled.messages.count == messageCount)
+                    let exactMessagesMatch = reconciled.messages.enumerated().allSatisfy { index, message in
+                        message.id == messages[index].id
+                            && Array(message.text.utf8) == Array((messages[index].text + "已刷新\r\n").utf8)
+                            && message.turnID == "turn-\(index)"
+                    }
+                    try #require(exactMessagesMatch)
+                    try #require(Array(reconciled.draft.utf8) == Array(draft.utf8))
+                    publications = 0
+                    let unchangedRead = try controller.beginHistoryRead(in: id)
+                    memory.append(try Self.currentProcessMemory())
+                    let unchangedStart = ContinuousClock.now
+                    try controller.hydrate(history, in: id, after: unchangedRead)
+                    let unchangedTime = Self.milliseconds(since: unchangedStart)
+                    memory.append(try Self.currentProcessMemory())
+                    try #require(publications == 0)
+                    try #require(controller.selected == reconciled)
+                    if sample >= Self.warmups {
+                        projectionTimes.append(projectionTime)
+                        decodeTimes.append(decodeTime)
+                        changedTimes.append(changedTime)
+                        unchangedTimes.append(unchangedTime)
+                    }
                 }
-                publications = 0
-                let changedStart = ContinuousClock.now
-                try controller.hydrate(history, in: id)
-                let changedTime = Self.milliseconds(since: changedStart)
-                try #require(publications == 1)
-                let reconciled = try #require(controller.selected)
-                try #require(reconciled.messages.count == messageCount)
-                let exactMessagesMatch = reconciled.messages.enumerated().allSatisfy { index, message in
-                    message.id == messages[index].id
-                        && Array(message.text.utf8) == Array((messages[index].text + "已刷新\r\n").utf8)
-                        && message.turnID == "turn-\(index)"
-                }
-                try #require(exactMessagesMatch)
-                try #require(Array(reconciled.draft.utf8) == Array(draft.utf8))
-                publications = 0
-                let unchangedStart = ContinuousClock.now
-                try controller.hydrate(history, in: id)
-                let unchangedTime = Self.milliseconds(since: unchangedStart)
-                try #require(publications == 0)
-                try #require(controller.selected == reconciled)
-                if sample >= Self.warmups {
-                    projectionTimes.append(projectionTime)
-                    changedTimes.append(changedTime)
-                    unchangedTimes.append(unchangedTime)
-                }
+                memory.append(try Self.currentProcessMemory())
+                try #require(memory.count == 8)
+                Self.printHistoryMemory(memory, messageCount: messageCount, sample: sample)
             }
             Self.summary("timeline_projection", count: messageCount, samples: projectionTimes)
+            Self.summary("history_decode_only", count: messageCount, samples: decodeTimes)
             Self.summary("history_changed", count: messageCount, samples: changedTimes)
             Self.summary("history_idempotent", count: messageCount, samples: unchangedTimes)
         }
@@ -320,6 +365,43 @@ struct AgentChatPerformanceDiagnosticTests {
                 + "raw_ms=\(samples.map(String.init(describing:)).joined(separator: ",")) diagnostic_only=true")
     }
 
+    private struct ProcessMemoryReading {
+        let rss: UInt64
+        let liveMallocBytes: UInt64
+        let liveMallocBlocks: UInt64
+        let reservedMallocBytes: UInt64
+        let zoneHighWaterSum: UInt64
+    }
+
+    /// The SDK reports live blocks/bytes and reserved pages, not cumulative
+    /// allocations. Zone high-water sums span the process lifetime and do not
+    /// establish a hydrate interval's peak. Allocations tracing is still needed
+    /// to attribute churn that allocates and frees within one synchronous call.
+    private static func currentProcessMemory() throws -> ProcessMemoryReading {
+        var statistics = malloc_statistics_t()
+        malloc_zone_statistics(nil, &statistics)
+        return .init(
+            rss: try currentProcessRSS(),
+            liveMallocBytes: UInt64(statistics.size_in_use),
+            liveMallocBlocks: UInt64(statistics.blocks_in_use),
+            reservedMallocBytes: UInt64(statistics.size_allocated),
+            zoneHighWaterSum: UInt64(statistics.max_size_in_use))
+    }
+
+    private static func printHistoryMemory(_ readings: [ProcessMemoryReading], messageCount: Int, sample: Int) {
+        let values: (KeyPath<ProcessMemoryReading, UInt64>) -> String = { key in
+            readings.map { String($0[keyPath: key]) }.joined(separator: ",")
+        }
+        print(
+            "CHAT_HISTORY_MEMORY messages=\(messageCount) sample=\(sample) retained=\(sample >= warmups) "
+                + "stages=entry,decode_alive,decode_released,changed_before,changed_after,idempotent_before,idempotent_after,after_sample_scope "
+                + "app_only_rss_bytes=\(values(\.rss)) malloc_live_bytes=\(values(\.liveMallocBytes)) "
+                + "malloc_live_blocks=\(values(\.liveMallocBlocks)) malloc_reserved_bytes=\(values(\.reservedMallocBytes)) "
+                + "malloc_lifetime_zone_high_water_sum_bytes=\(values(\.zoneHighWaterSum)) "
+                + "controller_history_retained=true capture_outside_timing=true allocation_churn=unmeasured "
+                + "hydrate_interval_peak=unmeasured memory_captures=sequential_process_samples diagnostic_only=true")
+    }
+
     private static func currentProcessRSS() throws -> UInt64 {
         var info = mach_task_basic_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
@@ -374,7 +456,7 @@ private final class OffscreenTranscript {
             openAttachment: { _, _ in }, showChanges: { _ in },
             showConversationChanges: { _ in }, presentation: AgentChatDetailPresentation(), readingSession: session,
             nativeSession: AgentChatComposerSession(conversationID: id),
-            focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in }, showList: {},
+            focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: .constant(nil), openReply: { _ in }, showList: {},
             newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in },
             showAccountUsage: {})
         let host = NSHostingView(rootView: AnyView(detail))

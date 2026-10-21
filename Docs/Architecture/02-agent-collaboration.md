@@ -247,15 +247,16 @@ timeout and disconnect interrupt the exact turn. Window-owned selection results
 retain variants; popovers own presentation. Explicit Chat handoff creates drafts;
 Document owns validation and replacement.
 
-Chat retains one detail; transitions move whole pages. Hidden readers/input/wheel
-routing are inactive. Conversations own drafts; composers retain selection/Undo.
-Mount-scoped proof/receipts retire on departure. Viewports own geometry; sessions
+Chat mounts visible details; reading/composer state survives teardown.
+Conversations own drafts; composers retain selection/Undo.
+Mount-scoped receipts retire on departure. Viewports own geometry; sessions
 own anchors/disclosures/intent. Visibility tokens prevent streaming unread cycles.
-Execution owns ephemeral streaming state. Projection coalesces requests: IO-free
-Remend/JavaScriptCore actor completion precedes off-actor rendering.
-Exact bytes own documents/actions; provisional HTML grants no source ranges or
-pending destinations. Preview/reader share an initial snapshot; DOM updates
-retain decorated nodes/selection.
+Execution owns streaming. Coalesced projection: IO-free Remend/JavaScriptCore
+completion precedes off-actor rendering.
+Exact bytes own documents/actions; provisional HTML grants no source ranges or pending destinations.
+Completed source-identical plain user paragraphs use native selectable text;
+others use safe WebKit.
+Preview/reader share one snapshot; DOM updates retain decorated nodes/selection.
 
 Live notification validity remains execution-owned and is never replayed from
 history. System delivery/routes belong to Runtime and Ownership.

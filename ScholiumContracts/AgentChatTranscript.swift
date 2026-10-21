@@ -64,14 +64,20 @@ public enum AgentChatTranscript {
             self.timing = timing
         }
         public var messageIDs: Set<String> {
-            let ids: Set<String>
+            var ids: Set<String>
             switch itemContent {
             case .full(let items):
-                ids = Set(items.flatMap { [$0.id, "runtime:\($0.id)"] + ($0.clientMessageID.map { [$0] } ?? []) })
+                ids = []
+                for item in items {
+                    ids.insert(item.id)
+                    ids.insert("runtime:\(item.id)")
+                    if let clientID = item.clientMessageID { ids.insert(clientID) }
+                }
             case .references(let references): ids = references
             case .notLoaded: ids = []
             }
-            return ids.union(["plan:\(id)"])
+            ids.insert("plan:\(id)")
+            return ids
         }
     }
 }

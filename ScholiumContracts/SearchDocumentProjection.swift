@@ -175,6 +175,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         let source = SearchSourceTextProjection(document: document, profile: profile, semantic: semantic)
+        let locator = SearchSourceLocator(source: document.rawContent)
         title = source.title
         aliases = source.properties.textValues(forExactKey: "aliases")
         headings = semantic.headings.map(\.text)
@@ -185,9 +186,9 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
-        sourceLineStartsUTF16 = source.locator.lineStartsUTF16
-        segments = source.segments
-        paragraphs = source.paragraphs(in: document)
+        sourceLineStartsUTF16 = locator.lineStartsUTF16
+        segments = source.preparedSegments(in: document, sourceLocator: locator)
+        paragraphs = source.paragraphs(in: document, segments: segments, sourceLocator: locator)
         body = segments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
         callouts = segments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
         footnotes = segments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
@@ -203,7 +204,8 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         semantic: MarkdownSemanticDocument,
         profile: SchemaProfileID = .genericMarkdown
     ) -> [SearchTextSegment] {
-        SearchSourceTextProjection(document: document, profile: profile, semantic: semantic).segments
+        SearchSourceTextProjection(document: document, profile: profile, semantic: semantic)
+            .preparedSegments(in: document, sourceLocator: SearchSourceLocator(source: document.rawContent))
     }
 
     /// Prepare one exact source with a body tree shared only by its semantic
@@ -217,7 +219,20 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let semantic = MarkdownSemanticParser.parse(document, parsedBody: parsedBody)
         let source = SearchSourceTextProjection(
             document: document, profile: profile, semantic: semantic, parsedBody: parsedBody)
-        return (semantic, source.segments)
+        return (semantic, source.preparedSegments(in: document, sourceLocator: SearchSourceLocator(source: document.rawContent)))
+    }
+
+    /// Passage scoring consumes attributed field text, not Search coordinates.
+    /// Keep the parsed tree local to the exact snippet's semantic and text walks.
+    package static func preparePassageRanking(
+        document: NoteDocument
+    ) -> (semantic: MarkdownSemanticDocument, rankingText: [[String: String]]) {
+        let parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
+        let semantic = MarkdownSemanticParser.parse(document, parsedBody: parsedBody)
+        let source = SearchSourceTextProjection(
+            document: document, profile: .genericMarkdown, semantic: semantic, parsedBody: parsedBody,
+            purpose: .passageRanking)
+        return (semantic, source.passageRankingText(in: document))
     }
 
     /// Reuses the source-derived visible-text and exact-offset projection when
@@ -289,22 +304,36 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     }
 }
 
+private struct SearchSourceSegmentInput {
+    let field: SearchMatchedField
+    let text: String
+    let sourceRange: Range<Int>?
+    var explicitMap: [SearchVisibleFragment]? = nil
+}
+
 /// One exact-source preparation shared by Note Search and Research scoring.
 /// Only complete Note Search asks it for the separate top-level paragraph corpus.
 private struct SearchSourceTextProjection {
+    enum Purpose {
+        case search, passageRanking
+    }
+
     let title: String
     let summary: String?
     let properties: SearchPropertyProjection
-    let locator: SearchSourceLocator
     let sourceContext: SearchSourceProjectionContext
     let parsedBody: Document
-    let segments: [SearchTextSegment]
+    let segmentInputs: [SearchSourceSegmentInput]
+    let sourceAttribution: RelatedContentSourceAttribution
 
     init(
         document: NoteDocument, profile: SchemaProfileID, semantic: MarkdownSemanticDocument,
-        parsedBody: Document? = nil
+        parsedBody: Document? = nil, purpose: Purpose = .search
     ) {
-        title = ResearchNoteTitleResolver.resolve(document: document)
+        // Passage scoring discards identity fields. In particular, deriving a
+        // filename through a relative file URL repeats current-directory I/O
+        // for every snippet, although that title never reaches its ranking.
+        title = purpose == .search ? ResearchNoteTitleResolver.resolve(document: document) : ""
         properties = SearchPropertyProjection(document: document, profile: profile)
         let summaryMember =
             properties.entry(forExactKey: "summary")
@@ -315,35 +344,30 @@ private struct SearchSourceTextProjection {
             }
         summary = summaryMember?.value
         let keywordMembers = properties.stringListMembers(forExactKey: "keywords")
-        locator = SearchSourceLocator(source: document.rawContent)
         sourceContext = SearchSourceProjectionContext(
             source: document.body,
             fullSourceUTF16Offset: document.rawContent.utf16.count - document.body.utf16.count,
             semantic: semantic,
             anchorRanges: ParagraphAnchorPlanner.anchors(in: document, semantic: semantic).map(\.markerSpan.utf16Range)
         )
-        var builtSegments: [SearchTextSegment] = []
-        builtSegments.append(
-            SearchProjectionBuilder.segment(
-                field: .title,
-                ordinal: builtSegments.count,
-                text: title,
-                sourceRange: nil,
-                source: document.rawContent,
-                sourceLocator: locator
-            ))
+        var builtSegments: [SearchSourceSegmentInput] = []
+        if purpose == .search {
+            builtSegments.append(
+                SearchSourceSegmentInput(
+                    field: .title,
+                    text: title,
+                    sourceRange: nil
+                ))
+        }
         for member in keywordMembers where !member.value.isEmpty {
             let range = member.sourceRange.map {
                 $0.utf16LowerBound..<$0.utf16UpperBound
             }
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .tag,
-                    ordinal: builtSegments.count,
                     text: member.value,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: range.map {
                         SearchProjectionBuilder.alignedFragments(
                             text: member.value,
@@ -353,26 +377,22 @@ private struct SearchSourceTextProjection {
                     }
                 ))
         }
-        builtSegments.append(
-            SearchProjectionBuilder.segment(
-                field: .path,
-                ordinal: builtSegments.count,
-                text: document.relativePath,
-                sourceRange: nil,
-                source: document.rawContent,
-                sourceLocator: locator
-            ))
+        if purpose == .search {
+            builtSegments.append(
+                SearchSourceSegmentInput(
+                    field: .path,
+                    text: document.relativePath,
+                    sourceRange: nil
+                ))
+        }
 
         for heading in semantic.headings {
             let range = heading.span.utf16Range
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .heading,
-                    ordinal: builtSegments.count,
                     text: heading.text,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: SearchProjectionBuilder.alignedFragments(
                         text: heading.text,
                         sourceRange: range,
@@ -388,13 +408,10 @@ private struct SearchSourceTextProjection {
                 )
             )
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .summary,
-                    ordinal: builtSegments.count,
                     text: summaryMember.value,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: SearchProjectionBuilder.alignedFragments(
                         text: summaryMember.value,
                         sourceRange: range,
@@ -410,13 +427,10 @@ private struct SearchSourceTextProjection {
             guard !visible.isEmpty else { continue }
             let range = callout.span.utf16Range
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .callout,
-                    ordinal: builtSegments.count,
                     text: visible,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: SearchProjectionBuilder.alignedFragments(
                         text: visible,
                         sourceRange: range,
@@ -429,13 +443,10 @@ private struct SearchSourceTextProjection {
             guard !visible.isEmpty else { continue }
             let range = footnote.span.utf16Range
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .footnote,
-                    ordinal: builtSegments.count,
                     text: visible,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: SearchProjectionBuilder.alignedFragments(
                         text: visible,
                         sourceRange: range,
@@ -446,13 +457,10 @@ private struct SearchSourceTextProjection {
         for annotation in sourceContext.annotations {
             let range = annotation.contentSpan.utf16Range
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .linkAnnotation,
-                    ordinal: builtSegments.count,
                     text: annotation.text,
                     sourceRange: range,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: SearchProjectionBuilder.alignedFragments(
                         text: annotation.text,
                         sourceRange: range,
@@ -466,42 +474,73 @@ private struct SearchSourceTextProjection {
         collector.visit(self.parsedBody)
         if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             builtSegments.append(
-                SearchProjectionBuilder.segment(
+                SearchSourceSegmentInput(
                     field: .body,
-                    ordinal: builtSegments.count,
                     text: collector.text,
                     sourceRange: collector.coveringSourceRange,
-                    source: document.rawContent,
-                    sourceLocator: locator,
                     explicitMap: collector.fragments
                 ))
         }
 
-        let fieldKeys: [(SearchMatchedField, [String])] = [
-            (.title, ["title"]), (.alias, ["aliases"]),
-            (.author, ["authors", "author"]), (.publicationDate, ["publication_date"]),
-        ]
-        for (field, keys) in fieldKeys {
-            for key in keys {
-                for member in properties.entry(forExactKey: key)?.stringMembers ?? [] {
-                    guard let span = member.sourceRange, !member.value.isEmpty else { continue }
-                    let range = span.utf16LowerBound..<span.utf16UpperBound
-                    builtSegments.append(
-                        SearchProjectionBuilder.segment(
-                            field: field, ordinal: builtSegments.count, text: member.value,
-                            sourceRange: range, source: document.rawContent, sourceLocator: locator,
-                            explicitMap: SearchProjectionBuilder.alignedFragments(
-                                text: member.value, sourceRange: range, source: document.rawContent)))
+        if purpose == .search {
+            let fieldKeys: [(SearchMatchedField, [String])] = [
+                (.title, ["title"]), (.alias, ["aliases"]),
+                (.author, ["authors", "author"]), (.publicationDate, ["publication_date"]),
+            ]
+            for (field, keys) in fieldKeys {
+                for key in keys {
+                    for member in properties.entry(forExactKey: key)?.stringMembers ?? [] {
+                        guard let span = member.sourceRange, !member.value.isEmpty else { continue }
+                        let range = span.utf16LowerBound..<span.utf16UpperBound
+                        builtSegments.append(
+                            SearchSourceSegmentInput(
+                                field: field, text: member.value, sourceRange: range,
+                                explicitMap: SearchProjectionBuilder.alignedFragments(
+                                    text: member.value, sourceRange: range, source: document.rawContent)))
+                    }
                 }
             }
         }
-        let sourceAttribution = RelatedContentSourceAttribution(in: semantic)
-        builtSegments = builtSegments.map { $0.attributingRelatedContent(using: sourceAttribution) }
-        segments = builtSegments
+        sourceAttribution = RelatedContentSourceAttribution(in: semantic)
+        segmentInputs = builtSegments
     }
 
-    func paragraphs(in document: NoteDocument) -> [SearchParagraphProjection] {
-        let sourceLocator = locator
+    func preparedSegments(in document: NoteDocument, sourceLocator: SearchSourceLocator) -> [SearchTextSegment] {
+        segmentInputs.enumerated().map { ordinal, input in
+            SearchProjectionBuilder.segment(
+                field: input.field, ordinal: ordinal, text: input.text,
+                sourceRange: input.sourceRange, source: document.rawContent,
+                sourceLocator: sourceLocator, explicitMap: input.explicitMap
+            )
+            .attributingRelatedContent(using: sourceAttribution)
+        }
+    }
+
+    func passageRankingText(in document: NoteDocument) -> [[String: String]] {
+        // Attribution of linked or annotated text requires complete normalized
+        // offsets. Keep that established route rather than inventing coordinates.
+        if sourceAttribution.hasLinks || sourceAttribution.hasAnnotations {
+            return preparedSegments(in: document, sourceLocator: SearchSourceLocator(source: document.rawContent))
+                .filter { $0.sourceRange != nil && $0.field != .title && $0.field != .alias }
+                .map(\.relatedRankingText)
+        }
+        return segmentInputs.compactMap { input in
+            guard input.sourceRange != nil, input.field != .title, input.field != .alias,
+                let field = RelatedContentRankingField(searchField: input.field)
+            else { return nil }
+            // Preserve the same fragment boundaries and per-grapheme folding.
+            // This internal tuple never becomes a SearchTextSegment without maps.
+            let normalized = SearchProjectionBuilder.normalizedTextAndMap(
+                text: input.text, sourceRange: input.sourceRange,
+                explicitMap: input.explicitMap, recordsOffsets: false
+            ).text
+            return normalized.isEmpty ? [:] : [field.rawValue: " " + normalized]
+        }
+    }
+
+    func paragraphs(
+        in document: NoteDocument, segments: [SearchTextSegment], sourceLocator: SearchSourceLocator
+    ) -> [SearchParagraphProjection] {
         let builtSegments = segments
         var annotationSegmentsByStart: [Int: [SearchTextSegment]] = [:]
         for segment in builtSegments where segment.field == .linkAnnotation {
@@ -604,10 +643,11 @@ private enum SearchProjectionBuilder {
         )
     }
 
-    private static func normalizedTextAndMap(
+    static func normalizedTextAndMap(
         text: String,
         sourceRange: Range<Int>?,
-        explicitMap: [SearchVisibleFragment]?
+        explicitMap: [SearchVisibleFragment]?,
+        recordsOffsets: Bool = true
     ) -> (text: String, map: [SearchSegmentOffset]) {
         var normalized = ""
         normalized.reserveCapacity(text.utf16.count)
@@ -621,6 +661,7 @@ private enum SearchProjectionBuilder {
             sourceRange: Range<Int>,
             kind: SearchSegmentOffset.MappingKind
         ) {
+            guard recordsOffsets else { return }
             if let last = map.last,
                 last.mappingKind == kind,
                 last.normalizedUTF16UpperBound == normalizedRange.lowerBound
@@ -688,7 +729,7 @@ private enum SearchProjectionBuilder {
                 let lower = normalizedUTF16Count
                 normalized.append(contentsOf: fragmentText)
                 normalizedUTF16Count += fragmentText.utf16.count
-                if let sourceRange = fragment.sourceRange {
+                if recordsOffsets, let sourceRange = fragment.sourceRange {
                     if !fragment.exact {
                         appendMapping(
                             normalizedRange: lower..<normalizedUTF16Count,
@@ -718,10 +759,12 @@ private enum SearchProjectionBuilder {
                 let originalLower = localUTF16
                 let originalUpper = localUTF16 + characterLength
                 localUTF16 = originalUpper
-                let mappedSource: Range<Int>? = fragment.sourceRange.map { range in
-                    guard fragment.exact else { return range }
-                    return (range.lowerBound + originalLower)..<(range.lowerBound + originalUpper)
-                }
+                let mappedSource: Range<Int>? =
+                    recordsOffsets
+                    ? fragment.sourceRange.map { range in
+                        guard fragment.exact else { return range }
+                        return (range.lowerBound + originalLower)..<(range.lowerBound + originalUpper)
+                    } : nil
                 if character.isWhitespace {
                     if normalized.isEmpty { continue }
                     hasPendingWhitespace = true

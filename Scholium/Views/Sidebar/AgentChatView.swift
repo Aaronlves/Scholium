@@ -7,7 +7,7 @@ struct AgentChatReplyNavigation: Equatable {
     let messageID: String
 }
 
-/// Window-local routing and retained page presentation; runtime state stays in the controller.
+/// Window-local routing and reading/composer state; runtime state stays in the controller.
 struct AgentChatView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var activeState
@@ -25,8 +25,6 @@ struct AgentChatView: View {
     var pendingDocuments: [DocumentChangeSummary]? = nil
     var changesError: String? = nil
     @State private var showsConversationList = true
-    @State private var hasPresentedDetail = false
-    @State private var presentedConversationID: UUID?
     @State private var animatesPageChange = true
     @State private var listState = AgentChatConversationListState()
     @State private var detailStore = AgentChatDetailPresentationStore()
@@ -48,22 +46,17 @@ struct AgentChatView: View {
         AgentChatNavigationTransition(
             showsList: showsConversationList, animates: navigationAnimates && animatesPageChange
         ) {
-            GeometryReader { geometry in
+            GeometryReader { _ in
                 ZStack(alignment: .topLeading) {
-                    if showsConversationList { listPage }
-                    // Retain one visited page, rather than recreating its readers
-                    // on Back/reopen. A different selection replaces that lifetime.
-                    if hasPresentedDetail && (!showsConversationList || presentedConversationID == controller.selectedID) {
+                    if showsConversationList {
+                        listPage
+                    } else if isVisible {
+                        // The stores above preserve reading and native input state.
+                        // Hidden pages release their readers; the native transition
+                        // captures the outgoing page before replacing its content.
                         detailPage
-                            .offset(x: showsConversationList ? geometry.size.width : 0)
-                            // Core Animation moves the complete old page while the
-                            // retained native readers immediately give up interaction.
-                            .environment(
-                                \.scholiumDocumentSurfaceVisibility,
-                                isVisible && !showsConversationList ? .active : .retained
-                            )
+                            .environment(\.scholiumDocumentSurfaceVisibility, .active)
                             .id(controller.selectedID)
-
                     }
                 }
             }
@@ -105,11 +98,6 @@ struct AgentChatView: View {
             markVisibleConversationRead()
         }
         .onChange(of: controller.selectedID) { _, id in
-            if showsConversationList {
-                hasPresentedDetail = false
-            } else {
-                presentedConversationID = id
-            }
             _ = detailStore.presentation(for: id)
             renameID = nil
             showsRename = false
@@ -172,7 +160,7 @@ struct AgentChatView: View {
             nativeSession: composerStore.session(for: controller.selectedID),
             focusRequest: focusRequest,
             consumeFocusRequest: { if focusRequest == $0 { focusRequest = nil } },
-            replyNavigation: replyNavigation,
+            replyNavigation: $replyNavigation,
             openReply: { target in
                 controller.select(target.conversationID)
                 replyNavigation = target
@@ -220,8 +208,6 @@ struct AgentChatView: View {
     private func showDetail(animated: Bool = true) {
         withAnimation(nil) {
             animatesPageChange = animated
-            presentedConversationID = controller.selectedID
-            hasPresentedDetail = true
             showsConversationList = false
         }
     }

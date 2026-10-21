@@ -73,6 +73,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     private var replyPageFingerprint: String?
     private var replyUpdateTask: Task<Void, Never>?
     private var replyPageGeneration: UInt64 = 0
+    private var mathRuntimePrepared = false
     private var isInteractive = true
     private weak var nativeView: AgentChatReadWebView?
 
@@ -86,7 +87,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         nativeView?.setChatInteractive(isInteractive)
     }
 
-    var requiresMathRuntime: Bool { true }
+    var requiresMathRuntime: Bool { false }
     var replyProjectionEnabled: Bool { true }
 
     func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
@@ -125,6 +126,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         replyNavigationReady = false
         pendingReplyUpdate = nil
         replyPageFingerprint = nil
+        mathRuntimePrepared = false
         replyUpdateTask?.cancel()
         replyUpdateTask = nil
     }
@@ -156,6 +158,17 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                 else { return }
                 do {
                     guard body.utf8.count <= 16_777_216 else { throw CocoaError(.coderReadCorrupt) }
+                    if !self.mathRuntimePrepared, SafeMarkdownReadWebView.Coordinator.requiresMathRuntime(body: body, linkPreviews: []) {
+                        // Prepare before the DOM commit: a streamed revision's
+                        // lazy bridge request could already be superseded by
+                        // the next source fingerprint. Installation belongs to
+                        // the page even when that source becomes obsolete.
+                        let prepared = await ScholiumMathRuntimeLoader.installAndRefresh(
+                            in: webView, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                        guard !Task.isCancelled, self.replyPageGeneration == pageGeneration else { return }
+                        if prepared { self.mathRuntimePrepared = true }
+                        guard isCurrent() else { return }
+                    }
                     let updated = try await webView.callAsyncJavaScript(
                         """
                         if (window.scholiumReadReady) await window.scholiumReadReady;
@@ -267,6 +280,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         pendingReplyUpdate = nil
         replyNavigationReady = false
         replyPageFingerprint = nil
+        mathRuntimePrepared = false
     }
 }
 

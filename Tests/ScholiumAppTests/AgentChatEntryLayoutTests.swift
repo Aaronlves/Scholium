@@ -75,7 +75,7 @@ struct AgentChatEntryLayoutTests {
                     openAttachment: { _, _ in }, showChanges: { _ in },
                     showConversationChanges: { _ in }, presentation: presentation, readingSession: reading,
                     nativeSession: native, focusRequest: nil, consumeFocusRequest: { _ in },
-                    replyNavigation: nil, openReply: { _ in }, showList: {}, newConversation: {},
+                    replyNavigation: .constant(nil), openReply: { _ in }, showList: {}, newConversation: {},
                     didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}))
         }
         let host = NSHostingView(rootView: AnyView(Color.clear))
@@ -99,7 +99,7 @@ struct AgentChatEntryLayoutTests {
             let anchor = try #require(reading.anchor)
             let selection = NSRange(location: 2, length: 3)
             native.host.editor.setSelectedRange(selection)
-            let oldReaders = descendants(host).compactMap { ($0 as? WKWebView).map(WeakReader.init) }
+            let oldReaders = readerViews(in: host).map(WeakReader.init)
             host.rootView = AnyView(Text("Another synthetic conversation is selected"))
             try await settle(host) { reading.viewport == nil && native.host.window == nil && oldReaders.allSatisfy { $0.view == nil } }
             #expect(reading.anchor == anchor)
@@ -125,14 +125,14 @@ struct AgentChatEntryLayoutTests {
             #expect(native.host.editor.selectedRange() == selection)
             #expect(try exactSnapshot(try #require(controller.selected).messages) == sourceSnapshot)
             try await verifyReaders(
-                descendants(host).compactMap { $0 as? WKWebView }, messages: conversation.messages,
+                readerViews(in: host), messages: conversation.messages,
                 question: questionText, progressTitle: progressTitle, progressParagraph: progressParagraph,
                 answerParagraph: answerParagraph, expandedProcess: expandedProcess)
             try await controller.flushPersistence()
             let stored = try #require(try await storage.load().first { $0.id == conversation.id })
             #expect(try exactSnapshot(stored.messages) == sourceSnapshot)
             #expect(stored.draft.utf8.elementsEqual(conversation.draft.utf8))
-            let rebuiltReaders = descendants(host).compactMap { ($0 as? WKWebView).map(WeakReader.init) }
+            let rebuiltReaders = readerViews(in: host).map(WeakReader.init)
             host.rootView = AnyView(Color.clear)
             try await settle(host) {
                 reading.viewport == nil && native.host.window == nil && rebuiltReaders.allSatisfy { $0.view == nil }
@@ -146,8 +146,8 @@ struct AgentChatEntryLayoutTests {
     }
 
     private final class WeakReader {
-        weak var view: WKWebView?
-        init(_ view: WKWebView) { self.view = view }
+        weak var view: NSView?
+        init(_ view: NSView) { self.view = view }
     }
 
     private struct Geometry {
@@ -174,7 +174,7 @@ struct AgentChatEntryLayoutTests {
             return values.max() ?? 0
         }
 
-        /// Missing WebKit instances must not obscure the separately measurable
+        /// Missing reader instances must not obscure the separately measurable
         /// transcript, viewport and input movement behind an infinite drift.
         func maximumLayoutDrift(from other: Self) -> CGFloat {
             var values =
@@ -214,7 +214,7 @@ struct AgentChatEntryLayoutTests {
             host.window?.layoutIfNeeded()
             host.layoutSubtreeIfNeeded()
             let sample = geometry(host: host, session: session, native: native, rowIDs: rowIDs, readerIDs: readerIDs)
-            let readerCount = sample?.readerCount ?? descendants(host).compactMap { $0 as? WKWebView }.count
+            let readerCount = sample?.readerCount ?? readerViews(in: host).count
             let state =
                 "phase=\(session.initialTranscriptPhase) readers=\(readerCount) hydrated=\(session.areReadersHydrated(readerIDs)) "
                 + "geometry_available=\(sample != nil)"
@@ -244,7 +244,7 @@ struct AgentChatEntryLayoutTests {
             }
             try await Task.sleep(for: .milliseconds(10))
         }
-        let readers = descendants(host).compactMap { $0 as? WKWebView }
+        let readers = readerViews(in: host)
         let nativeReaders = readers.prefix(6).enumerated().map { index, view in
             "\(index):frame=\(view.convert(view.bounds, to: host)),window=\(view.window != nil),"
                 + "same_window=\(view.window === host.window),hidden=\(view.isHiddenOrHasHiddenAncestor)"
@@ -274,7 +274,7 @@ struct AgentChatEntryLayoutTests {
             rows[id] = view.convert(view.bounds, to: host)
         }
         let views = descendants(host)
-        let readers = views.compactMap { $0 as? WKWebView }
+        let readers = readerViews(in: host)
         let readerFrames = readers.map { $0.convert($0.bounds, to: host) }.sorted { $0.minY < $1.minY }
         let header = views.first { $0.accessibilityIdentifier() == "scholium.chat.back" }
         let insets = scroll.contentInsets
@@ -287,11 +287,26 @@ struct AgentChatEntryLayoutTests {
     }
 
     private func verifyReaders(
-        _ readers: [WKWebView], messages: [AgentChatMessage], question: String,
+        _ readers: [NSView], messages: [AgentChatMessage], question: String,
         progressTitle: String, progressParagraph: String, answerParagraph: String, expandedProcess: Bool
     ) async throws {
         var seen: Set<String> = []
-        for reader in readers {
+        for view in readers {
+            try #require(view.bounds.width.isFinite && view.bounds.height.isFinite && view.bounds.width > 0 && view.bounds.height > 0)
+            if let paragraph = view as? AgentChatNativeParagraphView {
+                let message = try #require(messages.first { $0.role == .user && $0.text.utf8.elementsEqual(paragraph.string.utf8) })
+                try #require(seen.insert(message.id).inserted)
+                #expect(message.id == "entry-question")
+                #expect(paragraph.string.utf8.elementsEqual(question.utf8))
+                let container = try #require(paragraph.textContainer)
+                let layout = try #require(paragraph.layoutManager)
+                layout.ensureLayout(for: container)
+                let textHeight = max(ScholiumChatAppearance.messageLoadingHeight, ceil(layout.usedRect(for: container).height))
+                #expect(abs(container.containerSize.width - paragraph.bounds.width) <= 1)
+                #expect(abs(textHeight - paragraph.bounds.height) <= 1, "The native paragraph must apply its complete text layout")
+                continue
+            }
+            let reader = try #require(view as? WKWebView)
             let result = try await reader.callAsyncJavaScript(
                 """
                 return {fingerprint: configuration.fingerprint,
@@ -340,6 +355,11 @@ struct AgentChatEntryLayoutTests {
 
     private func descendants(_ view: NSView) -> [NSView] {
         [view] + view.subviews.flatMap(descendants)
+    }
+
+    private func readerViews(in view: NSView) -> [NSView] {
+        if view is WKWebView || view is AgentChatNativeParagraphView { return [view] }
+        return view.subviews.flatMap { readerViews(in: $0) }
     }
 
     private func settle(_ host: NSView, _ condition: () -> Bool) async throws {

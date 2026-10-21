@@ -3,8 +3,8 @@ import Observation
 import ScholiumContracts
 import SwiftUI
 
-/// All message bodies reuse the safe document reader so one WebKit selection
-/// spans prose, lists, code and horizontally scrolling tables.
+/// Rich bodies retain one safe WebKit selection across their Markdown objects.
+/// Proven plain user paragraphs use the same exact source in native text.
 struct AgentChatReadReply: View {
     private let sourceIdentity: ScholiumExactUTF8.SourceIdentity
     private var source: String { sourceIdentity.source }
@@ -13,6 +13,7 @@ struct AgentChatReadReply: View {
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
+    var allowsNativeParagraph = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @Environment(\.chatReadingInteraction) private var readingInteraction
@@ -37,7 +38,7 @@ struct AgentChatReadReply: View {
     init(
         source: String, readerID: String? = nil, isStreaming: Bool = false,
         quote: ((AgentChatReplySelection) -> Void)?, openLink: @escaping (URL) -> Void,
-        fitsContent: Bool = false
+        fitsContent: Bool = false, allowsNativeParagraph: Bool = false
     ) {
         sourceIdentity = .init(source)
         self.readerID = readerID
@@ -45,6 +46,7 @@ struct AgentChatReadReply: View {
         self.quote = quote
         self.openLink = openLink
         self.fitsContent = fitsContent
+        self.allowsNativeParagraph = allowsNativeParagraph
     }
 
     var body: some View {
@@ -62,91 +64,114 @@ struct AgentChatReadReply: View {
                     }
                 }
             } else if let projection = readerProjection, preparationIsAdmitted {
-                // Keep the readable native projection as the row's geometry until
-                // the dedicated reader has reported both a loaded page and its
-                // actual height. Mounting WebKit at the one-line loading height
-                // makes the whole transcript collapse and then expand on first
-                // entry, which is visible as a spurious scroll.
-                fallbackBody
-                    .frame(height: readerIsVisible ? height : nil, alignment: .topLeading)
-                    .opacity(readerIsVisible ? 0 : 1)
-                    .allowsHitTesting(!readerIsVisible)
-                    .accessibilityHidden(readerIsVisible)
-                    .overlay(alignment: .topLeading) {
-                        AgentChatReadWebViewSurface(
-                            documentID: "chat-reply", document: projection.document,
-                            htmlBody: projection.html, presentationCSS: css, userCSS: "",
-                            projectionRevision: projection.presentationRevision,
-                            onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
-                            renderingReadinessIsAcknowledged: readiness.ready,
-                            onRenderingFailure: {
-                                preparationIsAdmitted = false
-                                hasPresentedReader = false
-                                readiness.failure = $0
-                                hasHydratedReader = false
-                                renderer.cancel()
-                            },
-                            onRenderingLoading: {
-                                readiness.reset()
-                                hasHydratedReader = false
-                            },
-                            onRenderingReady: {
-                                readiness.ready = true
-                                acceptHydratedProjection()
-                            },
-                            onEvent: { receive($0, expectedSource: projection.document.rawContent) }
-                        )
-                        .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
-                        .frame(height: height)
-                        .onGeometryChange(for: CGSize.self) {
-                            $0.size
-                        } action: {
-                            readiness.applyLayout($0)
+                if let paragraph = nativeParagraph(in: projection) {
+                    AgentChatNativeParagraph(
+                        source: paragraph, revision: projection.presentationRevision, fitsContent: fitsContent,
+                        isInteractive: readerIsVisible && readiness.acceptsInteraction
+                            && ScholiumExactUTF8.equal(source, paragraph),
+                        onInteraction: readingInteraction,
+                        onLayout: { revision, size in
+                            guard readerProjection?.presentationRevision == revision,
+                                ScholiumExactUTF8.equal(source, paragraph), size.width.isFinite, size.height.isFinite,
+                                size.width > 0, size.height > 0
+                            else { return }
+                            readiness.measureLayout(height: size.height, viewportWidth: size.width, maximumWidth: fitsContent ? size.width : nil)
+                            readiness.applyLayout(size)
+                            readiness.ready = true
+                            acceptHydratedProjection()
                         }
-                        .opacity(readerIsVisible ? 1 : 0)
-                        .allowsHitTesting(readerIsVisible)
+                    )
+                } else {
+                    // Keep the readable native projection as the row's geometry until
+                    // the dedicated reader has reported both a loaded page and its
+                    // actual height. Mounting WebKit at the one-line loading height
+                    // makes the whole transcript collapse and then expand on first
+                    // entry, which is visible as a spurious scroll.
+                    fallbackBody
+                        .frame(height: readerIsVisible ? height : nil, alignment: .topLeading)
+                        .opacity(readerIsVisible ? 0 : 1)
+                        .allowsHitTesting(!readerIsVisible)
+                        .accessibilityHidden(readerIsVisible)
                         .overlay(alignment: .topLeading) {
-                            ZStack(alignment: .topLeading) {
-                                ForEach(objects) { object in
-                                    AgentChatRichObjectActions(
-                                        object: object,
-                                        copy: {
-                                            guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource.source) else {
-                                                return false
-                                            }
-                                            readingInteraction()
-                                            NSPasteboard.general.clearContents()
-                                            return NSPasteboard.general.setString(payload.copyText, forType: .string)
-                                        },
-                                        expand: { origin in
-                                            guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource.source) else {
-                                                return
-                                            }
-                                            readingInteraction()
-                                            let content = AgentChatRichContent(
-                                                object: payload, naturalSize: object.naturalSize, openLink: openLink)
-                                            preview.present(
-                                                title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
-                                                copyText: payload.copyText, from: origin
-                                            ) {
-                                                content
-                                            }
-                                        }
-                                    )
-                                    .disabled(
-                                        objectsSource != ScholiumExactUTF8.SourceIdentity(source)
-                                            || objectsSource != ScholiumExactUTF8.SourceIdentity(projection.document.rawContent)
-                                    )
-                                    .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
-                                    .offset(x: object.frame.minX, y: object.frame.minY)
-                                }
+                            AgentChatReadWebViewSurface(
+                                documentID: "chat-reply", document: projection.document,
+                                htmlBody: projection.html, presentationCSS: css, userCSS: "",
+                                projectionRevision: projection.presentationRevision,
+                                onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
+                                renderingReadinessIsAcknowledged: readiness.ready,
+                                onRenderingFailure: {
+                                    guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
+                                    preparationIsAdmitted = false
+                                    hasPresentedReader = false
+                                    readiness.failure = $0
+                                    hasHydratedReader = false
+                                    renderer.cancel()
+                                },
+                                onRenderingLoading: {
+                                    guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
+                                    readiness.reset()
+                                    hasHydratedReader = false
+                                },
+                                onRenderingReady: {
+                                    guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
+                                    readiness.ready = true
+                                    acceptHydratedProjection()
+                                },
+                                onEvent: { receive($0, expectedSource: projection.document.rawContent) }
+                            )
+                            .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
+                            .frame(height: height)
+                            .onGeometryChange(for: CGSize.self) {
+                                $0.size
+                            } action: {
+                                guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
+                                readiness.applyLayout($0)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .opacity(readerIsVisible ? 1 : 0)
+                            .allowsHitTesting(readerIsVisible)
+                            .overlay(alignment: .topLeading) {
+                                ZStack(alignment: .topLeading) {
+                                    ForEach(objects) { object in
+                                        AgentChatRichObjectActions(
+                                            object: object,
+                                            copy: {
+                                                guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource.source) else {
+                                                    return false
+                                                }
+                                                readingInteraction()
+                                                NSPasteboard.general.clearContents()
+                                                return NSPasteboard.general.setString(payload.copyText, forType: .string)
+                                            },
+                                            expand: { origin in
+                                                guard let objectsSource, let payload = objectContent(object.id, expectedSource: objectsSource.source) else {
+                                                    return
+                                                }
+                                                readingInteraction()
+                                                let content = AgentChatRichContent(
+                                                    object: payload, naturalSize: object.naturalSize, openLink: openLink)
+                                                preview.present(
+                                                    title: ScholiumL10n.string(payload.kind == .diagram ? "Diagram" : payload.kind == .code ? "Code" : "Table"),
+                                                    copyText: payload.copyText, from: origin
+                                                ) {
+                                                    content
+                                                }
+                                            }
+                                        )
+                                        .disabled(
+                                            objectsSource != ScholiumExactUTF8.SourceIdentity(source)
+                                                || objectsSource != ScholiumExactUTF8.SourceIdentity(projection.document.rawContent)
+                                        )
+                                        .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
+                                        .offset(x: object.frame.minX, y: object.frame.minY)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            }
+                            .disabled(!readerIsVisible)
                         }
-                        .disabled(!readerIsVisible)
-                    }
-                    .frame(maxWidth: fitsContent && readerIsVisible ? intrinsicWidth ?? .infinity : .infinity, alignment: .leading)
-                    .frame(height: readerIsVisible ? height : nil, alignment: .topLeading)
+                        .frame(maxWidth: fitsContent && readerIsVisible ? intrinsicWidth ?? .infinity : .infinity, alignment: .leading)
+                        .frame(height: readerIsVisible ? height : nil, alignment: .topLeading)
+                }
             } else {
                 fallbackBody
             }
@@ -183,8 +208,8 @@ struct AgentChatReadReply: View {
             // runtime setup and layout measurement. Streamed snapshots continue
             // parsing/coalescing off the UI actor, but cannot restart this page
             // or invalidate its fingerprint-bound initialization messages.
-            if readerProjection == nil || hasHydratedReader {
-                readerProjection = renderer.snapshot
+            if readerProjection == nil || hasHydratedReader || readerProjection.flatMap(nativeParagraph) != nil {
+                installProjection(renderer.snapshot)
             }
         }
         .onChange(of: renderer.failure) { _, failure in
@@ -248,6 +273,29 @@ struct AgentChatReadReply: View {
         guard isEnabled && surfaceVisibility != .retained else { return false }
         guard readerID != nil, let presentation = readingPresentation else { return true }
         return presentation.session.ownsPresentation(presentation.id)
+    }
+
+    private func nativeParagraph(in projection: AgentChatReplyProjection.Snapshot) -> String? {
+        guard allowsNativeParagraph, quote == nil else { return nil }
+        return projection.nativeParagraph
+    }
+
+    private func installProjection(_ projection: AgentChatReplyProjection.Snapshot?) {
+        let replacesNativeWithWeb = readerProjection.flatMap(nativeParagraph) != nil && projection.flatMap(nativeParagraph) == nil
+        if readerProjection?.presentationRevision != projection?.presentationRevision,
+            readerProjection.flatMap(nativeParagraph) != nil || projection.flatMap(nativeParagraph) != nil
+        {
+            // A new native revision (including a same-size replacement) needs
+            // its own applied-layout receipt, as does either renderer transition.
+            readiness.reset()
+            readiness.clearAppliedLayout()
+            hasHydratedReader = false
+        }
+        readerProjection = projection
+        if replacesNativeWithWeb {
+            preparationIsAdmitted = false
+            preparationAttempt = UUID()
+        }
     }
 
     private var readerIsVisible: Bool {
@@ -336,7 +384,7 @@ struct AgentChatReadReply: View {
         // synchronously. A later SwiftUI change observer could miss completion
         // when a source revision arrives before its next rendering pass.
         hasHydratedReader = true
-        readerProjection = renderer.snapshot
+        installProjection(renderer.snapshot)
     }
 
     private func objectContent(_ id: String, expectedSource: String) -> RenderedMarkdownObject? {

@@ -143,7 +143,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         try #require(generation > 0)
         let selection = try #require(harness.session.context?.selections)
         let undoLabel = try #require(harness.session.context?.undoLabel)
-        try await dispatcher.waitForCatalog(generation: generation)
+        // The ordinary edit still validates the current image bytes. An
+        // unchanged, already delivered catalog need not be transferred again;
+        // reconstruction below must independently admit its current generation.
+        try await harness.session.testingAwaitImageResourceRefreshAndPresentation()
         harness.synchronizeLifecycleSourceFromSession()
         try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
         #expect(harness.session.hasRetainedHistory)
@@ -998,7 +1001,6 @@ private final class InlineImageRecoveryInitializationObserver: MarkdownEditorBri
 
     weak var session: MarkdownEditorSession?
     private let production = WKWebViewMarkdownEditorBridgeDispatcher()
-    private var acceptedCatalogGenerations: Set<Int> = []
     private var recoveryGeneration: Int?
     private var currentCatalogGeneration: Int?
     private var currentImageResource: String?
@@ -1037,7 +1039,6 @@ private final class InlineImageRecoveryInitializationObserver: MarkdownEditorBri
             reply?["accepted"] as? Bool == true,
             reply?["resultingGeneration"] as? Int == configuration.imageResourceGeneration
         {
-            acceptedCatalogGenerations.insert(configuration.imageResourceGeneration)
             currentCatalogGeneration = configuration.imageResourceGeneration
             currentImageResource = configuration.imageResources["Attachments/figure"]
         }
@@ -1073,11 +1074,4 @@ private final class InlineImageRecoveryInitializationObserver: MarkdownEditorBri
             """, arguments: ["resource": resource ?? ""], in: nil, contentWorld: .page) as? [String: Any]
     }
 
-    func waitForCatalog(generation: Int) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while !acceptedCatalogGenerations.contains(generation) {
-            try #require(ContinuousClock.now < deadline, "The edited generation did not receive its admitted image catalog.")
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }
 }

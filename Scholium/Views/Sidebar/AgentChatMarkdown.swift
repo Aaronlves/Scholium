@@ -7,24 +7,26 @@ struct AgentChatMarkdown: View {
     var readerID: String? = nil
     var isStreaming = false
     var expandsToFillWidth = true
+    var allowsNativeParagraph = false
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     init(
         text: String, readerID: String? = nil, isStreaming: Bool = false, expandsToFillWidth: Bool = true,
-        quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
+        quoteSelection: ((AgentChatReplySelection) -> Void)? = nil, allowsNativeParagraph: Bool = false
     ) {
         sourceIdentity = .init(text)
         self.readerID = readerID
         self.isStreaming = isStreaming
         self.expandsToFillWidth = expandsToFillWidth
         self.quoteSelection = quoteSelection
+        self.allowsNativeParagraph = allowsNativeParagraph
     }
 
     var body: some View {
         AgentChatReadReply(
             source: text, readerID: readerID, isStreaming: isStreaming, quote: quoteSelection, openLink: { openURL($0) },
-            fitsContent: !expandsToFillWidth
+            fitsContent: !expandsToFillWidth, allowsNativeParagraph: allowsNativeParagraph
         )
         .font(ScholiumChatAppearance.messageFont)
         .foregroundStyle(ScholiumChatAppearance.messageForeground)

@@ -60,7 +60,7 @@ struct AgentChatLatestScrollTests {
                 noteChoices: [], prepareNotes: { _ in { _ in } }, openReference: { _ in false },
                 openAttachment: { _, _ in }, showChanges: { _ in }, showConversationChanges: { _ in },
                 presentation: presentation, readingSession: reading, nativeSession: native,
-                focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: nil, openReply: { _ in },
+                focusRequest: nil, consumeFocusRequest: { _ in }, replyNavigation: .constant(nil), openReply: { _ in },
                 showList: {}, newConversation: {}, didRestoreConversation: {}, renameConversation: { _ in }, showAccountUsage: {}))
         try await settle(host) { reading.isInitialTranscriptReady && reading.viewportRequest == nil && !reading.isScrolling }
         let viewport = try #require(reading.viewport)

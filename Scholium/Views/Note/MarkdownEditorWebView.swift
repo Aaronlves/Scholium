@@ -768,7 +768,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 } else {
                     previewImages = [:]
                 }
-                session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent, imageResources: previewImages) { [weak self, weak webView] id, action, index in
+                session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent, imageResources: previewImages) {
+                    [weak self, weak webView] id, action, index in
                     // Autosave rebases the disk fingerprint, not the live buffer
                     // revision. Validate that revision at event dispatch instead.
                     guard let self, let webView,
