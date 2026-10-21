@@ -231,7 +231,9 @@ final class WindowAttachedWebView: DocumentNativeWebView, ScholiumDocumentInputS
             contextualItems.append(
                 editorMenuItem(
                     ScholiumL10n.string("Toggle Task"),
-                    command: .toggleTask
+                    command: .toggleTask,
+                    context: context,
+                    mode: mode
                 ))
         }
 
@@ -257,7 +259,9 @@ final class WindowAttachedWebView: DocumentNativeWebView, ScholiumDocumentInputS
             submenu.autoenablesItems = false
             for (index, group) in tableCommandGroups.enumerated() {
                 if index > 0 { submenu.addItem(.separator()) }
-                group.forEach { submenu.addItem(editorMenuItem($0.0, command: $0.1)) }
+                group.forEach {
+                    submenu.addItem(editorMenuItem($0.0, command: $0.1, context: context, mode: mode))
+                }
             }
             let item = NSMenuItem(
                 title: ScholiumL10n.string("Table"),
@@ -320,31 +324,48 @@ final class WindowAttachedWebView: DocumentNativeWebView, ScholiumDocumentInputS
 
     private func editorMenuItem(
         _ title: String,
-        command: MarkdownEditorCommand
+        command: MarkdownEditorCommand,
+        context: MarkdownEditorContext,
+        mode: MarkdownEditorMode
     ) -> NSMenuItem {
-        let item = NSMenuItem(
-            title: title,
-            action: #selector(performEditorCommand(_:)),
-            keyEquivalent: ""
-        )
-        item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.\(command.rawValue)")
-        item.representedObject = command.rawValue
-        item.target = self
-        item.isEnabled = true
-        return item
-    }
-
-    @objc private func performEditorCommand(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-            let command = MarkdownEditorCommand(rawValue: rawValue),
-            let editorSession
-        else { return }
-        Task { @MainActor in
-            do {
-                try await editorSession.perform(command)
-            } catch {
-                editorSession.reportError(ScholiumErrorLocalization.message(error))
+        let editorSession = editorSession
+        let sessionID = editorSession?.sessionID
+        let documentID = editorSession?.documentID
+        let generation = editorSession?.generation
+        let isCurrent: @MainActor () -> Bool = { [weak self, weak editorSession] in
+            guard let self, let editorSession,
+                self.editorSession === editorSession, editorSession.webView === self,
+                self.window != nil, !self.isHiddenOrHasHiddenAncestor,
+                self.documentSurfaceAllowsInput,
+                editorSession.isReady, editorSession.isLoaded, !editorSession.isComposing,
+                editorSession.sessionID == sessionID, editorSession.documentID == documentID,
+                editorSession.generation == generation, editorSession.presentedMode == mode,
+                editorSession.canAttemptPreview,
+                editorSession.context?.selections == context.selections,
+                editorSession.context?.availableCommands.contains(command) == true
+            else { return false }
+            return true
+        }
+        let item = PassageMenuItem(title: title, enabled: true) { [weak self, weak editorSession] in
+            guard self != nil, editorSession != nil, isCurrent() else { return }
+            Task { @MainActor [weak self, weak editorSession] in
+                guard let self, let editorSession, isCurrent() else { return }
+                do {
+                    // Selection-only changes do not advance source generation.
+                    // Recheck this menu's context after the mutation lane drains.
+                    _ = try await editorSession.send(
+                        .command(command, argument: nil), in: self, admittingCommand: isCurrent)
+                } catch is CancellationError {
+                    return
+                } catch MarkdownEditorSession.SessionError.staleRequest {
+                    return
+                } catch {
+                    guard isCurrent() else { return }
+                    editorSession.reportError(ScholiumErrorLocalization.message(error))
+                }
             }
         }
+        item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.\(command.rawValue)")
+        return item
     }
 }

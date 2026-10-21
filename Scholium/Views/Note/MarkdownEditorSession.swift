@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import ScholiumContracts
 import SwiftUI
+import Synchronization
 import WebKit
 
 struct MarkdownSourceSelectionSnapshot: Sendable {
@@ -101,6 +102,14 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
 
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    /// Caller cancellation revokes admission, but cannot release the mutation
+    /// lane while an already dispatched WebKit operation is still running.
+    private final class RequestCancellation: Sendable {
+        private let state = Mutex(false)
+        var isCancelled: Bool { state.withLock { $0 } }
+        func cancel() { state.withLock { $0 = true } }
+    }
+
     private static let modeChangeRecoveryMessage = ScholiumL10n.string(
         "The document mode change was not applied because the editor changed during text composition.")
 
@@ -1799,6 +1808,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
     func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
+        try Task.checkCancellation()
         if suspendForDetachment, hasAttachedWebView, !isReady || !isLoaded {
             // Departure can arrive before the current document's bootstrap
             // acknowledges readiness. Join that lifecycle before freezing its
@@ -1826,6 +1836,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 pendingDetachmentSuspensionID = suspensionID
                 do {
                     let result = try await send(.suspendForDetachment(suspensionID: suspensionID), in: webView)
+                    try Task.checkCancellation()
                     guard self.webView === webView,
                         pendingDetachmentSuspensionID == suspensionID,
                         let snapshot = result.recovery,
@@ -1858,7 +1869,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     frozenScrollAnchor = result.scrollAnchor
                     capturedNewFrozenState = true
                 } catch {
-                    try? await resumeAfterDetachment(suspensionID: suspensionID)
+                    // Releasing this acquisition is cleanup even when its
+                    // caller has cancelled the departure that acquired it.
+                    try? await Task { @MainActor in
+                        try await self.resumeAfterDetachment(suspensionID: suspensionID)
+                    }.value
                     throw error
                 }
             }
@@ -2521,9 +2536,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 _ = try await send(.finishCitation(transactionID: transactionID), in: webView)
                 _ = try? await send(.focus, in: webView)
             } else {
-                if self.webView === webView, sessionID == capturedSessionID {
-                    _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView)
-                }
+                await cancelEditorCitation(
+                    transactionID: transactionID, in: webView,
+                    sessionID: capturedSessionID, documentID: capturedDocumentID)
                 switch result.status {
                 case .cancelled: return
                 case .busy:
@@ -2539,9 +2554,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
             }
         } catch {
-            if self.webView === webView, sessionID == capturedSessionID {
-                _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView)
-            }
+            await cancelEditorCitation(
+                transactionID: transactionID, in: webView,
+                sessionID: capturedSessionID, documentID: capturedDocumentID)
             if citationCancellationRequested, citationTransactionID == transactionID,
                 case SessionError.staleRequest = error
             {
@@ -2549,6 +2564,18 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             }
             throw error
         }
+    }
+
+    private func cancelEditorCitation(
+        transactionID: String, in webView: WKWebView,
+        sessionID expectedSessionID: UUID, documentID expectedDocumentID: String
+    ) async {
+        await Task { @MainActor in
+            guard self.webView === webView, self.sessionID == expectedSessionID,
+                self.documentID == expectedDocumentID
+            else { return }
+            _ = try? await self.send(.cancelCitation(transactionID: transactionID), in: webView)
+        }.value
     }
 
     private func citationAuthority(
@@ -2648,7 +2675,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         case .cancelCitation:
             guard let transactionID = citationTransactionID else { return }
             citationCancellationRequested = true
-            if let webView { _ = try? await send(.cancelCitation(transactionID: transactionID), in: webView) }
+            if let webView {
+                await cancelEditorCitation(
+                    transactionID: transactionID, in: webView, sessionID: sessionID, documentID: documentID)
+            }
             await citationIntegration.cancelCurrentTransaction(transactionID: transactionID)
             await announceCitationStatus(ScholiumL10n.dynamicString("Citation cancelled. Finish or cancel any open Zotero dialog."))
             return
@@ -3400,8 +3430,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         in webView: WKWebView,
         requiringRequestEpoch requiredRequestEpoch: UInt64? = nil,
         observingOnly: Bool = false,
-        admittingFocus: (@MainActor () -> Bool)? = nil
+        admittingFocus: (@MainActor () -> Bool)? = nil,
+        admittingCommand: (@MainActor () -> Bool)? = nil
     ) async throws -> MarkdownEditorCommandResult {
+        try Task.checkCancellation()
         guard !operation.requiresWritableSource || (pendingMode != .review && presentedMode != .review)
         else { throw SessionError.unavailable }
         if observingOnly {
@@ -3424,6 +3456,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             webView: webView
         )
         let trackingID = UUID()
+        let callerCancellation = RequestCancellation()
         let task = Task.immediate { @MainActor in
             let openingBridgeOperation: PerformanceProbe.NoteOpeningBridgeOperation? =
                 switch operation {
@@ -3435,6 +3468,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             var openingBridgeSample: (attemptID: UUID, dispatchNanoseconds: UInt64, returnedNanoseconds: UInt64?)?
             await previous?.value
             try Task.checkCancellation()
+            guard !callerCancellation.isCancelled else { throw CancellationError() }
             guard isCurrentIdentity(context) else {
                 throw SessionError.staleRequest
             }
@@ -3465,6 +3499,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     phase: .bridgeRequest,
                     timeout: remaining
                 ) { [self, bridgeDispatcher] in
+                    guard !callerCancellation.isCancelled else { throw CancellationError() }
                     guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
                     if let admittingFocus {
                         switch operation {
@@ -3473,6 +3508,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         default:
                             throw SessionError.invalidResult
                         }
+                    }
+                    if let admittingCommand {
+                        guard case .command = operation else { throw SessionError.invalidResult }
+                        guard admittingCommand() else { throw SessionError.staleRequest }
                     }
                     if case .finishCitation(let transactionID) = operation {
                         guard
@@ -3625,7 +3664,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             sourceMutationBarrier = Task { @MainActor in _ = try? await task.value }
         }
         defer { inFlightRequestTasks[trackingID] = nil }
-        return try await task.value
+        return try await withTaskCancellationHandler {
+            // A dispatched operation drains through validation. Cancelling
+            // this wait must not let a later mutation overtake its side effects.
+            try await task.value
+        } onCancel: {
+            callerCancellation.cancel()
+        }
     }
 
     private func isCurrentIdentity(_ context: BridgeRequestContext) -> Bool {

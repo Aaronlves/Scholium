@@ -16702,7 +16702,7 @@
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
-          readerWindow.scholiumMermaidRuntimeDidLoad = void 0;
+          if (readerWindow.scholiumMermaidRuntimeDidLoad === finish) readerWindow.scholiumMermaidRuntimeDidLoad = void 0;
           const loaded = readerWindow.scholiumMermaid;
           if (loaded?.version !== 3) mermaidRuntimePromise = null;
           resolve(loaded?.version === 3 ? loaded : null);

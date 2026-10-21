@@ -6,6 +6,7 @@ import {ExactSourceMirror} from "../state";
 import {parseHTML} from "linkedom";
 import {afterEach, describe, expect, it, vi} from "vitest";
 import {createNativeFloatingPorts} from "../native-floating";
+import {createMermaidRuntimeLoader} from "../mermaid-runtime-loader";
 import {initializeReader, type ReaderWindow} from "../reader-runtime";
 import {currentDocumentScrollAnchor} from "../scroll-coordinator";
 import {installConstructableStylesheet} from "./stylesheet-fixture";
@@ -194,6 +195,48 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
       message.type === "floatingSurface" && message.event.type === "selectionSurface")?.event.surface)
       .toMatchObject({top: 450, bottom: 470, utf16Count: 4});
     f.signal.abort();
+  });
+
+  it("preserves the incoming editor runtime callback when a pending Review reader aborts", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    Reflect.deleteProperty(f.window, "scholiumMermaid");
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    f.host.root.insertAdjacentHTML("beforeend", '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>');
+    const requestRuntime = vi.fn();
+    const loader = createMermaidRuntimeLoader(f.window, requestRuntime);
+    const initializing = initializeReader(f.config, f.host);
+    try {
+      const reviewFinished = f.window.scholiumMermaidRuntimeDidLoad;
+      expect(reviewFinished).toBeTypeOf("function");
+      expect(f.postMessage.mock.calls.map(([message]) => message.type)).toContain("requestMermaidRuntime");
+
+      // CodeMirror builds incoming widgets before destroying the old Review
+      // widget, so its editor loader can already own the shared callback.
+      const pending = loader.ensure();
+      const editorFinished = f.window.scholiumMermaidRuntimeDidLoad;
+      expect(editorFinished).toBeTypeOf("function");
+      expect(editorFinished).not.toBe(reviewFinished);
+      expect(requestRuntime).toHaveBeenCalledOnce();
+      f.signal.abort();
+      expect(f.window.scholiumMermaidRuntimeDidLoad).toBe(editorFinished);
+
+      const runtime = {version: 3 as const, render: vi.fn(), copy: () => null, mount: () => false};
+      f.window.scholiumMermaid = runtime;
+      let resolved = false;
+      void pending.then(() => { resolved = true; });
+      f.window.scholiumMermaidRuntimeDidLoad!(true);
+      await Promise.resolve();
+      expect(resolved).toBe(true);
+      await expect(pending).resolves.toBe(runtime);
+      expect(f.window.scholiumMermaidRuntimeDidLoad).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      f.signal.abort();
+      loader.resetDocument();
+      await initializing;
+      Reflect.deleteProperty(f.window, "scholiumMermaid");
+    }
   });
 
   it("renders and refreshes Mermaid with the hosted document's current local typography", async () => {

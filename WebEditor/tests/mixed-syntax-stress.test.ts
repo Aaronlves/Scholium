@@ -108,8 +108,13 @@ function indexedDocument(source: string, index: ReturnType<typeof controller>) {
   expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
   return state.update({effects: StateEffect.appendConfig.of(index.extension)}).state;
 }
-function completeIndex(state: EditorState, index: ReturnType<typeof controller>) {
+function publishCompletedSyntax(state: EditorState): EditorState {
   expect(ensureSyntaxTree(state, state.doc.length, 5_000)).not.toBeNull();
+  // Parser completion advances its context; a transaction publishes that tree
+  // to the immutable language and projection fields before the next assertion.
+  return state.update({}).state;
+}
+function completeIndex(state: EditorState, index: ReturnType<typeof controller>) {
   const result = index.index(state);
   expect(result.syntaxComplete).toBe(true);
   return result;
@@ -142,7 +147,7 @@ describe("dense mixed Markdown stress", () => {
   it("keeps semantic counts, protected literals and a fresh-parse oracle through distributed Unicode edits and exact history recovery", () => {
     const source = mixedSource();
     const index = controller();
-    let state = indexedDocument(source, index);
+    let state = publishCompletedSyntax(indexedDocument(source, index));
     const initial = completeIndex(state, index);
     const links = initial.syntax.inlines.filter(inline => inline.kind === "wikilink");
     expect(links).toHaveLength(groupCount * 9);
@@ -164,7 +169,8 @@ describe("dense mixed Markdown stress", () => {
       state = state.update({changes: {from, insert: "中文e\u0301🦉"},
         annotations: isolateHistory.of("full")}).state;
       const freshController = controller();
-      const fresh = indexedDocument(exact(state), freshController);
+      state = publishCompletedSyntax(state);
+      const fresh = publishCompletedSyntax(indexedDocument(exact(state), freshController));
       expectEquivalentIndex(completeIndex(state, index), completeIndex(fresh, freshController));
     }
     const targetFrom = state.doc.toString().indexOf("Target-53-7");
@@ -215,7 +221,7 @@ describe("dense mixed Markdown stress", () => {
     state = state.update({changes: {from: state.doc.length, insert: "First"}, annotations: isolateHistory.of("full")}).state;
     const first = exact(state);
     state = state.update({changes: {from: state.doc.length, insert: " second"}, annotations: isolateHistory.of("full")}).state;
-    state = command(state, undo);
+    state = publishCompletedSyntax(command(state, undo));
     const catalog = completeIndex(state, index);
     const historyBefore = captureExactHistory(state);
     const selectionBefore = state.selection;

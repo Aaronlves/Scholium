@@ -1319,16 +1319,25 @@ extension MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callBridgeJavaScript(
             """
             const originalDecode = HTMLImageElement.prototype.decode;
+            let heldDecode;
+            let replacementInstalled = false;
             HTMLImageElement.prototype.decode = function() {
-              if (this.dataset.scholiumImageTarget !== 'Attachments/figure.png') return originalDecode.call(this);
+              if (this.dataset.scholiumImageTarget !== 'Attachments/figure.png' || replacementInstalled) {
+                return originalDecode.call(this);
+              }
+              if (heldDecode) return heldDecode;
               window.readOpeningDecodeHeld = true;
-              return new Promise(resolve => {
+              heldDecode = new Promise(resolve => {
                 window.releaseReadOpeningImage = async () => {
+                  // Readiness rechecks a changed src. Hold only the original
+                  // resource; every decode of its replacement must really finish.
+                  replacementInstalled = true;
                   this.src = replacementURL;
                   await originalDecode.call(this);
                   resolve();
                 };
               });
+              return heldDecode;
             };
             """,
             arguments: ["replacementURL": "data:\(portrait.mimeType);base64,\(portrait.data.base64EncodedString())"])

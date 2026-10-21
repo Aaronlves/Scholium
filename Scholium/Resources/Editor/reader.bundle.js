@@ -5664,7 +5664,7 @@
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
-          readerWindow2.scholiumMermaidRuntimeDidLoad = void 0;
+          if (readerWindow2.scholiumMermaidRuntimeDidLoad === finish) readerWindow2.scholiumMermaidRuntimeDidLoad = void 0;
           const loaded = readerWindow2.scholiumMermaid;
           if (loaded?.version !== 3) mermaidRuntimePromise = null;
           resolve(loaded?.version === 3 ? loaded : null);

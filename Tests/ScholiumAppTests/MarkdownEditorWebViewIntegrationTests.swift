@@ -2577,7 +2577,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         // This exercises real WebKit DOM events and CodeMirror coordinates,
         // not an operating-system drag gesture or an installed input method.
         func dispatchDrop(duringComposition: Bool) async throws -> [String: Any] {
-            let value = try await harness.callPageJavaScript(
+            _ = try await harness.callPageJavaScript(
                 """
                 const content = document.querySelector('.cm-content');
                 if (!content) throw new Error('Missing editor content');
@@ -2620,37 +2620,56 @@ struct MarkdownEditorWebViewIntegrationTests {
                     if (document.activeElement !== externalFocus) throw new Error('Could not leave editor focus');
                   }
                   content.dispatchEvent(event('dragover'));
-                  await frame();
-                  const cursorBefore = document.querySelectorAll('.cm-dropCursor').length;
-                  const cursor = document.querySelector('.cm-dropCursor');
-                  const accent = document.createElement('span');
-                  accent.style.color = 'var(--scholium-color-accent)';
-                  document.body.appendChild(accent);
-                  const accentColor = getComputedStyle(accent).color;
-                  accent.remove();
-                  const cursorColor = cursor && getComputedStyle(cursor).borderLeftColor;
-                  const drop = event('drop');
-                  content.dispatchEvent(drop);
-                  await frame();
-                  await frame();
-                  return {
-                    consumed: drop.defaultPrevented,
-                    cursorBefore,
-                    cursorColor,
-                    accentColor,
-                    cursorAfter: document.querySelectorAll('.cm-dropCursor').length,
-                    activeEditor: document.activeElement === content
+                  window.finishSyntheticDrop = async () => {
+                    try {
+                      const cursorBefore = document.querySelectorAll('.cm-dropCursor').length;
+                      const cursor = document.querySelector('.cm-dropCursor');
+                      const accent = document.createElement('span');
+                      accent.style.color = 'var(--scholium-color-accent)';
+                      document.body.appendChild(accent);
+                      const accentColor = getComputedStyle(accent).color;
+                      accent.remove();
+                      const cursorColor = cursor && getComputedStyle(cursor).borderLeftColor;
+                      const drop = event('drop');
+                      content.dispatchEvent(drop);
+                      await frame();
+                      await frame();
+                      return {
+                        consumed: drop.defaultPrevented,
+                        cursorBefore,
+                        cursorColor,
+                        accentColor,
+                        cursorAfter: document.querySelectorAll('.cm-dropCursor').length,
+                        activeEditor: document.activeElement === content
+                      };
+                    } finally {
+                      delete window.finishSyntheticDrop;
+                      externalFocus.remove();
+                      if (duringComposition) {
+                        content.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true}));
+                        await frame();
+                      }
+                    }
                   };
-                } finally {
+                } catch (error) {
                   externalFocus.remove();
                   if (duringComposition) {
                     content.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true}));
-                    await frame();
                   }
+                  throw error;
                 }
                 """,
                 arguments: ["droppedText": droppedText, "duringComposition": duringComposition])
-            return try #require(value as? [String: Any])
+            do {
+                // A public geometry query flushes CodeMirror's real measure when
+                // WebKit pauses animation frames in the command-line test host.
+                _ = try await harness.session.currentScrollAnchor()
+                let value = try await harness.callPageJavaScript("return await window.finishSyntheticDrop();")
+                return try #require(value as? [String: Any])
+            } catch {
+                _ = try? await harness.callPageJavaScript("if (window.finishSyntheticDrop) await window.finishSyntheticDrop();")
+                throw error
+            }
         }
 
         let rejected = try await dispatchDrop(duringComposition: true)
@@ -2871,9 +2890,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                   const event = new DragEvent('dragover', {bubbles: true, cancelable: true,
                     dataTransfer: transfer, clientX: x, clientY: y});
                   content.dispatchEvent(event);
-                  const deadline = performance.now() + 2000;
-                  while (document.querySelectorAll('.cm-dropCursor').length !== 1
-                      && performance.now() < deadline) await frame();
                   const count = document.querySelectorAll('.cm-dropCursor').length;
                   const targetStyle = getComputedStyle(node.parentElement);
                   const scroller = content.closest('.cm-scroller');
@@ -2896,7 +2912,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                   externalFocus.remove();
                 }
                 """) as? [String: Any])
-        try #require(preview["created"] as? Bool == true, "Drag preview: \(preview["diagnostics"] ?? "missing diagnostics")")
+        // Flush the real pending measure without relying on background rAF.
+        _ = try await harness.session.currentScrollAnchor()
+        let created = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-dropCursor').length === 1;") as? Bool
+        try #require(created == true, "Drag preview: \(preview["diagnostics"] ?? "missing diagnostics")")
         try await harness.session.focusAndWait()
         try await harness.waitUntilFocused()
 
@@ -12028,7 +12047,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var source: String
         @Published var documentTitle: String
         @Published var showsEditor = true
-        @Published var surfaceVisibility: DocumentSurfaceVisibility = .active
+        @Published var surfaceVisibility: DocumentSurfaceVisibility?
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
@@ -12151,7 +12170,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 citationSnapshot: citationSnapshot,
                 review: sourceBox.review
             )
-            .environment(\.scholiumDocumentSurfaceVisibility, sourceBox.surfaceVisibility)
+            .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
+                if let override = sourceBox.surfaceVisibility { visibility = override }
+            }
         }
     }
 

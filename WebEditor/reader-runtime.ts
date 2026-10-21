@@ -424,7 +424,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        readerWindow.scholiumMermaidRuntimeDidLoad = undefined;
+        if (readerWindow.scholiumMermaidRuntimeDidLoad === finish) readerWindow.scholiumMermaidRuntimeDidLoad = undefined;
         const loaded = readerWindow.scholiumMermaid;
         if (loaded?.version !== 3) mermaidRuntimePromise = null;
         resolve(loaded?.version === 3 ? loaded : null);
