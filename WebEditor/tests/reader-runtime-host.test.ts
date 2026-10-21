@@ -14,6 +14,7 @@ import {bindCommittedReviewImageResources} from "../committed-review-images";
 
 function fixture() {
   const {document, window} = parseHTML('<html><head><style id="presentation"></style><style id="user"></style></head><body><div id="outside"><p>Outside</p><div class="scholium-math" data-math-source="eA==" data-math-kind="inline"></div></div><div id="scroll"><main id="scholium-document"><p data-source-line="1" data-source-utf16-start="0" data-source-utf16-end="4">Body</p></main></div><aside id="popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside></body></html>');
+  Reflect.deleteProperty(window, "scholiumMath");
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", window);
   vi.stubGlobal("HTMLElement", window.HTMLElement);
@@ -286,9 +287,11 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
     await projection.prepare(Date.now() + 2000);
     const preparation = f.window.scholiumReadPreparation;
+    const dismissPreview = vi.spyOn(f.window, "scholiumDismissPreview");
     const text = dom.querySelector("p")!.firstChild;
     resources = {"Attachments/a%25.png": "data:image/png;base64,AQID"};
     projection.refreshImageResources();
+    expect(dismissPreview).toHaveBeenCalledOnce();
     expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
     await projection.prepare(Date.now() + 2000);
     expect(image.decode).toHaveBeenCalledTimes(2);
@@ -357,7 +360,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     widget.destroy(current);
   });
 
-  it("clones admitted annotation template images into the actual Native preview after replacement or removal", async () => {
+  it("sends admitted annotation image keys without copying resource bytes into the Native preview", async () => {
     const f = fixture();
     f.host.root.innerHTML = '<sup class="scholium-link-annotation-marker"><button class="scholium-link-annotation-button" data-link-annotation="annotation-1" data-link-annotation-target="Target">Annotation</button></sup>';
     const button = f.host.root.querySelector("button")!;
@@ -381,15 +384,105 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
       return parseHTML(`<html><body>${surface.html}</body></html>`).document.querySelector("img")!;
     };
     const original = open();
-    expect(original.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    expect(original.hasAttribute("src")).toBe(false);
+    expect(original.getAttribute("data-scholium-image-resource")).toBe("a%25&b.png");
     expect(original.alt).toBe("Authored 图");
     expect(original).not.toBe(image);
     bindCommittedReviewImageResources(f.host.root, {"a%25&b.png": "data:image/png;base64,AQID"});
-    expect(open().getAttribute("src")).toBe("data:image/png;base64,AQID");
+    f.window.scholiumDismissPreview?.();
+    expect(open().hasAttribute("src")).toBe(false);
+    expect(image.getAttribute("src")).toBe("data:image/png;base64,AQID");
     bindCommittedReviewImageResources(f.host.root, {});
+    f.window.scholiumDismissPreview?.();
     expect(open().hasAttribute("src")).toBe(false);
     expect(template.content.firstChild).toBe(image);
     expect(image.alt).toBe("Authored 图");
+    f.signal.abort();
+  });
+
+  it("preserves inert checked tasks and hydrates annotation/link mathematics once per target", async () => {
+    const f = fixture();
+    f.host.root.innerHTML = '<button class="footnote-reference" data-footnote="1">1</button>'
+      + '<section id="fn-1"><div class="footnote-content"><input class="scholium-task-checkbox" type="checkbox" disabled checked><input type="text" value="unsafe"><p>Footnote</p></div></section>'
+      + '<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="4">Linked</a>'
+      + '<sup class="scholium-link-annotation-marker"><button class="scholium-link-annotation-button" data-link-annotation="a" data-link-annotation-target="Linked">Annotation</button><template id="a-template"><span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code class="scholium-math-source">x</code></span></template></sup>';
+    const render = vi.fn(() => ({ok: true as const, html: '<math><mi>x</mi></math>'}));
+    f.window.scholiumMath = {version: 1, render};
+    await initializeReader({...f.config, linkPreviews: [{utf16LowerBound: 0, utf16UpperBound: 4,
+      title: "Linked", isEmbedded: false, htmlBody: '<p><span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code class="scholium-math-source">x</code></span></p>'}]}, f.host);
+    const dispatch = (anchor: Element, type: string) => {
+      const event = f.document.createEvent("Event"); event.initEvent(type, true, false); anchor.dispatchEvent(event);
+    };
+    const sent = () => f.postMessage.mock.calls.filter(([message]) => message.type === "floatingSurface"
+      && message.event.type === "previewSurface");
+    const footnote = f.host.root.querySelector('.footnote-reference')!;
+    dispatch(footnote, 'pointerover');
+    const before = sent().length;
+    dispatch(footnote, 'focusin');
+    expect(sent()).toHaveLength(before);
+    const body = parseHTML(`<html><body>${sent().at(-1)![0].event.surface.html}</body></html>`).document;
+    expect(body.querySelectorAll('input')).toHaveLength(1);
+    expect(body.querySelector('input')?.hasAttribute('checked')).toBe(true);
+    expect(body.querySelector('input')?.hasAttribute('disabled')).toBe(true);
+    const annotation = f.host.root.querySelector('.scholium-link-annotation-button')!;
+    dispatch(annotation, 'focusin');
+    expect(sent().at(-1)![0].event.surface.html).toContain('<math>');
+    const count = render.mock.calls.length;
+    dispatch(annotation, 'pointerover');
+    expect(render).toHaveBeenCalledTimes(count);
+    dispatch(f.host.root.querySelector('a')!, 'focusin');
+    expect(sent().at(-1)![0].event.surface.html).toContain('<math>');
+    expect(render).toHaveBeenCalledTimes(count + 1);
+    const finalCount = sent().length;
+    f.signal.abort();
+    dispatch(annotation, 'focusin');
+    expect(sent()).toHaveLength(finalCount);
+  });
+
+  it("loads template-only mathematics on disclosure without delaying initial Review", async () => {
+    const f = fixture();
+    f.host.root.innerHTML = '<sup class="scholium-link-annotation-marker"><button class="scholium-link-annotation-button" data-link-annotation="a">Annotation</button><template id="a-template"><span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code class="scholium-math-source">x</code></span></template></sup>';
+    await initializeReader(f.config, f.host);
+    expect(f.postMessage.mock.calls.filter(([message]) => message.type === 'requestMathRuntime')).toHaveLength(0);
+    const button = f.host.root.querySelector('button')!;
+    const focus = f.document.createEvent('Event'); focus.initEvent('focusin', true, false); button.dispatchEvent(focus);
+    expect(f.postMessage.mock.calls.filter(([message]) => message.type === 'requestMathRuntime')).toHaveLength(1);
+    expect(f.postMessage.mock.calls.some(([message]) => message.type === 'floatingSurface'
+      && message.event.type === 'previewSurface')).toBe(false);
+    f.window.scholiumMath = {version: 1, render: () => ({ok: true, html: '<math><mi>x</mi></math>'})};
+    const settled = f.document.createEvent('Event'); settled.initEvent('scholium-math-runtime-settled', false, false); f.window.dispatchEvent(settled);
+    await Promise.resolve();
+    expect(f.postMessage.mock.calls.filter(([message]) => message.type === 'floatingSurface'
+      && message.event.type === 'previewSurface').at(-1)![0].event.surface.html).toContain('<math>');
+    f.signal.abort();
+  });
+
+  it("requests one lazy math runtime for a later peer preview without initial document mathematics", async () => {
+    const f = fixture();
+    f.host.root.innerHTML = '<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="4">Linked</a>';
+    await initializeReader(f.config, f.host);
+    expect(f.postMessage.mock.calls.some(([message]) => message.type === 'requestMathRuntime')).toBe(false);
+    f.window.scholiumSetLinkPreviews?.([{utf16LowerBound: 0, utf16UpperBound: 4, title: 'Linked', isEmbedded: false,
+      htmlBody: '<p><span class="scholium-math" data-math-source="eA==" data-math-kind="inline"><code class="scholium-math-source">x</code></span></p>'}]);
+    const link = f.host.root.querySelector('a')!;
+    for (const type of ['pointerover', 'focusin']) {
+      const event = f.document.createEvent('Event'); event.initEvent(type, true, false); link.dispatchEvent(event);
+    }
+    expect(f.postMessage.mock.calls.filter(([message]) => message.type === 'requestMathRuntime')).toHaveLength(1);
+    expect(f.postMessage.mock.calls.some(([message]) => message.type === 'floatingSurface'
+      && message.event.type === 'previewSurface')).toBe(false);
+    f.window.scholiumDismissPreview?.();
+    f.window.scholiumMath = {version: 1, render: () => ({ok: true, html: '<math><mi>x</mi></math>'})};
+    const settled = f.document.createEvent('Event'); settled.initEvent('scholium-math-runtime-settled', false, false); f.window.dispatchEvent(settled);
+    await Promise.resolve();
+    const messages = f.postMessage.mock.calls.filter(([message]) => message.type === 'floatingSurface'
+      && message.event.type === 'previewSurface');
+    expect(messages).toHaveLength(0);
+    const reopen = f.document.createEvent('Event'); reopen.initEvent('focusin', true, false); link.dispatchEvent(reopen);
+    const current = f.postMessage.mock.calls.filter(([message]) => message.type === 'floatingSurface'
+      && message.event.type === 'previewSurface');
+    expect(current).toHaveLength(1);
+    expect(current[0][0].event.surface.html).toContain('<math>');
     f.signal.abort();
   });
 

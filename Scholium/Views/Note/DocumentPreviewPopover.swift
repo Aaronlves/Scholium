@@ -3,6 +3,7 @@ import WebKit
 
 enum DocumentPreviewFailure {
     case loading
+    case size
     case measurement
 }
 
@@ -24,13 +25,16 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private var popover: NSPopover?
     private var measurement: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
+    private var appearanceObservers: [(NotificationCenter, NSObjectProtocol)] = []
     private var eventMonitor: Any?
+    private var appearanceObservation: NSKeyValueObservation?
+    private var imageResources: [String: String] = [:]
 
-    func present(_ value: DocumentPreviewSurface, in owner: WKWebView) {
+    func present(_ value: DocumentPreviewSurface, in owner: WKWebView, imageResources: [String: String] = [:]) {
         // Repeated pointer/focus reports retain both the loaded content and its
         // reading position. A different target gets a fresh measured presentation.
         if self.owner === owner, let surface,
-            surface.html == value.html, surface.css == value.css,
+            surface.html == value.html, surface.css == value.css, self.imageResources == imageResources,
             surface.left == value.left, surface.top == value.top, surface.bottom == value.bottom
         {
             self.surface = value
@@ -39,6 +43,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         dismiss()
         self.owner = owner
         surface = value
+        self.imageResources = imageResources
         let content: PreviewWebView
         if let renderer {
             content = renderer
@@ -71,6 +76,10 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         activeNavigation = nil
         measurement?.cancel()
         measurement = nil
+        appearanceObservation = nil
+        for (center, token) in appearanceObservers { center.removeObserver(token) }
+        appearanceObservers.removeAll()
+        imageResources = [:]
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
@@ -97,13 +106,48 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView, let navigation, navigation === activeNavigation else { return }
         let generation = generation
+        let imageResources = imageResources
         measurement?.cancel()
         measurement = Task { @MainActor [weak self, weak webView] in
-            guard let webView else { return }
+            guard !Task.isCancelled, let webView, self?.generation == generation,
+                webView === self?.webView, navigation === self?.activeNavigation
+            else { return }
             // Finish font layout at the final width before exposing any window.
             let result = try? await webView.callAsyncJavaScript(
-                "await document.fonts.ready; return Math.ceil(document.body.getBoundingClientRect().height);",
-                arguments: [:], in: nil, contentWorld: .page)
+                """
+                for (const image of document.querySelectorAll('img.scholium-embedded-image[data-scholium-image-resource]')) {
+                    if (image.closest('.scholium-embedded-note')) continue;
+                    const key = image.getAttribute('data-scholium-image-resource');
+                    const resource = Object.hasOwn(resources, key) ? resources[key] : null;
+                    if (resource) image.setAttribute('src', resource);
+                    else {
+                        const missing = document.createElement('span');
+                        missing.className = 'scholium-media-placeholder';
+                        missing.textContent = image.alt ? `${unavailable} (${image.alt})` : unavailable;
+                        image.replaceWith(missing);
+                    }
+                }
+                await document.fonts.ready;
+                await Promise.all(Array.from(document.images, async image => {
+                    let timer;
+                    try {
+                        await Promise.race([
+                            image.decode(),
+                            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('image decode timeout')), 8000); })
+                        ]);
+                    } catch (_) {
+                        const missing = document.createElement('span');
+                        missing.className = 'scholium-media-placeholder';
+                        missing.textContent = image.alt ? `${unavailable} (${image.alt})` : unavailable;
+                        image.replaceWith(missing);
+                    } finally { clearTimeout(timer); }
+                }));
+                return Math.ceil(document.body.getBoundingClientRect().height);
+                """,
+                arguments: [
+                    "resources": imageResources,
+                    "unavailable": ScholiumL10n.string("The image could not be previewed. It may be unavailable or unsupported."),
+                ], in: nil, contentWorld: .page)
             guard !Task.isCancelled, let self, self.generation == generation,
                 webView === self.webView, navigation === self.activeNavigation
             else { return }
@@ -158,6 +202,18 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     }
 
     private func observeContext(_ owner: WKWebView) {
+        appearanceObservation = owner.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshAppearance() }
+        }
+        for name in [NSColor.systemColorsDidChangeNotification, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification] {
+            let center = name == NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+                ? NSWorkspace.shared.notificationCenter : NotificationCenter.default
+            // Each token retains its own center for symmetric cancellation.
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshAppearance() }
+            }
+            appearanceObservers.append((center, token))
+        }
         guard let window = owner.window else { return }
         for name in [NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
             observers.append(
@@ -207,6 +263,17 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         }
     }
 
+    private func refreshAppearance() {
+        guard let owner, let renderer, surface != nil else { return }
+        renderer.appearance = owner.effectiveAppearance
+        popover?.appearance = owner.effectiveAppearance
+        // Replace only the native style owner; preserve DOM, focus and scrolling.
+        renderer.callAsyncJavaScript(
+            "document.getElementById('scholium-native-preview-css')?.replaceChildren(document.createTextNode(css));",
+            arguments: ["css": ScholiumPreviewStyles.nativeCSS], in: nil, in: .page
+        ) { _ in }
+    }
+
     func popoverDidClose(_ notification: Notification) {
         guard let closed = notification.object as? NSPopover, closed === popover else { return }
         onEvent?(.dismiss)
@@ -238,7 +305,7 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         return """
             <!doctype html><html><head><meta charset="utf-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src scholium-font: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-            <style>\(css)</style><style>
+            <style>\(css)</style><style id="scholium-native-preview-css">
             \(ScholiumPreviewStyles.nativeCSS)
             </style></head><body>\(value.html)</body></html>
             """

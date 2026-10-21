@@ -145,7 +145,10 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       const changed = bindCommittedReviewImageResources(root, options.imageResources());
       const reader = window as ReaderWindow;
       for (const image of changed) reader.scholiumReviewImages?.refreshImage(image);
-      if (changed.length) mountedView.requestMeasure();
+      if (changed.length) {
+        reader.scholiumDismissPreview?.();
+        mountedView.requestMeasure();
+      }
     },
     updateInPlace(projection: CommittedReviewProjection | null) {
       const previous = mountedProjection;

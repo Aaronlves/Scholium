@@ -24,7 +24,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         // does not simulate a WK callback paused across a process reload.
         let math = Task { @MainActor in
             let wasCancelled = Task.isCancelled
-            let installed = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView)
+            let installed = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView, contentWorld: .page)
             return (wasCancelled, installed)
         }
         math.cancel()

@@ -99,6 +99,7 @@ struct AgentChatReplyActions: View {
     let openAttachment: (AgentChatAttachment, WindowOpenDisposition) -> Void
     let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
     @Environment(\.openURL) private var openURL
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @State private var sourceProjection = AgentChatReplySourceProjection()
     @State private var showsSources = false
     @State private var showsMaterials = false
@@ -143,6 +144,16 @@ struct AgentChatReplyActions: View {
             }
         }
         .buttonStyle(ScholiumContentActionButtonStyle()).font(.caption)
+        .onChange(of: surfaceVisibility) { _, visibility in
+            if !visibility.isActive {
+                showsSources = false
+                showsMaterials = false
+            }
+        }
+        .onDisappear {
+            showsSources = false
+            showsMaterials = false
+        }
     }
 }
 

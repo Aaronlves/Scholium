@@ -7,6 +7,7 @@ struct AgentChatConnectionStatus: View {
     @ObservedObject var controller: AgentChatController
     var messageID: String? = nil
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @State private var showsDetails = false
 
     enum Action: Hashable {
@@ -233,6 +234,10 @@ struct AgentChatConnectionStatus: View {
             )
             .onChange(of: statuses.first?.id) { old, new in if old != new { showsDetails = false } }
             .onChange(of: controller.selectedID) { _, _ in showsDetails = false }
+            .onChange(of: surfaceVisibility) { _, visibility in
+                if !visibility.isActive { showsDetails = false }
+            }
+            .onDisappear { showsDetails = false }
         }
     }
 

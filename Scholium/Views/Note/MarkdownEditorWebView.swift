@@ -572,7 +572,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var surfaceVisibility: DocumentSurfaceVisibility = .active {
             didSet {
+                guard oldValue != surfaceVisibility else { return }
+                reviewCoordinator?.surfaceVisibility = surfaceVisibility
                 if !surfaceVisibility.isActive {
+                    session.floatingSurfaces.dismissNotifyingOwner()
                     writingContinuation.cancel(reason: .inactive)
                     cancelWritingTermQuery()
                 }
@@ -745,9 +748,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     let webView = message.webView, activeWebView === webView,
                     let event = (try? JSONSerialization.jsonObject(with: payloadJSON)) as? [String: Any]
                 else { return }
-                reviewCoordinator?.receiveEmbedded(event, in: webView)
+                reviewCoordinator?.receiveEmbedded(
+                    event, in: webView, resolveImageResources: session.deliveredPreviewImageResources(for:))
             case .floatingSurface(let request):
-                guard surfaceVisibility.isActive,
+                guard admitsFloatingSurface(request.event),
                     validEnvelope(request.envelope), let webView = message.webView,
                     !request.event.allowsAgentInquiry || onAskAgent != nil
                 else { return }
@@ -758,10 +762,17 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     guard let self, self.surfaceVisibility.isActive else { return }
                     self.onPreviewFailure?(failure)
                 }
-                session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
+                let previewImages: [String: String]
+                if case .preview(let preview) = request.event {
+                    previewImages = session.deliveredPreviewImageResources(for: preview.imageResourceKeys)
+                } else {
+                    previewImages = [:]
+                }
+                session.floatingSurfaces.present(request.event, in: webView, inquire: onAskAgent, imageResources: previewImages) { [weak self, weak webView] id, action, index in
                     // Autosave rebases the disk fingerprint, not the live buffer
                     // revision. Validate that revision at event dispatch instead.
                     guard let self, let webView,
+                        action == .dismiss || self.admitsFloatingSurface(request.event),
                         self.session.webView === webView,
                         request.envelope.sessionID == self.session.sessionID.uuidString,
                         request.envelope.documentID == self.documentID,
@@ -1217,7 +1228,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     self.activeWebView === webView,
                     !Task.isCancelled
                 else { return }
-                _ = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView)
+                _ = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView, contentWorld: .page)
             }
         }
 
@@ -1553,6 +1564,18 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         sessionID: session.sessionID, documentID: envelope.documentID,
                         generation: envelope.documentVersion,
                         selection: .init(anchor: editorCaret, head: editorCaret)))
+        }
+
+        private func admitsFloatingSurface(_ event: DocumentFloatingEvent) -> Bool {
+            guard surfaceVisibility.isActive else { return false }
+            switch event {
+            case .preview, .previewFailure, .suggestions:
+                return lastModeInput == .livePreview
+            case .selection:
+                return lastModeInput != .review
+            case .dismiss:
+                return true
+            }
         }
 
         private func validEnvelope(

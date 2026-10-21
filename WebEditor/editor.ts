@@ -3059,10 +3059,12 @@ function applyPresentationConfiguration(requested: EditorPresentationConfigurati
   }
   const previousImages = previous?.imageResources ?? {};
   const keys = Object.keys(value.imageResources);
-  const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration
-      || keys.length !== Object.keys(previousImages).length
+  const imagePayloadChanged = keys.length !== Object.keys(previousImages).length
       || keys.some(key => previousImages[key] !== value.imageResources[key]);
+  const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration
+      || imagePayloadChanged;
   if (imagesChanged) {
+    if (imagePayloadChanged) previewPopover.hide();
     liveImageProjection.setResources(value.imageResources, editor);
   }
   if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled
@@ -3303,6 +3305,13 @@ const editorOperations = {
     const transitionSequence = ++modeTransitionSequence;
     const attachment = documentAttachment;
     previewPopover.hide();
+    const nextMode: EditorMode = mode === "review" ? "review" : mode === "livePreview" ? "livePreview" : "source";
+    if (nextMode !== configuredEditorMode(editor.state)) {
+      // Selection source survives a mode switch; its former presentation does
+      // not. Revoke it before the next mode installs its own selection owner.
+      selectionActions.dismiss();
+      selectionActions.update(null);
+    }
     const scrollAnchor = currentDocumentScrollAnchor(configuredEditorMode(editor.state), scrollCoordinator, reviewProjection);
     const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
     const scrollFraction = scrollAnchor?.fallbackFraction
@@ -3310,7 +3319,6 @@ const editorOperations = {
     // The shared scroller is about to use another mode's geometry. A prior
     // Edit font/frame retry must not reposition the newly mounted Review.
     scrollCoordinator.cancelPendingRestoration();
-    const nextMode: EditorMode = mode === "review" ? "review" : mode === "livePreview" ? "livePreview" : "source";
     if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
     if (nextMode !== "review" && appliedPresentation) {
       // Review and Edit use separately compiled protected user selectors. The
@@ -3369,7 +3377,15 @@ const editorOperations = {
   },
 
   setLinkPreviews(value: unknown) {
-    linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
+    const next = validatedLinkPreviews(value, editor.state.doc.length);
+    if (next.length === linkPreviews.length && next.every((preview, index) => {
+      const previous = linkPreviews[index];
+      return preview.from === previous.from && preview.to === previous.to && preview.title === previous.title
+        && preview.isEmbedded === previous.isEmbedded && preview.fragment === previous.fragment
+        && preview.htmlBody === previous.htmlBody;
+    })) return;
+    previewPopover.hide();
+    linkPreviews = next;
     linkPreviewIndexByRange = new Map(
       linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index]),
     );

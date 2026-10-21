@@ -581,7 +581,16 @@
             else return false;
             return true;
           }, ownerPost);
-          ownerPost({ type: "previewSurface", surface: { ...surface, id } });
+          const bounded = (text, maximum) => text.length <= maximum && (text.length <= maximum / 3 || new TextEncoder().encode(text).length <= maximum);
+          const payload = { ...surface, id };
+          const keys = surface.imageResourceKeys;
+          if (keys.length > 8192 || new Set(keys).size !== keys.length || keys.some((key) => !key || key.length > 16384) || !bounded(surface.html, 5e5) || !bounded(surface.css, 9e5) || new TextEncoder().encode(JSON.stringify(payload).replaceAll("/", "\\/")).length > 15e5) {
+            active = null;
+            ownerPost({ type: "previewFailure", id, reason: "size" });
+            callbacks.dismiss();
+            return id;
+          }
+          ownerPost({ type: "previewSurface", surface: payload });
           return id;
         },
         hide(id) {
@@ -630,13 +639,23 @@
     return portsForOwner(post);
   }
   function previewSurface(anchor, root) {
+    const imageResourceKeys = /* @__PURE__ */ new Set();
+    for (const image of root.querySelectorAll(
+      "img.scholium-embedded-image[data-scholium-image-resource]"
+    )) {
+      if (image.closest(".scholium-embedded-note")) continue;
+      const key = image.getAttribute("data-scholium-image-resource");
+      imageResourceKeys.add(key);
+      image.removeAttribute("src");
+    }
     const css = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
     return {
       left: anchor.left,
       top: anchor.top,
       bottom: anchor.bottom,
       html: root.innerHTML,
-      css
+      css,
+      imageResourceKeys: [...imageResourceKeys]
     };
   }
 
@@ -4862,6 +4881,9 @@
     return interfaceLocalizationFromBase64(encoded ?? "");
   }
   var activePayload = payloadFromDocument();
+  function localized(key) {
+    return localizedFrom(activePayload, key);
+  }
   function localizedTemplate(key, replacements) {
     return localizedTemplateFrom(activePayload, key, replacements);
   }
@@ -5206,6 +5228,66 @@
     return true;
   }
 
+  // preview-document.ts
+  function sanitizePreviewDocument(body) {
+    body.querySelectorAll(".scholium-mermaid-rendered").forEach((wrapper) => {
+      if (!wrapper.querySelector(":scope > .scholium-mermaid-source")) return;
+      wrapper.classList.remove("scholium-mermaid-rendered");
+      wrapper.querySelectorAll(":scope > .scholium-mermaid-output, :scope > .scholium-mermaid-accessible-source").forEach((node) => node.remove());
+    });
+    body.querySelectorAll("script, style, iframe, object, embed, form, button").forEach((node) => node.remove());
+    body.querySelectorAll("input").forEach((node) => {
+      if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
+    });
+    body.querySelectorAll("*").forEach((node) => {
+      for (const attribute of Array.from(node.attributes)) {
+        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+        if (attribute.name.toLowerCase().startsWith("data-source-")) {
+          node.removeAttribute(attribute.name);
+        }
+      }
+      node.removeAttribute("href");
+      node.removeAttribute("contenteditable");
+      node.removeAttribute("id");
+      node.removeAttribute("for");
+      node.removeAttribute("aria-describedby");
+      node.removeAttribute("aria-labelledby");
+      node.removeAttribute("aria-owns");
+      node.tabIndex = -1;
+    });
+  }
+  function renderPreviewMathNodes(root) {
+    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
+    const runtime = ownerDocument.defaultView?.scholiumMath;
+    if (runtime?.version !== 1) return;
+    root.querySelectorAll(
+      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
+    ).forEach((element) => {
+      try {
+        const encodedSource = element.dataset.mathSource;
+        const kind = element.dataset.mathKind;
+        if (!encodedSource || kind !== "inline" && kind !== "display") return;
+        const source = new TextDecoder().decode(
+          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
+        );
+        const result = runtime.render({ source, kind });
+        if (!result.ok) {
+          element.classList.add("scholium-math-error");
+          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+          return;
+        }
+        const fallback = element.querySelector(".scholium-math-source");
+        const rendered = ownerDocument.createElement("span");
+        rendered.className = "scholium-math-output";
+        rendered.innerHTML = result.html;
+        fallback?.before(rendered);
+        element.classList.add("scholium-math-rendered");
+      } catch (_) {
+        element.classList.add("scholium-math-error");
+      }
+    });
+  }
+
   // reader-mermaid-pass.ts
   function createReaderMermaidPass(sources, themeRoot, presentationRevision) {
     const remaining = /* @__PURE__ */ new Map();
@@ -5283,6 +5365,7 @@
         "scholiumReviewFind",
         "scholiumReviewSelection",
         "scholiumReviewImages",
+        "scholiumDismissPreview",
         "scholiumSetLinkPreviews",
         "scholiumSetPresentationCSS",
         "scholiumSetReviewSelectionSurfaceActive",
@@ -5422,8 +5505,8 @@
       heading.setAttribute("role", "heading");
       heading.setAttribute("aria-level", String(bodyHeadingAccessibilityLevel(level)));
     });
-    const localized = createInterfaceLocalizer(localization);
-    localizeRenderedInterface(documentRoot, localized);
+    const localized2 = createInterfaceLocalizer(localization);
+    localizeRenderedInterface(documentRoot, localized2);
     const handler = host ? { postMessage: host.postMessage } : readerWindow2.webkit?.messageHandlers?.scholiumRead;
     const post = (type, extra = {}) => alive() && handler?.postMessage({
       version,
@@ -5435,7 +5518,7 @@
     });
     readerWindow2.scholiumReviewImages?.destroy();
     readerWindow2.scholiumReviewImages = installReviewImageActivation(documentRoot, config.imagePreviewsEnabled ? {
-      label: (name) => localized("Preview image {name}", { name }),
+      label: (name) => localized2("Preview image {name}", { name }),
       preview: (target) => post("imagePreview", { target }),
       contextMenu: (target, clientX, clientY) => post("imageContextMenu", {
         target,
@@ -5450,6 +5533,8 @@
     const postFloating = (event) => post("floatingSurface", { event });
     const nativeFloating = host?.nativeFloating.forOwner(postFloating) ?? createNativeFloatingPorts(postFloating);
     let nativePreviewID = 0;
+    let activePreviewAnchor = null;
+    let previewRevision = 0;
     let nativePreviewHovered = false;
     const previewTitle = popover.querySelector(".scholium-preview-title");
     const previewMetadata = popover.querySelector(".scholium-preview-metadata");
@@ -5520,41 +5605,19 @@
       preview
     ]));
     const origins = /* @__PURE__ */ new Map();
-    function renderMathNodes() {
-      const runtime = readerWindow2.scholiumMath;
-      if (!runtime || runtime.version !== 1) return;
-      documentRoot.querySelectorAll(".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)").forEach((element) => {
-        try {
-          const encodedSource = element.dataset.mathSource;
-          const kind = element.dataset.mathKind;
-          if (!encodedSource || kind !== "inline" && kind !== "display") return;
-          const source = new TextDecoder().decode(
-            Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
-          );
-          const result = runtime.render({ source, kind });
-          if (!result.ok) {
-            element.classList.add("scholium-math-error");
-            element.setAttribute(
-              "aria-label",
-              localized("Mathematics could not be rendered. Source is shown.")
-            );
-            return;
-          }
-          const fallback = element.querySelector(".scholium-math-source");
-          const rendered = document.createElement("span");
-          rendered.className = "scholium-math-output";
-          rendered.innerHTML = result.html;
-          fallback && fallback.before(rendered);
-          element.classList.add("scholium-math-rendered");
-        } catch (_) {
-          element.classList.add("scholium-math-error");
-        }
-      });
+    function renderMathNodes(root = documentRoot) {
+      renderPreviewMathNodes(root);
+    }
+    function hasMathNodes(root) {
+      if (root.querySelector(".scholium-math[data-math-source][data-math-kind]")) return true;
+      return [...root.querySelectorAll("template")].some((template) => hasMathNodes(template.content));
     }
     renderMathNodes();
     let finishMath;
     let mathReady = Promise.resolve();
-    if (host && documentRoot.querySelector(".scholium-math[data-math-source][data-math-kind]") && !readerWindow2.scholiumMath) {
+    function ensureMathRuntime() {
+      if (readerWindow2.scholiumMath?.version === 1) return Promise.resolve();
+      if (finishMath) return mathReady;
       mathReady = new Promise((resolve) => {
         const timeout = setTimeout(() => {
           finishMath?.();
@@ -5566,7 +5629,9 @@
         cleanups.push(() => finishMath?.());
         post("requestMathRuntime");
       });
+      return mathReady;
     }
+    if (documentRoot.querySelector(".scholium-math[data-math-source][data-math-kind]")) void ensureMathRuntime();
     listenWindow("scholium-math-runtime-settled", () => {
       if (!alive()) return;
       renderMathNodes();
@@ -5618,7 +5683,7 @@
         wrapper.classList.add("scholium-mermaid-error");
         mermaidDiagnostic(
           wrapper,
-          localized("Diagram rendering is unavailable. Mermaid source is shown.")
+          localized2("Diagram rendering is unavailable. Mermaid source is shown.")
         );
         return;
       }
@@ -5629,7 +5694,7 @@
           wrapper.classList.add("scholium-mermaid-error");
           mermaidDiagnostic(
             wrapper,
-            localized("This Mermaid diagram is unsupported or could not be rendered. Source is shown.")
+            localized2("This Mermaid diagram is unsupported or could not be rendered. Source is shown.")
           );
           return;
         }
@@ -5639,7 +5704,7 @@
           wrapper.classList.add("scholium-mermaid-error");
           mermaidDiagnostic(
             wrapper,
-            localized("This Mermaid diagram could not be isolated safely. Source is shown.")
+            localized2("This Mermaid diagram could not be isolated safely. Source is shown.")
           );
           return;
         }
@@ -5648,18 +5713,18 @@
         if (result.accessibilityWarning) {
           const accessibleSource = document.createElement("span");
           accessibleSource.className = "scholium-mermaid-accessible-source";
-          accessibleSource.textContent = localized("Mermaid source: {source}", { source });
+          accessibleSource.textContent = localized2("Mermaid source: {source}", { source });
           wrapper.append(accessibleSource);
           mermaidDiagnostic(
             wrapper,
-            localized("Add accTitle and accDescr to provide a concise nonvisual account of this diagram.")
+            localized2("Add accTitle and accDescr to provide a concise nonvisual account of this diagram.")
           );
         }
       } catch (_) {
         wrapper.classList.add("scholium-mermaid-error");
         mermaidDiagnostic(
           wrapper,
-          localized("This Mermaid diagram could not be rendered. Source is shown.")
+          localized2("This Mermaid diagram could not be rendered. Source is shown.")
         );
       }
     }
@@ -5747,7 +5812,7 @@
         const update = value2;
         if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== "string" || !update.fingerprint || update.fingerprint.length > 256 || typeof update.html !== "string" || update.html.length > 16777216 || typeof update.presentationCSS !== "string" || typeof update.userCSS !== "string") return false;
         const restoreSelection = replyProjection.apply(update.html);
-        localizeRenderedInterface(documentRoot, localized);
+        localizeRenderedInterface(documentRoot, localized2);
         decorateAttachmentLinks(documentRoot);
         decorateChatReplyLinks(documentRoot);
         readerWindow2.scholiumReviewImages?.refresh();
@@ -5774,11 +5839,11 @@
       mediaQuery.addEventListener("change", scheduleMermaidRefresh, signal ? { signal } : void 0);
     }
     documentRoot.querySelectorAll("button[data-link-annotation]").forEach((button) => {
-      const linkName = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localized("linked note");
+      const linkName = button.dataset.linkAnnotationTarget?.trim() || button.closest(".scholium-annotated-link")?.querySelector(".wiki-link")?.textContent?.trim() || localized2("linked note");
       button.dataset.linkAnnotationTarget = linkName;
       button.setAttribute(
         "aria-label",
-        localized("Show Link Annotation for {title}", { title: linkName })
+        localized2("Show Link Annotation for {title}", { title: linkName })
       );
     });
     let popoverHideTimer;
@@ -5786,13 +5851,13 @@
     let activeFootnoteButton = null;
     let pinnedAnnotationButton = null;
     function annotationTarget(button) {
-      return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
+      return button.dataset.linkAnnotationTarget?.trim() || localized2("linked note");
     }
     function setAnnotationExpanded(button, expanded) {
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
       button.setAttribute(
         "aria-label",
-        localized(
+        localized2(
           expanded ? "Hide Link Annotation for {title}" : "Show Link Annotation for {title}",
           { title: annotationTarget(button) }
         )
@@ -5802,6 +5867,8 @@
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
     function hidePopover() {
+      activePreviewAnchor = null;
+      previewRevision++;
       nativePreviewHovered = false;
       nativeFloating.preview.hide(nativePreviewID);
       clearTimeout(popoverHideTimer);
@@ -5817,6 +5884,7 @@
       previewMetadata.hidden = true;
       previewBody.replaceChildren();
     }
+    readerWindow2.scholiumDismissPreview = hidePopover;
     function cancelPopoverHide() {
       clearTimeout(popoverHideTimer);
       popoverHideTimer = void 0;
@@ -5831,24 +5899,9 @@
       return String(value2 || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
     }
     function sanitizeInertContent(container) {
-      container.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-      container.querySelectorAll("*").forEach((node) => {
-        Array.from(node.attributes).forEach((attribute) => {
-          if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-          if (attribute.name.toLowerCase().startsWith("data-source-")) {
-            node.removeAttribute(attribute.name);
-          }
-        });
-        node.removeAttribute("href");
-        node.removeAttribute("contenteditable");
-        node.removeAttribute("id");
-        node.removeAttribute("for");
-        node.removeAttribute("aria-describedby");
-        node.removeAttribute("aria-labelledby");
-        node.removeAttribute("aria-owns");
-        node.tabIndex = -1;
-      });
-      localizeRenderedInterface(container, localized);
+      sanitizePreviewDocument(container);
+      localizeRenderedInterface(container, localized2);
+      renderMathNodes(container);
     }
     function installInertDocumentContent(container, preview) {
       container.innerHTML = preview.htmlBody;
@@ -5868,7 +5921,7 @@
       shell.setAttribute("role", "group");
       shell.setAttribute(
         "aria-label",
-        localized("Embedded note {title}", { title: preview.title })
+        localized2("Embedded note {title}", { title: preview.title })
       );
       for (const name of [
         "data-source-utf16-start",
@@ -5889,9 +5942,9 @@
       open.append(document.createTextNode(preview.title));
       open.setAttribute(
         "aria-label",
-        localized("Open embedded note {title}", { title: preview.title })
+        localized2("Open embedded note {title}", { title: preview.title })
       );
-      open.title = localized("Open embedded note {title}", { title: preview.title });
+      open.title = localized2("Open embedded note {title}", { title: preview.title });
       header.append(open);
       const viewport = document.createElement("div");
       viewport.className = "scholium-embedded-note-viewport";
@@ -5899,7 +5952,7 @@
       viewport.setAttribute("role", "region");
       viewport.setAttribute(
         "aria-label",
-        localized("Embedded note content for {title}", { title: preview.title })
+        localized2("Embedded note content for {title}", { title: preview.title })
       );
       const body = document.createElement("div");
       body.className = "scholium-embedded-note-body scholium-document";
@@ -5913,7 +5966,7 @@
       fallback.className = "wiki-link scholium-embed";
       fallback.dir = "auto";
       fallback.href = shell.dataset.embedHref || "";
-      fallback.textContent = shell.dataset.embedLabel || localized("Embedded note");
+      fallback.textContent = shell.dataset.embedLabel || localized2("Embedded note");
       fallback.dataset.scholiumProtected = "embed";
       for (const name of [
         "data-source-utf16-start",
@@ -5946,13 +5999,13 @@
           if (label) label.textContent = preview.title;
           open.setAttribute(
             "aria-label",
-            localized("Open embedded note {title}", { title: preview.title })
+            localized2("Open embedded note {title}", { title: preview.title })
           );
-          open.title = localized("Open embedded note {title}", { title: preview.title });
+          open.title = localized2("Open embedded note {title}", { title: preview.title });
         }
         shell.setAttribute(
           "aria-label",
-          localized("Embedded note {title}", { title: preview.title })
+          localized2("Embedded note {title}", { title: preview.title })
         );
       }
       const anchors = [...documentRoot.querySelectorAll("a.scholium-embed")].filter((anchor) => !anchor.parentElement?.closest(".scholium-embedded-note"));
@@ -5978,6 +6031,19 @@
       return true;
     };
     function positionPopover(anchor) {
+      activePreviewAnchor = anchor;
+      const revision = ++previewRevision;
+      if (!readerWindow2.scholiumMath && hasMathNodes(previewBody)) {
+        void ensureMathRuntime().then(() => {
+          if (!alive() || activePreviewAnchor !== anchor || revision !== previewRevision) return;
+          renderMathNodes(previewBody);
+          publishPopover(anchor);
+        });
+        return;
+      }
+      publishPopover(anchor);
+    }
+    function publishPopover(anchor) {
       popover.hidden = false;
       const surface = previewSurface(anchor.getBoundingClientRect(), popover);
       if (host) surface.html = `<div class="scholium-review-projection">${surface.html}</div>`;
@@ -6012,7 +6078,7 @@
       activeAnnotationButton = null;
       activeFootnoteButton = button;
       setFootnoteExpanded(activeFootnoteButton, true);
-      previewTitle.textContent = localized("Footnote {ordinal}", { ordinal });
+      previewTitle.textContent = localized2("Footnote {ordinal}", { ordinal });
       previewMetadata.textContent = "";
       previewMetadata.hidden = true;
       previewBody.replaceChildren(content.cloneNode(true));
@@ -6037,6 +6103,7 @@
       positionPopover(link);
     }
     function showLinkAnnotationPopover(button) {
+      if (activePreviewAnchor === button) return;
       const identifier = button.dataset.linkAnnotation;
       const marker = button.closest(".scholium-link-annotation-marker");
       const template = identifier ? elementByID(`${identifier}-template`) : marker?.querySelector(":scope > template") ?? null;
@@ -6052,7 +6119,7 @@
       activeFootnoteButton = null;
       setAnnotationExpanded(button, true);
       previewTitle.textContent = annotationTarget(button);
-      previewMetadata.textContent = localized("Link Annotation");
+      previewMetadata.textContent = localized2("Link Annotation");
       previewMetadata.hidden = false;
       previewBody.replaceChildren(template.content.cloneNode(true));
       sanitizeInertContent(previewBody);
@@ -6066,6 +6133,7 @@
       );
     }
     function showPreviewFor(anchor) {
+      if (activePreviewAnchor === anchor) return;
       if (anchor.matches(".scholium-link-annotation-button")) {
         showLinkAnnotationPopover(anchor);
       } else if (anchor.matches(".footnote-reference")) {

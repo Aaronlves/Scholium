@@ -112,7 +112,7 @@ describe("editor protocol", () => {
   });
 
   it("uses the atomic initialization recovery protocol and rejects its predecessor", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(56);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(57);
     expect(isEditorRequest({...request, protocolVersion: 54})).toBe(false);
   });
   it("admits bounded managed citation snapshots without weakening standalone initialization", () => {

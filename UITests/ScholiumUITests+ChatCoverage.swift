@@ -70,6 +70,79 @@ extension ScholiumUITests {
         XCTAssertEqual(conversations.compactMap { ($0["messages"] as? [Any])?.count }.sorted(), [2, 72])
     }
 
+    /// Sources is a representative leaf-owned popover on a retained Chat page.
+    /// The local archive has no provider thread and never opens its source URL.
+    @MainActor
+    func testRetainedChatDismissesReplySourcesWithoutLosingDraftOrHistory() throws {
+        waitForCurrentDocumentSurface()
+        let note = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalSource = try Data(contentsOf: note)
+        app.terminate()
+        let fixture = try seedChatEntryFixture()
+        var archive = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        var conversations = try XCTUnwrap(archive["conversations"] as? [[String: Any]])
+        let index = try XCTUnwrap(conversations.firstIndex { $0["id"] as? String == fixture.short.id.uuidString })
+        var messages = try XCTUnwrap(conversations[index]["messages"] as? [[String: Any]])
+        let sourceTitle = "QA retained reply source"
+        messages[1]["text"] = "A synthetic reply with an explicit [\(sourceTitle)](zotero://select/library/items/ABCD1234)."
+        conversations[index]["messages"] = messages
+        archive["conversations"] = conversations
+        let expectedMessages = try JSONSerialization.data(withJSONObject: messages, options: .sortedKeys)
+        try JSONSerialization.data(withJSONObject: archive).write(to: fixture.archive, options: .atomic)
+
+        app = configuredApplication(sessionID: UUID(), appearance: .light)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        ensureChatSidebarIsVisible()
+        sidebarModeControl("Chat").click()
+        chatDeletionRow(fixture.short.id).click()
+        let composer = app.textViews["scholium.chat.message"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch.waitForExistence(timeout: 15))
+        let editedDraft = fixture.short.draft + " Retained edit."
+        typeCommittedText(editedDraft, into: composer, in: app, clickWithinVisibleFrame: true)
+        let sources = app.buttons["scholium.chat.sources"].firstMatch
+        XCTAssertTrue(sources.waitForExistence(timeout: 5))
+        scrollUntilHittable(sources, in: app.scrollViews["scholium.chat.transcript"].firstMatch)
+        sources.click()
+        let popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 5))
+        XCTAssertTrue(popover.descendants(matching: .any)[sourceTitle].firstMatch.waitForExistence(timeout: 5))
+
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Library"].firstMatch.hover()
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists && !composer.exists })
+        sidebarModeControl("Chat").click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.popovers.firstMatch.exists, "A retained reply must not reopen a stale Sources popover")
+        XCTAssertEqual(composer.value as? String, editedDraft)
+        // Use the retained native input's visible center, as in the exact-text
+        // setup helper. XCTest's automatic TextView hit point can select its
+        // enclosing scroll view after this native sidebar transition.
+        composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: composer) })
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(waitUntil(timeout: 5) { composer.value as? String == fixture.short.draft }, "Hiding the page must retain the native draft Undo history")
+
+        sources.click()
+        XCTAssertTrue(popover.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            popover.descendants(matching: .any)[sourceTitle].firstMatch.waitForExistence(timeout: 5), "Sources must be reusable after retained-page dismissal")
+        popover.buttons["Close"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        image.name = "Retained Chat — Sources dismissed, draft and Undo preserved"
+        image.lifetime = .keepAlways
+        add(image)
+        XCTAssertEqual(try Data(contentsOf: note), originalSource)
+        let savedArchive = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture.archive)) as? [String: Any])
+        let savedConversations = try XCTUnwrap(savedArchive["conversations"] as? [[String: Any]])
+        let saved = try XCTUnwrap(savedConversations.first { $0["id"] as? String == fixture.short.id.uuidString })
+        XCTAssertEqual(try JSONSerialization.data(withJSONObject: try XCTUnwrap(saved["messages"]), options: .sortedKeys), expectedMessages)
+    }
+
     /// App-owned timings exclude XCTest's click/idle wait. The archive has no
     /// provider threads and keeps the standard disposable Triptych unchanged.
     @MainActor

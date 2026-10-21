@@ -103,6 +103,20 @@ describe("editor preview target lifecycle", () => {
     f.close();
   });
 
+  it("does not rebuild or republish a visible footnote/annotation when focus follows hover", () => {
+    const f = fixture('Text[^a]\n\n[^a]: Body');
+    f.anchors('<span class="cm-live-footnote-reference-widget"><button class="footnote-reference" data-footnote-identifier="a" data-footnote-occurrence="1">1</button></span>'
+      + '<span class="scholium-link-annotation-marker"><button class="scholium-link-annotation-button">Annotation</button><template><p>Annotation body</p></template></span>');
+    for (const button of f.contentDOM.querySelectorAll('button')) {
+      f.dispatch('pointermove', button); vi.advanceTimersByTime(300);
+      const count = f.nativeFloating.show.mock.calls.length;
+      expect(count).toBeGreaterThan(0);
+      f.dispatch('focusin', button);
+      expect(f.nativeFloating.show).toHaveBeenCalledTimes(count);
+    }
+    f.close();
+  });
+
   it("allows releasing Command while reading inside the native preview", () => {
     const f = fixture();
     f.anchors("<span data-link-preview-index='0'>A</span>");

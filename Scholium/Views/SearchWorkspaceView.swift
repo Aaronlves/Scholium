@@ -216,7 +216,18 @@ struct ResearchSearchView<Library: View>: View {
     @State private var confirmsSavedSearchRecovery = false
     @State private var showsQueryExplanation = false
     @State private var showsTermGroups = false
-    @State private var paragraphNote: NoteSearchResult?
+    private enum ParagraphAnchor: Equatable {
+        case result(String)
+        case advancedInline
+        case advancedStacked
+    }
+
+    private struct ParagraphPresentation {
+        let anchor: ParagraphAnchor
+        let note: NoteSearchResult
+    }
+
+    @State private var paragraphPresentation: ParagraphPresentation?
     @State private var termInsertionFailure: String?
     @State private var queryCaretUTF16: Int?
     @State private var completionCaretUTF16: Int?
@@ -266,9 +277,6 @@ struct ResearchSearchView<Library: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
-        .popover(isPresented: Binding(get: { paragraphNote != nil }, set: { if !$0 { paragraphNote = nil } })) {
-            if let paragraphNote { SearchParagraphLocationsView(note: paragraphNote, open: { open($0) }) }
-        }
         .sheet(isPresented: $showsTermGroups) { SearchTermGroupManager(controller: searchController) }
         .alert("Cannot Insert Term Group", isPresented: Binding(get: { termInsertionFailure != nil }, set: { if !$0 { termInsertionFailure = nil } })) {
             Button("OK") { termInsertionFailure = nil }
@@ -282,12 +290,16 @@ struct ResearchSearchView<Library: View>: View {
             if isActive, searchFocused { scheduleCompletions() }
         }
         .onChange(of: controller.search.criteria.query) { _, _ in
-            paragraphNote = nil
+            paragraphPresentation = nil
             completionSelection = nil
             scheduleCompletions()
         }
         .onChange(of: controller.search.criteria.scope) { _, _ in
+            paragraphPresentation = nil
             scheduleCompletions()
+        }
+        .onChange(of: isActive) { _, active in
+            if !active { paragraphPresentation = nil }
         }
         .onChange(of: searchFocused) { _, focused in
             if focused {
@@ -304,7 +316,7 @@ struct ResearchSearchView<Library: View>: View {
             if replacementID != completionReplacementID { queryCaretUTF16 = nil }
         }
         .onChange(of: controller.search.results) { _, _ in
-            paragraphNote = nil
+            paragraphPresentation = nil
             normalizeSelection()
         }
         .background {
@@ -470,7 +482,7 @@ struct ResearchSearchView<Library: View>: View {
                 }
                 .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 0)
-                advancedSearchScopeActions
+                advancedSearchScopeActions(anchor: .advancedInline)
             }
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
@@ -481,7 +493,7 @@ struct ResearchSearchView<Library: View>: View {
                 .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer(minLength: 0)
-                    advancedSearchScopeActions
+                    advancedSearchScopeActions(anchor: .advancedStacked)
                 }
             }
         }
@@ -495,12 +507,14 @@ struct ResearchSearchView<Library: View>: View {
         }
     }
 
-    private var advancedSearchScopeActions: some View {
+    private func advancedSearchScopeActions(anchor: ParagraphAnchor) -> some View {
         HStack(spacing: 12) {
             savedSearchesMenu
             termGroupsMenu
             Button {
-                paragraphNote = selectedParagraphResult
+                if let note = selectedParagraphResult {
+                    paragraphPresentation = ParagraphPresentation(anchor: anchor, note: note)
+                }
             } label: {
                 Image(systemName: "paragraphsign")
             }
@@ -508,6 +522,9 @@ struct ResearchSearchView<Library: View>: View {
             .accessibilityLabel("Matching Paragraphs")
             .help("Matching Paragraphs")
             .disabled(selectedParagraphResult == nil)
+            .popover(isPresented: paragraphIsPresented(at: anchor)) {
+                paragraphLocations(at: anchor)
+            }
             Button {
                 showsQueryExplanation = true
             } label: {
@@ -957,11 +974,33 @@ struct ResearchSearchView<Library: View>: View {
                 card
                 Button("Show \(note.paragraphRanges.count) Matching Paragraphs") {
                     controller.selectSearchResult(resultID)
-                    paragraphNote = note
-                }.buttonStyle(.plain)
+                    paragraphPresentation = ParagraphPresentation(anchor: .result(resultID), note: note)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: paragraphIsPresented(at: .result(resultID))) {
+                    paragraphLocations(at: .result(resultID))
+                }
             }.tag(resultID)
         } else {
             card.tag(resultID)
+        }
+    }
+
+    private func paragraphIsPresented(at anchor: ParagraphAnchor) -> Binding<Bool> {
+        Binding(
+            get: { paragraphPresentation?.anchor == anchor },
+            set: { presented in
+                if !presented, paragraphPresentation?.anchor == anchor {
+                    paragraphPresentation = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func paragraphLocations(at anchor: ParagraphAnchor) -> some View {
+        if let presentation = paragraphPresentation, presentation.anchor == anchor {
+            SearchParagraphLocationsView(note: presentation.note, open: { open($0) })
         }
     }
 

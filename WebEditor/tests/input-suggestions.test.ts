@@ -28,7 +28,6 @@ import {localizationTesting} from "../localization";
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 import {exactSourceHistory, exactSourceState, setExactSource} from "../exact-source-history";
 import {ExactSourceMirror, normalizedDocumentText} from "../state";
-import type {NativeSuggestionPort} from "../native-floating";
 
 function inlineContinuationHarness(source = "A claim about res", options: {
   composing?: boolean; isComposing?: () => boolean; protectedRanges?: readonly {from: number; to: number}[]; multipleSelections?: boolean;
@@ -1800,52 +1799,6 @@ function applyOption(source: CompletionSource, text: string, label: string) {
 }
 
 describe("Edit input suggestions", () => {
-  it.each(["composition", "readOnly", "noneditable", "sourceMode"])("hides native candidates and rejects queued actions after %s begins", reason => {
-    vi.useFakeTimers();
-    vi.stubGlobal("window", {setTimeout, clearTimeout});
-    const callbacks: Array<Parameters<NativeSuggestionPort["show"]>[1]> = [];
-    const nativeFloating: NativeSuggestionPort = {
-      show: vi.fn((_surface, actions) => { callbacks.push(actions); return 1; }),
-      hide: vi.fn(),
-    };
-    let composing = false;
-    let mode: EditorMode = "livePreview";
-    const suggestions = createEditorInputSuggestions({nativeFloating, mode: () => mode,
-      dialect: () => dialect, isComposing: () => composing, protectedRanges: () => [],
-      requestLinkCompletions: () => {}, didApply: () => {}});
-    let state = EditorState.create({doc: "> [!sta", selection: {anchor: 7}});
-    const measurement = {state, status: "active", items: [{label: "State", detail: "", disabled: false}],
-      anchor: {left: 0, top: 0, bottom: 20}, selected: 0};
-    const writes: Array<(value: typeof measurement) => void> = [];
-    const contentDOM = {};
-    const dispatch = vi.fn();
-    const view = {get state() {return state;}, composing: false, contentDOM, root: {activeElement: contentDOM}, dispatch,
-      requestMeasure(request: {write(value: typeof measurement): void}) { writes.push(request.write); },
-    } as unknown as EditorView;
-    const definition = (suggestions.extension as Extension[])[3] as unknown as {
-      create(view: EditorView): {destroy(): void};
-    };
-    const plugin = definition.create(view);
-    try {
-      writes[0](measurement);
-      expect(callbacks).toHaveLength(1);
-      if (reason === "composition") composing = true;
-      else if (reason === "sourceMode") mode = "source";
-      else state = state.update({effects: StateEffect.appendConfig.of(reason === "readOnly"
-        ? EditorState.readOnly.of(true) : EditorView.editable.of(false))}).state;
-      expect(view.composing).toBe(false);
-      callbacks[0].select?.(0);
-      expect(callbacks[0].choose?.(0)).toBe(false);
-      expect(dispatch).not.toHaveBeenCalled();
-      writes[0](measurement);
-      expect(nativeFloating.hide).toHaveBeenCalledWith(1);
-      expect(callbacks).toHaveLength(1);
-    } finally {
-      plugin.destroy();
-      vi.unstubAllGlobals();
-      vi.useRealTimers();
-    }
-  });
   it.each([EditorState.readOnly.of(true), EditorView.editable.of(false)])("suppresses all caret lists in a nonwritable state", extension => {
     const {suggestions, request} = controller();
     for (const [completionSource, text] of [

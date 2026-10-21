@@ -14,6 +14,53 @@ extension EnvironmentValues {
     }
 }
 
+/// Owns the one in-flight native thumbnail request for a material disclosure.
+/// Cancelling preparation also revokes a URL that has not returned yet.
+@MainActor
+final class AgentChatMaterialThumbnailSession {
+    typealias Request = QLThumbnailGenerator.Request
+    private let generate: @MainActor (Request) async throws -> NSImage
+    private let cancelRequest: @MainActor (Request) -> Void
+    private var generation = UUID()
+    private var request: Request?
+
+    init(
+        generate: @escaping @MainActor (Request) async throws -> NSImage = { request in
+            try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).nsImage
+        },
+        cancel: @escaping @MainActor (Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }
+    ) {
+        self.generate = generate
+        cancelRequest = cancel
+    }
+
+    func load(preview: () async throws -> URL) async throws -> NSImage {
+        try Task.checkCancellation()
+        cancel()
+        let generation = self.generation
+        let url = try await preview()
+        try Task.checkCancellation()
+        guard self.generation == generation else { throw CancellationError() }
+        let request = Request(fileAt: url, size: NSSize(width: 640, height: 400), scale: 1, representationTypes: .thumbnail)
+        self.request = request
+        defer {
+            if self.generation == generation { self.request = nil }
+        }
+        let image = try await generate(request)
+        try Task.checkCancellation()
+        guard self.generation == generation else { throw CancellationError() }
+        return image
+    }
+
+    func cancel() {
+        generation = UUID()
+        if let request {
+            self.request = nil
+            cancelRequest(request)
+        }
+    }
+}
+
 struct AgentChatLocalMaterialChip: View {
     let material: AgentChatLocalMaterial
     var isEmbeddedInComposer = false
@@ -22,12 +69,15 @@ struct AgentChatLocalMaterialChip: View {
     let replace: (() -> Void)?
     var usePages: (() -> Void)? = nil
     @Environment(\.openChatExternalMarkdown) private var openExternalMarkdown
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @State private var showsDetails = false
     @State private var previewURL: URL?
     @State private var previewError: String?
     @State private var isOpening = false
     @State private var previewTask: Task<Void, Never>?
+    @State private var previewGeneration = UUID()
     @State private var thumbnail: NSImage?
+    @State private var thumbnailSession = AgentChatMaterialThumbnailSession()
 
     private var markdownOriginal: URL? {
         guard case .file(let url) = material.source, material.kind == .text,
@@ -101,42 +151,59 @@ struct AgentChatLocalMaterialChip: View {
         }
         .quickLookPreview($previewURL)
         .onDisappear {
-            previewTask?.cancel()
-            previewURL = nil
+            dismissPreviews()
         }
-        .task(id: showsDetails) {
-            guard showsDetails, material.kind == .image, material.issue == nil, thumbnail == nil else { return }
+        .onChange(of: surfaceVisibility) { _, visibility in
+            if !visibility.isActive { dismissPreviews() }
+        }
+        .onChange(of: showsDetails) { _, visible in
+            if !visible { thumbnailSession.cancel() }
+        }
+        .task(id: showsDetails && surfaceVisibility.isActive) {
+            guard showsDetails, surfaceVisibility.isActive, material.kind == .image, material.issue == nil, thumbnail == nil else { return }
             do {
-                let url = try await preview()
-                let request = QLThumbnailGenerator.Request(
-                    fileAt: url, size: NSSize(width: 640, height: 400), scale: 1, representationTypes: .thumbnail)
-                let result = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
-                guard !Task.isCancelled else { return }
-                thumbnail = result.nsImage
+                let image = try await thumbnailSession.load(preview: preview)
+                guard !Task.isCancelled, showsDetails, surfaceVisibility.isActive else { return }
+                thumbnail = image
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, showsDetails, surfaceVisibility.isActive else { return }
                 previewError = String(localized: "Image preview is unavailable. Try Quick Look.")
             }
         }
     }
 
     private func openPreview() {
+        guard surfaceVisibility.isActive, previewTask == nil else { return }
         isOpening = true
         previewError = nil
+        let generation = UUID()
+        previewGeneration = generation
         previewTask = Task { @MainActor in
             defer {
-                isOpening = false
-                previewTask = nil
+                if previewGeneration == generation {
+                    isOpening = false
+                    previewTask = nil
+                }
             }
             do {
                 let url = try await preview()
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, previewGeneration == generation else { return }
                 previewURL = url
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, previewGeneration == generation else { return }
                 previewError = String(localized: "The retained file is unavailable. Replace it to capture a new snapshot.")
             }
         }
+    }
+
+    private func dismissPreviews() {
+        showsDetails = false
+        previewGeneration = UUID()
+        previewTask?.cancel()
+        previewTask = nil
+        isOpening = false
+        previewURL = nil
+        thumbnailSession.cancel()
     }
 
 }

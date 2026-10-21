@@ -67,6 +67,7 @@ final class AttentionPresentationState: ObservableObject {
     }
 
     func select(_ itemID: String?) {
+        guard selectedItemID != itemID else { return }
         selectedItemID = itemID
     }
 

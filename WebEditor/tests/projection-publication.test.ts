@@ -103,7 +103,10 @@ function createState(h: ReturnType<typeof harness>, exactSource: string,
       // shared index can then complete that same parser context, before its
       // tree has been published in a transaction.
       initialPublishedTree = syntaxTree(state);
-      deadline?.mockRestore();
+      // Completing this fixture is a prerequisite, not a wall-clock claim.
+      // Keep its subsequent parse slice deterministic even when other workers
+      // consume the real 50 ms budget. The partial fixture keeps its expired clock.
+      deadline?.mockImplementation(() => 0);
       return null;
     },
     update: value => value,

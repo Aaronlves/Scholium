@@ -58,7 +58,7 @@ struct AgentChatNavigationTests {
             "event": [
                 "type": "previewSurface",
                 "surface": [
-                    "id": 1, "left": 20.0, "top": 20.0, "bottom": 40.0, "html": "<p>Footnote</p>", "css": "",
+                    "id": 1, "left": 20.0, "top": 20.0, "bottom": 40.0, "html": "<p>Footnote</p>", "css": "", "imageResourceKeys": [String](),
                 ],
             ]
         ]

@@ -51,9 +51,10 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
 
     private var rows: [Row] = []
     private var observations: Set<AnyCancellable> = []
-    private var lastFilterFocusRequestGeneration: UInt64
     private var hasAppliedInitialFocus = false
     private var isUpdatingProjection = false
+    private var isApplyingSelection = false
+    private var reloadIsScheduled = false
 
     init(
         presentation: AttentionPresentationState,
@@ -61,7 +62,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     ) {
         self.presentation = presentation
         self.session = session
-        lastFilterFocusRequestGeneration = presentation.filterFocusRequestGeneration
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -155,7 +155,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     private func configureTable() {
         tableView.dataSource = self
         tableView.delegate = self
-        tableView.activate = { [weak self] in self?.activateSelectedRow(nil) }
+        tableView.activate = { [weak self] row in self?.activateRow(at: row) ?? false }
         tableView.headerView = nil
         tableView.style = .inset
         tableView.selectionHighlightStyle = .regular
@@ -290,14 +290,34 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private func observePresentation() {
-        presentation.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in self?.reloadFromModel() }
+        Publishers.CombineLatest3(presentation.$filter, presentation.$workspaceSlot, presentation.$noteScope)
+            .removeDuplicates { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 && lhs.2 == rhs.2 }
+            .dropFirst()
+            .sink { [weak self] _ in self?.scheduleReload() }
+            .store(in: &observations)
+        presentation.$selectedItemID
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] id in self?.updateSelection(id) }
+            .store(in: &observations)
+        presentation.$filterFocusRequestGeneration
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.focusFilter() }
             .store(in: &observations)
         session.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] in self?.reloadFromModel() }
+            .sink { [weak self] in self?.scheduleReload() }
             .store(in: &observations)
+    }
+
+    private func scheduleReload() {
+        guard !reloadIsScheduled else { return }
+        reloadIsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            reloadIsScheduled = false
+            reloadFromModel()
+        }
     }
 
     private func reloadFromModel() {
@@ -305,13 +325,11 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         isUpdatingProjection = true
         defer { isUpdatingProjection = false }
 
-        let previousFocusGeneration = lastFilterFocusRequestGeneration
         rows = makeRows()
         let visibleIDs = rows.compactMap { row -> String? in
             row.isSelectable ? row.id : nil
         }
         presentation.reconcileVisibleItems(visibleIDs)
-        lastFilterFocusRequestGeneration = presentation.filterFocusRequestGeneration
 
         updateHeader()
         updateRefreshStatus()
@@ -322,19 +340,25 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             window.makeFirstResponder(searchField)
         }
 
-        let selectedIndex = presentation.selectedItemID.flatMap { id in
+        updateSelection(presentation.selectedItemID)
+    }
+
+    private func updateSelection(_ id: String?) {
+        isApplyingSelection = true
+        defer { isApplyingSelection = false }
+        let selectedIndex = id.flatMap { id in
             rows.firstIndex { $0.id == id && $0.isSelectable }
         }
         let selection = selectedIndex.map { IndexSet(integer: $0) } ?? []
         if tableView.selectedRowIndexes != selection {
             tableView.selectRowIndexes(selection, byExtendingSelection: false)
         }
+    }
 
-        if presentation.filterFocusRequestGeneration != previousFocusGeneration {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let window = self.view.window else { return }
-                window.makeFirstResponder(self.searchField)
-            }
+    private func focusFilter() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.view.window else { return }
+            window.makeFirstResponder(self.searchField)
         }
     }
 
@@ -507,7 +531,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
             (field.currentEditor() as? NSTextView)?.hasMarkedText() != true
         else { return }
         presentation.filter = AttentionQueueFilter(query: field.stringValue)
-        reloadFromModel()
     }
 
     @objc private func retryRefresh(_ sender: Any?) {
@@ -517,10 +540,22 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         }
     }
 
-    @objc private func activateSelectedRow(_ sender: Any?) {
-        let rowIndex = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
-        guard rows.indices.contains(rowIndex) else { return }
-        inspect(rows[rowIndex])
+    private func activateRow(at rowIndex: Int) -> Bool {
+        guard session.presentedAnchor != nil, rows.indices.contains(rowIndex), case .change(let shown) = rows[rowIndex],
+            let current = session.visibleDocumentChanges(for: presentation).first(where: {
+                $0.id == shown.id && $0.vaultID == shown.vaultID
+            })
+        else { return false }
+        if tableView.selectedRow != rowIndex {
+            tableView.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
+        }
+        inspect(.change(current))
+        return true
+    }
+
+    private func activateItem(id: String) -> Bool {
+        guard let row = rows.firstIndex(where: { $0.id == id && $0.isSelectable }) else { return false }
+        return activateRow(at: row)
     }
 
     private func inspect(_ row: Row) {
@@ -545,6 +580,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isUpdatingProjection, !isApplyingSelection else { return }
         let id =
             rows.indices.contains(tableView.selectedRow) && rows[tableView.selectedRow].isSelectable
             ? rows[tableView.selectedRow].id
@@ -572,11 +608,11 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
                 date: change.savedAt?.formatted(
                     Date.FormatStyle(date: .abbreviated, time: .shortened)
                 ),
-                accessibilityLabel: changeAccessibilitySummary(change)
+                accessibilityLabel: changeAccessibilitySummary(change),
+                accessibilityIdentifier: "scholium.notification.change.\(change.id.uuidString.lowercased())"
             )
-            cell.setAccessibilityIdentifier(
-                "scholium.notification.change.\(change.id.uuidString.lowercased())"
-            )
+            let id = rows[row].id
+            cell.activate = { [weak self] in self?.activateItem(id: id) ?? false }
             return cell
         }
     }
@@ -598,22 +634,25 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
 }
 
 @MainActor
-private final class AttentionQueueTableView: NSTableView {
-    var activate: (() -> Void)?
+final class AttentionQueueTableView: NSTableView {
+    var activate: ((Int) -> Bool)?
 
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
         guard event.clickCount == 1 else { return }
-        activate?()
+        _ = activate?(clickedRow)
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 76 {
-            activate?()
+            _ = activate?(selectedRow)
             return
         }
         super.keyDown(with: event)
     }
+
+    override func accessibilityPerformConfirm() -> Bool { activate?(selectedRow) ?? false }
+    override func accessibilityPerformPress() -> Bool { activate?(selectedRow) ?? false }
 }
 
 @MainActor
@@ -648,6 +687,8 @@ private final class AttentionCategoryCell: NSTableCellView {
 
 @MainActor
 private final class AttentionItemCell: NSTableCellView {
+    var activate: (() -> Bool)?
+    private let activationButton = NSButton(title: "", target: nil, action: nil)
     private let icon = NSImageView()
     private var iconColor: NSColor = .labelColor
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
@@ -657,13 +698,17 @@ private final class AttentionItemCell: NSTableCellView {
         super.init(frame: .zero)
         self.identifier = identifier
         translatesAutoresizingMaskIntoConstraints = false
-        setAccessibilityElement(true)
-        setAccessibilityRole(.row)
+        setAccessibilityElement(false)
+        activationButton.translatesAutoresizingMaskIntoConstraints = false
+        activationButton.isBordered = false
+        activationButton.target = self
+        activationButton.action = #selector(activateNotification(_:))
+        addSubview(activationButton)
 
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.imageScaling = .scaleProportionallyDown
         icon.setAccessibilityElement(false)
-        addSubview(icon)
+        activationButton.addSubview(icon)
         imageView = icon
 
         titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
@@ -680,22 +725,26 @@ private final class AttentionItemCell: NSTableCellView {
         detailLabel.setAccessibilityElement(false)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(titleLabel)
-        addSubview(detailLabel)
+        activationButton.addSubview(titleLabel)
+        activationButton.addSubview(detailLabel)
         textField = titleLabel
 
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            activationButton.leadingAnchor.constraint(equalTo: leadingAnchor),
+            activationButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+            activationButton.topAnchor.constraint(equalTo: topAnchor),
+            activationButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+            icon.leadingAnchor.constraint(equalTo: activationButton.leadingAnchor),
+            icon.centerYAnchor.constraint(equalTo: activationButton.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: ScholiumGrid.Dimension.iconTrackWidth),
             icon.heightAnchor.constraint(equalToConstant: ScholiumGrid.Dimension.iconTrackWidth),
             titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
-            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
+            titleLabel.trailingAnchor.constraint(equalTo: activationButton.trailingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: activationButton.topAnchor, constant: ScholiumGrid.Spacing.inlineControlGap),
             detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
             detailLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
             detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: ScholiumGrid.Spacing.labelAccessoryGap),
-            detailLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -ScholiumGrid.Spacing.inlineControlGap),
+            detailLabel.bottomAnchor.constraint(equalTo: activationButton.bottomAnchor, constant: -ScholiumGrid.Spacing.inlineControlGap),
         ])
     }
 
@@ -711,16 +760,24 @@ private final class AttentionItemCell: NSTableCellView {
         title: String,
         detail: String,
         date: String?,
-        accessibilityLabel: String
+        accessibilityLabel: String,
+        accessibilityIdentifier: String
     ) {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         iconColor = color
         titleLabel.stringValue = title
         detailLabel.stringValue = date.map { "\(detail) · \($0)" } ?? detail
-        setAccessibilityLabel(accessibilityLabel)
+        activationButton.setAccessibilityLabel(accessibilityLabel)
+        activationButton.setAccessibilityIdentifier(accessibilityIdentifier)
+        // View-based NSTableView exposes the native button cell through its row
+        // proxies. Both public representations name the same current action.
+        activationButton.cell?.setAccessibilityLabel(accessibilityLabel)
+        activationButton.cell?.setAccessibilityIdentifier(accessibilityIdentifier)
         toolTip = accessibilityLabel
         applyForegroundStyle()
     }
+
+    @objc private func activateNotification(_ sender: Any?) { _ = activate?() }
 
     private func applyForegroundStyle() {
         let isSelected = backgroundStyle == .emphasized

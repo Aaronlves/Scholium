@@ -1351,6 +1351,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         reconstructionScrollAnchor ?? pendingScrollAnchor
     }
 
+    /// The active page may refer only to raster resources Native already delivered.
+    /// Never interpret a peer Note's raw image filename in the current catalog.
+    func deliveredPreviewImageResources(for keys: [String]) -> [String: String] {
+        guard let deliveredImageResources else { return [:] }
+        return keys.reduce(into: [:]) { resources, key in
+            if let value = deliveredImageResources[key] { resources[key] = value }
+        }
+    }
+
     func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
         pendingLinkPreviewGeneration = generation
         let offsetMap =

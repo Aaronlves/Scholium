@@ -17,6 +17,11 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     var select: ((Int) -> Void)?
     var choose: ((Int) -> Void)?
     private var synchronizing = false
+    private var measuredWidth: CGFloat?
+    private var measuredFonts: (label: NSFont, detail: NSFont)?
+    #if DEBUG
+        private(set) var measuredWidthItemCount = 0
+    #endif
 
     init(acceptsKeyboard: Bool) {
         super.init(frame: .zero)
@@ -58,6 +63,14 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         synchronizing = true
         defer { synchronizing = false }
         if self.items != items {
+            if !self.items.elementsEqual(
+                items,
+                by: {
+                    $0.label == $1.label && $0.detail == $1.detail && $0.indentation == $1.indentation
+                })
+            {
+                measuredWidth = nil
+            }
             self.items = items
             table.reloadData()
             invalidateIntrinsicContentSize()
@@ -73,6 +86,12 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
 
     override var intrinsicContentSize: NSSize { preferredSize }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        measuredWidth = nil
+        invalidateIntrinsicContentSize()
+    }
+
     override func layout() {
         super.layout()
         table.setFrameSize(NSSize(width: contentSize.width, height: table.frame.height))
@@ -87,12 +106,22 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     }
 
     var preferredSize: NSSize {
-        let width =
-            items.map { item in
-                let label = (item.label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
-                let detail = (item.detail as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]).width
-                return max(label, detail) + item.indentation + 32
-            }.max() ?? 0
+        let labelFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let detailFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        if measuredFonts?.label != labelFont || measuredFonts?.detail != detailFont {
+            measuredFonts = (labelFont, detailFont)
+            measuredWidth = nil
+        }
+        if measuredWidth == nil {
+            measuredWidth = items.reduce(CGFloat.zero) { width, item in
+                #if DEBUG
+                    measuredWidthItemCount += 1
+                #endif
+                let label = (item.label as NSString).size(withAttributes: [.font: labelFont]).width
+                let detail = (item.detail as NSString).size(withAttributes: [.font: detailFont]).width
+                return max(width, max(label, detail) + item.indentation + 32)
+            }
+        }
         let visibleRows = min(items.count, ScholiumMetrics.Completion.maximumVisibleRows)
         let height: CGFloat
         if visibleRows > 0 {
@@ -104,7 +133,7 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         } else {
             height = 0
         }
-        return NSSize(width: min(368, ceil(width)), height: height)
+        return NSSize(width: min(368, ceil(measuredWidth ?? 0)), height: height)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }

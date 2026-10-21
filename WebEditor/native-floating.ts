@@ -10,6 +10,7 @@ export interface NativePreviewSurface {
   bottom: number;
   html: string;
   css: string;
+  imageResourceKeys: string[];
 }
 
 export interface NativeSuggestionSurface {
@@ -31,6 +32,7 @@ export interface NativeSelectionSurface {
 
 export type NativeFloatingEvent =
   | {type: "previewSurface"; surface: NativePreviewSurface}
+  | {type: "previewFailure"; id: number; reason: "size"}
   | {type: "suggestionSurface"; surface: NativeSuggestionSurface}
   | {type: "selectionSurface"; surface: NativeSelectionSurface}
   | {type: "dismissSurface"; kind: NativeFloatingKind; id: number};
@@ -123,7 +125,20 @@ export function createNativeFloatingPorts(
           else return false;
           return true;
         }, ownerPost);
-        ownerPost({type: "previewSurface", surface: {...surface, id}});
+        const bounded = (text: string, maximum: number) => text.length <= maximum
+          && (text.length <= maximum / 3 || new TextEncoder().encode(text).length <= maximum);
+        const payload = {...surface, id};
+        const keys = surface.imageResourceKeys;
+        if (keys.length > 8192 || new Set(keys).size !== keys.length
+            || keys.some(key => !key || key.length > 16_384)
+            || !bounded(surface.html, 500_000) || !bounded(surface.css, 900_000)
+            || new TextEncoder().encode(JSON.stringify(payload).replaceAll('/', '\\/')).length > 1_500_000) {
+          active = null;
+          ownerPost({type: "previewFailure", id, reason: "size"});
+          callbacks.dismiss();
+          return id;
+        }
+        ownerPost({type: "previewSurface", surface: payload});
         return id;
       },
       hide(id) { hide("preview", id); },
@@ -178,6 +193,17 @@ export function previewSurface(
 ): Omit<NativePreviewSurface, "id"> {
   // The detached DOM is a content builder, never another visible or accessible panel.
   // Native loads this inert projection under its own deny-by-default CSP.
+  // This detached builder carries admitted keys, never another copy of the
+  // current Note's raster bytes. Peer preview HTML uses inline delivery and
+  // deliberately has no current-Note resource key.
+  const imageResourceKeys = new Set<string>();
+  for (const image of root.querySelectorAll<HTMLImageElement>(
+    'img.scholium-embedded-image[data-scholium-image-resource]')) {
+    if (image.closest('.scholium-embedded-note')) continue;
+    const key = image.getAttribute('data-scholium-image-resource')!;
+    imageResourceKeys.add(key);
+    image.removeAttribute('src');
+  }
   const css = Array.from(document.querySelectorAll("style"), node => node.textContent ?? "").join("\n");
   return {
     left: anchor.left,
@@ -185,5 +211,6 @@ export function previewSurface(
     bottom: anchor.bottom,
     html: root.innerHTML,
     css,
+    imageResourceKeys: [...imageResourceKeys],
   };
 }

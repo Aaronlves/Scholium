@@ -53,6 +53,8 @@ final class AttentionPopoverSession: ObservableObject {
     private let projectionController: WindowWorkspaceProjectionController
     private let dependencies: Dependencies
     private var observations: Set<AnyCancellable> = []
+    private var titlesByStableID: [UUID: String] = [:]
+    private var stableIDsByLocation: [VaultQualifiedNoteID: UUID] = [:]
 
     init(
         presentation: AttentionPresentationState,
@@ -65,6 +67,11 @@ final class AttentionPopoverSession: ObservableObject {
         self.projectionController = projectionController
         self.dependencies = dependencies
 
+        projectionController.$state
+            .map { $0.catalog?.notes ?? [] }
+            .removeDuplicates()
+            .sink { [weak self] notes in self?.indexCatalog(notes) }
+            .store(in: &observations)
         workspaceController.$state
             .map(\.assignment)
             .removeDuplicates()
@@ -174,7 +181,7 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func noteTitle(for change: DocumentChangeSummary) -> String {
-        if let title = catalogNotes(for: change.noteID).first?.title,
+        if let title = titlesByStableID[change.noteID],
             !title.isEmpty
         {
             return title
@@ -196,16 +203,23 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     private func stableNoteID(_ note: VaultQualifiedNoteID) -> UUID? {
-        projectionController.catalog?.notes.first(where: {
-            $0.reference.vaultID == note.vaultID
-                && $0.reference.relativePath == note.relativePath
-        })?.reference.stableNoteID.flatMap(UUID.init(uuidString:))
+        stableIDsByLocation[note]
     }
 
-    private func catalogNotes(for noteID: UUID) -> [WorkspaceCatalogNote] {
-        projectionController.catalog?.notes.filter {
-            $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID
-        } ?? []
+    /// Rebuilt only when the catalog's immutable Note projection changes. Query
+    /// and row-selection updates never rescan the complete workspace catalog.
+    private func indexCatalog(_ notes: [WorkspaceCatalogNote]) {
+        titlesByStableID.removeAll(keepingCapacity: true)
+        stableIDsByLocation.removeAll(keepingCapacity: true)
+        for note in notes {
+            guard let id = note.reference.stableNoteID.flatMap(UUID.init(uuidString:)) else { continue }
+            if titlesByStableID[id] == nil { titlesByStableID[id] = note.title }
+            let location = VaultQualifiedNoteID(
+                vaultID: note.reference.vaultID,
+                relativePath: note.reference.relativePath
+            )
+            if stableIDsByLocation[location] == nil { stableIDsByLocation[location] = id }
+        }
     }
 
     private func normalized(_ value: String, locale: Locale) -> String {

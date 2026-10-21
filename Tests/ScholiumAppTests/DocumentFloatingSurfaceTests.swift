@@ -35,7 +35,7 @@ struct DocumentFloatingSurfaceTests {
             "type": "previewSurface",
             "surface": [
                 "id": id, "left": 290, "top": 240, "bottom": 260,
-                "html": html, "css": "",
+                "html": html, "css": "", "imageResourceKeys": [String](),
             ],
         ]
     }

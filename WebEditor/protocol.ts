@@ -1,5 +1,5 @@
 import {validCommittedReviewProjection, type CommittedReviewProjection} from "./committed-review-contract";
-export const EDITOR_PROTOCOL_VERSION = 56;
+export const EDITOR_PROTOCOL_VERSION = 57;
 export const MAX_INBOUND_BYTES = 2_500_000;
 import {maximumCitationDataBytes, validCitationData, validCitationSnapshot, type ZoteroCitationData, type ZoteroCitationSnapshot} from "./zotero-citation-state";
 import {MAX_IMAGE_ENVELOPE_BYTES, validImageResources} from "./image-resources";

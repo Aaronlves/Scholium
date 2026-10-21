@@ -12,6 +12,8 @@ import {
 } from "./performance";
 import type {LinkPreview} from "./previews";
 import {localized, localizedTemplate} from "./localization";
+import {sanitizePreviewDocument, renderPreviewMathNodes} from "./preview-document";
+export {renderPreviewMathNodes} from "./preview-document";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
@@ -22,63 +24,6 @@ type PreviewTarget = {
 
 function normalizedTitle(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-}
-
-function sanitizePreviewDocument(body: HTMLElement) {
-  body.querySelectorAll("script, style, iframe, object, embed, form, button")
-    .forEach((node) => node.remove());
-  body.querySelectorAll("input").forEach(node => {
-    if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
-  });
-  body.querySelectorAll<HTMLElement>("*").forEach((node) => {
-    for (const attribute of Array.from(node.attributes)) {
-      if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-      if (attribute.name.toLowerCase().startsWith("data-source-")) {
-        node.removeAttribute(attribute.name);
-      }
-    }
-    node.removeAttribute("href");
-    node.removeAttribute("contenteditable");
-    node.removeAttribute("id");
-    node.removeAttribute("for");
-    node.removeAttribute("aria-describedby");
-    node.removeAttribute("aria-labelledby");
-    node.removeAttribute("aria-owns");
-    node.tabIndex = -1;
-  });
-}
-
-/** Renders only the reader's inert, source-backed mathematics nodes in Editor previews. */
-export function renderPreviewMathNodes(root: Document | HTMLElement) {
-  const ownerDocument = root.nodeType === 9 ? root as Document : (root as HTMLElement).ownerDocument;
-  const runtime = ownerDocument.defaultView?.scholiumMath;
-  if (runtime?.version !== 1) return;
-  root.querySelectorAll<HTMLElement>(
-    ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)",
-  ).forEach((element) => {
-    try {
-      const encodedSource = element.dataset.mathSource;
-      const kind = element.dataset.mathKind;
-      if (!encodedSource || (kind !== "inline" && kind !== "display")) return;
-      const source = new TextDecoder().decode(
-        Uint8Array.from(atob(encodedSource), character => character.charCodeAt(0)),
-      );
-      const result = runtime.render({source, kind});
-      if (!result.ok) {
-        element.classList.add("scholium-math-error");
-        element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
-        return;
-      }
-      const fallback = element.querySelector(".scholium-math-source");
-      const rendered = ownerDocument.createElement("span");
-      rendered.className = "scholium-math-output";
-      rendered.innerHTML = result.html;
-      fallback?.before(rendered);
-      element.classList.add("scholium-math-rendered");
-    } catch (_) {
-      element.classList.add("scholium-math-error");
-    }
-  });
 }
 
 /** Installs inert rendered content while retaining the shared Document CSS owner. */
@@ -231,6 +176,7 @@ export function createPreviewPopoverController(
   ) {
     if (!editor || !root || !title || !metadata || !body) return;
     setTarget({anchor: element, kind: "link"});
+    if (element && target?.anchor === element && root && !root.hidden) return;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
     if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = null;
@@ -255,6 +201,7 @@ export function createPreviewPopoverController(
   function showAnnotation(button: HTMLButtonElement) {
     if (!root || !title || !metadata || !body) return false;
     setTarget({anchor: button, kind: "annotation"});
+    if (!root.hidden) return true;
     const template = annotationTemplate(button);
     if (!template) { hide(); return false; }
     if (activeAnnotationButton && activeAnnotationButton !== button) {
@@ -289,6 +236,7 @@ export function createPreviewPopoverController(
   ) {
     if (!root || !title || !metadata || !body) return false;
     setTarget({anchor: button, kind: "footnote"});
+    if (button && !root.hidden) return true;
     const definition = options.footnotes().definitions.find((candidate) =>
       candidate.identifier === reference.identifier);
     const content = definition?.content.trim() ?? "";

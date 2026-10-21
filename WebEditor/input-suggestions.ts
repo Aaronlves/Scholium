@@ -1288,6 +1288,7 @@ export function createEditorInputSuggestions(
     private destroyed = false;
     private signature = "";
     private revision = 0;
+    private measureRevision = 0;
     private measureFallback: number | undefined;
     constructor(readonly view: EditorView) {
       refreshLinkChoices = () => {
@@ -1305,42 +1306,47 @@ export function createEditorInputSuggestions(
     }
     update(update: ViewUpdate) {
       if (update.docChanged || update.selectionSet) this.revision += 1;
+      // Pending results have no current rows to re-anchor. A moved viewport
+      // yields the former container; mapping its bounds through typing does not.
+      if (update.viewportMoved && this.signature && completionStatus(this.view.state) === "pending"
+        && !currentCompletions(this.view.state).length) { this.suspend(); return; }
       this.refresh();
     }
-    private read() {
+    private eligible() {
+      // The native container owns window activation. In WKWebView the DOM
+      // input owner can be current before document.hasFocus() settles; requiring
+      // EditorView.hasFocus here can discard its only completion update.
+      return !this.destroyed && this.view.root.activeElement === this.view.contentDOM
+        && !this.view.composing && isLiveSuggestionContext(options, this.view.state);
+    }
+    private read(measureRevision: number) {
+      // A keyed measure can outlive its triggering transaction, or run after
+      // the idle fallback. Reject departed contexts before asking for geometry.
+      if (measureRevision !== this.measureRevision || !this.eligible()) return null;
+      const items = currentCompletions(this.view.state).slice(0, 100);
+      if (!items.length) return null;
       return {
-        state: this.view.state, status: completionStatus(this.view.state),
-        items: currentCompletions(this.view.state).slice(0, 100)
+        state: this.view.state,
+        items: items
           .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item)})),
         anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
         selected: selectedCompletionIndex(this.view.state) ?? -1,
       };
     }
-    private write({items, anchor, selected, state, status}: {state: EditorState; status: ReturnType<typeof completionStatus>; items: Array<{label: string; detail: string; disabled: boolean}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
-      if (this.destroyed) return;
+    private write(value: ReturnType<typeof this.read>, measureRevision: number) {
+      if (this.destroyed || measureRevision !== this.measureRevision) return;
+      if (!value || !this.eligible()) { this.suspend(); return; }
+      const {items, anchor, selected, state} = value;
       for (const option of this.view.dom?.querySelectorAll<HTMLElement>(".cm-tooltip-autocomplete [role=option]") ?? []) {
         option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
       }
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
-      if (!anchor || this.view.root.activeElement !== this.view.contentDOM
-        || this.view.composing || !isLiveSuggestionContext(options, this.view.state)) {
-        options.nativeFloating.hide(nativeID);
-        this.signature = "";
-        return;
-      }
-      // Retain the native container through an asynchronous query. Its old
-      // callbacks reject changed source/selection until the new result arrives.
-      if (!items.length && status === "pending") return;
-      if (!items.length) {
-        options.nativeFloating.hide(nativeID);
-        this.signature = "";
-        return;
-      }
+      this.measureRevision++;
+      if (!anchor) { this.suspend(); return; }
       const valid = () => !this.destroyed && state.doc === this.view.state.doc
         && state.selection.eq(this.view.state.selection)
-        && !this.view.composing && isLiveSuggestionContext(options, this.view.state)
-        && this.view.root.activeElement === this.view.contentDOM;
+        && this.eligible();
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
       if (signature === this.signature) return;
       this.signature = signature;
@@ -1364,20 +1370,33 @@ export function createEditorInputSuggestions(
     refresh() {
       if (this.destroyed) return;
       window.clearTimeout(this.measureFallback);
+      this.measureFallback = undefined;
+      const measureRevision = ++this.measureRevision;
+      if (!this.eligible()) { this.suspend(); return; }
+      const status = completionStatus(this.view.state);
+      if (status === null || !currentCompletions(this.view.state).length) {
+        // Keep the previous native list while an asynchronous query is pending.
+        // Its callbacks reject changed source/selection; an empty result closes it.
+        if (status !== "pending") this.suspend();
+        return;
+      }
       // WKWebView can throttle animation frames independently of keyboard input.
       // The same public geometry read runs once at idle if its keyed measure stalls.
-      this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
-      this.view.requestMeasure({key: this, read: () => this.read(), write: value => this.write(value)});
+      this.measureFallback = window.setTimeout(() => this.write(this.read(measureRevision), measureRevision), 50);
+      this.view.requestMeasure({key: this, read: () => this.read(measureRevision), write: value => this.write(value, measureRevision)});
     }
     suspend() {
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
-      options.nativeFloating.hide(nativeID);
+      this.measureRevision++;
+      if (this.signature) options.nativeFloating.hide(nativeID);
       this.signature = "";
     }
     destroy() { this.destroyed = true; refreshLinkChoices = undefined; this.suspend(); }
   }, {
     eventHandlers: {
+      focus() { this.refresh(); },
+      blur() { this.suspend(); },
       compositionstart() { this.suspend(); },
       compositionend() { this.refresh(); },
     },

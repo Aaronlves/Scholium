@@ -279,6 +279,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
+        #if DEBUG
+            var testingPreviewWebView: WKWebView? { floatingSurfaces.previewWebView }
+            var testingIsPreviewShown: Bool { floatingSurfaces.isPreviewShown }
+        #endif
 
         func selectionActionPresenter(in webView: WKWebView) -> DocumentSelectionActionPresenter {
             { [weak self, weak webView] inquiry in
@@ -358,7 +362,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var cachedEmbeddedProjectionIdentity: String?
         var bridgeContentWorld = SafeMarkdownReadWebView.bridgeContentWorld
         weak var activeWebView: WKWebView?
-        var surfaceVisibility: DocumentSurfaceVisibility = .active
+        var surfaceVisibility: DocumentSurfaceVisibility = .active {
+            didSet {
+                if oldValue != surfaceVisibility, !surfaceVisibility.isActive {
+                    floatingSurfaces.dismissNotifyingOwner()
+                }
+            }
+        }
         #if DEBUG
             var testingForcesFinalizationFailure = false
             var testingScrollRestoreDelayMilliseconds = 0
@@ -1009,15 +1019,23 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard message.name == Self.messageHandlerName,
                 let payload = message.body as? [String: Any]
             else { return }
-            receive(payload, in: message.webView, extensionMessageIsCurrent: extensionMessageIsCurrent)
+            // Standalone readers have no editing-session resource catalog.
+            receive(payload, in: message.webView, extensionMessageIsCurrent: extensionMessageIsCurrent,
+                resolveImageResources: { _ in [:] })
         }
 
-        func receiveEmbedded(_ payload: [String: Any], in webView: WKWebView) {
+        func receiveEmbedded(
+            _ payload: [String: Any], in webView: WKWebView,
+            resolveImageResources: @MainActor ([String]) -> [String: String]
+        ) {
             guard isEmbeddedProjection, activeWebView === webView else { return }
-            receive(payload, in: webView, extensionMessageIsCurrent: true)
+            receive(payload, in: webView, extensionMessageIsCurrent: true, resolveImageResources: resolveImageResources)
         }
 
-        private func receive(_ payload: [String: Any], in webView: WKWebView?, extensionMessageIsCurrent: Bool) {
+        private func receive(
+            _ payload: [String: Any], in webView: WKWebView?, extensionMessageIsCurrent: Bool,
+            resolveImageResources: @MainActor ([String]) -> [String: String]
+        ) {
             guard
                 payload["version"] as? Int == SafeMarkdownReadWebView.configurationVersion,
                 payload["documentID"] as? String == documentID,
@@ -1056,9 +1074,17 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     guard let self, self.loadGeneration == expectedGeneration, self.surfaceVisibility.isActive else { return }
                     self.floatingPreviewFailure?(failure)
                 }
-                floatingSurfaces.present(event, in: webView, inquire: onAskAgent) {
+                let previewImages: [String: String]
+                if case .preview(let preview) = event {
+                    previewImages = resolveImageResources(preview.imageResourceKeys)
+                } else {
+                    previewImages = [:]
+                }
+                floatingSurfaces.present(event, in: webView, inquire: onAskAgent, imageResources: previewImages) {
                     [weak self, weak webView] id, action, index in
-                    guard let self, let webView, self.loadGeneration == expectedGeneration else {
+                    guard let self, let webView, action == .dismiss || self.surfaceVisibility.isActive,
+                        self.loadGeneration == expectedGeneration
+                    else {
                         return false
                     }
                     let accepted = try? await webView.callAsyncJavaScript(
@@ -1069,10 +1095,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     return accepted as? Bool == true && self.loadGeneration == expectedGeneration
                 }
             case "requestMathRuntime":
-                guard isEmbeddedProjection, let webView, activeWebView === webView else { return }
+                guard let webView, activeWebView === webView else { return }
+                let expectedGeneration = loadGeneration
                 runtimeCoordinator.requestMath(in: webView) { [weak self, weak webView] in
                     guard let self, let webView else { return false }
-                    return self.activeWebView === webView && self.isEmbeddedProjection
+                    return self.activeWebView === webView && self.loadGeneration == expectedGeneration
                 }
             case "requestMermaidRuntime":
                 guard let webView = webView,

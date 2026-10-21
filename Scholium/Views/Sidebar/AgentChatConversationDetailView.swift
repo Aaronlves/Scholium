@@ -889,18 +889,6 @@ struct AgentChatConversationDetailView: View {
         Set(controller.selected?.messages.compactMap(\.changeID) ?? [])
     }
 
-    private var conversationNoteIDs: Set<UUID> {
-        Set(
-            DocumentChangesScope.noteIDs(
-                forReceiptIDs: Array(conversationChangeIDs), in: changes ?? []
-            ))
-    }
-
-    private var pendingChanges: [DocumentChangeSummary] {
-        (pendingDocuments ?? []).filter { conversationNoteIDs.contains($0.noteID) }
-            .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
-    }
-
     private var conversationActivityButtons: some View {
         HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             filesButton
@@ -955,7 +943,11 @@ struct AgentChatConversationDetailView: View {
     }
 
     @ViewBuilder private var filesButton: some View {
-        if !conversationChangeIDs.isEmpty {
+        let receiptIDs = conversationChangeIDs
+        if !receiptIDs.isEmpty {
+            let noteIDs = Set(DocumentChangesScope.noteIDs(forReceiptIDs: Array(receiptIDs), in: changes ?? []))
+            let pendingChanges = (pendingDocuments ?? []).filter { noteIDs.contains($0.noteID) }
+                .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
             Button {
                 presentChanges()
             } label: {
@@ -1004,7 +996,7 @@ struct AgentChatConversationDetailView: View {
                     }
                     Button("All Changes") {
                         presentation.showsFiles = false
-                        showConversationChanges(Array(conversationChangeIDs))
+                        showConversationChanges(Array(receiptIDs))
                     }
                 }.padding().frame(width: 360)
             }

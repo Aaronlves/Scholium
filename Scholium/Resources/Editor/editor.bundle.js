@@ -14301,7 +14301,16 @@
             else return false;
             return true;
           }, ownerPost);
-          ownerPost({ type: "previewSurface", surface: { ...surface, id: id2 } });
+          const bounded2 = (text, maximum) => text.length <= maximum && (text.length <= maximum / 3 || new TextEncoder().encode(text).length <= maximum);
+          const payload = { ...surface, id: id2 };
+          const keys2 = surface.imageResourceKeys;
+          if (keys2.length > 8192 || new Set(keys2).size !== keys2.length || keys2.some((key) => !key || key.length > 16384) || !bounded2(surface.html, 5e5) || !bounded2(surface.css, 9e5) || new TextEncoder().encode(JSON.stringify(payload).replaceAll("/", "\\/")).length > 15e5) {
+            active = null;
+            ownerPost({ type: "previewFailure", id: id2, reason: "size" });
+            callbacks.dismiss();
+            return id2;
+          }
+          ownerPost({ type: "previewSurface", surface: payload });
           return id2;
         },
         hide(id2) {
@@ -14350,13 +14359,23 @@
     return portsForOwner(post2);
   }
   function previewSurface(anchor, root) {
+    const imageResourceKeys = /* @__PURE__ */ new Set();
+    for (const image of root.querySelectorAll(
+      "img.scholium-embedded-image[data-scholium-image-resource]"
+    )) {
+      if (image.closest(".scholium-embedded-note")) continue;
+      const key = image.getAttribute("data-scholium-image-resource");
+      imageResourceKeys.add(key);
+      image.removeAttribute("src");
+    }
     const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
     return {
       left: anchor.left,
       top: anchor.top,
       bottom: anchor.bottom,
       html: root.innerHTML,
-      css: css2
+      css: css2,
+      imageResourceKeys: [...imageResourceKeys]
     };
   }
 
@@ -16247,6 +16266,66 @@
     return true;
   }
 
+  // preview-document.ts
+  function sanitizePreviewDocument(body) {
+    body.querySelectorAll(".scholium-mermaid-rendered").forEach((wrapper) => {
+      if (!wrapper.querySelector(":scope > .scholium-mermaid-source")) return;
+      wrapper.classList.remove("scholium-mermaid-rendered");
+      wrapper.querySelectorAll(":scope > .scholium-mermaid-output, :scope > .scholium-mermaid-accessible-source").forEach((node) => node.remove());
+    });
+    body.querySelectorAll("script, style, iframe, object, embed, form, button").forEach((node) => node.remove());
+    body.querySelectorAll("input").forEach((node) => {
+      if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
+    });
+    body.querySelectorAll("*").forEach((node) => {
+      for (const attribute of Array.from(node.attributes)) {
+        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
+        if (attribute.name.toLowerCase().startsWith("data-source-")) {
+          node.removeAttribute(attribute.name);
+        }
+      }
+      node.removeAttribute("href");
+      node.removeAttribute("contenteditable");
+      node.removeAttribute("id");
+      node.removeAttribute("for");
+      node.removeAttribute("aria-describedby");
+      node.removeAttribute("aria-labelledby");
+      node.removeAttribute("aria-owns");
+      node.tabIndex = -1;
+    });
+  }
+  function renderPreviewMathNodes(root) {
+    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
+    const runtime = ownerDocument.defaultView?.scholiumMath;
+    if (runtime?.version !== 1) return;
+    root.querySelectorAll(
+      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
+    ).forEach((element) => {
+      try {
+        const encodedSource = element.dataset.mathSource;
+        const kind = element.dataset.mathKind;
+        if (!encodedSource || kind !== "inline" && kind !== "display") return;
+        const source = new TextDecoder().decode(
+          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
+        );
+        const result = runtime.render({ source, kind });
+        if (!result.ok) {
+          element.classList.add("scholium-math-error");
+          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
+          return;
+        }
+        const fallback = element.querySelector(".scholium-math-source");
+        const rendered = ownerDocument.createElement("span");
+        rendered.className = "scholium-math-output";
+        rendered.innerHTML = result.html;
+        fallback?.before(rendered);
+        element.classList.add("scholium-math-rendered");
+      } catch (_) {
+        element.classList.add("scholium-math-error");
+      }
+    });
+  }
+
   // reader-mermaid-pass.ts
   function createReaderMermaidPass(sources, themeRoot, presentationRevision) {
     const remaining = /* @__PURE__ */ new Map();
@@ -16324,6 +16403,7 @@
         "scholiumReviewFind",
         "scholiumReviewSelection",
         "scholiumReviewImages",
+        "scholiumDismissPreview",
         "scholiumSetLinkPreviews",
         "scholiumSetPresentationCSS",
         "scholiumSetReviewSelectionSurfaceActive",
@@ -16491,6 +16571,8 @@
     const postFloating = (event) => post2("floatingSurface", { event });
     const nativeFloating2 = host?.nativeFloating.forOwner(postFloating) ?? createNativeFloatingPorts(postFloating);
     let nativePreviewID = 0;
+    let activePreviewAnchor = null;
+    let previewRevision = 0;
     let nativePreviewHovered = false;
     const previewTitle = popover.querySelector(".scholium-preview-title");
     const previewMetadata = popover.querySelector(".scholium-preview-metadata");
@@ -16561,41 +16643,19 @@
       preview
     ]));
     const origins = /* @__PURE__ */ new Map();
-    function renderMathNodes() {
-      const runtime = readerWindow.scholiumMath;
-      if (!runtime || runtime.version !== 1) return;
-      documentRoot.querySelectorAll(".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)").forEach((element) => {
-        try {
-          const encodedSource = element.dataset.mathSource;
-          const kind = element.dataset.mathKind;
-          if (!encodedSource || kind !== "inline" && kind !== "display") return;
-          const source = new TextDecoder().decode(
-            Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
-          );
-          const result = runtime.render({ source, kind });
-          if (!result.ok) {
-            element.classList.add("scholium-math-error");
-            element.setAttribute(
-              "aria-label",
-              localized2("Mathematics could not be rendered. Source is shown.")
-            );
-            return;
-          }
-          const fallback = element.querySelector(".scholium-math-source");
-          const rendered = document.createElement("span");
-          rendered.className = "scholium-math-output";
-          rendered.innerHTML = result.html;
-          fallback && fallback.before(rendered);
-          element.classList.add("scholium-math-rendered");
-        } catch (_) {
-          element.classList.add("scholium-math-error");
-        }
-      });
+    function renderMathNodes(root = documentRoot) {
+      renderPreviewMathNodes(root);
+    }
+    function hasMathNodes(root) {
+      if (root.querySelector(".scholium-math[data-math-source][data-math-kind]")) return true;
+      return [...root.querySelectorAll("template")].some((template) => hasMathNodes(template.content));
     }
     renderMathNodes();
     let finishMath;
     let mathReady = Promise.resolve();
-    if (host && documentRoot.querySelector(".scholium-math[data-math-source][data-math-kind]") && !readerWindow.scholiumMath) {
+    function ensureMathRuntime() {
+      if (readerWindow.scholiumMath?.version === 1) return Promise.resolve();
+      if (finishMath) return mathReady;
       mathReady = new Promise((resolve) => {
         const timeout = setTimeout(() => {
           finishMath?.();
@@ -16607,7 +16667,9 @@
         cleanups.push(() => finishMath?.());
         post2("requestMathRuntime");
       });
+      return mathReady;
     }
+    if (documentRoot.querySelector(".scholium-math[data-math-source][data-math-kind]")) void ensureMathRuntime();
     listenWindow("scholium-math-runtime-settled", () => {
       if (!alive()) return;
       renderMathNodes();
@@ -16843,6 +16905,8 @@
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
     }
     function hidePopover() {
+      activePreviewAnchor = null;
+      previewRevision++;
       nativePreviewHovered = false;
       nativeFloating2.preview.hide(nativePreviewID);
       clearTimeout(popoverHideTimer);
@@ -16858,6 +16922,7 @@
       previewMetadata.hidden = true;
       previewBody.replaceChildren();
     }
+    readerWindow.scholiumDismissPreview = hidePopover;
     function cancelPopoverHide() {
       clearTimeout(popoverHideTimer);
       popoverHideTimer = void 0;
@@ -16872,24 +16937,9 @@
       return String(value2 || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
     }
     function sanitizeInertContent(container) {
-      container.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-      container.querySelectorAll("*").forEach((node) => {
-        Array.from(node.attributes).forEach((attribute) => {
-          if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-          if (attribute.name.toLowerCase().startsWith("data-source-")) {
-            node.removeAttribute(attribute.name);
-          }
-        });
-        node.removeAttribute("href");
-        node.removeAttribute("contenteditable");
-        node.removeAttribute("id");
-        node.removeAttribute("for");
-        node.removeAttribute("aria-describedby");
-        node.removeAttribute("aria-labelledby");
-        node.removeAttribute("aria-owns");
-        node.tabIndex = -1;
-      });
+      sanitizePreviewDocument(container);
       localizeRenderedInterface(container, localized2);
+      renderMathNodes(container);
     }
     function installInertDocumentContent(container, preview) {
       container.innerHTML = preview.htmlBody;
@@ -17019,6 +17069,19 @@
       return true;
     };
     function positionPopover(anchor) {
+      activePreviewAnchor = anchor;
+      const revision = ++previewRevision;
+      if (!readerWindow.scholiumMath && hasMathNodes(previewBody)) {
+        void ensureMathRuntime().then(() => {
+          if (!alive() || activePreviewAnchor !== anchor || revision !== previewRevision) return;
+          renderMathNodes(previewBody);
+          publishPopover(anchor);
+        });
+        return;
+      }
+      publishPopover(anchor);
+    }
+    function publishPopover(anchor) {
       popover.hidden = false;
       const surface = previewSurface(anchor.getBoundingClientRect(), popover);
       if (host) surface.html = `<div class="scholium-review-projection">${surface.html}</div>`;
@@ -17078,6 +17141,7 @@
       positionPopover(link);
     }
     function showLinkAnnotationPopover(button) {
+      if (activePreviewAnchor === button) return;
       const identifier5 = button.dataset.linkAnnotation;
       const marker = button.closest(".scholium-link-annotation-marker");
       const template = identifier5 ? elementByID(`${identifier5}-template`) : marker?.querySelector(":scope > template") ?? null;
@@ -17107,6 +17171,7 @@
       );
     }
     function showPreviewFor(anchor) {
+      if (activePreviewAnchor === anchor) return;
       if (anchor.matches(".scholium-link-annotation-button")) {
         showLinkAnnotationPopover(anchor);
       } else if (anchor.matches(".footnote-reference")) {
@@ -18072,7 +18137,10 @@
         const changed = bindCommittedReviewImageResources(root, options.imageResources());
         const reader = window;
         for (const image of changed) reader.scholiumReviewImages?.refreshImage(image);
-        if (changed.length) mountedView.requestMeasure();
+        if (changed.length) {
+          reader.scholiumDismissPreview?.();
+          mountedView.requestMeasure();
+        }
       },
       updateInPlace(projection) {
         const previous = mountedProjection;
@@ -36908,7 +36976,7 @@ ${blankRow(table.position.columnCount)}`;
   };
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 56;
+  var EDITOR_PROTOCOL_VERSION = 57;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var MAX_RECOVERY_HISTORY_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + MAX_INBOUND_BYTES;
@@ -40253,59 +40321,6 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function normalizedTitle(value) {
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
   }
-  function sanitizePreviewDocument(body) {
-    body.querySelectorAll("script, style, iframe, object, embed, form, button").forEach((node) => node.remove());
-    body.querySelectorAll("input").forEach((node) => {
-      if (!node.matches('input.scholium-task-checkbox[type="checkbox"][disabled]')) node.remove();
-    });
-    body.querySelectorAll("*").forEach((node) => {
-      for (const attribute of Array.from(node.attributes)) {
-        if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name);
-        if (attribute.name.toLowerCase().startsWith("data-source-")) {
-          node.removeAttribute(attribute.name);
-        }
-      }
-      node.removeAttribute("href");
-      node.removeAttribute("contenteditable");
-      node.removeAttribute("id");
-      node.removeAttribute("for");
-      node.removeAttribute("aria-describedby");
-      node.removeAttribute("aria-labelledby");
-      node.removeAttribute("aria-owns");
-      node.tabIndex = -1;
-    });
-  }
-  function renderPreviewMathNodes(root) {
-    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
-    const runtime = ownerDocument.defaultView?.scholiumMath;
-    if (runtime?.version !== 1) return;
-    root.querySelectorAll(
-      ".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)"
-    ).forEach((element) => {
-      try {
-        const encodedSource = element.dataset.mathSource;
-        const kind = element.dataset.mathKind;
-        if (!encodedSource || kind !== "inline" && kind !== "display") return;
-        const source = new TextDecoder().decode(
-          Uint8Array.from(atob(encodedSource), (character) => character.charCodeAt(0))
-        );
-        const result = runtime.render({ source, kind });
-        if (!result.ok) {
-          element.classList.add("scholium-math-error");
-          element.setAttribute("aria-label", localized("Mathematics could not be rendered. Source is shown."));
-          return;
-        }
-        const fallback = element.querySelector(".scholium-math-source");
-        const rendered = ownerDocument.createElement("span");
-        rendered.className = "scholium-math-output";
-        rendered.innerHTML = result.html;
-        fallback?.before(rendered);
-        element.classList.add("scholium-math-rendered");
-      } catch (_) {
-        element.classList.add("scholium-math-error");
-      }
-    });
-  }
   function populatePreviewDocument(body, preview) {
     body.innerHTML = preview.htmlBody;
     sanitizePreviewDocument(body);
@@ -40433,6 +40448,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function showLinkPreview(preview, anchor, startedAt, element = null) {
       if (!editor2 || !root || !title || !metadata || !body) return;
       setTarget({ anchor: element, kind: "link" });
+      if (element && target?.anchor === element && root && !root.hidden) return;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
       if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
@@ -40455,6 +40471,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function showAnnotation(button) {
       if (!root || !title || !metadata || !body) return false;
       setTarget({ anchor: button, kind: "annotation" });
+      if (!root.hidden) return true;
       const template = annotationTemplate(button);
       if (!template) {
         hide();
@@ -40485,6 +40502,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     function showFootnoteReference(reference, anchor, button = null) {
       if (!root || !title || !metadata || !body) return false;
       setTarget({ anchor: button, kind: "footnote" });
+      if (button && !root.hidden) return true;
       const definition = options.footnotes().definitions.find((candidate) => candidate.identifier === reference.identifier);
       const content2 = definition?.content.trim() ?? "";
       if (!content2) {
@@ -42304,39 +42322,48 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       destroyed = false;
       signature = "";
       revision = 0;
+      measureRevision = 0;
       measureFallback;
       update(update) {
         if (update.docChanged || update.selectionSet) this.revision += 1;
+        if (update.viewportMoved && this.signature && completionStatus(this.view.state) === "pending" && !currentCompletions(this.view.state).length) {
+          this.suspend();
+          return;
+        }
         this.refresh();
       }
-      read() {
+      eligible() {
+        return !this.destroyed && this.view.root.activeElement === this.view.contentDOM && !this.view.composing && isLiveSuggestionContext(options, this.view.state);
+      }
+      read(measureRevision) {
+        if (measureRevision !== this.measureRevision || !this.eligible()) return null;
+        const items = currentCompletions(this.view.state).slice(0, 100);
+        if (!items.length) return null;
         return {
           state: this.view.state,
-          status: completionStatus(this.view.state),
-          items: currentCompletions(this.view.state).slice(0, 100).map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item) })),
+          items: items.map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item) })),
           anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
           selected: selectedCompletionIndex(this.view.state) ?? -1
         };
       }
-      write({ items, anchor, selected, state, status }) {
-        if (this.destroyed) return;
+      write(value, measureRevision) {
+        if (this.destroyed || measureRevision !== this.measureRevision) return;
+        if (!value || !this.eligible()) {
+          this.suspend();
+          return;
+        }
+        const { items, anchor, selected, state } = value;
         for (const option of this.view.dom?.querySelectorAll(".cm-tooltip-autocomplete [role=option]") ?? []) {
           option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
         }
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
-        if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing || !isLiveSuggestionContext(options, this.view.state)) {
-          options.nativeFloating.hide(nativeID);
-          this.signature = "";
+        this.measureRevision++;
+        if (!anchor) {
+          this.suspend();
           return;
         }
-        if (!items.length && status === "pending") return;
-        if (!items.length) {
-          options.nativeFloating.hide(nativeID);
-          this.signature = "";
-          return;
-        }
-        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && isLiveSuggestionContext(options, this.view.state) && this.view.root.activeElement === this.view.contentDOM;
+        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && this.eligible();
         const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
         if (signature === this.signature) return;
         this.signature = signature;
@@ -42366,13 +42393,25 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       refresh() {
         if (this.destroyed) return;
         window.clearTimeout(this.measureFallback);
-        this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
-        this.view.requestMeasure({ key: this, read: () => this.read(), write: (value) => this.write(value) });
+        this.measureFallback = void 0;
+        const measureRevision = ++this.measureRevision;
+        if (!this.eligible()) {
+          this.suspend();
+          return;
+        }
+        const status = completionStatus(this.view.state);
+        if (status === null || !currentCompletions(this.view.state).length) {
+          if (status !== "pending") this.suspend();
+          return;
+        }
+        this.measureFallback = window.setTimeout(() => this.write(this.read(measureRevision), measureRevision), 50);
+        this.view.requestMeasure({ key: this, read: () => this.read(measureRevision), write: (value) => this.write(value, measureRevision) });
       }
       suspend() {
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
-        options.nativeFloating.hide(nativeID);
+        this.measureRevision++;
+        if (this.signature) options.nativeFloating.hide(nativeID);
         this.signature = "";
       }
       destroy() {
@@ -42382,6 +42421,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
     }, {
       eventHandlers: {
+        focus() {
+          this.refresh();
+        },
+        blur() {
+          this.suspend();
+        },
         compositionstart() {
           this.suspend();
         },
@@ -47583,8 +47628,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     const previousImages = previous?.imageResources ?? {};
     const keys2 = Object.keys(value.imageResources);
-    const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration || keys2.length !== Object.keys(previousImages).length || keys2.some((key) => previousImages[key] !== value.imageResources[key]);
+    const imagePayloadChanged = keys2.length !== Object.keys(previousImages).length || keys2.some((key) => previousImages[key] !== value.imageResources[key]);
+    const imagesChanged = previous?.imageResourceGeneration !== value.imageResourceGeneration || imagePayloadChanged;
     if (imagesChanged) {
+      if (imagePayloadChanged) previewPopover.hide();
       liveImageProjection.setResources(value.imageResources, editor);
     }
     if (previous?.writingContinuationEnabled !== value.writingContinuationEnabled || previous.writingContinuationContextKey !== value.writingContinuationContextKey) {
@@ -47790,11 +47837,15 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       const transitionSequence = ++modeTransitionSequence;
       const attachment = documentAttachment;
       previewPopover.hide();
+      const nextMode = mode === "review" ? "review" : mode === "livePreview" ? "livePreview" : "source";
+      if (nextMode !== configuredEditorMode(editor.state)) {
+        selectionActions.dismiss();
+        selectionActions.update(null);
+      }
       const scrollAnchor = currentDocumentScrollAnchor(configuredEditorMode(editor.state), scrollCoordinator, reviewProjection);
       const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
       const scrollFraction = scrollAnchor?.fallbackFraction ?? (extent > 0 ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent)) : 0);
       scrollCoordinator.cancelPendingRestoration();
-      const nextMode = mode === "review" ? "review" : mode === "livePreview" ? "livePreview" : "source";
       if (nextMode !== configuredEditorMode(editor.state)) citationInsertionRevision++;
       if (nextMode !== "review" && appliedPresentation) {
         document.getElementById("scholium-presentation-css").textContent = appliedPresentation.presentationCSS;
@@ -47839,7 +47890,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       setDynamicStyle("scholium-user-css", css2);
     },
     setLinkPreviews(value) {
-      linkPreviews = validatedLinkPreviews(value, editor.state.doc.length);
+      const next = validatedLinkPreviews(value, editor.state.doc.length);
+      if (next.length === linkPreviews.length && next.every((preview, index) => {
+        const previous = linkPreviews[index];
+        return preview.from === previous.from && preview.to === previous.to && preview.title === previous.title && preview.isEmbedded === previous.isEmbedded && preview.fragment === previous.fragment && preview.htmlBody === previous.htmlBody;
+      })) return;
+      previewPopover.hide();
+      linkPreviews = next;
       linkPreviewIndexByRange = new Map(
         linkPreviews.map((preview, index) => [rangeKey(preview.from, preview.to), index])
       );

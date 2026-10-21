@@ -22,6 +22,7 @@ import {createInterfaceLocalizer} from "./localization";
 import {localizeRenderedInterface} from "./rendered-interface-localization";
 import {installReviewImageActivation} from "./review-image-activation";
 import {awaitVisibleDocumentImages, createDocumentImageReadiness} from "./document-widget-readiness";
+import {sanitizePreviewDocument, renderPreviewMathNodes} from "./preview-document";
 import {createReaderMermaidPass, type ReaderMermaidPass} from "./reader-mermaid-pass";
 
 interface ReaderMessageHandler {
@@ -58,6 +59,7 @@ export type ReaderWindow = Window & {
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumReviewImages?: ReturnType<typeof installReviewImageActivation>;
   scholiumMermaidReady?: Promise<void>;
+  scholiumDismissPreview?: () => void;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
   scholiumSetPresentationCSS?: (presentationCSS: string, userCSS: string) => Promise<boolean>;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
@@ -142,7 +144,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     readerWindow.scholiumReviewSelection?.clear();
     (host?.root.closest<HTMLElement>('.scholium-review-projection') ?? document.documentElement).classList.remove('scholium-review-custom-selection');
     for (const key of ['scholiumReadPreparation', 'scholiumReadNavigation', 'scholiumReviewFind',
-      'scholiumReviewSelection', 'scholiumReviewImages', 'scholiumSetLinkPreviews',
+      'scholiumReviewSelection', 'scholiumReviewImages', 'scholiumDismissPreview', 'scholiumSetLinkPreviews',
       'scholiumSetPresentationCSS', 'scholiumSetReviewSelectionSurfaceActive',
       'scholiumShowSelectionActions', 'scholiumReadScroll', 'scholiumReadReady', 'scholiumMermaidReady'] as const) {
       delete readerWindow[key];
@@ -287,6 +289,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   const postFloating = (event: NativeFloatingEvent) => post('floatingSurface', {event});
   const nativeFloating = host?.nativeFloating.forOwner(postFloating) ?? createNativeFloatingPorts(postFloating);
   let nativePreviewID = 0;
+  let activePreviewAnchor: HTMLElement | null = null;
+  let previewRevision = 0;
   let nativePreviewHovered = false;
   const previewTitle = popover.querySelector<HTMLElement>('.scholium-preview-title')!;
   const previewMetadata = popover.querySelector<HTMLElement>('.scholium-preview-metadata')!;
@@ -361,49 +365,31 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     preview
   ]));
   const origins = new Map();
-  function renderMathNodes() {
-    const runtime = readerWindow.scholiumMath;
-    if (!runtime || runtime.version !== 1) return;
-    documentRoot.querySelectorAll<HTMLElement>('.scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)').forEach(element => {
-      try {
-        const encodedSource = element.dataset.mathSource;
-        const kind = element.dataset.mathKind;
-        if (!encodedSource || (kind !== 'inline' && kind !== 'display')) return;
-        const source = new TextDecoder().decode(
-          Uint8Array.from(atob(encodedSource), character => character.charCodeAt(0))
-        );
-        const result = runtime.render({source, kind});
-        if (!result.ok) {
-          element.classList.add('scholium-math-error');
-          element.setAttribute(
-            'aria-label',
-            localized('Mathematics could not be rendered. Source is shown.')
-          );
-          return;
-        }
-        const fallback = element.querySelector('.scholium-math-source');
-        const rendered = document.createElement('span');
-        rendered.className = 'scholium-math-output';
-        rendered.innerHTML = result.html;
-        fallback && fallback.before(rendered);
-        element.classList.add('scholium-math-rendered');
-      } catch (_) {
-        element.classList.add('scholium-math-error');
-      }
-    });
+  function renderMathNodes(root: HTMLElement = documentRoot) {
+    renderPreviewMathNodes(root);
+  }
+  function hasMathNodes(root: ParentNode): boolean {
+    if (root.querySelector('.scholium-math[data-math-source][data-math-kind]')) return true;
+    return [...root.querySelectorAll<HTMLTemplateElement>('template')]
+      .some(template => hasMathNodes(template.content));
   }
   renderMathNodes();
   let finishMath: (() => void) | undefined;
   let mathReady = Promise.resolve();
-  if (host && documentRoot.querySelector('.scholium-math[data-math-source][data-math-kind]')
-      && !readerWindow.scholiumMath) {
+  function ensureMathRuntime(): Promise<void> {
+    if (readerWindow.scholiumMath?.version === 1) return Promise.resolve();
+    if (finishMath) return mathReady;
     mathReady = new Promise<void>(resolve => {
       const timeout = setTimeout(() => { finishMath?.(); }, 8000);
       finishMath = () => { clearTimeout(timeout); resolve(); };
       cleanups.push(() => finishMath?.());
       post('requestMathRuntime');
     });
+    return mathReady;
   }
+  // Inert annotation templates do not delay opening the document. Their
+  // mathematics joins this same promise only when a preview is requested.
+  if (documentRoot.querySelector('.scholium-math[data-math-source][data-math-kind]')) void ensureMathRuntime();
   listenWindow('scholium-math-runtime-settled', () => {
     if (!alive()) return;
     renderMathNodes();
@@ -656,6 +642,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   }
   function hidePopover() {
+    activePreviewAnchor = null;
+    previewRevision++;
     nativePreviewHovered = false;
     nativeFloating.preview.hide(nativePreviewID);
     clearTimeout(popoverHideTimer);
@@ -671,6 +659,8 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     previewMetadata.hidden = true;
     previewBody.replaceChildren();
   }
+
+  readerWindow.scholiumDismissPreview = hidePopover;
 
   function cancelPopoverHide() {
     clearTimeout(popoverHideTimer);
@@ -689,24 +679,9 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   }
 
   function sanitizeInertContent(container: HTMLElement) {
-    container.querySelectorAll('script, style, iframe, object, embed, form, input, button').forEach(node => node.remove());
-    container.querySelectorAll<HTMLElement>('*').forEach(node => {
-      Array.from(node.attributes).forEach(attribute => {
-        if (attribute.name.toLowerCase().startsWith('on')) node.removeAttribute(attribute.name);
-        if (attribute.name.toLowerCase().startsWith('data-source-')) {
-          node.removeAttribute(attribute.name);
-        }
-      });
-      node.removeAttribute('href');
-      node.removeAttribute('contenteditable');
-      node.removeAttribute('id');
-      node.removeAttribute('for');
-      node.removeAttribute('aria-describedby');
-      node.removeAttribute('aria-labelledby');
-      node.removeAttribute('aria-owns');
-      node.tabIndex = -1;
-    });
+    sanitizePreviewDocument(container);
     localizeRenderedInterface(container, localized);
+    renderMathNodes(container);
   }
 
   function installInertDocumentContent(container: HTMLElement, preview: ReadLinkPreview) {
@@ -842,7 +817,22 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     return true;
   };
 
-  function positionPopover(anchor: Element) {
+  function positionPopover(anchor: HTMLElement) {
+    activePreviewAnchor = anchor;
+    const revision = ++previewRevision;
+    // Template mathematics uses the same lazy bundled runtime as the document.
+    // Preparation may finish after pointer departure or a different target.
+    if (!readerWindow.scholiumMath && hasMathNodes(previewBody)) {
+      void ensureMathRuntime().then(() => {
+        if (!alive() || activePreviewAnchor !== anchor || revision !== previewRevision) return;
+        renderMathNodes(previewBody);
+        publishPopover(anchor);
+      });
+      return;
+    }
+    publishPopover(anchor);
+  }
+  function publishPopover(anchor: HTMLElement) {
     popover.hidden = false;
     const surface = previewSurface(anchor.getBoundingClientRect(), popover);
     if (host) surface.html = `<div class="scholium-review-projection">${surface.html}</div>`;
@@ -890,6 +880,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   }
 
   function showLinkAnnotationPopover(button: HTMLButtonElement) {
+    if (activePreviewAnchor === button) return;
     const identifier = button.dataset.linkAnnotation;
     const marker = button.closest<HTMLElement>('.scholium-link-annotation-marker');
     const template = identifier
@@ -920,6 +911,7 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   }
 
   function showPreviewFor(anchor: HTMLElement) {
+    if (activePreviewAnchor === anchor) return;
     if (anchor.matches('.scholium-link-annotation-button')) {
       showLinkAnnotationPopover(anchor as HTMLButtonElement);
     } else if (anchor.matches('.footnote-reference')) {

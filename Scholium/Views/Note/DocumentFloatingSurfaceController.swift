@@ -5,6 +5,7 @@ import WebKit
 extension DocumentPreviewFailure {
     var message: String {
         switch self {
+        case .size: ScholiumL10n.string("Preview is too large to display.")
         case .loading: ScholiumL10n.string("Preview could not be loaded. Try again.")
         case .measurement: ScholiumL10n.string("Preview could not be displayed. Try again.")
         }
@@ -19,6 +20,7 @@ struct DocumentPreviewSurface: Codable, Equatable, Sendable {
     let bottom: Double
     let html: String
     let css: String
+    var imageResourceKeys: [String] = []
 }
 
 /// A bounded read-only completion projection, never an editor/source operation.
@@ -59,6 +61,10 @@ enum DocumentFloatingAction: String, Equatable, Sendable {
     case choose
 }
 
+struct DocumentPreviewFailureSurface: Decodable, Equatable, Sendable {
+    let id: Int
+}
+
 struct DocumentFloatingDismissal: Codable, Equatable, Sendable {
     let kind: DocumentFloatingKind
     let id: Int
@@ -66,13 +72,14 @@ struct DocumentFloatingDismissal: Codable, Equatable, Sendable {
 
 enum DocumentFloatingEvent: Equatable, Sendable {
     case preview(DocumentPreviewSurface)
+    case previewFailure(DocumentPreviewFailureSurface)
     case suggestions(DocumentSuggestionSurface)
     case selection(DocumentSelectionSurface)
     case dismiss(DocumentFloatingDismissal)
 
     var kind: DocumentFloatingKind? {
         switch self {
-        case .preview: .preview
+        case .preview, .previewFailure: .preview
         case .suggestions: .suggestions
         case .selection: .selection
         case .dismiss(let value): value.kind
@@ -86,7 +93,7 @@ enum DocumentFloatingEvent: Equatable, Sendable {
 
     static func decode(_ value: Any?) -> Self? {
         guard let value = value as? [String: Any],
-            Set(value.keys) == ["type", "surface"] || Set(value.keys) == ["type", "kind", "id"],
+            Set(value.keys) == ["type", "surface"] || Set(value.keys) == ["type", "kind", "id"] || Set(value.keys) == ["type", "id", "reason"],
             JSONSerialization.isValidJSONObject(value),
             let type = value["type"] as? String
         else { return nil }
@@ -95,7 +102,7 @@ enum DocumentFloatingEvent: Equatable, Sendable {
         case "previewSurface":
             guard Set(value.keys) == ["type", "surface"],
                 let object = value["surface"] as? [String: Any],
-                Set(object.keys) == ["id", "left", "top", "bottom", "html", "css"],
+                Set(object.keys) == ["id", "left", "top", "bottom", "html", "css", "imageResourceKeys"],
                 let data = try? JSONSerialization.data(withJSONObject: object),
                 data.count <= 1_500_000,
                 let result = try? JSONDecoder().decode(DocumentPreviewSurface.self, from: data),
@@ -104,9 +111,20 @@ enum DocumentFloatingEvent: Equatable, Sendable {
                 result.bottom >= result.top,
                 !result.html.isEmpty,
                 result.html.utf8.count <= 500_000,
-                result.css.utf8.count <= 900_000
+                result.css.utf8.count <= 900_000,
+                result.imageResourceKeys.count <= 8_192,
+                Set(result.imageResourceKeys).count == result.imageResourceKeys.count,
+                result.imageResourceKeys.allSatisfy({ !$0.isEmpty && $0.utf16.count <= 16_384 })
             else { return nil }
             return .preview(result)
+        case "previewFailure":
+            guard Set(value.keys) == ["type", "id", "reason"],
+                let data = try? JSONSerialization.data(withJSONObject: value),
+                let failure = try? JSONDecoder().decode(DocumentPreviewFailureSurface.self, from: data),
+                failure.id > 0,
+                value["reason"] as? String == "size"
+            else { return nil }
+            return .previewFailure(failure)
         case "suggestionSurface":
             guard Set(value.keys) == ["type", "surface"],
                 let object = value["surface"] as? [String: Any],
@@ -205,6 +223,7 @@ final class DocumentFloatingSurfaceController: NSObject {
         _ value: DocumentFloatingEvent,
         in webView: WKWebView,
         inquire: AgentSelectionInquiryHandler? = nil,
+        imageResources: [String: String] = [:],
         event: @escaping (Int, DocumentFloatingAction, Int) async -> Bool
     ) {
         if case .dismiss(let value) = value {
@@ -222,6 +241,12 @@ final class DocumentFloatingSurfaceController: NSObject {
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
             let viewport = webView.superview as? DocumentWebViewContainer
         else { return }
+        if case .previewFailure(let failure) = value {
+            guard owner !== webView || surface == nil || failure.id > surface!.id else { return }
+            dismiss()
+            onPreviewFailure?(.size)
+            return
+        }
         let next: ActiveDocumentFloatingSurface
         switch value {
         case .preview(let preview):
@@ -239,7 +264,7 @@ final class DocumentFloatingSurfaceController: NSObject {
                 id: selection.id, kind: .selection, left: selection.left, top: selection.top, bottom: selection.bottom,
                 selectionUTF16Count: selection.utf16Count,
                 selectionCommandID: owner === webView && selectionCommand?.surfaceID == selection.id ? selectionCommand?.id : nil)
-        case .dismiss:
+        case .dismiss, .previewFailure:
             return
         }
         if owner === webView, let surface, next.id <= surface.id { return }
@@ -260,7 +285,7 @@ final class DocumentFloatingSurfaceController: NSObject {
                 self?.send(action)
                 if action == .dismiss { self?.dismiss() }
             }
-            content.present(value, in: webView)
+            content.present(value, in: webView, imageResources: imageResources)
             return
         }
         if glass == nil {
@@ -331,7 +356,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             glass.setAccessibilityIdentifier("scholium.documentSuggestions")
             glass.setAccessibilityChildren([])
             layout(height: content.preferredSize.height)
-        case .preview: break  // Owned by DocumentPreviewPopover above.
+        case .preview, .previewFailure: break  // Owned by DocumentPreviewPopover above.
         case .selection:
             guard inquire != nil else {
                 dismiss()
@@ -591,6 +616,13 @@ final class DocumentFloatingSurfaceController: NSObject {
             y: owner.isFlipped ? top : bounds.height - bottom,
             width: 1, height: max(1, bottom - top))
         popover.show(relativeTo: anchor, of: owner, preferredEdge: owner.isFlipped ? .maxY : .minY)
+    }
+
+    /// Native visibility can end before the retained document receives another
+    /// DOM event. Revoke its matching Web presentation as well as the window.
+    func dismissNotifyingOwner() {
+        send(.dismiss)
+        dismiss()
     }
 
     func dismiss() {

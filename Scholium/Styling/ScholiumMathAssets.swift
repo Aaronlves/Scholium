@@ -27,6 +27,7 @@ enum ScholiumMathAssets {
     }()
 
     private static let presentationCSS = """
+        :root { --scholium-math-css-ready: 1; }
         .scholium-math {
           color: inherit;
           max-inline-size: 100%;

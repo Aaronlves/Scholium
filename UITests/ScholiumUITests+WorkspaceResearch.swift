@@ -19,11 +19,22 @@ extension ScholiumUITests {
         let field = advanced.searchFields["scholium.searchField"]
         typeCommittedText("paragraph:(晨光样本 OR aurora-fixture)", into: field, in: app)
         XCTAssertTrue(searchResult(named: "QA Topic").waitForExistence(timeout: 15))
-        advanced.buttons["Matching Paragraphs"].click()
+        let matchingParagraphs = advanced.buttons["Matching Paragraphs"]
+        matchingParagraphs.click()
         let paragraph = app.buttons["Paragraph at line \(line)"].firstMatch
         XCTAssertTrue(
             paragraph.waitForExistence(timeout: 5),
             "Every paragraph destination must name its source line.")
+        assertParagraphPopoverAnchored(to: matchingParagraphs)
+        app.buttons["Done"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !paragraph.exists })
+        let rowDisclosure = advanced.buttons.matching(
+            NSPredicate(format: "label MATCHES %@", "Show [0-9]+ Matching Paragraphs")
+        ).firstMatch
+        XCTAssertTrue(rowDisclosure.waitForExistence(timeout: 5))
+        rowDisclosure.click()
+        XCTAssertTrue(paragraph.waitForExistence(timeout: 5))
+        assertParagraphPopoverAnchored(to: rowDisclosure)
         let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         capture.name = "named-search-paragraph-location"
         capture.lifetime = .keepAlways
@@ -33,6 +44,28 @@ extension ScholiumUITests {
         XCTAssertEqual(documentModeState(documentModeControl()), "Source")
         XCTAssertEqual(try String(contentsOf: sourceURL, encoding: .utf8), source)
         XCTAssertTrue(advanced.exists)
+    }
+
+    @MainActor
+    private func assertParagraphPopoverAnchored(
+        to trigger: XCUIElement, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let content = app.descendants(matching: .any)["scholium.searchParagraphLocations"].firstMatch
+        XCTAssertTrue(content.waitForExistence(timeout: 5), file: file, line: line)
+        let popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 5), file: file, line: line)
+        let source = trigger.frame
+        let presented = popover.frame
+        let horizontalGap = max(0, max(source.minX - presented.maxX, presented.minX - source.maxX))
+        let verticalGap = max(0, max(source.minY - presented.maxY, presented.minY - source.maxY))
+        print("SEARCH_PARAGRAPH_ANCHOR trigger=\(source) popover=\(presented) content=\(content.frame)")
+        XCTAssertFalse(source.isEmpty, file: file, line: line)
+        XCTAssertFalse(presented.isEmpty, file: file, line: line)
+        XCTAssertTrue(presented.contains(CGPoint(x: content.frame.midX, y: content.frame.midY)), file: file, line: line)
+        XCTAssertLessThanOrEqual(
+            hypot(horizontalGap, verticalGap), 24,
+            "Matching paragraphs must attach to the control that opened them.", file: file, line: line
+        )
     }
 
     @MainActor

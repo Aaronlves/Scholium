@@ -6,6 +6,7 @@ struct AgentChatReplyQuoteCard: View {
     var isEmbeddedInComposer = false
     let openOriginal: () -> Void
     var remove: (() -> Void)? = nil
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @State private var showsPreview = false
 
     var body: some View {
@@ -50,6 +51,10 @@ struct AgentChatReplyQuoteCard: View {
                 }
             }.padding().frame(width: 320).tint(nil as Color?)
         }
+        .onChange(of: surfaceVisibility) { _, visibility in
+            if !visibility.isActive { showsPreview = false }
+        }
+        .onDisappear { showsPreview = false }
         .accessibilityIdentifier("scholium.chat.quote.\(quote.id)")
     }
 }

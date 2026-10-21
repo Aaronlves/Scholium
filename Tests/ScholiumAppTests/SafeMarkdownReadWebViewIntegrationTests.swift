@@ -1676,6 +1676,109 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A rendered footnote Mermaid keeps complete read-only source in its Native preview and retains the original isolated diagram")
+    func footnoteMermaidPreviewRetainsSourceFallback() async throws {
+        let diagram = "flowchart LR\naccTitle: Synthetic 图 e\u{0301}\naccDescr: Complete original diagram source.\n  A[Start] --> B[Finish]\n"
+        let source = "\u{FEFF}A claim[^diagram].\r\n\r\n[^diagram]: Diagram context.\r\n\r\n"
+            + "    ```mermaid\r\n"
+            + diagram.split(separator: "\n", omittingEmptySubsequences: false).dropLast().map { "    \($0)\r\n" }.joined()
+            + "    ```\r\n"
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0,
+            laysOutForNativePreview: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
+        let originalSnapshot = """
+            const wrapper = document.querySelector('.footnote-content .scholium-mermaid');
+            const shadow = wrapper?.querySelector('.scholium-mermaid-output')?.shadowRoot;
+            return {html:wrapper?.outerHTML, shadow:shadow?.innerHTML,
+              rendered:wrapper?.classList.contains('scholium-mermaid-rendered') === true,
+              svg:!!shadow?.querySelector('svg'), source:wrapper?.querySelector('.scholium-mermaid-source > code')?.textContent};
+            """
+        let before = try #require(try await harness.callBridgeJavaScript(originalSnapshot) as? [String: Any])
+        try #require(before["rendered"] as? Bool == true && before["svg"] as? Bool == true)
+        let originalHTML = try #require(before["html"] as? String)
+        let originalShadow = try #require(before["shadow"] as? String)
+        #expect(before["source"] as? String == diagram)
+        let viewport = try #require(try await harness.callPageJavaScript("return [scrollX, scrollY];") as? [Double])
+        _ = try await harness.callPageJavaScript("document.querySelector('.footnote-reference').focus({preventScroll: true});")
+        try await harness.waitForNativePreview(title: "Footnote 1")
+        let preview = try #require(try await harness.callNativePreview("""
+            const source = document.querySelector('.scholium-mermaid-source');
+            return {source:source?.querySelector('code')?.textContent,
+              display:source ? getComputedStyle(source).display : 'missing',
+              rendered:!!document.querySelector('.scholium-mermaid-rendered'),
+              output:!!document.querySelector('.scholium-mermaid-output'),
+              editable:source?.isContentEditable === true};
+            """) as? [String: Any])
+        #expect(preview["source"] as? String == diagram)
+        #expect(preview["display"] as? String == "block")
+        #expect(preview["rendered"] as? Bool == false && preview["output"] as? Bool == false)
+        #expect(preview["editable"] as? Bool == false)
+        let after = try #require(try await harness.callBridgeJavaScript(originalSnapshot) as? [String: Any])
+        #expect(after["html"] as? String == originalHTML)
+        #expect(after["shadow"] as? String == originalShadow)
+        #expect(after["rendered"] as? Bool == true && after["svg"] as? Bool == true)
+        #expect(try await harness.callPageJavaScript("return [scrollX, scrollY];") as? [Double] == viewport)
+        #expect(document.sourceBytes == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Standalone late preview mathematics installs in its named world with styles and preserves the source viewport")
+    func standaloneLatePreviewMathematicsUsesNamedWorld() async throws {
+        let source = "\u{FEFF}[[Target]]\r\n\r\nSynthetic 图 e\u{0301} paragraph.\r\n"
+        let sourceBytes = Data(source.utf8)
+        let document = NoteDocument(relativePath: "ReadFixture.md", rawContent: source)
+        let rendered = SafeMarkdownRenderer.render(document)
+        let target = try #require(rendered.semanticDocument.links.first { $0.syntax == .wikilink })
+        let harness = ReadHarness(
+            source: source, htmlBody: rendered.htmlBody, fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilNativeInputIsEnabled()
+        #expect(try await harness.callBridgeJavaScript("return window.scholiumMath?.version === 1;") as? Bool == false)
+        #expect(try await harness.callPageJavaScript("return window.scholiumMath?.version === 1;") as? Bool == false)
+        #expect(try await harness.callBridgeJavaScript("return getComputedStyle(document.documentElement).getPropertyValue('--scholium-math-css-ready').trim();") as? String == "")
+        let pageIdentity = try #require(try await harness.callPageJavaScript("return window.__latePreviewMathIdentity = 'retained';") as? String)
+        let viewport = try #require(try await harness.callPageJavaScript("return [window.scrollX, window.scrollY, innerWidth, innerHeight, document.getElementById('scholium-document').getBoundingClientRect().height];") as? [Double])
+        let native = try harness.formatDiagnosticCoordinator()
+        let beforeFields = Dictionary(uniqueKeysWithValues: Mirror(reflecting: native).children.compactMap { child in child.label.map { ($0, child.value) } })
+        #expect(Data(try #require(beforeFields["selectionSource"] as? String).utf8) == sourceBytes)
+        let generation = try #require(beforeFields["loadGeneration"] as? UInt64)
+        let peer = NoteDocument(relativePath: "Target.md", rawContent: "$$\nx^2 + y^2 = z^2\n$$\n")
+        harness.updateLinkPreviews([
+            Self.linkPreview(at: target.span, title: "Late mathematics", htmlBody: SafeMarkdownRenderer.render(peer).htmlBody)
+        ], revision: "late-math")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while true {
+            let fields = Dictionary(uniqueKeysWithValues: Mirror(reflecting: native).children.compactMap { child in child.label.map { ($0, child.value) } })
+            if fields["appliedLinkPreviewRevision"] as? String == "late-math" { break }
+            try #require(ContinuousClock.now < deadline, "The Native late preview revision did not converge")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // The real named-world Reader requests the production Native loader;
+        // no test-provided runtime, renderer, DOM output or event is installed.
+        _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link').focus({preventScroll: true});")
+        try await harness.waitForNativePreview(title: "Late mathematics")
+        #expect(try await harness.callBridgeJavaScript("return window.scholiumMath?.version === 1;") as? Bool == true)
+        #expect(try await harness.callPageJavaScript("return window.scholiumMath?.version === 1;") as? Bool == false)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('#scholium-lazy-math-css').length;") as? Int == 1)
+        #expect(try await harness.callNativePreview("return !!document.querySelector('.scholium-math-rendered .katex');") as? Bool == true)
+        #expect(try await harness.callNativePreview("return getComputedStyle(document.querySelector('.katex')).fontFamily.includes('KaTeX_Main');") as? Bool == true)
+        #expect(try await harness.callNativePreview("return document.fonts.check('16px KaTeX_Main');") as? Bool == true)
+        #expect(try await harness.callPageJavaScript("return window.__latePreviewMathIdentity;") as? String == pageIdentity)
+        #expect(try await harness.callPageJavaScript("return [window.scrollX, window.scrollY, innerWidth, innerHeight, document.getElementById('scholium-document').getBoundingClientRect().height];") as? [Double] == viewport)
+        let afterFields = Dictionary(uniqueKeysWithValues: Mirror(reflecting: native).children.compactMap { child in child.label.map { ($0, child.value) } })
+        #expect(afterFields["loadGeneration"] as? UInt64 == generation)
+        #expect(Data(try #require(afterFields["selectionSource"] as? String).utf8) == sourceBytes)
+        #expect(document.sourceBytes == sourceBytes)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review link previews update without reloading the document page")
     func reviewLinkPreviewsConvergeInPlace() async throws {
         let previewSource = "[[Target]] then [[Unavailable]]\n"

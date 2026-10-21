@@ -128,14 +128,14 @@ publication; navigation validates freshness before a non-history reveal.
 Previews/completion/Find retain originating session/window, request and geometry
 identity; scroll, exit, departure and teardown dismiss them. Swift owns graph
 resolution, committed previews, containment and URL policy; WebKit reports
-anchors/geometry only. Stale/ambiguous results are discarded. CodeMirror owns Find/replacement;
+inert content/geometry. Stale/ambiguous results are discarded. CodeMirror owns Find/replacement;
 Review matching is read-only. Completion/insertion rechecks context, generation,
 selection and protected ranges for one Undo. Receipts are revocable projections,
 not buffers.
 
-Typed WebEditor preview/completion/selection ports share arbitration of one native
-surface. Review admits bounded read-page extensions; Chat owns reply lifecycle,
-projection, WebView and events outside the neutral reader.
+Typed preview/completion/selection ports arbitrate one native surface. Image keys
+resolve only against the originating session's delivered resources. Review admits
+bounded page extensions; Chat owns reply lifecycle/projection/WebView.
 
 Application's `ZoteroDocumentIntegration` implements Contracts' callback port,
 composed by `WorkspaceStore`; Zotero owns picker/CSL. `MarkdownEditorSession` and

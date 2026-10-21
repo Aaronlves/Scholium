@@ -24,6 +24,7 @@ struct AgentChatQueueView: View {
     let steer: (String) -> Void
     let remove: (String) -> Void
     let edit: (AgentChatMessage) -> Void
+    @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
 
     @State private var inspectedMessage: AgentChatMessage?
     @State private var isExpanded = false
@@ -63,6 +64,10 @@ struct AgentChatQueueView: View {
         .onChange(of: messages.map(\.id)) { _, ids in
             if let inspectedMessage, !ids.contains(inspectedMessage.id) { self.inspectedMessage = nil }
         }
+        .onChange(of: surfaceVisibility) { _, visibility in
+            if !visibility.isActive { inspectedMessage = nil }
+        }
+        .onDisappear { inspectedMessage = nil }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat.queue")
     }

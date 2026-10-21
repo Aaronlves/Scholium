@@ -3853,6 +3853,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
         try await harness.session.testingDispatchCompositionEvent("compositionend")
+        for visibility in [DocumentSurfaceVisibility.preparing, .retained] {
+            try await harness.session.perform(.previewAtSelection)
+            _ = try await harness.waitUntilPresentation(stage: "preview before hiding editor") { !$0.previewPopoverHidden }
+            harness.setSurfaceVisibility(visibility)
+            let hiddenDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while harness.session.floatingSurfaces.isPreviewShown && ContinuousClock.now < hiddenDeadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(!harness.session.floatingSurfaces.isPreviewShown)
+            _ = try await harness.waitUntilPresentation(stage: "hidden editor revoked Web preview") { $0.previewPopoverHidden }
+            harness.setSurfaceVisibility(.active)
+            let viewport = try #require(owner.superview as? DocumentWebViewContainer)
+            let activeDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while !viewport.surfaceVisibility.isActive && ContinuousClock.now < activeDeadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            try await harness.session.focusAndWait()
+            #expect(harness.session.webView === owner)
+        }
+        try await harness.session.perform(.previewAtSelection)
+        _ = try await harness.waitUntilPresentation(stage: "same target can reopen after retention") { !$0.previewPopoverHidden }
         #expect(harness.session.context?.selections == selection)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
@@ -10914,6 +10935,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func configureReview(_ review: SafeMarkdownReadWebView) { sourceBox.review = review }
         func setMode(_ mode: MarkdownEditorMode) { sourceBox.mode = mode }
+        func setSurfaceVisibility(_ visibility: DocumentSurfaceVisibility) { sourceBox.surfaceVisibility = visibility }
 
         func synchronizeLifecycleSourceFromSession() {
             sourceBox.source = session.checkedSource
@@ -11976,6 +11998,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @Published var source: String
         @Published var documentTitle: String
         @Published var showsEditor = true
+        @Published var surfaceVisibility: DocumentSurfaceVisibility = .active
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
@@ -12099,6 +12122,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 citationSnapshot: citationSnapshot,
                 review: sourceBox.review
             )
+            .environment(\.scholiumDocumentSurfaceVisibility, sourceBox.surfaceVisibility)
         }
     }
 
