@@ -182,6 +182,7 @@ private struct ActiveDocumentFloatingSurface: Equatable {
 private struct ActiveSelectionCommand {
     let id: UUID
     var surfaceID: Int?
+    var task: Task<Bool, any Error>?
 }
 
 /// Owns only native floating presentation in the originating WebKit viewport.
@@ -453,8 +454,9 @@ final class DocumentFloatingSurfaceController: NSObject {
     func presentSelectionInquiry(
         _ inquiry: AgentChatSelectionInquiry,
         in webView: WKWebView,
-        presenting: @MainActor () async throws -> Int?
+        presenting: @escaping @MainActor () async throws -> Int?
     ) async throws -> Bool {
+        try Task.checkCancellation()
         guard !isPresentingSelectionCommand, webView.window != nil else { return false }
         if owner !== webView {
             reset()
@@ -462,6 +464,28 @@ final class DocumentFloatingSurfaceController: NSObject {
         }
         let commandID = UUID()
         selectionCommand = ActiveSelectionCommand(id: commandID)
+        // The host owns the whole command, including the initial JavaScript
+        // reply before a floating-surface receipt exists. Reset must end that
+        // wait even when the menu's caller remains alive and uncancelled.
+        let task = Task { @MainActor in
+            try await self.performSelectionInquiry(inquiry, in: webView, commandID: commandID, presenting: presenting)
+        }
+        selectionCommand?.task = task
+        return try await withTaskCancellationHandler {
+            let invoked = try await task.value
+            try Task.checkCancellation()
+            return invoked
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func performSelectionInquiry(
+        _ inquiry: AgentChatSelectionInquiry,
+        in webView: WKWebView,
+        commandID: UUID,
+        presenting: @MainActor () async throws -> Int?
+    ) async throws -> Bool {
         defer {
             if selectionCommand?.id == commandID {
                 selectionCommand = nil
@@ -479,7 +503,10 @@ final class DocumentFloatingSurfaceController: NSObject {
             }
         }
         do {
-            guard let id = try await presenting(), id > 0 else {
+            try Task.checkCancellation()
+            let presentedID = try await presenting()
+            try Task.checkCancellation()
+            guard let id = presentedID, id > 0 else {
                 return false
             }
             guard selectionCommand?.id == commandID, owner === webView else {
@@ -626,6 +653,7 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     func dismiss() {
+        selectionCommand?.task?.cancel()
         selectionCommand = nil
         cancelSelectionReceipt()
         dismissPresentation()

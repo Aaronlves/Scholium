@@ -72,6 +72,47 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             textIndex = matching.index
         }
 
+        fileprivate func sharingPayload(ifEqualTo other: Self) -> Self {
+            guard displayText.utf8.elementsEqual(other.displayText.utf8),
+                exactReadableText.utf8.elementsEqual(other.exactReadableText.utf8),
+                normalizedDisplayText.utf8.elementsEqual(other.normalizedDisplayText.utf8),
+                Self.sameIndex(textIndex, other.textIndex),
+                Self.sameFields(scoringDocument.fields, other.scoringDocument.fields, equal: {
+                    $0.utf8.elementsEqual($1.utf8)
+                }),
+                Self.sameFields(scoringDocument.fieldLengths, other.scoringDocument.fieldLengths, equal: {
+                    $0.bitPattern == $1.bitPattern
+                }),
+                Self.sameFields(scoringDocument.textIndexes, other.scoringDocument.textIndexes, equal: Self.sameIndex)
+            else { return self }
+            return Self(range: range, sharingPayload: other)
+        }
+
+        private init(range: SearchSourceRange, sharingPayload other: Self) {
+            self.range = range
+            displayText = other.displayText
+            exactReadableText = other.exactReadableText
+            normalizedDisplayText = other.normalizedDisplayText
+            textIndex = other.textIndex
+            scoringDocument = other.scoringDocument
+        }
+
+        private static func sameIndex(_ lhs: RelatedContentTextIndex, _ rhs: RelatedContentTextIndex) -> Bool {
+            lhs.containsCJK == rhs.containsCJK && lhs.hasSameWordCounts(as: rhs)
+        }
+
+        private static func sameFields<Value>(
+            _ lhs: [String: Value], _ rhs: [String: Value], equal: (Value, Value) -> Bool
+        ) -> Bool {
+            guard lhs.count == rhs.count else { return false }
+            return lhs.allSatisfy { key, value in
+                guard let index = rhs.index(forKey: key),
+                    key.utf8.elementsEqual(rhs[index].key.utf8)
+                else { return false }
+                return equal(value, rhs[index].value)
+            }
+        }
+
         func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(range, forKey: .range)
@@ -85,6 +126,35 @@ struct RelatedContentSourceProjection: Codable, Sendable {
 
     let noteScoringDocument: RelatedContentBM25F.Document
     let paragraphs: [Paragraph]
+
+    /// Build-local immutable storage sharing, never a source/result cache. Keep
+    /// only the first payload for each exact display key; different payloads
+    /// with that display remain independent without growing comparison buckets.
+    private struct ParagraphPayloadSharing {
+        private struct Key: Hashable {
+            let text: String
+
+            static func == (lhs: Self, rhs: Self) -> Bool {
+                lhs.text.utf8.elementsEqual(rhs.text.utf8)
+            }
+
+            func hash(into hasher: inout Hasher) {
+                var text = text
+                text.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+            }
+        }
+
+        private var first: [Key: Paragraph] = [:]
+
+        mutating func share(_ paragraph: Paragraph) -> Paragraph {
+            let key = Key(text: paragraph.displayText)
+            guard let canonical = first[key] else {
+                first[key] = paragraph
+                return paragraph
+            }
+            return paragraph.sharingPayload(ifEqualTo: canonical)
+        }
+    }
 
     private struct Admission: Decodable {
         let maximumParagraphEnd: Int?
@@ -109,7 +179,14 @@ struct RelatedContentSourceProjection: Codable, Sendable {
         // decoded word dictionary before moving to the next passage.
         let container = try decoder.container(keyedBy: CodingKeys.self)
         noteScoringDocument = try container.decode(RelatedContentBM25F.Document.self, forKey: .noteScoringDocument)
-        paragraphs = try container.decode([Paragraph].self, forKey: .paragraphs)
+        var encodedParagraphs = try container.nestedUnkeyedContainer(forKey: .paragraphs)
+        var sharing = ParagraphPayloadSharing()
+        var paragraphs: [Paragraph] = []
+        if let count = encodedParagraphs.count { paragraphs.reserveCapacity(count) }
+        while !encodedParagraphs.isAtEnd {
+            paragraphs.append(sharing.share(try encodedParagraphs.decode(Paragraph.self)))
+        }
+        self.paragraphs = paragraphs
     }
 
     init(document: NoteDocument) throws {
@@ -133,6 +210,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     private init(document: NoteDocument, semantic: MarkdownSemanticDocument, noteSegments: [SearchTextSegment]) throws {
         noteScoringDocument = .init(segments: noteSegments)
         var paragraphs: [Paragraph] = []
+        var sharing = ParagraphPayloadSharing()
         // Deliberately preserve the existing passage comparison set, including
         // nested paragraphs. Search's top-level paragraph query projection has
         // different coverage, attribution and annotation range semantics.
@@ -149,7 +227,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
             paragraphs.append(
-                .init(
+                sharing.share(.init(
                     range: .init(
                         utf16LowerBound: block.span.utf16LowerBound,
                         utf16UpperBound: block.span.utf16UpperBound,
@@ -160,7 +238,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                     displayText: displayText,
                     normalizedDisplayText: normalizedDisplayText,
                     textIndex: .init(normalizedDisplayText),
-                    scoringDocument: .init(rankingText: preparedSnippet.rankingText)))
+                    scoringDocument: .init(rankingText: preparedSnippet.rankingText))))
         }
         try Task.checkCancellation()
         self.paragraphs = paragraphs
@@ -208,6 +286,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     /// Accounting budget, not a claim about exact allocator resident memory.
     /// Include retained UTF-8 strings and fixed container/object overhead. No
     /// raw Markdown, segment offset maps, query reasons or results are retained.
+    /// Shared paragraph payloads stay charged repeatedly to preserve admission.
     var estimatedByteCount: Int {
         return 128 + noteScoringDocument.estimatedByteCount
             + paragraphs.reduce(0) {

@@ -989,9 +989,32 @@ final class ScholiumPerformanceUITests: XCTestCase {
             let started = DispatchTime.now().uptimeNanoseconds
             let field = application.searchFields["scholium.searchField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 10))
-            replaceCommittedText("scopeSetup", in: field, application: application)
+            func commitQuery(_ query: String) throws {
+                let processes = NSRunningApplication.runningApplications(withBundleIdentifier: "com.scholium.app")
+                _ = try XCTUnwrap(processes.count == 1 ? true : nil)
+                let process = try XCTUnwrap(processes.first)
+                _ = try XCTUnwrap(process.bundleURL?.resolvingSymlinksInPath() == bundle.resolvingSymlinksInPath() ? true : nil)
+                application.activate()
+                _ = try XCTUnwrap(waitUntil(timeout: 5) {
+                    NSWorkspace.shared.frontmostApplication?.processIdentifier == process.processIdentifier
+                } ? true : nil, "Only the exact diagnostic App may receive query input.")
+                let frame = field.frame
+                _ = try XCTUnwrap(!frame.isEmpty && !frame.isNull && frame.origin.x.isFinite && frame.origin.y.isFinite ? true : nil)
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+                _ = try XCTUnwrap(waitUntil(timeout: 5) {
+                    NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: field)
+                } ? true : nil, "The native Search field must own keyboard focus before input.")
+                field.typeKey("a", modifierFlags: [.command])
+                field.typeKey(.delete, modifierFlags: [])
+                // Explicit flags on each key avoid inheriting a modifier from
+                // bulk text synthesis. Query setup is outside Chat timings.
+                for character in query { field.typeKey(String(character), modifierFlags: []) }
+                application.typeKey(.return, modifierFlags: [])
+                _ = try XCTUnwrap((field.value as? String) == query ? true : nil, "The fixed query must commit exactly before index assertions.")
+            }
+            try commitQuery("scopeSetup")
             selectResearchSearchScope("Triptych", in: application)
-            replaceCommittedText("title:\"QA Autosave A\" OR title:\"QA Topic\" OR title:\"QA Work\"", in: field, application: application)
+            try commitQuery("title:\"QA Autosave A\" OR title:\"QA Topic\" OR title:\"QA Work\"")
             for title in ["QA Autosave A", "QA Topic", "QA Work"] {
                 let result = application.descendants(matching: .any).matching(
                     NSPredicate(

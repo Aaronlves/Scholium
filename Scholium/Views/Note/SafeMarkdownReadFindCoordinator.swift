@@ -121,7 +121,7 @@ final class SafeMarkdownReadFindCoordinator {
         task = Task { @MainActor [weak self, weak webView] in
             guard let self, let webView else { return }
             do {
-                let raw = try await webView.callAsyncJavaScript(
+                let raw = try await webView.callCancellableJavaScript(
                     "return window.scholiumReviewFind?.perform(request)",
                     arguments: ["request": arguments],
                     in: nil,

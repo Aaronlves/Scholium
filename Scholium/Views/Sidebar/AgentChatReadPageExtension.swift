@@ -149,10 +149,15 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         let pageGeneration = replyPageGeneration
         let update = { [weak self, weak webView] in
             guard let self, let webView else { return }
-            let previousTask = self.replyUpdateTask
             self.replyUpdateTask = Task { @MainActor [weak self, weak webView] in
-                await previousTask?.value
-                guard let self, let webView, !Task.isCancelled,
+                guard let self else { return }
+                defer {
+                    if self.replyPageGeneration == pageGeneration {
+                        self.replyUpdateTask = nil
+                        self.startPendingReplyUpdate()
+                    }
+                }
+                guard let webView, !Task.isCancelled,
                     isCurrent(), self.replyPageGeneration == pageGeneration,
                     let previousFingerprint = self.replyPageFingerprint
                 else { return }
@@ -169,7 +174,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                         if prepared { self.mathRuntimePrepared = true }
                         guard isCurrent() else { return }
                     }
-                    let updated = try await webView.callAsyncJavaScript(
+                    let updated = try await webView.callCancellableJavaScript(
                         """
                         if (window.scholiumReadReady) await window.scholiumReadReady;
                         return await window.scholiumUpdateReply?.(update) === true;
@@ -195,12 +200,20 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                 }
             }
         }
-        if replyNavigationReady {
-            update()
-        } else {
-            pendingReplyUpdate = update
-        }
+        // One page owns one physical commit and only the newest waiting source.
+        // Superseding a waiting prefix releases it immediately. An in-flight
+        // commit still settles its actual DOM fingerprint before the next one.
+        pendingReplyUpdate = update
+        startPendingReplyUpdate()
         return true
+    }
+
+    private func startPendingReplyUpdate() {
+        guard replyNavigationReady, replyUpdateTask == nil,
+            let pending = pendingReplyUpdate
+        else { return }
+        pendingReplyUpdate = nil
+        pending()
     }
 
     func didFinishNavigation(
@@ -209,9 +222,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     ) {
         guard isCurrent() else { return }
         replyNavigationReady = true
-        let pending = pendingReplyUpdate
-        pendingReplyUpdate = nil
-        pending?()
+        startPendingReplyUpdate()
     }
 
     func didFinalizePage(fingerprint: String) {

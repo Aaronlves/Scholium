@@ -118,8 +118,101 @@ struct AgentChatContentTests {
         #expect(lookups - beforeUnphased == 3, "Each ordinary wheel event remains independently targeted")
     }
 
-    @Test("Lazy wheel lookup preserves ineligible, Shift, cancellation and weak target boundaries")
-    func wheelTargetBoundaries() throws {
+    @Test("An ineligible gesture remains platform-owned through its terminal events", arguments: [false, true])
+    func ineligibleWheelGestureNeverChangesOwner(includesMayBegin: Bool) throws {
+        let route = AgentChatWheelRoute()
+        let conversation = ScrollProbe()
+        let inline = ScrollProbe()
+        var eligible = false
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return eligible ? inline : nil
+        }
+        if includesMayBegin {
+            let mayBegin = try wheelEvent(0, 0, phase: 128)
+            // Dispatch before #expect so its macro cannot eagerly evaluate the inlineTarget autoclosure.
+            let handled = route.dispatch(mayBegin, inlineTarget: target(), conversation: conversation)
+            #expect(!handled)
+            eligible = true
+        }
+        let begin = try wheelEvent(0, 0, phase: 1)
+        let beginHandled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+        #expect(!beginHandled)
+        eligible = true
+        for event in [
+            try wheelEvent(8, 0, phase: 2, shift: true),
+            try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(0, 9, phase: 0, momentum: 1),
+            try wheelEvent(0, 9, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ] {
+            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            #expect(!handled)
+        }
+        #expect(lookups == 1, "A nil initial lookup is a latched platform owner, not an unresolved recipient")
+        #expect(inline.events.isEmpty && conversation.events.isEmpty)
+        let next = try wheelEvent(0, 9, phase: 1)
+        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        #expect(nextHandled)
+        #expect(lookups == 2 && inline.events.count == 1 && inline.events[0] === next)
+    }
+
+    @Test("mayBegin and began share one recipient and preserve both zero-delta boundaries")
+    func wheelMayBeginDoesNotRestartOwnership() throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let replacement = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return lookups == 1 ? inline : replacement
+        }
+        let events = [
+            try wheelEvent(0, 0, phase: 128),
+            try wheelEvent(0, 0, phase: 1),
+            try wheelEvent(8, 0, phase: 2, shift: true),
+            try wheelEvent(0, 0, phase: 8),
+        ]
+        for event in events {
+            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+        }
+        #expect(lookups == 1, "began must continue the already-owned mayBegin preface")
+        #expect(inline.events.elementsEqual(events, by: { $0 === $1 }))
+        #expect(replacement.events.isEmpty && conversation.events.isEmpty)
+        let orphanedChange = try wheelEvent(0, 9, phase: 2)
+        let orphanHandled = route.dispatch(orphanedChange, inlineTarget: target(), conversation: conversation)
+        #expect(!orphanHandled)
+        #expect(lookups == 1, "A changed event after cancellation cannot create another gesture")
+        let next = try wheelEvent(0, 9, phase: 1)
+        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        #expect(nextHandled)
+        #expect(lookups == 2 && replacement.events.count == 1 && replacement.events[0] === next)
+    }
+
+    @Test("A mayBegin preface can terminate without began", arguments: [Int64(4), Int64(8)])
+    func wheelMayBeginCanTerminateWithoutBegan(terminalPhase: Int64) throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return inline
+        }
+        let events = [try wheelEvent(0, 0, phase: 128), try wheelEvent(0, 0, phase: terminalPhase)]
+        for event in events {
+            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+        }
+        #expect(lookups == 1 && inline.events.isEmpty)
+        #expect(conversation.events.elementsEqual(events, by: { $0 === $1 }))
+    }
+
+    @Test("A departed weak recipient cannot hand a gesture to another view")
+    func wheelWeakRecipientLossKeepsOwnership() throws {
         let route = AgentChatWheelRoute()
         let conversation = ScrollProbe()
         var inline: ScrollProbe?
@@ -129,41 +222,132 @@ struct AgentChatContentTests {
             lookups += 1
             return inline
         }
-        func event(_ y: Int32, _ x: Int32, phase: Int64, shift: Bool = false) throws -> NSEvent {
-            let cg = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0))
-            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
-            if shift { cg.flags.insert(.maskShift) }
-            return try #require(NSEvent(cgEvent: cg))
-        }
         try autoreleasepool {
             inline = ScrollProbe()
             departed = inline
-            // A local detail scroller may initially own input. A nil lookup does
-            // not consume that event or prevent a later eligible target.
-            let handled1 = !route.dispatch(try event(0, 0, phase: 1), inlineTarget: nil, conversation: conversation)
-            #expect(handled1)
-            let handled2 = route.dispatch(try event(8, 0, phase: 2, shift: true), inlineTarget: target(), conversation: conversation)
-            #expect(handled2)
+            let begin = try wheelEvent(8, 0, phase: 1, shift: true)
+            let handled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
             #expect(inline?.events.count == 1 && conversation.events.isEmpty)
-            let handled3 = route.dispatch(try event(0, 0, phase: 8), inlineTarget: target(), conversation: conversation)
-            #expect(handled3)
-            #expect(lookups == 1, "Cancellation reaches the locked recipient before clearing it")
-            let handled4 = route.dispatch(try event(0, 9, phase: 2), inlineTarget: target(), conversation: conversation)
-            #expect(handled4)
-            #expect(lookups == 2)
             inline = nil
         }
         #expect(departed == nil, "Gesture ownership must not retain a removed native reader")
         inline = ScrollProbe()
-        let handled5 = route.dispatch(try event(0, 9, phase: 2), inlineTarget: target(), conversation: conversation)
-        #expect(handled5)
-        #expect(lookups == 3 && inline?.events.count == 1)
-        route.reset()
-        let handled6 = route.dispatch(try event(0, 0, phase: 128), inlineTarget: target(), conversation: conversation)
-        #expect(handled6)
-        let handled7 = route.dispatch(try event(0, 0, phase: 1), inlineTarget: target(), conversation: conversation)
-        #expect(handled7)
-        #expect(lookups == 5, "mayBegin and began retain their existing separate reset semantics")
+        for event in [
+            try wheelEvent(8, 0, phase: 2),
+            try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(0, 9, phase: 0, momentum: 1),
+            try wheelEvent(0, 9, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ] {
+            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+        }
+        #expect(lookups == 1 && inline?.events.isEmpty == true && conversation.events.isEmpty)
+        let next = try wheelEvent(8, 0, phase: 1)
+        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        #expect(nextHandled)
+        #expect(lookups == 2 && conversation.events.count == 1)
+    }
+
+    @Test("Installing or resetting a route mid-gesture leaves its remainder with the platform", arguments: [false, true])
+    func wheelOrphanedContinuationRemainsPlatformOwned(startsDuringMomentum: Bool) throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return inline
+        }
+        var events = [NSEvent]()
+        if !startsDuringMomentum {
+            events += [try wheelEvent(8, 0, phase: 2), try wheelEvent(0, 0, phase: 4)]
+        }
+        events += [
+            try wheelEvent(8, 0, phase: 0, momentum: 1),
+            try wheelEvent(8, 0, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ]
+        for _ in 0..<2 {
+            for event in events {
+                let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+                #expect(!handled)
+            }
+            route.reset()
+        }
+        #expect(lookups == 0 && inline.events.isEmpty && conversation.events.isEmpty)
+        let next = try wheelEvent(8, 0, phase: 1)
+        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        #expect(nextHandled)
+        #expect(lookups == 1 && conversation.events.count == 1)
+    }
+
+    @Test("Independent ordinary wheel events preserve an existing phased recipient")
+    func ordinaryWheelDoesNotErasePhasedOwnership() throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let replacement = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        func target() -> NSView? {
+            lookups += 1
+            return lookups == 1 ? inline : replacement
+        }
+        let begin = try wheelEvent(0, 9, phase: 1)
+        let beginHandled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+        #expect(beginHandled)
+        let ordinaryVertical = try wheelEvent(8, 0, phase: 0)
+        let verticalHandled = route.dispatch(ordinaryVertical, inlineTarget: target(), conversation: conversation)
+        #expect(verticalHandled)
+        let ordinaryShift = try wheelEvent(8, 0, phase: 0, shift: true)
+        let shiftHandled = route.dispatch(ordinaryShift, inlineTarget: target(), conversation: conversation)
+        #expect(shiftHandled)
+        let ineligibleOrdinary = try wheelEvent(8, 0, phase: 0)
+        let ineligibleHandled = route.dispatch(ineligibleOrdinary, inlineTarget: nil, conversation: conversation)
+        #expect(!ineligibleHandled)
+        let tail = [
+            try wheelEvent(8, 0, phase: 2),
+            try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(8, 0, phase: 0, momentum: 1),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ]
+        for event in tail {
+            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            #expect(handled)
+        }
+        #expect(lookups == 3)
+        #expect(inline.events.elementsEqual([begin] + tail, by: { $0 === $1 }))
+        #expect(conversation.events.count == 1 && conversation.events[0] === ordinaryVertical)
+        #expect(replacement.events.count == 1 && replacement.events[0] === ordinaryShift)
+    }
+
+    private func wheelEvent(_ y: Int32, _ x: Int32, phase: Int64, momentum: Int64 = 0, shift: Bool = false) throws -> NSEvent {
+        let cg = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0))
+        cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+        cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+        if shift { cg.flags.insert(.maskShift) }
+        let event = try #require(NSEvent(cgEvent: cg))
+        let expectedPhase: NSEvent.Phase =
+            switch phase {
+            case 0: []
+            case 1: .began
+            case 2: .changed
+            case 4: .ended
+            case 8: .cancelled
+            case 128: .mayBegin
+            default: throw CocoaError(.coderInvalidValue)
+            }
+        let expectedMomentum: NSEvent.Phase =
+            switch momentum {
+            case 0: []
+            case 1: .began
+            case 2: .changed
+            case 3: .ended
+            default: throw CocoaError(.coderInvalidValue)
+            }
+        try #require(event.phase == expectedPhase && event.momentumPhase == expectedMomentum)
+        return event
     }
 
     @Test("Reader lookup skips retained disabled replies and treats each reader as a terminal node")

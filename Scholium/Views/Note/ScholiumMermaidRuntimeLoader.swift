@@ -12,7 +12,7 @@ enum ScholiumMermaidRuntimeLoader {
         guard !Task.isCancelled else { return }
         let loaded = await install(in: webView, contentWorld: contentWorld)
         guard !Task.isCancelled else { return }
-        _ = try? await webView.callAsyncJavaScript(
+        _ = try? await webView.callCancellableJavaScript(
             "window.scholiumMermaidRuntimeDidLoad?.(loaded)",
             arguments: ["loaded": loaded],
             in: nil,
@@ -26,7 +26,7 @@ enum ScholiumMermaidRuntimeLoader {
         contentWorld: WKContentWorld
     ) async -> Bool {
         guard !Task.isCancelled else { return false }
-        let installed = try? await webView.callAsyncJavaScript(
+        let installed = try? await webView.callCancellableJavaScript(
             "return window.scholiumMermaid?.version === 3",
             arguments: [:],
             in: nil,
@@ -41,13 +41,13 @@ enum ScholiumMermaidRuntimeLoader {
             guard !Task.isCancelled else { return false }
             // WebKit explicitly supports evaluateJavaScript for installing
             // content-world libraries whose globals later calls rely on.
-            _ = try await webView.evaluateJavaScript(
+            _ = try await webView.evaluateCancellableJavaScript(
                 ScholiumMermaidAssets.runtimeJavaScript,
                 in: nil,
                 contentWorld: contentWorld
             )
             guard !Task.isCancelled else { return false }
-            let installed = try await webView.callAsyncJavaScript(
+            let installed = try await webView.callCancellableJavaScript(
                 "return window.scholiumMermaid?.version === 3",
                 arguments: [:],
                 in: nil,

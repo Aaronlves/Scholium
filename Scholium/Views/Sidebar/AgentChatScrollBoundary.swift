@@ -106,10 +106,17 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
 /// boundaries and momentum. No synthetic deltas, timers or offset writes.
 @MainActor
 final class AgentChatWheelRoute {
+    private enum Owner { case platform, transcript }
+    private var owner: Owner?
+    private var awaitingBegan = false
+    private var recipientSelected = false
     private weak var target: NSView?
     private weak var initialTarget: NSView?
     private var pending: [NSEvent] = []
     func reset() {
+        owner = nil
+        awaitingBegan = false
+        recipientSelected = false
         target = nil
         initialTarget = nil
         pending = []
@@ -118,30 +125,61 @@ final class AgentChatWheelRoute {
     @discardableResult
     func dispatch(_ event: NSEvent, inlineTarget: @autoclosure () -> NSView?, conversation: NSScrollView) -> Bool {
         let phased = !event.phase.isEmpty || !event.momentumPhase.isEmpty
-        if event.phase.contains(.began) || event.phase.contains(.mayBegin) { reset() }
-        if !phased { reset() }
-        // A locked gesture ignores new hit targets. Resolving the SwiftUI/native
-        // tree on every delta scales with loaded history and retained tool rows.
-        if target == nil, initialTarget == nil { initialTarget = inlineTarget() }
-        guard target != nil || initialTarget != nil else { return false }
-        let hasDelta = event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0
-        if target == nil, !hasDelta, !event.phase.contains(.ended), !event.phase.contains(.cancelled) {
-            if pending.isEmpty || event.phase.contains(.began) { pending = [event] }
+        if !phased {
+            // Legacy wheel events have no gesture lifetime and may be interleaved
+            // with a trackpad sequence. They cannot replace its latched owner.
+            guard let inline = inlineTarget() else { return false }
+            let recipient =
+                !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
+                ? conversation : inline
+            recipient.scrollWheel(with: event)
             return true
         }
-        if target == nil {
+        if event.phase.contains(.mayBegin) {
+            if !awaitingBegan { begin(inlineTarget()) }
+            awaitingBegan = true
+        } else if event.phase.contains(.began) {
+            if !awaitingBegan { begin(inlineTarget()) }
+            awaitingBegan = false
+        }
+        if event.phase.contains(.ended) { awaitingBegan = false }
+        defer {
+            if event.phase.contains(.cancelled) || event.momentumPhase.contains(.ended) { reset() }
+        }
+        // A nil lookup is a platform-owned gesture, not an unresolved target.
+        // Installation/reset during a gesture also leaves its tail with AppKit.
+        if owner == nil { owner = .platform }
+        guard owner == .transcript else { return false }
+        let hasDelta = event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0
+        if !recipientSelected, !hasDelta, !event.phase.contains(.ended), !event.phase.contains(.cancelled) {
+            // Keep the actual mayBegin/began prefix until direction is known.
+            // Stationary changes add no unbounded queue of zero-delta events.
+            if event.phase.contains(.began) || (event.phase.contains(.mayBegin) && pending.isEmpty) {
+                pending.append(event)
+            }
+            return true
+        }
+        if !recipientSelected {
+            recipientSelected = true
             target =
                 !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
                 ? conversation : initialTarget
         }
         guard let target else {
-            reset()
-            return false
+            // A removed weak recipient must not hand an already-consumed begin
+            // to another view, or send only the remainder back through AppKit.
+            pending = []
+            return true
         }
         for start in pending { target.scrollWheel(with: start) }
         pending = []
         target.scrollWheel(with: event)
-        if !phased || event.phase.contains(.cancelled) || event.momentumPhase.contains(.ended) { reset() }
         return true
+    }
+
+    private func begin(_ inline: NSView?) {
+        reset()
+        initialTarget = inline
+        owner = inline == nil ? .platform : .transcript
     }
 }

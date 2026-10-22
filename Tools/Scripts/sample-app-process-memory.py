@@ -5,10 +5,11 @@ The sampler deliberately fails closed.  WebKit workers are launchd children,
 so PPID and process-name scans cannot establish ownership.  `launchctl print
 pid/<app-pid>` exposes the service instances created for that originator; every
 reported PID is then checked against the expected executable before RSS is
-summed. Explicit options permit incomplete startup role sets, report their PIDs,
-collect physical footprint separately, and include other allowlisted services
-from that same originator. No research content or document identity is emitted;
-the last option reports only verified system executable paths.
+summed. Explicit options permit incomplete startup role sets, report their PIDs
+and per-process RSS in bytes, collect physical footprint separately, and include
+other allowlisted services from that same originator. No research content or
+document identity is emitted; the last option reports only verified system
+executable paths.
 """
 
 from __future__ import annotations
@@ -55,6 +56,10 @@ OTHER_SERVICE_EXECUTABLES = {
     "com.apple.SetStoreUpdateService":
         "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/"
         "SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+    "com.apple.appkit.xpc.openAndSavePanelService":
+        "/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/"
+        "com.apple.appkit.xpc.openAndSavePanelService.xpc/Contents/MacOS/"
+        "com.apple.appkit.xpc.openAndSavePanelService",
 }
 
 
@@ -242,7 +247,9 @@ def physical_footprint_bytes(pid: int) -> int:
         raise SamplingError(
             f"proc_pid_rusage failed for PID {pid}: {os.strerror(error_number)}"
         )
-    if usage.ri_proc_exit_abstime != 0 or usage.ri_phys_footprint <= 0:
+    if usage.ri_proc_exit_abstime != 0:
+        raise SamplingError(f"process set changed during sampling; PID {pid} exited before physical footprint collection")
+    if usage.ri_phys_footprint <= 0:
         raise SamplingError(f"proc_pid_rusage returned no live physical footprint for PID {pid}")
     return int(usage.ri_phys_footprint)
 
@@ -316,6 +323,9 @@ def sample(
         result["role_process_ids"] = {
             role: sorted(pid for pid, observed_role in role_by_pid.items() if observed_role == role)
             for role in resident_by_role
+        }
+        result["process_resident_bytes"] = {
+            str(pid): rows[pid][0] * 1_024 for pid in sorted(role_by_pid)
         }
     footprint_by_pid: dict[int, int] = {}
     if include_physical_footprint:
@@ -538,6 +548,7 @@ def self_test() -> None:
     assert startup["missing_webkit_roles"] == ["gpu", "networking", "web_content"]
     assert startup["role_process_ids"] == {"app": [42], "gpu": [], "networking": [], "web_content": []}
     assert startup["role_resident_bytes"] == {"app": 100 * 1_024, "gpu": 0, "networking": 0, "web_content": 0}
+    assert startup["process_resident_bytes"] == {"42": 100 * 1_024}
     assert startup["role_physical_footprint_bytes"] == {"app": 75_000, "gpu": 0, "networking": 0, "web_content": 0}
     assert startup["process_physical_footprint_bytes"] == {"42": 75_000}
     assert startup["physical_footprint_bytes"] == 75_000 and measured_pids == [42]
@@ -557,11 +568,14 @@ def self_test() -> None:
     assert complete["process_physical_footprint_bytes"] == {str(pid): value for pid, value in footprints.items()}
     assert sum(complete["process_physical_footprint_bytes"].values()) == complete["physical_footprint_bytes"]
     assert complete["role_process_ids"]["web_content"] == [102]
+    expected_resident = {"42": 100 * 1_024, "101": 10 * 1_024, "102": 20 * 1_024, "103": 30 * 1_024}
+    assert complete["process_resident_bytes"] == expected_resident
     assert measured_pids == [42, 101, 102, 103]
     measured_pids.clear()
 
     footprint_without_ids = captured(launchctl, ps, include_physical_footprint=True)
     assert "role_process_ids" not in footprint_without_ids
+    assert "process_resident_bytes" not in footprint_without_ids
     assert "process_physical_footprint_bytes" not in footprint_without_ids
     assert footprint_without_ids["physical_footprint_bytes"] == complete["physical_footprint_bytes"]
     assert footprint_without_ids["role_physical_footprint_bytes"] == complete["role_physical_footprint_bytes"]
@@ -569,9 +583,34 @@ def self_test() -> None:
     measured_pids.clear()
     ids_without_footprint = captured(launchctl, ps, include_process_ids=True)
     assert ids_without_footprint["role_process_ids"] == complete["role_process_ids"]
+    assert ids_without_footprint["process_resident_bytes"] == expected_resident
     assert "process_physical_footprint_bytes" not in ids_without_footprint
     assert "physical_footprint_bytes" not in ids_without_footprint
     assert not measured_pids
+
+    # Two workers of the same role and deliberately shuffled ps rows distinguish
+    # PID identity from row position, while freezing ps's KiB-to-byte conversion.
+    multiple_workers = launchctl.replace(
+        "\tservices = {", "\tservices = {\n    104 - com.apple.WebKit.WebContent.44444444-4444-4444-4444-444444444444", 1
+    )
+    shuffled_rows = "\n".join([
+        ps.splitlines()[3],
+        "104 67 /System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent",
+        ps.splitlines()[1], ps.splitlines()[0], ps.splitlines()[2],
+    ])
+    multiple = captured(multiple_workers, shuffled_rows, include_process_ids=True)
+    assert multiple["process_resident_bytes"] == {**expected_resident, "104": 67 * 1_024}
+    assert multiple["role_process_ids"]["web_content"] == [102, 104]
+    assert multiple["role_process_counts"]["web_content"] == 2
+    assert multiple["role_resident_bytes"]["web_content"] == 87 * 1_024
+    assert multiple["resident_bytes"] == 227 * 1_024
+    assert set(multiple["process_resident_bytes"]) == {
+        str(pid) for pids in multiple["role_process_ids"].values() for pid in pids
+    }
+    assert sum(multiple["process_resident_bytes"].values()) == multiple["resident_bytes"]
+    for role, pids in multiple["role_process_ids"].items():
+        assert sum(multiple["process_resident_bytes"][str(pid)] for pid in pids) == multiple["role_resident_bytes"][role]
+    assert "physical_footprint_bytes" not in multiple and not measured_pids
 
     requires_error(lambda: captured(no_workers.replace("Scholium-QA.app", "Foreign.app"), ps.splitlines()[0], **options))
     requires_error(lambda: captured(no_workers, ps.splitlines()[0].replace("/Scholium", "/Foreign"), **options))
@@ -579,12 +618,20 @@ def self_test() -> None:
     requires_error(lambda: captured(missing_role, ps.splitlines()[0], **options))
     assert not measured_pids  # Attribution is checked before optional measurements.
 
+    panel_label = "com.apple.appkit.xpc.openAndSavePanelService"
+    panel_path = (
+        "/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/"
+        "com.apple.appkit.xpc.openAndSavePanelService.xpc/Contents/MacOS/"
+        "com.apple.appkit.xpc.openAndSavePanelService"
+    )
+    assert OTHER_SERVICE_EXECUTABLES[panel_label] == panel_path
     labels = list(OTHER_SERVICE_EXECUTABLES)
     other_service_lines = "\n".join(f"    {201 + index} - {label}" for index, label in enumerate(labels))
     # Repeated aliases for one PID must not count that process twice. Inactive
     # templates and out-of-block service stubs never become active processes.
     all_services = launchctl.replace(
-        "services = {", "services = {\n" + other_service_lines + f"\n    201 - {labels[0]}", 1
+        "services = {", "services = {\n" + other_service_lines
+        + f"\n    201 - {labels[0]}\n    205 - {panel_label}", 1
     ) + "service stubs = {\n    999 - com.apple.UnknownInactiveTemplate\n}\n"
     other_rows = "\n".join(
         f"{201 + index} {index + 2} {OTHER_SERVICE_EXECUTABLES[label]}"
@@ -599,21 +646,31 @@ def self_test() -> None:
     full_options = {**options, "include_other_owned_services": True}
     whole_domain = captured(all_services, all_rows, **full_options)
     assert whole_domain["scope"] == "app_plus_attributed_originator_services"
-    assert whole_domain["role_process_counts"]["other_services"] == 4
-    assert whole_domain["role_process_ids"]["other_services"] == [201, 202, 203, 204]
-    assert whole_domain["role_resident_bytes"]["other_services"] == 14 * 1_024
-    assert whole_domain["role_physical_footprint_bytes"]["other_services"] == 14_000
-    assert whole_domain["process_count"] == 8 and whole_domain["resident_bytes"] == 174 * 1_024
-    assert whole_domain["physical_footprint_bytes"] == 119_000
+    assert whole_domain["role_process_counts"]["other_services"] == 5
+    assert whole_domain["role_process_ids"]["other_services"] == [201, 202, 203, 204, 205]
+    assert whole_domain["role_resident_bytes"]["other_services"] == 20 * 1_024
+    assert whole_domain["role_physical_footprint_bytes"]["other_services"] == 20_000
+    assert whole_domain["process_count"] == 9 and whole_domain["resident_bytes"] == 180 * 1_024
+    assert whole_domain["physical_footprint_bytes"] == 125_000
     assert whole_domain["process_physical_footprint_bytes"] == {str(pid): value for pid, value in footprints.items()}
+    assert whole_domain["process_resident_bytes"] == {
+        **expected_resident, "201": 2 * 1_024, "202": 3 * 1_024, "203": 4 * 1_024, "204": 5 * 1_024,
+        "205": 6 * 1_024,
+    }
+    assert sum(whole_domain["process_resident_bytes"].values()) == whole_domain["resident_bytes"]
     assert sum(whole_domain["process_physical_footprint_bytes"].values()) == whole_domain["physical_footprint_bytes"]
     for role, pids in whole_domain["role_process_ids"].items():
+        assert sum(whole_domain["process_resident_bytes"][str(pid)] for pid in pids) == whole_domain["role_resident_bytes"][role]
         assert sum(whole_domain["process_physical_footprint_bytes"][str(pid)] for pid in pids) == whole_domain["role_physical_footprint_bytes"][role]
-    assert measured_pids == [42, 101, 102, 103, 201, 202, 203, 204]
-    assert len(whole_domain["additional_owned_services"]) == 4
+    assert measured_pids == [42, 101, 102, 103, 201, 202, 203, 204, 205]
+    assert len(whole_domain["additional_owned_services"]) == 5
     assert whole_domain["additional_owned_services"][0] == {
         "pid": 201, "labels": [labels[0]], "executable": str(normalized(OTHER_SERVICE_EXECUTABLES[labels[0]])),
         "resident_bytes": 2 * 1_024, "physical_footprint_bytes": 2_000,
+    }
+    assert whole_domain["additional_owned_services"][4] == {
+        "pid": 205, "labels": [panel_label], "executable": str(normalized(panel_path)),
+        "resident_bytes": 6 * 1_024, "physical_footprint_bytes": 6_000,
     }
     measured_pids.clear()
     startup_domain = captured(no_workers, ps.splitlines()[0], **full_options)
@@ -624,6 +681,8 @@ def self_test() -> None:
     measured_pids.clear()
     requires_error(lambda: captured(all_services.replace(labels[0], "com.apple.UnknownActiveService", 1), all_rows, **full_options))
     requires_error(lambda: captured(all_services, all_rows.replace(OTHER_SERVICE_EXECUTABLES[labels[0]], "/System/Library/Foreign"), **full_options))
+    requires_error(lambda: captured(all_services.replace(panel_label, panel_label + ".unknown"), all_rows, **full_options))
+    requires_error(lambda: captured(all_services, all_rows.replace(panel_path, OTHER_SERVICE_EXECUTABLES[labels[0]]), **full_options))
     requires_error(lambda: captured(all_services, ps, **full_options))
     requires_error(lambda: captured(all_services.replace("201 - ", "101 - ", 1), all_rows, **full_options))
     requires_error(lambda: captured(all_services.replace("201 - ", "202 - ", 1), all_rows, **full_options))
@@ -639,6 +698,31 @@ def self_test() -> None:
 
     with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=rejected_usage)):
         requires_error(lambda: physical_footprint_bytes(42))
+
+    def exited_usage(pid, flavor, buffer):
+        buffer._obj.ri_proc_exit_abstime = 1
+        buffer._obj.ri_phys_footprint = 0
+        return 0
+
+    with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=exited_usage)):
+        try:
+            physical_footprint_bytes(42)
+        except SamplingError as error:
+            assert str(error).startswith("process set changed during sampling;")
+        else:
+            raise AssertionError("An exited service must invalidate the entire sample")
+
+    def invalid_live_usage(pid, flavor, buffer):
+        buffer._obj.ri_phys_footprint = 0
+        return 0
+
+    with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=invalid_live_usage)):
+        try:
+            physical_footprint_bytes(42)
+        except SamplingError as error:
+            assert str(error).startswith("proc_pid_rusage returned no live physical footprint")
+        else:
+            raise AssertionError("A live service with no footprint must fail closed")
     print("Process memory sampler self-test passed")
 
 
@@ -649,7 +733,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--allow-partial-webkit", action="store_true",
                         help="Allow absent startup WebKit roles, reporting them explicitly with zero counts")
     parser.add_argument("--include-process-ids", action="store_true",
-                        help="Include the exact validated PID list for each role")
+                        help="Include validated per-role PIDs and per-PID process_resident_bytes")
     parser.add_argument("--physical-footprint", action="store_true",
                         help="Also read proc_pid_rusage physical footprint; unavailable readings fail closed")
     parser.add_argument("--include-other-owned-services", action="store_true",

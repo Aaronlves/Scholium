@@ -59,7 +59,7 @@ final class SafeMarkdownReadSelectionCoordinator {
                     self.activityTaskID = nil
                 }
             }
-            let result = try? await webView.callAsyncJavaScript(
+            let result = try? await webView.callCancellableJavaScript(
                 """
                 if (window.scholiumReadReady) await window.scholiumReadReady;
                 return window.scholiumSetReviewSelectionSurfaceActive?.(active) === true;

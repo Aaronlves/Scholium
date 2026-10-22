@@ -245,14 +245,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
     static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
         let webView = container.webView
-        Task { @MainActor [weak webView] in
-            guard let webView else { return }
-            _ = try? await webView.evaluateJavaScript(
-                "window.scholiumSetReviewSelectionSurfaceActive?.(false)",
-                in: nil,
-                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-            )
-        }
+        // Teardown sends a final synchronous command; no result or unowned
+        // Swift task may extend the lifetime of this retiring page.
+        webView.evaluateJavaScript(
+            "window.scholiumSetReviewSelectionSurfaceActive?.(false)",
+            in: nil,
+            in: SafeMarkdownReadWebView.bridgeContentWorld,
+            completionHandler: nil
+        )
         webView.configuration.userContentController.removeScriptMessageHandler(
             forName: Coordinator.messageHandlerName,
             contentWorld: Self.bridgeContentWorld
@@ -291,7 +291,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 else { return false }
                 let expectedGeneration = self.loadGeneration
                 return try await self.floatingSurfaces.presentSelectionInquiry(inquiry, in: webView) {
-                    let surfaceID = try await webView.callAsyncJavaScript(
+                    let surfaceID = try await webView.callCancellableJavaScript(
                         """
                         if (window.scholiumReadReady) await window.scholiumReadReady;
                         return await window.scholiumShowSelectionActions?.();
@@ -866,7 +866,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 // Navigation completion precedes asynchronous reader setup.
                 // One load-owned task waits for the API, then converges on the
                 // latest catalog instead of cancelling/restarting pending work.
-                let ready = try? await webView.callAsyncJavaScript(
+                let ready = try? await webView.callCancellableJavaScript(
                     """
                     if (window.scholiumReadReady) await window.scholiumReadReady;
                     return typeof window.scholiumSetLinkPreviews === 'function';
@@ -882,7 +882,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 {
                     let revision = self.desiredLinkPreviewRevision
                     let previews = Self.linkPreviewArguments(self.desiredLinkPreviews)
-                    let result = try? await webView.callAsyncJavaScript(
+                    let result = try? await webView.callCancellableJavaScript(
                         "return window.scholiumSetLinkPreviews?.(previews) === true",
                         arguments: ["previews": previews],
                         in: nil,
@@ -915,7 +915,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
             let result: Any?
             do {
-                result = try await webView.callAsyncJavaScript(
+                result = try await webView.callCancellableJavaScript(
                     """
                     return await window.scholiumSetPresentationCSS?.(presentationCSS, userCSS) === true;
                     """,
@@ -1099,7 +1099,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     else {
                         return false
                     }
-                    let accepted = try? await webView.callAsyncJavaScript(
+                    let accepted = try? await webView.callCancellableJavaScript(
                         "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                         arguments: ["id": id, "action": action.rawValue, "index": index],
                         in: nil, contentWorld: self.bridgeContentWorld
@@ -1338,7 +1338,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     if restoreClaim != nil {
                         await self.waitForTestingScrollRestoreDelayIfNeeded()
                     }
-                    let result = try await webView.callAsyncJavaScript(
+                    let result = try await webView.callCancellableJavaScript(
                         """
                         if (window.scholiumReadReady) await window.scholiumReadReady;
                         if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
@@ -1410,7 +1410,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                                 signature: expectedSignature, in: webView,
                                 repositioningForPreparation: true)
                             reachedSourceLocationID = reachedLocation ? sourceLocationID : nil
-                            let settled = try await webView.callAsyncJavaScript(
+                            let settled = try await webView.callCancellableJavaScript(
                                 "return await window.scholiumReadPreparation.settle(documentID, fingerprint, loadGeneration, expiresAt);",
                                 arguments: [
                                     "documentID": expectedDocumentID,
@@ -1548,7 +1548,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         /// Read-only SVG layout projection, never a source or viewport measurement.
         private func reportDiagramSize(in webView: WKWebView, signature: String) async {
             guard onRenderedDiagramSize != nil else { return }
-            let result = try? await webView.evaluateJavaScript(
+            let result = try? await webView.evaluateCancellableJavaScript(
                 """
                 (() => { const svg = document.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
                   const box = svg?.viewBox?.baseVal;
@@ -1618,7 +1618,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
-            let result = try? await webView.callAsyncJavaScript(
+            let result = try? await webView.callCancellableJavaScript(
                 """
                 if (window.scholiumReadReady) await window.scholiumReadReady;
                 if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
@@ -1887,7 +1887,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: webView
                 )
             else { return false }
-            let result = try? await webView.callAsyncJavaScript(
+            let result = try? await webView.callCancellableJavaScript(
                 """
                 if (!await window.scholiumReadNavigation?.reveal(requested)) return false;
                 const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -1933,7 +1933,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard isCurrent() else { return false }
             let lower = range.utf16LowerBound
             let upper = range.utf16UpperBound
-            let candidate = try? await webView.callAsyncJavaScript(
+            let candidate = try? await webView.callCancellableJavaScript(
                 "return window.scholiumReadNavigation?.rangeCandidate(lower, upper) ?? null;",
                 arguments: ["lower": lower, "upper": upper], in: nil,
                 contentWorld: self.bridgeContentWorld)
@@ -1950,7 +1950,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     selectionUpper: upper - blockLower,
                     excerpt: String(selectionSource[selected]), source: selectionSource) == lower..<upper
             {
-                let result = try? await webView.callAsyncJavaScript(
+                let result = try? await webView.callCancellableJavaScript(
                     "return window.scholiumReadNavigation?.revealRange(lower, upper, expected) === true;",
                     arguments: ["lower": lower, "upper": upper, "expected": block], in: nil,
                     contentWorld: self.bridgeContentWorld)

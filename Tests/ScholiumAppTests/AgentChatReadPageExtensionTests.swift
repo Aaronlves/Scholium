@@ -225,6 +225,100 @@ struct AgentChatReadPageExtensionTests {
         }
     }
 
+    @Test("A suspended reply keeps only the newest pending source and cancellation releases its owner")
+    func suspendedReplyHasBoundedOwnership() async throws {
+        _ = NSApplication.shared
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        var page: AgentChatReadPageExtension? = AgentChatReadPageExtension()
+        weak var departedPage = page
+        let world = SafeMarkdownReadWebView.bridgeContentWorld
+        func evaluate(_ script: String) async throws -> Any? {
+            try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: world)
+        }
+        func waitFor(_ condition: () async throws -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while !(try await condition()) {
+                try #require(ContinuousClock.now < deadline, "The suspended reply did not reach its expected state")
+                await Task.yield()
+            }
+        }
+        defer {
+            page?.cancel()
+            webView.stopLoading()
+        }
+        do {
+            webView.loadHTMLString("<html><body id='bounded-reply'></body></html>", baseURL: nil)
+            try await waitFor { (try await evaluate("return document.body?.id === 'bounded-reply';")) as? Bool == true }
+            _ = try await evaluate(
+                """
+                window.releaseReply = null;
+                window.scholiumUpdateReply = async update => {
+                    if (update.fingerprint === 'first') {
+                        await new Promise(resolve => { window.releaseReply = resolve; });
+                    }
+                    window.replyCompletions = (window.replyCompletions || 0) + 1;
+                    return true;
+                };
+                """)
+            page?.didFinalizePage(fingerprint: "initial")
+            page?.didFinishNavigation(nil, isCurrent: { true })
+            var current = "first"
+            var publications = 0
+            var failures = 0
+            func submit(_ payload: PendingPayload) {
+                let accepted = page?.updateIfNeeded(
+                    body: payload.source, source: payload.source,
+                    fingerprint: payload.revision, signature: payload.revision,
+                    documentID: "reply", loadGeneration: 1, presentationCSS: "", userCSS: "", in: webView,
+                    isCurrent: { current == payload.revision },
+                    didApply: { _, _ in publications += 1 }, didFail: { _ in failures += 1 })
+                #expect(accepted == true)
+            }
+            submit(PendingPayload(revision: "first"))
+            try await waitFor { (try await evaluate("return typeof window.releaseReply === 'function';")) as? Bool == true }
+            var queued: [WeakPendingPayload] = []
+            for index in 0..<64 {
+                let payload = PendingPayload(revision: "queued-\(index)")
+                current = payload.revision
+                queued.append(WeakPendingPayload(payload))
+                submit(payload)
+            }
+            // A blocked DOM commit must not retain every streamed prefix.
+            // These witnesses own the same 128 KiB source passed to the renderer.
+            #expect(queued.filter { $0.value != nil }.count == 1)
+            page?.cancel()
+            page = nil
+            try await waitFor { departedPage == nil && queued.allSatisfy { $0.value == nil } }
+            #expect(publications == 0 && failures == 0)
+            // The old JavaScript promise is deliberately unresolved until after
+            // the native owner has released. Its late result has no authority.
+            _ = try await evaluate("window.releaseReply();")
+            try await waitFor { (try await evaluate("return window.replyCompletions === 1;")) as? Bool == true }
+            #expect(publications == 0 && failures == 0)
+        } catch {
+            page?.cancel()
+            page = nil
+            _ = try? await evaluate("window.releaseReply?.();")
+            throw error
+        }
+    }
+
+    private final class PendingPayload {
+        let revision: String
+        let source: String
+        init(revision: String) {
+            self.revision = revision
+            source = revision + String(repeating: "Synthetic 中文 🦉. ", count: 6_000)
+        }
+    }
+
+    private final class WeakPendingPayload {
+        weak var value: PendingPayload?
+        init(_ value: PendingPayload) { self.value = value }
+    }
+
     @Test("Repeated source currency cannot release a newer serialized reply-update tail")
     func repeatedSignatureKeepsSerializedTail() async throws {
         _ = NSApplication.shared

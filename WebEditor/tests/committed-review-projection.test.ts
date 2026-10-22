@@ -148,9 +148,12 @@ describe("committed Review inside the persistent CodeMirror state", () => {
     expect(() => h.index.index(h.state)).toThrow();
     let state = h.changeMode(h.state, "livePreview");
     expect(h.samples).toContain("projection-index");
-    ensureSyntaxTree(state, state.doc.length, 1000);
-    // Publish the completed parser before checking identity reuse.
+    expect(ensureSyntaxTree(state, state.doc.length, 1000)).not.toBeNull();
+    // ensureSyntaxTree advances the parse context. An empty transaction
+    // publishes it into the immutable state before checking identity reuse.
+    state = state.update({}).state;
     const index = h.index.index(state);
+    expect(index.syntaxComplete).toBe(true);
     const constructionCount = h.samples.filter(name => name === "projection-index").length;
     for (const mode of ["review", "source", "review", "livePreview"] as const) {
       state = h.changeMode(state, mode);

@@ -2689,7 +2689,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             inquiry.operation == nil || count <= MarkdownSelectionActionAdmission.maximumWritingAssistanceUTF16Length
         else { throw SessionError.unavailable }
         return try await floatingSurfaces.presentSelectionInquiry(inquiry, in: webView) {
-            let result = try await send(.showSelectionActions, in: webView)
+            let result = try await self.send(.showSelectionActions, in: webView)
             return result.selectionSurfaceID
         }
     }
