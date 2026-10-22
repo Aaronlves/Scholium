@@ -76,6 +76,18 @@ struct RelatedContentBackgroundPreparation {
         self.maximumByteCount = max(0, maximumByteCount)
     }
 
+    /// A storage-sharing candidate, not a preparation hit. The caller still
+    /// decodes and validates the current payload and compares the full scorer.
+    /// Reading it neither refreshes LRU nor changes conservative byte accounting.
+    func scoringStorage(rowID: Int, fingerprint: DocumentFingerprint) -> RelatedContentBM25F.Document? {
+        for entry in entries.values {
+            if let document = entry.value.documents[rowID], document.fingerprint == fingerprint {
+                return document.projection.scoringDocument
+            }
+        }
+        return nil
+    }
+
     mutating func prepared(for key: Key) throws -> Value? {
         try Task.checkCancellation()
         // Keep at most the latest exact revision/scope of a Note. A generation

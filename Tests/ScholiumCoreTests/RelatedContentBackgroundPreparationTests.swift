@@ -280,6 +280,33 @@ struct RelatedContentBackgroundPreparationTests {
         } catch SearchIndexError.corruptDatabase {}
     }
 
+    @Test("An existing lexical scorer cannot conceal damaged passage storage", arguments: [false, true])
+    func passageCorruptionAfterLexicalPreparation(damagePayload: Bool) async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let documents = fixture.documents
+        let index = try fixture.index()
+        _ = try await index.synchronize(documents)
+        let request = fixture.request()
+        let response = try await index.relatedMaterialSourceCandidates(request)
+        let sources = fixture.sources(response, documents: documents)
+        try #require(!sources.isEmpty)
+        _ = try await index.relatedMaterialSourceCandidates(request)
+        #expect(await index.relatedBackgroundPreparationStatistics.hits == 1)
+        #expect(await index.relatedPassagePreparationStatistics.misses == 0)
+        let mutation = damagePayload
+            ? "related_projection = X'00', related_projection_hash = '\(RelatedContentSourceProjection.checksum(Data([0])))'"
+            : "related_projection_hash = 'incorrect'"
+        try fixture.execute("UPDATE search_documents SET \(mutation);")
+        do {
+            _ = try await index.relatedPassages(request, sources: sources)
+            Issue.record("Storage sharing must not bypass passage checksum or decoding")
+        } catch SearchIndexError.corruptDatabase {}
+        #expect(sources.allSatisfy { source in
+            documents.contains { $0.document.rawContent.utf8.elementsEqual(source.document.rawContent.utf8) }
+        })
+    }
+
     @Test("Cancelled preparation cannot return candidates or populate either memo")
     func cancellation() async throws {
         let fixture = try Fixture()

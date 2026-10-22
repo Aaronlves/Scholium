@@ -111,6 +111,31 @@ struct RelatedContentBM25F {
             return (fields[field]!, textIndexes[field]!)
         }
 
+        /// Independent persisted projections may decode the same Note scorer.
+        /// Reuse immutable storage only after checking every value; this never
+        /// replaces payload validation or authorizes a cached source revision.
+        func sharingStorage(with other: Self) -> Self {
+            hasSameContents(as: other) ? other : self
+        }
+
+        func hasSameContents(as other: Self) -> Bool {
+            Self.sameFields(fields, other.fields) { $0.utf8.elementsEqual($1.utf8) }
+                && Self.sameFields(fieldLengths, other.fieldLengths) { $0.bitPattern == $1.bitPattern }
+                && Self.sameFields(textIndexes, other.textIndexes) {
+                    $0.containsCJK == $1.containsCJK && $0.hasSameWordCounts(as: $1)
+                }
+        }
+
+        private static func sameFields<Value>(
+            _ lhs: [String: Value], _ rhs: [String: Value], equal: (Value, Value) -> Bool
+        ) -> Bool {
+            guard lhs.count == rhs.count else { return false }
+            return lhs.allSatisfy { key, value in
+                guard let index = rhs.index(forKey: key), key.utf8.elementsEqual(rhs[index].key.utf8) else { return false }
+                return equal(value, rhs[index].value)
+            }
+        }
+
         /// Private persisted references avoid decoding duplicate normalized
         /// strings and frequency dictionaries only to discard them afterward.
         enum StoredText: Codable {

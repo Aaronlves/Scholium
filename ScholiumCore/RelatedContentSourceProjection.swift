@@ -77,13 +77,7 @@ struct RelatedContentSourceProjection: Codable, Sendable {
                 exactReadableText.utf8.elementsEqual(other.exactReadableText.utf8),
                 normalizedDisplayText.utf8.elementsEqual(other.normalizedDisplayText.utf8),
                 Self.sameIndex(textIndex, other.textIndex),
-                Self.sameFields(scoringDocument.fields, other.scoringDocument.fields, equal: {
-                    $0.utf8.elementsEqual($1.utf8)
-                }),
-                Self.sameFields(scoringDocument.fieldLengths, other.scoringDocument.fieldLengths, equal: {
-                    $0.bitPattern == $1.bitPattern
-                }),
-                Self.sameFields(scoringDocument.textIndexes, other.scoringDocument.textIndexes, equal: Self.sameIndex)
+                scoringDocument.hasSameContents(as: other.scoringDocument)
             else { return self }
             return Self(range: range, sharingPayload: other)
         }
@@ -101,18 +95,6 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             lhs.containsCJK == rhs.containsCJK && lhs.hasSameWordCounts(as: rhs)
         }
 
-        private static func sameFields<Value>(
-            _ lhs: [String: Value], _ rhs: [String: Value], equal: (Value, Value) -> Bool
-        ) -> Bool {
-            guard lhs.count == rhs.count else { return false }
-            return lhs.allSatisfy { key, value in
-                guard let index = rhs.index(forKey: key),
-                    key.utf8.elementsEqual(rhs[index].key.utf8)
-                else { return false }
-                return equal(value, rhs[index].value)
-            }
-        }
-
         func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(range, forKey: .range)
@@ -126,6 +108,15 @@ struct RelatedContentSourceProjection: Codable, Sendable {
 
     let noteScoringDocument: RelatedContentBM25F.Document
     let paragraphs: [Paragraph]
+
+    func sharingNoteScoringStorage(with document: RelatedContentBM25F.Document) -> Self {
+        Self(noteScoringDocument: noteScoringDocument.sharingStorage(with: document), paragraphs: paragraphs)
+    }
+
+    private init(noteScoringDocument: RelatedContentBM25F.Document, paragraphs: [Paragraph]) {
+        self.noteScoringDocument = noteScoringDocument
+        self.paragraphs = paragraphs
+    }
 
     /// Build-local immutable storage sharing, never a source/result cache. Keep
     /// only the first payload for each exact display key; different payloads

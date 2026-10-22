@@ -3274,11 +3274,12 @@ extension TriptychSearchIndex {
     ) throws -> RelatedContentSourceProjection? {
         // Capture the database, not self, while mutating actor-owned memo.
         let database = self.database
+        let backgroundPreparation = relatedBackgroundPreparation
         return try relatedPassageMemo.projection(for: source, protection: protection) { document in
             var projection: RelatedContentSourceProjection?
             try database.query(
                 """
-                SELECT related_projection, related_projection_hash, source_utf16_count
+                SELECT related_projection, related_projection_hash, source_utf16_count, id
                 FROM search_documents WHERE document_key = ?
                     AND fingerprint_sha256 = ? AND fingerprint_byte_count = ?;
                 """,
@@ -3289,6 +3290,9 @@ extension TriptychSearchIndex {
             ) { row in
                 projection = try RelatedContentSourceProjection.decode(
                     row.data(at: 0), checksum: row.text(at: 1), sourceUTF16Count: row.int(at: 2))
+                if let storage = backgroundPreparation.scoringStorage(rowID: row.int(at: 3), fingerprint: document.fingerprint) {
+                    projection = projection?.sharingNoteScoringStorage(with: storage)
+                }
             }
             // A source read may straddle an index publication. Its exact
             // verified bytes still permit preparation; never reuse a
