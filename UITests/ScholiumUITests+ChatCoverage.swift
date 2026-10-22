@@ -132,6 +132,9 @@ extension ScholiumUITests {
             popover.descendants(matching: .any)[sourceTitle].firstMatch.waitForExistence(timeout: 5), "Sources must be reusable after retained-page dismissal")
         popover.buttons["Close"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+        let copy = app.buttons["scholium.chat.copyReply"].firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        copy.hover()
         let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         image.name = "Retained Chat — Sources dismissed, draft and Undo preserved"
         image.lifetime = .keepAlways

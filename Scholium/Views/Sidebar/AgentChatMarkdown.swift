@@ -36,38 +36,43 @@ struct AgentChatMarkdown: View {
 }
 
 struct AgentChatTimelineItem: Identifiable {
-    var messages: [AgentChatMessage]
-    var id: String { messages[0].id }
-    var isProcess: Bool { Self.isProcess(messages[0]) }
+    // Mounted items borrow one immutable transcript snapshot. Grouping must not
+    // allocate another message-value buffer for every retained history item.
+    let messages: ArraySlice<AgentChatMessage>
+    var id: String { messages.first!.id }
+    var isProcess: Bool { Self.isProcess(messages.first!) }
     static func isProcess(_ message: AgentChatMessage) -> Bool {
         message.role == .operation || message.phase == .commentary || message.plan != nil
     }
 
     static func group(_ messages: [AgentChatMessage]) -> [Self] {
+        guard !messages.isEmpty else { return [] }
         var items: [Self] = []
-        for message in messages {
-            if Self.isProcess(message), items.last?.isProcess == true,
-                items.last?.messages.last?.turnID == message.turnID
+        var start = messages.startIndex
+        for index in messages.indices.dropFirst() {
+            if Self.isProcess(messages[index]), Self.isProcess(messages[index - 1]),
+                messages[index - 1].turnID == messages[index].turnID
             {
-                items[items.count - 1].messages.append(message)
-            } else {
-                items.append(
-                    .init(messages: [message]))
+                continue
             }
+            items.append(.init(messages: messages[start..<index]))
+            start = index
         }
+        items.append(.init(messages: messages[start..<messages.endIndex]))
         return items
     }
 }
 
 /// A single-pass view projection for the mounted transcript. It keeps the
 /// detail view from rescanning the complete retained history for every
-/// process row or turn-status label.
+/// process row or turn-status label. Groups share the snapshot; the turn lookup
+/// retains indices rather than a second full copy of every message value.
 struct AgentChatTimelineProjection {
     let messages: [AgentChatMessage]
     let items: [AgentChatTimelineItem]
     let ids: [String]
     let replyReaderIDs: Set<String>
-    private let messagesByTurn: [String: [AgentChatMessage]]
+    private let messageIndicesByTurn: [String: [Int]]
     private let statusOwnerIDs: Set<String>
     private let activeActivityIDs: [String: String]
 
@@ -76,20 +81,20 @@ struct AgentChatTimelineProjection {
         self.items = AgentChatTimelineItem.group(messages)
         self.ids = self.items.map(\.id)
 
-        var messagesByTurn: [String: [AgentChatMessage]] = [:]
+        var messageIndicesByTurn: [String: [Int]] = [:]
         var firstNonUserIDs: [String: String] = [:]
         var lastUserIDs: [String: String] = [:]
         var activeActivityIDs: [String: String] = [:]
-        for message in messages {
+        for (index, message) in messages.enumerated() {
             guard let turnID = message.turnID else { continue }
-            messagesByTurn[turnID, default: []].append(message)
+            messageIndicesByTurn[turnID, default: []].append(index)
             if message.role != .user, firstNonUserIDs[turnID] == nil {
                 firstNonUserIDs[turnID] = message.id
             }
             if message.role == .user { lastUserIDs[turnID] = message.id }
             if message.activity?.status.isActive == true { activeActivityIDs[turnID] = message.id }
         }
-        self.messagesByTurn = messagesByTurn
+        self.messageIndicesByTurn = messageIndicesByTurn
         self.activeActivityIDs = activeActivityIDs
 
         var statusOwnerIDs: Set<String> = []
@@ -110,7 +115,12 @@ struct AgentChatTimelineProjection {
 
     func messages(for turnID: String?) -> [AgentChatMessage] {
         guard let turnID else { return [] }
-        return messagesByTurn[turnID] ?? []
+        return (messageIndicesByTurn[turnID] ?? []).map { messages[$0] }
+    }
+
+    func hasMessages(for turnID: String?) -> Bool {
+        guard let turnID else { return false }
+        return messageIndicesByTurn[turnID]?.isEmpty == false
     }
 
     func carriesTurnStatus(_ item: AgentChatTimelineItem) -> Bool {

@@ -544,7 +544,7 @@ struct AgentChatConversationDetailView: View {
             let status = projection.carriesTurnStatus(item) ? turnPresentation(turnID, projection: projection) : nil
             let activeActivityID = projection.activeActivityID(for: turnID)
             AgentChatProcessView(
-                messages: item.messages,
+                messages: Array(item.messages),
                 window: Binding(
                     get: { readingSession.processWindows[item.id] ?? .init() },
                     set: { readingSession.processWindows[item.id] = $0 }),
@@ -604,6 +604,8 @@ struct AgentChatConversationDetailView: View {
 
     private func messageView(_ message: AgentChatMessage, hasEditBoundary: Bool, hasBranchBoundary: Bool) -> some View {
         let conversationID = nativeSession.conversationID
+        let actionItems = messageActionItems(
+            message, in: conversationID, hasEditBoundary: hasEditBoundary, hasBranchBoundary: hasBranchBoundary)
         return AgentChatMessageActionVisibility {
             AgentChatMessageSurface(isUser: message.role == .user) {
                 VStack(alignment: .leading, spacing: ScholiumChatAppearance.contentSpacing) {
@@ -659,18 +661,18 @@ struct AgentChatConversationDetailView: View {
                             openAttachment: openAttachment, previewMaterial: { try await controller.previewLocalMaterial($0) })
                     }
                     if hasEditBoundary || hasBranchBoundary || canQuote(message) {
-                        messageActions(
-                            message, in: conversationID,
-                            hasEditBoundary: hasEditBoundary, hasBranchBoundary: hasBranchBoundary
-                        )
-                        .labelStyle(ScholiumSidebarActionLabelStyle())
+                        ForEach(actionItems) { item in
+                            AgentChatActionButton(label: item.id, systemImage: item.symbol, action: item.action)
+                                .disabled(!item.isEnabled)
+                        }
                     }
                 }
                 .buttonStyle(ScholiumContentActionButtonStyle())
                 .contextMenu {
-                    messageActions(
-                        message, in: conversationID,
-                        hasEditBoundary: hasEditBoundary, hasBranchBoundary: hasBranchBoundary)
+                    ForEach(actionItems) { item in
+                        Button(LocalizedStringKey(item.id), systemImage: item.symbol, action: item.action)
+                            .disabled(!item.isEnabled)
+                    }
                 }
             }
         }
@@ -683,28 +685,34 @@ struct AgentChatConversationDetailView: View {
         .accessibilityLabel(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
     }
 
-    @ViewBuilder
-    private func messageActions(
+    private struct MessageAction: Identifiable {
+        let id: String
+        let symbol: String
+        var isEnabled = true
+        let action: () -> Void
+    }
+
+    private func messageActionItems(
         _ message: AgentChatMessage, in conversationID: UUID?, hasEditBoundary: Bool, hasBranchBoundary: Bool
-    ) -> some View {
+    ) -> [MessageAction] {
+        var items: [MessageAction] = []
         if hasEditBoundary {
-            Button("Edit in New Branch", systemImage: ScholiumSidebarAction.edit.symbol) { controller.editInNewBranch(message.id) }
-                .disabled(!controller.canBranch)
-                .help("Edit in New Branch").accessibilityLabel("Edit in New Branch")
+            items.append(.init(id: "Edit in New Branch", symbol: ScholiumSidebarAction.edit.symbol,
+                isEnabled: controller.canBranch, action: { controller.editInNewBranch(message.id) }))
         }
         if let turnID = message.turnID, hasBranchBoundary {
-            Button("Branch from This Turn", systemImage: ScholiumSidebarAction.branch.symbol) { controller.branch(through: turnID) }
-                .disabled(!controller.canBranch)
-                .help("Branch from This Turn").accessibilityLabel("Branch from This Turn")
+            items.append(.init(id: "Branch from This Turn", symbol: ScholiumSidebarAction.branch.symbol,
+                isEnabled: controller.canBranch, action: { controller.branch(through: turnID) }))
             if controller.canRetryInNewBranch(turnID: turnID) {
-                Button("Retry in New Branch", systemImage: ScholiumSidebarAction.retry.symbol) { controller.retryInNewBranch(turnID: turnID) }
-                    .help("Retry in New Branch").accessibilityLabel("Retry in New Branch")
+                items.append(.init(id: "Retry in New Branch", symbol: ScholiumSidebarAction.retry.symbol,
+                    action: { controller.retryInNewBranch(turnID: turnID) }))
             }
         }
         if canQuote(message) {
-            Button("Quote in Reply", systemImage: ScholiumSidebarAction.quote.symbol) { quote(message, selection: nil, in: conversationID) }
-                .help("Quote in Reply").accessibilityLabel("Quote in Reply")
+            items.append(.init(id: "Quote in Reply", symbol: ScholiumSidebarAction.quote.symbol,
+                action: { quote(message, selection: nil, in: conversationID) }))
         }
+        return items
     }
 
     private func shouldAnimateArrival(_ message: AgentChatMessage) -> Bool {
@@ -874,7 +882,7 @@ struct AgentChatConversationDetailView: View {
         if controller.isBusy, !isHydratingHistory {
             let hasHeader =
                 controller.currentTurnID.map { turn in
-                    !projection.messages(for: turn).isEmpty
+                    projection.hasMessages(for: turn)
                 } ?? false
             if !hasHeader {
                 if controller.state == .working || controller.state == .stopping || controller.state == .compacting {

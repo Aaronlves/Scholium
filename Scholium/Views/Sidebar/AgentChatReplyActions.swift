@@ -108,19 +108,16 @@ struct AgentChatReplyActions: View {
         let sources = sourceProjection.sources(for: text)
         let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
         HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            ScholiumCopyButton(label: "Copy Markdown", contentIdentity: text) {
+            AgentChatCopyButton(label: "Copy Markdown", contentIdentity: text,
+                accessibilityID: "scholium.chat.copyReply") {
                 NSPasteboard.general.clearContents()
                 return NSPasteboard.general.setString(text, forType: .string)
             }
-            .accessibilityIdentifier("scholium.chat.copyReply")
             if availability.hasSources {
-                Button {
+                AgentChatActionButton(label: "Sources", systemImage: ScholiumSidebarItem.sources.symbol,
+                    accessibilityID: "scholium.chat.sources") {
                     showsSources = true
-                } label: {
-                    ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.sources.symbol, placement: .action)
                 }
-                .help("Sources").accessibilityLabel("Sources")
-                .accessibilityIdentifier("scholium.chat.sources")
                 .popover(isPresented: $showsSources, arrowEdge: .leading) {
                     AgentChatSourcesView(sources: sources, context: context, close: { showsSources = false }) { source in
                         showsSources = false
@@ -129,13 +126,10 @@ struct AgentChatReplyActions: View {
                 }
             }
             if availability.hasMaterials {
-                Button {
+                AgentChatActionButton(label: "Materials", systemImage: ScholiumSidebarItem.materials.symbol,
+                    accessibilityID: "scholium.chat.materials") {
                     showsMaterials = true
-                } label: {
-                    ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.materials.symbol, placement: .action)
                 }
-                .help("Materials").accessibilityLabel("Materials")
-                .accessibilityIdentifier("scholium.chat.materials")
                 .popover(isPresented: $showsMaterials, arrowEdge: .leading) {
                     AgentChatMaterialsView(
                         context: context, openAttachment: openAttachment,

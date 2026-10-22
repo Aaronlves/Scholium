@@ -105,8 +105,6 @@ struct ScholiumCopyButton: View {
     var label: LocalizedStringKey = "Copy"
     private let contentIdentity: ScholiumExactUTF8.SourceIdentity
     let copy: () -> Bool
-    @State private var copied = false
-    @State private var confirmation = 0
 
     init(label: LocalizedStringKey = "Copy", contentIdentity: String = "", copy: @escaping () -> Bool) {
         self.label = label
@@ -115,19 +113,27 @@ struct ScholiumCopyButton: View {
     }
 
     var body: some View {
-        Button {
-            copied = copy()
-            confirmation += 1
-            if copied {
-                NSAccessibility.post(
-                    element: NSApp as Any, notification: .announcementRequested,
-                    userInfo: [.announcement: ScholiumL10n.string("Copied"), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        ScholiumCopyFeedback(contentIdentity: contentIdentity, copy: copy) { copied, performCopy in
+            Button(action: performCopy) {
+                ScholiumSidebarCopyIcon(copied: copied)
             }
-        } label: {
-            ScholiumSidebarCopyIcon(copied: copied)
+            .help(copied ? Text("Copied") : Text(label))
+            .accessibilityLabel(copied ? Text("Copied") : Text(label))
         }
-        .help(copied ? Text("Copied") : Text(label))
-        .accessibilityLabel(copied ? Text("Copied") : Text(label))
+    }
+}
+
+/// One feedback owner serves SwiftUI controls and native Chat footer controls.
+/// Rendering never decides whether the clipboard write succeeded.
+struct ScholiumCopyFeedback<Content: View>: View {
+    let contentIdentity: ScholiumExactUTF8.SourceIdentity
+    let copy: () -> Bool
+    @ViewBuilder var content: (Bool, @escaping () -> Void) -> Content
+    @State private var copied = false
+    @State private var confirmation = 0
+
+    var body: some View {
+        content(copied, performCopy)
         .onChange(of: contentIdentity) { _, _ in
             copied = false
             confirmation += 1
@@ -136,6 +142,16 @@ struct ScholiumCopyButton: View {
             guard copied else { return }
             do { try await Task.sleep(for: .seconds(2)) } catch { return }
             copied = false
+        }
+    }
+
+    private func performCopy() {
+        copied = copy()
+        confirmation += 1
+        if copied {
+            NSAccessibility.post(
+                element: NSApp as Any, notification: .announcementRequested,
+                userInfo: [.announcement: ScholiumL10n.string("Copied"), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
         }
     }
 }

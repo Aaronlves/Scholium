@@ -31,9 +31,46 @@ struct AgentChatNavigationTransition<Content: View>: NSViewRepresentable {
     }
 }
 
+@MainActor
+struct AgentChatNavigationEnvironmentSnapshot {
+    let locale: Locale
+    let layoutDirection: LayoutDirection
+    let dynamicTypeSize: DynamicTypeSize
+    let colorScheme: ColorScheme
+    let openURL: OpenURLAction
+    let visualOverride: ScholiumVisualEnvironmentOverride
+    let visibility: DocumentSurfaceVisibility
+    let fileSelectionPresenter: ScholiumFileSelectionPresenter?
+    let openNewTab: (@MainActor @Sendable (URL) -> Void)?
+    let openSeparateWindow: (@MainActor @Sendable (URL) -> Void)?
+    let openExternalMarkdown: (@MainActor @Sendable (URL) -> Void)?
+    let isEnabled: Bool
+
+    init(_ environment: EnvironmentValues) {
+        // This root owns only the values it forwards. Retaining the complete
+        // parent environment also extends unrelated values and their owners.
+        locale = environment.locale
+        layoutDirection = environment.layoutDirection
+        dynamicTypeSize = environment.dynamicTypeSize
+        colorScheme = environment.colorScheme
+        openURL = environment.openURL
+        visualOverride = ScholiumVisualEnvironmentOverride(
+            increasedContrast: environment.scholiumIncreasedContrast,
+            reduceTransparency: environment.scholiumReduceTransparency,
+            reduceMotion: environment.scholiumReduceMotion,
+            appearsActive: environment.scholiumAppearsActive)
+        visibility = environment.scholiumDocumentSurfaceVisibility
+        fileSelectionPresenter = environment.scholiumFileSelectionPresenter
+        openNewTab = environment.openChatNoteInNewTab
+        openSeparateWindow = environment.openChatNoteInSeparateWindow
+        openExternalMarkdown = environment.openChatExternalMarkdown
+        isEnabled = environment.isEnabled
+    }
+}
+
 struct AgentChatNavigationTransitionContent<Content: View>: View {
     let content: Content
-    let environment: EnvironmentValues
+    let environment: AgentChatNavigationEnvironmentSnapshot
 
     var body: some View {
         // Forward the Chat's presentation and scene actions explicitly. The
@@ -44,19 +81,12 @@ struct AgentChatNavigationTransitionContent<Content: View>: View {
             .environment(\.dynamicTypeSize, environment.dynamicTypeSize)
             .environment(\.colorScheme, environment.colorScheme)
             .environment(\.openURL, environment.openURL)
-            .environment(
-                \.scholiumVisualEnvironmentOverride,
-                ScholiumVisualEnvironmentOverride(
-                    increasedContrast: environment.scholiumIncreasedContrast,
-                    reduceTransparency: environment.scholiumReduceTransparency,
-                    reduceMotion: environment.scholiumReduceMotion,
-                    appearsActive: environment.scholiumAppearsActive)
-            )
-            .environment(\.scholiumDocumentSurfaceVisibility, environment.scholiumDocumentSurfaceVisibility)
-            .environment(\.scholiumFileSelectionPresenter, environment.scholiumFileSelectionPresenter)
-            .environment(\.openChatNoteInNewTab, environment.openChatNoteInNewTab)
-            .environment(\.openChatNoteInSeparateWindow, environment.openChatNoteInSeparateWindow)
-            .environment(\.openChatExternalMarkdown, environment.openChatExternalMarkdown)
+            .environment(\.scholiumVisualEnvironmentOverride, environment.visualOverride)
+            .environment(\.scholiumDocumentSurfaceVisibility, environment.visibility)
+            .environment(\.scholiumFileSelectionPresenter, environment.fileSelectionPresenter)
+            .environment(\.openChatNoteInNewTab, environment.openNewTab)
+            .environment(\.openChatNoteInSeparateWindow, environment.openSeparateWindow)
+            .environment(\.openChatExternalMarkdown, environment.openExternalMarkdown)
             .disabled(!environment.isEnabled)
     }
 }
@@ -68,7 +98,9 @@ final class AgentChatNavigationTransitionHost<Content: View>: ScholiumSurfaceCon
     private var showsList: Bool
 
     init(content: Content, environment: EnvironmentValues, showsList: Bool) {
-        hostingView = NSHostingView(rootView: AgentChatNavigationTransitionContent(content: content, environment: environment))
+        hostingView = NSHostingView(
+            rootView: AgentChatNavigationTransitionContent(
+                content: content, environment: AgentChatNavigationEnvironmentSnapshot(environment)))
         self.showsList = showsList
         super.init(relinquishesToolbarInput: true)
         wantsLayer = true
@@ -106,7 +138,8 @@ final class AgentChatNavigationTransitionHost<Content: View>: ScholiumSurfaceCon
             transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
             layer?.add(transition, forKey: Self.animationKey)
         }
-        hostingView.rootView = AgentChatNavigationTransitionContent(content: content, environment: environment)
+        hostingView.rootView = AgentChatNavigationTransitionContent(
+            content: content, environment: AgentChatNavigationEnvironmentSnapshot(environment))
         if changedPage { hostingView.layoutSubtreeIfNeeded() }
     }
 

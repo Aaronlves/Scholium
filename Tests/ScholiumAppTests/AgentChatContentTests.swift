@@ -46,19 +46,19 @@ struct AgentChatContentTests {
             begin, try event(3, 5, phase: 2), end,
             try event(6, 0, phase: 0, momentum: 1), try event(0, 0, phase: 0, momentum: 3),
         ] {
-            #expect(route.dispatch(value, inlineTarget: horizontal, conversation: scroll))
+            #expect(route.dispatch(value, targets: wheelTargets(horizontal, scroll)))
         }
         #expect(scroll.events.count == 5)
         #expect(scroll.events[2].phase.contains(.ended))
         #expect(scroll.events.last?.momentumPhase.contains(.ended) == true)
         // A new horizontal gesture belongs wholly to WebKit, including its zero-delta end.
-        #expect(route.dispatch(try event(0, 0, phase: 1), inlineTarget: horizontal, conversation: scroll))
-        #expect(route.dispatch(try event(0, 10, phase: 2), inlineTarget: horizontal, conversation: scroll))
-        #expect(route.dispatch(try event(7, 2, phase: 2), inlineTarget: horizontal, conversation: scroll))
-        #expect(route.dispatch(end, inlineTarget: horizontal, conversation: scroll))
+        #expect(route.dispatch(try event(0, 0, phase: 1), targets: wheelTargets(horizontal, scroll)))
+        #expect(route.dispatch(try event(0, 10, phase: 2), targets: wheelTargets(horizontal, scroll)))
+        #expect(route.dispatch(try event(7, 2, phase: 2), targets: wheelTargets(horizontal, scroll)))
+        #expect(route.dispatch(end, targets: wheelTargets(horizontal, scroll)))
         #expect(horizontal.events.count == 4 && scroll.events.count == 5)
         route.reset()
-        #expect(!route.dispatch(begin, inlineTarget: nil, conversation: scroll))
+        #expect(!route.dispatch(begin, targets: wheelTargets(nil, scroll)))
     }
 
     private final class ScrollProbe: NSScrollView {
@@ -88,12 +88,12 @@ struct AgentChatContentTests {
         }
         for horizontal in [false, true, false] {
             let begin = try event(0, 0, phase: 1)
-            let handled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(begin, targets: wheelTargets(target(), conversation))
             #expect(handled)
             events += 1
             for _ in 0..<96 {
                 let change = try event(horizontal ? 1 : 6, horizontal ? 6 : 1, phase: 2)
-                let handled = route.dispatch(change, inlineTarget: target(), conversation: conversation)
+                let handled = route.dispatch(change, targets: wheelTargets(target(), conversation))
                 #expect(handled)
                 events += 1
             }
@@ -102,7 +102,7 @@ struct AgentChatContentTests {
                 try event(horizontal ? 1 : 6, horizontal ? 6 : 1, phase: 0, momentum: 1),
                 try event(0, 0, phase: 0, momentum: 3),
             ] {
-                let handled = route.dispatch(boundary, inlineTarget: target(), conversation: conversation)
+                let handled = route.dispatch(boundary, targets: wheelTargets(target(), conversation))
                 #expect(handled)
                 events += 1
             }
@@ -112,7 +112,7 @@ struct AgentChatContentTests {
         #expect(conversation.events.count == 200 && inline.events.count == 100)
         let beforeUnphased = lookups
         for _ in 0..<3 {
-            let handled = route.dispatch(try event(4, 0, phase: 0), inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(try event(4, 0, phase: 0), targets: wheelTargets(target(), conversation))
             #expect(handled)
         }
         #expect(lookups - beforeUnphased == 3, "Each ordinary wheel event remains independently targeted")
@@ -131,13 +131,13 @@ struct AgentChatContentTests {
         }
         if includesMayBegin {
             let mayBegin = try wheelEvent(0, 0, phase: 128)
-            // Dispatch before #expect so its macro cannot eagerly evaluate the inlineTarget autoclosure.
-            let handled = route.dispatch(mayBegin, inlineTarget: target(), conversation: conversation)
+            // Dispatch before #expect so its macro cannot eagerly evaluate the targets autoclosure.
+            let handled = route.dispatch(mayBegin, targets: wheelTargets(target(), conversation))
             #expect(!handled)
             eligible = true
         }
         let begin = try wheelEvent(0, 0, phase: 1)
-        let beginHandled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+        let beginHandled = route.dispatch(begin, targets: wheelTargets(target(), conversation))
         #expect(!beginHandled)
         eligible = true
         for event in [
@@ -147,13 +147,13 @@ struct AgentChatContentTests {
             try wheelEvent(0, 9, phase: 0, momentum: 2),
             try wheelEvent(0, 0, phase: 0, momentum: 3),
         ] {
-            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
             #expect(!handled)
         }
         #expect(lookups == 1, "A nil initial lookup is a latched platform owner, not an unresolved recipient")
         #expect(inline.events.isEmpty && conversation.events.isEmpty)
         let next = try wheelEvent(0, 9, phase: 1)
-        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        let nextHandled = route.dispatch(next, targets: wheelTargets(target(), conversation))
         #expect(nextHandled)
         #expect(lookups == 2 && inline.events.count == 1 && inline.events[0] === next)
     }
@@ -176,18 +176,18 @@ struct AgentChatContentTests {
             try wheelEvent(0, 0, phase: 8),
         ]
         for event in events {
-            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
             #expect(handled)
         }
         #expect(lookups == 1, "began must continue the already-owned mayBegin preface")
         #expect(inline.events.elementsEqual(events, by: { $0 === $1 }))
         #expect(replacement.events.isEmpty && conversation.events.isEmpty)
         let orphanedChange = try wheelEvent(0, 9, phase: 2)
-        let orphanHandled = route.dispatch(orphanedChange, inlineTarget: target(), conversation: conversation)
+        let orphanHandled = route.dispatch(orphanedChange, targets: wheelTargets(target(), conversation))
         #expect(!orphanHandled)
         #expect(lookups == 1, "A changed event after cancellation cannot create another gesture")
         let next = try wheelEvent(0, 9, phase: 1)
-        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        let nextHandled = route.dispatch(next, targets: wheelTargets(target(), conversation))
         #expect(nextHandled)
         #expect(lookups == 2 && replacement.events.count == 1 && replacement.events[0] === next)
     }
@@ -204,7 +204,7 @@ struct AgentChatContentTests {
         }
         let events = [try wheelEvent(0, 0, phase: 128), try wheelEvent(0, 0, phase: terminalPhase)]
         for event in events {
-            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
             #expect(handled)
         }
         #expect(lookups == 1 && inline.events.isEmpty)
@@ -226,7 +226,7 @@ struct AgentChatContentTests {
             inline = ScrollProbe()
             departed = inline
             let begin = try wheelEvent(8, 0, phase: 1, shift: true)
-            let handled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(begin, targets: wheelTargets(target(), conversation))
             #expect(handled)
             #expect(inline?.events.count == 1 && conversation.events.isEmpty)
             inline = nil
@@ -240,17 +240,17 @@ struct AgentChatContentTests {
             try wheelEvent(0, 9, phase: 0, momentum: 2),
             try wheelEvent(0, 0, phase: 0, momentum: 3),
         ] {
-            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
             #expect(handled)
         }
         #expect(lookups == 1 && inline?.events.isEmpty == true && conversation.events.isEmpty)
         let next = try wheelEvent(8, 0, phase: 1)
-        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        let nextHandled = route.dispatch(next, targets: wheelTargets(target(), conversation))
         #expect(nextHandled)
         #expect(lookups == 2 && conversation.events.count == 1)
     }
 
-    @Test("Installing or resetting a route mid-gesture leaves its remainder with the platform", arguments: [false, true])
+    @Test("An orphaned changed tail remains platform-owned even when momentum begins", arguments: [false, true])
     func wheelOrphanedContinuationRemainsPlatformOwned(startsDuringMomentum: Bool) throws {
         let route = AgentChatWheelRoute()
         let inline = ScrollProbe()
@@ -262,25 +262,161 @@ struct AgentChatContentTests {
         }
         var events = [NSEvent]()
         if !startsDuringMomentum {
-            events += [try wheelEvent(8, 0, phase: 2), try wheelEvent(0, 0, phase: 4)]
+            events += [
+                try wheelEvent(8, 0, phase: 2), try wheelEvent(0, 0, phase: 4),
+                try wheelEvent(8, 0, phase: 0, momentum: 1),
+            ]
         }
         events += [
-            try wheelEvent(8, 0, phase: 0, momentum: 1),
             try wheelEvent(8, 0, phase: 0, momentum: 2),
             try wheelEvent(0, 0, phase: 0, momentum: 3),
         ]
         for _ in 0..<2 {
             for event in events {
-                let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+                let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
                 #expect(!handled)
             }
             route.reset()
         }
         #expect(lookups == 0 && inline.events.isEmpty && conversation.events.isEmpty)
         let next = try wheelEvent(8, 0, phase: 1)
-        let nextHandled = route.dispatch(next, inlineTarget: target(), conversation: conversation)
+        let nextHandled = route.dispatch(next, targets: wheelTargets(target(), conversation))
         #expect(nextHandled)
         #expect(lookups == 1 && conversation.events.count == 1)
+    }
+
+    @Test("Abandoning a page consumes its gesture tail without retargeting", arguments: [false, true])
+    func wheelAbandonedRecipientKeepsOwnership(abandonsBeforeFirstDelta: Bool) throws {
+        let route = AgentChatWheelRoute()
+        let oldInline = ScrollProbe()
+        let oldConversation = ScrollProbe()
+        let newInline = ScrollProbe()
+        let newConversation = ScrollProbe()
+        var inline = oldInline
+        var conversation = oldConversation
+        var lookups = 0
+        func targets() -> AgentChatWheelTargets? {
+            lookups += 1
+            return wheelTargets(inline, conversation)
+        }
+        let begin = try wheelEvent(abandonsBeforeFirstDelta ? 0 : 8, 0, phase: 1)
+        let beginHandled = route.dispatch(begin, targets: targets())
+        #expect(beginHandled)
+        inline = newInline
+        conversation = newConversation
+        route.abandonRecipient()
+        for event in [
+            try wheelEvent(0, 9, phase: 2),
+            try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(0, 9, phase: 0, momentum: 1),
+            try wheelEvent(0, 9, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ] {
+            let handled = route.dispatch(event, targets: targets())
+            #expect(handled)
+        }
+        let expectedOld = abandonsBeforeFirstDelta ? [] : [begin]
+        #expect(oldConversation.events.elementsEqual(expectedOld, by: { $0 === $1 }))
+        #expect(oldInline.events.isEmpty && newInline.events.isEmpty && newConversation.events.isEmpty)
+        #expect(lookups == 1, "Neither a surviving old page nor its replacement can receive the abandoned tail")
+        let next = try wheelEvent(8, 0, phase: 1)
+        let nextHandled = route.dispatch(next, targets: targets())
+        #expect(nextHandled)
+        #expect(lookups == 2 && newConversation.events.count == 1 && newConversation.events[0] === next)
+    }
+
+    @Test("A zero-delta begin weakly locks its original conversation before direction is known")
+    func wheelZeroDeltaBeginKeepsOriginalConversation() throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let replacement = ScrollProbe()
+        var original: ScrollProbe?
+        weak var departed: ScrollProbe?
+        var conversation = replacement
+        var lookups = 0
+        func targets() -> AgentChatWheelTargets? {
+            lookups += 1
+            return wheelTargets(inline, conversation)
+        }
+        try autoreleasepool {
+            original = ScrollProbe()
+            departed = original
+            conversation = try #require(original)
+            let begin = try wheelEvent(0, 0, phase: 1)
+            let beginHandled = route.dispatch(begin, targets: targets())
+            #expect(beginHandled)
+            conversation = replacement
+            let change = try wheelEvent(8, 0, phase: 2)
+            let changeHandled = route.dispatch(change, targets: targets())
+            #expect(changeHandled)
+            #expect(original?.events.elementsEqual([begin, change], by: { $0 === $1 }) == true)
+            #expect(replacement.events.isEmpty && inline.events.isEmpty && lookups == 1)
+            original = nil
+        }
+        #expect(departed == nil, "The captured conversation must remain weak after recipient selection")
+        for event in [
+            try wheelEvent(8, 0, phase: 2), try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(8, 0, phase: 0, momentum: 1), try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ] {
+            let handled = route.dispatch(event, targets: targets())
+            #expect(handled)
+        }
+        #expect(lookups == 1 && replacement.events.isEmpty && inline.events.isEmpty)
+    }
+
+    @Test("An independent native momentum begin owns the complete gesture", arguments: [false, true])
+    func wheelMomentumBeginCanStartOwnership(horizontal: Bool) throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let conversation = ScrollProbe()
+        var lookups = 0
+        func targets() -> AgentChatWheelTargets? {
+            lookups += 1
+            return wheelTargets(inline, conversation)
+        }
+        let events = [
+            try wheelEvent(0, 0, phase: 0, momentum: 1),
+            try wheelEvent(horizontal ? 1 : 9, horizontal ? 9 : 1, phase: 0, momentum: 2),
+            try wheelEvent(horizontal ? 9 : 1, horizontal ? 1 : 9, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ]
+        for event in events {
+            let handled = route.dispatch(event, targets: targets())
+            #expect(handled)
+        }
+        let recipient = horizontal ? inline : conversation
+        let other = horizontal ? conversation : inline
+        #expect(recipient.events.elementsEqual(events, by: { $0 === $1 }))
+        #expect(other.events.isEmpty && lookups == 1)
+        let next = try wheelEvent(horizontal ? 9 : 1, horizontal ? 1 : 9, phase: 0, momentum: 1)
+        let nextHandled = route.dispatch(next, targets: targets())
+        #expect(nextHandled)
+        #expect(lookups == 2 && other.events.count == 1 && other.events[0] === next)
+    }
+
+    @Test("Momentum began preserves an existing touch recipient despite a different direction and page")
+    func wheelMomentumBeginDoesNotReplaceTouchOwner() throws {
+        let route = AgentChatWheelRoute()
+        let inline = ScrollProbe()
+        let conversation = ScrollProbe()
+        let replacement = ScrollProbe()
+        var lookups = 0
+        func targets() -> AgentChatWheelTargets? {
+            lookups += 1
+            return wheelTargets(lookups == 1 ? inline : replacement, conversation)
+        }
+        let events = [
+            try wheelEvent(0, 9, phase: 1), try wheelEvent(0, 0, phase: 4),
+            try wheelEvent(9, 0, phase: 0, momentum: 1),
+            try wheelEvent(9, 0, phase: 0, momentum: 2),
+            try wheelEvent(0, 0, phase: 0, momentum: 3),
+        ]
+        for event in events {
+            let handled = route.dispatch(event, targets: targets())
+            #expect(handled)
+        }
+        #expect(inline.events.elementsEqual(events, by: { $0 === $1 }))
+        #expect(conversation.events.isEmpty && replacement.events.isEmpty && lookups == 1)
     }
 
     @Test("Independent ordinary wheel events preserve an existing phased recipient")
@@ -295,16 +431,16 @@ struct AgentChatContentTests {
             return lookups == 1 ? inline : replacement
         }
         let begin = try wheelEvent(0, 9, phase: 1)
-        let beginHandled = route.dispatch(begin, inlineTarget: target(), conversation: conversation)
+        let beginHandled = route.dispatch(begin, targets: wheelTargets(target(), conversation))
         #expect(beginHandled)
         let ordinaryVertical = try wheelEvent(8, 0, phase: 0)
-        let verticalHandled = route.dispatch(ordinaryVertical, inlineTarget: target(), conversation: conversation)
+        let verticalHandled = route.dispatch(ordinaryVertical, targets: wheelTargets(target(), conversation))
         #expect(verticalHandled)
         let ordinaryShift = try wheelEvent(8, 0, phase: 0, shift: true)
-        let shiftHandled = route.dispatch(ordinaryShift, inlineTarget: target(), conversation: conversation)
+        let shiftHandled = route.dispatch(ordinaryShift, targets: wheelTargets(target(), conversation))
         #expect(shiftHandled)
         let ineligibleOrdinary = try wheelEvent(8, 0, phase: 0)
-        let ineligibleHandled = route.dispatch(ineligibleOrdinary, inlineTarget: nil, conversation: conversation)
+        let ineligibleHandled = route.dispatch(ineligibleOrdinary, targets: wheelTargets(nil, conversation))
         #expect(!ineligibleHandled)
         let tail = [
             try wheelEvent(8, 0, phase: 2),
@@ -313,13 +449,17 @@ struct AgentChatContentTests {
             try wheelEvent(0, 0, phase: 0, momentum: 3),
         ]
         for event in tail {
-            let handled = route.dispatch(event, inlineTarget: target(), conversation: conversation)
+            let handled = route.dispatch(event, targets: wheelTargets(target(), conversation))
             #expect(handled)
         }
         #expect(lookups == 3)
         #expect(inline.events.elementsEqual([begin] + tail, by: { $0 === $1 }))
         #expect(conversation.events.count == 1 && conversation.events[0] === ordinaryVertical)
         #expect(replacement.events.count == 1 && replacement.events[0] === ordinaryShift)
+    }
+
+    private func wheelTargets(_ inline: NSView?, _ conversation: NSScrollView) -> AgentChatWheelTargets? {
+        inline.map { AgentChatWheelTargets(horizontal: $0, vertical: conversation) }
     }
 
     private func wheelEvent(_ y: Int32, _ x: Int32, phase: Int64, momentum: Int64 = 0, shift: Bool = false) throws -> NSEvent {

@@ -11,6 +11,17 @@ extension FocusedValues {
     }
 }
 
+private struct AgentChatActionDrawingKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var agentChatActionsDrawContent: Bool {
+        get { self[AgentChatActionDrawingKey.self] }
+        set { self[AgentChatActionDrawingKey.self] = newValue }
+    }
+}
+
 /// Reveals the existing native footer controls without changing their layout,
 /// keyboard traversal, accessibility elements, or action ownership.
 struct AgentChatMessageActionVisibility<Content: View, Actions: View>: View {
@@ -20,12 +31,13 @@ struct AgentChatMessageActionVisibility<Content: View, Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
     @State private var isHovered = false
     @State private var scope = UUID()
+    @State private var nativeFocus: UUID?
     @FocusedValue(\.agentChatMessageActionScope) private var focusedScope
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
 
     private var showsActions: Bool {
-        isHovered || focusedScope == scope || voiceOverEnabled || switchControlEnabled
+        isHovered || focusedScope == scope || nativeFocus != nil || voiceOverEnabled || switchControlEnabled
     }
 
     var body: some View {
@@ -44,8 +56,8 @@ struct AgentChatMessageActionVisibility<Content: View, Actions: View>: View {
     private var actionRow: some View {
         actions()
             .focusedValue(\.agentChatMessageActionScope, scope)
-            // Conceal drawing only; native focus and accessibility remain intact.
-            .mask { Rectangle().opacity(showsActions ? 1 : 0).accessibilityHidden(true) }
+            .environment(\.agentChatActionFocus, $nativeFocus)
+            .environment(\.agentChatActionsDrawContent, showsActions)
     }
 }
 

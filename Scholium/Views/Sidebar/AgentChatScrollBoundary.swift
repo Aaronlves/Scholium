@@ -2,72 +2,129 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// One event boundary for the transcript. SwiftUI platform hosts can consume
-/// wheel events before either native text or WebKit responder fallback is reached.
-/// Route transcript gestures before dispatch; native details and popovers
-/// retain their own normal scrolling. This view owns no offset or geometry.
+/// The persistent Sidebar pane is the native wheel target. AppKit may retain a
+/// momentum target past its terminal event; that target must not be a reply WK
+/// or a transient transcript subtree. Only current, weak recipients receive input.
+@MainActor
+class AgentChatScrollHost: ScholiumSurfaceContainerView {
+    private weak var boundary: AgentChatScrollBoundary.BoundaryView?
+    private let route = AgentChatWheelRoute()
+    private var forwardingWheel = false
+    var showsChat = false {
+        didSet {
+            if oldValue != showsChat { route.abandonRecipient() }
+        }
+    }
+
+    func register(_ boundary: AgentChatScrollBoundary.BoundaryView) {
+        guard self.boundary !== boundary else { return }
+        route.abandonRecipient()
+        self.boundary = boundary
+    }
+
+    func unregister(_ boundary: AgentChatScrollBoundary.BoundaryView) {
+        guard self.boundary === boundary else { return }
+        route.abandonRecipient()
+        self.boundary = nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        hitTest(point, event: NSApp.currentEvent)
+    }
+
+    func hitTest(_ point: NSPoint, event: NSEvent?) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        guard let event else { return hit }
+        // Every Sidebar page uses the same native wheel target. A gesture
+        // starting in a composer, list or Library cannot later latch a WK when
+        // the pointer or presentation changes. Pointer events stay native.
+        if event.type == .scrollWheel { return self }
+        if showsChat, event.type == .leftMouseDown,
+            let scroller = boundary?.scroller(at: event.locationInWindow)
+        {
+            return scroller
+        }
+        return hit
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        // A recipient's normal responder fallback can return here. This pane
+        // has already dispatched this event; it cannot initiate another route.
+        guard !forwardingWheel else { return }
+        forwardingWheel = true
+        defer { forwardingWheel = false }
+        let point = superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+        _ = route.dispatch(event, targets: wheelTargets(for: event, at: point))
+    }
+
+    private func wheelTargets(for event: NSEvent, at point: NSPoint) -> AgentChatWheelTargets? {
+        guard let hit = super.hitTest(point) else { return nil }
+        if showsChat, let targets = boundary?.targets(for: event, hit: hit) { return targets }
+        let native = (hit as? NSScrollView) ?? hit.enclosingScrollView ?? hit
+        return AgentChatWheelTargets(horizontal: native, vertical: native)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { route.reset() }
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        route.abandonRecipient()
+    }
+}
+
+/// A transcript registers its visible native geometry with the pane. It owns
+/// neither the event monitor nor the lifetime of a wheel gesture.
 struct AgentChatScrollBoundary: NSViewRepresentable {
     @Environment(\.scholiumDocumentSurfaceVisibility) private var surfaceVisibility
     @Environment(\.isEnabled) private var isEnabled
     func makeNSView(context: Context) -> BoundaryView { BoundaryView() }
     func updateNSView(_ view: BoundaryView, context: Context) { view.setActive(surfaceVisibility.isActive && isEnabled) }
-    static func dismantleNSView(_ view: BoundaryView, coordinator: ()) { view.invalidate() }
+    static func dismantleNSView(_ view: BoundaryView, coordinator: ()) { view.retire() }
 
     final class BoundaryView: NSView {
-        private var monitor: Any?
-        private var route = AgentChatWheelRoute()
+        private weak var host: AgentChatScrollHost?
         private(set) var isActive = true
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            updateMonitor()
+            reconcileHost()
+        }
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            reconcileHost()
         }
         func setActive(_ active: Bool) {
-            guard isActive != active else { return }
             isActive = active
-            updateMonitor()
+            reconcileHost()
         }
-        private func updateMonitor() {
-            invalidate()
-            guard isActive, window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown]) { [weak self] event in
-                guard let self else { return event }
-                return self.routeEvent(event)
+        func retire() {
+            isActive = false
+            reconcileHost()
+        }
+        private func reconcileHost() {
+            var ancestor = superview
+            while let view = ancestor, !(view is AgentChatScrollHost) { ancestor = view.superview }
+            let next = isActive && window != nil ? ancestor as? AgentChatScrollHost : nil
+            if host !== next {
+                host?.unregister(self)
+                host = next
             }
+            host?.register(self)
         }
-        func invalidate() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            route.reset()
+        func scroller(at windowPoint: NSPoint) -> NSScroller? {
+            guard isActive, !isHiddenOrHasHiddenAncestor,
+                let bar = enclosingScrollView?.verticalScroller, bar.isEnabled, !bar.isHidden,
+                bar.bounds.contains(bar.convert(windowPoint, from: nil))
+            else { return nil }
+            return bar
         }
-        private func routeEvent(_ event: NSEvent) -> NSEvent? {
-            guard let window, event.window === window, !isHiddenOrHasHiddenAncestor,
-                let scroll = enclosingScrollView, let content = window.contentView
-            else {
-                route.reset()
-                return event
-            }
-            if event.type == .leftMouseDown {
-                // The platform content group can also mask the overlay scroller.
-                // Delegate its real hit region to AppKit's own tracking loop.
-                if let bar = scroll.verticalScroller, bar.isEnabled, !bar.isHidden,
-                    bar.bounds.contains(bar.convert(event.locationInWindow, from: nil))
-                {
-                    bar.mouseDown(with: event)
-                    return nil
-                }
-                return event
-            }
-            return route.dispatch(
-                event, inlineTarget: inlineTarget(for: event, conversation: scroll, content: content), conversation: scroll
-            ) ? nil : event
-        }
-
-        private func inlineTarget(for event: NSEvent, conversation scroll: NSScrollView, content: NSView) -> NSView? {
-            let hit = content.hitTest(content.convert(event.locationInWindow, from: nil))
-            // SwiftUI's platform group can terminate hitTest before the embedded
-            // WKContentView. Locate the typed reader by native visible geometry,
-            // clipped to the transcript above its composer inset.
+        func conversation(for event: NSEvent, hit: NSView?) -> NSScrollView? {
+            guard isActive, !isHiddenOrHasHiddenAncestor, window != nil,
+                let scroll = enclosingScrollView
+            else { return nil }
             var viewport = scroll.contentView.bounds
             let insets = scroll.contentInsets
             viewport.origin.y += scroll.contentView.isFlipped ? insets.top : insets.bottom
@@ -78,20 +135,26 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
                 nested.map {
                     $0 !== scroll && ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 1
                 } ?? false
-            let eligible = viewport.contains(point) && !(hit is NSScroller) && !ownsLocalVerticalScroll
-            let reply = eligible ? Self.inlineReply(in: scroll.documentView, at: event.locationInWindow) : nil
-            let target =
+            guard viewport.contains(point), !(hit is NSScroller) else { return nil }
+            if ownsLocalVerticalScroll {
+                return nested
+            }
+            return scroll
+        }
+        func targets(for event: NSEvent, hit: NSView?) -> AgentChatWheelTargets? {
+            guard let scroll = conversation(for: event, hit: hit) else { return nil }
+            let reply = Self.inlineReply(in: scroll.documentView, at: event.locationInWindow)
+            let nested = (hit as? NSScrollView) ?? hit?.enclosingScrollView
+            let localScroll = nested !== scroll ? nested : nil
+            let inline =
                 reply.flatMap { view in
                     view.hitTest(view.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow)
-                } ?? reply ?? hit ?? scroll
-            return eligible ? target : nil
+                } ?? reply ?? localScroll ?? scroll
+            return AgentChatWheelTargets(horizontal: inline, vertical: scroll)
         }
         static func inlineReply(in root: NSView?, at windowPoint: NSPoint) -> AgentChatReadWebView? {
             guard let root, !root.isHiddenOrHasHiddenAncestor else { return nil }
             if let reply = root as? AgentChatReadWebView {
-                // Disabled disclosures retain their readers and selection, but
-                // cannot own input. WebKit's internal descendants never identify
-                // another Chat reply, including when this reply is offscreen.
                 return reply.isChatInteractive && reply.bounds.contains(reply.convert(windowPoint, from: nil)) ? reply : nil
             }
             for child in root.subviews.reversed() {
@@ -102,16 +165,22 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
     }
 }
 
+struct AgentChatWheelTargets {
+    let horizontal: NSView
+    let vertical: NSView
+}
+
 /// Latches one native recipient for a whole gesture, including zero-delta
 /// boundaries and momentum. No synthetic deltas, timers or offset writes.
 @MainActor
 final class AgentChatWheelRoute {
-    private enum Owner { case platform, transcript }
+    private enum Owner { case unclaimed, routed }
     private var owner: Owner?
     private var awaitingBegan = false
     private var recipientSelected = false
     private weak var target: NSView?
     private weak var initialTarget: NSView?
+    private weak var verticalTarget: NSView?
     private var pending: [NSEvent] = []
     func reset() {
         owner = nil
@@ -119,42 +188,48 @@ final class AgentChatWheelRoute {
         recipientSelected = false
         target = nil
         initialTarget = nil
+        verticalTarget = nil
         pending = []
     }
 
     @discardableResult
-    func dispatch(_ event: NSEvent, inlineTarget: @autoclosure () -> NSView?, conversation: NSScrollView) -> Bool {
+    func dispatch(_ event: NSEvent, targets: @autoclosure () -> AgentChatWheelTargets?) -> Bool {
         let phased = !event.phase.isEmpty || !event.momentumPhase.isEmpty
         if !phased {
             // Legacy wheel events have no gesture lifetime and may be interleaved
             // with a trackpad sequence. They cannot replace its latched owner.
-            guard let inline = inlineTarget() else { return false }
+            guard let targets = targets() else { return false }
             let recipient =
                 !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
-                ? conversation : inline
+                ? targets.vertical : targets.horizontal
             recipient.scrollWheel(with: event)
             return true
         }
         if event.phase.contains(.mayBegin) {
-            if !awaitingBegan { begin(inlineTarget()) }
+            if !awaitingBegan { begin(targets()) }
             awaitingBegan = true
         } else if event.phase.contains(.began) {
-            if !awaitingBegan { begin(inlineTarget()) }
+            if !awaitingBegan { begin(targets()) }
             awaitingBegan = false
         }
+        if event.momentumPhase.contains(.began), owner == nil { begin(targets()) }
         if event.phase.contains(.ended) { awaitingBegan = false }
         defer {
             if event.phase.contains(.cancelled) || event.momentumPhase.contains(.ended) { reset() }
         }
-        // A nil lookup is a platform-owned gesture, not an unresolved target.
-        // Installation/reset during a gesture also leaves its tail with AppKit.
-        if owner == nil { owner = .platform }
-        guard owner == .transcript else { return false }
+        // An ineligible start or orphaned continuation cannot acquire a new
+        // recipient halfway through the native gesture.
+        if owner == nil { owner = .unclaimed }
+        guard owner == .routed else { return false }
         let hasDelta = event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0
-        if !recipientSelected, !hasDelta, !event.phase.contains(.ended), !event.phase.contains(.cancelled) {
+        if !recipientSelected, !hasDelta, !event.phase.contains(.ended), !event.phase.contains(.cancelled),
+            !event.momentumPhase.contains(.ended)
+        {
             // Keep the actual mayBegin/began prefix until direction is known.
             // Stationary changes add no unbounded queue of zero-delta events.
-            if event.phase.contains(.began) || (event.phase.contains(.mayBegin) && pending.isEmpty) {
+            if event.phase.contains(.began) || event.momentumPhase.contains(.began)
+                || (event.phase.contains(.mayBegin) && pending.isEmpty)
+            {
                 pending.append(event)
             }
             return true
@@ -163,7 +238,7 @@ final class AgentChatWheelRoute {
             recipientSelected = true
             target =
                 !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
-                ? conversation : initialTarget
+                ? verticalTarget : initialTarget
         }
         guard let target else {
             // A removed weak recipient must not hand an already-consumed begin
@@ -177,9 +252,20 @@ final class AgentChatWheelRoute {
         return true
     }
 
-    private func begin(_ inline: NSView?) {
+    /// Retiring a presentation revokes its input without handing the tail of
+    /// an already-owned gesture to a replacement page.
+    func abandonRecipient() {
+        target = nil
+        initialTarget = nil
+        verticalTarget = nil
+        pending = []
+        recipientSelected = true
+    }
+
+    private func begin(_ targets: AgentChatWheelTargets?) {
         reset()
-        initialTarget = inline
-        owner = inline == nil ? .platform : .transcript
+        initialTarget = targets?.horizontal
+        verticalTarget = targets?.vertical
+        owner = targets == nil ? .unclaimed : .routed
     }
 }

@@ -467,17 +467,12 @@ private struct AgentChatRichObjectActions: View {
                 .accessibilityHidden(true)
         } actions: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                ScholiumCopyButton(copy: copy)
-                    .accessibilityIdentifier("scholium.chat.copyObject")
-                Button {
+                AgentChatCopyButton(accessibilityID: "scholium.chat.copyObject", copy: copy)
+                AgentChatActionButton(label: "Expand", systemImage: ScholiumSidebarAction.expand.symbol,
+                    accessibilityID: "scholium.chat.expandObject") {
                     if let origin { expand(origin) }
-                } label: {
-                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
                 }
-                .help("Expand").accessibilityLabel("Expand")
-                .accessibilityIdentifier("scholium.chat.expandObject")
             }
-            .buttonStyle(ScholiumContentActionButtonStyle())
         }
         // The origin exists even while the action row's drawing is concealed.
         // Accessibility activation must not depend on a prior pointer reveal.

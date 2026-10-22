@@ -20,7 +20,7 @@ struct AgentChatReadingTests {
                             quote: { _ in }, openLink: { _ in })
                     }
                 } actions: {
-                    Button("Copy Markdown") {}
+                    AgentChatActionButton(label: "Copy Markdown", systemImage: "doc.on.doc") {}
                         .contextMenu { Button("Quote in Reply") {} }
                 }
                 .padding(20)

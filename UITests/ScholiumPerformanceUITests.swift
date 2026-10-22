@@ -855,6 +855,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "SCHOLIUM_PERFORMANCE_EXPECTED_COUNT": "160",
             "SCHOLIUM_PERFORMANCE_SAMPLE": "0", "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
         ]
+        if environment["SCHOLIUM_APP_LIFECYCLE_MALLOC_STACKS"] == "1" {
+            application.launchEnvironment["MallocStackLogging"] = "lite"
+        }
         var sequence = 0
         var windowEntry = "automatic"
         var startupSampleExcluded = false
@@ -987,6 +990,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
         func verifyIndex(_ phase: String) throws {
             try mark("\(phase)_index_started")
             let started = DispatchTime.now().uptimeNanoseconds
+            _ = try XCTUnwrap(waitUntil(timeout: 90) {
+                !application.descendants(matching: .any)["scholium.refreshStatus"].exists
+            } ? true : nil, "After Library readiness, the initial refresh must finish before query input.")
             let field = application.searchFields["scholium.searchField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 10))
             func commitQuery(_ query: String) throws {

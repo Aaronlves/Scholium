@@ -4,7 +4,7 @@ import SwiftUI
 /// The selected page changes immediately; Core Animation presents its old and
 /// new contents without giving the hidden page another interaction route.
 @MainActor
-private final class SidebarPageTransitionView: ScholiumSurfaceContainerView {
+private final class SidebarPageTransitionView: AgentChatScrollHost {
     static let animationKey = kCATransition
 
     override func viewDidMoveToWindow() {
@@ -125,6 +125,7 @@ final class ScholiumSidebarViewController<Library: View, Chat: View>: NSViewCont
         {
             view.window?.makeFirstResponder(nil)
         }
+        (view as? SidebarPageTransitionView)?.showsChat = selection == .chat
         let libraryIsVisible = selection == .library
         let chatIsVisible = selection == .chat
         libraryHost.view.isHidden = !libraryIsVisible

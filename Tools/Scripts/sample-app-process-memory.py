@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import errno
 import json
 import os
 import re
@@ -65,6 +66,10 @@ OTHER_SERVICE_EXECUTABLES = {
 
 class SamplingError(RuntimeError):
     pass
+
+
+class ProcessChanged(SamplingError):
+    """An observed exit or identity change invalidates the whole sample."""
 
 
 @dataclass(frozen=True)
@@ -159,8 +164,9 @@ def parse_ps_rows(source: str, expected_pids: set[int]) -> dict[int, tuple[int, 
         missing = sorted(expected_pids - set(rows))
         extra = sorted(set(rows) - expected_pids)
         raise SamplingError(f"process set changed during sampling; missing={missing}, extra={extra}")
-    if any(rss_kib <= 0 for rss_kib, _ in rows.values()):
-        raise SamplingError("ps returned a nonpositive RSS value")
+    for pid, (rss_kib, _) in rows.items():
+        if rss_kib <= 0:
+            raise SamplingError(f"ps returned a nonpositive RSS value for PID {pid}")
     return rows
 
 
@@ -172,7 +178,9 @@ def validate_process_paths(
 ) -> None:
     expected_executable = normalized(app / "Contents/MacOS/Scholium")
     if rows[app_pid][1] != expected_executable:
-        raise SamplingError("the supplied PID does not execute the supplied Scholium app")
+        raise SamplingError(
+            f"PID {app_pid} role app has unexpected executable {str(rows[app_pid][1])!r}"
+        )
     if services.originator != normalized(app):
         raise SamplingError("launchctl originator does not match the supplied Scholium app")
 
@@ -184,13 +192,20 @@ def validate_process_paths(
     for pid, role in services.role_by_pid.items():
         executable = rows[pid][1]
         if "/WebKit.framework/" not in str(executable):
-            raise SamplingError(f"service PID {pid} is not a WebKit framework executable")
+            raise SamplingError(
+                f"service PID {pid} role {role} is not a WebKit framework executable: {str(executable)!r}"
+            )
         if executable.name != expected_suffix[role]:
-            raise SamplingError(f"service PID {pid} executable does not match role {role}")
+            raise SamplingError(
+                f"service PID {pid} executable {str(executable)!r} does not match role {role}"
+            )
     for pid, labels in services.additional_labels_by_pid.items():
         expected = {normalized(OTHER_SERVICE_EXECUTABLES[label]) for label in labels}
         if len(expected) != 1 or rows[pid][1] not in expected:
-            raise SamplingError(f"originator service PID {pid} executable does not match its allowlisted labels")
+            raise SamplingError(
+                f"originator service PID {pid} role other_services executable {str(rows[pid][1])!r} "
+                "does not match its allowlisted labels"
+            )
 
 
 def find_unique_app_pid(app: Path) -> int:
@@ -232,26 +247,72 @@ class RUsageInfoV0(ctypes.Structure):
     ]
 
 
-def physical_footprint_bytes(pid: int) -> int:
-    try:
-        library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-        read_usage = library.proc_pid_rusage
-    except (OSError, AttributeError) as error:
-        raise SamplingError("proc_pid_rusage is unavailable") from error
-    read_usage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
-    read_usage.restype = ctypes.c_int
-    usage = RUsageInfoV0()
-    ctypes.set_errno(0)
-    if read_usage(pid, 0, ctypes.byref(usage)) != 0:
+@dataclass(frozen=True)
+class ProcessReading:
+    start_abstime: int
+    executable_uuid: bytes
+    executable: Path
+    physical_footprint: int
+
+    @property
+    def identity(self) -> tuple[int, bytes, Path]:
+        return self.start_abstime, self.executable_uuid, self.executable
+
+
+class ProcessReader:
+    def __init__(self) -> None:
+        try:
+            library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            self.read_usage = library.proc_pid_rusage
+            self.read_path = library.proc_pidpath
+        except (OSError, AttributeError) as error:
+            raise SamplingError("public libproc process inspection is unavailable") from error
+        self.read_usage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
+        self.read_usage.restype = ctypes.c_int
+        self.read_path.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+        self.read_path.restype = ctypes.c_int
+
+    @staticmethod
+    def failed(operation: str, pid: int) -> SamplingError:
         error_number = ctypes.get_errno()
-        raise SamplingError(
-            f"proc_pid_rusage failed for PID {pid}: {os.strerror(error_number)}"
+        if error_number == errno.ESRCH:
+            return ProcessChanged(f"process set changed during sampling; PID {pid} no longer exists ({operation})")
+        return SamplingError(f"{operation} failed for PID {pid}: {os.strerror(error_number)}")
+
+    def usage(self, pid: int) -> RUsageInfoV0:
+        usage = RUsageInfoV0()
+        ctypes.set_errno(0)
+        if self.read_usage(pid, 0, ctypes.byref(usage)) != 0:
+            raise self.failed("proc_pid_rusage", pid)
+        if usage.ri_proc_exit_abstime != 0:
+            raise ProcessChanged(f"process set changed during sampling; PID {pid} exited")
+        if usage.ri_proc_start_abstime == 0:
+            raise SamplingError(f"proc_pid_rusage returned no process start identity for PID {pid}")
+        return usage
+
+    def read(self, pid: int) -> ProcessReading:
+        usage = self.usage(pid)
+        # Selected SDK sys/proc_info.h: PROC_PIDPATHINFO_MAXSIZE = 4 * MAXPATHLEN.
+        buffer = ctypes.create_string_buffer(4_096)
+        ctypes.set_errno(0)
+        length = self.read_path(pid, buffer, len(buffer))
+        if length <= 0:
+            error = self.failed("proc_pidpath", pid)
+            # Path lookup can race an exit after the usage read. Only a public
+            # exit/identity observation, never an arbitrary path error, permits
+            # the caller to discard this transaction as a lifecycle change.
+            current = self.usage(pid)
+            if (current.ri_proc_start_abstime, bytes(current.ri_uuid)) != (
+                usage.ri_proc_start_abstime, bytes(usage.ri_uuid)
+            ):
+                raise ProcessChanged(f"process set changed during sampling; PID {pid} identity changed during path lookup")
+            raise error
+        if length >= len(buffer) or not buffer.value or not buffer.value.startswith(b"/"):
+            raise SamplingError(f"proc_pidpath returned an invalid executable path for PID {pid}")
+        return ProcessReading(
+            int(usage.ri_proc_start_abstime), bytes(usage.ri_uuid), normalized(os.fsdecode(buffer.value)),
+            int(usage.ri_phys_footprint),
         )
-    if usage.ri_proc_exit_abstime != 0:
-        raise SamplingError(f"process set changed during sampling; PID {pid} exited before physical footprint collection")
-    if usage.ri_phys_footprint <= 0:
-        raise SamplingError(f"proc_pid_rusage returned no live physical footprint for PID {pid}")
-    return int(usage.ri_phys_footprint)
 
 
 def sample(
@@ -270,31 +331,63 @@ def sample(
     if app_pid <= 0:
         raise SamplingError("app PID must be positive")
 
-    launchctl = subprocess.run(
-        ["/bin/launchctl", "print", f"pid/{app_pid}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if launchctl.returncode != 0:
-        raise SamplingError("launchctl could not inspect the supplied app PID")
-    services = parse_launchctl_print(
-        launchctl.stdout, allow_partial_webkit=allow_partial_webkit,
-        include_other_owned_services=include_other_owned_services,
-    )
+    reader = ProcessReader()
+    before = {app_pid: reader.read(app_pid)}
+    pending_error: SamplingError | None = None
+    try:
+        launchctl = subprocess.run(
+            ["/bin/launchctl", "print", f"pid/{app_pid}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if launchctl.returncode != 0:
+            raise SamplingError("launchctl could not inspect the supplied app PID")
+        services = parse_launchctl_print(
+            launchctl.stdout, allow_partial_webkit=allow_partial_webkit,
+            include_other_owned_services=include_other_owned_services,
+        )
+        expected_pids = {app_pid, *services.role_by_pid.keys(), *services.additional_labels_by_pid.keys()}
+        for pid in sorted(expected_pids - {app_pid}):
+            before[pid] = reader.read(pid)
+        ps = subprocess.run(
+            ["/bin/ps", "-p", ",".join(str(pid) for pid in sorted(expected_pids)),
+             "-o", "pid=,rss=,comm="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if ps.returncode != 0:
+            raise SamplingError("ps could not inspect the attributed process set")
+        ps_rows = parse_ps_rows(ps.stdout, expected_pids)
+        # ps remains the RSS authority. Its presentation of comm is not the
+        # executable identity; obtain that path directly from the kernel.
+        rows = {pid: (ps_rows[pid][0], before[pid].executable) for pid in expected_pids}
+        validate_process_paths(app, app_pid, services, rows)
+    except SamplingError as error:
+        pending_error = error
 
-    expected_pids = {app_pid, *services.role_by_pid.keys(), *services.additional_labels_by_pid.keys()}
-    ps = subprocess.run(
-        ["/bin/ps", "-p", ",".join(str(pid) for pid in sorted(expected_pids)),
-         "-o", "pid=,rss=,comm="],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if ps.returncode != 0:
-        raise SamplingError("ps could not inspect the attributed process set")
-    rows = parse_ps_rows(ps.stdout, expected_pids)
-    validate_process_paths(app, app_pid, services, rows)
+    after: dict[int, ProcessReading] = {}
+    endpoint_error: SamplingError | None = None
+    changed: ProcessChanged | None = None
+    # Complete the endpoint check even when ps/path validation failed. A proven
+    # exit or PID/exec change invalidates all metrics, never just one process.
+    for pid, initial in sorted(before.items()):
+        try:
+            current = reader.read(pid)
+            after[pid] = current
+            if current.identity != initial.identity:
+                raise ProcessChanged(f"process set changed during sampling; PID {pid} identity changed")
+        except ProcessChanged as error:
+            changed = changed or error
+        except SamplingError as error:
+            endpoint_error = endpoint_error or error
+    if changed is not None:
+        raise changed
+    if pending_error is not None:
+        raise pending_error
+    if endpoint_error is not None:
+        raise endpoint_error
 
     role_by_pid = {app_pid: "app", **services.role_by_pid}
     roles = ["app", *sorted(EXPECTED_WEBKIT_ROLES)]
@@ -331,7 +424,9 @@ def sample(
     if include_physical_footprint:
         footprint_by_role = dict.fromkeys(resident_by_role, 0)
         for pid, role in sorted(role_by_pid.items()):
-            footprint_by_pid[pid] = physical_footprint_bytes(pid)
+            footprint_by_pid[pid] = after[pid].physical_footprint
+            if footprint_by_pid[pid] <= 0:
+                raise SamplingError(f"proc_pid_rusage returned no live physical footprint for PID {pid}")
             footprint_by_role[role] += footprint_by_pid[pid]
         result["physical_footprint_bytes"] = sum(footprint_by_role.values())
         result["role_physical_footprint_bytes"] = footprint_by_role
@@ -483,11 +578,11 @@ def self_test() -> None:
     assert rows[102][0] == 20
     validate_process_paths(Path("/tmp/Scholium-QA.app"), 42, parsed, rows)
 
-    def requires_error(operation) -> None:
+    def requires_error(operation) -> SamplingError:
         try:
             operation()
-        except SamplingError:
-            return
+        except SamplingError as error:
+            return error
         raise AssertionError("invalid attribution or unavailable measurement must fail closed")
 
     missing_role = launchctl.replace(
@@ -513,6 +608,8 @@ def self_test() -> None:
     # launching an app or querying unrelated processes during this self-test.
     assert ctypes.sizeof(RUsageInfoV0) == 96
     assert RUsageInfoV0.ri_phys_footprint.offset == 72
+    assert RUsageInfoV0.ri_proc_start_abstime.offset == 80
+    assert RUsageInfoV0.ri_proc_exit_abstime.offset == 88
     measured_pids: list[int] = []
     footprints = {42: 75_000, 101: 5_000, 102: 10_000, 103: 15_000}
 
@@ -520,17 +617,48 @@ def self_test() -> None:
         assert flavor == 0
         measured_pids.append(pid)
         usage = ctypes.cast(buffer, ctypes.POINTER(RUsageInfoV0)).contents
-        usage.ri_phys_footprint = footprints[pid]
+        usage.ri_phys_footprint = footprints.get(pid, 1_000)
+        usage.ri_proc_start_abstime = pid * 1_000
+        usage.ri_uuid[:] = pid.to_bytes(16, "little")
         return 0
 
-    def captured(source: str, process_rows: str, **options) -> dict[str, object]:
+    def captured(
+        source: str, process_rows: str, *, kernel_paths=None, usage_callback=None,
+        path_callback=None, ps_callback=None, **options,
+    ) -> dict[str, object]:
+        measured_pids.clear()
+        paths = {
+            int(fields[0]): fields[2]
+            for line in process_rows.splitlines()
+            if len(fields := line.strip().split(maxsplit=2)) == 3
+        } if kernel_paths is None else kernel_paths
+
+        def read_path(pid, buffer, capacity):
+            if path_callback is not None:
+                return path_callback(pid, buffer, capacity)
+            if pid not in paths:
+                ctypes.set_errno(errno.ESRCH)
+                return 0
+            raw = os.fsencode(paths[pid])
+            assert len(raw) < capacity
+            buffer.value = raw
+            return len(raw)
+
         results = [
             subprocess.CompletedProcess([], 0, stdout=source, stderr=""),
             subprocess.CompletedProcess([], 0, stdout=process_rows, stderr=""),
         ]
+
+        def run(command, **kwargs):
+            if command[0] == "/bin/ps" and ps_callback is not None:
+                ps_callback()
+            return results.pop(0)
+
         with patch.object(Path, "is_file", return_value=True), \
-                patch.object(subprocess, "run", side_effect=results), \
-                patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=read_usage)):
+                patch.object(subprocess, "run", side_effect=run), \
+                patch.object(ctypes, "CDLL", return_value=SimpleNamespace(
+                    proc_pid_rusage=usage_callback or read_usage, proc_pidpath=read_path,
+                )):
             return sample(Path("/tmp/Scholium-QA.app"), 42, **options)
 
     strict = captured(launchctl, ps)
@@ -539,7 +667,7 @@ def self_test() -> None:
         "role_process_counts", "role_resident_bytes",
     }
     assert strict["resident_bytes"] == 160 * 1_024
-    assert not measured_pids  # Default capture does not invoke the optional API.
+    assert measured_pids == [42, 101, 102, 103] * 2  # Identity checks are mandatory.
 
     options = dict(allow_partial_webkit=True, include_process_ids=True, include_physical_footprint=True)
     startup = captured(no_workers, ps.splitlines()[0], **options)
@@ -551,7 +679,7 @@ def self_test() -> None:
     assert startup["process_resident_bytes"] == {"42": 100 * 1_024}
     assert startup["role_physical_footprint_bytes"] == {"app": 75_000, "gpu": 0, "networking": 0, "web_content": 0}
     assert startup["process_physical_footprint_bytes"] == {"42": 75_000}
-    assert startup["physical_footprint_bytes"] == 75_000 and measured_pids == [42]
+    assert startup["physical_footprint_bytes"] == 75_000 and measured_pids == [42, 42]
     measured_pids.clear()
 
     partial_rows = "\n".join(ps.splitlines()[:3])
@@ -560,7 +688,7 @@ def self_test() -> None:
     assert partial["physical_footprint_bytes"] == 90_000
     assert partial["process_physical_footprint_bytes"] == {"42": 75_000, "101": 5_000, "102": 10_000}
     assert partial["role_process_ids"]["networking"] == []
-    assert measured_pids == [42, 101, 102]
+    assert measured_pids == [42, 101, 102] * 2
     measured_pids.clear()
     complete = captured(launchctl, ps, **options)
     assert complete["missing_webkit_roles"] == []
@@ -570,7 +698,7 @@ def self_test() -> None:
     assert complete["role_process_ids"]["web_content"] == [102]
     expected_resident = {"42": 100 * 1_024, "101": 10 * 1_024, "102": 20 * 1_024, "103": 30 * 1_024}
     assert complete["process_resident_bytes"] == expected_resident
-    assert measured_pids == [42, 101, 102, 103]
+    assert measured_pids == [42, 101, 102, 103] * 2
     measured_pids.clear()
 
     footprint_without_ids = captured(launchctl, ps, include_physical_footprint=True)
@@ -579,14 +707,14 @@ def self_test() -> None:
     assert "process_physical_footprint_bytes" not in footprint_without_ids
     assert footprint_without_ids["physical_footprint_bytes"] == complete["physical_footprint_bytes"]
     assert footprint_without_ids["role_physical_footprint_bytes"] == complete["role_physical_footprint_bytes"]
-    assert measured_pids == [42, 101, 102, 103]
+    assert measured_pids == [42, 101, 102, 103] * 2
     measured_pids.clear()
     ids_without_footprint = captured(launchctl, ps, include_process_ids=True)
     assert ids_without_footprint["role_process_ids"] == complete["role_process_ids"]
     assert ids_without_footprint["process_resident_bytes"] == expected_resident
     assert "process_physical_footprint_bytes" not in ids_without_footprint
     assert "physical_footprint_bytes" not in ids_without_footprint
-    assert not measured_pids
+    assert measured_pids == [42, 101, 102, 103] * 2
 
     # Two workers of the same role and deliberately shuffled ps rows distinguish
     # PID identity from row position, while freezing ps's KiB-to-byte conversion.
@@ -610,13 +738,13 @@ def self_test() -> None:
     assert sum(multiple["process_resident_bytes"].values()) == multiple["resident_bytes"]
     for role, pids in multiple["role_process_ids"].items():
         assert sum(multiple["process_resident_bytes"][str(pid)] for pid in pids) == multiple["role_resident_bytes"][role]
-    assert "physical_footprint_bytes" not in multiple and not measured_pids
+    assert "physical_footprint_bytes" not in multiple
+    assert measured_pids == [42, 101, 102, 103, 104] * 2
 
     requires_error(lambda: captured(no_workers.replace("Scholium-QA.app", "Foreign.app"), ps.splitlines()[0], **options))
     requires_error(lambda: captured(no_workers, ps.splitlines()[0].replace("/Scholium", "/Foreign"), **options))
     requires_error(lambda: captured(missing_role, partial_rows.replace("com.apple.WebKit.GPU", "com.apple.WebKit.Networking"), **options))
     requires_error(lambda: captured(missing_role, ps.splitlines()[0], **options))
-    assert not measured_pids  # Attribution is checked before optional measurements.
 
     panel_label = "com.apple.appkit.xpc.openAndSavePanelService"
     panel_path = (
@@ -642,7 +770,7 @@ def self_test() -> None:
         footprints[201 + index] = (index + 2) * 1_000
     narrow = captured(all_services, ps)
     assert set(narrow) == set(strict) and narrow["role_process_counts"] == strict["role_process_counts"]
-    assert narrow["scope"] == "app_plus_attributed_webkit_services" and not measured_pids
+    assert narrow["scope"] == "app_plus_attributed_webkit_services"
     full_options = {**options, "include_other_owned_services": True}
     whole_domain = captured(all_services, all_rows, **full_options)
     assert whole_domain["scope"] == "app_plus_attributed_originator_services"
@@ -662,7 +790,7 @@ def self_test() -> None:
     for role, pids in whole_domain["role_process_ids"].items():
         assert sum(whole_domain["process_resident_bytes"][str(pid)] for pid in pids) == whole_domain["role_resident_bytes"][role]
         assert sum(whole_domain["process_physical_footprint_bytes"][str(pid)] for pid in pids) == whole_domain["role_physical_footprint_bytes"][role]
-    assert measured_pids == [42, 101, 102, 103, 201, 202, 203, 204, 205]
+    assert measured_pids == [42, 101, 102, 103, 201, 202, 203, 204, 205] * 2
     assert len(whole_domain["additional_owned_services"]) == 5
     assert whole_domain["additional_owned_services"][0] == {
         "pid": 201, "labels": [labels[0]], "executable": str(normalized(OTHER_SERVICE_EXECUTABLES[labels[0]])),
@@ -690,39 +818,91 @@ def self_test() -> None:
     requires_error(lambda: parse_launchctl_print("originator = /tmp/Scholium-QA.app\n", **{
         "allow_partial_webkit": True, "include_other_owned_services": True,
     }))
-    assert not measured_pids
 
-    def rejected_usage(pid, flavor, buffer):
-        ctypes.set_errno(1)
-        return -1
+    kernel_paths = {pid: str(path) for pid, (_, path) in rows.items()}
+    lifecycle_prefix = "process set changed during sampling;"
 
-    with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=rejected_usage)):
-        requires_error(lambda: physical_footprint_bytes(42))
+    # Kernel identity must tolerate ps display truncation without relaxing the
+    # executable allowlist. Stable unrecognized kernel paths remain fatal.
+    truncated_comm = ps.replace(str(rows[101][1]), "/display/truncated")
+    assert captured(launchctl, truncated_comm, kernel_paths=kernel_paths)["resident_bytes"] == strict["resident_bytes"]
+    foreign_paths = {**kernel_paths, 101: "/System/Library/Foreign"}
+    error = requires_error(lambda: captured(launchctl, ps, kernel_paths=foreign_paths))
+    assert not str(error).startswith(lifecycle_prefix)
+    assert "PID 101 role gpu" in str(error) and "/System/Library/Foreign" in str(error)
 
-    def exited_usage(pid, flavor, buffer):
-        buffer._obj.ri_proc_exit_abstime = 1
-        buffer._obj.ri_phys_footprint = 0
-        return 0
+    zero_rss = ps.replace("101 10 ", "101 0 ")
+    error = requires_error(lambda: captured(launchctl, zero_rss))
+    assert "nonpositive RSS value for PID 101" in str(error)
+    assert not str(error).startswith(lifecycle_prefix)
 
-    with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=exited_usage)):
-        try:
-            physical_footprint_bytes(42)
-        except SamplingError as error:
-            assert str(error).startswith("process set changed during sampling;")
-        else:
-            raise AssertionError("An exited service must invalidate the entire sample")
+    def endpoint_usage(change):
+        def read(pid, flavor, buffer):
+            result = read_usage(pid, flavor, buffer)
+            if pid == 101 and measured_pids.count(pid) == 2:
+                change(buffer._obj)
+            return result
+        return read
 
-    def invalid_live_usage(pid, flavor, buffer):
-        buffer._obj.ri_phys_footprint = 0
-        return 0
+    for mutate in (
+        lambda usage: setattr(usage, "ri_proc_exit_abstime", 1),
+        lambda usage: setattr(usage, "ri_proc_start_abstime", 999_999),
+        lambda usage: usage.ri_uuid.__setitem__(0, 255),
+    ):
+        error = requires_error(lambda: captured(launchctl, zero_rss, usage_callback=endpoint_usage(mutate)))
+        assert str(error).startswith(lifecycle_prefix)
 
-    with patch.object(ctypes, "CDLL", return_value=SimpleNamespace(proc_pid_rusage=invalid_live_usage)):
-        try:
-            physical_footprint_bytes(42)
-        except SamplingError as error:
-            assert str(error).startswith("proc_pid_rusage returned no live physical footprint")
-        else:
-            raise AssertionError("A live service with no footprint must fail closed")
+    # An exec that changes only the executable path also invalidates the
+    # transaction, including when its initial path was already unrecognized.
+    changed_paths = dict(foreign_paths)
+    def change_path():
+        changed_paths[101] = kernel_paths[101]
+    error = requires_error(lambda: captured(
+        launchctl, ps, kernel_paths=changed_paths, ps_callback=change_path,
+    ))
+    assert str(error).startswith(lifecycle_prefix)
+
+    def unavailable_usage(error_number, *, endpoint_only=False):
+        def read(pid, flavor, buffer):
+            if pid == 101 and (not endpoint_only or measured_pids.count(pid) == 1):
+                ctypes.set_errno(error_number)
+                return -1
+            return read_usage(pid, flavor, buffer)
+        return read
+
+    for endpoint_only in (False, True):
+        error = requires_error(lambda: captured(
+            launchctl, zero_rss, usage_callback=unavailable_usage(errno.ESRCH, endpoint_only=endpoint_only),
+        ))
+        assert str(error).startswith(lifecycle_prefix)
+    error = requires_error(lambda: captured(launchctl, ps, usage_callback=unavailable_usage(errno.EPERM)))
+    assert not str(error).startswith(lifecycle_prefix) and "proc_pid_rusage failed for PID 101" in str(error)
+
+    def unavailable_path(error_number):
+        def read(pid, buffer, capacity):
+            if pid == 101:
+                ctypes.set_errno(error_number)
+                return 0
+            buffer.value = os.fsencode(kernel_paths[pid])
+            return len(buffer.value)
+        return read
+
+    for error_number in (errno.ESRCH, errno.EPERM):
+        error = requires_error(lambda: captured(launchctl, ps, path_callback=unavailable_path(error_number)))
+        assert str(error).startswith(lifecycle_prefix) == (error_number == errno.ESRCH)
+
+    # A failed path lookup may race a zombie transition between public calls.
+    error = requires_error(lambda: captured(
+        launchctl, ps, path_callback=unavailable_path(errno.ENOENT),
+        usage_callback=endpoint_usage(lambda usage: setattr(usage, "ri_proc_exit_abstime", 1)),
+    ))
+    assert str(error).startswith(lifecycle_prefix)
+
+    error = requires_error(lambda: captured(
+        launchctl, ps, include_physical_footprint=True,
+        usage_callback=endpoint_usage(lambda usage: setattr(usage, "ri_phys_footprint", 0)),
+    ))
+    assert str(error).startswith("proc_pid_rusage returned no live physical footprint for PID 101")
     print("Process memory sampler self-test passed")
 
 

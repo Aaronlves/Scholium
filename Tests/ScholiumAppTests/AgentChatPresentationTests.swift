@@ -142,7 +142,7 @@ struct AgentChatPresentationTests {
         let items = AgentChatTimelineItem.group(messages)
         #expect(items.count == 5)
         #expect(items[1].isProcess && items[1].messages.count == 2)
-        #expect(items[1].messages[1].changeID == change)
+        #expect(items[1].messages.last?.changeID == change)
         #expect(items.flatMap(\.messages) == messages)
     }
 
