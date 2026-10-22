@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.3-beta.1/Scholium-v0.4.3-beta.1-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Scholium Beta for macOS, Apple silicon"></a>
+  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.4-beta.1/Scholium-v0.4.4-beta.1-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Scholium Beta for macOS, Apple silicon"></a>
 </p>
 
 <p align="center">
@@ -61,8 +61,8 @@ becomes part of your research.
 to run the packaged app.
 
 1. Download the DMG and its SHA-256 file from
-   [v0.4.3-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1).
-   Run `shasum -a 256 Scholium-v0.4.3-beta.1-macos-arm64.dmg` and compare the
+   [v0.4.4-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.4-beta.1).
+   Run `shasum -a 256 Scholium-v0.4.4-beta.1-macos-arm64.dmg` and compare the
    result with the accompanying checksum.
 2. Open the DMG, drag **Scholium** to **Applications**, and eject the DMG.
 3. Open Scholium once. This Beta is ad-hoc signed and is not Developer ID signed
@@ -81,7 +81,7 @@ The public distribution is **Core App Beta**. External Agent collaboration and
 optional in-app Chat remain **Preview**. Packaged-release evidence and outstanding
 human UI, accessibility, and performance acceptance are recorded in
 [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) and the
-[release notes](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1).
+[release notes](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.4-beta.1).
 
 ## Optional integrations
 
