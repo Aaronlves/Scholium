@@ -14,17 +14,19 @@ reports the complete performance gate, 13/13 affected UI journeys, and mounted/
 copied clean-account save/readback smoke; VoiceOver, input, adaptation, icon,
 and Finder-restoration human acceptance remain open.
 
-**2026-10-19 — `v0.4.3-beta.1` published:** [Release evidence](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1)
-binds clean commit `c76e46cf03ffb087ceb6c7d77a13e348ae1dac36`, `0.4.3`/build
-`23`, arm64/macOS `26.0`, and the ad-hoc DMG/checksum. All local repository
-phases passed, including a scoped Release continuation after a network failure.
-Exact-tag remote CI failed a test-setup race; its deterministic repair passed
-locally. Mounted/copied Core smoke, sandboxed diagnostic update, affected packaged
-performance series and archive-verified HTTPS feed passed; focused series are
-not G7. Diagnostic upgrade is not exact-DMG clean-account proof. Approved
-release-specific human, native Trash/restore and separate-account exceptions
-remain uncompleted; future candidates inherit no waiver. Developer ID/notarization
-are absent; Agent Collaboration/Chat remain Preview.
+**2026-10-23 — `v0.4.4-beta.1` published:** [Release record](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.4-beta.1)
+binds clean source `3c4c537108ef1d0b367f265654f2938c466ea349`, `0.4.4`/build
+`24`, arm64/macOS `26.0`, and the ad-hoc DMG/checksum. Release compilation,
+package resources/provenance, entitlements, signatures, private-path and DMG
+checks passed. Uploaded archives verified with the production public key;
+[Pages deployment](https://github.com/Aaronlves/Scholium/actions/runs/39827891591)
+passed and live HTTPS XML matched the committed feed. The researcher explicitly
+waived XCTest, repository-suite reruns, packaged UI/clean-account smoke and
+manual acceptance for this release; omissions are not passes and future
+candidates inherit no waiver. No fresh G7 or human acceptance is claimed.
+[Earlier updater/package evidence](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.3-beta.1)
+retains its original artifact scope. Developer ID/notarization are absent;
+Agent Collaboration/Chat remain Preview.
 
 ## Current feature coverage
 
