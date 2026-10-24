@@ -151,6 +151,106 @@ struct LibraryInspectorLifecycleTests {
         }
     }
 
+    enum PendingDocument: CaseIterable { case dirty, failedSave, conflict, composing }
+
+    @Test("The Library selector browses roles without preparing the retained document", arguments: PendingDocument.allCases)
+    func roleSelectorPreservesPendingDocument(pending: PendingDocument) async throws {
+        try await withFixture { fixture in
+            let window = try await fixture.makeWindow()
+            let document = try #require(window.documentController.selectedDocument)
+            let session = window.documentController.session(for: document.editingTarget)
+            window.rememberPresentationMode(.source)
+            session.originalEditingSource = Fixture.source
+            session.editingRevision = DocumentFingerprint(content: Fixture.source)
+            session.preparePresentationMode(.source)
+            let editor = session.editorSession
+            editor.loadDocument(Fixture.source, documentID: editor.bridgeDocumentID, mode: .source)
+            let addition = "Unsaved 中文 e\u{301} 🦉.\n"
+            let end = EditorSourceOffsetMap(source: Fixture.source).editorUTF16Length
+            try #require(
+                editor.acceptEditorChanges(
+                    [.init(from: end, to: end, insert: addition, exactInsert: addition)],
+                    baseGeneration: 0, resultingGeneration: 1))
+            let draft = Fixture.source + addition
+            session.editingSource = draft
+            let selection = MarkdownEditorSelectionRange(anchor: 3, head: 7)
+            try #require(
+                editor.updateInteraction(
+                    selections: [selection], line: 1, column: 8, lineCount: 5,
+                    documentVersion: editor.generation, interactionRevision: 1, focusTarget: .editor,
+                    context: MarkdownEditorContext(
+                        selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
+                        composing: pending == .composing, availableCommands: [], undoLabel: "Typing", redoLabel: nil)))
+            switch pending {
+            case .dirty, .composing: break
+            case .failedSave:
+                session.editError = "Synthetic save failure"
+                session.canRetrySave = true
+            case .conflict:
+                session.conflict = DocumentConflictSnapshot(
+                    relativePath: document.relativePath, editorSource: draft, diskSource: "Different disk revision\n",
+                    baseRevision: DocumentFingerprint(content: Fixture.source))
+            }
+            let retained = try await RetainedContext.capture(window)
+            try await fixture.finishStartupPublication()
+            let originalError = session.editError
+            let originalConflict = session.conflict
+            let focusRevision = editor.focusRequestRevision
+            let generation = editor.generation
+            let context = editor.context
+            let originalSaveError = window.lastSaveError
+
+            window.requestTriptychWorkspace(.topicKnowledge)
+            await window.documentTransitionCoordinator.waitForIdle()
+
+            #expect(window.shellState.selectedWorkspace == .topicKnowledge)
+            #expect(window.currentRegisteredVault?.id == fixture.capabilities.assignment.vault(for: .topicKnowledge)?.id)
+            #expect(window.requestedWorkspaceSelection == nil)
+            #expect(session.retainedExactSource.utf8.elementsEqual(draft.utf8))
+            #expect(editor.checkedSource.utf8.elementsEqual(draft.utf8))
+            #expect(session.hasUnsavedChanges)
+            #expect(session.editError == originalError && session.conflict == originalConflict)
+            #expect(window.lastSaveError == originalSaveError)
+            #expect(editor.detachmentSuspensionID == nil)
+            #expect(editor.generation == generation && editor.focusRequestRevision == focusRevision)
+            #expect(editor.context == context)
+            #expect(editor.context?.selections == [selection])
+            #expect(editor.isComposing == (pending == .composing))
+            #expect(try Data(contentsOf: fixture.analyses.appendingPathComponent("Shared.md")) == Data(Fixture.source.utf8))
+            retained.check(window)
+        }
+    }
+
+    @Test("Repeated, superseded and canceled Library intents preserve the selected document")
+    func roleSelectorRequestLifetime() async throws {
+        try await withFixture { fixture in
+            let window = try await fixture.makeWindow()
+            let retained = try await RetainedContext.capture(window)
+            try await fixture.finishStartupPublication()
+            window.requestTriptychWorkspace(.topicKnowledge)
+            window.requestTriptychWorkspace(.topicKnowledge)
+            window.requestTriptychWorkspace(.output)
+            window.requestTriptychWorkspace(.topicKnowledge)
+            await window.documentTransitionCoordinator.waitForIdle()
+            #expect(window.shellState.selectedWorkspace == .topicKnowledge)
+            #expect(window.requestedWorkspaceSelection == nil)
+            retained.check(window)
+
+            window.requestTriptychWorkspace(.output)
+            window.documentTransitionCoordinator.cancelAll()
+            await window.documentTransitionCoordinator.waitForIdle()
+            #expect(window.shellState.selectedWorkspace == .topicKnowledge)
+            #expect(window.requestedWorkspaceSelection == nil)
+            retained.check(window)
+
+            window.requestTriptychWorkspace(.output)
+            await window.documentTransitionCoordinator.waitForIdle()
+            #expect(window.shellState.selectedWorkspace == .output)
+            #expect(window.requestedWorkspaceSelection == nil)
+            retained.check(window)
+        }
+    }
+
     private struct RejectedDestination: Error {}
 
     /// Yield queued main-actor debounce tasks without waiting for the production delay.

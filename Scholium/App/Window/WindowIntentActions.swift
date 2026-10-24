@@ -191,23 +191,41 @@ extension WindowModel {
                 || requestedWorkspaceSelection != nil
                 || destination.sourceError != nil
         else { return }
+        guard let requestIsCurrent = beginDocumentNavigation() else { return }
+        let requestID = UUID()
+        workspaceSelectionRequestID = requestID
         requestedWorkspaceSelection = slot
-        enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
-            try await self.prepareWorkspaceSelection(
-                slot,
-                sourceScope: destination.sourceScope,
-                validateDestination: {
-                    guard self.requestedWorkspaceSelection == slot else {
-                        throw CancellationError()
-                    }
-                }
-            )
-            self.reconcileDocumentSessionLeases()
-        } didFinish: { [weak self] in
-            guard self?.requestedWorkspaceSelection == slot else { return }
-            self?.requestedWorkspaceSelection = nil
-        }
+        // Library browsing shares navigation ordering without preparing the
+        // retained Document for departure.
+        documentTransitionCoordinator.enqueueCurrencyAware(
+            requestIsCurrent: requestIsCurrent,
+            prepare: {},
+            operation: { [weak self] isCurrent in
+                guard let self else { return }
+                try await self.prepareWorkspaceSelection(
+                    slot, sourceScope: destination.sourceScope,
+                    validateDestination: {
+                        guard isCurrent(), self.workspaceSelectionRequestID == requestID,
+                            self.requestedWorkspaceSelection == slot,
+                            !self.transferInProgress, !self.windowCloseCoordinator.isPreparingOrFinalized
+                        else { throw CancellationError() }
+                    })
+            },
+            didFail: { [weak self] error in
+                guard let self, requestIsCurrent() else { return }
+                if let issueID = self.documentTransitionIssueID { self.shellState.dismissOperationIssue(id: issueID) }
+                self.documentTransitionIssueID = self.reportOperationIssue(ScholiumErrorLocalization.message(error), kind: .error)
+            },
+            didSucceed: { [weak self] in
+                guard let self, let issueID = self.documentTransitionIssueID else { return }
+                self.shellState.dismissOperationIssue(id: issueID)
+                self.documentTransitionIssueID = nil
+            },
+            didFinish: { [weak self] in
+                guard let self, self.workspaceSelectionRequestID == requestID else { return }
+                self.workspaceSelectionRequestID = nil
+                self.requestedWorkspaceSelection = nil
+            })
     }
 
     func requestLibrarySourceScope(_ scope: LibrarySourceScope) {

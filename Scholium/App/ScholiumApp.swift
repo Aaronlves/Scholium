@@ -760,6 +760,7 @@ final class WindowModel: ObservableObject {
     var workspaceCancellables: Set<AnyCancellable> = []
     var libraryRevealTask: Task<Void, Never>?
     @Published var requestedWorkspaceSelection: WorkspaceVaultSlot?
+    var workspaceSelectionRequestID: UUID?
     var isRestoringWindowSession = false
     var didRestoreWindowSession = false
     /// Read by the identity refresh commands in `WindowNoteIdentityActions`;

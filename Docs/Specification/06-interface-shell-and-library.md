@@ -78,7 +78,9 @@ the sidebar collapsed and traverse document visits, not
 heading jumps. Visibility and workspace session state are installed before first
 presentation, then native state is authoritative. Each workspace retains Library filters
 and disclosure. Document tabs and selection belong to the window; browsing another
-Library role preserves the active document, its mode, and Inspector context. A document transition
+Library role preserves the active document, its mode, and Inspector context. Library-only browsing does not
+freeze or save the retained editor, and remains available during dirty input, composition,
+save failure or conflict. A document transition
 commits only after source safety succeeds; failure preserves the exact origin workspace
 and buffer.
 

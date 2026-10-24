@@ -3,6 +3,41 @@ import AppKit
 
 extension ScholiumUITests {
     @MainActor
+    func testLibraryBrowsingRetainsUnsavedSourceViewportAndUndo() throws {
+        let fixture = try prepareWindowModeFixture(appearance: .light)
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        selectDocumentMode("Source", in: window)
+        let editor = window.descendants(matching: .any)["Markdown source editor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        window.webViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).click()
+        editor.typeKey(.end, modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String)?.contains("LEFT|RIGHT") == true })
+        for _ in 0..<5 { editor.typeKey(.leftArrow, modifierFlags: []) }
+        let token = "未保存 browse "
+        try pasteWindowModeTextAtSelection(token, into: editor)
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String)?.contains("LEFT|\(token)RIGHT") == true })
+        let context = try captureWindowModeViewportParagraph(in: window)
+        let navigator = window.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        for (role, path) in [("Topics", "QA Topic.md"), ("Works", "QA Work.md"), ("Topics", "QA Topic.md"), ("Analyses", "QA Autosave A.md")] {
+            navigator.descendants(matching: .any)[role].firstMatch.click()
+            XCTAssertTrue(window.descendants(matching: .any)["scholium.noteRow.\(path)"].firstMatch.waitForExistence(timeout: 8))
+            XCTAssertEqual(documentTitle(in: window), "QA Autosave A")
+            assertWindowMode("Source", in: window)
+            XCTAssertTrue((editor.value as? String)?.contains("LEFT|\(token)RIGHT") == true)
+            XCTAssertEqual(try Data(contentsOf: noteURL), Data(fixture.source.utf8), "Browsing must not save the retained draft.")
+            assertWindowModeViewportParagraph(context, in: window)
+        }
+        editor.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String)?.contains("LEFT|RIGHT") == true })
+        editor.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String)?.contains("LEFT|\(token)RIGHT") == true })
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(fixture.source.utf8))
+        try assertWindowModePeerBytes(fixture)
+        captureWindowModeEvidence(window, name: "Library browsing retains unsaved Source viewport and Undo")
+    }
+
+    @MainActor
     func testWindowDocumentModeStaysSelectedAcrossTabsAndTriptychRoles() throws {
         let fixture = try prepareWindowModeFixture(appearance: .light)
         let window = stableWorkspaceWindow(app.windows.firstMatch)

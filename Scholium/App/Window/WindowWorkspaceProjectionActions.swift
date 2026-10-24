@@ -61,6 +61,7 @@ extension WindowModel {
     func resetWindowSession() {
         libraryRevealTask?.cancel()
         libraryRevealTask = nil
+        workspaceSelectionRequestID = nil
         requestedWorkspaceSelection = nil
         presentationRouter.dismissAll()
         documentController.removeAll(retainingSessions: true)
