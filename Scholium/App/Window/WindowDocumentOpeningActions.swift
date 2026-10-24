@@ -685,18 +685,16 @@ extension WindowModel {
         // exact keys, so only that fragment spelling is decoded here.
         let fragment = decodedFragment?.hasPrefix("^") == true ? decodedFragment : rawFragment
         let source = VaultQualifiedNoteID(vaultID: sourceContext.vaultID, relativePath: sourcePath)
-        let summaries = workspaceProjectionController.vaultSnapshotsByID.values.flatMap(\.documents)
-        let resolver = LinkResolutionCatalog(catalog: summaries.map(\.linkCatalog))
         let destination: LinkDestination
-        switch resolver.resolveNavigation(target: target, fragment: fragment, from: source, scope: .workspace) {
+        switch workspaceProjectionController.resolveLinkNavigation(target: target, fragment: fragment, from: source) {
         case .resolved(let resolved):
             destination = resolved
         case .missingHeading, .missingBlock, .ambiguousHeading, .ambiguousBlock:
             // The Note may be unambiguous even when its authored passage is
             // unavailable. Keep that useful destination without inventing a line.
             guard
-                case .resolved(let note) = resolver.resolveNavigation(
-                    target: target, fragment: nil, from: source, scope: .workspace)
+                case .resolved(let note) = workspaceProjectionController.resolveLinkNavigation(
+                    target: target, fragment: nil, from: source)
             else { return nil }
             destination = note
         case .ambiguous:
@@ -714,7 +712,9 @@ extension WindowModel {
             reportOperationIssue(message, kind: .warning)
             return nil
         }
-        guard let summary = summaries.first(where: { $0.id == destination.note }),
+        guard
+            let summary = workspaceProjectionController.cachedNote(
+                vaultID: destination.note.vaultID, relativePath: destination.note.relativePath),
             let vault = registeredVaults.first(where: { $0.id == destination.note.vaultID })
         else { return nil }
         let reference = VaultNoteReference(

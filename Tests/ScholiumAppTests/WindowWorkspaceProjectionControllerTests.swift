@@ -31,6 +31,137 @@ struct WindowWorkspaceProjectionControllerTests {
         }
     }
 
+    @Test("Equal source fingerprints cannot hide corrected navigation inputs")
+    func navigationResolutionTracksDerivedInputs() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "# Before\n", searchSequence: 1)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: fixture.context(sourceScope: .library))
+        let source = VaultQualifiedNoteID(vaultID: fixture.vault.id, relativePath: "Archive/Aside.md")
+        #expect(controller.resolveLinkNavigation(target: "Corrected", fragment: nil, from: source) == .missingNote)
+        let original = try #require(controller.cachedNote(vaultID: fixture.vault.id, stableNoteID: fixture.activeNoteID, relativePath: "Active.md"))
+        let catalog = LinkCatalogNote(
+            id: original.linkCatalog.id, title: original.linkCatalog.title, aliases: ["Corrected"],
+            headings: original.linkCatalog.headings, blockAnchors: original.linkCatalog.blockAnchors,
+            ambiguousBlockAnchors: original.linkCatalog.ambiguousBlockAnchors)
+        let corrected = WorkspaceNoteSummary(
+            id: original.id, vaultRole: original.vaultRole, stableIdentity: original.stableIdentity,
+            fingerprint: original.fingerprint, fileMetadata: original.fileMetadata, graphCounts: original.graphCounts,
+            linkCatalog: catalog, title: original.title, validationWarnings: original.validationWarnings,
+            propertyTextValues: original.propertyTextValues, canonicalAliases: original.canonicalAliases,
+            canonicalKeywords: original.canonicalKeywords, derivedProjectionState: original.derivedProjectionState)
+        #expect(corrected.hasSameSourceBinding(as: original))
+        #expect(controller.recordCommittedNote(corrected, visibleVaultID: fixture.vault.id, visibleSourceScope: .library) != nil)
+        guard case .resolved(let updated) = controller.resolveLinkNavigation(target: "Corrected", fragment: "Before", from: source) else {
+            Issue.record("The resolver ignored the current projection's corrected inputs")
+            return
+        }
+        #expect(updated.note == original.id && updated.span?.start.line == 1)
+    }
+
+    @Test("Warmed navigation follows source and path changes committed within one inventory cohort")
+    func navigationResolutionTracksLocalSourceCommits() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "---\naliases: [Former]\n---\n# Before\n\nOld passage. ^old\n", searchSequence: 1)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: fixture.context(sourceScope: .library))
+        let source = VaultQualifiedNoteID(vaultID: fixture.vault.id, relativePath: "Archive/Aside.md")
+        guard case .resolved(let before) = controller.resolveLinkNavigation(target: "Former", fragment: "Before", from: source) else {
+            Issue.record("Fixture alias was not resolvable")
+            return
+        }
+        #expect(before.note.relativePath == "Active.md" && before.span?.start.line == 4)
+        let replacement = fixture.note(
+            path: "Active.md", source: "---\naliases: [Current]\n---\n\n# After\n\nNew passage. ^new\n", stableID: fixture.activeNoteID)
+        #expect(controller.recordCommittedNote(replacement.summary, visibleVaultID: fixture.vault.id, visibleSourceScope: .library) != nil)
+        guard case .resolved(let current) = controller.resolveLinkNavigation(target: "Current", fragment: "After", from: source),
+            case .resolved(let block) = controller.resolveLinkNavigation(target: "Current", fragment: "^new", from: source)
+        else {
+            Issue.record("Navigation retained the old local source projection")
+            return
+        }
+        #expect(current.note.relativePath == "Active.md" && current.span?.start.line == 5)
+        #expect(block.note == current.note && block.span?.start.line == 7)
+        #expect(controller.resolveLinkNavigation(target: "Former", fragment: nil, from: source) == .missingNote)
+        #expect(controller.resolveLinkNavigation(target: "Current", fragment: "Before", from: source) == .missingHeading)
+        #expect(controller.resolveLinkNavigation(target: "Current", fragment: "^old", from: source) == .missingBlock)
+
+        let moved = fixture.note(path: "Renamed.md", source: "# Relocated\n", stableID: fixture.activeNoteID)
+        #expect(controller.recordCommittedNote(moved.summary, visibleVaultID: fixture.vault.id, visibleSourceScope: .library) != nil)
+        #expect(controller.resolveLinkNavigation(target: "Current", fragment: nil, from: source) == .missingNote)
+        #expect(controller.resolveLinkNavigation(target: "Active", fragment: nil, from: source) == .missingNote)
+        guard case .resolved(let relocated) = controller.resolveLinkNavigation(target: "Renamed", fragment: "Relocated", from: source) else {
+            Issue.record("Navigation retained the former path after the committed source move")
+            return
+        }
+        #expect(relocated.note.relativePath == "Renamed.md" && relocated.span?.start.line == 1)
+        let decomposedPath = "Cafe\u{301}.md"
+        let composedPath = "Caf\u{e9}.md"
+        for path in [decomposedPath, composedPath] {
+            let spelling = fixture.note(path: path, source: "# Relocated\n", stableID: fixture.activeNoteID)
+            #expect(controller.recordCommittedNote(spelling.summary, visibleVaultID: fixture.vault.id, visibleSourceScope: .library) != nil)
+            guard case .resolved(let exact) = controller.resolveLinkNavigation(target: "Café", fragment: "Relocated", from: source) else {
+                Issue.record("Navigation lost the renamed Unicode Note")
+                return
+            }
+            #expect(exact.note.relativePath.utf8.elementsEqual(path.utf8))
+        }
+    }
+
+    @Test("Warmed navigation follows whole-vault and newer source-cohort replacements")
+    func navigationResolutionTracksSnapshotReplacements() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "---\naliases: [Former]\n---\n# Before\n", searchSequence: 1)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: fixture.context(sourceScope: .library))
+        let source = VaultQualifiedNoteID(vaultID: fixture.vault.id, relativePath: "Archive/Aside.md")
+        guard case .resolved = controller.resolveLinkNavigation(target: "Former", fragment: "Before", from: source) else {
+            Issue.record("Fixture alias was not resolvable")
+            return
+        }
+        let changed = fixture.snapshot(activeSource: "---\naliases: [Current]\n---\n# After\n", searchSequence: 2)
+        controller.replaceVaultSnapshot(try #require(changed.vault(id: fixture.vault.id)))
+        #expect(controller.resolveLinkNavigation(target: "Former", fragment: nil, from: source) == .missingNote)
+        guard case .resolved(let afterVault) = controller.resolveLinkNavigation(target: "Current", fragment: "After", from: source) else {
+            Issue.record("Navigation retained the replaced vault's alias")
+            return
+        }
+        #expect(afterVault.note.relativePath == "Active.md")
+        let removed = fixture.snapshot(activeSource: nil, searchSequence: 3)
+        #expect(
+            controller.replaceSnapshot(
+                removed, runtimeIdentity: fixture.runtimeIdentity, status: .current(.init(snapshot: removed)),
+                context: fixture.context(sourceScope: .library)) != nil)
+        #expect(controller.resolveLinkNavigation(target: "Current", fragment: nil, from: source) == .missingNote)
+        #expect(controller.resolveLinkNavigation(target: "Active", fragment: nil, from: source) == .missingNote)
+    }
+
+    @Test("Reset and a different runtime cannot inherit warmed navigation identities")
+    func navigationResolutionTracksResetAndRuntime() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(activeSource: "# Active\n", searchSequence: 1)
+        let controller = WindowWorkspaceProjectionController { initial.discovery.catalog }
+        _ = controller.activate(snapshot: initial, runtimeIdentity: fixture.runtimeIdentity, context: fixture.context(sourceScope: .library))
+        let source = VaultQualifiedNoteID(vaultID: fixture.vault.id, relativePath: "Archive/Aside.md")
+        guard case .resolved(let first) = controller.resolveLinkNavigation(target: "Active", fragment: nil, from: source) else {
+            Issue.record("Fixture Note was not resolvable")
+            return
+        }
+        #expect(first.note.vaultID == fixture.vault.id)
+        controller.reset()
+        #expect(controller.resolveLinkNavigation(target: "Active", fragment: nil, from: source) == .missingNote)
+        let other = try Fixture()
+        let otherSnapshot = other.snapshot(activeSource: "# Active\n", searchSequence: 1)
+        _ = controller.activate(snapshot: otherSnapshot, runtimeIdentity: other.runtimeIdentity, context: other.context(sourceScope: .library))
+        let otherSource = VaultQualifiedNoteID(vaultID: other.vault.id, relativePath: "Archive/Aside.md")
+        guard case .resolved(let second) = controller.resolveLinkNavigation(target: "Active", fragment: "Active", from: otherSource) else {
+            Issue.record("Navigation did not use the new runtime's source")
+            return
+        }
+        #expect(second.note.vaultID == other.vault.id && second.note.vaultID != first.note.vaultID)
+        #expect(second.span?.start.line == 1)
+    }
+
     @Test("One event commits a coherent Library projection")
     func eventCommitsOneCoherentProjection() throws {
         let fixture = try Fixture()

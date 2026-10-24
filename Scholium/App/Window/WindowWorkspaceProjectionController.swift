@@ -85,7 +85,20 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     typealias CatalogLoader = @MainActor () async throws -> WorkspaceCatalogSnapshot
     typealias Sleeper = @MainActor (Duration) async throws -> Void
 
-    @Published private(set) var state = State()
+    @Published private(set) var state = State() {
+        didSet {
+            guard navigationResolution != nil else { return }
+            // Invalidate at the source projection's sole publication boundary,
+            // including local commits that retain the inventory revision.
+            let previous = oldValue.vaultSnapshotsByID
+            if previous.count != state.vaultSnapshotsByID.count
+                || state.vaultSnapshotsByID.contains(where: { !Self.navigationSourcesMatch(previous[$0.key], $0.value) })
+            {
+                navigationResolution = nil
+            }
+        }
+    }
+    private var navigationResolution: LinkResolutionCatalog?
 
     private let loadCatalog: CatalogLoader
     private let sleep: Sleeper
@@ -114,6 +127,33 @@ final class WindowWorkspaceProjectionController: ObservableObject {
 
     deinit {
         catalogRefreshDelayTask?.cancel()
+    }
+
+    /// Reuses the resolver for this exact immutable summary projection.
+    /// Reading it neither publishes UI state nor authorizes source navigation.
+    func resolveLinkNavigation(
+        target: String, fragment: String?, from source: VaultQualifiedNoteID
+    ) -> LinkNavigationResolution {
+        let resolution: LinkResolutionCatalog
+        if let navigationResolution {
+            resolution = navigationResolution
+        } else {
+            resolution = LinkResolutionCatalog(catalog: state.vaultSnapshotsByID.values.flatMap(\.documents).map(\.linkCatalog))
+            navigationResolution = resolution
+        }
+        return resolution.resolveNavigation(target: target, fragment: fragment, from: source, scope: .workspace)
+    }
+
+    private static func navigationSourcesMatch(_ previous: WorkspaceVaultSnapshot?, _ current: WorkspaceVaultSnapshot) -> Bool {
+        guard let previous else { return false }
+        return previous.documents.withUnsafeBufferPointer { left in
+            current.documents.withUnsafeBufferPointer { right in
+                // Both immutable arrays remain alive during this comparison.
+                // Copied storage conservatively starts a new lookup cohort,
+                // including byte-level path and derived-input changes.
+                left.count == right.count && left.baseAddress == right.baseAddress
+            }
+        }
     }
 
     var catalog: WorkspaceCatalogSnapshot? { state.catalog }
