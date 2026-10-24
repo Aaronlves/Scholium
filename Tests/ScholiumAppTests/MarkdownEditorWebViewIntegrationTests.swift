@@ -10,6 +10,48 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Review reconstruction restores the captured viewport instead of trailing native observations")
+    func reviewReconstructionUsesCapturedViewport() async throws {
+        let source = "\u{FEFF}# Reading\r\n\r\n" + (0..<120).map {
+            "Paragraph \($0). Exact reading context 中文 e\u{301} 🦉 with enough prose to wrap across the viewport.\r\n\r\n"
+        }.joined()
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        // Deliberately leave the caller's observation at the opening default.
+        // Departure's atomic Web capture is newer than that coalesced report.
+        harness.configureReview(SafeMarkdownReadWebView(
+            documentID: harness.documentID, documentTitle: "Reading", document: document,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+            onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+            onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        _ = try await harness.session.send(.setScrollFraction(0.65), in: webView)
+        let before = try #require(try await harness.session.currentScrollAnchor())
+        try #require(before.fallbackFraction > 0.5)
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        let after = try #require(try await harness.session.currentScrollAnchor())
+        #expect(after.blockUTF16LowerBound == before.blockUTF16LowerBound)
+        #expect(after.blockUTF16UpperBound == before.blockUTF16UpperBound)
+        #expect(abs(after.fallbackFraction - before.fallbackFraction) < 0.02)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+
+        // An ordinary fresh opening has its own explicit top intent, even if
+        // the same session/page is retained. It must defeat the captured visit.
+        harness.session.prepareOpeningPresentation()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var fresh = try await harness.session.currentScrollAnchor()
+        while fresh?.fallbackFraction != 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            fresh = try await harness.session.currentScrollAnchor()
+        }
+        #expect(fresh?.fallbackFraction == 0)
+        await harness.closeAndDrain()
+    }
+
     @Test("Embedded Review rendering failure reaches its native recovery callback and preserves Source")
     func unifiedReviewReportsRenderingFailure() async throws {
         let source = "\u{FEFF}# Review\r\n\r\nExact 中文 e\u{301} 🦉.\r\n"

@@ -251,6 +251,7 @@ final class DocumentSessionModel: ObservableObject {
             presentation,
             source: source
         )
+        editorSession.setScrollPosition(anchor: nil, fallbackFraction: presentation.scrollFraction)
     }
 
     var windowPresentationSnapshot: WindowDocumentPresentationSnapshot {

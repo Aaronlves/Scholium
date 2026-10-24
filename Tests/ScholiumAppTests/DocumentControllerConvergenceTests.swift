@@ -177,6 +177,64 @@ struct DocumentControllerConvergenceTests {
         }
     }
 
+    @Test("Navigation visits use the frozen viewport instead of a trailing native observation")
+    func navigationVisitUsesCapturedDepartureViewport() async throws {
+        _ = NSApplication.shared
+        let source = "# Departure\n\n" + (0..<100).map {
+            "Paragraph \($0): exact context 中文 e\u{301} 🦉 for the departing document.\n\n"
+        }.joined()
+        let snapshot = note(vaultID: UUID(), noteID: UUID(), path: "Departure.md", source: source)
+        let controller = DocumentController()
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(snapshot, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let selected = try #require(controller.selectedDocument)
+        let session = controller.session(for: selected.editingTarget)
+        let window = retainedPresentationWindow(controller: controller, notes: [snapshot])
+        defer {
+            window.contentView = nil
+            window.close()
+            controller.removeAll()
+            controller.unbind()
+        }
+        try await waitForPresentation {
+            session.editorSession.isLoaded && session.editorSession.presentedMode == .source
+        }
+        let webView = try #require(session.editorSession.webView)
+        _ = try await session.editorSession.send(.setScrollFraction(0.65), in: webView)
+        try await controller.prepareSessionTransfer(selected)
+        let captured = try #require(session.editorSession.retainedScrollAnchor)
+        try #require(captured.fallbackFraction > 0.5)
+        // Model the coalesced native receipt still describing an older frame.
+        session.observeScrollFraction(0.12, on: .editor)
+        session.observeScrollAnchor(nil, on: .editor)
+        let visit = try #require(controller.navigationPosition(for: selected))
+        #expect(visit.sourceFingerprint == snapshot.fingerprint.sha256)
+        #expect(visit.scrollPosition.anchor == captured)
+        #expect(visit.scrollPosition.fraction == captured.fallbackFraction)
+
+        let suspensionID = try #require(session.editorSession.detachmentSuspensionID)
+        try await session.editorSession.resumeAfterDetachment(suspensionID: suspensionID)
+        session.observeScrollFraction(0.12, on: .editor)
+        #expect(controller.navigationPosition(for: selected)?.scrollPosition.fraction == 0.12)
+        #expect(Data(session.editorSession.checkedSource.utf8) == Data(source.utf8))
+    }
+
+    private func retainedPresentationWindow(
+        controller: DocumentController, notes: [WorkspaceNoteSnapshot]
+    ) -> NSWindow {
+        let host = NSHostingView(rootView: RetainedPresentationFixture(
+            controller: controller, projection: RetainedPresentationProjection(notes: notes)))
+        host.sizingOptions = []
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.frame = NSRect(x: 0, y: 0, width: 800, height: 620)
+        host.layoutSubtreeIfNeeded()
+        return window
+    }
+
     @Test("Unavailable visit capture cannot borrow the next document's revision")
     func unavailableVisitUsesOnlyItsOwnSnapshot() throws {
         let vaultID = UUID()
@@ -1397,6 +1455,46 @@ struct DocumentControllerConvergenceTests {
             session.managedCreationBodyStartUTF16
                 == source.utf16.count
         )
+    }
+
+    @Test("Managed creation keeps the body caret visible below long frontmatter")
+    func managedCreationRevealsBodyAfterOpening() async throws {
+        _ = NSApplication.shared
+        let source = "---\n" + (0..<80).map { "property_\($0): preserved value\n" }.joined()
+            + "---\nManaged body.\n"
+        let created = note(vaultID: UUID(), noteID: UUID(), path: "Created.md", source: source)
+        let bodyStart = created.document.bodyUTF16Offset
+        let controller = DocumentController()
+        controller.installOpenedDocument(
+            created, vaultName: "Analyses", vaultRole: .sourceCorpus,
+            managedCreationBodyStartUTF16: bodyStart)
+        let selected = try #require(controller.selectedDocument)
+        let session = controller.session(for: selected.editingTarget)
+        let window = retainedPresentationWindow(controller: controller, notes: [created])
+        defer {
+            window.contentView = nil
+            window.close()
+            controller.removeAll()
+            controller.unbind()
+        }
+        try await waitForPresentation {
+            session.editorSession.isLoaded && session.editorSession.presentedMode == .livePreview
+                && session.editorSession.context?.selections.first?.head == bodyStart
+        }
+        let webView = try #require(session.editorSession.webView)
+        let bodyIsVisible = try await webView.callAsyncJavaScript(
+            """
+            const scroller = document.querySelector('.cm-scroller');
+            const body = Array.from(document.querySelectorAll('.cm-line'))
+              .find(line => line.textContent.includes('Managed body.'));
+            if (!scroller || !body) return false;
+            const viewport = scroller.getBoundingClientRect();
+            const bounds = body.getBoundingClientRect();
+            return scroller.scrollTop > 0 && bounds.top >= viewport.top - 1
+              && bounds.bottom <= viewport.bottom + 1;
+            """, arguments: [:], in: nil, contentWorld: .page) as? Bool
+        #expect(bodyIsVisible == true)
+        #expect(Data(session.editorSession.checkedSource.utf8) == Data(source.utf8))
     }
 
     @Test("External source replaces a clean managed buffer before editor readiness")

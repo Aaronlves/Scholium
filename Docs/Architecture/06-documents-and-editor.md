@@ -108,15 +108,16 @@ native moves; errors remain.
 
 ### Source locations and transient interaction
 
-The document session owns fingerprint-bound viewport observations.
-`MarkdownEditorSession` alone restores the shared host on opening and navigation;
-its mode operation transfers the source anchor before acknowledgement. Embedded
-Review never starts a reader restoration. Find and exact-source locators wait for
-the current Review acknowledgement, then validate request, document, fingerprint
-and load identity. Standalone readers retain tokenized current-load restoration.
-Ordinary reports update only the active observation; invalid mappings fall back
-without textual guesses.
-Arrival requires matching document/load identity and actual destination completion.
+`MarkdownEditorSession` owns fingerprint-bound viewport observations and shared-host
+restoration. Departure captures outrank coalesced reports on remount/visit;
+attachment seeds absent state. Resume/completed reconstruction retires
+capture precedence. Fresh opening starts at top; window/history/passage intents
+override it. Mode handoff transfers source anchors before acknowledgement. Embedded
+Review never restores; standalone readers use tokenized current-load
+restoration. Find/source locators await Review acknowledgement and validate request,
+document, fingerprint and load. Reports update active observations; invalid mappings
+fall back without guesses. Arrival requires matching document/load and
+completed positioning.
 
 Review maps selections only within source-identical complete blocks. Formatted/synthesized
 content remains unmappable rather than searched back into source. Document-bound

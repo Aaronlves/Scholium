@@ -392,6 +392,7 @@ struct DocumentSessionLifecycleTests {
             focusTarget: .editor
         )
         let matching = DocumentSessionModel(key: nil)
+        matching.prepareForDocumentActivation()
         matching.restoreWindowPresentation(presentation, source: source)
         matching.editorSession.loadDocument(
             source,
@@ -400,6 +401,7 @@ struct DocumentSessionLifecycleTests {
         )
         #expect(matching.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(matching.windowPresentationSnapshot.selections == presentation.selections)
+        #expect(matching.editorSession.retainedScrollFraction(fallback: 0) == 0.4)
 
         let stale = DocumentSessionModel(key: nil)
         stale.restoreWindowPresentation(presentation, source: "Changed argument.")

@@ -1357,6 +1357,49 @@ struct MarkdownEditorReuseTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A resumed page replaces its departure anchor with the next live viewport report")
+    func resumedViewportReportSupersedesDepartureAnchor() async throws {
+        let dispatcher = DepartureMeasurementDispatcher()
+        let editor = MarkdownEditorSession(bridgeDispatcher: dispatcher)
+        let harness = SwitchingHarness()
+        defer { harness.close() }
+        let paragraphs = (0..<80).map { "Paragraph \($0): 中文 😀 e\u{301} synthetic source." }
+        let source = "# Resumed\n\n" + paragraphs.joined(separator: "\n\n") + "\n"
+        try await harness.show(editor, source: source, title: "Resumed", mode: .livePreview)
+        try await harness.scroll(to: 0.25)
+        try await editor.captureStateForViewReconstruction(suspendForDetachment: true)
+        let departureAnchor = try #require(editor.retainedScrollAnchor)
+        let suspensionID = try #require(editor.detachmentSuspensionID)
+
+        try await editor.resumeAfterDetachment(suspensionID: suspensionID)
+        #expect(editor.detachmentSuspensionID == nil)
+        let scrollQueriesAfterResume = dispatcher.scrollQueryCount
+        let capturesAfterResume = dispatcher.suspensionCount
+        let laterBlock = (source as NSString).range(of: paragraphs[60])
+        try #require(laterBlock.location != NSNotFound)
+        // Deliver the ordinary current-page receipt directly so no later query
+        // or second capture can conceal a retained departure anchor.
+        let reportedAnchor = try #require(
+            editor.recordScrollPosition(
+                MarkdownEditorWireScrollAnchor(
+                    sourceUTF16Offset: laterBlock.location,
+                    blockUTF16LowerBound: laterBlock.location,
+                    blockUTF16UpperBound: NSMaxRange(laterBlock),
+                    relativeBlockPosition: 0.25,
+                    fallbackFraction: 0.75
+                ),
+                fallbackFraction: 0.75
+            ))
+
+        #expect(reportedAnchor.sourceUTF16Offset > departureAnchor.sourceUTF16Offset)
+        #expect(editor.retainedScrollAnchor == reportedAnchor)
+        #expect(editor.retainedScrollFraction(fallback: 0) == 0.75)
+        #expect(dispatcher.scrollQueryCount == scrollQueriesAfterResume)
+        #expect(dispatcher.suspensionCount == capturesAfterResume)
+        #expect(Data(editor.checkedSource.utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     private func makeSession(pool: MarkdownEditorWebViewPool?) -> MarkdownEditorSession {
         let session = MarkdownEditorSession()
         session.webViewPool = pool

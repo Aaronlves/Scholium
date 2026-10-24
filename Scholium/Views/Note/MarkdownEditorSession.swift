@@ -804,11 +804,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         viewReconstructionID = UUID()
     }
 
-    /// Advances the native host identity for a new presentation without
-    /// imposing a title- or frontmatter-specific viewport.
+    /// Ordinary opening starts at the top. Retained-tab activation does not
+    /// enter this lifecycle; history and source locators supply later intents.
     func prepareOpeningPresentation() {
         presentationIsClosed = false
         openingPresentationID = UUID()
+        setScrollPosition(anchor: nil, fallbackFraction: 0)
+    }
+
+    /// The view's coalesced observations are only an initial fallback. An
+    /// atomic departure capture or an explicit navigation already belongs to
+    /// this session and must survive native host reconstruction.
+    func seedInitialScrollPosition(anchor: EditorScrollAnchor?, fallbackFraction: Double) {
+        guard pendingScrollFraction == nil, pendingScrollAnchor == nil,
+            reconstructionScrollAnchor == nil, pendingScrollIntent == nil
+        else { return }
+        pendingScrollAnchor = anchor
+        pendingScrollFraction = min(1, max(0, fallbackFraction))
     }
 
     /// Drops clean editor presentation after its tab closes. A recovery buffer
@@ -1375,7 +1387,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             pendingScrollAnchor = nil
             return nil
         }
-        pendingScrollAnchor = reconstructionScrollAnchor ?? anchor
+        pendingScrollAnchor = anchor
         return anchor
     }
 
@@ -1967,6 +1979,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard self.webView === webView, detachmentSuspensionID == suspensionID else { return }
         detachmentCapture = nil
         pendingDetachmentSuspensionID = nil
+        reconstructionScrollAnchor = nil
         recordNoteOpeningActualFocus(
             attemptID: PerformanceProbe.shared.currentNoteOpeningAttempt(editorSessionID: sessionID))
     }
@@ -3076,10 +3089,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         throw SessionError.invalidResult
                     }
                 }
-                // Recovery installs all captured ranges. A default caret may
-                // yield to them, while an explicit navigation request must be
-                // applied by the convergence loop after that atomic install.
-                if matchingRecovery == nil || initialRangeIsDefault,
+                // Initialization installs selection, not a viewport reveal.
+                // Only the default caret is consumed here; explicit locators
+                // still run after presentation geometry has converged.
+                if initialRangeIsDefault,
                     pendingSourceRange == requestedInitialRange, pendingSourceRangeRevision == initialRangeRevision,
                     pendingSourceRangeIsDefault == initialRangeIsDefault
                 {
@@ -3156,9 +3169,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         appliedMode = requestedMode
                     }
                     if let range = pendingSourceRange, !pendingSourceRangeRequiresEditing || appliedMode != .review {
-                        let selection = try editorSelection(for: range)
                         let rangeRevision = pendingSourceRangeRevision
                         let rangeIsDefault = pendingSourceRangeIsDefault
+                        if appliedMode == .review {
+                            _ = try await send(
+                                .completePreparation(anchor: nil, fraction: nil),
+                                in: webView, requiringRequestEpoch: intendedRequestEpoch)
+                            guard pendingSourceRange == range, pendingSourceRangeRevision == rangeRevision,
+                                pendingSourceRangeIsDefault == rangeIsDefault, pendingMode == appliedMode
+                            else { continue }
+                        }
+                        let selection = try editorSelection(for: range)
                         if !rangeIsDefault { sourceLocatorRevision = rangeRevision }
                         _ = try await send(
                             .revealSourceRange(fromUTF16: selection.anchor, toUTF16: selection.head),
@@ -3217,6 +3238,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     _ = try await send(.blur, in: webView, requiringRequestEpoch: intendedRequestEpoch)
                 }
                 if focused { acknowledgeFocusIntent(releaseFocusRevision, target: releaseFocusTarget) }
+                reconstructionScrollAnchor = nil
                 updatePresentation { $0.complete(appliedMode) }
                 PerformanceProbe.shared.markNoteOpeningMilestone(.sessionLoaded, attemptID: openingAttempt, editorSessionID: openingSession)
                 // Updates arriving after the stable handoff use the loaded

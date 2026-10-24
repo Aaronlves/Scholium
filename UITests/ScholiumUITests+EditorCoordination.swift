@@ -1231,6 +1231,14 @@ extension ScholiumUITests {
             waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
             "The still-open tab must keep its reading context."
         )
+        _ = clickLibraryRow("QA Autosave B.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+        _ = clickLibraryRow("QA Autosave A.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "Library activation of a still-open Note must retain its captured reading context."
+        )
 
         app.menuBars.menuBarItems["File"].click()
         let closeTab = app.menuItems["Close Tab"].firstMatch
@@ -1247,6 +1255,18 @@ extension ScholiumUITests {
         XCTAssertFalse(
             headingIsInViewport(locatorHeading),
             "A closed tab must not donate its former viewport to a fresh opening."
+        )
+        for _ in 0..<12 where !headingIsInViewport(locatorHeading) {
+            rendered.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) })
+        _ = clickLibraryRow("QA Autosave B.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
+        _ = clickLibraryRow("QA Autosave A.md")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(openingHeading) },
+            "Replacing the selected Note through Library must start each fresh opening at top."
         )
 
         app.typeKey("f", modifierFlags: [.command, .shift])

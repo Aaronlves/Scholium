@@ -255,8 +255,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.writingContinuationContextKey = writingContinuationContextKey
         coordinator.writingIndexContextKey = writingIndexContextKey
         coordinator.writingContinuationQuery = writingContinuationQuery
-        coordinator.initialScrollFraction = initialScrollFraction
-        coordinator.initialScrollAnchor = initialScrollAnchor
         if requiresMathRuntime {
             coordinator.requestMathRuntimeIfNeeded(in: webView)
         }
@@ -276,7 +274,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.setDocumentTitle(documentTitle)
         session.setWritingContinuation(enabled: writingContinuationEnabled, contextKey: writingContinuationContextKey)
         session.setWritingIndexContext(writingIndexContextKey)
-        session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
+        session.seedInitialScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
         coordinator.bindSourceActivity(to: webView)
         let openingSessionID = session.sessionID
@@ -406,8 +404,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onImagePreview = onImagePreview
         context.coordinator.onScrollFractionChange = onScrollFractionChange
         context.coordinator.onScrollAnchorChange = onScrollAnchorChange
-        context.coordinator.initialScrollFraction = initialScrollFraction
-        context.coordinator.initialScrollAnchor = initialScrollAnchor
         if context.coordinator.documentTitle != documentTitle {
             context.coordinator.documentTitle = documentTitle
             session.setDocumentTitle(documentTitle)
@@ -629,8 +625,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var userCSS = ""
         var linkPreviews: [DocumentLinkPreview] = []
         var awaitingEditorLoad = false
-        var initialScrollFraction: Double = 0
-        var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
         private var pageGeneration: UInt64 = 0
         private struct BootstrapNavigationObservation {
@@ -1539,12 +1533,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.setPresentationCSS(presentationCSS)
             session.setUserCSS(userCSS)
             session.setLinkPreviews(linkPreviews, in: session.checkedSource)
-            session.setScrollPosition(
-                anchor: session.retainedScrollAnchor ?? initialScrollAnchor,
-                fallbackFraction: session.retainedScrollFraction(
-                    fallback: initialScrollFraction
-                )
-            )
             // Stage the complete initial presentation and viewport before
             // declaring the renderer ready for its first initialization.
             session.editorBecameReady()

@@ -1002,9 +1002,18 @@ final class DocumentController: ObservableObject {
             }
         }
         guard let fingerprint else { return nil }
+        // Departure has already frozen and captured the actual Web viewport.
+        // Its coalesced native observation may still describe an earlier frame.
+        let capturedAnchor = session.editorSession.detachmentSuspensionID == nil ? nil
+            : session.editorSession.retainedScrollAnchor.flatMap { anchor in
+                anchor.sourceFingerprint == fingerprint
+                    && anchor.isValid(forUTF16Length: session.retainedExactSource.utf16.count) ? anchor : nil
+            }
         return DocumentNavigationVisitPosition(
             sourceFingerprint: fingerprint,
-            scrollPosition: session.activeScrollPosition
+            scrollPosition: capturedAnchor.map {
+                ObservedScrollPosition(fraction: $0.fallbackFraction, anchor: $0)
+            } ?? session.activeScrollPosition
         )
     }
 
@@ -1458,10 +1467,6 @@ final class DocumentController: ObservableObject {
             selectedSession.beginManagedCreationEntry(
                 bodyStartUTF16: bodyStart
             )
-            selectedSession.editorSession.revealSourceRange(
-                fromUTF16: bodyStart,
-                toUTF16: bodyStart
-            )
             beginEditing(
                 session: selectedSession,
                 target: .workspace(key),
@@ -1470,6 +1475,10 @@ final class DocumentController: ObservableObject {
                 mode: .livePreview
             )
             installOpenedDocument(descriptor)
+            selectedSession.editorSession.revealSourceRange(
+                fromUTF16: bodyStart,
+                toUTF16: bodyStart
+            )
         } else {
             snapshots[key] = snapshot
             let selectedSession = session(for: key)
