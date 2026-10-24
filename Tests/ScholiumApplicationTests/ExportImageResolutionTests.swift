@@ -193,4 +193,68 @@ struct ExportImageResolutionTests {
             throw error
         }
     }
+    @Test(
+        "Measure retained draft export preparation over small and large exact sources",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_RECOVERY_EXPORT"] == "1"))
+    func retainedDraftExportPerformance() async throws {
+        var rows: [[String: Any]] = []
+        let clock = ContinuousClock()
+        for paragraphs in [100, 2_000] {
+            for deleted in [false, true] {
+                for includesImages in [false, true] {
+                    let fixture = try await ApplicationFixture.make()
+                    defer { fixture.remove() }
+                    let imageSource =
+                        includesImages
+                        ? "\r\n![Figure](Perf0.png)\r\n![Figure][second]\r\nCaption.[^image]\r\n\r\n[second]: Perf1.png\r\n[^image]: ![Inset](Perf2.png)\r\n![Missing](Unavailable.png)"
+                        : ""
+                    let body = (0..<paragraphs).map {
+                        "Paragraph \($0). 研究材料 preserves exact prose and a researcher-owned [[Freedom#Reasons|connection]]. An argument remains writing, not source evidence.\r\n"
+                    }.joined(separator: "\r\n")
+                    let source = "\u{FEFF}---\r\ncustom: 'KEEP' # source authority\r\n---\r\n# Draft\r\n" + body + imageSource
+                    let bytes = Data(source.utf8)
+                    let original = fixture.analysesURL.appendingPathComponent(fixture.analysisNoteID.relativePath)
+                    try bytes.write(to: original)
+                    for ordinal in 0..<3 { try Self.png.write(to: fixture.analysesURL.appendingPathComponent("Perf\(ordinal).png")) }
+                    let runtime = WorkspaceRuntime(
+                        configuration: .live(
+                            .init(
+                                applicationSupportURL: fixture.applicationSupportURL,
+                                workspaceRegistryStorageURL: fixture.registryStorageURL)))
+                    do {
+                        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+                        if deleted { try FileManager.default.removeItem(at: original) }
+                        var samples: [Double] = []
+                        for iteration in 0..<12 {
+                            let started = clock.now
+                            let images = try await handle.documents.exportImages(for: fixture.analysisNoteID, markdownSource: source)
+                            let duration = started.duration(to: clock.now).components
+                            let milliseconds = Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15
+                            if iteration >= 3 { samples.append(milliseconds) }
+                            #expect(images.count == (includesImages ? 3 : 0))
+                            #expect(images["Unavailable.png"] == nil)
+                            if includesImages { #expect(images["Perf0.png"]?.data == Self.png) }
+                            if deleted {
+                                #expect(!FileManager.default.fileExists(atPath: original.path))
+                            } else {
+                                #expect(try Data(contentsOf: original) == bytes)
+                            }
+                        }
+                        rows.append([
+                            "source_bytes": bytes.count, "paragraphs": paragraphs,
+                            "origin_deleted": deleted, "image_count": includesImages ? 3 : 0,
+                            "warmups": 3, "samples_ms": samples,
+                        ])
+                        await runtime.shutdown()
+                    } catch {
+                        await runtime.shutdown()
+                        throw error
+                    }
+                }
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["metric": "retained_export_image_preparation", "rows": rows], options: [.sortedKeys])
+        print("RECOVERY_EXPORT_PERFORMANCE " + String(decoding: data, as: UTF8.self))
+    }
+
 }

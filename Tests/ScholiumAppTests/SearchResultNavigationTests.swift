@@ -973,6 +973,173 @@ struct SearchResultNavigationTests {
         }
     }
 
+    /// Model diagnostic: complete synchronous link admission and ordered
+    /// navigation with two retained tabs. No native renderer, focus or paint.
+    @Test(
+        "Measure direct-link resolution and warm retained navigation across synthetic Triptychs",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_DIRECT_LINKS"] == "1"),
+        arguments: [500, 5_000])
+    func authoredLinkPerformance(noteCount: Int) async throws {
+        try await withFixture(authoredLinks: true, performanceNoteCount: noteCount) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let summaryCount = window.workspaceProjectionController.vaultSnapshotsByID.values.reduce(0) { $0 + $1.documents.count }
+            try #require(summaryCount == noteCount)
+            let mode = window.presentedDocumentMode
+            let sourceFingerprint = DocumentFingerprint(content: String(decoding: fixture.originalSource, as: UTF8.self)).sha256
+            let draftFingerprint = DocumentFingerprint(content: String(decoding: fixture.originalDraft, as: UTF8.self)).sha256
+            var admissionMS: [Double] = []
+            var completionMS: [Double] = []
+            for ordinal in 0..<12 {
+                let toDraft = ordinal.isMultiple(of: 2)
+                let expectedPath = toDraft ? "Draft.md" : "Source.md"
+                let from = toDraft ? "Source.md" : "Draft.md"
+                let target = toDraft ? "Draft#Draft" : "Source#Source"
+                window.documentController.requestSourceLocation(line: nil)
+                let started = ContinuousClock.now
+                let admission = window.openInternalLink(target, from: from)
+                let admitted = ContinuousClock.now
+                await finishAuthoredLink(admission, in: window)
+                let completed = ContinuousClock.now
+                try #require(window.selectedDocumentPath == expectedPath)
+                try #require(window.documentController.sourceLocationRequest?.line == 1)
+                try #require(window.documentController.sourceLocationRequest?.sourceFingerprint == (toDraft ? draftFingerprint : sourceFingerprint))
+                try #require(window.presentedDocumentMode == mode)
+                try #require(window.shellState.operationIssues.isEmpty)
+                if ordinal >= 3 {
+                    admissionMS.append(Self.directLinkMilliseconds(started.duration(to: admitted)))
+                    completionMS.append(Self.directLinkMilliseconds(started.duration(to: completed)))
+                }
+            }
+            try #require(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+            try #require(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            #if DEBUG
+                let configuration = "debug"
+            #else
+                let configuration = "release"
+            #endif
+            for (name, values) in [("synchronous_admission", admissionMS), ("queue_completion", completionMS)] {
+                let mean = values.reduce(0, +) / Double(values.count)
+                let variance = values.reduce(0) { $0 + pow($1 - mean, 2) } / Double(values.count)
+                let sorted = values.sorted()
+                let payload: [String: Any] = [
+                    "metric": name, "configuration": configuration, "notes": noteCount,
+                    "warmups": 3, "samples": values.count, "unit": "ms",
+                    "median": sorted[sorted.count / 2], "mean": mean,
+                    "minimum": sorted.first!, "maximum": sorted.last!,
+                    "standard_deviation": sqrt(variance), "values": values,
+                    "native_paint_measured": false, "correctness": "target, fingerprint, mode, exact source unchanged",
+                ]
+                let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+                print("DIRECT_LINK_PERF \(String(decoding: data, as: UTF8.self))")
+            }
+        }
+    }
+
+    private static func directLinkMilliseconds(_ duration: Duration) -> Double {
+        let value = duration.components
+        return Double(value.seconds) * 1_000 + Double(value.attoseconds) / 1_000_000_000_000_000
+    }
+
+    /// Model publication diagnostic. Cloning, public-link warmup, source
+    /// hydration and correctness checks are outside the timed replacement.
+    /// No native renderer, focus, paint or retained memory is measured.
+    @Test(
+        "Measure equal copied source-cohort publication after a warmed direct link",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_DIRECT_LINK_PUBLICATION"] == "1"),
+        arguments: [500, 5_000])
+    func authoredCopiedCohortPublicationPerformance(noteCount: Int) async throws {
+        try await withFixture(authoredLinks: true, performanceNoteCount: noteCount) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let descriptor = try #require(window.currentDocumentDescriptor)
+            let mode = window.presentedDocumentMode
+            let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
+            // Freeze only this model window's event receiver. The source and
+            // Application runtime are still real, isolated fixture owners.
+            window.workspaceCancellables.removeAll()
+            let frozen = try await window.discoveryController.refreshWorkspace()
+            try #require(frozen.phase == .complete)
+            try #require(frozen.vaults.reduce(0) { $0 + $1.documents.count } == noteCount)
+            let fingerprint = DocumentFingerprint(content: String(decoding: fixture.originalSource, as: UTF8.self)).sha256
+            var publicationMS: [Double] = []
+            for ordinal in 0..<12 {
+                // This public route works before and after resolver reuse; no
+                // private cache accessor is needed to manufacture a warm state.
+                await finishAuthoredLink(window.openInternalLink("#Source", from: "Source.md"), in: window)
+                try #require(window.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey)
+                try #require(window.documentController.sourceLocationRequest?.line == 1)
+                try #require(window.documentController.sourceLocationRequest?.sourceFingerprint == fingerprint)
+                let copiedVaults = try frozen.vaults.map { vault in
+                    let copiedDocuments = vault.documents.map { $0 }
+                    let prior = try #require(window.workspaceProjectionController.vaultSnapshot(id: vault.vault.id))
+                    try #require(prior.documents == copiedDocuments)
+                    if !copiedDocuments.isEmpty {
+                        let storageIsDistinct = prior.documents.withUnsafeBufferPointer { old in
+                            copiedDocuments.withUnsafeBufferPointer { copied in old.baseAddress != copied.baseAddress }
+                        }
+                        try #require(storageIsDistinct, "The diagnostic requires genuinely copied summary storage")
+                    }
+                    try #require(zip(prior.documents, copiedDocuments).allSatisfy { $0.hasSameSourceBinding(as: $1) })
+                    return WorkspaceVaultSnapshot(
+                        slot: vault.slot, vault: vault.vault, pathComparisonPolicy: vault.pathComparisonPolicy,
+                        documents: copiedDocuments, folders: vault.folders, identityRecovery: vault.identityRecovery)
+                }
+                let publication = WorkspaceSnapshot(
+                    triptych: frozen.triptych, mode: frozen.mode, phase: .complete,
+                    generatedAt: frozen.generatedAt, vaults: copiedVaults,
+                    discovery: frozen.discovery, research: frozen.research,
+                    sourceInventoryRevision: frozen.sourceInventoryRevision + UInt64(ordinal) + 1,
+                    documentChangesGeneration: frozen.documentChangesGeneration)
+                try #require(window.workspaceProjectionController.advancesSourceInventory(publication))
+                let context = window.workspaceProjectionContext
+                let started = ContinuousClock.now
+                let commit = window.workspaceProjectionController.replaceSnapshot(
+                    publication, runtimeIdentity: capabilities.runtimeIdentity,
+                    status: .current(.init(snapshot: publication)), context: context)
+                let completed = ContinuousClock.now
+                try #require(commit != nil)
+                try #require(window.workspaceProjectionController.snapshotPhase == .complete)
+                try #require(window.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey)
+                try #require(window.presentedDocumentMode == mode)
+                try #require(window.shellState.operationIssues.isEmpty)
+                try #require(
+                    window.workspaceProjectionController.cachedNote(
+                        vaultID: fixture.result.vaultID, stableNoteID: descriptor.sessionKey.noteID,
+                        relativePath: "Source.md")?.fingerprint == fixture.result.fingerprint)
+                if ordinal >= 3 {
+                    publicationMS.append(Self.directLinkMilliseconds(started.duration(to: completed)))
+                }
+            }
+            // The final publication must also remain navigable with its exact
+            // unchanged source binding, rather than only the prior warm state.
+            await finishAuthoredLink(window.openInternalLink("#Source", from: "Source.md"), in: window)
+            try #require(window.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey)
+            try #require(window.documentController.sourceLocationRequest?.sourceFingerprint == fingerprint)
+            try #require(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+            try #require(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            #if DEBUG
+                let configuration = "debug"
+            #else
+                let configuration = "release"
+            #endif
+            let mean = publicationMS.reduce(0, +) / Double(publicationMS.count)
+            let variance = publicationMS.reduce(0) { $0 + pow($1 - mean, 2) } / Double(publicationMS.count)
+            let sorted = publicationMS.sorted()
+            let payload: [String: Any] = [
+                "metric": "equal_copied_cohort_publication", "configuration": configuration, "notes": noteCount,
+                "warmups": 3, "samples": publicationMS.count, "unit": "ms",
+                "median": sorted[sorted.count / 2], "mean": mean,
+                "minimum": sorted.first!, "maximum": sorted.last!, "standard_deviation": sqrt(variance), "values": publicationMS,
+                "public_link_warmed_each_sample": true, "fresh_array_storage_verified": true,
+                "strictly_newer_source_inventory": true, "native_paint_measured": false, "retained_memory_measured": false,
+                "correctness": "equal summaries, exact binding, retained target/mode/fingerprint, unchanged disk bytes",
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            print("DIRECT_LINK_PUBLICATION_PERF \(String(decoding: data, as: UTF8.self))")
+        }
+    }
+
     private func finishAuthoredLink(_ admission: Task<Void, Never>?, in window: WindowModel, peer: WindowModel? = nil) async {
         // Wait for actual queue admission before draining the owning queue. A
         // previous issue or the destination's old tab is not a completion signal.
@@ -1027,10 +1194,12 @@ struct SearchResultNavigationTests {
         }
     }
 
-    private func withFixture(identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil, _ body: (Fixture) async throws -> Void)
-        async throws
-    {
-        let fixture = try await Fixture.make(identicalSources: identicalSources, authoredLinks: authoredLinks, authoredDraft: authoredDraft)
+    private func withFixture(
+        identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil, performanceNoteCount: Int = 2,
+        _ body: (Fixture) async throws -> Void
+    ) async throws {
+        let fixture = try await Fixture.make(
+            identicalSources: identicalSources, authoredLinks: authoredLinks, authoredDraft: authoredDraft, performanceNoteCount: performanceNoteCount)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         do {
             try await body(fixture)
@@ -1076,7 +1245,9 @@ struct SearchResultNavigationTests {
                 relativePath: result.relativePath, stableNoteID: result.stableNoteID)
         }
 
-        static func make(identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil) async throws -> Fixture {
+        static func make(
+            identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil, performanceNoteCount: Int = 2
+        ) async throws -> Fixture {
             let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             let root = repository.appendingPathComponent(".build/feature-audit/research-workflow/fixtures/\(UUID())")
             let triptych = root.appendingPathComponent("Triptych")
@@ -1095,6 +1266,19 @@ struct SearchResultNavigationTests {
                 }
                 try Data(source.utf8).write(to: sourceFile)
                 try Data(draft.utf8).write(to: draftFile)
+                if performanceNoteCount > 2 {
+                    let destinations = [analyses, topics, works]
+                    for ordinal in 0..<(performanceNoteCount - 2) {
+                        let folder = destinations[ordinal % destinations.count].appendingPathComponent("Synthetic/Section\(ordinal / 300)")
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        let paragraphs = (0..<8).map {
+                            "Synthetic argument \(ordinal).\($0) compares conceptual evidence and interpretation. 中文研究语境 retains exact authored distinctions."
+                        }.joined(separator: "\n\n")
+                        let synthetic =
+                            "---\ntitle: Synthetic argument \(ordinal)\naliases: [Synthetic alias \(ordinal), Context \(ordinal)]\nkeywords: [interpretation, evidence]\n---\n\n# Synthetic argument \(ordinal)\n\n\(paragraphs)\n\n## Discussion\n\n[[Source#Source]]{{Synthetic connection context.}}\n\nA source-owned claim. ^claim-\(ordinal)\n"
+                        try Data(synthetic.utf8).write(to: folder.appendingPathComponent("Synthetic\(ordinal).md"))
+                    }
+                }
                 let created = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("Support"))
                 store = created
                 let capabilities = try await created.configureTriptychCapabilities(

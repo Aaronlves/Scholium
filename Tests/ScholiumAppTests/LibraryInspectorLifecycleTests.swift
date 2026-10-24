@@ -251,6 +251,103 @@ struct LibraryInspectorLifecycleTests {
         }
     }
 
+    /// Measures queue admission through committed window Library projection.
+    /// AppKit/SwiftUI layout and paint are outside this model boundary.
+    @Test(
+        "Measure role browsing with a retained dirty source at realistic corpus sizes",
+        .enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_MEASURE_LIBRARY_BROWSING"] == "1"),
+        arguments: [500, 5_000])
+    func roleBrowsingMeasurement(noteCount: Int) async throws {
+        try await withFixture(noteCount: noteCount) { fixture in
+            let window = try await fixture.makeWindow()
+            let document = try #require(window.documentController.selectedDocument)
+            let session = window.documentController.session(for: document.editingTarget)
+            session.suppressAutosave = true
+            session.originalEditingSource = Fixture.source
+            session.editingRevision = DocumentFingerprint(content: Fixture.source)
+            session.preparePresentationMode(.source)
+            window.rememberPresentationMode(.source)
+            let editor = session.editorSession
+            editor.loadDocument(Fixture.source, documentID: editor.bridgeDocumentID, mode: .source)
+            let addition = "Unsaved bilingual research paragraph. 未保存的研究文字。\n"
+            let end = EditorSourceOffsetMap(source: Fixture.source).editorUTF16Length
+            try #require(
+                editor.acceptEditorChanges(
+                    [.init(from: end, to: end, insert: addition, exactInsert: addition)],
+                    baseGeneration: 0, resultingGeneration: 1))
+            let draft = Fixture.source + addition
+            session.editingSource = draft
+            let selection = MarkdownEditorSelectionRange(anchor: 3, head: 7)
+            try #require(
+                editor.updateInteraction(
+                    selections: [selection], line: 1, column: 8, lineCount: 5,
+                    documentVersion: editor.generation, interactionRevision: 1, focusTarget: .editor,
+                    context: MarkdownEditorContext(
+                        selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
+                        composing: false, availableCommands: [], undoLabel: "Typing", redoLabel: nil)))
+            let retained = try await RetainedContext.capture(window)
+            try await fixture.finishStartupPublication()
+            try #require(window.workspaceProjectionController.vaultSnapshotsByID.values.reduce(0) { $0 + $1.documents.count } == noteCount)
+            let probe = try fixture.observe(window)
+            let generation = editor.generation
+            let focusRevision = editor.focusRequestRevision
+            let roles: [(String, WorkspaceVaultSlot)] = [("topics", .topicKnowledge), ("works", .output), ("analyses", .paperAnalysis)]
+            var samples: [String: [Double]] = [:]
+            var sortOrders: [String: String] = [:]
+            for iteration in 0..<12 {
+                for (label, role) in roles {
+                    let start = ContinuousClock.now
+                    window.requestTriptychWorkspace(role)
+                    await window.documentTransitionCoordinator.waitForIdle()
+                    let committed = ContinuousClock.now
+                    let visible = window.filteredNotes
+                    let ready = ContinuousClock.now
+                    if iteration >= 3 {
+                        samples["queue:" + label, default: []].append(Self.milliseconds(start.duration(to: committed)))
+                        samples["ordering:" + label, default: []].append(Self.milliseconds(committed.duration(to: ready)))
+                        samples["ready:" + label, default: []].append(Self.milliseconds(start.duration(to: ready)))
+                    }
+                    sortOrders[label] = window.discoveryController.library.sortOrder.rawValue
+                    #expect(visible.count == window.notes.count)
+                    // Correctness checks and source readback are excluded from elapsed.
+                    #expect(window.shellState.selectedWorkspace == role)
+                    #expect(window.requestedWorkspaceSelection == nil)
+                    #expect(window.currentRegisteredVault?.id == fixture.capabilities.assignment.vault(for: role)?.id)
+                    #expect(editor.checkedSource.utf8.elementsEqual(draft.utf8) && session.hasUnsavedChanges)
+                    #expect(editor.generation == generation && editor.focusRequestRevision == focusRevision)
+                    #expect(editor.context?.selections == [selection])
+                    #expect(editor.detachmentSuspensionID == nil)
+                    #expect(try Data(contentsOf: fixture.analyses.appendingPathComponent("Shared.md")) == Data(Fixture.source.utf8))
+                    retained.check(window)
+                }
+            }
+            probe.expectNoRefreshOrResearchPublication()
+            #expect(probe.counts.projectionPublications == 36)
+            for (label, _) in roles {
+                for boundary in ["queue", "ordering", "ready"] {
+                    Self.printLibraryMeasurement(
+                        label, boundary: boundary, sortOrder: sortOrders[label] ?? "unavailable", noteCount: noteCount,
+                        samples: samples[boundary + ":" + label, default: []])
+                }
+            }
+        }
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) * 1_000 + Double(duration.components.attoseconds) / 1e15
+    }
+
+    private static func printLibraryMeasurement(_ role: String, boundary: String, sortOrder: String, noteCount: Int, samples: [Double]) {
+        let sorted = samples.sorted()
+        let mean = samples.reduce(0, +) / Double(samples.count)
+        let standardDeviation = (samples.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(samples.count)).squareRoot()
+        let formatted: (Double) -> String = { String(format: "%.4f", $0) }
+        print(
+            "LIBRARY_BROWSING_MEASURE boundary=\(boundary) sort=\(sortOrder) notes=\(noteCount) role=\(role) warmups=3 samples=\(samples.count)"
+                + " median_ms=\(formatted(sorted[sorted.count / 2])) mean_ms=\(formatted(mean)) stddev_ms=\(formatted(standardDeviation))"
+                + " min_ms=\(formatted(sorted.first!)) max_ms=\(formatted(sorted.last!)) raw_ms=\(samples.map(formatted).joined(separator: ","))")
+    }
+
     private struct RejectedDestination: Error {}
 
     /// Yield queued main-actor debounce tasks without waiting for the production delay.
@@ -260,8 +357,8 @@ struct LibraryInspectorLifecycleTests {
 
     private func drainScheduledWork() async { await Self.drainScheduledWork() }
 
-    private func withFixture(_ body: (Fixture) async throws -> Void) async throws {
-        let fixture = try await Fixture.make()
+    private func withFixture(noteCount: Int = 4, _ body: (Fixture) async throws -> Void) async throws {
+        let fixture = try await Fixture.make(noteCount: noteCount)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         do {
             try await body(fixture)
@@ -292,7 +389,7 @@ struct LibraryInspectorLifecycleTests {
             self.snapshot = snapshot
         }
 
-        static func make() async throws -> Fixture {
+        static func make(noteCount: Int = 4) async throws -> Fixture {
             let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             let root = repository.appendingPathComponent(".build/library-inspector-lifecycle/\(UUID())")
             var store: WorkspaceStore?
@@ -308,6 +405,19 @@ struct LibraryInspectorLifecycleTests {
                 try Data("Exact material.\n".utf8).write(to: analyses.appendingPathComponent("Peer.md"))
                 try Data("# Topic\n\nDifferent same-path source.\n".utf8).write(to: topics.appendingPathComponent("Shared.md"))
                 try Data("# Work\n\nIndependent writing.\n".utf8).write(to: works.appendingPathComponent("Shared.md"))
+                // Real source-backed summaries distributed across all roles.
+                // Setup/index construction is intentionally outside timed browsing.
+                for index in 0..<max(0, noteCount - 4) {
+                    let directory = [analyses, topics, works][index % 3]
+                        .appendingPathComponent("Section-\((index / 3) % 20)")
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let paragraphs = (0..<12).map { paragraph in
+                        "Synthetic research paragraph \(paragraph) on topic \(index % 31). 中文语境 retains authored prose and [[Peer]]{{A source-owned note.}}."
+                    }.joined(separator: "\n\n")
+                    let body =
+                        "---\ntitle: 'Synthetic Research \(index)'\nauthor: 'Researcher \(index % 19)'\nkeywords: [ethics, topic-\(index % 31)]\nstatus: draft\n---\n\n# Synthetic \(index)\n\n\(paragraphs)\n"
+                    try Data(body.utf8).write(to: directory.appendingPathComponent("Research-\(index).md"))
+                }
                 let created = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("Support"))
                 store = created
                 let capabilities = try await created.configureTriptychCapabilities(
