@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Finish or close the current dialog before opening this notification.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish or close the current dialog before opening this notification."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请先完成或关闭当前对话框，再打开这条通知。"}}}},
     "Check for Updates…": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "检查更新…"}}}},
     "Updates Unavailable": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "更新不可用"}}}},
     "Updates are unavailable in this build. Download the latest version from Scholium Releases.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "此版本无法使用应用内更新。可前往 Scholium 发布页下载最新版本。"}}}},
@@ -26398,16 +26399,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅在%@有值时显示"
-          }
-        }
-      }
-    },
-    "Show Attention" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示关注"
           }
         }
       }

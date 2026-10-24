@@ -39,7 +39,7 @@ struct WorkspaceToolbarTests {
             window.close()
         }
 
-        model.attentionPopoverSession.presentQueue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+        model.attentionPopoverSession.present()
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
         }
@@ -47,9 +47,9 @@ struct WorkspaceToolbarTests {
         #expect(popover.isShown)
         #expect(popover.contentViewController?.view.window != nil)
         #expect(!toolbar.isVisible)
-        #expect(model.attentionPopoverSession.isPresented(from: .toolbar))
+        #expect(model.attentionPopoverSession.isPresented)
         popover.close()
-        #expect(!model.attentionPopoverSession.isPresented(from: .toolbar))
+        #expect(!model.attentionPopoverSession.isPresented)
         #expect(!toolbar.isVisible)
     }
 
@@ -833,9 +833,8 @@ struct WorkspaceToolbarTests {
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
             activateSidebar: { _ in },
-            showAttention: { _ in },
-            showPreferredAttention: {},
-            canShowAttention: { false }
+            showNotifications: {},
+            canShowNotifications: { false }
         )
     }
 

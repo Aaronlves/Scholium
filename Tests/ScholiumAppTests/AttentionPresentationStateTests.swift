@@ -19,45 +19,16 @@ struct AttentionPresentationStateTests {
         #expect(counts.count(for: .output) == nil)
     }
 
-    @Test("Workspace changes clear an Inspector-applied This Note subset")
-    func scopeChangeClearsNoteSubset() {
-        let state = AttentionPresentationState()
-        let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
-
-        state.present(workspaceSlot: .topicKnowledge, noteScope: note)
-        #expect(state.noteScope == note)
-        state.selectWorkspaceSlot(.output)
-
-        #expect(state.workspaceSlot == .output)
-        #expect(state.noteScope == nil)
-        #expect(state.selectedItemID == nil)
-    }
-
-    @Test("Triptych Attention remains aggregate across workspace changes")
-    func triptychScopeDoesNotRetarget() {
-        let state = AttentionPresentationState()
-
-        state.present(workspaceSlot: nil, noteScope: nil)
-        state.selectWorkspaceSlot(.output)
-
-        #expect(state.workspaceSlot == nil)
-        #expect(state.noteScope == nil)
-    }
-
     @Test("A Workspace-window switch resets transient filtering and selection")
     func workspaceSwitchResetsTransientState() {
         let state = AttentionPresentationState()
-        let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
-        state.present(workspaceSlot: .topicKnowledge, noteScope: note)
-        state.filter.query = "orphan"
-        state.select("task-1")
+        state.filter.query = "Reasons"
+        state.select("change-1")
 
         state.resetForWorkspaceSwitch()
 
         #expect(state.filter.query.isEmpty)
         #expect(state.selectedItemID == nil)
-        #expect(state.noteScope == nil)
-        #expect(state.workspaceSlot == .topicKnowledge)
     }
 
     @Test("Notification empty and refresh state copy resolves in the interface locale")
@@ -83,7 +54,7 @@ struct AttentionPresentationStateTests {
 
     }
 
-    @Test("Removed tasks select next, then previous, then the filter control")
+    @Test("Removed notifications select next, then previous, then the filter control")
     func removalFocusOrder() {
         let state = AttentionPresentationState()
         state.reconcileVisibleItems(["a", "b", "c"])

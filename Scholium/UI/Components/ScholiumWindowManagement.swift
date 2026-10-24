@@ -445,9 +445,8 @@ struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let activateSidebar: @MainActor (SidebarContent) -> Void
-    let showAttention: @MainActor (AttentionPresentationRequest) -> Void
-    let showPreferredAttention: @MainActor () -> Void
-    let canShowAttention: @MainActor () -> Bool
+    let showNotifications: @MainActor () -> Void
+    let canShowNotifications: @MainActor () -> Bool
 }
 
 /// The window owns appearance for native chrome and the embedded split. When
@@ -514,7 +513,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var didFinalizeWindowAttachments = false
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
-    private var attentionPresenter: @MainActor (AttentionPresentationRequest) -> Void = { _ in }
+    private var notificationsPresenter: @MainActor () -> Void = {}
     var isNativeCloseInProgress: Bool {
         flushInFlight || closeIsAuthorized || didFinalizeWindowAttachments
     }
@@ -567,14 +566,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 guard self?.canUseSidebar == true else { return }
                 self?.toolbarController?.activateSidebar(content)
             },
-            showAttention: { [weak self] request in
-                self?.attentionPresenter(request)
+            showNotifications: { [weak self] in
+                self?.showNotifications()
             },
-            showPreferredAttention: { [weak self] in
-                self?.showPreferredAttention()
-            },
-            canShowAttention: { [weak self] in
-                self?.preferredAttentionRoute() != nil
+            canShowNotifications: { [weak self] in
+                self?.canShowNotifications == true
             }
         )
     }
@@ -620,10 +616,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func activate(
-        showAttention: @escaping @MainActor (AttentionPresentationRequest) -> Void
+        showNotifications: @escaping @MainActor () -> Void
     ) {
         registerLifecycle()
-        attentionPresenter = showAttention
+        notificationsPresenter = showNotifications
     }
 
     func presentAdvancedSearch<Content: View>(@ViewBuilder content: () -> Content) {
@@ -744,7 +740,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeIsAuthorized = false
         removeToolbar()
         splitController = nil
-        attentionPresenter = { _ in }
+        notificationsPresenter = {}
     }
 
     private func finalizeWindowAttachments(
@@ -872,16 +868,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.close()
     }
 
-    private func showPreferredAttention() {
-        guard let request = preferredAttentionRoute() else { return }
-        attentionPresenter(request)
+    private func showNotifications() {
+        guard canShowNotifications else { return }
+        notificationsPresenter()
     }
 
-    private func preferredAttentionRoute() -> AttentionPresentationRequest? {
-        guard !appState.isDetachedDocumentWindow, !didFinalizeWindowAttachments,
-            window != nil, toolbarController != nil
-        else { return nil }
-        return .queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+    private var canShowNotifications: Bool {
+        !appState.isDetachedDocumentWindow && !didFinalizeWindowAttachments
+            && window != nil && toolbarController != nil
     }
 
     private var canUseSidebar: Bool {

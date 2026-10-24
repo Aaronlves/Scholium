@@ -43,7 +43,6 @@ extension WindowModel {
             throw error
         }
         shellState.selectLibraryWorkspace(slot)
-        attentionPresentationState.selectWorkspaceSlot(slot)
     }
 
     func validateDocumentIsAvailable(
@@ -149,7 +148,6 @@ extension WindowModel {
                 sourceScope: staged.sourceScope
             )
         }
-        attentionPresentationState.selectWorkspaceSlot(staged.workspace)
         workspaceProjectionController.commitVaultSelection(
             snapshot: snapshot,
             notes: snapshot.documents.map(WindowDocumentLocation.workspace).sorted(by: notesAreOrdered)
@@ -214,7 +212,6 @@ extension WindowModel {
                     sourceScope: .library
                 )
                 shellState.selectWorkspace(slot)
-                attentionPresentationState.selectWorkspaceSlot(slot)
             }
             currentRegisteredVault = registered
             currentVaultRole = registered.role

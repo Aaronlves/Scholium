@@ -1,8 +1,7 @@
-import AppKit
 import ScholiumContracts
 import SwiftUI
 
-enum AgentChangePresentation {
+private enum AgentChangePresentation {
     static func path(for change: AgentChange) -> String {
         change.finalRelativePath
             ?? change.originalRelativePath
@@ -64,10 +63,10 @@ struct AgentChangeReceiptView: View {
             footer.padding(ScholiumMetrics.ResearchSheet.contentInset)
         }
         .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.AgentChanges.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.AgentChanges.idealWidth,
-            minHeight: ScholiumMetrics.ResearchSheet.AgentChanges.minimumHeight,
-            idealHeight: ScholiumMetrics.ResearchSheet.AgentChanges.idealHeight
+            minWidth: ScholiumMetrics.ResearchSheet.Changes.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.Changes.idealWidth,
+            minHeight: ScholiumMetrics.ResearchSheet.Changes.minimumHeight,
+            idealHeight: ScholiumMetrics.ResearchSheet.Changes.idealHeight
         )
         .presentationSizing(.fitted)
         .background(ScholiumNativeColorRole.windowBackground.color)

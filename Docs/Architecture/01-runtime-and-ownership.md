@@ -253,15 +253,15 @@ composition/focus. Auxiliary windows, native previews and transient surfaces
 belong to their originating window and close/detach with it. Preview geometry and
 read-only content grant no source authority.
 
-Attention is an immutable workspace-derived diagnostic projection consumed by
-Library Integrity filters; it has no notification dismissal owner. The
-notification popover is window-local. One App-level system notification owner
-handles authorization, coalescing and exact opaque routes. Confirmed mutation and
-live Chat execution owners submit events; refresh, restored history and expired
-turns cannot manufacture them. Validity is checked before prompting and delivery;
-receiving windows revalidate exact receipt/conversation. Cold handoff is memory-only
-and consumed once. Persistent operation issues remain with their owning window or
-Settings field, never notification delivery.
+Attention is an immutable workspace diagnostic consumed by Library Integrity
+filters. Windows own notification popovers. The App notification owner
+handles authorization, delivery coalescing, opaque routes and per-window click
+tasks. Only confirmed mutations and current Chat events submit notifications;
+refresh, restored history and expired turns cannot manufacture them. Validity is
+checked before prompting and delivery; ready matching windows revalidate exact
+receipt/conversation. Replacement or closure cancels prior click tasks. Cold
+handoff is memory-only and consumed once. Window and Settings issues remain
+independent of notification delivery.
 
 ### Inspector ownership
 

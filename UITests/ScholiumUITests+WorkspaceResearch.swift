@@ -603,6 +603,22 @@ extension ScholiumUITests {
         comparison.buttons["Close"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !comparison.exists })
 
+        // Reopening retains the selected notification. A click in the native
+        // row gutter must activate it again, just as its content button does.
+        notifications.click()
+        XCTAssertTrue(notificationPopover.waitForExistence(timeout: 5))
+        XCTAssertTrue(pendingChange.waitForExistence(timeout: 5))
+        let notificationList = notificationPopover.tables["scholium.attentionList"].firstMatch
+        XCTAssertTrue(notificationList.waitForExistence(timeout: 5))
+        let rowGutter = notificationList.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 1, dy: pendingChange.frame.midY - notificationList.frame.minY))
+        rowGutter.click()
+        XCTAssertTrue(comparison.waitForExistence(timeout: 10), "A selected notification must reopen Changes when its row edge is clicked.")
+        XCTAssertTrue(comparison.staticTexts["After"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(try Data(contentsOf: noteURL), updatedBytes)
+        comparison.buttons["Close"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !comparison.exists })
+
         let receiptArguments: [String: Any] = [
             "triptych_id": triptychID, "change_id": changeID, "note_id": noteID,
         ]

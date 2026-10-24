@@ -796,21 +796,8 @@ struct ScholiumWindowObservedRoot: View {
             )
         }
         .task(id: hasReadyWorkspace) {
-            guard hasReadyWorkspace,
-                let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID)
-            else { return }
-            if case .chat = notification, !appState.isChatSidebarEnabled,
-                appState.workspaceAssignment?.id == notification.triptychID
-            {
-                SettingsNavigationRequest.reveal(.agentChatSidebar)
-                openSettings()
-                return
-            }
-            if let sidebar = await appState.openSystemNotification(notification),
-                !shellState.libraryVisible || shellState.sidebarContent != sidebar
-            {
-                windowCoordinator.actions.activateSidebar(sidebar)
-            }
+            guard hasReadyWorkspace else { return }
+            SystemNotificationService.shared.openOpeningRoute(windowID: route.windowID)
         }
         .task(id: presentationRouter.fileImport) {
             await selectMarkdownFilesForImportIfRequested()
@@ -864,35 +851,36 @@ struct ScholiumWindowObservedRoot: View {
                     try await appState.displayAgentNote(target, admitted: admitted)
                 })
             appState.registerNoteDisplayWindow(displayWindow)
-            SystemNotificationService.shared.registerWindow(id: route.windowID) {
-                [weak appState, weak windowCoordinator] notification in
-                guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
-                windowCoordinator?.makeKeyAndOrderFront()
+            SystemNotificationService.shared.registerWindow(
+                id: route.windowID,
+                accepts: { [weak appState, weak windowCoordinator] notification in
+                    guard let appState, windowCoordinator != nil else { return false }
+                    return appState.shellState.hasCompletedInitialRestore && appState.vaultConfig != nil
+                        && !appState.windowCloseCoordinator.isPreparingOrFinalized
+                        && appState.windowWorkspaceController.activeCapabilities != nil
+                        && appState.workspaceAssignment?.id == notification.triptychID
+                }
+            ) { [weak appState, weak windowCoordinator] notification in
+                guard let appState, let windowCoordinator, !Task.isCancelled,
+                    !appState.windowCloseCoordinator.isPreparingOrFinalized,
+                    appState.workspaceAssignment?.id == notification.triptychID
+                else { return }
+                windowCoordinator.makeKeyAndOrderFront()
                 if case .chat = notification, !appState.isChatSidebarEnabled {
                     SettingsNavigationRequest.reveal(.agentChatSidebar)
                     openSettings()
-                    return true
+                    return
                 }
-                Task {
-                    if let sidebar = await appState.openSystemNotification(notification),
-                        !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar
-                    {
-                        windowCoordinator?.actions.activateSidebar(sidebar)
-                    }
+                if let sidebar = await appState.openSystemNotification(notification), !Task.isCancelled,
+                    !appState.windowCloseCoordinator.isPreparingOrFinalized,
+                    appState.workspaceAssignment?.id == notification.triptychID,
+                    !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar
+                {
+                    windowCoordinator.actions.activateSidebar(sidebar)
                 }
-                return true
             }
             windowCoordinator.activate(
-                showAttention: { request in
-                    switch request {
-                    case .queue(let anchor, let workspaceSlot, let noteScope):
-                        appState.attentionPopoverSession.presentQueue(
-                            anchor: anchor,
-                            workspaceSlot: workspaceSlot,
-                            noteScope: noteScope
-                        )
-                    }
-                }
+                showNotifications: { appState.attentionPopoverSession.present() }
             )
             windowCoordinator.update(reduceMotion: reduceMotion)
         }

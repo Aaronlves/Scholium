@@ -276,10 +276,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     @objc private func showNotifications(_ sender: Any?) {
         guard isCommandEnabled(Item.notifications) else { return }
         let session = appState.attentionPopoverSession
-        if session.isPresented(from: .toolbar) {
+        if session.isPresented {
             session.dismiss()
         } else {
-            windowActions.showAttention(.queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil))
+            windowActions.showNotifications()
         }
     }
 
@@ -310,12 +310,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             accessibilityValue: value
         )
         let session = appState.attentionPopoverSession
-        if session.isPresented(from: .toolbar) {
+        if session.isPresented {
             if !notificationsPopover.isShown {
-                let content = AttentionQueueViewController(
-                    presentation: session.presentation,
-                    session: session
-                )
+                let content = AttentionQueueViewController(session: session)
                 content.preferredContentSize = NSSize(
                     width: ScholiumMetrics.Attention.popoverWidth,
                     height: ScholiumMetrics.Attention.popoverHeight
@@ -538,7 +535,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         (toolbarItem(Item.noteActions) as? DocumentNoteActionsToolbarItem)?.refreshPresentation()
 
         if let item = toolbarItem(Item.viewChanges) {
-            item.isHidden = !hasCurrentPendingChanges
+            item.isHidden = !appState.hasCurrentPendingChanges
             update(
                 item,
                 label: ScholiumL10n.dynamicString("View Changes"),
@@ -595,7 +592,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         return switch identifier {
         case Item.back: appState.documentNavigationHistoryController.canGoBack
         case Item.forward: appState.documentNavigationHistoryController.canGoForward
-        case Item.viewChanges: hasCurrentPendingChanges
+        case Item.viewChanges: appState.canPerformNoteAction(.viewChanges)
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
         case Item.documentMode: ScholiumDocumentModeToolbarItem.isAvailable(in: appState)
@@ -604,20 +601,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
     }
 
-    private var hasCurrentPendingChanges: Bool {
-        guard let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID else {
-            return false
-        }
-        return appState.researchController.pendingChanges?.contains {
-            $0.noteID == noteID
-        } == true
-    }
-
     @objc private func viewCurrentChanges(_ sender: Any?) {
-        guard hasCurrentPendingChanges,
-            let noteID = appState.currentDocumentDescriptor?.sessionKey.noteID
-        else { return }
-        appState.presentationRouter.present(.documentChanges(scope: .note(noteID)))
+        guard isCommandEnabled(Item.viewChanges) else { return }
+        appState.performNoteAction(.viewChanges)
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -810,10 +796,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         notificationsPopover.contentViewController = nil
         let responder = responderBeforeNotifications
         responderBeforeNotifications = nil
-        if appState.attentionPopoverSession.isPresented(from: .toolbar) {
+        if appState.attentionPopoverSession.isPresented {
             appState.attentionPopoverSession.dismiss()
         }
-        guard !isInvalidated, let window, window.isKeyWindow, let responder else { return }
+        guard !isInvalidated, appState.presentationRouter.sheet == nil,
+            let window, window.isKeyWindow, window.attachedSheet == nil, let responder
+        else { return }
         if let view = responder as? NSView, view.window !== window { return }
         window.makeFirstResponder(responder)
     }

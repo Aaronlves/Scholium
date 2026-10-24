@@ -17,7 +17,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         var id: String {
             switch self {
             case .category(let title): "category:\(title)"
-            case .change(let change): "change:\(change.id.uuidString.lowercased())"
+            case .change(let change): "change:\(change.vaultID.uuidString.lowercased()):\(change.noteID.uuidString.lowercased())"
             }
         }
 
@@ -29,11 +29,10 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         }
     }
 
-    private let presentation: AttentionPresentationState
     private let session: AttentionPopoverSession
+    private var presentation: AttentionPresentationState { session.presentation }
     private let rootStack = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "")
-    private let scopeLabel = NSTextField(labelWithString: "")
     private let searchField = NSSearchField()
     private let refreshStatusStack = NSStackView()
     private let refreshStatusImage = NSImageView()
@@ -56,11 +55,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     private var isApplyingSelection = false
     private var reloadIsScheduled = false
 
-    init(
-        presentation: AttentionPresentationState,
-        session: AttentionPopoverSession
-    ) {
-        self.presentation = presentation
+    init(session: AttentionPopoverSession) {
         self.session = session
         super.init(nibName: nil, bundle: nil)
     }
@@ -109,12 +104,6 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         titleLabel.setAccessibilityLabel(titleLabel.stringValue)
         titleLabel.setAccessibilityRole(.staticText)
 
-        scopeLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        scopeLabel.textColor = .secondaryLabelColor
-        scopeLabel.lineBreakMode = .byTruncatingMiddle
-        scopeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        scopeLabel.setAccessibilityRole(.staticText)
-
         searchField.placeholderString = ScholiumL10n.string("Search")
         searchField.sendsSearchStringImmediately = true
         searchField.maximumRecents = 0
@@ -156,6 +145,8 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         tableView.dataSource = self
         tableView.delegate = self
         tableView.activate = { [weak self] row in self?.activateRow(at: row) ?? false }
+        tableView.target = tableView
+        tableView.action = #selector(AttentionQueueTableView.activateClickedRow(_:))
         tableView.headerView = nil
         tableView.style = .inset
         tableView.selectionHighlightStyle = .regular
@@ -273,25 +264,15 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         )
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        let titleRow = NSStackView()
-        titleRow.orientation = .horizontal
-        titleRow.alignment = .firstBaseline
-        titleRow.spacing = ScholiumGrid.Spacing.labelAccessoryGap
-        titleRow.addArrangedSubview(titleLabel)
-        titleRow.addArrangedSubview(scopeLabel)
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        titleRow.addArrangedSubview(spacer)
-
-        header.addArrangedSubview(titleRow)
+        header.addArrangedSubview(titleLabel)
         header.addArrangedSubview(searchField)
         header.addArrangedSubview(refreshStatusStack)
         return header
     }
 
     private func observePresentation() {
-        Publishers.CombineLatest3(presentation.$filter, presentation.$workspaceSlot, presentation.$noteScope)
-            .removeDuplicates { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 && lhs.2 == rhs.2 }
+        presentation.$filter
+            .removeDuplicates()
             .dropFirst()
             .sink { [weak self] _ in self?.scheduleReload() }
             .store(in: &observations)
@@ -331,7 +312,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         }
         presentation.reconcileVisibleItems(visibleIDs)
 
-        updateHeader()
+        updateSearchField()
         updateRefreshStatus()
         updateState()
         tableView.reloadData()
@@ -363,7 +344,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private func makeRows() -> [Row] {
-        let changes = session.visibleDocumentChanges(for: presentation, locale: .current)
+        let changes = session.visibleDocumentChanges()
 
         var result: [Row] = []
         if !changes.isEmpty {
@@ -373,16 +354,7 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
         return result
     }
 
-    private func updateHeader() {
-        if presentation.noteScope != nil {
-            scopeLabel.stringValue = ScholiumL10n.dynamicString("This Note")
-        } else if let workspaceSlot = presentation.workspaceSlot {
-            scopeLabel.stringValue = ScholiumL10n.dynamicString(workspaceSlot.displayName)
-        } else {
-            scopeLabel.stringValue = ""
-        }
-        scopeLabel.isHidden = scopeLabel.stringValue.isEmpty
-
+    private func updateSearchField() {
         if (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true,
             searchField.stringValue != presentation.filter.query
         {
@@ -541,30 +513,20 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
     }
 
     private func activateRow(at rowIndex: Int) -> Bool {
-        guard session.presentedAnchor != nil, rows.indices.contains(rowIndex), case .change(let shown) = rows[rowIndex],
-            let current = session.visibleDocumentChanges(for: presentation).first(where: {
+        guard session.isPresented, rows.indices.contains(rowIndex), case .change(let shown) = rows[rowIndex],
+            let current = session.visibleDocumentChanges().first(where: {
                 $0.id == shown.id && $0.vaultID == shown.vaultID
             })
         else { return false }
         if tableView.selectedRow != rowIndex {
             tableView.selectRowIndexes(IndexSet(integer: rowIndex), byExtendingSelection: false)
         }
-        inspect(.change(current))
-        return true
+        return session.inspect(current)
     }
 
     private func activateItem(id: String) -> Bool {
         guard let row = rows.firstIndex(where: { $0.id == id && $0.isSelectable }) else { return false }
         return activateRow(at: row)
-    }
-
-    private func inspect(_ row: Row) {
-        switch row {
-        case .category:
-            return
-        case .change(let change):
-            session.inspect(change)
-        }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -637,9 +599,9 @@ final class AttentionQueueViewController: NSViewController, NSSearchFieldDelegat
 final class AttentionQueueTableView: NSTableView {
     var activate: ((Int) -> Bool)?
 
-    override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
-        guard event.clickCount == 1 else { return }
+    @objc func activateClickedRow(_ sender: Any?) {
+        // clickedRow is owned by AppKit's recognized click action. Reading it
+        // after mouseDown's tracking loop has returned loses that context.
         _ = activate?(clickedRow)
     }
 
@@ -653,6 +615,16 @@ final class AttentionQueueTableView: NSTableView {
 
     override func accessibilityPerformConfirm() -> Bool { activate?(selectedRow) ?? false }
     override func accessibilityPerformPress() -> Bool { activate?(selectedRow) ?? false }
+}
+
+@MainActor
+private final class AttentionNotificationButton: NSButton {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard super.hitTest(point) != nil else { return nil }
+        // The icon and wrapping labels are this button's presentation. Let the
+        // native button own tracking across all of its content.
+        return self
+    }
 }
 
 @MainActor
@@ -688,7 +660,7 @@ private final class AttentionCategoryCell: NSTableCellView {
 @MainActor
 private final class AttentionItemCell: NSTableCellView {
     var activate: (() -> Bool)?
-    private let activationButton = NSButton(title: "", target: nil, action: nil)
+    private let activationButton = AttentionNotificationButton(title: "", target: nil, action: nil)
     private let icon = NSImageView()
     private var iconColor: NSColor = .labelColor
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
@@ -714,6 +686,7 @@ private final class AttentionItemCell: NSTableCellView {
         titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.maximumNumberOfLines = 2
+        titleLabel.isSelectable = false
         titleLabel.cell?.truncatesLastVisibleLine = true
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setAccessibilityElement(false)
@@ -721,6 +694,7 @@ private final class AttentionItemCell: NSTableCellView {
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 2
+        detailLabel.isSelectable = false
         detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         detailLabel.setAccessibilityElement(false)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false

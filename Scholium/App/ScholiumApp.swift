@@ -414,15 +414,27 @@ final class WindowModel: ObservableObject {
             documentChangeErrorChanges: researchController.$pendingChangesError
                 .eraseToAnyPublisher(),
             refresh: { [weak self] in
-                guard let self else { return }
+                guard let self,
+                    let runtimeIdentity = self.windowWorkspaceController.activeCapabilities?.runtimeIdentity
+                else { return }
                 await self.refreshWorkspaceCatalog()
-                _ = try? await self.researchController.loadAgentChanges()
+                guard !Task.isCancelled,
+                    self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity
+                else { return }
                 _ = try? await self.researchController.loadDocumentChanges()
             },
-            showDocumentChange: { [weak self] noteID in
-                self?.presentationRouter.present(
-                    .documentChanges(scope: .note(noteID))
-                )
+            showDocumentChange: { [weak self] change in
+                guard let self, !self.windowCloseCoordinator.isPreparingOrFinalized,
+                    let capabilities = self.windowWorkspaceController.activeCapabilities,
+                    capabilities.assignment.vaults.values.contains(where: { $0.id == change.vaultID && $0.role == change.role })
+                else { return false }
+                guard self.presentationRouter.sheet == nil else {
+                    self.reportOperationIssue(
+                        ScholiumL10n.string("Finish or close the current dialog before opening this notification."), kind: .information)
+                    return false
+                }
+                self.presentationRouter.present(.documentChanges(scope: .note(change.noteID)))
+                return true
             }
         )
     )

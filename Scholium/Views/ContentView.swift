@@ -742,34 +742,43 @@ struct ContentView: View {
             }
 
         case .agentChangeReceipt(let changeID):
-            AgentChangeReceiptView(
-                changeID: changeID,
-                loadReview: { changeID in
-                    guard
-                        let operations = appState.windowWorkspaceController
-                            .activeCapabilities?.agentCollaboration
-                    else {
-                        throw ScholiumApplicationError.noWorkspaceConfigured
+            if let capabilities = appState.windowWorkspaceController.activeCapabilities {
+                let runtimeIdentity = capabilities.runtimeIdentity
+                let operations = capabilities.agentCollaboration
+                AgentChangeReceiptView(
+                    changeID: changeID,
+                    loadReview: { requestedID in
+                        try Task.checkCancellation()
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else {
+                            throw AgentChangeError.missing(requestedID)
+                        }
+                        let review = try await operations.agentChangeReview(id: requestedID)
+                        try Task.checkCancellation()
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity,
+                            review.change.id == requestedID, review.change.triptychID == runtimeIdentity.triptychID
+                        else { throw AgentChangeError.mismatchedBinding(requestedID) }
+                        return review
+                    },
+                    undo: { change in
+                        try Task.checkCancellation()
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity,
+                            change.id == changeID, change.triptychID == runtimeIdentity.triptychID,
+                            let fingerprint = change.afterFingerprint
+                        else { throw AgentChangeError.undoUnavailable(change.id) }
+                        _ = try await operations.undoAgentChange(
+                            id: change.id,
+                            expectedAfterFingerprint: fingerprint,
+                            admission: nil
+                        )
+                        try Task.checkCancellation()
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else { return }
+                        await appState.refreshWorkspaceCatalog()
+                        try Task.checkCancellation()
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else { return }
+                        _ = try await researchController.loadAgentChanges()
                     }
-                    return try await operations.agentChangeReview(id: changeID)
-                },
-                undo: { change in
-                    guard
-                        let operations = appState.windowWorkspaceController
-                            .activeCapabilities?.agentCollaboration,
-                        let fingerprint = change.afterFingerprint
-                    else {
-                        throw AgentChangeError.undoUnavailable(change.id)
-                    }
-                    _ = try await operations.undoAgentChange(
-                        id: change.id,
-                        expectedAfterFingerprint: fingerprint,
-                        admission: nil
-                    )
-                    await appState.refreshWorkspaceCatalog()
-                    _ = try await researchController.loadAgentChanges()
-                }
-            )
+                )
+            }
         case .documentChanges(let scope):
             if let capabilities = appState.windowWorkspaceController.activeCapabilities {
                 let binding = DocumentChangesRouteBinding(

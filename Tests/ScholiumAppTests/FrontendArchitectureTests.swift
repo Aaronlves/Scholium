@@ -1164,19 +1164,6 @@ struct FrontendArchitectureTests {
         )
         #expect(!toolbarSource.contains("scholium.toolbar.attention"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceAttentionToolbarView"))
-
-        let windowManagementSource = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent(
-                    "Scholium/UI/Components/ScholiumWindowManagement.swift"
-                ),
-            encoding: .utf8
-        )
-        #expect(windowManagementSource.contains("anchor: .toolbar"))
-        #expect(!windowManagementSource.contains("preferredPresentationSlot"))
     }
 
     @Test("Document toolbar exposes one current-state Review and Edit button")
@@ -1926,7 +1913,6 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("NSSearchField"))
         #expect(attentionSource.contains("NSTableViewDataSource"))
         #expect(attentionSource.contains("tableViewSelectionDidChange"))
-        #expect(attentionSource.contains("override func mouseDown(with event: NSEvent)"))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains("tableView.activate"))
         #expect(!attentionSource.contains("import SwiftUI"))

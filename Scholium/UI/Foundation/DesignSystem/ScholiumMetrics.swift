@@ -116,7 +116,7 @@ enum ScholiumMetrics {
             static let idealHeight: CGFloat = 560
         }
 
-        enum AgentChanges {
+        enum Changes {
             static let minimumWidth: CGFloat = 680
             static let idealWidth: CGFloat = 760
             static let minimumHeight: CGFloat = 420

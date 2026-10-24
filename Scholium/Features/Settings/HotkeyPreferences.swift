@@ -109,7 +109,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleFocusLayout: "Focus Layout"
         case .toggleReviewEdit: "Switch Review and Edit"
         case .showSource: "Show Source"
-        case .showAttention: "Show Attention"
+        case .showAttention: "Notifications"
         case .insertFootnote: "Insert Footnote"
         case .findWritingReferences: "Find Writing References"
         case .insertInlineFootnote: "Insert Inline Footnote"

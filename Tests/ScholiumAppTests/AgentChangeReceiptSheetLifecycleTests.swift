@@ -6,9 +6,9 @@ import Testing
 
 @testable import ScholiumApp
 
-@Suite("Agent Changes sheet lifecycle", .serialized)
+@Suite("Agent Change receipt sheet lifecycle", .serialized)
 @MainActor
-struct AgentChangesSheetLifecycleTests {
+struct AgentChangeReceiptSheetLifecycleTests {
     // Needs a document window and sheet at a workable size.
     @Test("Loading, displaying, and dismissing a real sheet preserve the document window frame", .enabled(if: ScholiumTestEnvironment.providesDisplayEvidence))
     func parentFrameSurvivesPresentation() async throws {
@@ -19,15 +19,13 @@ struct AgentChangesSheetLifecycleTests {
         // move it merely to fit inside the visible screen. The invariant under
         // test is the parent frame across the sheet's own lifecycle.
         try #require(visible.width >= 800 && visible.height >= 680)
-        let suite = "Scholium-SheetLifecycle-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
         let state = SheetLifecycleState()
         let change = AgentChange(
             id: UUID(), triptychID: UUID(), operation: .create, noteID: UUID(), role: .topicKnowledge,
             originalRelativePath: nil, finalRelativePath: "Synthetic Created Note.md", beforeFingerprint: nil,
             afterFingerprint: DocumentFingerprint(content: "Synthetic current content."), state: .confirmed,
             createdAt: Date(), confirmedAt: Date(), undoneAt: nil)
-        let host = NSHostingView(rootView: SheetLifecycleHost(state: state, change: change, defaults: defaults))
+        let host = NSHostingView(rootView: SheetLifecycleHost(state: state, change: change))
         host.sizingOptions = []
         let size = NSSize(width: min(1000, visible.width - 40), height: min(740, visible.height - 80))
         let parent = NSWindow(
@@ -49,7 +47,6 @@ struct AgentChangesSheetLifecycleTests {
             parent.orderOut(nil)
             parent.contentView = nil
             parent.close()
-            defaults.removePersistentDomain(forName: suite)
         }
         parent.makeKeyAndOrderFront(nil)
         host.layoutSubtreeIfNeeded()
@@ -95,7 +92,6 @@ private final class SheetLifecycleState {
 private struct SheetLifecycleHost: View {
     @Bindable var state: SheetLifecycleState
     let change: AgentChange
-    let defaults: UserDefaults
 
     var body: some View {
         Text("Disposable document window")
@@ -112,7 +108,6 @@ private struct SheetLifecycleHost: View {
                     },
                     undo: { _ in Issue.record("A sheet lifecycle test must not undo a change") }
                 )
-                .defaultAppStorage(defaults)
             }
     }
 }

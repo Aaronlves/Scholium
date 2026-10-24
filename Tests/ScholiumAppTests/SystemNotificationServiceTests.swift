@@ -102,7 +102,7 @@ struct SystemNotificationServiceTests {
     }
 
     @Test("Click routes reuse a matching window and otherwise wait for a scene")
-    func exactRoutingAndPrivacy() throws {
+    func exactRoutingAndPrivacy() async throws {
         let service = SystemNotificationService()
         let receipt = change()
         let changeRoute = AgentChangeNotificationRoute(receipt)
@@ -115,30 +115,135 @@ struct SystemNotificationServiceTests {
         #expect(!changeRoute.matches(change(noteID: receipt.noteID, triptychID: receipt.triptychID)))
         var opened: [SystemNotificationRoute] = []
         let windowID = UUID()
-        service.registerWindow(id: windowID) {
+        service.registerWindow(id: windowID, accepts: { _ in true }) {
             opened.append($0)
-            return true
         }
         service.open(route)
+        try await eventually { opened == [route] }
         #expect(opened == [route])
-        #expect(service.pendingRoute == nil)
+        #expect(service.pendingRoutes.isEmpty)
         service.unregisterWindow(id: windowID)
         service.open(route)
-        #expect(service.takePendingRoute() == route)
-        #expect(service.takePendingRoute() == nil)
+        let coldWindow = try #require(service.takePendingWindow())
+        #expect(coldWindow.triptychID == route.triptychID)
+        #expect(service.takePendingWindow() == nil)
+    }
+
+    @Test("Cold clicks retain distinct Triptychs and update an opening destination without duplicate windows")
+    func queuedClicks() async throws {
+        let service = SystemNotificationService()
+        let first = change()
+        let firstRoute = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(first))
+        let other = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change()))
+        service.open(firstRoute)
+        service.open(other)
+        #expect(service.pendingRoutes == [firstRoute, other])
+        let window = try #require(service.takePendingWindow())
+        #expect(window.triptychID == firstRoute.triptychID)
+        let latest = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change(triptychID: first.triptychID)))
+        service.open(firstRoute)
+        service.open(latest)
+        #expect(service.pendingRoutes == [other])
+        let otherWindow = try #require(service.takePendingWindow())
+        #expect(otherWindow.triptychID == other.triptychID)
+        #expect(otherWindow.windowID != window.windowID)
+        #expect(service.takePendingWindow() == nil)
+        var opened: [SystemNotificationRoute] = []
+        defer {
+            service.unregisterWindow(id: window.windowID)
+            service.unregisterWindow(id: otherWindow.windowID)
+        }
+        service.registerWindow(id: window.windowID, accepts: { $0.triptychID == first.triptychID }) { opened.append($0) }
+        service.registerWindow(id: otherWindow.windowID, accepts: { $0.triptychID == other.triptychID }) { opened.append($0) }
+        try await eventually { opened.count == 2 }
+        #expect(Set(opened) == [latest, other])
+    }
+
+    @Test("Opening waits for readiness; newer clicks and window departure cancel obsolete work")
+    func openingLifetime() async throws {
+        let service = SystemNotificationService()
+        let first = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change()))
+        let latest = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change(triptychID: first.triptychID)))
+        service.open(first)
+        let window = try #require(service.takePendingWindow())
+        let gate = NotificationOpeningGate()
+        defer {
+            service.unregisterWindow(id: window.windowID)
+            gate.resumeAll()
+        }
+        let ready = NotificationValidity()
+        ready.current = false
+        var started: [SystemNotificationRoute] = []
+        var finished: [SystemNotificationRoute] = []
+        service.registerWindow(id: window.windowID, accepts: { _ in ready.current }) { route in
+            started.append(route)
+            await gate.wait(for: route)
+            guard !Task.isCancelled else { return }
+            finished.append(route)
+        }
+        #expect(started.isEmpty)
+        service.openOpeningRoute(windowID: window.windowID)
+        #expect(started.isEmpty)
+        ready.current = true
+        service.openOpeningRoute(windowID: window.windowID)
+        try await eventually { started == [first] }
+        service.open(first)
+        service.open(latest)
+        try await eventually { started == [first, latest] }
+        gate.resume(first)
+        gate.resume(latest)
+        try await eventually { finished == [latest] }
+        service.open(first)
+        try await eventually { started.count == 3 }
+        service.unregisterWindow(id: window.windowID)
+        gate.resume(first)
+        await Task.yield()
+        #expect(finished == [latest])
+    }
+
+    @Test("A newer click admitted at readiness supersedes the delayed cold-window handoff")
+    func readyWindowSupersedesColdHandoff() async throws {
+        let service = SystemNotificationService()
+        let cold = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change()))
+        let latest = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change(triptychID: cold.triptychID)))
+        service.open(cold)
+        let window = try #require(service.takePendingWindow())
+        defer { service.unregisterWindow(id: window.windowID) }
+        let ready = NotificationValidity()
+        ready.current = false
+        var opened: [SystemNotificationRoute] = []
+        service.registerWindow(id: window.windowID, accepts: { _ in ready.current }) { opened.append($0) }
+        ready.current = true
+        service.open(latest)
+        service.openOpeningRoute(windowID: window.windowID)
+        try await eventually { !opened.isEmpty }
+        #expect(opened == [latest])
+        service.openOpeningRoute(windowID: window.windowID)
+        #expect(opened == [latest])
+        #expect(service.notificationWindowID == nil)
     }
 
     @Test("Cold-window click handoff is consumed once and never enters window restoration")
-    func coldWindowHandoff() throws {
+    func coldWindowHandoff() async throws {
         let service = SystemNotificationService()
         let route = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change()))
-        let window = service.prepareWindow(for: route)
+        service.open(route)
+        let window = try #require(service.takePendingWindow())
         let restored = try JSONDecoder().decode(TriptychWindowRoute.self, from: JSONEncoder().encode(window))
         #expect(restored.triptychID == route.triptychID)
-        #expect(service.takeOpeningRoute(windowID: UUID()) == nil)
-        #expect(service.takeOpeningRoute(windowID: window.windowID) == route)
-        #expect(service.takeOpeningRoute(windowID: restored.windowID) == nil)
+        var opened: [SystemNotificationRoute] = []
+        service.registerWindow(id: window.windowID, accepts: { _ in true }) { opened.append($0) }
+        try await eventually { opened == [route] }
+        service.openOpeningRoute(windowID: restored.windowID)
+        #expect(opened == [route])
         #expect(service.notificationWindowID == nil)
+        service.unregisterWindow(id: window.windowID)
+
+        let restarted = SystemNotificationService()
+        restarted.registerWindow(id: restored.windowID, accepts: { _ in true }) { opened.append($0) }
+        defer { restarted.unregisterWindow(id: restored.windowID) }
+        restarted.openOpeningRoute(windowID: restored.windowID)
+        #expect(opened == [route])
     }
 
     @Test("Operation issues retain distinct failures until dismissed; duplicates keep identity")
@@ -173,9 +278,10 @@ struct SystemNotificationServiceTests {
         #expect(Set(payload?.keys.map { $0 } ?? []) == ["triptychID", "conversationID", "event"])
         #expect(!route.body.contains(conversation.uuidString) && !route.body.isEmpty)
         #expect(try JSONDecoder().decode(SystemNotificationRoute.self, from: JSONEncoder().encode(route)) == route)
-        let window = service.prepareWindow(for: route)
-        #expect(window.triptychID == triptych && service.takeOpeningRoute(windowID: window.windowID) == route)
-        #expect(service.takeOpeningRoute(windowID: window.windowID) == nil)
+        service.open(route)
+        let window = try #require(service.takePendingWindow())
+        #expect(window.triptychID == triptych)
+        #expect(service.takePendingWindow() == nil)
     }
 
     @Test("Answered Chat requests are checked before prompting and again after authorization")
@@ -245,3 +351,19 @@ private final class FakeNotificationTransport: SystemNotificationTransport {
 
 @MainActor
 private final class NotificationValidity { var current = true }
+
+@MainActor
+private final class NotificationOpeningGate {
+    private var continuations: [SystemNotificationRoute: CheckedContinuation<Void, Never>] = [:]
+    func wait(for route: SystemNotificationRoute) async {
+        await withCheckedContinuation { continuations[route] = $0 }
+    }
+    func resume(_ route: SystemNotificationRoute) {
+        continuations.removeValue(forKey: route)?.resume()
+    }
+    func resumeAll() {
+        let pending = continuations.values
+        continuations.removeAll()
+        for continuation in pending { continuation.resume() }
+    }
+}

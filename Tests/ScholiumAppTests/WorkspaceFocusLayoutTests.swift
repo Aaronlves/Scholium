@@ -22,15 +22,15 @@ struct WorkspaceFocusLayoutTests {
             fixture.close()
         }
         #expect(coordinator.actions.canUseSidebar())
-        #expect(coordinator.actions.canShowAttention())
+        #expect(coordinator.actions.canShowNotifications())
         coordinator.actions.toggleFocusLayout()
         #expect(model.shellState.isFocusLayoutActive)
         #expect(fixture.window.toolbar?.isVisible == false)
         #expect(coordinator.actions.canUseSidebar())
-        #expect(coordinator.actions.canShowAttention())
+        #expect(coordinator.actions.canShowNotifications())
         coordinator.detach()
         #expect(!coordinator.actions.canUseSidebar())
-        #expect(!coordinator.actions.canShowAttention())
+        #expect(!coordinator.actions.canShowNotifications())
 
         let separateModel = WindowModel(workspaceStore: makeTestWorkspaceStore())
         separateModel.isDetachedDocumentWindow = true
@@ -41,17 +41,17 @@ struct WorkspaceFocusLayoutTests {
         )
         var notificationRequests = 0
         separateCoordinator.attach(to: separateWindow)
-        separateCoordinator.activate { _ in notificationRequests += 1 }
+        separateCoordinator.activate { notificationRequests += 1 }
         defer {
             separateCoordinator.detach()
             separateWindow.close()
         }
         let nativeToolbar = try #require(separateWindow.toolbar)
         #expect(!separateCoordinator.actions.canUseSidebar())
-        #expect(!separateCoordinator.actions.canShowAttention())
+        #expect(!separateCoordinator.actions.canShowNotifications())
         separateCoordinator.actions.activateSidebar(.chat)
         separateCoordinator.actions.setLibraryVisible(false)
-        separateCoordinator.actions.showPreferredAttention()
+        separateCoordinator.actions.showNotifications()
         #expect(separateModel.shellState.sidebarContent == .library)
         #expect(separateModel.shellState.libraryVisible)
         #expect(notificationRequests == 0)

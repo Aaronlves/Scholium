@@ -30,7 +30,10 @@ struct WindowControllerArchitectureTests {
                 documentChangeChanges: documentChanges.eraseToAnyPublisher(),
                 documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
-                showDocumentChange: { openedNoteID = $0 }
+                showDocumentChange: {
+                    openedNoteID = $0.noteID
+                    return true
+                }
             )
         )
         var invalidations = 0
@@ -67,14 +70,12 @@ struct WindowControllerArchitectureTests {
             baselineState: .known
         )
         documentChanges.send([change])
-        #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
+        #expect(session.visibleDocumentChanges() == [change])
         session.presentation.filter.query = "Reasons"
-        #expect(session.visibleDocumentChanges(for: session.presentation) == [change])
+        #expect(session.visibleDocumentChanges() == [change])
         #expect(session.presentation.filter.query == "Reasons")
-        let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Drafts/Reasons.md")
-        session.presentQueue(anchor: .inspector, workspaceSlot: nil, noteScope: note)
-        #expect(session.presentation.filter.query.isEmpty)
-        #expect(session.presentation.noteScope == note)
+        session.present()
+        #expect(session.presentation.filter.query == "Reasons")
         session.inspect(change)
         #expect(openedNoteID == change.noteID)
         observation.cancel()
@@ -92,11 +93,6 @@ struct WindowControllerArchitectureTests {
         #expect(!sessionSource.contains("WindowModel"))
         #expect(!sessionSource.contains("workspace.objectWillChange"))
         #expect(!sessionSource.contains("?? discoveryController.library.workspaceSlot"))
-        #expect(
-            sessionSource.contains(
-                "if let workspaceSlot = presentation.workspaceSlot"
-            ))
-        #expect(sessionSource.contains("workspaceController.$state"))
         #expect(sessionSource.contains("projectionController.$state"))
     }
 
@@ -112,7 +108,7 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let start = try #require(source.range(of: "private func preferredAttentionRoute()"))
+        let start = try #require(source.range(of: "private func showNotifications()"))
         let end = try #require(
             source.range(
                 of: "private func registerQAFocusRequest()",
@@ -121,9 +117,8 @@ struct WindowControllerArchitectureTests {
         let route = source[start.lowerBound..<end.lowerBound]
 
         #expect(!route.contains("appState.sidebarVisible"))
-        #expect(route.contains("anchor: .toolbar"))
-        #expect(route.contains("workspaceSlot: nil"))
-        #expect(!route.contains("anchor: .inspector"))
+        #expect(route.contains("guard canShowNotifications else { return }"))
+        #expect(route.contains("notificationsPresenter()"))
         #expect(!route.contains("visibleTotalCount"))
         #expect(!route.contains("count > 0"))
     }
@@ -1094,24 +1089,17 @@ struct WindowControllerArchitectureTests {
     func attentionPresentationIsIndependent() {
         let controller = DiscoveryController()
         let attention = AttentionPresentationState()
-        let noteScope = VaultQualifiedNoteID(
-            vaultID: UUID(),
-            relativePath: "analysis.md"
-        )
-
-        attention.present(workspaceSlot: .paperAnalysis, noteScope: noteScope)
-        #expect(attention.noteScope == noteScope)
+        attention.filter.query = "Reasons"
+        attention.select("change:fixture")
         let request = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
             sourceScope: .library
         )
         #expect(controller.receiveLibraryResult(for: request))
-        #expect(attention.noteScope == noteScope)
+        #expect(attention.filter.query == "Reasons")
+        #expect(attention.selectedItemID == "change:fixture")
         #expect(controller.library.sourceScope == .library)
 
-        attention.selectWorkspaceSlot(.output)
-        #expect(attention.workspaceSlot == .output)
-        #expect(attention.noteScope == nil)
     }
 
     @Test("Library requests preserve filters, sort, and disclosure")
@@ -1281,7 +1269,7 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         #expect(attentionSource.contains("private let session: AttentionPopoverSession"))
-        #expect(attentionSource.contains("session.inspect(change)"))
+        #expect(attentionSource.contains("session.inspect(current)"))
         #expect(!attentionSource.contains("session.inspect(item)"))
         #expect(attentionSource.contains("NSTableViewDataSource"))
         #expect(!attentionSource.contains("WindowModel"))
@@ -1512,6 +1500,10 @@ struct WindowControllerArchitectureTests {
             notificationStart.lowerBound..<notificationEnd.lowerBound
         ]
         #expect(notificationSource.contains("presentationRouter.present(.agentChangeReceipt"))
+        #expect(notificationSource.contains("presentationRouter.present(.documentChanges(scope: .note(route.noteID)))"))
+        #expect(notificationSource.contains("route.matches(review.change)"))
+        #expect(notificationSource.contains("capabilities.changes.pendingChanges()"))
+        #expect(notificationSource.contains("guard isCurrent() else { return }"))
         #expect(!notificationSource.contains("requestPresentationMode"))
         #expect(!notificationSource.contains("openWorkspaceReference"))
         #expect(!notificationSource.contains("requestSourceLocation"))

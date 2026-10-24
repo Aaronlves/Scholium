@@ -806,11 +806,11 @@ private struct ScholiumAttentionCommandContent: View {
 
     var body: some View {
         Button("Notifications") {
-            workspaceWindowActions?.showPreferredAttention()
+            workspaceWindowActions?.showNotifications()
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.showAttention)
-        .disabled(workspaceWindowActions?.canShowAttention() != true)
+        .disabled(workspaceWindowActions?.canShowNotifications() != true)
     }
 }
 

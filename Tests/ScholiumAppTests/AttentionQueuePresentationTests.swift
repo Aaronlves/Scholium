@@ -28,23 +28,10 @@ struct AttentionQueuePresentationTests {
             role: .topicKnowledge,
             canonicalPath: "/fixtures/Topics"
         )
-        let reference = VaultNoteReference(
-            vaultID: vault.id,
-            vaultName: vault.name,
-            vaultRole: vault.role,
-            relativePath: "Reasons.md"
-        )
-        let issue = AttentionQueueItem(
-            kind: .possibleOrphan,
-            severity: .information,
-            note: reference,
-            message: "No incoming or outgoing links"
-        )
         projectionController.replaceCatalog(
             WorkspaceCatalogBuilder.build(
                 vaults: [vault],
-                documents: [vault.id: [NoteDocument(relativePath: "Reasons.md", rawContent: "# Reasons\n")]],
-                additionalAttention: [issue]
+                documents: [vault.id: [NoteDocument(relativePath: "Reasons.md", rawContent: "# Reasons\n")]]
             )
         )
         let session = AttentionPopoverSession(
@@ -55,7 +42,7 @@ struct AttentionQueuePresentationTests {
                 documentChangeChanges: documentChanges.eraseToAnyPublisher(),
                 documentChangeErrorChanges: documentChangeErrors.eraseToAnyPublisher(),
                 refresh: {},
-                showDocumentChange: { _ in }
+                showDocumentChange: { _ in true }
             )
         )
         let change = DocumentChangeSummary(
@@ -69,12 +56,9 @@ struct AttentionQueuePresentationTests {
             documentChanges.send(initialState == "populated" ? [change] : [])
         }
         documentChangeErrors.send(initialState == "error" ? "Changes could not be loaded" : nil)
-        session.presentQueue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
+        session.present()
 
-        let controller = AttentionQueueViewController(
-            presentation: session.presentation,
-            session: session
-        )
+        let controller = AttentionQueueViewController(session: session)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 360),
             styleMask: [.titled, .closable],
@@ -139,10 +123,10 @@ struct AttentionQueuePresentationTests {
             dependencies: .init(
                 documentChangeChanges: changes.eraseToAnyPublisher(),
                 documentChangeErrorChanges: errors.eraseToAnyPublisher(),
-                refresh: {}, showDocumentChange: { _ in }
+                refresh: {}, showDocumentChange: { _ in true }
             )
         )
-        let controller = AttentionQueueViewController(presentation: presentation, session: session)
+        let controller = AttentionQueueViewController(session: session)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 360),
             styleMask: [.titled, .closable], backing: .buffered, defer: false

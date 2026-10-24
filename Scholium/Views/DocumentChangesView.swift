@@ -138,10 +138,10 @@ struct DocumentChangesView: View {
             footer
         }
         .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.AgentChanges.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.AgentChanges.idealWidth,
-            minHeight: ScholiumMetrics.ResearchSheet.AgentChanges.minimumHeight,
-            idealHeight: ScholiumMetrics.ResearchSheet.AgentChanges.idealHeight
+            minWidth: ScholiumMetrics.ResearchSheet.Changes.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.Changes.idealWidth,
+            minHeight: ScholiumMetrics.ResearchSheet.Changes.minimumHeight,
+            idealHeight: ScholiumMetrics.ResearchSheet.Changes.idealHeight
         )
         .presentationSizing(.fitted)
         .background(ScholiumNativeColorRole.windowBackground.color)
@@ -288,7 +288,7 @@ struct DocumentChangesView: View {
                 .init(id: "note", title: ScholiumL10n.string("Note")),
                 .init(
                     id: "saved", title: ScholiumL10n.string("Saved"),
-                    width: ScholiumMetrics.ResearchSheet.AgentChanges.dateColumnWidth,
+                    width: ScholiumMetrics.ResearchSheet.Changes.dateColumnWidth,
                     secondary: true),
             ],
             rows: visiblePending.map { item in
@@ -318,7 +318,7 @@ struct DocumentChangesView: View {
                 .init(id: "note", title: ScholiumL10n.string("Note")),
                 .init(
                     id: "reviewed", title: ScholiumL10n.string("Reviewed"),
-                    width: ScholiumMetrics.ResearchSheet.AgentChanges.dateColumnWidth,
+                    width: ScholiumMetrics.ResearchSheet.Changes.dateColumnWidth,
                     secondary: true),
             ],
             rows: visibleHistory.map { item in

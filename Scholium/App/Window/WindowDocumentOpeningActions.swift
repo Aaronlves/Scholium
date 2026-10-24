@@ -712,21 +712,52 @@ extension WindowModel {
     }
 
     func openNotifiedAgentChange(_ route: AgentChangeNotificationRoute) async {
-        guard workspaceAssignment?.id == route.triptychID,
+        guard !Task.isCancelled, !windowCloseCoordinator.isPreparingOrFinalized,
+            workspaceAssignment?.id == route.triptychID,
             let capabilities = windowWorkspaceController.activeCapabilities
         else { return }
+        guard presentationRouter.sheet == nil else {
+            reportOperationIssue(ScholiumL10n.string("Finish or close the current dialog before opening this notification."), kind: .information)
+            return
+        }
+        let isCurrent = {
+            !Task.isCancelled && !self.windowCloseCoordinator.isPreparingOrFinalized
+                && self.workspaceAssignment?.id == route.triptychID
+                && self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
+                && self.presentationRouter.sheet == nil
+        }
         do {
             let review = try await capabilities.agentCollaboration.agentChangeReview(id: route.changeID)
-            guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
-                route.matches(review.change)
-            else {
+            guard isCurrent() else { return }
+            guard route.matches(review.change) else {
                 reportOperationIssue(String(localized: "This Agent Change is no longer available."), kind: .warning)
                 return
             }
-            // This is an evidence destination, not a document route. Preserve
-            // the current Note and mode; never request Source or a locator here.
+            let pending: [DocumentChangeSummary]
+            do {
+                pending = try await capabilities.changes.pendingChanges()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isCurrent() else { return }
+                // Receipt access remains useful when the derived current
+                // comparison cannot refresh; retain the failure beside it.
+                reportOperationIssue(error.localizedDescription, kind: .warning)
+                presentationRouter.present(.agentChangeReceipt(route.changeID))
+                return
+            }
+            guard isCurrent() else { return }
+            if pending.contains(where: { $0.noteID == route.noteID && $0.role == review.change.role }) {
+                presentationRouter.present(.documentChanges(scope: .note(route.noteID)))
+                return
+            }
+            // Reviewed, deleted, or otherwise unavailable Notes retain their
+            // exact operation evidence without disturbing a live editor.
             presentationRouter.present(.agentChangeReceipt(route.changeID))
+        } catch is CancellationError {
+            return
         } catch {
+            guard isCurrent() else { return }
             reportOperationIssue(error.localizedDescription, kind: .error)
         }
     }

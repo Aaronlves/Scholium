@@ -2,33 +2,6 @@ import Combine
 import Foundation
 import ScholiumContracts
 
-enum AttentionPopoverAnchor: String, Equatable, Sendable {
-    case toolbar
-    case inspector
-}
-
-enum AttentionQueuePopoverAnchor: Equatable, Sendable {
-    case toolbar
-    case inspector
-
-    var popoverAnchor: AttentionPopoverAnchor {
-        switch self {
-        case .toolbar: .toolbar
-        case .inspector: .inspector
-        }
-    }
-}
-
-/// One window-level Notifications request opens the complete queue from a
-/// stable anchor.
-enum AttentionPresentationRequest: Equatable, Sendable {
-    case queue(
-        anchor: AttentionQueuePopoverAnchor,
-        workspaceSlot: WorkspaceVaultSlot?,
-        noteScope: VaultQualifiedNoteID?
-    )
-}
-
 /// Exact-Workspace adapter for the transient Notifications popover. It observes
 /// only the owners whose state appears in the popover and borrows closed
 /// refresh/navigation effects from the window composition root. It never
@@ -40,10 +13,9 @@ final class AttentionPopoverSession: ObservableObject {
         let documentChangeChanges: AnyPublisher<[DocumentChangeSummary]?, Never>
         let documentChangeErrorChanges: AnyPublisher<String?, Never>
         let refresh: @MainActor () async -> Void
-        let showDocumentChange: @MainActor (UUID) -> Void
+        let showDocumentChange: @MainActor (DocumentChangeSummary) -> Bool
     }
 
-    @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var documentChanges: [DocumentChangeSummary]?
     @Published private(set) var documentChangesError: String?
     @Published private var refreshInProgress = false
@@ -53,8 +25,18 @@ final class AttentionPopoverSession: ObservableObject {
     private let projectionController: WindowWorkspaceProjectionController
     private let dependencies: Dependencies
     private var observations: Set<AnyCancellable> = []
-    private var titlesByStableID: [UUID: String] = [:]
-    private var stableIDsByLocation: [VaultQualifiedNoteID: UUID] = [:]
+    private struct NoteIdentity: Hashable {
+        let vaultID: UUID
+        let noteID: UUID
+    }
+
+    private struct PresentationContext: Equatable {
+        let triptychID: UUID?
+        let runtimeIdentity: TriptychRuntimeIdentity?
+    }
+
+    @Published private var presentedContext: PresentationContext?
+    private var titlesByStableID: [NoteIdentity: String] = [:]
 
     init(
         presentation: AttentionPresentationState,
@@ -71,12 +53,6 @@ final class AttentionPopoverSession: ObservableObject {
             .map { $0.catalog?.notes ?? [] }
             .removeDuplicates()
             .sink { [weak self] notes in self?.indexCatalog(notes) }
-            .store(in: &observations)
-        workspaceController.$state
-            .map(\.assignment)
-            .removeDuplicates()
-            .dropFirst()
-            .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &observations)
         projectionController.$state
             .dropFirst()
@@ -117,58 +93,24 @@ final class AttentionPopoverSession: ObservableObject {
         projectionController.derivedRefreshStatus
     }
 
-    func presentQueue(
-        anchor: AttentionQueuePopoverAnchor,
-        workspaceSlot: WorkspaceVaultSlot?,
-        noteScope: VaultQualifiedNoteID?
-    ) {
-        let resolvedWorkspaceSlot =
-            workspaceSlot
-            ?? noteScope.flatMap { note in
-                workspaceController.state.assignment?.vaults.first(where: {
-                    $0.value.id == note.vaultID
-                })?.key
-            }
-        if anchor == .inspector {
-            presentation.filter = AttentionQueueFilter()
-        }
-        presentation.present(
-            workspaceSlot: resolvedWorkspaceSlot,
-            noteScope: noteScope
-        )
-        presentedAnchor = anchor.popoverAnchor
+    var isPresented: Bool { presentedContext != nil }
+
+    func present() {
+        presentedContext = currentContext
     }
 
-    func isPresented(from anchor: AttentionPopoverAnchor) -> Bool {
-        presentedAnchor == anchor
-    }
-
-    func dismiss(resetFilter: Bool = false) {
-        presentedAnchor = nil
-        if resetFilter {
-            presentation.resetForWorkspaceSwitch()
-        }
+    func dismiss() {
+        presentedContext = nil
     }
 
     func resetForWorkspaceSwitch() {
-        dismiss(resetFilter: true)
+        dismiss()
+        presentation.resetForWorkspaceSwitch()
     }
 
-    func visibleDocumentChanges(
-        for presentation: AttentionPresentationState,
-        locale: Locale = .current
-    ) -> [DocumentChangeSummary] {
-        let noteID = presentation.noteScope.flatMap(stableNoteID)
+    func visibleDocumentChanges(locale: Locale = .current) -> [DocumentChangeSummary] {
         let query = normalized(presentation.filter.query, locale: locale)
         return (documentChanges ?? []).filter { change in
-            if let workspaceSlot = presentation.workspaceSlot,
-                change.role != workspaceSlot.vaultRole
-            {
-                return false
-            }
-            if presentation.noteScope != nil, change.noteID != noteID {
-                return false
-            }
             guard !query.isEmpty else { return true }
             let searchable = [
                 noteTitle(for: change), change.relativePath,
@@ -177,11 +119,17 @@ final class AttentionPopoverSession: ObservableObject {
             ].joined(separator: " ")
             return normalized(searchable, locale: locale).contains(query)
         }
-        .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
+        .sorted {
+            let lhsDate = $0.savedAt ?? .distantPast
+            let rhsDate = $1.savedAt ?? .distantPast
+            if lhsDate != rhsDate { return lhsDate > rhsDate }
+            if $0.vaultID != $1.vaultID { return $0.vaultID.uuidString < $1.vaultID.uuidString }
+            return $0.noteID.uuidString < $1.noteID.uuidString
+        }
     }
 
     func noteTitle(for change: DocumentChangeSummary) -> String {
-        if let title = titlesByStableID[change.noteID],
+        if let title = titlesByStableID[NoteIdentity(vaultID: change.vaultID, noteID: change.noteID)],
             !title.isEmpty
         {
             return title
@@ -197,28 +145,33 @@ final class AttentionPopoverSession: ObservableObject {
         await dependencies.refresh()
     }
 
-    func inspect(_ change: DocumentChangeSummary) {
+    @discardableResult
+    func inspect(_ change: DocumentChangeSummary) -> Bool {
+        guard isPresented, presentedContext == currentContext,
+            let current = visibleDocumentChanges().first(where: {
+                $0.noteID == change.noteID && $0.vaultID == change.vaultID
+            }),
+            dependencies.showDocumentChange(current)
+        else { return false }
         dismiss()
-        dependencies.showDocumentChange(change.noteID)
+        return true
     }
 
-    private func stableNoteID(_ note: VaultQualifiedNoteID) -> UUID? {
-        stableIDsByLocation[note]
+    private var currentContext: PresentationContext {
+        PresentationContext(
+            triptychID: workspaceController.state.assignment?.id,
+            runtimeIdentity: workspaceController.activeCapabilities?.runtimeIdentity
+        )
     }
 
     /// Rebuilt only when the catalog's immutable Note projection changes. Query
     /// and row-selection updates never rescan the complete workspace catalog.
     private func indexCatalog(_ notes: [WorkspaceCatalogNote]) {
         titlesByStableID.removeAll(keepingCapacity: true)
-        stableIDsByLocation.removeAll(keepingCapacity: true)
         for note in notes {
             guard let id = note.reference.stableNoteID.flatMap(UUID.init(uuidString:)) else { continue }
-            if titlesByStableID[id] == nil { titlesByStableID[id] = note.title }
-            let location = VaultQualifiedNoteID(
-                vaultID: note.reference.vaultID,
-                relativePath: note.reference.relativePath
-            )
-            if stableIDsByLocation[location] == nil { stableIDsByLocation[location] = id }
+            let identity = NoteIdentity(vaultID: note.reference.vaultID, noteID: id)
+            if titlesByStableID[identity] == nil { titlesByStableID[identity] = note.title }
         }
     }
 
