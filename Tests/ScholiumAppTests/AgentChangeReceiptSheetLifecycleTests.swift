@@ -106,7 +106,10 @@ private struct SheetLifecycleHost: View {
                             change: change, comparison: nil, currentCreatedSource: "Synthetic current content.",
                             endingRevisionState: .current)
                     },
-                    undo: { _ in Issue.record("A sheet lifecycle test must not undo a change") }
+                    undo: { _ in
+                        Issue.record("A sheet lifecycle test must not undo a change")
+                        throw CancellationError()
+                    }
                 )
             }
     }

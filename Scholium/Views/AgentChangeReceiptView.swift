@@ -36,19 +36,32 @@ private enum AgentChangePresentation {
 /// cumulative saved-Note comparison or substitutes for Changes History.
 struct AgentChangeReceiptView: View {
     typealias ReviewLoader = @MainActor (UUID) async throws -> AgentChangeReview
-    typealias Undo = @MainActor (AgentChange) async throws -> Void
+    typealias Undo = AgentChangeReceiptSession.Undo
 
     @Environment(\.dismiss) private var dismiss
     let changeID: UUID
     let loadReview: ReviewLoader
     let undo: Undo
+    let refreshAfterUndo: AgentChangeReceiptSession.Refresh
 
-    @State private var review: AgentChangeReview?
-    @State private var isLoading = true
-    @State private var isUndoing = false
-    @State private var errorMessage: String?
-    @State private var actionErrorMessage: String?
+    @StateObject private var session: AgentChangeReceiptSession
+    private var review: AgentChangeReview? { session.review }
+    private var isLoading: Bool { session.isLoading }
+    private var isUndoing: Bool { session.isUndoing }
+    private var errorMessage: String? { session.errorMessage }
+    private var actionErrorMessage: String? { session.actionErrorMessage }
     @State private var pendingUndo: AgentChange?
+
+    init(
+        changeID: UUID, loadReview: @escaping ReviewLoader, undo: @escaping Undo,
+        refreshAfterUndo: @escaping AgentChangeReceiptSession.Refresh = {}
+    ) {
+        self.changeID = changeID
+        self.loadReview = loadReview
+        self.undo = undo
+        self.refreshAfterUndo = refreshAfterUndo
+        _session = StateObject(wrappedValue: AgentChangeReceiptSession(changeID: changeID))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +89,7 @@ struct AgentChangeReceiptView: View {
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier("scholium.agentChangeReceipt")
         .task(id: changeID) { await reload() }
+        .onDisappear { session.close() }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -129,6 +143,21 @@ struct AgentChangeReceiptView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if session.undoResult != nil, review?.change.state != .undone {
+                Label("This Agent change was undone.", systemImage: "checkmark")
+                    .font(.caption)
+                    .accessibilityIdentifier("scholium.agentChanges.undoCompletion")
+            }
+            if let warning = session.refreshWarning {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Label("Receipt or history could not be refreshed.", systemImage: "exclamationmark.triangle")
+                    Text(verbatim: warning).textSelection(.enabled)
+                    Button("Retry") { Task { await reload() } }
+                        .disabled(isLoading)
+                        .accessibilityIdentifier("scholium.agentChanges.retryRefresh")
+                }
+                .font(.caption)
+            }
             if let actionErrorMessage {
                 Label(actionErrorMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption).textSelection(.enabled)
@@ -138,14 +167,14 @@ struct AgentChangeReceiptView: View {
                     ProgressView().controlSize(.small).accessibilityLabel("Undoing Agent Change")
                 }
                 Spacer(minLength: 0)
-                if let review, !isLoading, errorMessage == nil,
+                if let review, session.undoResult == nil, !isLoading, errorMessage == nil,
                     review.change.state == .confirmed,
                     review.change.operation == .update || review.change.operation == .move
                 {
                     Button(isUndoing ? "Undoing…" : "Undo…") {
                         pendingUndo = review.change
                     }
-                    .disabled(!review.isDirectUndoAvailable || isUndoing)
+                    .disabled(!session.canUndo)
                     .accessibilityHint(
                         review.change.operation == .move
                             ? Text("Restores the original location and exact linked sources when still current")
@@ -153,45 +182,24 @@ struct AgentChangeReceiptView: View {
                     )
                     .accessibilityIdentifier("scholium.agentChanges.undo.\(review.change.id.uuidString.lowercased())")
                 }
-                Button("Close", action: dismiss.callAsFunction)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isUndoing)
+                Button("Close") {
+                    session.close()
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isUndoing)
             }
         }
     }
 
     private func reload() async {
-        let requestedID = changeID
-        isLoading = true
-        errorMessage = nil
-        do {
-            let loaded = try await loadReview(requestedID)
-            guard requestedID == changeID else { return }
-            guard loaded.change.id == requestedID else {
-                throw AgentChangeError.mismatchedBinding(requestedID)
-            }
-            review = loaded
-        } catch is CancellationError {
-            return
-        } catch {
-            guard requestedID == changeID else { return }
-            review = nil
-            errorMessage = ScholiumErrorLocalization.message(error)
-        }
-        isLoading = false
+        await session.reload(using: loadReview, refreshAfterUndo: refreshAfterUndo)
     }
 
     private func undoChange(_ change: AgentChange) async {
-        isUndoing = true
-        actionErrorMessage = nil
-        do {
-            try await undo(change)
-            await reload()
-        } catch {
-            actionErrorMessage = ScholiumErrorLocalization.message(error)
-        }
-        isUndoing = false
+        await session.undoChange(change, undo: undo, loadReview: loadReview, refreshAfterUndo: refreshAfterUndo)
     }
+
 }
 
 private struct AgentChangeReviewContent: View {

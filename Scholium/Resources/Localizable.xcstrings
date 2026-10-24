@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Receipt or history could not be refreshed." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt or history could not be refreshed."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法刷新修改记录或历史。"}}}},
+    "Receipt refresh was interrupted." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt refresh was interrupted."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "修改记录刷新已中断。"}}}},
+    "The refreshed receipt does not yet show the completed Undo." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The refreshed receipt does not yet show the completed Undo."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "刷新后的修改记录尚未显示已完成的撤销。"}}}},
     "Finish or close the current dialog before opening this notification.": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish or close the current dialog before opening this notification."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请先完成或关闭当前对话框，再打开这条通知。"}}}},
     "Check for Updates…": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "检查更新…"}}}},
     "Updates Unavailable": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "更新不可用"}}}},

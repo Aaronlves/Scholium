@@ -765,19 +765,26 @@ struct ContentView: View {
                             change.id == changeID, change.triptychID == runtimeIdentity.triptychID,
                             let fingerprint = change.afterFingerprint
                         else { throw AgentChangeError.undoUnavailable(change.id) }
-                        _ = try await operations.undoAgentChange(
+                        return try await operations.undoAgentChange(
                             id: change.id,
                             expectedAfterFingerprint: fingerprint,
                             admission: nil
                         )
+                    },
+                    refreshAfterUndo: {
                         try Task.checkCancellation()
-                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else { return }
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else {
+                            throw CancellationError()
+                        }
                         await appState.refreshWorkspaceCatalog()
                         try Task.checkCancellation()
-                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else { return }
+                        guard appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity else {
+                            throw CancellationError()
+                        }
                         _ = try await researchController.loadAgentChanges()
                     }
                 )
+                .id(changeID)
             }
         case .documentChanges(let scope):
             if let capabilities = appState.windowWorkspaceController.activeCapabilities {
