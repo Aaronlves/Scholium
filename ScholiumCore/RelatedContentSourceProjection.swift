@@ -218,18 +218,19 @@ struct RelatedContentSourceProjection: Codable, Sendable {
             let normalizedDisplayText = SearchTextNormalization.lexicalNormalize(displayText)
             try Task.checkCancellation()
             paragraphs.append(
-                sharing.share(.init(
-                    range: .init(
-                        utf16LowerBound: block.span.utf16LowerBound,
-                        utf16UpperBound: block.span.utf16UpperBound,
-                        line: block.span.start.line,
-                        column: block.span.start.utf16Column,
-                        endLine: block.span.end.line,
-                        endColumn: block.span.end.utf16Column),
-                    displayText: displayText,
-                    normalizedDisplayText: normalizedDisplayText,
-                    textIndex: .init(normalizedDisplayText),
-                    scoringDocument: .init(rankingText: preparedSnippet.rankingText))))
+                sharing.share(
+                    .init(
+                        range: .init(
+                            utf16LowerBound: block.span.utf16LowerBound,
+                            utf16UpperBound: block.span.utf16UpperBound,
+                            line: block.span.start.line,
+                            column: block.span.start.utf16Column,
+                            endLine: block.span.end.line,
+                            endColumn: block.span.end.utf16Column),
+                        displayText: displayText,
+                        normalizedDisplayText: normalizedDisplayText,
+                        textIndex: .init(normalizedDisplayText),
+                        scoringDocument: .init(rankingText: preparedSnippet.rankingText))))
         }
         try Task.checkCancellation()
         self.paragraphs = paragraphs

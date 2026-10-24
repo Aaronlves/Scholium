@@ -526,7 +526,7 @@ private final class OffscreenTranscript {
                             const title = root?.querySelector('h2')?.textContent;
                             const expected = fingerprints[title];
                             if (!expected || !window.scholiumReadPreparation || !window.scholiumUpdateReply) return null;
-                            const result = await window.scholiumReadPreparation.settle('chat-reply', expected, 1, Date.now() + 500);
+                            const result = await window.scholiumReadPreparation.settle('chat-reply', expected, 1, Date.now() + 500, 'viewport');
                             return result.settled && root.getBoundingClientRect().height > 0 ? title : null;
                             """, arguments: ["fingerprints": fingerprints], in: nil,
                             contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? String

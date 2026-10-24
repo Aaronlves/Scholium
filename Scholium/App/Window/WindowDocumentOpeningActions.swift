@@ -50,7 +50,11 @@ extension WindowModel {
         validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
         try validateDisplay()
-        if workspaceStore.documentLocations.revealExisting(document, excluding: self) { return }
+        if workspaceStore.documentLocations.revealExisting(
+            document, excluding: self, isCurrentRequest: activeDocumentTransitionCurrency ?? { true }
+        ) {
+            return
+        }
         guard let vaultID = document.vaultID,
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == vaultID
@@ -149,7 +153,9 @@ extension WindowModel {
     ) async throws {
         guard !transferInProgress else { throw CancellationError() }
         try validateDisplay()
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+        if workspaceStore.documentLocations.revealExisting(
+            reference, excluding: self, isCurrentRequest: activeDocumentTransitionCurrency ?? { true }
+        ) {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             return
         }
@@ -191,7 +197,9 @@ extension WindowModel {
         validateDisplay: @MainActor () throws -> Void = {},
         validateSource: @MainActor () async throws -> Void = {}
     ) async throws {
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+        if workspaceStore.documentLocations.revealExisting(
+            reference, excluding: self, isCurrentRequest: activeDocumentTransitionCurrency ?? { true }
+        ) {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             return
         }
@@ -399,15 +407,21 @@ extension WindowModel {
         mode: NotePresentationMode? = nil,
         inspectorMode: ResearchInspectorMode? = nil,
         sourceFingerprint: DocumentFingerprint? = nil,
+        navigationRequest: DocumentTransitionCoordinator.Currency? = nil,
         validateDisplay: @escaping @MainActor () throws -> Void = {},
         validateSource: @escaping @MainActor () async throws -> Void = {}
     ) async {
         do { try validateDisplay() } catch { return }
+        guard let requestIsCurrent = beginDocumentNavigation(continuing: navigationRequest) else { return }
+        let validateNavigation: @MainActor () throws -> Void = {
+            guard requestIsCurrent() else { throw CancellationError() }
+            try validateDisplay()
+        }
         if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             await owner.openWorkspaceReference(
                 reference, line: line, mode: mode, inspectorMode: inspectorMode, sourceFingerprint: sourceFingerprint,
-                validateDisplay: validateDisplay, validateSource: validateSource)
+                validateDisplay: validateNavigation, validateSource: validateSource)
             return
         }
         let navigationMode = mode ?? presentedDocumentMode
@@ -417,11 +431,12 @@ extension WindowModel {
             }
         }
         enqueueDocumentTransition(
-            preparation: openingPreparation(for: reference), retainingCurrentDocument: retainedTarget,
-            validateBeforePreparation: validateDisplay, admitBeforePreparation: validateSource
+            preparation: openingPreparation(for: reference), requestIsCurrent: requestIsCurrent,
+            retainingCurrentDocument: retainedTarget,
+            validateBeforePreparation: validateNavigation, admitBeforePreparation: validateSource
         ) { [weak self] in
             guard let self else { return }
-            try validateDisplay()
+            try validateNavigation()
             let alreadyCurrent =
                 sourceFingerprint != nil
                 && self.currentDocumentDescriptor?.reference.vaultID == reference.vaultID
@@ -429,10 +444,10 @@ extension WindowModel {
             if !alreadyCurrent {
                 try await self.activateWorkspaceReference(
                     reference,
-                    tabActivation: .place(.replaceSelected), validateDisplay: validateDisplay, validateSource: validateSource
+                    tabActivation: .place(.replaceSelected), validateDisplay: validateNavigation, validateSource: validateSource
                 )
             }
-            try validateDisplay()
+            try validateNavigation()
             if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
             var verifiedLine = line
             var locationNotice: String?
@@ -453,7 +468,7 @@ extension WindowModel {
                     document = nil
                 }
                 try Task.checkCancellation()
-                try validateDisplay()
+                try validateNavigation()
                 guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                     self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey
                 else { throw CancellationError() }
@@ -500,6 +515,11 @@ extension WindowModel {
             onCompletion(false)
             return
         }
+        guard let localRequestIsCurrent = beginDocumentNavigation() else {
+            onCompletion(false)
+            return
+        }
+        let requestIsCurrent: DocumentTransitionCoordinator.Currency = { localRequestIsCurrent() && isCurrentRequest() }
         var forwarded = false
         let forwardToExistingOwner: @MainActor () -> Bool = { [weak self] in
             guard let self, let owner = self.workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) else { return false }
@@ -510,7 +530,7 @@ extension WindowModel {
                 reference, sourceRange: sourceRange, fallbackLine: fallbackLine,
                 sourceFingerprint: sourceFingerprint, scope: scope, freshnessToken: freshnessToken,
                 placement: placement, mode: mode,
-                isCurrentRequest: isCurrentRequest, onCompletion: onCompletion)
+                isCurrentRequest: requestIsCurrent, onCompletion: onCompletion)
             return true
         }
         if forwardToExistingOwner() { return }
@@ -531,7 +551,7 @@ extension WindowModel {
         }
         var admittedSummary: WorkspaceNoteSummary?
         let validateDisplay: @MainActor () throws -> Void = { [weak self] in
-            guard isCurrentRequest(),
+            guard requestIsCurrent(),
                 self?.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
             else { throw CancellationError() }
             // A peer can acquire the target while this request is queued or
@@ -574,7 +594,8 @@ extension WindowModel {
         // Search evidence is checked again when the queued transition runs and
         // immediately before activation, before saving or replacing the origin.
         enqueueDocumentTransition(
-            preparation: openingPreparation(for: reference, placement: placement), retainingCurrentDocument: target,
+            preparation: openingPreparation(for: reference, placement: placement), requestIsCurrent: requestIsCurrent,
+            retainingCurrentDocument: target,
             validateBeforePreparation: validateDisplay, admitBeforePreparation: validateSource
         ) { [weak self] in
             guard let self else { return }
@@ -677,7 +698,8 @@ extension WindowModel {
                 String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
-        Task { await openWorkspaceReference(reference, line: destination.line) }
+        guard let requestIsCurrent = beginDocumentNavigation() else { return }
+        Task { await openWorkspaceReference(reference, line: destination.line, navigationRequest: requestIsCurrent) }
     }
 
     func diskDocument(for path: String) async throws -> NoteDocument {

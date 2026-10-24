@@ -4,6 +4,7 @@ import {EDITOR_PROTOCOL_VERSION, type EditorCommandResult, type EditorPresentati
   type EditorRequest, type MarkdownEditingDialect} from "../protocol";
 import {installConstructableStylesheet} from "./stylesheet-fixture";
 import type {NativeFloatingEvent} from "../native-floating";
+import type {ReaderPreparationPhase, ReaderWindow} from "../reader-runtime";
 
 const dialect: MarkdownEditingDialect = {
   version: 6, callouts: [{identifier: "state", label: "Statement", meaning: "Claim"}],
@@ -51,6 +52,10 @@ async function runtime() {
   const api = (window as unknown as RuntimeWindow).scholiumEditor!;
   const {EditorView} = await import("@codemirror/view");
   const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
+  Object.defineProperty(view.scrollDOM, "scrollHeight", {value: 1200});
+  Object.defineProperty(view.scrollDOM, "clientHeight", {value: 400});
+  view.scrollDOM.scrollTop = 0;
+  view.scrollDOM.scrollLeft = 0;
   view.scrollDOM.scrollTo = vi.fn();
   return {document, window: window as unknown as RuntimeWindow, api, view, floating};
 }
@@ -109,6 +114,49 @@ describe("Review initialization presentation admission", () => {
 });
 
 describe("editor mode selection lifecycle", () => {
+  it("restores Review after layout and acknowledges only after its actual viewport settles", async () => {
+    const f = await runtime();
+    try {
+      substituteAnchorGeometry(f);
+      const readerRuntime = await import("../reader-runtime");
+      const initialize = readerRuntime.initializeReader;
+      const phases: ReaderPreparationPhase[] = [];
+      vi.spyOn(readerRuntime, "initializeReader").mockImplementation(async (...args) => {
+        await initialize(...args);
+        const preparation = (f.window as ReaderWindow).scholiumReadPreparation!;
+        const settle = preparation.settle.bind(preparation);
+        vi.spyOn(preparation, "settle").mockImplementation((...args) => {
+          phases.push(args[4]);
+          return settle(...args);
+        });
+      });
+      const value = presentation("viewport-note", 0);
+      value.imageResources = {};
+      value.reviewProjection!.htmlBody = '<main id="scholium-document"><p>Body</p></main><aside id="scholium-preview-popover"><h2 class="scholium-preview-title"></h2><p class="scholium-preview-metadata"></p><div class="scholium-preview-body"></div></aside>';
+      const initialized = await f.api.dispatch(request("viewport-note", {type: "initialize", mode: "livePreview",
+        text: "Body\r\n", dialect, presentation: value}));
+      expect(initialized.accepted, initialized.error).toBe(true);
+      let acknowledged = false;
+      const switching = f.api.dispatch(request("viewport-note", {type: "setMode", mode: "review"}))
+        .then(result => { acknowledged = true; return result; });
+      // Layout must allow restoration immediately without spending a viewport
+      // observation interval before the authorized position has been applied.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(phases).toEqual(["layout", "viewport"]);
+      expect(acknowledged).toBe(false);
+      for (const top of [20, 40]) {
+        f.view.scrollDOM.scrollTop = top;
+        await vi.advanceTimersByTimeAsync(16);
+        expect(acknowledged).toBe(false);
+      }
+      await vi.advanceTimersByTimeAsync(100);
+      const switched = await switching;
+      expect(switched.accepted, switched.error).toBe(true);
+      expect(f.view.scrollDOM.scrollTop).toBe(40);
+      expect(phases).toEqual(["layout", "viewport"]);
+    } finally { f.view.destroy(); }
+  });
+
   it.each([
     {from: "livePreview", to: "source"},
     {from: "source", to: "livePreview"},
@@ -133,7 +181,11 @@ describe("editor mode selection lifecycle", () => {
       expect(shown.selectionSurfaceID).toBeGreaterThan(0);
       const id = shown.selectionSurfaceID!;
       expect(f.window.scholiumNativeFloatingEvent?.(id, "choose", 0)).toBe(true);
-      const switched = await f.api.dispatch(request("selection-note", {type: "setMode", mode: to}));
+      const switching = f.api.dispatch(request("selection-note", {type: "setMode", mode: to}));
+      // The fixture suspends animation frames and uses a fake clock. Let the
+      // real Review viewport preparation finish its bounded coordinate samples.
+      if (to === "review") await vi.advanceTimersByTimeAsync(100);
+      const switched = await switching;
       expect(switched.accepted, switched.error).toBe(true);
       expect(f.floating).toContainEqual({type: "dismissSurface", kind: "selection", id});
       expect(f.window.scholiumNativeFloatingEvent?.(id, "choose", 0)).toBe(false);

@@ -158,7 +158,10 @@ final class DocumentController: ObservableObject {
 
     @Published private(set) var selectedDocument: WindowSelectedDocument? {
         didSet {
-            if selectedDocument?.editingTarget != oldValue?.editingTarget { sourceLocationRequest = nil }
+            if selectedDocument?.editingTarget != oldValue?.editingTarget {
+                sourceLocationRequest = nil
+                if let oldValue { sessions.retainedSession(for: oldValue.editingTarget)?.cancelModeWork() }
+            }
         }
     }
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
@@ -296,6 +299,7 @@ final class DocumentController: ObservableObject {
     }
 
     func unbind() {
+        for session in sessions.retainedSessions.values { session.cancelModeWork() }
         cancelPendingHydrations()
         operations = nil
         writingSuggestions.clear()
@@ -720,6 +724,7 @@ final class DocumentController: ObservableObject {
                 guard let session else { return }
                 self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
                 self.refreshChromeProjection(ifOwnedBy: session)
+                self.reconcileEditorFocusIntent(for: session)
                 // Close's first reap can precede SwiftUI's actual detach.
                 // Its deferred presentation publication completes cleanup.
                 if session.presentationIsClosed, !session.editorSession.hasAttachedWebView,
@@ -765,6 +770,7 @@ final class DocumentController: ObservableObject {
                 to: selectedSession,
                 target: .workspace(descriptor.sessionKey)
             )
+            if selectionChanged { requestEditorFocusAfterActivation(session: selectedSession, target: document.editingTarget) }
         case .unavailable:
             let selectedSession = session(for: document.editingTarget)
             // Identity-unavailable Notes remain readable but cannot inherit a
@@ -795,6 +801,7 @@ final class DocumentController: ObservableObject {
         selectedDocument = document
         if case .workspace = document {
             applyCurrentPresentationMode(to: session, target: document.editingTarget)
+            requestEditorFocusAfterActivation(session: session, target: document.editingTarget)
         } else {
             session.preparePresentationMode(.read)
         }
@@ -1004,7 +1011,9 @@ final class DocumentController: ObservableObject {
         guard let fingerprint else { return nil }
         // Departure has already frozen and captured the actual Web viewport.
         // Its coalesced native observation may still describe an earlier frame.
-        let capturedAnchor = session.editorSession.detachmentSuspensionID == nil ? nil
+        let capturedAnchor =
+            session.editorSession.detachmentSuspensionID == nil
+            ? nil
             : session.editorSession.retainedScrollAnchor.flatMap { anchor in
                 anchor.sourceFingerprint == fingerprint
                     && anchor.isValid(forUTF16Length: session.retainedExactSource.utf16.count) ? anchor : nil
@@ -1092,6 +1101,7 @@ final class DocumentController: ObservableObject {
                         }
                     }
                     self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
+                    self.reconcileEditorFocusIntent(for: session)
                     self.scheduleAutosave(session: session, target: document.editingTarget)
                 } catch {
                     await self.presentSaveFailure(error, session: session, target: document.editingTarget)
@@ -1107,9 +1117,10 @@ final class DocumentController: ObservableObject {
         onSuspended: @escaping @MainActor (String?) throws -> Void = { _ in }
     ) async throws {
         let session = session(for: document.editingTarget)
+        session.cancelModeWork()
         // Retain the admitted save before serialized preparation yields. Its
-        // completion can clear the session slot without clearing its failure.
-        let admittedSave = session.activeSaveTask
+        // completion can release ownership without clearing its failure.
+        let admittedSave = session.activeSaveAttempt?.task
         try await withSerializedEditorPreparation(session: session) {
             try await self.performSessionTransferPreparation(
                 document, session: session, admittedSave: admittedSave)
@@ -1149,6 +1160,7 @@ final class DocumentController: ObservableObject {
                 session.detachmentPreparationTask = nil
                 session.detachmentPreparationToken = nil
             }
+            reconcileEditorFocusIntent(for: session)
         }
         try await withTaskCancellationHandler {
             try await preparation.value
@@ -1272,7 +1284,7 @@ final class DocumentController: ObservableObject {
         session.cancelAutosave()
         do {
             if let admittedSave { _ = try await admittedSave.value }
-            if let save = session.activeSaveTask {
+            if let save = session.activeSaveAttempt?.task {
                 _ = try await save.value
                 let deadline = ContinuousClock.now.advanced(by: .seconds(2))
                 while session.isSavingEdit, ContinuousClock.now < deadline {
@@ -1298,6 +1310,7 @@ final class DocumentController: ObservableObject {
 
     func takeSessionForTransfer(_ document: WindowSelectedDocument) -> DocumentSessionTransfer? {
         guard let session = sessions.takeSession(for: document.editingTarget) else { return nil }
+        session.cancelModeWork()
         session.cancelAutosave()
         let transfer = DocumentSessionTransfer(
             document: document, session: session,
@@ -1587,20 +1600,14 @@ final class DocumentController: ObservableObject {
         session.autosaveTask = Task { @MainActor [weak self, weak session] in
             guard let self, let session else { return }
             defer { session.finishAutosave(token: autosaveToken) }
-            if let activeSaveTask = session.activeSaveTask {
-                let supersededToken = session.activeSaveToken
-                _ = try? await activeSaveTask.value
-                // `saveEditingSource` normally clears this slot after its
+            if let attempt = session.activeSaveAttempt {
+                _ = try? await attempt.task.value
+                // `saveEditingSource` normally completes this attempt after its
                 // task completes. A rename retry can resume first on the main
                 // actor, however, and must not accidentally reuse the
                 // completed old-path task as the destination save. The token
                 // check prevents clearing any newer save.
-                if let supersededToken {
-                    _ = self.finishSaveAttempt(
-                        token: supersededToken,
-                        session: session
-                    )
-                }
+                _ = self.finishSaveAttempt(token: attempt.token, session: session)
             }
             guard !Task.isCancelled,
                 session.conflict == nil,
@@ -1755,6 +1762,7 @@ final class DocumentController: ObservableObject {
     }
 
     func removeAll(retainingSessions: Bool = false) {
+        for session in sessions.retainedSessions.values { session.cancelModeWork() }
         cancelPendingHydrations()
         if !retainingSessions {
             sessions.removeAll()
@@ -1907,8 +1915,7 @@ final class DocumentController: ObservableObject {
                 guard !session.hasUnsavedChanges,
                     session.conflict == nil,
                     session.editError == nil,
-                    !session.isSavingEdit,
-                    session.activeSaveTask == nil
+                    !session.isSavingEdit
                 else { return }
                 do {
                     try finishEditing(session: session, target: target)
@@ -1933,7 +1940,7 @@ final class DocumentController: ObservableObject {
             } else if case .workspace(let key) = target, let snapshot = snapshots[key] {
                 guard !session.hasUnsavedChanges, !session.editorSession.isComposing,
                     session.conflict == nil, session.editError == nil,
-                    !session.isSavingEdit, session.activeSaveTask == nil,
+                    !session.isSavingEdit,
                     session.pendingEditorCommit == nil
                 else { return }
                 // Hydration has already established exact bytes and editing authority.
@@ -1995,6 +2002,7 @@ final class DocumentController: ObservableObject {
         }
         session.editorSession.authorizeAutomaticFocus()
         session.beginEditing(in: mode)
+        requestEditorFocus(session: session, target: target, authorizing: false)
         editingDocumentPath = relativePath(for: target)
         Task { @MainActor [weak session] in
             await Task.yield()
@@ -2010,15 +2018,13 @@ final class DocumentController: ObservableObject {
             throw DocumentControllerError.editorUnavailable
         }
         if let conflict = repositoryConflict(for: session) { throw conflict }
-        guard !session.hasUnsavedChanges, !session.isSavingEdit, session.activeSaveTask == nil,
+        guard !session.hasUnsavedChanges, !session.isSavingEdit,
             session.pendingEditorCommit == nil
         else {
             throw DocumentControllerError.changedDuringSave
         }
         session.cancelScheduledWork()
         session.finishEditing()
-        session.returnToReadAfterSave = false
-        session.reviewHandoffID = nil
         session.suppressAutosave = false
         session.dismissConflictComparison()
         session.conflict = nil
@@ -2081,8 +2087,8 @@ final class DocumentController: ObservableObject {
     ) async {
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
-                .controllerRequest, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
-                flags: [.dirty: session.hasUnsavedChanges, .activeSave: session.activeSaveTask != nil, .externalFlush: false],
+                .controllerRequest, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveAttempt?.token,
+                flags: [.dirty: session.hasUnsavedChanges, .activeSave: session.isSavingEdit, .externalFlush: false],
                 counts: [.generation: session.editorSession.generation])
         #endif
         let attemptedPath = relativePath(for: target)
@@ -2139,8 +2145,8 @@ final class DocumentController: ObservableObject {
     ) async throws {
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
-                .controllerRequest, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
-                flags: [.dirty: session.hasUnsavedChanges, .activeSave: session.activeSaveTask != nil, .externalFlush: true],
+                .controllerRequest, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveAttempt?.token,
+                flags: [.dirty: session.hasUnsavedChanges, .activeSave: session.isSavingEdit, .externalFlush: true],
                 counts: [.generation: session.editorSession.generation])
         #endif
         session.cancelAutosave()
@@ -2198,7 +2204,7 @@ final class DocumentController: ObservableObject {
         guard let conflict = session.conflict,
             let revision = session.editingRevision,
             retainsSession(session, for: target), selectedDocument?.editingTarget == target,
-            !session.isSavingEdit, session.activeSaveTask == nil,
+            !session.isSavingEdit,
             !session.editorSession.isComposing
         else { throw DocumentControllerError.changedDuringSave }
         let editor = session.editorSession
@@ -2223,7 +2229,7 @@ final class DocumentController: ObservableObject {
             editor.documentID == documentID, editor.sessionID == transportSessionID,
             relativePath(for: target).utf8.elementsEqual(path.utf8),
             session.editingRevision == revision, session.conflict == conflict,
-            !session.isSavingEdit, session.activeSaveTask == nil, !editor.isComposing,
+            !session.isSavingEdit, !editor.isComposing,
             editor.generation == generation,
             session.retainedExactSource.utf8.elementsEqual(source.utf8),
             editor.checkedCitationData == citationData,
@@ -2259,7 +2265,7 @@ final class DocumentController: ObservableObject {
                 && editor.committedCitationSnapshot == comparedConflict.baseCitationSnapshot
                 && editor.checkedCitationData == comparedConflict.editorCitationData
                 && session.retainedExactSource.utf8.elementsEqual(comparedConflict.editorSource.utf8)
-                && !editor.isComposing && !session.isSavingEdit && session.activeSaveTask == nil
+                && !editor.isComposing && !session.isSavingEdit
         }
         do {
             try await withFrozenEditor(session: session) {
@@ -2334,19 +2340,18 @@ final class DocumentController: ObservableObject {
         // fresh full-buffer capture. Bound contention so repeated requests
         // cannot keep one caller suspended indefinitely.
         for _ in 0..<4 {
-            guard let activeSaveTask = session.activeSaveTask else { break }
+            guard let attempt = session.activeSaveAttempt else { break }
             try Task.checkCancellation()
-            let token = session.activeSaveToken
-            let receipt = session.activeSaveCommitReceipt
+            let token = attempt.token
             #if DEBUG
                 PerformanceProbe.shared.recordQASaveStage(
                     .controllerJoin, sessionID: session.editorSession.sessionID, saveToken: token,
                     flags: [.dirty: session.hasUnsavedChanges], counts: [.generation: session.editorSession.generation])
             #endif
-            defer { if let document = receipt?.document { onCommitted?(document) } }
+            defer { if let document = attempt.receipt.document { onCommitted?(document) } }
             do {
-                _ = try await activeSaveTask.value
-                if let token, let conflict = finishSaveAttempt(token: token, session: session) {
+                _ = try await attempt.task.value
+                if let conflict = finishSaveAttempt(token: token, session: session) {
                     throw conflict
                 }
             } catch {
@@ -2356,14 +2361,14 @@ final class DocumentController: ObservableObject {
                         flags: [.cancelled: error is CancellationError, .conflict: Self.isRevisionConflict(error)],
                         counts: [.generation: session.editorSession.generation])
                 #endif
-                if let token, let conflict = finishSaveAttempt(token: token, session: session) {
+                if let conflict = finishSaveAttempt(token: token, session: session) {
                     throw conflict
                 }
                 throw error
             }
         }
         try Task.checkCancellation()
-        guard session.activeSaveTask == nil else { throw DocumentControllerError.changedDuringSave }
+        guard session.activeSaveAttempt == nil else { throw DocumentControllerError.changedDuringSave }
 
         let receipt = EditorSaveCommitReceipt()
         defer { if let document = receipt.document { onCommitted?(document) } }
@@ -2371,10 +2376,7 @@ final class DocumentController: ObservableObject {
         let task = Task { @MainActor in
             try await self.performEditingSave(session: session, target: target, receipt: receipt)
         }
-        session.activeSaveCommitReceipt = receipt
-        session.activeSaveToken = token
-        session.activeSaveTask = task
-        session.isSavingEdit = true
+        session.beginSaveAttempt(.init(token: token, task: task, receipt: receipt))
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
                 .controllerAttempt, sessionID: session.editorSession.sessionID, saveToken: token,
@@ -2406,13 +2408,9 @@ final class DocumentController: ObservableObject {
         token: UUID,
         session: DocumentSessionModel
     ) -> VaultRepositoryError? {
-        guard session.activeSaveToken == token else {
+        guard session.completeSaveAttempt(token: token) else {
             return repositoryConflict(for: session)
         }
-        session.activeSaveTask = nil
-        session.activeSaveCommitReceipt = nil
-        session.activeSaveToken = nil
-        session.isSavingEdit = false
         return reconcileLatestDeferredWorkspaceSnapshot(for: session)
     }
 
@@ -2487,7 +2485,7 @@ final class DocumentController: ObservableObject {
         let exactMatchesCommitted = ScholiumExactUTF8.equal(sourceBeingSaved, session.originalEditingSource)
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
-                .controllerSnapshot, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
+                .controllerSnapshot, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveAttempt?.token,
                 flags: [
                     .dirty: session.hasUnsavedChanges,
                     .sourceMatchesCommitted: exactMatchesCommitted,
@@ -2530,7 +2528,7 @@ final class DocumentController: ObservableObject {
         session.pendingEditorCommit = (editorSnapshot, saved)
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
-                .controllerCommitted, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
+                .controllerCommitted, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveAttempt?.token,
                 flags: [.sourceMatchesCommitted: session.editorSession.checkedSource.utf8.elementsEqual(saved.rawContent.utf8)],
                 counts: [.generation: session.editorSession.generation, .snapshotGeneration: editorSnapshot.generation])
         #endif
@@ -2545,7 +2543,7 @@ final class DocumentController: ObservableObject {
         session.pendingEditorCommit = nil
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
-                .controllerAcknowledged, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveToken,
+                .controllerAcknowledged, sessionID: session.editorSession.sessionID, saveToken: session.activeSaveAttempt?.token,
                 flags: [.dirty: session.hasUnsavedChanges, .superseded: acknowledgement == .superseded],
                 counts: [.generation: session.editorSession.generation, .snapshotGeneration: editorSnapshot.generation])
         #endif
@@ -2975,7 +2973,7 @@ final class DocumentController: ObservableObject {
             } catch { result = .failure(error) }
             if case .failure(let error) = result,
                 case WorkspaceHydrationError.staleSnapshot = error,
-                let save = retainedSession?.activeSaveTask
+                let save = retainedSession?.activeSaveAttempt?.task
             {
                 // A commit can advance source before its window publication.
                 // Let that owner settle, then revalidate this older read.

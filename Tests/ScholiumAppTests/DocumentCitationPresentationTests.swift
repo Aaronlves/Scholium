@@ -334,10 +334,10 @@ struct DocumentCitationPresentationTests {
         notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(notice.integrity == .stale && !notice.canRefresh && !notice.canOpenSource)
         setInteraction(editor, composing: false, citationState: .stale)
-        session.returnToReadAfterSave = true
+        session.beginReviewHandoff { _ in }
         notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: true)
         #expect(!notice.canRefresh && !notice.canOpenSource)
-        session.returnToReadAfterSave = false
+        session.cancelReviewHandoff()
         notice = session.citationPresentation(committedDocument: document, committedFields: nil, editingIsAvailable: false)
         #expect(!notice.canRefresh && !notice.canOpenSource)
         session.switchEditorMode(to: .source)

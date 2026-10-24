@@ -290,7 +290,7 @@ struct WindowDocumentOpeningPreparationTests {
         }
         let document = model.documentController.selectedDocument
         if currencyAware {
-            model.enqueueCurrencyAwareDocumentTransition { _ in throw FixtureFailure.destination }
+            model.enqueueDocumentTransition(preparation: .flushRegisteredEditor(capturingEditorState: true)) { _ in throw FixtureFailure.destination }
         } else {
             model.enqueueDocumentTransition { throw FixtureFailure.destination }
         }
@@ -317,7 +317,7 @@ struct WindowDocumentOpeningPreparationTests {
             outgoing.cancelScheduledWork()
         }
         var reachedDestination = false
-        model.enqueueCurrencyAwareDocumentTransition { _ in reachedDestination = true }
+        model.enqueueDocumentTransition(preparation: .flushRegisteredEditor(capturingEditorState: true)) { _ in reachedDestination = true }
         await model.waitForDocumentTransitions()
         #expect(flushCount == 1)
         #expect(!reachedDestination)
@@ -391,7 +391,8 @@ struct WindowDocumentOpeningPreparationTests {
                     completions += 1
                     if case .success = result { Issue.record("Rejected navigation reported success") }
                 })
-            model.enqueueCurrencyAwareDocumentTransition(
+            model.enqueueDocumentTransition(
+                preparation: .flushRegisteredEditor(capturingEditorState: true),
                 validateBeforePreparation: { preparationCount += 1 },
                 { _ in operationCount += 1 },
                 didSucceed: { successes += 1 },
@@ -418,7 +419,7 @@ struct WindowDocumentOpeningPreparationTests {
                 if let closeTask { _ = try? await closeTask.value }
                 model.editorFlushCoordinator.clearCurrentEditor()
                 var resumed = 0
-                model.enqueueCurrencyAwareDocumentTransition({ _ in resumed += 1 })
+                model.enqueueDocumentTransition(preparation: .flushRegisteredEditor(capturingEditorState: true), { _ in resumed += 1 })
                 await model.waitForDocumentTransitions()
                 #expect(resumed == 1)
             }
@@ -447,7 +448,8 @@ struct WindowDocumentOpeningPreparationTests {
             outgoing.cancelScheduledWork()
         }
         do {
-            model.enqueueCurrencyAwareDocumentTransition(
+            model.enqueueDocumentTransition(
+                preparation: .flushRegisteredEditor(capturingEditorState: true),
                 { isCurrent in
                     operationStarted = true
                     for await _ in gate.stream { break }
@@ -529,10 +531,10 @@ struct WindowDocumentOpeningPreparationTests {
         failing.editingSource = exactDraft
         failing.suppressAutosave = true
         let save = Task<EditorSaveOutcome, Error> { throw FixtureFailure.save }
-        failing.activeSaveTask = save
+        failing.beginSaveAttempt(.init(task: save))
         defer {
             save.cancel()
-            failing.activeSaveTask = nil
+            failing.cancelSaveAttempt()
             background.cancelScheduledWork()
             outgoing.cancelScheduledWork()
         }
@@ -574,7 +576,7 @@ struct WindowDocumentOpeningPreparationTests {
         #expect(outgoing.hasUnsavedChanges)
         #expect(outgoing.editError == "Retained failure")
         #expect(outgoing.scrollFraction == 0.62)
-        #expect(outgoing.activeSaveTask == nil)
+        #expect(outgoing.activeSaveAttempt == nil)
     }
 
     @Test("A destination removed before queued opening preparation requires an outgoing save")
@@ -587,7 +589,7 @@ struct WindowDocumentOpeningPreparationTests {
         defer {
             release?.resume()
             save.cancel()
-            outgoing.activeSaveTask = nil
+            outgoing.cancelSaveAttempt()
             background.cancelScheduledWork()
             outgoing.cancelScheduledWork()
         }
@@ -622,13 +624,13 @@ struct WindowDocumentOpeningPreparationTests {
             await withCheckedContinuation { release = $0 }
             return .clean
         }
-        outgoing.activeSaveTask = inFlight
+        outgoing.beginSaveAttempt(.init(task: inFlight))
         var failedSave: Task<EditorSaveOutcome, Error>?
         defer {
             release?.resume()
             inFlight.cancel()
             failedSave?.cancel()
-            outgoing.activeSaveTask = nil
+            outgoing.cancelSaveAttempt()
             background.cancelScheduledWork()
             outgoing.cancelScheduledWork()
         }
@@ -661,7 +663,8 @@ struct WindowDocumentOpeningPreparationTests {
         session.editingSource = "\u{FEFF}Unsaved 中文 😀 e\u{301}。\r\n"
         session.suppressAutosave = true
         let save = Task<EditorSaveOutcome, Error> { throw FixtureFailure.save }
-        session.activeSaveTask = save
+        session.cancelSaveAttempt()
+        session.beginSaveAttempt(.init(task: save))
         return save
     }
 
@@ -687,8 +690,7 @@ struct WindowDocumentOpeningPreparationTests {
         background.editingSource = exactDraft
         background.suppressAutosave = true
         defer {
-            background.activeSaveTask?.cancel()
-            background.activeSaveTask = nil
+            background.cancelSaveAttempt()
             background.cancelScheduledWork()
             outgoing.cancelScheduledWork()
         }
@@ -698,7 +700,8 @@ struct WindowDocumentOpeningPreparationTests {
                 try await Task.sleep(for: .milliseconds(250))
                 return .clean
             }
-            background.activeSaveTask = pending
+            let attempt = ActiveSaveAttempt(task: pending)
+            background.beginSaveAttempt(attempt)
             let start = ContinuousClock.now
             var elapsed: Duration?
             model.enqueueDocumentTransition {
@@ -710,7 +713,7 @@ struct WindowDocumentOpeningPreparationTests {
                 milliseconds.append(Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15)
             }
             _ = try await pending.value
-            background.activeSaveTask = nil
+            background.completeSaveAttempt(token: attempt.token)
             #expect(Data(background.editingSource.utf8) == Data(exactDraft.utf8))
         }
         print(

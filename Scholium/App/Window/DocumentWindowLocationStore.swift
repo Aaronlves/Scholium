@@ -115,24 +115,27 @@ final class DocumentWindowLocationStore {
 
     func revealExisting(
         _ reference: VaultNoteReference, excluding source: WindowModel,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true },
         onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
     ) -> Bool {
         guard let id = resolvedKey(for: reference, in: source)?.noteID else { return false }
         return revealExisting(
             key: DocumentSessionKey(vaultID: reference.vaultID, noteID: id),
-            excluding: source, onSelection: onSelection)
+            excluding: source, isCurrentRequest: isCurrentRequest, onSelection: onSelection)
     }
 
     func revealExisting(
         _ document: WindowSelectedDocument,
         excluding source: WindowModel,
         historyPosition: DocumentNavigationVisitPosition? = nil,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true },
         onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
     ) -> Bool {
         guard let key = document.sessionKey else { return false }
         return revealExisting(
             key: key, excluding: source,
             historyPosition: historyPosition,
+            isCurrentRequest: isCurrentRequest,
             onSelection: onSelection
         )
     }
@@ -168,14 +171,20 @@ final class DocumentWindowLocationStore {
         key: DocumentSessionKey,
         excluding source: WindowModel,
         historyPosition: DocumentNavigationVisitPosition? = nil,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true },
         onSelection: (@MainActor (WindowModel, Bool) -> Void)? = nil
     ) -> Bool {
         guard let model = existingOwner(key: key, excluding: source) else { return false }
+        guard isCurrentRequest() else {
+            onSelection?(model, false)
+            return true
+        }
         model.nativeWindowCoordinator?.makeKeyAndOrderFront()
         if let tab = model.documentTabController.tabs.first(where: { $0.document.sessionKey == key }) {
             model.selectDocumentTab(
                 withID: tab.id,
                 historyPosition: historyPosition,
+                isCurrentRequest: isCurrentRequest,
                 onSelection: { selected in
                     onSelection?(model, selected)
                 }

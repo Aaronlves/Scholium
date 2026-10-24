@@ -9,7 +9,8 @@ struct RelatedContentScoringStorageReuseTests {
     @Test("Equal independently decoded Note scorers share long storage without changing passages or scores")
     func decodedProjectionReuse() throws {
         let prose = Array(repeating: "needle Café 自由 😀", count: 32).joined(separator: " ")
-        let source = "\u{FEFF}---\r\ntitle: Storage fixture\r\nunknown: 'unchanged'\r\n---\r\n# Heading\r\n\r\n\(prose).\r\n\r\nSecond independent paragraph.\r\n"
+        let source =
+            "\u{FEFF}---\r\ntitle: Storage fixture\r\nunknown: 'unchanged'\r\n---\r\n# Heading\r\n\r\n\(prose).\r\n\r\nSecond independent paragraph.\r\n"
         let note = NoteDocument(relativePath: "Cafe\u{301}.md", rawContent: source)
         let original = try RelatedContentSourceProjection(document: note)
         let lexical = RelatedContentLexicalProjection(
@@ -35,18 +36,20 @@ struct RelatedContentScoringStorageReuseTests {
         #expect(reused.paragraphs.map(\.range) == decoded.paragraphs.map(\.range))
         #expect(sharesParagraphStorage(reused.paragraphs, decoded.paragraphs))
         try #require(reused.paragraphs.count == 2)
-        let firstRange = try #require(Range(
-            NSRange(
-                location: reused.paragraphs[0].range.utf16LowerBound,
-                length: reused.paragraphs[0].range.utf16UpperBound - reused.paragraphs[0].range.utf16LowerBound), in: source))
+        let firstRange = try #require(
+            Range(
+                NSRange(
+                    location: reused.paragraphs[0].range.utf16LowerBound,
+                    length: reused.paragraphs[0].range.utf16UpperBound - reused.paragraphs[0].range.utf16LowerBound), in: source))
         #expect(source[firstRange].utf8.elementsEqual((prose + ".").utf8))
         #expect(note.sourceBytes == Data(source.utf8))
         let matcher = RelatedContentTermMatcher(terms: ["needle", "cafe", "自由"])
         let bodyIndex = try #require(reused.noteScoringDocument.textIndexes["body"])
         #expect(matcher.counts(in: reusedBody, index: bodyIndex) == [32, 32, 32])
 
-        let other = try RelatedContentSourceProjection(document: NoteDocument(
-            relativePath: "Other.md", rawContent: "needle geology.\n\nIndependent context."))
+        let other = try RelatedContentSourceProjection(
+            document: NoteDocument(
+                relativePath: "Other.md", rawContent: "needle geology.\n\nIndependent context."))
         let terms = ["needle", "cafe", "自由", "geology"]
         let before = try RelatedContentBM25F.evaluate(
             documents: [decoded.noteScoringDocument, other.noteScoringDocument], terms: terms)

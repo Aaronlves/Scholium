@@ -294,7 +294,8 @@ struct RelatedContentBackgroundPreparationTests {
         _ = try await index.relatedMaterialSourceCandidates(request)
         #expect(await index.relatedBackgroundPreparationStatistics.hits == 1)
         #expect(await index.relatedPassagePreparationStatistics.misses == 0)
-        let mutation = damagePayload
+        let mutation =
+            damagePayload
             ? "related_projection = X'00', related_projection_hash = '\(RelatedContentSourceProjection.checksum(Data([0])))'"
             : "related_projection_hash = 'incorrect'"
         try fixture.execute("UPDATE search_documents SET \(mutation);")
@@ -302,9 +303,10 @@ struct RelatedContentBackgroundPreparationTests {
             _ = try await index.relatedPassages(request, sources: sources)
             Issue.record("Storage sharing must not bypass passage checksum or decoding")
         } catch SearchIndexError.corruptDatabase {}
-        #expect(sources.allSatisfy { source in
-            documents.contains { $0.document.rawContent.utf8.elementsEqual(source.document.rawContent.utf8) }
-        })
+        #expect(
+            sources.allSatisfy { source in
+                documents.contains { $0.document.rawContent.utf8.elementsEqual(source.document.rawContent.utf8) }
+            })
     }
 
     @Test("Cancelled preparation cannot return candidates or populate either memo")

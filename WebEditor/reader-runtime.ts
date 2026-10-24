@@ -37,6 +37,8 @@ export interface ReaderScrollAnchor {
   fallbackFraction: number;
 }
 
+export type ReaderPreparationPhase = 'layout' | 'viewport';
+
 interface ReaderScrollEntry {
   element: HTMLElement;
   lower: number;
@@ -49,7 +51,8 @@ export type ReaderWindow = Window & {
   webkit?: {messageHandlers?: {scholiumRead?: ReaderMessageHandler}};
   scholiumReadReady?: Promise<void>;
   scholiumReadPreparation?: {
-    settle(documentID: string, fingerprint: string, loadGeneration: number, expiresAt: number): Promise<{
+    settle(documentID: string, fingerprint: string, loadGeneration: number, expiresAt: number,
+      phase: ReaderPreparationPhase): Promise<{
       settled: true; geometryChanged: boolean;
     }>;
   };
@@ -232,15 +235,53 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
     }
   }
   const readPreparation: NonNullable<ReaderWindow['scholiumReadPreparation']> = {
-    async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
+    async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt, phase) {
       const requireCurrent = () => {
-        if (readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected
+        if (!alive() || readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected
             || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint
-            || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+            || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt
+            || (phase !== 'layout' && phase !== 'viewport')) {
           throw new Error('stale reader preparation');
         }
       };
-      return await settleLayout(requireCurrent);
+      const layout = await settleLayout(requireCurrent);
+      requireCurrent();
+      if (phase === 'layout') return layout;
+      // Resource geometry can be final while WebKit is still moving the
+      // shared viewport. A restored position is usable only after its actual
+      // coordinates stop changing. Sample across frame-length intervals,
+      // including hidden WebViews whose animation frames are suspended.
+      await new Promise<void>((resolve, reject) => {
+        let top = scrollTop(), left = scrollLeft(), stableSamples = 0;
+        let timer: number | undefined;
+        let finished = false;
+        const finish = (error?: unknown) => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timer);
+          signal?.removeEventListener('abort', abort);
+          if (error === undefined) resolve();
+          else reject(error);
+        };
+        const abort = () => finish(new Error('stale reader preparation'));
+        const schedule = () => {
+          timer = window.setTimeout(sample, Math.min(16, Math.max(0, expiresAt - Date.now())));
+        };
+        const sample = () => {
+          try {
+            requireCurrent();
+            const nextTop = scrollTop(), nextLeft = scrollLeft();
+            stableSamples = top === nextTop && left === nextLeft ? stableSamples + 1 : 0;
+            top = nextTop; left = nextLeft;
+            if (stableSamples >= 2) finish();
+            else schedule();
+          } catch (error) { finish(error); }
+        };
+        signal?.addEventListener('abort', abort, {once: true});
+        schedule();
+      });
+      requireCurrent();
+      return layout;
     },
   };
   readerWindow.scholiumReadPreparation = readPreparation;

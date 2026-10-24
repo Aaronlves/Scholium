@@ -108,14 +108,18 @@ struct AgentChatReplyActions: View {
         let sources = sourceProjection.sources(for: text)
         let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
         HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            AgentChatCopyButton(label: "Copy Markdown", contentIdentity: text,
-                accessibilityID: "scholium.chat.copyReply") {
+            AgentChatCopyButton(
+                label: "Copy Markdown", contentIdentity: text,
+                accessibilityID: "scholium.chat.copyReply"
+            ) {
                 NSPasteboard.general.clearContents()
                 return NSPasteboard.general.setString(text, forType: .string)
             }
             if availability.hasSources {
-                AgentChatActionButton(label: "Sources", systemImage: ScholiumSidebarItem.sources.symbol,
-                    accessibilityID: "scholium.chat.sources") {
+                AgentChatActionButton(
+                    label: "Sources", systemImage: ScholiumSidebarItem.sources.symbol,
+                    accessibilityID: "scholium.chat.sources"
+                ) {
                     showsSources = true
                 }
                 .popover(isPresented: $showsSources, arrowEdge: .leading) {
@@ -126,8 +130,10 @@ struct AgentChatReplyActions: View {
                 }
             }
             if availability.hasMaterials {
-                AgentChatActionButton(label: "Materials", systemImage: ScholiumSidebarItem.materials.symbol,
-                    accessibilityID: "scholium.chat.materials") {
+                AgentChatActionButton(
+                    label: "Materials", systemImage: ScholiumSidebarItem.materials.symbol,
+                    accessibilityID: "scholium.chat.materials"
+                ) {
                     showsMaterials = true
                 }
                 .popover(isPresented: $showsMaterials, arrowEdge: .leading) {

@@ -468,8 +468,10 @@ private struct AgentChatRichObjectActions: View {
         } actions: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 AgentChatCopyButton(accessibilityID: "scholium.chat.copyObject", copy: copy)
-                AgentChatActionButton(label: "Expand", systemImage: ScholiumSidebarAction.expand.symbol,
-                    accessibilityID: "scholium.chat.expandObject") {
+                AgentChatActionButton(
+                    label: "Expand", systemImage: ScholiumSidebarAction.expand.symbol,
+                    accessibilityID: "scholium.chat.expandObject"
+                ) {
                     if let origin { expand(origin) }
                 }
             }

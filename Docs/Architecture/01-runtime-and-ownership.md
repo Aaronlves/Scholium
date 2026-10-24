@@ -157,14 +157,14 @@ authority; path lookup is allowed only without an ID. Path reuse cannot replace
 a moved Note in tabs, Library reveal or Search evidence. Dirty externally deleted
 Notes remain visible only while their exact editor owns conflict recovery.
 
-One transition queue serializes guarded document and Library navigation. It
-flushes source before replacement and rechecks destination/supersession after
-suspension. A staged Library role change commits browse/shell state only, retaining
-Document and tabs. Failure preserves origin and recovery. Native committed close
-owns teardown. Selected-editor input freezes before final flush
-through presentation persistence and native close. Cancelled close/quit resumes
-its matching suspension and retains flush ownership. SwiftUI disappearance only
-detaches presentation; persistence refuses writes after close.
+One transition queue and adapter serialize document/Library navigation.
+All navigation, including current-tab reselection/cross-window forwarding,
+revokes older destination authority before routing. Started source work drains;
+forwarded destination/history/position commits recheck both owners after suspension.
+Staged Library role changes retain Document/tabs; failure preserves origin/recovery.
+Native committed close owns teardown. Selected input freezes through final flush,
+presentation persistence and close; cancellation resumes only its matching suspension.
+SwiftUI disappearance detaches presentation; closed windows reject persistence.
 
 ### Library projection and source-ahead mutations
 

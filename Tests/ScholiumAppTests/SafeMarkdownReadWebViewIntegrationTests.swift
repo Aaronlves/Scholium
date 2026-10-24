@@ -566,6 +566,80 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 0)
     }
 
+    @Test("Review navigation survives observation redraws and rejects superseded receipts")
+    func reviewSourceNavigationSurvivesObservationUpdates() async throws {
+        let source = (0..<30).map { "Paragraph \($0). " + String(repeating: "Exact retained reading context. ", count: 12) }.joined(separator: "\n\n")
+        let document = NoteDocument(relativePath: "Arrival.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callBridgeJavaScript(
+            """
+            const navigation = window.scholiumReadNavigation;
+            const original = navigation.reveal.bind(navigation);
+            const gate = window.sourceNavigationGate = {calls: [], completed: [], releases: []};
+            navigation.reveal = async line => {
+              const index = gate.calls.length;
+              gate.calls.push(line);
+              await new Promise(resolve => { gate.releases[index] = resolve; });
+              const result = await original(line);
+              gate.completed.push(index + 1);
+              return result;
+            };
+            gate.release = index => gate.releases[index - 1]?.();
+            gate.restore = () => {
+              navigation.reveal = original;
+              gate.releases.forEach(release => release());
+            };
+            window.getSelection().selectAllChildren(document.querySelector('[data-source-line="1"]'));
+            """)
+
+        @MainActor func waitFor(_ predicate: String) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while try await harness.callBridgeJavaScript(predicate) as? Bool != true {
+                try #require(ContinuousClock.now < deadline, "The held Review navigation did not reach its expected boundary")
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        do {
+            let selection = try #require(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String)
+            harness.requestSourceLine(3)
+            try await waitFor("return window.sourceNavigationGate.calls.length >= 1;")
+            try await harness.scroll(toFraction: 0.35)
+            _ = try await harness.waitUntilCapturedAnchor(stage: "in-flight source navigation observation") { $0.fallbackFraction > 0.3 }
+            // An acknowledged presentation update crosses updateNSView after the
+            // published scroll observation, while the original reveal is held.
+            harness.setPresentationCSS(":root { --scholium-source-navigation-test: observed; }")
+            try await waitFor("return getComputedStyle(document.documentElement).getPropertyValue('--scholium-source-navigation-test').trim() === 'observed';")
+            #expect(try await harness.callBridgeJavaScript("return window.sourceNavigationGate.calls;") as? [Int] == [3])
+            _ = try await harness.callBridgeJavaScript("window.sourceNavigationGate.release(1);")
+            try await harness.waitUntilSourceLineReached(3)
+            #expect(harness.pendingSourceLine == nil)
+
+            harness.requestSourceLine(5)
+            try await waitFor("return window.sourceNavigationGate.calls.length >= 2;")
+            harness.requestSourceLine(7)
+            try await waitFor("return window.sourceNavigationGate.calls.length >= 3;")
+            _ = try await harness.callBridgeJavaScript("window.sourceNavigationGate.release(2);")
+            try await waitFor("return window.sourceNavigationGate.completed.includes(2);")
+            #expect(harness.pendingSourceLine == 7 && harness.reachedSourceLine == nil)
+            _ = try await harness.callBridgeJavaScript("window.sourceNavigationGate.release(3);")
+            try await harness.waitUntilSourceLineReached(7)
+            #expect(harness.pendingSourceLine == nil)
+            #expect(try await harness.callBridgeJavaScript("return window.sourceNavigationGate.calls;") as? [Int] == [3, 5, 7])
+            #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == selection)
+            _ = try await harness.callBridgeJavaScript("window.sourceNavigationGate.restore();")
+            await harness.closeAndDrain()
+        } catch {
+            _ = try? await harness.callBridgeJavaScript("window.sourceNavigationGate?.restore();")
+            await harness.closeAndDrain()
+            throw error
+        }
+    }
+
     @Test("Review find preserves prose layout and content")
     func reviewFindPreservesLayout() async throws {
         let source = "findtarget at the beginning.\n\n" + String(repeating: "Following paragraph.\n\n", count: 30)
@@ -3923,6 +3997,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         var pendingSourceLine: Int? { sourceBox.sourceLocationRequest?.line }
+        var reachedSourceLine: Int? { sourceBox.reachedSourceLine }
 
         var sourceRangeUnavailable: Bool { sourceBox.sourceRangeUnavailable }
         var sourceRevisionChanged: Bool { sourceBox.sourceRevisionChanged }

@@ -40,9 +40,8 @@ struct DocumentSaveFailureCurrencyTests {
         session.editingSource = draft
         session.preparePresentationMode(.source)
         let failure = VaultRepositoryError.conflict(expected: original.fingerprint, current: older.fingerprint)
-        session.activeSaveTask = Task { @MainActor in throw failure }
         let receipt = EditorSaveCommitReceipt()
-        session.activeSaveCommitReceipt = receipt
+        session.beginSaveAttempt(.init(task: Task { @MainActor in throw failure }, receipt: receipt))
         var commits: [NoteDocument] = []
         let pending = Task { @MainActor in
             await #expect(throws: VaultRepositoryError.self) {

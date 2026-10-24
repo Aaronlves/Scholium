@@ -12,15 +12,15 @@ clean history. Navigation releases WebViews, preserving serialized Undo. Unlease
 unpinned sessions discard source/rendering/previews. Window visits own revision-bound
 positions; vaults remain distinct.
 
-`DocumentController` owns persisted window mode. Sessions retain
-editor/flush identity, checked exact mirror, committed revision, presentation/
-intent, configuration, source-bound scroll and save/conflict/retry state across
-mode/layout/theme changes. Visible hosts alone receive input/accessibility;
-preparation measures behind a native skeleton. Triptych Notes and external Markdown
-windows each use one CodeMirror host/state for all modes. Review mounts committed
-read-only DOM; unsafe handoff retains editor/recovery. Readiness gates presentation.
-Review/editing retain viewport observations;
-the shared mode operation transfers source anchors or fallback fractions.
+`DocumentController` owns persisted mode and cancellable Review handoff; sessions
+retain operation/focus identity, exact mirror, committed revision, configuration,
+source-bound scroll and recovery across reconstruction. Readiness consumes existing
+focus intent. Save attempts bind task, token and durable receipt atomically;
+unacknowledged commits remain separately retained. Each Note/external document
+retains one CodeMirror host/state across modes. Only visible hosts
+receive input/accessibility; preparation measures behind a skeleton. Review projects
+committed DOM; unsafe handoff retains editor/recovery. Mode handoff transfers source
+anchors or fallback fractions between independent viewport observations.
 
 Detachment atomically freezes input and captures exact source/selection/history;
 incomplete capture retains the editor. Source-bounded history records insertion

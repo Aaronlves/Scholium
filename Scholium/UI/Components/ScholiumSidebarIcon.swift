@@ -134,15 +134,15 @@ struct ScholiumCopyFeedback<Content: View>: View {
 
     var body: some View {
         content(copied, performCopy)
-        .onChange(of: contentIdentity) { _, _ in
-            copied = false
-            confirmation += 1
-        }
-        .task(id: confirmation) {
-            guard copied else { return }
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            copied = false
-        }
+            .onChange(of: contentIdentity) { _, _ in
+                copied = false
+                confirmation += 1
+            }
+            .task(id: confirmation) {
+                guard copied else { return }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                copied = false
+            }
     }
 
     private func performCopy() {

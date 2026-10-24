@@ -5470,13 +5470,49 @@
       }
     }
     const readPreparation = {
-      async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
+      async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt, phase) {
         const requireCurrent = () => {
-          if (readerWindow2.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+          if (!alive() || readerWindow2.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt || phase !== "layout" && phase !== "viewport") {
             throw new Error("stale reader preparation");
           }
         };
-        return await settleLayout(requireCurrent);
+        const layout = await settleLayout(requireCurrent);
+        requireCurrent();
+        if (phase === "layout") return layout;
+        await new Promise((resolve, reject) => {
+          let top = scrollTop(), left = scrollLeft(), stableSamples = 0;
+          let timer;
+          let finished = false;
+          const finish = (error) => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            signal?.removeEventListener("abort", abort);
+            if (error === void 0) resolve();
+            else reject(error);
+          };
+          const abort = () => finish(new Error("stale reader preparation"));
+          const schedule = () => {
+            timer = window.setTimeout(sample, Math.min(16, Math.max(0, expiresAt - Date.now())));
+          };
+          const sample = () => {
+            try {
+              requireCurrent();
+              const nextTop = scrollTop(), nextLeft = scrollLeft();
+              stableSamples = top === nextTop && left === nextLeft ? stableSamples + 1 : 0;
+              top = nextTop;
+              left = nextLeft;
+              if (stableSamples >= 2) finish();
+              else schedule();
+            } catch (error) {
+              finish(error);
+            }
+          };
+          signal?.addEventListener("abort", abort, { once: true });
+          schedule();
+        });
+        requireCurrent();
+        return layout;
       }
     };
     readerWindow2.scholiumReadPreparation = readPreparation;

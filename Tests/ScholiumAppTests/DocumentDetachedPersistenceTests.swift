@@ -473,7 +473,7 @@ struct DocumentDetachedPersistenceTests {
         #expect(Data(fixture.dispatcher.source.utf8) == Data(source.utf8))
         #expect(!session.hasUnsavedChanges && !fixture.editor.isDirty)
         #expect(session.editingRevision == fixture.revision)
-        #expect(session.pendingEditorCommit == nil && session.activeSaveTask == nil)
+        #expect(session.pendingEditorCommit == nil && session.activeSaveAttempt == nil)
         #expect(session.editError == nil && !session.canRetrySave)
         #expect(fixture.editor.detachmentSuspensionID == suspensionID)
         #expect(fixture.dispatcher.suspensionID == suspensionID)
@@ -533,10 +533,7 @@ struct DocumentDetachedPersistenceTests {
             _ = try await completed.value
             let receipt = EditorSaveCommitReceipt()
             receipt.document = first
-            session.activeSaveTask = completed
-            session.activeSaveToken = UUID()
-            session.activeSaveCommitReceipt = receipt
-            session.isSavingEdit = true
+            session.beginSaveAttempt(.init(task: completed, receipt: receipt))
             try fixture.insert(" later exact input e\u{301} 🦉")
             session.suppressAutosave = true
             session.cancelAutosave()
@@ -554,8 +551,7 @@ struct DocumentDetachedPersistenceTests {
             #expect(committed.count == 2)
             #expect(committed.last?.sourceBytes == expected)
             #expect(!session.hasUnsavedChanges)
-            #expect(session.activeSaveTask == nil && session.activeSaveToken == nil)
-            #expect(session.activeSaveCommitReceipt == nil && !session.isSavingEdit)
+            #expect(session.activeSaveAttempt == nil && !session.isSavingEdit)
             #expect(session.editError == nil && session.conflict == nil)
             #expect(observedCommits.map(\.sourceBytes) == (flushing ? [first.sourceBytes, expected] : []))
             await store.shutdownApplicationRuntime()

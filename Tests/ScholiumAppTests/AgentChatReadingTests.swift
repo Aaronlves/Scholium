@@ -357,6 +357,10 @@ struct AgentChatReadingTests {
                     && session.anchor == initialAnchor && fixture.matches(initialAnchor)
             }
             let initialY = scroll.contentView.bounds.minY
+            let expectedTopInset = scroll.contentInsets.top + (changesDock ? 28 : 0)
+            defer {
+                #expect(scroll.contentInsets.top == expectedTopInset, "The fixture owns its inset throughout native layout")
+            }
             let previousEvents = receipt.count
             if activeGesture { session.beginUserScroll() }
 
@@ -461,6 +465,9 @@ struct AgentChatReadingTests {
             let session = AgentChatReadingSession()
             let presentationID = UUID()
             let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+            // This fixture drives dock insets; AppKit must not replace them
+            // with the titled window's automatically calculated insets.
+            scroll.automaticallyAdjustsContentInsets = false
             let document = Document(frame: NSRect(x: 0, y: 0, width: 300, height: 1600))
             let viewport = AgentChatTranscriptViewport.View(session: session, presentationID: presentationID)
             let marker = AgentChatReadingMarker.View(id: "answer", session: session)

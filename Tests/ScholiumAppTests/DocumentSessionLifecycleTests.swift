@@ -8,6 +8,29 @@ import Testing
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Save ownership ends atomically and a late completion cannot release its successor")
+    func saveAttemptOwnership() throws {
+        let session = DocumentSessionModel(key: nil)
+        let first = ActiveSaveAttempt(task: Task { @MainActor in .clean })
+        session.beginSaveAttempt(first)
+        #expect(session.isSavingEdit && session.activeSaveAttempt?.token == first.token)
+        #expect(session.completeSaveAttempt(token: first.token))
+        #expect(!session.isSavingEdit && session.activeSaveAttempt == nil)
+
+        let receipt = EditorSaveCommitReceipt()
+        receipt.document = NoteDocument(relativePath: "Saved.md", rawContent: "Exact committed source\r\n")
+        let next = ActiveSaveAttempt(task: Task { @MainActor in .clean }, receipt: receipt)
+        session.beginSaveAttempt(next)
+        #expect(!session.completeSaveAttempt(token: first.token))
+        #expect(session.isSavingEdit && session.activeSaveAttempt?.token == next.token)
+        #expect(session.activeSaveAttempt?.receipt === receipt)
+
+        session.cancelScheduledWork()
+        #expect(next.task.isCancelled)
+        #expect(!session.isSavingEdit && session.activeSaveAttempt == nil)
+        #expect(receipt.document?.rawContent == "Exact committed source\r\n")
+    }
+
     @Test("Byte-distinct drafts pin an unleased session until its exact committed source is restored")
     func exactDraftBytesPinUnleasedSession() {
         let sources = [
@@ -525,7 +548,7 @@ struct DocumentSessionLifecycleTests {
                 baseRevision: DocumentFingerprint(content: "base")
             )
         case .saveInFlight:
-            session.isSavingEdit = true
+            session.beginSaveAttempt(.init(task: Task { @MainActor in .clean }))
         case .retryableRecovery:
             session.canRetrySave = true
         case .recoveryBuffer, .editorHistory:

@@ -513,7 +513,8 @@ struct WorkspaceToolbarTests {
     }
 
     @Test("A toolbar tab cannot appear selected before document activation commits")
-    func toolbarTabSelectionWaitsForCommit() throws {
+    func toolbarTabSelectionWaitsForCommit() async throws {
+        await AppKitTestApplication.start()
         let first = DocumentTabItem(
             document: .unavailable(vaultID: UUID(), relativePath: "First.md"),
             title: "First", toolTip: "First.md"

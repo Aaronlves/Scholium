@@ -31,7 +31,7 @@ struct WindowManagedNoteCurrencyTests {
             let initialIssueCount = window.shellState.operationIssues.count
             var requestedNewerNavigation = false
             var selectedAtPublicationExit: WindowSelectedDocument?
-            window.enqueueCurrencyAwareDocumentTransition(preservingCurrentEditorState: false) { isCurrent in
+            window.enqueueDocumentTransition(preparation: .flushRegisteredEditor(capturingEditorState: false)) { isCurrent in
                 await window.publishCommittedNoteCreation(
                     outcome,
                     isCurrent: {
@@ -101,7 +101,7 @@ struct WindowManagedNoteCurrencyTests {
             var reachedSourceValidation = false
             var cancelledActivation = false
             var selectedAtActivationExit: WindowSelectedDocument?
-            window.enqueueCurrencyAwareDocumentTransition(preservingCurrentEditorState: false) { isCurrent in
+            window.enqueueDocumentTransition(preparation: .flushRegisteredEditor(capturingEditorState: false)) { isCurrent in
                 defer { selectedAtActivationExit = window.documentController.selectedDocument }
                 do {
                     try await window.activateWorkspaceReference(

@@ -44,7 +44,9 @@ extension WindowModel {
     func openKeptPassage(_ entry: KeptPassage) async {
         let kept = researchController.keptPassages
         let generation = kept.generation
-        guard let lifetime = kept.entryLifetime(for: entry), let capabilities = windowWorkspaceController.activeCapabilities else { return }
+        guard let lifetime = kept.entryLifetime(for: entry), let capabilities = windowWorkspaceController.activeCapabilities,
+            let requestIsCurrent = beginDocumentNavigation()
+        else { return }
         // Follow reconciled stable identity after a move; the captured snapshot
         // and its original displayed provenance remain unchanged.
         let stableID = entry.reference.stableNoteID.flatMap(UUID.init(uuidString:))
@@ -58,7 +60,7 @@ extension WindowModel {
         do {
             let document = try await capabilities.documents.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
             try Task.checkCancellation()
-            guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+            guard requestIsCurrent(), windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                 kept.generation == generation, kept.entryLifetime(for: entry) == lifetime
             else { return }
             if document.fingerprint != entry.fingerprint {
@@ -76,6 +78,7 @@ extension WindowModel {
             }
             await openWorkspaceReference(
                 reference, line: entry.sourceRange.line, sourceFingerprint: entry.fingerprint,
+                navigationRequest: requestIsCurrent,
                 validateDisplay: { [weak self, weak kept] in
                     guard let self, let kept,
                         self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
@@ -86,7 +89,7 @@ extension WindowModel {
                     _ = try await capabilities.documents.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
                 })
         } catch {
-            guard !(error is CancellationError),
+            guard !(error is CancellationError), requestIsCurrent(),
                 windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                 kept.generation == generation, kept.entryLifetime(for: entry) == lifetime
             else { return }

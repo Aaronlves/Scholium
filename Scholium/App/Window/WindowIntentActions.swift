@@ -13,11 +13,13 @@ extension WindowModel {
                 requestOpenNote(route.reference, disposition: .newTab)
                 return
             }
+            guard let requestIsCurrent = beginDocumentNavigation() else { return }
             Task { [weak self] in
                 await self?.openWorkspaceReference(
                     route.reference,
                     line: route.sourceLocator?.line,
-                    sourceFingerprint: route.sourceFingerprint
+                    sourceFingerprint: route.sourceFingerprint,
+                    navigationRequest: requestIsCurrent
                 )
             }
         case .openSearchResult(let result, let disposition):
@@ -25,6 +27,7 @@ extension WindowModel {
                 await self?.searchController.open(result, disposition: disposition)
             }
         case .revealSourceLocator(let vaultID, let locator):
+            guard let requestIsCurrent = beginDocumentNavigation() else { return }
             Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -39,7 +42,7 @@ extension WindowModel {
                     await self.openWorkspaceReference(
                         reference,
                         line: locator.line,
-                        mode: .source
+                        mode: .source, navigationRequest: requestIsCurrent
                     )
                 } catch {
                     self.vaultError = error.localizedDescription
@@ -96,24 +99,8 @@ extension WindowModel {
         _ path: String,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
-        if disposition == .separateWindow, let reference = documentReference(for: path) {
-            requestOpenNote(reference, disposition: disposition)
-            return
-        }
-        if let reference = documentReference(for: path),
-            workspaceStore.documentLocations.revealExisting(reference, excluding: self)
-        {
-            return
-        }
-        if disposition == .newTab {
-            guard let reference = documentReference(for: path) else { return }
-            requestOpenNote(reference, disposition: .newTab)
-            return
-        }
-        enqueueDocumentTransition(preparation: openingPreparation(for: path)) { [weak self] in
-            guard let self else { return }
-            try await self.openNote(path)
-        }
+        guard let reference = documentReference(for: path) else { return }
+        requestOpenNote(reference, disposition: disposition)
     }
 
     func requestOpenNote(
@@ -146,29 +133,30 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
+        if disposition == .newTab {
+            openInNewTab(reference)
+            return
+        }
+        guard let requestIsCurrent = beginDocumentNavigation() else { return }
         let openingMeasurement = PerformanceProbe.shared.currentNoteOpeningAttempt(documentID: reference.relativePath)
         if disposition == .separateWindow {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, requestIsCurrent() else { return }
                 do { _ = try await workspaceStore.documentLocations.openSeparate(reference, from: self) } catch {
                     reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             }
             return
         }
-        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) {
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self, isCurrentRequest: requestIsCurrent) {
             PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
-            return
-        }
-        if disposition == .newTab {
-            PerformanceProbe.shared.cancelNoteOpening(attemptID: openingMeasurement)
-            openInNewTab(reference)
             return
         }
         var destinationInstalled = false
         enqueueDocumentTransition(
-            preparation: openingPreparation(for: reference), openingMeasurement: openingMeasurement
+            preparation: openingPreparation(for: reference), requestIsCurrent: requestIsCurrent,
+            openingMeasurement: openingMeasurement
         ) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
@@ -187,19 +175,12 @@ extension WindowModel {
         sourceLine: Int,
         mode: NotePresentationMode = .source
     ) {
-        if let reference = documentReference(for: path),
-            let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self)
-        {
-            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
-            Task { await owner.openWorkspaceReference(reference, line: sourceLine, mode: mode) }
-            return
-        }
-        enqueueDocumentTransition(preparation: openingPreparation(for: path)) { [weak self] in
-            guard let self else { return }
-            try await self.openNote(path)
-            guard self.selectedDocumentPath == path else { return }
-            self.documentController.requestSourceLocation(line: max(1, sourceLine))
-            self.requestPresentationMode = mode
+        guard let reference = documentReference(for: path),
+            let requestIsCurrent = beginDocumentNavigation()
+        else { return }
+        Task { [weak self] in
+            await self?.openWorkspaceReference(
+                reference, line: max(1, sourceLine), mode: mode, navigationRequest: requestIsCurrent)
         }
     }
 

@@ -36,6 +36,16 @@ struct AgentChatScrollPerformanceTests {
         let native = AgentChatComposerSession(conversationID: conversation.id)
         let projection = AgentChatTimelineProjection(conversation.messages)
         #expect(projection.ids.count == 72)
+        // Hydration includes native user paragraphs; only the remaining readers mount WebKit.
+        let nativeReaderIDs = Set(
+            conversation.messages.compactMap { message -> String? in
+                guard projection.replyReaderIDs.contains(message.id), message.role == .user,
+                    AgentChatReplyProjection.Snapshot(.init(message.text, isStreaming: message.isStreaming)).nativeParagraph != nil
+                else { return nil }
+                return message.id
+            })
+        let webReaderIDs = projection.replyReaderIDs.subtracting(nativeReaderIDs)
+        #expect(nativeReaderIDs.count == 36 && webReaderIDs.count == 36)
         let host = NSHostingView(rootView: AnyView(Color.clear))
         host.sizingOptions = []
         let window = NSWindow(
@@ -65,14 +75,18 @@ struct AgentChatScrollPerformanceTests {
             let initialCount = AgentChatHistoryWindow.initialPageSize
             #expect(initialCount == 4 && AgentChatHistoryWindow.pageSize == 24)
             var mountedIDs = Set(projection.ids.suffix(initialCount))
+            var mountedReaderIDs = projection.replyReaderIDs.intersection(mountedIDs)
+            var mountedWebReaderIDs = webReaderIDs.intersection(mountedIDs)
             var boundary = try await observePage(
                 tag: "initial", start: initialStart, previousReaders: [], host: host,
-                session: reading, native: native, ids: mountedIDs)
+                session: reading, native: native, ids: mountedIDs,
+                readerIDs: mountedReaderIDs, webReaderIDs: mountedWebReaderIDs)
             #expect(reading.history.range(in: projection.ids).count == initialCount)
             var readerIdentities: [String: ObjectIdentifier] = [:]
             do {
-                let initialReaders = try await verifyReaders(in: host, fixture: fixture, expectedIDs: mountedIDs)
-                retainedReader = initialReaders[fixture.lastAnswerID]
+                let initialReaders = try await verifyReaders(
+                    in: host, fixture: fixture, expectedIDs: mountedReaderIDs, webReaderIDs: mountedWebReaderIDs)
+                retainedReader = initialReaders[fixture.lastAnswerID] as? WKWebView
                 try #require(retainedReader != nil)
                 readerIdentities = initialReaders.mapValues { ObjectIdentifier($0) }
             }
@@ -94,30 +108,35 @@ struct AgentChatScrollPerformanceTests {
                 if page > 0 {
                     var retainedAnchor = try #require(reading.anchor)
                     let previousReaders = Set(readers(in: host).map { ObjectIdentifier($0) })
+                    let previousWebReaderIDs = mountedWebReaderIDs
                     let start = ContinuousClock.now
                     let queueProbe = MainQueueProbe()
                     reading.page(earlier: true, in: projection.ids, readerIDs: projection.replyReaderIDs)
                     let expectedCount = min(projection.ids.count, initialCount + page * AgentChatHistoryWindow.pageSize)
                     mountedIDs = Set(projection.ids.suffix(expectedCount))
+                    mountedReaderIDs = projection.replyReaderIDs.intersection(mountedIDs)
+                    mountedWebReaderIDs = webReaderIDs.intersection(mountedIDs)
                     #expect(reading.history.range(in: projection.ids).count == expectedCount)
                     if page == 2 {
                         try await settle(host) { readers(in: host).count > previousReaders.count }
                         let beforeGesture = readers(in: host).count
                         #expect(beforeGesture - previousReaders.count <= AgentChatReaderPreparation.concurrentReaders)
-                        #expect(!reading.areReadersHydrated(mountedIDs), "The regression must scroll during preparation, not after it")
+                        #expect(!reading.areReadersHydrated(mountedReaderIDs), "The regression must scroll during preparation, not after it")
                         reading.beginUserScroll()
                         _ = try await scrollUpward(host: host, session: reading, ticks: 30, duringPreparation: true)
                         retainedAnchor = try #require(reading.anchor)
                     }
                     boundary = try await observePage(
                         tag: "earlier-\(page)", start: start, previousReaders: previousReaders, host: host,
-                        session: reading, native: native, ids: mountedIDs)
+                        session: reading, native: native, ids: mountedIDs,
+                        readerIDs: mountedReaderIDs, webReaderIDs: mountedWebReaderIDs)
                     queueProbe.stop(tag: "earlier-\(page)")
                     #expect(boundary.heightChanges <= 1, "A prepared history page must enter the transcript in one layout, without per-reader preview swaps")
-                    #expect(boundary.newReaderCount == AgentChatHistoryWindow.pageSize)
+                    #expect(boundary.newReaderCount == mountedWebReaderIDs.subtracting(previousWebReaderIDs).count)
                     #expect(reading.anchor == retainedAnchor, "Prepending history must retain the native passage and offset")
                     try verifyNativeAnchor(session: reading, expected: retainedAnchor)
-                    let readers = try await verifyReaders(in: host, fixture: fixture, expectedIDs: mountedIDs)
+                    let readers = try await verifyReaders(
+                        in: host, fixture: fixture, expectedIDs: mountedReaderIDs, webReaderIDs: mountedWebReaderIDs)
                     for (id, identity) in readerIdentities {
                         #expect(readers[id].map { ObjectIdentifier($0) } == identity, "Earlier paging must keep every already mounted reader")
                     }
@@ -146,7 +165,7 @@ struct AgentChatScrollPerformanceTests {
                 ]
                 print(fields.joined(separator: " "))
                 #expect(!window.isVisible)
-                #expect(reading.areReadersHydrated(mountedIDs) && readers(in: host).count == mountedIDs.count)
+                #expect(reading.areReadersHydrated(mountedReaderIDs) && readers(in: host).count == mountedWebReaderIDs.count)
                 #expect(reading.isRetainingPosition && reading.viewportRequest == nil)
                 #expect(native.host.editor.string.utf8.elementsEqual(conversation.draft.utf8))
                 #expect(native.host.editor.selectedRange() == selection)
@@ -157,7 +176,7 @@ struct AgentChatScrollPerformanceTests {
             #expect(try exactSnapshot(saved.messages) == sourceSnapshot)
             #expect(saved.draft.utf8.elementsEqual(conversation.draft.utf8))
             retainedReader = nil
-            let departingReaders = readers(in: host).map(WeakReader.init)
+            let departingReaders = readerViews(in: host).map(WeakReader.init)
             host.rootView = AnyView(Color.clear)
             try await settle(host) {
                 reading.viewport == nil && native.host.window == nil && departingReaders.allSatisfy { $0.view == nil }
@@ -273,7 +292,8 @@ struct AgentChatScrollPerformanceTests {
 
     private func observePage(
         tag: String, start: ContinuousClock.Instant, previousReaders: Set<ObjectIdentifier>, host: NSView,
-        session: AgentChatReadingSession, native: AgentChatComposerSession, ids: Set<String>
+        session: AgentChatReadingSession, native: AgentChatComposerSession, ids: Set<String>,
+        readerIDs: Set<String>, webReaderIDs: Set<String>
     ) async throws -> PageObservation {
         let deadline = start.advanced(by: .seconds(30))
         var firstNewReader: Double?
@@ -289,10 +309,10 @@ struct AgentChatScrollPerformanceTests {
             let currentReaders = readers(in: host)
             let count = currentReaders.count
             let newReaderCount = Set(currentReaders.map { ObjectIdentifier($0) }).subtracting(previousReaders).count
-            let currentHydrated = count == ids.count && session.areReadersHydrated(ids)
+            let currentHydrated = count == webReaderIDs.count && session.areReadersHydrated(readerIDs)
             if newReaderCount > 0, firstNewReader == nil { firstNewReader = milliseconds(start.duration(to: .now)) }
             if currentHydrated, hydrated == nil { hydrated = milliseconds(start.duration(to: .now)) }
-            let state = "wk=\(count) expected=\(ids.count) hydrated=\(currentHydrated) phase=\(session.initialTranscriptPhase)"
+            let state = "wk=\(count) expected=\(webReaderIDs.count) hydrated=\(currentHydrated) phase=\(session.initialTranscriptPhase)"
             if state != lastState, traces < 12 {
                 traces += 1
                 print("CHAT_HISTORY_PAGE_STATE tag=\(tag) trace=\(traces) \(state) evidence=NoPaint")
@@ -320,8 +340,8 @@ struct AgentChatScrollPerformanceTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         print(
-            "CHAT_HISTORY_PAGE_TIMEOUT tag=\(tag) wk=\(readers(in: host).count) expected=\(ids.count) "
-                + "hydrated=\(session.areReadersHydrated(ids)) phase=\(session.initialTranscriptPhase) "
+            "CHAT_HISTORY_PAGE_TIMEOUT tag=\(tag) wk=\(readers(in: host).count) expected=\(webReaderIDs.count) "
+                + "hydrated=\(session.areReadersHydrated(readerIDs)) phase=\(session.initialTranscriptPhase) "
                 + "request=\(String(describing: session.viewportRequest)) viewport=\(session.viewport != nil) "
                 + "document_height=\(previous?.document.height ?? 0) evidence=NoPaint no_dom_text=true")
         throw PageTimeout()
@@ -515,8 +535,10 @@ struct AgentChatScrollPerformanceTests {
         }
     }
 
-    private func verifyReaders(in host: NSView, fixture: SyntheticHistory, expectedIDs: Set<String>) async throws -> [String: WKWebView] {
-        var seen: [String: WKWebView] = [:]
+    private func verifyReaders(
+        in host: NSView, fixture: SyntheticHistory, expectedIDs: Set<String>, webReaderIDs: Set<String>
+    ) async throws -> [String: NSView] {
+        var seen: [String: NSView] = [:]
         for reader in readers(in: host) {
             let result = try await reader.callAsyncJavaScript(
                 """
@@ -534,16 +556,29 @@ struct AgentChatScrollPerformanceTests {
             #expect(try exactSnapshot(paragraphs) == exactSnapshot(try #require(fixture.paragraphs[message.id])))
             #expect(try exactSnapshot(cells) == exactSnapshot(try #require(fixture.cells[message.id])))
         }
+        #expect(Set(seen.keys) == webReaderIDs)
+        for reader in descendants(host).compactMap({ $0 as? AgentChatNativeParagraphView }) {
+            let message = try #require(
+                fixture.conversation.messages.first {
+                    $0.role == .user && reader.string.utf8.elementsEqual($0.text.utf8)
+                })
+            try #require(seen[message.id] == nil)
+            seen[message.id] = reader
+            #expect(reader.string.utf8.elementsEqual(message.text.utf8))
+        }
         #expect(Set(seen.keys) == expectedIDs)
         return seen
     }
 
     private final class WeakReader {
-        weak var view: WKWebView?
-        init(_ view: WKWebView) { self.view = view }
+        weak var view: NSView?
+        init(_ view: NSView) { self.view = view }
     }
 
     private func readers(in view: NSView) -> [WKWebView] { descendants(view).compactMap { $0 as? WKWebView } }
+    private func readerViews(in view: NSView) -> [NSView] {
+        descendants(view).filter { $0 is WKWebView || $0 is AgentChatNativeParagraphView }
+    }
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
     private func milliseconds(_ duration: Duration) -> Double {
         Double(duration.components.seconds) * 1_000 + Double(duration.components.attoseconds) / 1e15

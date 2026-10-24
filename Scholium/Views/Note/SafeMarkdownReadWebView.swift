@@ -320,7 +320,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var activeLoadSignature: String?
         private var activeNavigation: WKNavigation?
         private var loadFinalizationTask: Task<Void, Never>?
-        private var sourceLineNavigationTask: Task<Void, Never>?
+        private struct SourceLineNavigationTask {
+            let id: UUID
+            let generation: UInt64
+            let sourceLocationID: UUID?
+            let task: Task<Void, Never>
+        }
+        private var sourceLineNavigationTask: SourceLineNavigationTask?
         private var linkPreviewUpdateTask: Task<Void, Never>?
         private var desiredLinkPreviewRevision = ""
         private var appliedLinkPreviewRevision = ""
@@ -510,8 +516,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             floatingSurfaces.reset()
             selectionCoordinator.resetForDocumentChange()
             findCoordinator.resetForDocumentChange()
-            sourceLineNavigationTask?.cancel()
-            sourceLineNavigationTask = nil
+            cancelSourceLineNavigation()
             loadFinalizationTask?.cancel()
             loadFinalizationTask = nil
             scrollRestoration.cancelClaim()
@@ -520,8 +525,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         func setEmbeddedPresentationReady(_ ready: Bool) {
             embeddedPresentationIsReady = ready
             guard ready else {
-                sourceLineNavigationTask?.cancel()
-                sourceLineNavigationTask = nil
+                cancelSourceLineNavigation()
                 return
             }
         }
@@ -1411,7 +1415,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                                 repositioningForPreparation: true)
                             reachedSourceLocationID = reachedLocation ? sourceLocationID : nil
                             let settled = try await webView.callCancellableJavaScript(
-                                "return await window.scholiumReadPreparation.settle(documentID, fingerprint, loadGeneration, expiresAt);",
+                                "return await window.scholiumReadPreparation.settle(documentID, fingerprint, loadGeneration, expiresAt, 'viewport');",
                                 arguments: [
                                     "documentID": expectedDocumentID,
                                     "fingerprint": expectedFingerprint,
@@ -1509,8 +1513,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         phase: .finalization, generation: generation, error: error)
                 }
             #endif
-            sourceLineNavigationTask?.cancel()
-            sourceLineNavigationTask = nil
+            cancelSourceLineNavigation()
             scrollRestoration.cancelClaim()
             loadFinalizationTask = nil
             pageIsReady = false
@@ -1680,12 +1683,39 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             let hasPendingLocation =
                 sourceLocationRequest.map { $0.id != lastReachedSourceLocationID } == true
-            guard hasPendingRequest || hasPendingLocation else { return }
+            guard hasPendingRequest || hasPendingLocation else {
+                if let pending = sourceLineNavigationTask,
+                    pending.sourceLocationID != sourceLocationRequest?.id
+                {
+                    cancelSourceLineNavigation()
+                }
+                return
+            }
+
+            let sourceLocationID = hasPendingLocation ? sourceLocationRequest?.id : nil
+            // Scroll observation can redraw this surface while the same reveal
+            // awaits smooth arrival. That redraw must not restart its receipt.
+            if let pending = sourceLineNavigationTask,
+                pending.generation == loadGeneration,
+                pending.sourceLocationID == sourceLocationID, !hasPendingRequest
+            {
+                return
+            }
 
             let generation = loadGeneration
             let finalization = loadFinalizationTask
-            sourceLineNavigationTask?.cancel()
-            sourceLineNavigationTask = Task { @MainActor [weak self, weak webView] in
+            let previous = sourceLineNavigationTask?.task
+            cancelSourceLineNavigation()
+            let taskID = UUID()
+            let task = Task { @MainActor [weak self, weak webView] in
+                defer {
+                    if self?.sourceLineNavigationTask?.id == taskID {
+                        self?.sourceLineNavigationTask = nil
+                    }
+                }
+                // A replaced restoration releases its claim before the next
+                // intent attempts to acquire it.
+                await previous?.value
                 await finalization?.value
                 guard !Task.isCancelled, let self, let webView, self.canApplyReadingNavigation,
                     self.isCurrentLoad(
@@ -1739,6 +1769,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     claimWasFinished = true
                 }
             }
+            sourceLineNavigationTask = SourceLineNavigationTask(
+                id: taskID, generation: generation, sourceLocationID: sourceLocationID, task: task)
+        }
+
+        private func cancelSourceLineNavigation() {
+            let pending = sourceLineNavigationTask
+            sourceLineNavigationTask = nil
+            pending?.task.cancel()
         }
 
         private func waitForTestingScrollRestoreDelayIfNeeded() async {
@@ -1772,8 +1810,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             floatingSurfaces.reset()
             loadFinalizationTask?.cancel()
             loadFinalizationTask = nil
-            sourceLineNavigationTask?.cancel()
-            sourceLineNavigationTask = nil
+            cancelSourceLineNavigation()
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
             presentationStyleTask?.cancel()

@@ -111,16 +111,18 @@ struct RelatedContentStorageSharingTests {
             #expect(projection.paragraphs.map(\.range) == expectedRanges)
             let first = projection.paragraphs[0]
             for current in projection.paragraphs {
-                let range = try #require(Range(
-                    NSRange(location: current.range.utf16LowerBound, length: paragraph.utf16.count), in: source))
+                let range = try #require(
+                    Range(
+                        NSRange(location: current.range.utf16LowerBound, length: paragraph.utf16.count), in: source))
                 #expect(source[range].utf8.elementsEqual(paragraph.utf8))
                 #expect(current.displayText.utf8.elementsEqual(paragraph.utf8))
                 #expect(sharesUTF8Storage(first.displayText, current.displayText))
                 #expect(sharesUTF8Storage(first.exactReadableText, current.exactReadableText))
                 #expect(sharesUTF8Storage(first.normalizedDisplayText, current.normalizedDisplayText))
-                #expect(sharesUTF8Storage(
-                    try #require(first.scoringDocument.fields["body"]),
-                    try #require(current.scoringDocument.fields["body"])))
+                #expect(
+                    sharesUTF8Storage(
+                        try #require(first.scoringDocument.fields["body"]),
+                        try #require(current.scoringDocument.fields["body"])))
                 #expect(current.textIndex.count(forASCIIWord: "needle") == 12)
             }
         }
@@ -146,7 +148,8 @@ struct RelatedContentStorageSharingTests {
             let start = index * 1_000
             let annotation = includeAnnotation ? #", "annotation":"annotation needle""# : ""
             let annotationLength = includeAnnotation ? #", "annotation":2.0"# : ""
-            let annotationIndex = includeAnnotation
+            let annotationIndex =
+                includeAnnotation
                 ? #", "annotation":{"words":{"annotation":1,"needle":1},"containsCJK":false}"# : ""
             return """
                 {"range":{"utf16LowerBound":\(start),"utf16UpperBound":\(start + text.utf16.count),"line":\(index + 1),"column":1,"endLine":\(index + 1),"endColumn":\(text.utf16.count + 1)},
@@ -185,7 +188,8 @@ struct RelatedContentStorageSharingTests {
         let expected = try payloads.map {
             try JSONDecoder().decode(RelatedContentSourceProjection.Paragraph.self, from: Data($0.utf8))
         }
-        let wire = Data("""
+        let wire = Data(
+            """
             {"noteScoringDocument":{"fields":{},"fieldLengths":{},"textIndexes":{}},"paragraphs":[\(payloads.joined(separator: ","))]}
             """.utf8)
         let sourceUTF16Count = try #require(expected.map { $0.range.utf16UpperBound }.max())

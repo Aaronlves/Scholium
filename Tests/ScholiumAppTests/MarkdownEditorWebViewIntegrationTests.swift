@@ -12,19 +12,22 @@ import WebKit
 struct MarkdownEditorWebViewIntegrationTests {
     @Test("Review reconstruction restores the captured viewport instead of trailing native observations")
     func reviewReconstructionUsesCapturedViewport() async throws {
-        let source = "\u{FEFF}# Reading\r\n\r\n" + (0..<120).map {
-            "Paragraph \($0). Exact reading context 中文 e\u{301} 🦉 with enough prose to wrap across the viewport.\r\n\r\n"
-        }.joined()
+        let source =
+            "\u{FEFF}# Reading\r\n\r\n"
+            + (0..<120).map {
+                "Paragraph \($0). Exact reading context 中文 e\u{301} 🦉 with enough prose to wrap across the viewport.\r\n\r\n"
+            }.joined()
         let harness = EditorHarness(source: source, initialMode: .review)
         defer { harness.close() }
         let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
         // Deliberately leave the caller's observation at the opening default.
         // Departure's atomic Web capture is newer than that coalesced report.
-        harness.configureReview(SafeMarkdownReadWebView(
-            documentID: harness.documentID, documentTitle: "Reading", document: document,
-            htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
-            onLinkClick: { _ in }, onOpenExternalURL: { _ in },
-            onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Reading", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
         try await harness.waitUntilReady()
         let webView = try #require(harness.session.webView)
         _ = try await harness.session.send(.setScrollFraction(0.65), in: webView)
@@ -79,6 +82,60 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.retryUnavailablePresentation()
         try await harness.waitUntilPresentedMode(.source)
         #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("A recovered-history warning allows Review to restore the writable DOM range", arguments: [MarkdownEditorMode.source, .livePreview])
+    func reviewExitRestoresWritableDOMSelection(mode: MarkdownEditorMode) async throws {
+        let source = "# Reading fixture\n\nSelectionprobe\n\nUnicode 中文 😀 e\u{301} remains exact.\n"
+        let range = (source as NSString).range(of: "Unicode")
+        let session = MarkdownEditorSession()
+        #expect(
+            session.restoreWindowPresentation(
+                WindowDocumentPresentationSnapshot(
+                    sourceFingerprint: DocumentFingerprint(content: source).sha256,
+                    selections: [WindowDocumentSelectionRange(anchor: range.location, head: range.location + range.length)],
+                    focusTarget: .editor), source: source))
+        let nativeWindow = FocusAdmissionTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let harness = EditorHarness(
+            source: source, suppliedSession: session, nativeWindow: nativeWindow, initialMode: mode, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let warning = try #require(session.errorMessage)
+        harness.session.revealSourceRange(fromUTF16: range.location, toUTF16: range.location + range.length)
+        try await harness.waitUntilSelection(anchor: range.location, head: range.location + range.length)
+        try await harness.session.focusAndWait()
+        #expect(try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String == "Unicode")
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Reading fixture", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        _ = try await harness.callPageJavaScript(
+            """
+            const root = document.getElementById('scholium-document'); root.focus({preventScroll: true});
+            const paragraph = [...root.querySelectorAll('p')].find(p => p.textContent === 'Selectionprobe');
+            const range = document.createRange(); range.selectNodeContents(paragraph);
+            const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            """)
+        #expect(try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String == "Selectionprobe")
+        harness.setMode(mode)
+        try await harness.waitUntilPresentedMode(mode)
+        harness.session.authorizeAutomaticFocus(target: .editor)
+        try await harness.session.focusIfPresented(
+            in: mode, requiringFocusRevision: harness.session.focusRequestRevision, target: .editor, isStillRequested: { true })
+        let domSelection = try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String
+        #expect(domSelection == "Unicode", "The actual input range must agree with the retained writable selection.")
+        #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: range.location, head: range.location + range.length)])
+        #expect(try await harness.session.currentText() == source)
+        #expect(session.errorMessage == warning, "Restoring input must retain the recovery warning.")
         await harness.closeAndDrain()
     }
 
@@ -354,7 +411,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 try await harness.callPageJavaScript(
                     """
                     const api = window.scholiumReadScroll;
-                    return {top: document.querySelector('.cm-scroller').scrollTop, anchor: api.current(api.fraction())};
+                    const position = {top: document.querySelector('.cm-scroller').scrollTop, anchor: api.current(api.fraction())};
+                    return position;
                     """) as? [String: Any])
         }
         let before = try await readingPosition()
@@ -363,10 +421,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         let after = try await readingPosition()
         let beforeTop = try #require(before["top"] as? Double)
         let afterTop = try #require(after["top"] as? Double)
-        #expect(beforeTop > 0)
-        #expect(abs(beforeTop - afterTop) <= 1)
         let beforeAnchor = try #require(before["anchor"] as? [String: Any])
         let afterAnchor = try #require(after["anchor"] as? [String: Any])
+        #expect(beforeTop > 0)
+        #expect(abs(beforeTop - afterTop) <= 1)
         #expect((beforeAnchor["sourceUTF16Offset"] as? Int ?? 0) > 0)
         #expect(beforeAnchor["sourceUTF16Offset"] as? Int == afterAnchor["sourceUTF16Offset"] as? Int)
         #expect(beforeAnchor["blockUTF16LowerBound"] as? Int == afterAnchor["blockUTF16LowerBound"] as? Int)
@@ -1316,6 +1374,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             editor.style.transformOrigin = 'top left'; editor.style.transform = `scale(${scale})`;
             window.dispatchEvent(new Event('resize'));
             await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+            """, arguments: ["scale": scale])
+        _ = try await harness.session.currentScrollAnchor()
+        _ = try await harness.callPageJavaScript(
+            """
             const heading = document.querySelector('.cm-live-h1');
             const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
             let node; while ((node = walker.nextNode())) if (node.textContent.includes('中文标题')) break;
@@ -1324,7 +1386,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             heading.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
                 button: 0, buttons: 1, detail: 1, metaKey: true, clientX: x, clientY: y}));
             document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
-            """, arguments: ["scale": scale])
+            """)
         _ = try await harness.session.currentScrollAnchor()
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         var errors: [Double] = []
@@ -2721,6 +2783,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.context?.selections == originalSelection)
         #expect(harness.session.generation == 0)
 
+        // Safari intentionally ignores the first key within 100 ms of IME
+        // completion. The next drop and its Undo are a separate interaction.
+        _ = try await harness.callPageJavaScript("await new Promise(resolve => setTimeout(resolve, 100));")
         let accepted = try await dispatchDrop(duringComposition: false)
         #expect(accepted["consumed"] as? Bool == true)
         #expect(accepted["cursorBefore"] as? Int == 1)
@@ -3728,12 +3793,15 @@ struct MarkdownEditorWebViewIntegrationTests {
         let owner = try #require(harness.session.webView)
         owner.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        try await harness.session.focusAndWait()
+        try await harness.waitUntilFocused()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '> [!');")
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while owner.superview?.subviews.contains(where: { $0 is NSGlassEffectView }) != true && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(owner.superview?.subviews.contains { $0 is NSGlassEffectView } == true)
+        let keyboardAdmission = ContinuousClock.now.advanced(by: .milliseconds(75))
         let source = "> [!\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let glass = try #require(owner.superview?.subviews.first { $0 is NSGlassEffectView })
@@ -3773,9 +3841,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         nativeRow.isEmphasized = true
         #expect(!nativeRow.isEmphasized)
         #expect(nativeRow.isSelected)
-        _ = try await harness.callPageJavaScript(
-            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));"
-        )
+        // CodeMirror's opening interaction guard lasts 75 ms. Exercise the
+        // subsequent keyboard interaction after that protection has elapsed.
+        try await Task.sleep(until: keyboardAdmission, clock: .continuous)
+        let handled =
+            try await harness.callPageJavaScript(
+                """
+                const event = new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true, cancelable: true});
+                document.querySelector('.cm-content').dispatchEvent(event);
+                return event.defaultPrevented;
+                """
+            ) as? Bool
+        try #require(handled == true)
         let keyboardDeadline = ContinuousClock.now.advanced(by: .seconds(3))
         while list.table.selectedRow != 2 && ContinuousClock.now < keyboardDeadline {
             try await Task.sleep(for: .milliseconds(20))
@@ -3914,7 +3991,21 @@ struct MarkdownEditorWebViewIntegrationTests {
         let frame = owner.frame
         let selection = harness.session.context?.selections
         let undo = harness.session.context?.undoLabel
-        try await harness.session.perform(.previewAtSelection)
+        @MainActor func presentPreview(stage: String) async throws {
+            do {
+                // DOM compositionend returns before the deferred native context
+                // confirms the finished composition and current availability.
+                try await harness.waitUntilPreviewIsAvailable(stage: stage)
+                try await harness.session.perform(.previewAtSelection)
+            } catch {
+                let focus = await harness.focusDiagnostics()
+                Issue.record(
+                    "Native preview phase \(stage) failed: \(error); ready=\(harness.session.isReady), loaded=\(harness.session.isLoaded), composing=\(harness.session.isComposing), attached=\(harness.session.hasAttachedWebView), available=\(harness.session.context?.availableCommands.contains(.previewAtSelection) == true); \(focus)"
+                )
+                throw error
+            }
+        }
+        try await presentPreview(stage: "initial native Edit preview")
         _ = try await harness.waitUntilPresentation(stage: "native Edit preview") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
         }
@@ -3933,7 +4024,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
-        try await harness.session.perform(.previewAtSelection)
+        try await presentPreview(stage: "reopen after Escape before composition")
         _ = try await harness.waitUntilPresentation(stage: "preview before composition") {
             !$0.previewPopoverHidden
         }
@@ -3945,7 +4036,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
         try await harness.session.testingDispatchCompositionEvent("compositionend")
         for visibility in [DocumentSurfaceVisibility.preparing, .retained] {
-            try await harness.session.perform(.previewAtSelection)
+            try await presentPreview(stage: "before hiding editor as \(visibility)")
             _ = try await harness.waitUntilPresentation(stage: "preview before hiding editor") { !$0.previewPopoverHidden }
             harness.setSurfaceVisibility(visibility)
             let hiddenDeadline = ContinuousClock.now.advanced(by: .seconds(3))
@@ -3963,7 +4054,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.session.focusAndWait()
             #expect(harness.session.webView === owner)
         }
-        try await harness.session.perform(.previewAtSelection)
+        try await presentPreview(stage: "reopen after retention")
         _ = try await harness.waitUntilPresentation(stage: "same target can reopen after retention") { !$0.previewPopoverHidden }
         #expect(harness.session.context?.selections == selection)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -5297,6 +5388,59 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilText(first)
         try await historyKey(redo: false)
         try await harness.waitUntilText(original)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source supersedes an already presented Review while its appearance update is in flight")
+    func sourceSupersedesPresentedReviewAppearanceConvergence() async throws {
+        let source = "\u{FEFF}# Mode convergence\r\n\r\nExact **Markdown** 中文 e\u{301} 🦉.\r\n"
+        let dispatcher = SuspendingPresentationBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer {
+            dispatcher.resume()
+            harness.close()
+        }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let range = (source as NSString).range(of: "Markdown")
+        let map = EditorSourceOffsetMap(source: source)
+        let anchor = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location))
+        let head = try #require(map.editorUTF16Offset(forSourceUTF16Offset: range.location + range.length))
+        harness.session.revealSourceRange(fromUTF16: range.location, toUTF16: range.location + range.length)
+        try await harness.waitUntilSelection(anchor: anchor, head: head)
+        let selection = try #require(harness.session.context?.selections)
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        let html = SafeMarkdownRenderer.render(document).htmlBody
+        @MainActor func readingConfiguration(css: String = "") -> SafeMarkdownReadWebView {
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Argument", document: document,
+                htmlBody: html, presentationCSS: css, userCSS: "",
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onRenderingFailure: { Issue.record(Comment(rawValue: $0)) })
+        }
+        harness.configureReview(readingConfiguration())
+        harness.setMode(.review)
+        try await harness.waitUntilPresentedMode(.review)
+        dispatcher.holdNextPresentation = true
+        harness.configureReview(readingConfiguration(css: ".scholium-document { --held-review-appearance: 1; }"))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !dispatcher.isSuspended {
+            try #require(ContinuousClock.now < deadline, "Review did not dispatch its held appearance update")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(harness.session.presentedMode == .review)
+        // The existing mode owner is suspended with Review already presented;
+        // this newer request must survive its older no-op completion branch.
+        harness.session.setMode(.source)
+        dispatcher.resume()
+        try await harness.waitUntilPresentedMode(.source)
+        _ = try await harness.waitUntilPresentation(stage: "Source after the held Review appearance") {
+            $0.sourceModeClassCount == 1 && $0.liveModeClassCount == 0
+        }
+        #expect(harness.session.webView === webView)
+        #expect(harness.session.context?.selections == selection)
+        #expect(!harness.session.isDirty)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
         await harness.closeAndDrain()
     }
 
@@ -11287,7 +11431,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             let deadline = clock.now.advanced(by: .seconds(5))
             while session.presentedMode != mode {
                 if clock.now >= deadline {
-                    Issue.record("The editor did not publish the acknowledged \(mode.rawValue) mode.")
+                    Issue.record("The editor did not publish the acknowledged \(mode.rawValue) mode: \(session.testingReviewPreparationDiagnostics).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -11380,12 +11524,14 @@ struct MarkdownEditorWebViewIntegrationTests {
                 "DOM: \(String(describing: dom)); loaded: \(session.isLoaded), mode: \(String(describing: session.presentedMode)), preferred: \(String(describing: session.preferredDocumentFocusTarget)), revision: \(session.focusRequestRevision), hidden: \(String(describing: webView?.isHiddenOrHasHiddenAncestor)), input: \(String(describing: (webView as? DocumentNativeWebView)?.documentSurfaceAllowsInput)), key: \(window.isKeyWindow), responder: \(String(describing: window.firstResponder)), error: \(String(describing: session.errorMessage))"
         }
 
-        func waitUntilPreviewIsAvailable() async throws {
+        func waitUntilPreviewIsAvailable(stage: String = "previewable insertion point") async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(3))
-            while session.context?.availableCommands.contains(.previewAtSelection) != true {
+            while !session.isReady || !session.isLoaded || session.webView == nil || session.isComposing
+                || session.context?.availableCommands.contains(.previewAtSelection) != true
+            {
                 if clock.now >= deadline {
-                    Issue.record("The editor did not move the insertion point to a previewable construct.")
+                    Issue.record("The editor did not acknowledge preview availability at \(stage).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -12056,6 +12202,28 @@ struct MarkdownEditorWebViewIntegrationTests {
     }
 
     @MainActor
+    private final class SuspendingPresentationBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        private var continuation: CheckedContinuation<Void, Never>?
+        var holdNextPresentation = false
+        var isSuspended: Bool { continuation != nil }
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            if holdNextPresentation, case .setPresentation = request.operation {
+                holdNextPresentation = false
+                await withCheckedContinuation { continuation = $0 }
+            }
+            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+        }
+
+        func resume() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    @MainActor
     private final class FailingOnceModeBridgeDispatcher: MarkdownEditorBridgeDispatching {
         private enum ProbeError: Error {
             case transientTransportFailure
@@ -12212,6 +12380,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 citationSnapshot: citationSnapshot,
                 review: sourceBox.review
             )
+            .id(session.viewReconstructionID)
             .transformEnvironment(\.scholiumDocumentSurfaceVisibility) { visibility in
                 if let override = sourceBox.surfaceVisibility { visibility = override }
             }

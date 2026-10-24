@@ -257,6 +257,7 @@ extension WindowModel {
         do {
             if inChat, !isChatSidebarEnabled { throw ChatSidebarPresentationError.hidden }
             if !inChat {
+                guard let requestIsCurrent = beginDocumentNavigation() else { return false }
                 // The catalog is a derived presentation snapshot and may be
                 // one watcher publication behind the user's action. Verify
                 // the reference against the document authority first; a
@@ -265,7 +266,7 @@ extension WindowModel {
                 do {
                     _ = try await capabilities.documents.load(card.candidate.note)
                 } catch {
-                    guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                    guard requestIsCurrent(), windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                         materials.seed?.request.id == seed.request.id
                     else { return false }
                     reportOperationIssue(
@@ -277,7 +278,7 @@ extension WindowModel {
                     )
                     return true
                 }
-                guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                guard requestIsCurrent(), windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
                     materials.seed?.request.id == seed.request.id
                 else { return false }
                 // The card already carries the immutable reference that came
@@ -288,7 +289,7 @@ extension WindowModel {
                 await openWorkspaceReference(
                     card.reference,
                     line: card.passage.range.line, inspectorMode: .related,
-                    sourceFingerprint: card.candidate.fingerprint)
+                    sourceFingerprint: card.candidate.fingerprint, navigationRequest: requestIsCurrent)
                 return true
             }
             let document = try await capabilities.documents.load(card.candidate.note)

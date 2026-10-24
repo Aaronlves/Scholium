@@ -8,13 +8,18 @@ extension WindowModel {
         _ reference: VaultNoteReference,
         onCompletion: (@MainActor (Result<Void, Error>) -> Void)? = nil
     ) {
+        guard let requestIsCurrent = beginDocumentNavigation() else {
+            onCompletion?(.failure(DocumentControllerError.documentUnavailable))
+            return
+        }
         let openingMeasurement = PerformanceProbe.shared.beginNoteOpening(documentID: reference.relativePath)
         PerformanceProbe.shared.markNoteOpeningMilestone(.clickRecognized, attemptID: openingMeasurement)
         var forwarded = false
         let validate: @MainActor () throws -> Void = { [weak self] in
-            guard let self, !forwarded else { throw CancellationError() }
+            guard let self, requestIsCurrent(), !forwarded else { throw CancellationError() }
             if self.workspaceStore.documentLocations.revealExisting(
                 reference, excluding: self,
+                isCurrentRequest: requestIsCurrent,
                 onSelection: { _, selected in
                     onCompletion?(selected ? .success(()) : .failure(DocumentControllerError.documentUnavailable))
                 }
@@ -26,6 +31,7 @@ extension WindowModel {
         }
         enqueueDocumentTransition(
             preparation: openingPreparation(for: reference, placement: .newTab),
+            requestIsCurrent: requestIsCurrent,
             openingMeasurement: openingMeasurement,
             validateBeforePreparation: validate
         ) { [weak self] in
@@ -82,9 +88,11 @@ extension WindowModel {
     }
 
     func requestMoveDocumentToWindow(tabID: UUID? = nil, at point: NSPoint? = nil) {
-        guard let id = tabID ?? documentTabController.selectedTabID else { return }
+        guard let id = tabID ?? documentTabController.selectedTabID,
+            let requestIsCurrent = beginDocumentNavigation()
+        else { return }
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, requestIsCurrent() else { return }
             do { try await workspaceStore.documentLocations.moveTab(id, from: self, at: point) } catch {
                 reportOperationIssue(error.localizedDescription, kind: .error)
             }
@@ -92,8 +100,9 @@ extension WindowModel {
     }
 
     func requestMoveDocumentBack() {
+        guard let requestIsCurrent = beginDocumentNavigation() else { return }
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, requestIsCurrent() else { return }
             do { try await workspaceStore.documentLocations.moveBack(from: self) } catch { reportOperationIssue(error.localizedDescription, kind: .error) }
         }
     }
@@ -165,8 +174,14 @@ extension WindowModel {
     func selectDocumentTab(
         withID id: UUID,
         historyPosition: DocumentNavigationVisitPosition? = nil,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true },
         onSelection: (@MainActor (Bool) -> Void)? = nil
     ) {
+        guard isCurrentRequest(), let localRequestIsCurrent = beginDocumentNavigation() else {
+            onSelection?(false)
+            return
+        }
+        let requestIsCurrent: DocumentTransitionCoordinator.Currency = { localRequestIsCurrent() && isCurrentRequest() }
         if documentTabController.selectedTabID == id,
             documentController.selectedDocument == documentTabController.selectedTab?.document
         {
@@ -179,7 +194,12 @@ extension WindowModel {
             return
         }
         var activated = false
-        enqueueDocumentTransition(preparation: .preserveSelectedDocument) { [weak self] in
+        enqueueDocumentTransition(
+            preparation: .preserveSelectedDocument, requestIsCurrent: requestIsCurrent,
+            validateBeforePreparation: {
+                guard requestIsCurrent() else { throw CancellationError() }
+            }
+        ) { [weak self] in
             guard let self,
                 self.documentTabController.selectedTabID != id
                     || self.documentController.selectedDocument != self.documentTabController.selectedTab?.document,
@@ -195,7 +215,7 @@ extension WindowModel {
             self.reconcileDocumentSessionLeases()
             activated = true
         } didFinish: {
-            onSelection?(activated)
+            onSelection?(activated && requestIsCurrent())
         }
     }
 
@@ -206,20 +226,23 @@ extension WindowModel {
                 position: documentController.navigationPosition(for: displayed)
             )
         }
-        guard let target = documentNavigationHistoryController.target(for: direction) else { return }
+        guard let target = documentNavigationHistoryController.target(for: direction),
+            let requestIsCurrent = beginDocumentNavigation()
+        else { return }
         let historyRevision = documentNavigationHistoryController.revision
         let position = documentNavigationHistoryController.position(for: direction)
         var forwarded = false
         let validate: @MainActor () throws -> Void = { [weak self] in
-            guard let self, !forwarded,
+            guard let self, requestIsCurrent(), !forwarded,
                 !self.windowCloseCoordinator.isPreparingOrFinalized,
                 self.documentNavigationHistoryController.revision == historyRevision,
                 self.documentNavigationHistoryController.target(for: direction) == target
             else { throw CancellationError() }
             if self.workspaceStore.documentLocations.revealExisting(
                 target, excluding: self,
+                isCurrentRequest: requestIsCurrent,
                 onSelection: { [weak self] owner, selected in
-                    guard let self, selected,
+                    guard let self, requestIsCurrent(), selected,
                         !self.windowCloseCoordinator.isPreparingOrFinalized,
                         self.documentNavigationHistoryController.revision == historyRevision,
                         self.documentNavigationHistoryController.target(for: direction) == target,
@@ -237,6 +260,7 @@ extension WindowModel {
             preparation: .openingDocument(
                 placement: .replaceSelected,
                 retainedTab: { [weak self] in self?.documentTabController.tab(for: target) }),
+            requestIsCurrent: requestIsCurrent,
             validateBeforePreparation: validate
         ) { [weak self] in
             guard let self else { throw CancellationError() }
@@ -246,7 +270,7 @@ extension WindowModel {
                 recordsNavigationHistory: false, validateDisplay: validate
             )
         } didSucceed: { [weak self] in
-            guard let self,
+            guard let self, requestIsCurrent(),
                 self.documentNavigationHistoryController.revision == historyRevision,
                 self.documentNavigationHistoryController.target(for: direction) == target,
                 self.documentNavigationHistoryController.commit(direction, to: target)

@@ -11,7 +11,10 @@ struct AgentChatActionButtonTests {
     private final class Owner {
         let value: String
         let calls: Calls
-        init(_ value: String, calls: Calls) { self.value = value; self.calls = calls }
+        init(_ value: String, calls: Calls) {
+            self.value = value
+            self.calls = calls
+        }
         func invoke() { calls.values.append(value) }
     }
     private struct Page: View {
@@ -22,9 +25,11 @@ struct AgentChatActionButtonTests {
                 AgentChatMessageActionVisibility {
                     Text("Synthetic message")
                 } actions: {
-                    AgentChatActionButton(label: "Quote in Reply", systemImage: "text.quote",
-                        accessibilityID: "action-fixture", action: owner.invoke)
-                        .disabled(!enabled)
+                    AgentChatActionButton(
+                        label: "Quote in Reply", systemImage: "text.quote",
+                        accessibilityID: "action-fixture", action: owner.invoke
+                    )
+                    .disabled(!enabled)
                 }
             } else {
                 Text("Destination")
@@ -61,9 +66,11 @@ struct AgentChatActionButtonTests {
         #expect(condition())
     }
 
-    @Test("A stable native button receives the latest action and releases action owners on update and dismantle")
+    @Test(
+        "A stable native button receives the latest action and releases action owners on update and dismantle"
+    )
     func actionLifetime() async throws {
-        _ = NSApplication.shared
+        await AppKitTestApplication.start()
         let calls = Calls()
         weak var oldOwner: Owner?
         weak var newOwner: Owner?
@@ -72,12 +79,17 @@ struct AgentChatActionButtonTests {
             oldOwner = owner
             return NSHostingView(rootView: Page(owner: owner))
         }
-        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 360, height: 100),
+        let window = NSWindow(
+            contentRect: .init(x: 0, y: 0, width: 360, height: 100),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = root
         window.orderFrontRegardless()
-        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
         try await settle(root) { !buttons(root).isEmpty }
         let button = try #require(buttons(root).first)
         button.performClick(nil)
@@ -126,7 +138,7 @@ struct AgentChatActionButtonTests {
 
     @Test("Native Copy shares confirmed feedback, exact-source reset, expiry and action teardown")
     func copyFeedback() async throws {
-        _ = NSApplication.shared
+        await AppKitTestApplication.start()
         let calls = Calls()
         weak var oldOwner: Owner?
         weak var newOwner: Owner?
@@ -135,12 +147,17 @@ struct AgentChatActionButtonTests {
             oldOwner = owner
             return NSHostingView(rootView: CopyPage(owner: owner, source: "caf\u{e9}"))
         }
-        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 360, height: 100),
+        let window = NSWindow(
+            contentRect: .init(x: 0, y: 0, width: 360, height: 100),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = root
         window.orderFrontRegardless()
-        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
         try await settle(root) { !buttons(root).isEmpty }
         let button = try #require(buttons(root).first)
         button.performClick(nil)

@@ -132,12 +132,12 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     } else if (stage === "cancelled") {
       widget.destroy(dom);
     } else {
-      await projection.prepare(Date.now() + 2000);
+      await projection.prepare(Date.now() + 2000, "viewport");
       f.window.scholiumSetPresentationCSS = async () => { throw new Error("forced reading style failure"); };
       expect(projection.updateInPlace({...committed,
         configuration: {...committed.configuration, presentationCSS: "p {color: red}"}})).toBe(true);
     }
-    await expect(projection.prepare(Date.now() + 2000)).rejects.toThrow();
+    await expect(projection.prepare(Date.now() + 2000, "viewport")).rejects.toThrow();
     const failures = f.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === "renderingFailed");
     if (stage === "cancelled") expect(failures).toHaveLength(0);
     else expect(failures).toContainEqual({version: 8, documentID: "note.md", fingerprint: "fingerprint",
@@ -161,7 +161,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     image.decode = vi.fn(() => { enteredDecode(); return decoded; });
     await initializeReader(f.config, f.host);
     const settling = f.window.scholiumReadPreparation!.settle(
-      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000, "viewport");
     try {
       expect(await Promise.race([entered.then(() => true), settling.then(() => false)])).toBe(true);
       expect(image.decode).toHaveBeenCalledOnce();
@@ -170,6 +170,83 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
       await settling;
       f.signal.abort();
     }
+  });
+
+  it("keeps preparation pending while the host viewport moves despite settled document geometry", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    f.scroll.scrollLeft = 0;
+    await initializeReader(f.config, f.host);
+    let ready = false;
+    const settling = f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000, "viewport")
+      .then(result => { ready = true; return result; });
+    await vi.advanceTimersByTimeAsync(0);
+    // Native scrolling can continue after all fonts, images and block sizes
+    // have settled. One quiet animation interval is not its completion.
+    for (const top of [208, 222, 222, 240]) {
+      f.scroll.scrollTop = top;
+      await vi.advanceTimersByTimeAsync(16);
+      expect(ready).toBe(false);
+    }
+    // Observe the latest viewport, including horizontal movement, without
+    // restoring the earlier position over a new researcher action.
+    const wheel = f.document.createEvent("Event");
+    wheel.initEvent("wheel", true, false);
+    f.scroll.dispatchEvent(wheel);
+    f.scroll.scrollLeft = 12;
+    await vi.advanceTimersByTimeAsync(16);
+    expect(ready).toBe(false);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(ready).toBe(false);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(await settling).toEqual({settled: true, geometryChanged: false});
+    expect(f.scroll.scrollTop).toBe(240);
+    expect(f.scroll.scrollLeft).toBe(12);
+    expect(f.scroll.scrollTo).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    f.signal.abort();
+  });
+
+  it("finishes a stationary hidden viewport without animation frames", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    // Hidden WKWebViews may never deliver a requested frame during preparation.
+    f.window.requestAnimationFrame = vi.fn(() => 1);
+    f.window.cancelAnimationFrame = vi.fn();
+    await initializeReader(f.config, f.host);
+    const settling = f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000, "viewport");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await settling).toEqual({settled: true, geometryChanged: false});
+    expect(f.scroll.scrollTop).toBe(200);
+    expect(f.scroll.scrollTo).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    f.signal.abort();
+  });
+
+  it.each(["abort", "departure", "deadline"] as const)("retires pending viewport preparation on %s", async reason => {
+    vi.useFakeTimers();
+    const f = fixture();
+    Object.defineProperty(f.document, "fonts", {value: {status: "loaded", ready: Promise.resolve()}});
+    await initializeReader(f.config, f.host);
+    const settling = f.window.scholiumReadPreparation!.settle(
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 24, "viewport");
+    const rejected = expect(settling).rejects.toThrow("stale reader preparation");
+    await vi.advanceTimersByTimeAsync(0);
+    if (reason === "abort") f.signal.abort();
+    else if (reason === "departure") f.host.root.remove();
+    else {
+      f.scroll.scrollTop = 210;
+      await vi.advanceTimersByTimeAsync(16);
+    }
+    await vi.advanceTimersByTimeAsync(24);
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+    expect(f.scroll.scrollTo).not.toHaveBeenCalled();
+    f.signal.abort();
   });
 
   it("shows actions for a visible bottom selection without scrolling an offset host", async () => {
@@ -280,7 +357,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     Object.defineProperty(f.document, "fonts", {configurable: true, value: fonts});
     await initializeReader(f.config, {...f.host, recordMetric: recordEditorMetric});
     const settling = f.window.scholiumReadPreparation!.settle(
-      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000, "viewport");
     await entered;
     clock = 45;
     fonts.status = "loaded";
@@ -305,7 +382,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     clearEditorPerformanceSamples();
     const f = await appearanceFixture(kind);
     await f.window.scholiumReadPreparation!.settle(
-      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000);
+      f.config.documentID, f.config.fingerprint, f.config.loadGeneration, Date.now() + 2000, "viewport");
     expect(editorPerformanceSamples()).toEqual([]);
     f.dispose();
   });
@@ -382,7 +459,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     };
     f.scroll.scrollTop = 367;
     const firstDOM = mount();
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     const samples = editorPerformanceSamples();
     expect(samples.find(sample => sample.name === "review-html-insertion")?.observed)
       .toEqual({review: 1, htmlUTF16Length: committed.htmlBody.length});
@@ -406,7 +483,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     expect(editing.currentAnchor).not.toHaveBeenCalled();
     f.scroll.scrollTop = 0;
     const restoredDOM = mount();
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     expect(projection.setAnchor(captured)).toBe(true);
     expect(f.scroll.scrollTop).toBe(367);
     expect(currentDocumentScrollAnchor("review", editing, projection)).toEqual(captured);
@@ -441,7 +518,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     image.decode = vi.fn(() => Promise.resolve());
     // Binding is synchronous: Reader's visible-image barrier sees this src.
     expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     const preparation = f.window.scholiumReadPreparation;
     const dismissPreview = vi.spyOn(f.window, "scholiumDismissPreview");
     const text = dom.querySelector("p")!.firstChild;
@@ -449,7 +526,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     projection.refreshImageResources();
     expect(dismissPreview).toHaveBeenCalledOnce();
     expect(image.getAttribute("src")).toBe(resources["Attachments/a%25.png"]);
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     expect(image.decode).toHaveBeenCalledTimes(2);
     expect(dom.querySelector("img")).toBe(image);
     expect(dom.querySelector("p")!.firstChild).toBe(text);
@@ -465,7 +542,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     resources = {"Attachments/a%25.png": "data:image/png;base64,AAAA"};
     projection.refreshImageResources();
     let settled = false;
-    const settling = projection.prepare(Date.now() + 2000).then(() => { settled = true; });
+    const settling = projection.prepare(Date.now() + 2000, "viewport").then(() => { settled = true; });
     await vi.waitFor(() => expect(image.decode).toHaveBeenCalledOnce());
     resources = {"Attachments/a%25.png": "data:image/png;base64,AQID"};
     projection.refreshImageResources();
@@ -509,7 +586,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     f.scroll.replaceChildren(current);
     const currentImage = current.querySelector("img")!;
     currentImage.decode = vi.fn(() => Promise.resolve());
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     expect(currentImage.getAttribute("src")).toBe(resources["a.png"]);
     expect(currentImage).not.toBe(previousImage);
     expect(f.postMessage.mock.calls.filter(([message]) => message.type === "ready")).toHaveLength(1);
@@ -750,7 +827,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
     const view = {state, scrollDOM: f.scroll, requestMeasure: vi.fn()} as unknown as EditorView;
     const dom = widget.toDOM(view) as HTMLElement;
     f.scroll.replaceChildren(dom);
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     const readingMain = f.document.getElementById("scholium-document");
     const selectedTextNode = readingMain!.querySelector("p")!.firstChild;
     const preparationAPI = f.window.scholiumReadPreparation;
@@ -759,7 +836,7 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
       localization: {strings: {Copy: "Copy", "Note title": "Note title"}, languageTag: "en"},
     }).reverse()) as unknown as typeof initial.configuration;
     expect(projection.updateInPlace({...initial, configuration: reordered})).toBe(true);
-    await projection.prepare(Date.now() + 2000);
+    await projection.prepare(Date.now() + 2000, "viewport");
     const readingStyle = dom.querySelector<HTMLStyleElement>('[data-scholium-review-style="presentation"]')!;
     const readingUserStyle = dom.querySelector<HTMLStyleElement>('[data-scholium-review-style="user"]')!;
     expect(readingStyle.textContent).toContain("@scope (.scholium-review-projection)");

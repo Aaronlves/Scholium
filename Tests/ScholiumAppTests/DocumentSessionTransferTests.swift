@@ -206,14 +206,13 @@ struct DocumentSessionTransferTests {
         original.suppressAutosave = true
         let presentation = original.windowPresentationSnapshot
         let failureDetail = "Fixture in-flight write failed"
-        original.isSavingEdit = true
-        // The existing save-task slot supplies the suspension boundary. Its
+        let saveToken = UUID()
+        // The existing save attempt supplies the suspension boundary. Its
         // completion clears saving state as finishSaveAttempt does, so a
         // discarded error cannot be hidden by a later saving-state timeout.
         let save = Task<EditorSaveOutcome, Error> { @MainActor in
             defer {
-                original.activeSaveTask = nil
-                original.isSavingEdit = false
+                original.completeSaveAttempt(token: saveToken)
             }
             if fails {
                 original.editError = failureDetail
@@ -223,7 +222,7 @@ struct DocumentSessionTransferTests {
             original.originalEditingSource = exactSource
             return .clean
         }
-        original.activeSaveTask = save
+        original.beginSaveAttempt(.init(token: saveToken, task: save))
         defer {
             save.cancel()
             original.cancelScheduledWork()
@@ -256,7 +255,7 @@ struct DocumentSessionTransferTests {
             #expect(destination.session(for: note.editingTarget) === original)
             #expect(!original.hasUnsavedChanges)
         }
-        #expect(original.activeSaveTask == nil)
+        #expect(original.activeSaveAttempt == nil)
         #expect(!original.isSavingEdit)
         #expect(Data(original.retainedExactSource.utf8) == Data(exactSource.utf8))
         #expect(original.windowPresentationSnapshot == presentation)

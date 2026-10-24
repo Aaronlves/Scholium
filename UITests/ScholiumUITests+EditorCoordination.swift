@@ -44,8 +44,8 @@ extension ScholiumUITests {
         selectDocumentMode("Edit")
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil(timeout: 10) { editor.isHittable })
-        // Copy proves the mode handoff restored both keyboard focus and the
-        // existing exact selection without clicking and moving its caret.
+        // Copy checks the retained editor selection. The following native
+        // replacement also checks WebKit's actual input range without a click.
         try copyAndVerify("Unicode")
         app.typeKey("4", modifierFlags: [])
         app.typeKey("s", modifierFlags: .command)

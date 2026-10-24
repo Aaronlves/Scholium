@@ -118,17 +118,15 @@ extension WindowModel {
             })
     }
 
-    func openingPreparation(for path: String) -> DocumentTransitionPreparation {
-        .openingDocument(
-            placement: .replaceSelected,
-            retainedTab: { [weak self] in
-                guard let self, let reference = self.documentReference(for: path) else { return nil }
-                return self.documentTabController.tab(for: reference)
-            })
-    }
-
     private var canAcceptDocumentTransition: Bool {
         !transferInProgress && !windowCloseCoordinator.isPreparingOrFinalized
+    }
+
+    func beginDocumentNavigation(
+        continuing request: DocumentTransitionCoordinator.Currency? = nil
+    ) -> DocumentTransitionCoordinator.Currency? {
+        guard canAcceptDocumentTransition, request?() ?? true else { return nil }
+        return request ?? documentTransitionCoordinator.beginRequest()
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -139,11 +137,33 @@ extension WindowModel {
     /// capture remains necessary if preparation or destination opening fails.
     func enqueueDocumentTransition(
         preparation: DocumentTransitionPreparation = .saveSelectedDocument,
+        requestIsCurrent: DocumentTransitionCoordinator.Currency? = nil,
         openingMeasurement: UUID? = nil,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
         validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
         admitBeforePreparation: @escaping @MainActor () async throws -> Void = {},
         _ operation: @escaping @MainActor () async throws -> Void,
+        didFail customFailure: (@MainActor (Error) -> Void)? = nil,
+        didSucceed: (@MainActor () -> Void)? = nil,
+        didFinish: (@MainActor () -> Void)? = nil,
+        completion: (@MainActor (Result<Void, Error>) -> Void)? = nil
+    ) {
+        enqueueDocumentTransition(
+            preparation: preparation, requestIsCurrent: requestIsCurrent,
+            openingMeasurement: openingMeasurement, retainingCurrentDocument: target,
+            validateBeforePreparation: validateBeforePreparation, admitBeforePreparation: admitBeforePreparation,
+            { _ in try await operation() },
+            didFail: customFailure, didSucceed: didSucceed, didFinish: didFinish, completion: completion)
+    }
+
+    func enqueueDocumentTransition(
+        preparation: DocumentTransitionPreparation = .saveSelectedDocument,
+        requestIsCurrent: DocumentTransitionCoordinator.Currency? = nil,
+        openingMeasurement: UUID? = nil,
+        retainingCurrentDocument target: DocumentSessionKey? = nil,
+        validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
+        admitBeforePreparation: @escaping @MainActor () async throws -> Void = {},
+        _ operation: @escaping @MainActor (DocumentTransitionCoordinator.Currency) async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil,
@@ -161,6 +181,7 @@ extension WindowModel {
         var retainedOpeningTab: DocumentTabItem?
         var failurePhase = DocumentTransitionFailurePhase.operation
         documentTransitionCoordinator.enqueueCurrencyAware(
+            requestIsCurrent: requestIsCurrent,
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 PerformanceProbe.shared.markNoteOpeningPhase(.transitionStarted, attemptID: openingMeasurement)
@@ -218,6 +239,9 @@ extension WindowModel {
                         PerformanceProbe.shared.markNoteOpeningMilestone(.outgoingFrozen, attemptID: openingMeasurement)
                         try validateBeforePreparation()
                     }
+                case .flushRegisteredEditor(let capturingEditorState):
+                    if self.documentController.selectedDocument != nil { failurePhase = .preparation }
+                    try await self.flushRegisteredEditorIfNeeded(capturingEditorState: capturingEditorState)
                 case .operationOnly:
                     break
                 case .openingDocument:
@@ -248,7 +272,7 @@ extension WindowModel {
                     // request into an unprepared replacement.
                     throw WindowNavigationError.noteUnavailable(retainedOpeningTab.document.relativePath)
                 }
-                try await operation()
+                try await operation(isCurrent)
                 guard isCurrent() else { throw CancellationError() }
             },
             didFail: { [weak self] error in
@@ -323,76 +347,4 @@ extension WindowModel {
         )
     }
 
-    func enqueueCurrencyAwareDocumentTransition(
-        preservingCurrentEditorState: Bool = true,
-        retainingCurrentDocument target: DocumentSessionKey? = nil,
-        validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
-        _ operation:
-            @escaping @MainActor (
-                DocumentTransitionCoordinator.Currency
-            ) async throws -> Void,
-        didFail customFailure: (@MainActor (Error) -> Void)? = nil,
-        didSucceed: (@MainActor () -> Void)? = nil,
-        didFinish: (@MainActor () -> Void)? = nil
-    ) {
-        guard canAcceptDocumentTransition else {
-            didFinish?()
-            return
-        }
-        var failurePhase = DocumentTransitionFailurePhase.operation
-        documentTransitionCoordinator.enqueueCurrencyAware(
-            prepare: { [weak self] in
-                guard let self else { throw CancellationError() }
-                try validateBeforePreparation()
-                if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
-                if self.documentController.selectedDocument != nil { failurePhase = .preparation }
-                try await self.flushRegisteredEditorIfNeeded(
-                    capturingEditorState: preservingCurrentEditorState
-                )
-                if let displayed = self.documentController.selectedDocument {
-                    self.documentNavigationHistoryController.captureCurrent(
-                        document: displayed,
-                        position: self.documentController.navigationPosition(for: displayed)
-                    )
-                }
-            },
-            operation: { [weak self] isCurrent in
-                guard let self else { throw CancellationError() }
-                failurePhase = .operation
-                self.activeDocumentTransitionCurrency = isCurrent
-                defer { self.activeDocumentTransitionCurrency = nil }
-                try await operation(isCurrent)
-            },
-            didFail: { [weak self] error in
-                guard let self else { return }
-                self.revealRetainedDocumentAfterTransitionFailure()
-                if let customFailure {
-                    customFailure(error)
-                    return
-                }
-                if let issueID = self.documentTransitionIssueID {
-                    self.shellState.dismissOperationIssue(id: issueID)
-                }
-                if let navigationError = error as? WindowNavigationError {
-                    self.documentTransitionIssueID = self.reportOperationIssue(
-                        navigationError.localizedDescription,
-                        kind: .warning
-                    )
-                } else if failurePhase == .preparation {
-                    self.documentTransitionIssueID = self.reportOperationIssue(
-                        Self.retainedNotePreparationFailureMessage(error), kind: .error)
-                } else {
-                    self.documentTransitionIssueID = self.reportOperationIssue(error.localizedDescription, kind: .error)
-                }
-            },
-            didSucceed: { [weak self] in
-                if let self, let issueID = self.documentTransitionIssueID {
-                    self.shellState.dismissOperationIssue(id: issueID)
-                    self.documentTransitionIssueID = nil
-                }
-                didSucceed?()
-            },
-            didFinish: { didFinish?() }
-        )
-    }
 }

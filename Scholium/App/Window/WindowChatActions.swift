@@ -396,7 +396,8 @@ extension WindowModel {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 cancellation.continuation = continuation
-                enqueueCurrencyAwareDocumentTransition(
+                enqueueDocumentTransition(
+                    preparation: .flushRegisteredEditor(capturingEditorState: true),
                     retainingCurrentDocument: target, validateBeforePreparation: validate,
                     { isCurrent in
                         try validate()
@@ -466,7 +467,8 @@ extension WindowModel {
 
     @MainActor private func openChatSource(
         noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil,
-        disposition: WindowOpenDisposition = .replaceCurrent
+        disposition: WindowOpenDisposition = .replaceCurrent,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true }
     ) -> Bool {
         let matches =
             workspaceCatalog?.notes.filter {
@@ -479,14 +481,17 @@ extension WindowModel {
             reportOperationIssue(String(localized: "This note cannot be located in the current Triptych."), kind: .information)
             return false
         }
+        guard isCurrentRequest(), let localRequestIsCurrent = beginDocumentNavigation() else { return false }
+        let requestIsCurrent: DocumentTransitionCoordinator.Currency = { localRequestIsCurrent() && isCurrentRequest() }
         if disposition == .separateWindow {
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, requestIsCurrent() else { return }
                 do {
                     let destination = try await workspaceStore.documentLocations.openSeparate(reference, from: self)
                     _ = destination.openChatSource(
                         noteID: noteID, vaultID: vaultID, line: line,
-                        revision: revision, sourceRange: sourceRange, excerpt: excerpt)
+                        revision: revision, sourceRange: sourceRange, excerpt: excerpt,
+                        isCurrentRequest: requestIsCurrent)
                 } catch { reportOperationIssue(error.localizedDescription, kind: .error) }
             }
             return true
@@ -495,15 +500,19 @@ extension WindowModel {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             return owner.openChatSource(
                 noteID: noteID, vaultID: vaultID, line: line,
-                revision: revision, sourceRange: sourceRange, excerpt: excerpt)
+                revision: revision, sourceRange: sourceRange, excerpt: excerpt,
+                isCurrentRequest: requestIsCurrent)
         }
         let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
         let navigationMode = presentedDocumentMode
         enqueueDocumentTransition(
             preparation: openingPreparation(for: reference, placement: disposition == .newTab ? .newTab : .replaceSelected),
-            retainingCurrentDocument: target
+            requestIsCurrent: requestIsCurrent, retainingCurrentDocument: target,
+            validateBeforePreparation: {
+                guard requestIsCurrent() else { throw CancellationError() }
+            }
         ) { [weak self] in
-            guard let self, self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else {
+            guard let self, requestIsCurrent(), self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else {
                 throw CancellationError()
             }
             let alreadyCurrent = self.currentDocumentDescriptor?.sessionKey == target
@@ -517,7 +526,7 @@ extension WindowModel {
                 reference: reference, target: target,
                 line: line, revision: revision, mode: canEdit ? navigationMode : .read, sourceRange: sourceRange, excerpt: excerpt)
             try Task.checkCancellation()
-            guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
+            guard requestIsCurrent(), self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
                 self.currentDocumentDescriptor?.sessionKey == target
             else { throw CancellationError() }
             self.documentController.requestSourceLocation(

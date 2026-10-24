@@ -11,6 +11,15 @@ final class DocumentTransitionCoordinator {
     private var tailID: UUID?
     private var tail: Task<Void, Never>?
 
+    /// Every navigation intent gets a currency, including a current-tab no-op
+    /// or a handoff to another window. Revocation suppresses old presentation;
+    /// admitted source work and its cleanup still drain in queue order.
+    func beginRequest() -> Currency {
+        generation &+= 1
+        let requestedGeneration = generation
+        return { [weak self] in self?.generation == requestedGeneration }
+    }
+
     func enqueue(
         prepare: @escaping @MainActor () async throws -> Void,
         operation: @escaping @MainActor () async throws -> Void,
@@ -28,14 +37,14 @@ final class DocumentTransitionCoordinator {
     }
 
     func enqueueCurrencyAware(
+        requestIsCurrent: Currency? = nil,
         prepare: @escaping @MainActor () async throws -> Void,
         operation: @escaping @MainActor (@escaping Currency) async throws -> Void,
         didFail: @escaping @MainActor (Error) -> Void,
         didSucceed: @escaping @MainActor () -> Void = {},
         didFinish: @escaping @MainActor () -> Void = {}
     ) {
-        generation &+= 1
-        let requestedGeneration = generation
+        let isCurrent = requestIsCurrent ?? beginRequest()
         let previous = tail
         let taskID = UUID()
         let task = Task { [weak self] in
@@ -46,16 +55,13 @@ final class DocumentTransitionCoordinator {
             do {
                 _ = await previous?.value
                 try Task.checkCancellation()
-                guard let self, requestedGeneration == generation else { return }
+                guard self != nil, isCurrent() else { return }
                 try await prepare()
                 try Task.checkCancellation()
-                guard requestedGeneration == generation else { return }
-                let isCurrent: Currency = { [weak self] in
-                    self?.generation == requestedGeneration
-                }
+                guard isCurrent() else { return }
                 try await operation(isCurrent)
                 try Task.checkCancellation()
-                guard requestedGeneration == generation else { return }
+                guard isCurrent() else { return }
                 didSucceed()
             } catch is CancellationError {
                 return

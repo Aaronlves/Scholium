@@ -160,22 +160,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         forMainFrameOnly: true
                     ))
             }
-            let editorStartFailure = Self.jsonLiteral(
-                interfaceLocalization.string("The Markdown editor could not start.")
-            )
-            contentController.addUserScript(
-                WKUserScript(
-                    source: """
-                        window.addEventListener('error', function(event) {
-                            window.webkit.messageHandlers.scholium.postMessage({
-                                type: 'editorError',
-                                message: event.message || \(editorStartFailure)
-                            });
-                        });
-                        """,
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: true
-                ))
             if PerformanceProbe.shared.measuresEditorKeyToPaint
                 || PerformanceProbe.shared.measuresEditorCachedPreview
                 || PerformanceProbe.shared.measuresEditorVisibleProjection
@@ -512,13 +496,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
               <body><main id="editor"></main></body>
             </html>
             """
-    }
-
-    private static func jsonLiteral(_ value: String) -> String {
-        guard let data = try? JSONEncoder().encode(value),
-            let literal = String(data: data, encoding: .utf8)
-        else { return "\"\"" }
-        return literal
     }
 
     @MainActor

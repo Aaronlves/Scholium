@@ -110,12 +110,12 @@ struct SearchResultNavigationTests {
             if staleSource {
                 try Data("Changed source before queued admission.\n".utf8).write(to: fixture.sourceFile)
             } else {
-                session.activeSaveTask = Task { throw CocoaError(.fileWriteUnknown) }
+                session.beginSaveAttempt(.init(task: Task { throw CocoaError(.fileWriteUnknown) }))
             }
             gate.release()
             #expect(await opening.value == false)
             prepared.continuation.finish()
-            session.activeSaveTask = nil
+            session.cancelSaveAttempt()
             #expect(controller.presentation == .sidebar)
             #expect(window.discoveryController.search == before)
             #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
@@ -167,6 +167,112 @@ struct SearchResultNavigationTests {
                 #expect(peer.documentController.selectedDocument?.editingTarget == (peerFails ? other : target).editingTarget)
                 if !peerFails { #expect(targetSession.readScrollPosition.fraction == 0.73) }
                 setComposition(false, on: otherSession)
+                #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+                #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            }
+        }
+    }
+
+    @Test("Selecting the current tab supersedes a destination waiting for outgoing preparation")
+    func currentTabSupersedesWaitingNavigation() async throws {
+        try await withFixture { fixture in
+            let window = fixture.window
+            let origin = try #require(window.documentController.selectedDocument)
+            let tabID = try #require(window.documentTabController.selectedTabID)
+            let session = window.documentController.session(for: origin.editingTarget)
+            let gate = TransitionGate()
+            defer {
+                gate.release()
+                session.detachmentResumeTask = nil
+            }
+            session.detachmentResumeTask = Task { await gate.wait() }
+            window.openInNewTab(fixture.reference)
+            for _ in 0..<100 where !gate.started { await Task.yield() }
+            try #require(gate.started)
+            window.selectDocumentTab(withID: tabID)
+            gate.release()
+            await window.waitForDocumentTransitions()
+            #expect(window.documentController.selectedDocument == origin)
+            #expect(window.documentTabController.selectedTabID == tabID)
+            #expect(window.documentTabController.tabs.count == 1)
+            #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("Opening a peer-owned Note supersedes an older local destination without changing the origin")
+    func peerOpeningSupersedesWaitingLocalNavigation() async throws {
+        try await withFixture { fixture in
+            try await withPeer(of: fixture) { peer in
+                let window = fixture.window
+                try await peer.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+                let peerDocument = try #require(peer.documentController.selectedDocument)
+                let origin = window.documentController.selectedDocument
+                let gate = TransitionGate()
+                defer { gate.release() }
+                var oldDestinationInstalled = false
+                window.enqueueDocumentTransition(
+                    preparation: .operationOnly,
+                    admitBeforePreparation: { await gate.wait() }
+                ) { oldDestinationInstalled = true }
+                for _ in 0..<100 where !gate.started { await Task.yield() }
+                try #require(gate.started)
+                window.requestOpenNote(fixture.reference)
+                gate.release()
+                await window.waitForDocumentTransitions()
+                await peer.waitForDocumentTransitions()
+                #expect(!oldDestinationInstalled)
+                #expect(window.documentController.selectedDocument == origin)
+                #expect(peer.documentController.selectedDocument == peerDocument)
+                #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+                #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            }
+        }
+    }
+
+    @Test("A new selection in either window revokes a pending peer history selection and its return position", arguments: [false, true])
+    func localNavigationSupersedesPendingPeerHistory(peerOwnsNewSelection: Bool) async throws {
+        try await withFixture { fixture in
+            try await withPeer(of: fixture) { peer in
+                let window = fixture.window
+                let origin = try #require(window.documentController.selectedDocument)
+                let originReference = try #require(origin.workspaceDescriptor?.reference)
+                try await peer.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+                let target = try #require(peer.documentController.selectedDocument)
+                let targetSession = peer.documentController.session(for: target.editingTarget)
+                targetSession.observeScrollFraction(0.21, on: .read)
+                window.documentNavigationHistoryController.removeAll()
+                window.documentNavigationHistoryController.record(target)
+                window.documentNavigationHistoryController.captureCurrent(
+                    document: target,
+                    position: .init(sourceFingerprint: fixture.result.fingerprint.sha256, scrollPosition: .init(fraction: 0.73)))
+                window.documentNavigationHistoryController.record(origin)
+                let other = WindowSelectedDocument.unavailable(vaultID: fixture.result.vaultID, relativePath: "Peer.md")
+                peer.documentController.selectDocument(other)
+                peer.documentTabController.activate(document: other, title: "Peer", toolTip: "Peer.md", placement: .newTab)
+                let otherSession = peer.documentController.session(for: other.editingTarget)
+                let gate = TransitionGate()
+                defer {
+                    gate.release()
+                    otherSession.detachmentResumeTask = nil
+                }
+                otherSession.detachmentResumeTask = Task { await gate.wait() }
+                window.navigateDocumentHistory(.back)
+                for _ in 0..<100 where !gate.started { await Task.yield() }
+                try #require(gate.started)
+                if peerOwnsNewSelection {
+                    peer.selectDocumentTab(withID: try #require(peer.documentTabController.selectedTabID))
+                } else {
+                    window.requestOpenNote(originReference)
+                }
+                await window.waitForDocumentTransitions()
+                gate.release()
+                await peer.waitForDocumentTransitions()
+                #expect(window.documentController.selectedDocument == origin)
+                #expect(window.documentNavigationHistoryController.currentDocument == origin)
+                #expect(!window.documentNavigationHistoryController.canGoForward)
+                #expect(peer.documentController.selectedDocument == other)
+                #expect(targetSession.readScrollPosition.fraction == 0.21)
                 #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
                 #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
             }

@@ -225,6 +225,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         didSet {
             guard generation != oldValue else { return }
             citationInteractionRevision &+= 1
+            citationLifecycleRevision &+= 1
             writingContextChanges.send()
             refreshImageResources()
         }
@@ -243,9 +244,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             && webView?.isLoading == false
             && (webView as? DocumentNativeWebView)?.editorHandoffLease == nil
     }
-    private var citationTransactionID: String?
+    private struct CitationOperation {
+        let id: String
+        let sessionID: UUID
+        let documentID: String
+        let requestEpoch: UInt64
+        let lifecycleRevision: UInt64
+        let focusRevision: UInt64
+        var rendererRevision: Int? = nil
+        var cancellationRequested = false
+        var focusReturnPermitted = true
+    }
+
+    private var citationOperation: CitationOperation?
     @Published private(set) var citationStatus: String?
-    private var citationCancellationRequested = false
+    // Native revocations remain distinct from learning a checked renderer snapshot.
+    private var citationLifecycleRevision: UInt64 = 0
     private var citationInteractionRevision: UInt64 = 0
     private(set) var rendererInteractionRevision: Int?
     private let citationIntegration: any ZoteroDocumentIntegrating
@@ -763,6 +777,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             flushPendingScrollPosition()
             reconvergePendingPresentationState()
         }
+        if previousSelection != selections || wasComposing != isComposing {
+            citationLifecycleRevision &+= 1
+        }
         if previousSelection != selections || wasComposing != isComposing || previousRendererRevision != interactionRevision {
             citationInteractionRevision &+= 1
             writingContextChanges.send()
@@ -827,6 +844,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// remains available until its separate safety owner releases it.
     func endClosedPresentation(preservingSourceWork: Bool = false) {
         citationInteractionRevision &+= 1
+        citationLifecycleRevision &+= 1
+        citationOperation?.focusReturnPermitted = false
         let retainsComposition = isComposing
         presentationIsClosed = true
         openingPresentationID = UUID()
@@ -1038,7 +1057,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func setMode(_ mode: MarkdownEditorMode) {
-        if pendingMode != mode { citationInteractionRevision &+= 1 }
+        if pendingMode != mode {
+            citationInteractionRevision &+= 1
+            citationLifecycleRevision &+= 1
+            citationOperation?.focusReturnPermitted = false
+        }
         let requiresConvergence = pendingMode != mode || presentedMode != mode || modeNeedsReassertion
         pendingMode = mode
         if mode == .source { openingImageWaitTask?.cancel() }
@@ -1094,6 +1117,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         try await self.convergePendingPresentationState(
                             in: webView, requiringRequestEpoch: self.requestEpoch, documentID: self.documentID)
                     }
+                    // Appearance convergence can suspend even when Review is
+                    // already acknowledged. Re-read the latest mode before
+                    // treating that older mode as a completed no-op.
+                    if self.pendingMode != targetMode { continue }
                     guard self.presentedMode != targetMode || self.modeNeedsReassertion else { return }
                     PerformanceProbe.shared.markEditorModeBridgeStarted(
                         mode: targetMode
@@ -1870,7 +1897,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             // native mirror cannot prove that WebKit has no pending input.
             guard try await waitUntilLoadedForSave() else { throw SessionError.unavailable }
         }
-        if suspendForDetachment { citationInteractionRevision &+= 1 }
+        if suspendForDetachment {
+            citationInteractionRevision &+= 1
+            citationLifecycleRevision &+= 1
+            citationOperation?.focusReturnPermitted = false
+        }
         var expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
             generation: generation
@@ -2307,7 +2338,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// operation or revive the focus lease of a hidden Review document.
     @discardableResult
     func acceptNativeFocusAfterDrop(from requestingWebView: WKWebView) -> Bool {
-        guard webView === requestingWebView, isReady, isLoaded, errorMessage == nil,
+        guard webView === requestingWebView, isReady, isLoaded,
             automaticFocusIsAuthorized, !isComposing, presentedMode == pendingMode,
             !requestingWebView.isHiddenOrHasHiddenAncestor,
             let window = requestingWebView.window, window.isKeyWindow,
@@ -2360,8 +2391,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = try await send(
             focusOperation(for: target, mode: mode), in: webView,
             admittingFocus: { [self] in
+                // A loaded mode may still carry a recovery warning. Its
+                // presentation phase, rather than report text, owns availability.
                 guard !Task.isCancelled, requestEpoch == intendedRequestEpoch, focusRequestRevision == revision,
-                    isReady, isLoaded, errorMessage == nil, !isComposing,
+                    isReady, isLoaded, !isComposing,
                     presentedMode == mode, pendingMode == mode,
                     !webView.isHiddenOrHasHiddenAncestor,
                     let window = webView.window, window.isKeyWindow,
@@ -2474,7 +2507,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func recordNoteOpeningActualFocus(attemptID: UUID?) {
         guard let attemptID,
             automaticFocusIsAuthorized, pendingFocusIntentRevision == nil,
-            !presentationIsClosed, isReady, isLoaded, errorMessage == nil, !isComposing,
+            !presentationIsClosed, isReady, isLoaded, !isComposing,
             detachmentSuspensionID == nil,
             let presentedMode, pendingMode == presentedMode,
             let nativeWebView = webView as? DocumentNativeWebView,
@@ -2515,6 +2548,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     func resignFocusAndWait() async {
         focusRequestRevision &+= 1
         citationInteractionRevision &+= 1
+        citationLifecycleRevision &+= 1
+        citationOperation?.focusReturnPermitted = false
         automaticFocusIsAuthorized = false
         pendingFocusIntentRevision = nil
         await resignFocusAndWait(revision: focusRequestRevision)
@@ -2558,38 +2593,58 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         reference: MarkdownEditorCitationReference?
     ) async throws {
         guard isReady, isLoaded, !isComposing, preferredDocumentFocusTarget != .title,
-            citationTransactionID == nil, let webView
+            citationOperation == nil, let webView
         else { throw SessionError.unavailable }
         let transactionID = "citation_" + UUID().uuidString
         let capturedSessionID = sessionID
         let capturedDocumentID = documentID
-        let capturedRevision = citationInteractionRevision
-        _ = try await send(.beginCitation(transactionID: transactionID, command: command.rawValue, reference: reference), in: webView)
-        citationTransactionID = transactionID
-        citationCancellationRequested = false
+        citationOperation = CitationOperation(
+            id: transactionID, sessionID: capturedSessionID, documentID: capturedDocumentID,
+            requestEpoch: requestEpoch, lifecycleRevision: citationLifecycleRevision, focusRevision: focusRequestRevision)
         defer {
-            if citationTransactionID == transactionID { citationTransactionID = nil }
+            if citationOperation?.id == transactionID { citationOperation = nil }
         }
         let authority: @Sendable () async -> ZoteroDocumentAuthority = { [weak self] in
-            await self?.citationAuthority(
-                transactionID: transactionID, sessionID: capturedSessionID,
-                documentID: capturedDocumentID, revision: capturedRevision) ?? .unavailable
+            await self?.citationAuthority(transactionID: transactionID) ?? .unavailable
         }
-        let result = await citationIntegration.run(
-            transactionID: transactionID, command: command, documentID: bridgeDocumentID,
-            authority: authority,
-            handler: { [weak self] callback in
-                guard let self else { throw SessionError.unavailable }
-                return try await self.handleCitationCallback(
-                    callback, transactionID: transactionID,
-                    sessionID: capturedSessionID, documentID: capturedDocumentID, revision: capturedRevision)
-            })
         do {
+            let begun = try await send(
+                .beginCitation(transactionID: transactionID, command: command.rawValue, reference: reference), in: webView)
+            // beginCitation captures CodeMirror's current selection/context. Its
+            // checked reply may be the first native observation of that snapshot.
+            // Native revocations above retain their pre-await authority.
+            if citationOperation?.id == transactionID {
+                citationOperation?.rendererRevision = begun.interactionRevision
+            }
+            let result = await citationIntegration.run(
+                transactionID: transactionID, command: command, documentID: bridgeDocumentID,
+                authority: authority,
+                handler: { [weak self] callback in
+                    guard let self else { throw SessionError.unavailable }
+                    return try await self.handleCitationCallback(callback, transactionID: transactionID)
+                })
             if result.status == .cleanedUp, result.remoteCleanupConfirmed,
                 await authority() == .current
             {
-                _ = try await send(.finishCitation(transactionID: transactionID), in: webView)
-                _ = try? await send(.focus, in: webView)
+                let focusRevision = focusRequestRevision
+                let focusEpoch = requestEpoch
+                let focusMode = pendingMode
+                let finished = try await send(.finishCitation(transactionID: transactionID), in: webView)
+                // Acceptance advances source/selection itself. Only the existing
+                // native focus lease may return after that accepted mutation.
+                _ = try? await send(
+                    .focus, in: webView,
+                    admittingFocus: { [self] in
+                        citationOperation?.id == transactionID
+                            && citationOperation?.focusReturnPermitted == true
+                            && citationOperation?.cancellationRequested == false
+                            && sessionID == capturedSessionID && documentID == capturedDocumentID
+                            && requestEpoch == focusEpoch && focusRequestRevision == focusRevision
+                            && self.webView === webView && isReady && isLoaded && !presentationIsClosed
+                            && !isComposing && detachmentSuspensionID == nil
+                            && pendingMode == focusMode && presentedMode == focusMode && focusMode != .review
+                            && rendererInteractionRevision == finished.interactionRevision
+                    })
             } else {
                 await cancelEditorCitation(
                     transactionID: transactionID, in: webView,
@@ -2599,7 +2654,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 case .busy:
                     throw SessionError.citationFailed("Zotero is handling another citation operation. Finish or cancel its open dialog, then try again.")
                 case .unavailable, .cleanedUp:
-                    if citationCancellationRequested, result.remoteCleanupConfirmed { return }
+                    if citationOperation?.cancellationRequested == true, result.remoteCleanupConfirmed { return }
                     throw SessionError.citationFailed(
                         "The document changed during the citation operation. Your text was preserved; try again at the current position.")
                 case .failed:
@@ -2612,7 +2667,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             await cancelEditorCitation(
                 transactionID: transactionID, in: webView,
                 sessionID: capturedSessionID, documentID: capturedDocumentID)
-            if citationCancellationRequested, citationTransactionID == transactionID,
+            if citationOperation?.id == transactionID, citationOperation?.cancellationRequested == true,
                 case SessionError.staleRequest = error
             {
                 return
@@ -2633,27 +2688,24 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }.value
     }
 
-    private func citationAuthority(
-        transactionID: String, sessionID capturedSessionID: UUID,
-        documentID capturedDocumentID: String, revision: UInt64
-    ) -> ZoteroDocumentAuthority {
-        guard citationTransactionID == transactionID else { return .unavailable }
-        if citationCancellationRequested { return .cancelled }
-        return sessionID == capturedSessionID && documentID == capturedDocumentID
-            && citationInteractionRevision == revision
+    private func citationAuthority(transactionID: String) -> ZoteroDocumentAuthority {
+        guard let operation = citationOperation, operation.id == transactionID else { return .unavailable }
+        if operation.cancellationRequested { return .cancelled }
+        return sessionID == operation.sessionID && documentID == operation.documentID
+            && requestEpoch == operation.requestEpoch
+            && citationLifecycleRevision == operation.lifecycleRevision
+            && focusRequestRevision == operation.focusRevision
+            && operation.rendererRevision != nil && rendererInteractionRevision == operation.rendererRevision
             && isReady && isLoaded && !isComposing && !presentationIsClosed
+            && preferredDocumentFocusTarget != .title
             && detachmentSuspensionID == nil && webView != nil
             ? .current : .unavailable
     }
 
     private func handleCitationCallback(
-        _ callback: ZoteroDocumentCallback, transactionID: String,
-        sessionID capturedSessionID: UUID, documentID capturedDocumentID: String, revision: UInt64
+        _ callback: ZoteroDocumentCallback, transactionID: String
     ) async throws -> ZoteroDocumentReply {
-        guard
-            citationAuthority(
-                transactionID: transactionID, sessionID: capturedSessionID,
-                documentID: capturedDocumentID, revision: revision) == .current, let webView
+        guard citationAuthority(transactionID: transactionID) == .current, let webView
         else { throw SessionError.staleRequest }
         switch callback {
         case .activate:
@@ -2728,11 +2780,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             try await performCitation(.setDocPrefs)
             return
         case .cancelCitation:
-            guard let transactionID = citationTransactionID else { return }
-            citationCancellationRequested = true
+            guard let operation = citationOperation else { return }
+            let transactionID = operation.id
+            citationOperation?.cancellationRequested = true
             if let webView {
                 await cancelEditorCitation(
-                    transactionID: transactionID, in: webView, sessionID: sessionID, documentID: documentID)
+                    transactionID: transactionID, in: webView, sessionID: operation.sessionID, documentID: operation.documentID)
             }
             await citationIntegration.cancelCurrentTransaction(transactionID: transactionID)
             await announceCitationStatus(ScholiumL10n.dynamicString("Citation cancelled. Finish or cancel any open Zotero dialog."))
@@ -3517,7 +3570,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             + Double(duration.attoseconds) / 1_000_000_000_000_000
         let expiresAt = Int64((Date().timeIntervalSince1970 * 1_000 + durationMilliseconds).rounded(.down))
         let previous = operation.serializesSourceMutation ? sourceMutationBarrier : nil
-        let capturedCitationRevision = citationInteractionRevision
         let context = BridgeRequestContext(
             requestEpoch: requiredRequestEpoch ?? requestEpoch,
             sessionID: sessionID,
@@ -3585,10 +3637,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         guard admittingCommand() else { throw SessionError.staleRequest }
                     }
                     if case .finishCitation(let transactionID) = operation {
-                        guard
-                            citationAuthority(
-                                transactionID: transactionID, sessionID: context.sessionID,
-                                documentID: context.documentID, revision: capturedCitationRevision) == .current
+                        guard citationAuthority(transactionID: transactionID) == .current
                         else { throw SessionError.staleRequest }
                     }
                     let dispatchID = UUID()

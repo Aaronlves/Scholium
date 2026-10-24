@@ -20,7 +20,8 @@ struct AgentChatCopyButton: View {
 
     var body: some View {
         ScholiumCopyFeedback(contentIdentity: .init(contentIdentity), copy: copy) { copied, performCopy in
-            AgentChatActionButton(label: copied ? "Copied" : label,
+            AgentChatActionButton(
+                label: copied ? "Copied" : label,
                 systemImage: copied ? "checkmark" : ScholiumSidebarAction.copy.symbol,
                 accessibilityID: accessibilityID, action: performCopy)
         }
@@ -47,8 +48,7 @@ struct AgentChatActionButton: NSViewRepresentable {
     func updateNSView(_ button: AgentChatActionButtonView, context: Context) {
         button.handler = action
         button.focusChanged = { [focus] id, focused in
-            if focused { focus?.wrappedValue = id }
-            else if focus?.wrappedValue == id { focus?.wrappedValue = nil }
+            if focused { focus?.wrappedValue = id } else if focus?.wrappedValue == id { focus?.wrappedValue = nil }
         }
         button.isEnabled = isEnabled
         button.isTransparent = !drawsContent

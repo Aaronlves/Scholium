@@ -15,6 +15,7 @@ struct DocumentEditingSourceFingerprintTests {
         try #require(decomposed == precomposed)
         try #require(Data(decomposed.utf8) != Data(precomposed.utf8))
         let session = DocumentSessionModel(key: nil)
+        defer { session.cancelScheduledWork() }
         session.editingRevision = DocumentFingerprint(content: "A different disk revision")
         #expect(session.editingSourceFingerprint == DocumentFingerprint(data: Data()))
 
@@ -22,7 +23,11 @@ struct DocumentEditingSourceFingerprintTests {
             session.editingSource = exact
             let expected = DocumentFingerprint(data: Data(exact.utf8))
             #expect(session.editingSourceFingerprint == expected)
-            session.isSavingEdit.toggle()
+            if let attempt = session.activeSaveAttempt {
+                session.completeSaveAttempt(token: attempt.token)
+            } else {
+                session.beginSaveAttempt(.init(task: Task { @MainActor in .clean }))
+            }
             #expect(session.editingSourceFingerprint == expected)
             #expect(Data(session.editingSource.utf8) == Data(exact.utf8))
         }

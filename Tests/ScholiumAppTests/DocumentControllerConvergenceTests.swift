@@ -180,9 +180,11 @@ struct DocumentControllerConvergenceTests {
     @Test("Navigation visits use the frozen viewport instead of a trailing native observation")
     func navigationVisitUsesCapturedDepartureViewport() async throws {
         _ = NSApplication.shared
-        let source = "# Departure\n\n" + (0..<100).map {
-            "Paragraph \($0): exact context 中文 e\u{301} 🦉 for the departing document.\n\n"
-        }.joined()
+        let source =
+            "# Departure\n\n"
+            + (0..<100).map {
+                "Paragraph \($0): exact context 中文 e\u{301} 🦉 for the departing document.\n\n"
+            }.joined()
         let snapshot = note(vaultID: UUID(), noteID: UUID(), path: "Departure.md", source: source)
         let controller = DocumentController()
         controller.rememberPresentationMode(.source)
@@ -222,8 +224,9 @@ struct DocumentControllerConvergenceTests {
     private func retainedPresentationWindow(
         controller: DocumentController, notes: [WorkspaceNoteSnapshot]
     ) -> NSWindow {
-        let host = NSHostingView(rootView: RetainedPresentationFixture(
-            controller: controller, projection: RetainedPresentationProjection(notes: notes)))
+        let host = NSHostingView(
+            rootView: RetainedPresentationFixture(
+                controller: controller, projection: RetainedPresentationProjection(notes: notes)))
         host.sizingOptions = []
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
@@ -482,13 +485,13 @@ struct DocumentControllerConvergenceTests {
             revision: original.fingerprint, mode: .source)
         defer { session.cancelScheduledWork() }
         session.editingSource = "Pending edit\n"
-        session.activeSaveToken = UUID()
-        session.isSavingEdit = true
-        session.activeSaveTask = Task { @MainActor in
-            // The joined save completes before the retry, so no further write is necessary.
-            session.editingSource = session.originalEditingSource
-            return .clean
-        }
+        session.beginSaveAttempt(
+            .init(
+                task: Task { @MainActor in
+                    // The joined save completes before the retry, so no further write is necessary.
+                    session.editingSource = session.originalEditingSource
+                    return .clean
+                }))
         controller.updateDocumentProjection(
             .init(
                 sessionKey: key,
@@ -1160,14 +1163,12 @@ struct DocumentControllerConvergenceTests {
             await saveGate.pause()
             throw DocumentControllerError.editorUnavailable
         }
-        session.activeSaveTask = save
-        session.isSavingEdit = true
+        session.beginSaveAttempt(.init(task: save))
         defer {
             readGate.release()
             saveGate.release()
             save.cancel()
-            session.activeSaveTask = nil
-            session.isSavingEdit = false
+            session.cancelSaveAttempt()
             session.cancelScheduledWork()
             controller.unbind()
         }
@@ -1460,7 +1461,8 @@ struct DocumentControllerConvergenceTests {
     @Test("Managed creation keeps the body caret visible below long frontmatter")
     func managedCreationRevealsBodyAfterOpening() async throws {
         _ = NSApplication.shared
-        let source = "---\n" + (0..<80).map { "property_\($0): preserved value\n" }.joined()
+        let source =
+            "---\n" + (0..<80).map { "property_\($0): preserved value\n" }.joined()
             + "---\nManaged body.\n"
         let created = note(vaultID: UUID(), noteID: UUID(), path: "Created.md", source: source)
         let bodyStart = created.document.bodyUTF16Offset
@@ -1482,17 +1484,18 @@ struct DocumentControllerConvergenceTests {
                 && session.editorSession.context?.selections.first?.head == bodyStart
         }
         let webView = try #require(session.editorSession.webView)
-        let bodyIsVisible = try await webView.callAsyncJavaScript(
-            """
-            const scroller = document.querySelector('.cm-scroller');
-            const body = Array.from(document.querySelectorAll('.cm-line'))
-              .find(line => line.textContent.includes('Managed body.'));
-            if (!scroller || !body) return false;
-            const viewport = scroller.getBoundingClientRect();
-            const bounds = body.getBoundingClientRect();
-            return scroller.scrollTop > 0 && bounds.top >= viewport.top - 1
-              && bounds.bottom <= viewport.bottom + 1;
-            """, arguments: [:], in: nil, contentWorld: .page) as? Bool
+        let bodyIsVisible =
+            try await webView.callAsyncJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                const body = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(line => line.textContent.includes('Managed body.'));
+                if (!scroller || !body) return false;
+                const viewport = scroller.getBoundingClientRect();
+                const bounds = body.getBoundingClientRect();
+                return scroller.scrollTop > 0 && bounds.top >= viewport.top - 1
+                  && bounds.bottom <= viewport.bottom + 1;
+                """, arguments: [:], in: nil, contentWorld: .page) as? Bool
         #expect(bodyIsVisible == true)
         #expect(Data(session.editorSession.checkedSource.utf8) == Data(source.utf8))
     }
@@ -1716,7 +1719,8 @@ struct DocumentControllerConvergenceTests {
         )
         let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         let session = try #require(controller.retainedSession(for: key))
-        session.isSavingEdit = true
+        let saveAttempt = ActiveSaveAttempt(task: Task { @MainActor in .clean })
+        session.beginSaveAttempt(saveAttempt)
 
         controller.installOpenedDocument(
             saved,
@@ -1737,7 +1741,7 @@ struct DocumentControllerConvergenceTests {
         session.editingSource = savedSource
         session.originalEditingSource = savedSource
         session.editingRevision = saved.fingerprint
-        session.isSavingEdit = false
+        session.completeSaveAttempt(token: saveAttempt.token)
         let conflict = controller.reconcileLatestDeferredWorkspaceSnapshot(
             for: session
         )
@@ -2010,11 +2014,12 @@ struct DocumentControllerConvergenceTests {
         let session = controller.session(for: key)
         let saved = NoteDocument(relativePath: "Source.md", rawContent: "A claim. ^claim\n")
         let receipt = EditorSaveCommitReceipt()
-        session.activeSaveCommitReceipt = receipt
-        session.activeSaveTask = Task { @MainActor in
-            if commitsBeforeFailure { receipt.document = saved }
-            throw DocumentControllerError.editorUnavailable
-        }
+        session.beginSaveAttempt(
+            .init(
+                task: Task { @MainActor in
+                    if commitsBeforeFailure { receipt.document = saved }
+                    throw DocumentControllerError.editorUnavailable
+                }, receipt: receipt))
         defer { session.cancelScheduledWork() }
         var confirmed: [NoteDocument] = []
 

@@ -343,6 +343,13 @@ function setDocumentFocusTarget(target: EditorFocusTarget) {
   scheduleEditorInteractionReport();
 }
 
+function focusEditor(view: EditorView) {
+  view.focus();
+  // WebKit can acknowledge activeElement before delivering its focus event.
+  // The command receipt and a later identical observation share one context.
+  if (view.contentDOM.ownerDocument.activeElement === view.contentDOM) setDocumentFocusTarget("editor");
+}
+
 function configuredEditorMode(state: EditorState): EditorMode {
   return state.facet(editorModeFacet);
 }
@@ -395,7 +402,7 @@ function dispatchProjectedPointerSelection(
     scrollIntoView: true,
     annotations: Transaction.userEvent.of("select.pointer"),
   });
-  view.focus();
+  focusEditor(view);
 }
 
 function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
@@ -464,15 +471,27 @@ function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
       && event.clientY >= contentTop
       && event.clientY <= contentBottom) return null;
 
-  // CodeMirror maps a point in a line's vertical padding to an adjacent block
-  // boundary. Live Preview deliberately gives headings generous semantic
-  // padding, so clamp that point to the heading's actual glyph row before
-  // resolving the visible character back to its authoritative source line.
-  // This is especially important when title, attachment, and authored blank
-  // line widgets share a nearby source boundary.
-  const contentY = contentBottom > contentTop
-    ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5))
-    : (rect.top + rect.bottom) / 2;
+  // A content-box edge can sit above or below the glyphs under line-height
+  // and scaling. Resolve padding presses at the first/last rendered text row
+  // instead. A whole-heading midpoint would choose the wrong wrapped row.
+  const textRange = document.createRange();
+  const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+  const above = event.clientY < contentTop;
+  let fragment: DOMRect | undefined;
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    textRange.selectNodeContents(node);
+    for (const candidate of textRange.getClientRects()) {
+      // Concealed Markdown tokens remain mounted but have no text geometry.
+      if (candidate.width <= 0 || candidate.height <= 0) continue;
+      if (!fragment || (above ? candidate.top < fragment.top : candidate.bottom > fragment.bottom)) {
+        fragment = candidate;
+      }
+    }
+  }
+  const contentY = fragment
+    ? (fragment.top + fragment.bottom) / 2
+    : (contentTop + contentBottom) / 2;
   const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
   const caretNode = caret && heading.contains(caret.startContainer)
     ? caret.startContainer
@@ -2424,12 +2443,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
             || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint
             || configuredEditorMode(editor.state) !== "review") throw new Error("stale Review mode preparation");
       };
-      await reviewProjection.prepare(request.expiresAt);
+      await reviewProjection.prepare(request.expiresAt, "layout");
       requireCurrent();
       if (!sourcePosition.anchor || !reviewProjection.setAnchor(sourcePosition.anchor)) {
         reviewProjection.setFraction(sourcePosition.fraction);
       }
-      await reviewProjection.prepare(request.expiresAt);
+      await reviewProjection.prepare(request.expiresAt, "viewport");
       requireCurrent();
     }
     break;
@@ -2438,10 +2457,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "completePreparation": {
     if (configuredEditorMode(editor.state) === "review") {
       const preparationStartedAt = performance.now();
-      await reviewProjection.prepare(request.expiresAt);
+      await reviewProjection.prepare(request.expiresAt, "layout");
       if (operation.anchor) reviewProjection.setAnchor(operation.anchor);
       else if (operation.fraction !== undefined) reviewProjection.setFraction(operation.fraction);
-      await reviewProjection.prepare(request.expiresAt);
+      await reviewProjection.prepare(request.expiresAt, "viewport");
       recordEditorMetric("opening-preparation", preparationStartedAt, {review: 1, completed: 1});
       break;
     }
@@ -2558,9 +2577,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const releaseStartedAt = performance.now();
     // Native covers the opening through this final authorized focus and
     // geometry handoff, then exposes the active document surface.
-    if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({preventScroll: true});
-    else if (operation.focusTarget && configuredEditorMode(editor.state) === "review") reviewProjection.focus();
-    else if (operation.focusTarget) editor.focus();
+    if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") {
+      if (documentTitle.focus({preventScroll: true}) && document.activeElement?.matches("[data-scholium-title-input]")) {
+        setDocumentFocusTarget("title");
+      }
+    } else if (operation.focusTarget && configuredEditorMode(editor.state) === "review") reviewProjection.focus();
+    else if (operation.focusTarget) focusEditor(editor);
+    if (document.activeElement === editor.contentDOM) setDocumentFocusTarget("editor");
     // Review preparation measures its committed DOM at the restored viewport;
     // its retained source selection has no displayed writable caret to probe.
     if (configuredEditorMode(editor.state) !== "review") editor.coordsAtPos(editor.state.selection.main.head);
@@ -2711,7 +2734,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     editor.dispatch({changes: {from: selection.head, insert: text}, selection: {anchor: selection.head + text.length},
       annotations: [Transaction.userEvent.of("input.scholium.reference"), isolateHistory.of("full")]});
-    editor.focus();
+    focusEditor(editor);
     lastUndoLabel = lastRedoLabel = "Insert Wikilink";
     return successfulResult(request.requestID, true, "Insert Wikilink");
   }
@@ -2733,6 +2756,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID, true, undoLabel);
   }
   case "beginCitation": {
+    if (document.activeElement === editor.contentDOM) setDocumentFocusTarget("editor");
     if (citationTransaction !== null || editor.state.field(editorSuspensionState) !== null || document.activeElement?.closest("[data-scholium-title-input]")) {
       return rejected(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
     }
@@ -2865,6 +2889,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (!documentTitle.focus({preventScroll: true})) {
       return rejected(request.requestID, documentVersion, "document title is unavailable");
     }
+    if (document.activeElement?.matches("[data-scholium-title-input]")) setDocumentFocusTarget("title");
     break;
   }
   case "blur": editorOperations.blur(); break;
@@ -3407,7 +3432,7 @@ const editorOperations = {
         showEditorArrival.of(requestedLine === lineNumber ? line.from : null)],
     });
     if (requestedLine === lineNumber) scheduleSmoothEditorReveal(line.from, initialTop, initialLeft);
-    if (focusesEditor) editor.focus();
+    if (focusesEditor) focusEditor(editor);
   },
 
   /** Selects an exact source range without changing Markdown or undo history. */
@@ -3430,7 +3455,7 @@ const editorOperations = {
     scrollCoordinator.revealPosition(to);
     measureSelectionAction(editor);
     if (focusesEditor) {
-      editor.focus();
+      focusEditor(editor);
     }
   },
 
@@ -3482,7 +3507,7 @@ const editorOperations = {
   },
 
   focus() {
-    editor.focus();
+    focusEditor(editor);
   },
 
   blur() {

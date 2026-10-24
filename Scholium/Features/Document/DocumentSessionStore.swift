@@ -20,6 +20,23 @@ enum EditorSaveOutcome: Equatable {
     case changedDuringSave
 }
 
+/// One admitted save owns its execution and durable result until completion.
+@MainActor
+struct ActiveSaveAttempt {
+    let token: UUID
+    let task: Task<EditorSaveOutcome, Error>
+    let receipt: EditorSaveCommitReceipt
+
+    init(
+        token: UUID = UUID(), task: Task<EditorSaveOutcome, Error>,
+        receipt: EditorSaveCommitReceipt = EditorSaveCommitReceipt()
+    ) {
+        self.token = token
+        self.task = task
+        self.receipt = receipt
+    }
+}
+
 /// A failed resumption authorizes retrying only this short operation's freeze.
 /// Navigation suspensions never acquire this recovery record.
 struct DocumentInputResumeFailure: Equatable {
@@ -96,14 +113,18 @@ final class DocumentSessionModel: ObservableObject {
     @Published var editingRevision: DocumentFingerprint?
     @Published var editError: String?
     @Published var inputResumeFailure: DocumentInputResumeFailure?
-    @Published var isSavingEdit = false
+    @Published private(set) var activeSaveAttempt: ActiveSaveAttempt?
+    var isSavingEdit: Bool { activeSaveAttempt != nil }
     /// Review and the retained editor have independent viewport observations.
     /// A mode handoff copies one position explicitly; an ordinary report from
     /// one surface can never overwrite the other surface's viewport.
     private(set) var readScrollPosition = ObservedScrollPosition()
     private(set) var editorScrollPosition = ObservedScrollPosition()
-    @Published var returnToReadAfterSave = false
-    var reviewHandoffID: UUID?
+    @Published private(set) var returnToReadAfterSave = false
+    private(set) var reviewHandoffID: UUID?
+    private(set) var reviewHandoffTask: Task<Void, Never>?
+    var editorFocusIntent: DocumentEditorFocusIntent?
+    var editorFocusTask: Task<Void, Never>?
     @Published var suppressAutosave = false
     @Published var renderedReadHTML = ""
     @Published var renderedReadFingerprint = ""
@@ -130,9 +151,6 @@ final class DocumentSessionModel: ObservableObject {
     var autosaveTask: Task<Void, Never>?
     var autosaveToken: UUID?
     var autosaveDeadline: ContinuousClock.Instant?
-    var activeSaveTask: Task<EditorSaveOutcome, Error>?
-    var activeSaveCommitReceipt: EditorSaveCommitReceipt?
-    var activeSaveToken: UUID?
     var pendingEditorCommit: (snapshot: MarkdownEditorPersistenceSnapshot, document: NoteDocument)?
     var detachmentResumeTask: Task<Void, Never>?
     var detachmentResumeToken: UUID?
@@ -225,6 +243,7 @@ final class DocumentSessionModel: ObservableObject {
     /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {
+        cancelModeWork()
         presentationIsClosed = false
         resetScrollPosition()
         editorSession.prepareOpeningPresentation()
@@ -333,16 +352,70 @@ final class DocumentSessionModel: ObservableObject {
         presentation = next
     }
 
+    /// The retained document owns mode work beyond any particular SwiftUI view.
+    /// Revocation clears its token before cancelling, so late bridge replies
+    /// cannot complete a departed or superseded presentation.
+    func beginReviewHandoff(_ operation: @escaping @MainActor (UUID) async -> Void) {
+        cancelReviewHandoff()
+        let id = UUID()
+        reviewHandoffID = id
+        returnToReadAfterSave = true
+        reviewHandoffTask = Task { @MainActor [weak self] in
+            await operation(id)
+            self?.completeReviewHandoff(id)
+        }
+    }
+
+    func completeReviewHandoff(_ id: UUID) {
+        guard reviewHandoffID == id else { return }
+        reviewHandoffID = nil
+        reviewHandoffTask = nil
+        returnToReadAfterSave = false
+    }
+
+    func cancelReviewHandoff() {
+        let task = reviewHandoffTask
+        if let id = reviewHandoffID { completeReviewHandoff(id) }
+        task?.cancel()
+    }
+
+    func cancelEditorFocusIntent() {
+        editorFocusIntent = nil
+        editorFocusTask?.cancel()
+        editorFocusTask = nil
+    }
+
+    func cancelModeWork() {
+        cancelReviewHandoff()
+        cancelEditorFocusIntent()
+    }
+
+    func beginSaveAttempt(_ attempt: ActiveSaveAttempt) {
+        precondition(activeSaveAttempt == nil, "A save must join the current attempt before admitting another")
+        activeSaveAttempt = attempt
+    }
+
+    @discardableResult
+    func completeSaveAttempt(token: UUID) -> Bool {
+        guard activeSaveAttempt?.token == token else { return false }
+        activeSaveAttempt = nil
+        return true
+    }
+
+    func cancelSaveAttempt() {
+        let attempt = activeSaveAttempt
+        activeSaveAttempt = nil
+        attempt?.task.cancel()
+    }
+
     func cancelScheduledWork() {
+        cancelModeWork()
         cancelAutosave()
         detachmentPreparationTask?.cancel()
         detachmentResumeTask?.cancel()
         detachmentResumeTask = nil
         detachmentResumeToken = nil
-        activeSaveTask?.cancel()
-        activeSaveTask = nil
-        activeSaveCommitReceipt = nil
-        activeSaveToken = nil
+        cancelSaveAttempt()
     }
 
     func cancelAutosave() {
@@ -480,6 +553,7 @@ final class DocumentSessionModel: ObservableObject {
     /// A successful tab close ends only browsing presentation. Exact source,
     /// save/conflict state and recovery buffers remain owned by this session.
     func endClosedPresentation() {
+        cancelModeWork()
         presentationIsClosed = true
         citationFieldsCache.removeAll()
         resetScrollPosition()
@@ -487,7 +561,7 @@ final class DocumentSessionModel: ObservableObject {
         findPresentation.resetAfterClose()
         let retainsSourceWork =
             hasUnsavedChanges || isSavingEdit
-            || activeSaveTask != nil || pendingEditorCommit != nil
+            || pendingEditorCommit != nil
             || conflict != nil || canRetrySave || inputResumeError != nil || editorSession.isComposing
         editorSession.endClosedPresentation(preservingSourceWork: retainsSourceWork)
         hasBeenActivated = false
@@ -613,7 +687,7 @@ final class DocumentSessionStore {
         if session.hasUnsavedChanges { reasons.insert(.dirty) }
         if session.editorSession.isComposing { reasons.insert(.composition) }
         if session.conflict != nil { reasons.insert(.conflict) }
-        if session.isSavingEdit || session.activeSaveTask != nil || session.pendingEditorCommit != nil {
+        if session.isSavingEdit || session.pendingEditorCommit != nil {
             reasons.insert(.saveInFlight)
         }
         if session.detachmentPreparationTask != nil { reasons.insert(.saveInFlight) }

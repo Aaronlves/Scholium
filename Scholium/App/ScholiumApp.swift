@@ -32,6 +32,7 @@ final class WindowModel: ObservableObject {
     enum DocumentTransitionPreparation {
         case saveSelectedDocument
         case preserveSelectedDocument
+        case flushRegisteredEditor(capturingEditorState: Bool)
         case operationOnly
         case openingDocument(placement: DocumentTabPlacement, retainedTab: @MainActor () -> DocumentTabItem?)
     }
@@ -169,8 +170,8 @@ final class WindowModel: ObservableObject {
                 )
             },
             enqueueDocumentTransition: { [weak self] operation, didFail, didFinish in
-                self?.enqueueCurrencyAwareDocumentTransition(
-                    preservingCurrentEditorState: false,
+                self?.enqueueDocumentTransition(
+                    preparation: .flushRegisteredEditor(capturingEditorState: false),
                     operation,
                     didFail: didFail,
                     didFinish: didFinish

@@ -73,6 +73,176 @@ struct ZoteroCitationEditorIntegrationTests {
         await host.closeAndDrain()
     }
 
+    @Test("Citation begin acknowledges the current renderer snapshot and excludes a concurrent begin")
+    func acceptedBeginSnapshotSurvivesTrailingObservation() async throws {
+        try await withCitationBeginFixture { fixture in
+            fixture.beginHeldRefresh()
+            try await waitUntil("accepted citation begin held", diagnostics: { fixture.diagnostics }) {
+                fixture.dispatcher.citationBeginIsHeld
+            }
+            let before = try #require(fixture.dispatcher.rendererRevisionBeforeBegin)
+            let accepted = try #require(fixture.dispatcher.acceptedBeginRevision)
+            #expect(accepted > before)
+            #expect(fixture.session.generation == 0)
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            do {
+                try await fixture.session.perform(.insertCitation)
+                Issue.record("A second citation began before the first begin response returned")
+            } catch MarkdownEditorSession.SessionError.unavailable {
+                // Native ownership rejects the second request before dispatch.
+            }
+            #expect(fixture.dispatcher.citationOperations.filter { if case .beginCitation = $0 { true } else { false } }.count == 1)
+            fixture.dispatcher.releaseHeldCitationBegin()
+            try await fixture.finishRefresh()
+            #expect(await fixture.transcript.completedCommands == 1)
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData?.acceptedFields == [] && fixture.session.isDirty)
+            try await citationHistory(fixture.session, redo: false)
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData == fixture.data)
+        }
+    }
+
+    enum CitationBeginRevocation: String, CaseIterable, Sendable {
+        case rendererSelection, rendererSelectionBeforeCapture, nativeFocus, nativeMode, cancel
+    }
+
+    @Test("A held citation begin cannot revive revoked renderer or native authority", arguments: CitationBeginRevocation.allCases)
+    func heldBeginCannotReviveCitation(_ revocation: CitationBeginRevocation) async throws {
+        try await withCitationBeginFixture { fixture in
+            fixture.dispatcher.holdCitationBeginBeforeDispatch = revocation == .rendererSelectionBeforeCapture
+            fixture.beginHeldRefresh()
+            try await waitUntil("citation begin awaits revocation", diagnostics: { fixture.diagnostics }) {
+                fixture.dispatcher.citationBeginIsHeld
+            }
+            switch revocation {
+            case .rendererSelection, .rendererSelectionBeforeCapture:
+                let head = try #require(fixture.session.context?.selections.first?.head)
+                let focusRevision = fixture.session.focusRequestRevision
+                let web = try #require(fixture.session.webView)
+                try await fixture.dispatcher.revealRendererCaret(head - 1, in: web)
+                try await waitUntil("new renderer selection observed", diagnostics: { fixture.diagnostics }) {
+                    fixture.session.context?.selections.first?.head == head - 1
+                }
+                #expect(fixture.session.focusRequestRevision == focusRevision)
+            case .nativeFocus:
+                await fixture.session.resignFocusAndWait()
+            case .nativeMode:
+                fixture.session.setMode(.source)
+                try await waitUntil("new Source mode acknowledged", diagnostics: { fixture.diagnostics }) {
+                    fixture.session.presentedMode == .source
+                }
+            case .cancel:
+                try await fixture.session.perform(.cancelCitation)
+            }
+            fixture.dispatcher.releaseHeldCitationBegin()
+            if revocation == .cancel {
+                try await fixture.finishRefresh()
+                #expect(
+                    fixture.session.citationStatus
+                        == ScholiumL10n.dynamicString("Citation cancelled. Finish or cancel any open Zotero dialog."))
+            } else {
+                do {
+                    try await fixture.finishRefresh()
+                    Issue.record("A revoked citation begin reached acceptance")
+                } catch MarkdownEditorSession.SessionError.citationFailed(let message) {
+                    #expect(message == "The document changed during the citation operation. Your text was preserved; try again at the current position.")
+                }
+            }
+            #expect(await fixture.transcript.requestCount == 0)
+            #expect(!fixture.dispatcher.citationOperations.contains { if case .finishCitation = $0 { true } else { false } })
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData == fixture.data && !fixture.session.isDirty)
+        }
+    }
+
+    @Test("An invalid citation begin response cleans the renderer transaction before retry")
+    func invalidBeginResponseReleasesCitationOwnership() async throws {
+        try await withCitationBeginFixture { fixture in
+            fixture.dispatcher.corruptNextCitationBeginResponse = true
+            do {
+                try await fixture.session.perform(.refreshCitations)
+                Issue.record("An invalid begin response was accepted")
+            } catch MarkdownEditorSession.SessionError.invalidResult {
+                // The renderer already captured a transaction; cleanup must release it.
+            }
+            #expect(await fixture.transcript.requestCount == 0)
+            #expect(fixture.dispatcher.citationOperations.contains { if case .cancelCitation = $0 { true } else { false } })
+            #expect(fixture.session.checkedCitationData == fixture.data)
+            try await fixture.session.perform(.refreshCitations)
+            #expect(await fixture.transcript.completedCommands == 1)
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData?.acceptedFields == [])
+        }
+    }
+
+    @Test("A commanded focus receipt survives its delayed identical DOM focus observation")
+    func delayedFocusObservationDoesNotRevokeCitation() async throws {
+        try await withCitationBeginFixture(suppressesInitialFocusObservation: true) { fixture in
+            let web = try #require(fixture.session.webView)
+            _ = try await fixture.session.send(.blur, in: web)
+            let inactive =
+                try await web.callAsyncJavaScript(
+                    "return document.activeElement !== document.querySelector('.cm-content');", arguments: [:], in: nil, contentWorld: .page) as? Bool
+            try #require(inactive == true)
+            try await fixture.session.focusAndWait()
+            let blocked =
+                try await web.callAsyncJavaScript(
+                    "return window.citationFocusGate.blocked;", arguments: [:], in: nil, contentWorld: .page) as? Int
+            try #require((blocked ?? 0) > 0, "The commanded editor focus event must actually be delayed")
+            let acknowledged = try await fixture.session.send(.queryContext, in: web)
+            fixture.beginHeldRefresh(repeatsCaret: false)
+            try await waitUntil("citation captures acknowledged logical focus", diagnostics: { fixture.diagnostics }) {
+                fixture.dispatcher.citationBeginIsHeld
+            }
+            let accepted = try #require(fixture.dispatcher.acceptedBeginRevision)
+            #expect(accepted == acknowledged.interactionRevision, "The focus receipt already owns the actual editor focus")
+            let active =
+                try await web.callAsyncJavaScript(
+                    "return document.activeElement === document.querySelector('.cm-content');", arguments: [:], in: nil, contentWorld: .page) as? Bool
+            try #require(active == true)
+            _ = try await web.callAsyncJavaScript(
+                "window.citationFocusGate.release();", arguments: [:], in: nil, contentWorld: .page)
+            let observed = try await fixture.session.send(.queryContext, in: web)
+            #expect(observed.interactionRevision == accepted)
+            fixture.dispatcher.releaseHeldCitationBegin()
+            try await fixture.finishRefresh()
+            #expect(await fixture.transcript.completedCommands == 1)
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData?.acceptedFields == [])
+        }
+    }
+
+    @Test("Citation acceptance returns focus only while its pre-commit native lease remains current", arguments: [false, true])
+    func acceptedCitationDoesNotReviveResignedFocus(resignsFocus: Bool) async throws {
+        try await withCitationBeginFixture { fixture in
+            let focusCount = fixture.dispatcher.operationTags.filter { $0 == "focus" }.count
+            fixture.beginHeldFinishRefresh()
+            try await waitUntil("accepted citation finish held", diagnostics: { fixture.diagnostics }) {
+                fixture.dispatcher.citationFinishIsHeld
+            }
+            #expect(await fixture.transcript.completedCommands == 1)
+            let web = try #require(fixture.session.webView)
+            // A remote picker can leave DOM input unfocused without revoking
+            // the native lease that is allowed to return after acceptance.
+            _ = try await fixture.session.send(.blur, in: web)
+            let inactive =
+                try await web.callAsyncJavaScript(
+                    "return document.activeElement !== document.querySelector('.cm-content');", arguments: [:], in: nil, contentWorld: .page) as? Bool
+            try #require(inactive == true)
+            if resignsFocus { await fixture.session.resignFocusAndWait() }
+            fixture.dispatcher.releaseHeldCitationFinish()
+            try await fixture.finishRefresh()
+            #expect(fixture.session.checkedSource.utf8.elementsEqual(fixture.source.utf8))
+            #expect(fixture.session.checkedCitationData?.acceptedFields == [] && fixture.session.isDirty)
+            #expect(fixture.dispatcher.operationTags.filter { $0 == "focus" }.count == focusCount + (resignsFocus ? 0 : 1))
+            let active =
+                try await web.callAsyncJavaScript(
+                    "return document.activeElement === document.querySelector('.cm-content');", arguments: [:], in: nil, contentWorld: .page) as? Bool
+            #expect(active == !resignsFocus)
+        }
+    }
+
     @Test("Accepted managed conversion saves the exact pair and one Undo restores embedded source and companion absence")
     func managedConversionUndoRedoAndPairedSave() async throws {
         let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}],"opaque":"é 😀"}"#
@@ -779,6 +949,103 @@ struct ZoteroCitationEditorIntegrationTests {
         return try await documents.load(note.id)
     }
 
+    private func withCitationBeginFixture(
+        suppressesInitialFocusObservation: Bool = false,
+        _ operation: @MainActor (CitationBeginFixture) async throws -> Void
+    ) async throws {
+        let fixture = CitationBeginFixture(suppressesInitialFocusObservation: suppressesInitialFocusObservation)
+        do {
+            try await waitForManagedEditor(fixture.session, sourceHead: fixture.source.utf16.count)
+            await fixture.prepareRefresh()
+            try await operation(fixture)
+            await fixture.close()
+        } catch {
+            await fixture.close()
+            throw error
+        }
+    }
+
+    @MainActor
+    private final class CitationBeginFixture {
+        let source: String
+        let preferences: String
+        let data: ZoteroCitationData
+        let transcript: ManagedTranscript
+        let dispatcher: RecordingProductionDispatcher
+        let session: MarkdownEditorSession
+        let host: OffscreenEditor
+        private var refreshTask: Task<Void, Error>?
+
+        var diagnostics: String {
+            "ready=\(session.isReady) loaded=\(session.isLoaded) renderer=\(session.rendererInteractionRevision ?? -1) held=\(dispatcher.citationBeginIsHeld) error=\(session.errorMessage ?? "none")"
+        }
+
+        init(suppressesInitialFocusObservation: Bool) {
+            let source = "\u{FEFF}Argument 😀\r\nTail e\u{301} without newline"
+            let preferences = "<data><prefs><pref name=\"noteType\" value=\"0\"/></prefs></data>"
+            let code = #"ITEM CSL_CITATION {"citationItems":[{"id":7}]}"#
+            let data = ZoteroCitationData(
+                fields: [.init(id: "deleted", kind: .citation, code: code, text: "Deleted")],
+                documentData: preferences, acceptedFields: [.init(id: "deleted", code: code)])
+            self.source = source
+            self.preferences = preferences
+            self.data = data
+            let snapshot = ZoteroCitationSnapshot(
+                noteID: UUID(), vaultID: UUID(), revision: DocumentFingerprint(content: "synthetic companion"),
+                sourceFingerprint: DocumentFingerprint(content: source), data: data, status: .available)
+            let transcript = ManagedTranscript()
+            let dispatcher = RecordingProductionDispatcher()
+            dispatcher.suppressInitialEditorFocusObservation = suppressesInitialFocusObservation
+            self.transcript = transcript
+            self.dispatcher = dispatcher
+            let session = MarkdownEditorSession(
+                bridgeDispatcher: dispatcher,
+                citationIntegration: ZoteroDocumentIntegration(transport: { try await transcript.send($0) }))
+            self.session = session
+            dispatcher.session = session
+            host = OffscreenEditor(session: session, source: source, sourceHead: source.utf16.count, citationSnapshot: snapshot)
+        }
+
+        func prepareRefresh() async {
+            await transcript.prepare(
+                documentID: session.bridgeDocumentID, command: .refresh,
+                steps: [
+                    .init("Document.getDocumentData", expected: .exact(.string(preferences))),
+                    .init("Document.getFields", [.string("Http")], expected: .exact(.array([]))),
+                ])
+        }
+
+        func beginHeldRefresh(repeatsCaret: Bool = true) {
+            dispatcher.repeatCaretBeforeNextCitationBegin = repeatsCaret
+            dispatcher.holdNextCitationBegin = true
+            refreshTask = Task { try await session.perform(.refreshCitations) }
+        }
+
+        func beginHeldFinishRefresh() {
+            dispatcher.holdNextCitationFinish = true
+            refreshTask = Task { try await session.perform(.refreshCitations) }
+        }
+
+        func finishRefresh() async throws {
+            let task = try #require(refreshTask)
+            try await task.value
+            refreshTask = nil
+        }
+
+        func close() async {
+            dispatcher.releaseHeldCitationBegin()
+            dispatcher.releaseHeldCitationFinish()
+            refreshTask?.cancel()
+            _ = try? await refreshTask?.value
+            refreshTask = nil
+            if let web = session.webView {
+                _ = try? await web.callAsyncJavaScript(
+                    "window.citationFocusGate?.restore();", arguments: [:], in: nil, contentWorld: .page)
+            }
+            await host.closeAndDrain()
+        }
+    }
+
     private func waitForManagedEditor(_ session: MarkdownEditorSession, sourceHead: Int) async throws {
         try await waitUntil(
             "managed editor and exact caret",
@@ -1003,15 +1270,68 @@ struct ZoteroCitationEditorIntegrationTests {
         var holdNextEmptyPaste = false
         private var commandContinuation: CheckedContinuation<Void, Never>?
         var commandIsHeld: Bool { commandContinuation != nil }
+        var repeatCaretBeforeNextCitationBegin = false
+        var holdNextCitationBegin = false
+        var holdCitationBeginBeforeDispatch = false
+        var corruptNextCitationBeginResponse = false
+        var suppressInitialEditorFocusObservation = false
+        var holdNextCitationFinish = false
+        private var citationBeginContinuation: CheckedContinuation<Void, Never>?
+        private var citationFinishContinuation: CheckedContinuation<Void, Never>?
+        private var heldCitationBeginRequest: MarkdownEditorRequest?
+        private(set) var rendererRevisionBeforeBegin: Int?
+        private(set) var acceptedBeginRevision: Int?
+        var citationBeginIsHeld: Bool { citationBeginContinuation != nil }
+        var citationFinishIsHeld: Bool { citationFinishContinuation != nil }
 
         func releaseHeldCommand() {
             commandContinuation?.resume()
             commandContinuation = nil
         }
 
+        func releaseHeldCitationBegin() {
+            citationBeginContinuation?.resume()
+            citationBeginContinuation = nil
+        }
+
+        func releaseHeldCitationFinish() {
+            citationFinishContinuation?.resume()
+            citationFinishContinuation = nil
+        }
+
+        func revealRendererCaret(_ head: Int, in webView: WKWebView) async throws {
+            let begin = try #require(heldCitationBeginRequest)
+            let request = MarkdownEditorRequest(
+                sessionID: begin.sessionID, documentID: begin.documentID,
+                startingFingerprint: begin.startingFingerprint, knownGeneration: begin.knownGeneration,
+                expiresAt: begin.expiresAt, operation: .revealSourceRange(fromUTF16: head, toUTF16: head))
+            let encoded = try JSONEncoder().encode(request)
+            let raw = try await production.dispatch(requestJSON: String(decoding: encoded, as: UTF8.self), in: webView)
+            let response = try JSONDecoder().decode(
+                MarkdownEditorCommandResult.self, from: JSONSerialization.data(withJSONObject: raw as Any))
+            try #require(response.accepted)
+        }
+
         func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
             let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
             operationTags.append(String(String(describing: request.operation).split(separator: "(", maxSplits: 1).first ?? "unknown"))
+            if suppressInitialEditorFocusObservation, case .initialize = request.operation {
+                suppressInitialEditorFocusObservation = false
+                _ = try await webView.callAsyncJavaScript(
+                    """
+                    const gate = window.citationFocusGate = {blocked: 0};
+                    const delay = event => {
+                      if (event.target === document.querySelector('.cm-content')) {
+                        gate.blocked++; event.stopImmediatePropagation();
+                      }
+                    };
+                    document.addEventListener('focus', delay, true);
+                    gate.restore = () => document.removeEventListener('focus', delay, true);
+                    gate.release = () => {
+                      gate.restore(); document.querySelector('.cm-content').dispatchEvent(new FocusEvent('focus'));
+                    };
+                    """, arguments: [:], in: nil, contentWorld: .page)
+            }
             if holdNextEmptyPaste, case .command(.pastePlain, .some("")) = request.operation {
                 holdNextEmptyPaste = false
                 await withCheckedContinuation { commandContinuation = $0 }
@@ -1022,7 +1342,41 @@ struct ZoteroCitationEditorIntegrationTests {
                 if let session { sourcesBeforeCitationOperations.append(session.checkedSource) }
             default: break
             }
-            return try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if holdNextCitationFinish, case .finishCitation = request.operation {
+                holdNextCitationFinish = false
+                let raw = try await production.dispatch(requestJSON: requestJSON, in: webView)
+                await withCheckedContinuation { citationFinishContinuation = $0 }
+                return raw
+            }
+            guard case .beginCitation = request.operation else {
+                return try await production.dispatch(requestJSON: requestJSON, in: webView)
+            }
+            heldCitationBeginRequest = request
+            rendererRevisionBeforeBegin = session?.rendererInteractionRevision
+            let hold = holdNextCitationBegin
+            holdNextCitationBegin = false
+            if hold, holdCitationBeginBeforeDispatch {
+                await withCheckedContinuation { citationBeginContinuation = $0 }
+            }
+            if repeatCaretBeforeNextCitationBegin {
+                repeatCaretBeforeNextCitationBegin = false
+                let head = try #require(session?.context?.selections.first?.head)
+                // A real locator can advance renderer context without moving the
+                // caret or changing source, before its coalesced native report.
+                try await revealRendererCaret(head, in: webView)
+            }
+            let raw = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            let accepted = try JSONDecoder().decode(
+                MarkdownEditorCommandResult.self, from: JSONSerialization.data(withJSONObject: raw as Any))
+            acceptedBeginRevision = accepted.interactionRevision
+            if corruptNextCitationBeginResponse {
+                corruptNextCitationBeginResponse = false
+                return [String: String]()
+            }
+            if hold, !holdCitationBeginBeforeDispatch {
+                await withCheckedContinuation { citationBeginContinuation = $0 }
+            }
+            return raw
         }
     }
 
@@ -1091,6 +1445,7 @@ struct ZoteroCitationEditorIntegrationTests {
         private var index = 0
         private(set) var insertedID: String?
         private(set) var completedCommands = 0
+        private(set) var requestCount = 0
 
         func prepare(documentID: String, command: ZoteroDocumentCommand, steps: [ManagedStep]) {
             self.documentID = documentID
@@ -1101,6 +1456,7 @@ struct ZoteroCitationEditorIntegrationTests {
         }
 
         func send(_ request: URLRequest) throws -> ZoteroDocumentHTTPResponse {
+            requestCount += 1
             let endpoint = index == 0 ? "execCommand" : "respond"
             guard request.httpMethod == "POST",
                 request.url?.absoluteString == "http://127.0.0.1:23119/connector/document/\(endpoint)",

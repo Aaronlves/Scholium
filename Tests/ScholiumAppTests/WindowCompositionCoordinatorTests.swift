@@ -56,6 +56,29 @@ struct WindowCompositionCoordinatorTests {
             ])
     }
 
+    @Test("A navigation intent without replacement revokes presentation and drains admitted source work")
+    func noOpIntentDrainsPreparation() async throws {
+        let coordinator = DocumentTransitionCoordinator()
+        var releasePreparation: CheckedContinuation<Void, Never>?
+        var events: [String] = []
+        coordinator.enqueue(
+            prepare: {
+                events.append("preparing")
+                await withCheckedContinuation { releasePreparation = $0 }
+                events.append("source committed")
+            },
+            operation: { events.append("obsolete destination") },
+            didFail: { error in Issue.record("Unexpected failure: \(error)") },
+            didFinish: { events.append("released") })
+        for _ in 0..<100 where releasePreparation == nil { await Task.yield() }
+        let continuation = try #require(releasePreparation)
+        let currentIntent = coordinator.beginRequest()
+        #expect(currentIntent())
+        continuation.resume()
+        await coordinator.waitForIdle()
+        #expect(events == ["preparing", "source committed", "released"])
+    }
+
     @Test("A failed document transition finishes cleanup without reporting success")
     func failedTransitionDoesNotSucceed() async {
         struct ExpectedFailure: Error {}

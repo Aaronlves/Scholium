@@ -1,7 +1,7 @@
 import type {NativeFloatingPorts} from "./native-floating";
 import {EditorState, Prec, StateEffect, StateField, type Extension} from "@codemirror/state";
 import {Decoration, EditorView, WidgetType, type DecorationSet} from "@codemirror/view";
-import {initializeReader, type ReaderWindow} from "./reader-runtime";
+import {initializeReader, type ReaderPreparationPhase, type ReaderWindow} from "./reader-runtime";
 import type {ExactSourceMirror} from "./state";
 import {mapReviewAnchor, readLinkPreviewsEqual, reviewConfigurationSharesDOM, scopedReviewCSS, wrapReviewCSS, type CommittedReviewProjection} from "./committed-review-contract";
 import {committedReviewRhythmCSS, projectCommittedReviewCalloutRhythm} from "./committed-review-rhythm";
@@ -191,7 +191,7 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       void ready.catch(() => {});
       return true;
     },
-    async prepare(expiresAt: number) {
+    async prepare(expiresAt: number, phase: ReaderPreparationPhase) {
       const expected = mountedProjection;
       if (!ready || !expected) throw new Error("Committed Review projection is unavailable");
       let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -207,7 +207,7 @@ export function createCommittedReviewProjection(options: ReviewProjectionOptions
       if (expected !== mountedProjection || !reader.scholiumReadPreparation) throw new Error("stale Review preparation");
       const config = expected.configuration;
       try {
-        return await reader.scholiumReadPreparation.settle(config.documentID, config.fingerprint, config.loadGeneration, expiresAt);
+        return await reader.scholiumReadPreparation.settle(config.documentID, config.fingerprint, config.loadGeneration, expiresAt, phase);
       } catch (error) {
         if (mountedAbort) reportFailure(expected, mountedAbort);
         throw error;

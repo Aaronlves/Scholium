@@ -990,9 +990,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         func verifyIndex(_ phase: String) throws {
             try mark("\(phase)_index_started")
             let started = DispatchTime.now().uptimeNanoseconds
-            _ = try XCTUnwrap(waitUntil(timeout: 90) {
-                !application.descendants(matching: .any)["scholium.refreshStatus"].exists
-            } ? true : nil, "After Library readiness, the initial refresh must finish before query input.")
+            _ = try XCTUnwrap(
+                waitUntil(timeout: 90) {
+                    !application.descendants(matching: .any)["scholium.refreshStatus"].exists
+                } ? true : nil, "After Library readiness, the initial refresh must finish before query input.")
             let field = application.searchFields["scholium.searchField"].firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 10))
             func commitQuery(_ query: String) throws {
@@ -1001,15 +1002,17 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 let process = try XCTUnwrap(processes.first)
                 _ = try XCTUnwrap(process.bundleURL?.resolvingSymlinksInPath() == bundle.resolvingSymlinksInPath() ? true : nil)
                 application.activate()
-                _ = try XCTUnwrap(waitUntil(timeout: 5) {
-                    NSWorkspace.shared.frontmostApplication?.processIdentifier == process.processIdentifier
-                } ? true : nil, "Only the exact diagnostic App may receive query input.")
+                _ = try XCTUnwrap(
+                    waitUntil(timeout: 5) {
+                        NSWorkspace.shared.frontmostApplication?.processIdentifier == process.processIdentifier
+                    } ? true : nil, "Only the exact diagnostic App may receive query input.")
                 let frame = field.frame
                 _ = try XCTUnwrap(!frame.isEmpty && !frame.isNull && frame.origin.x.isFinite && frame.origin.y.isFinite ? true : nil)
                 field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-                _ = try XCTUnwrap(waitUntil(timeout: 5) {
-                    NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: field)
-                } ? true : nil, "The native Search field must own keyboard focus before input.")
+                _ = try XCTUnwrap(
+                    waitUntil(timeout: 5) {
+                        NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: field)
+                    } ? true : nil, "The native Search field must own keyboard focus before input.")
                 field.typeKey("a", modifierFlags: [.command])
                 field.typeKey(.delete, modifierFlags: [])
                 // Explicit flags on each key avoid inheriting a modifier from
@@ -1253,10 +1256,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             }
             func requireUndoDetail(_ expected: String, _ reason: String) throws {
                 let ready = waitUntil(timeout: 30) {
-                        composer.exists
-                            && transcript.exists && !hydrating.exists && !queue.exists
-                            && question(long.turns).exists && undoDraftMatches(expected)
-                    }
+                    composer.exists
+                        && transcript.exists && !hydrating.exists && !queue.exists
+                        && question(long.turns).exists && undoDraftMatches(expected)
+                }
                 if !ready {
                     let flags: [String: Any] = [
                         "composer_exists": composer.exists, "composer_enabled": composer.isEnabled,
@@ -1291,13 +1294,15 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 // proxy does not replace an actual click and keyboard-focus proof.
                 composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
                 let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: composer)
-                _ = try XCTUnwrap(XCTWaiter.wait(for: [focused], timeout: 5) == .completed ? true : nil,
+                _ = try XCTUnwrap(
+                    XCTWaiter.wait(for: [focused], timeout: 5) == .completed ? true : nil,
                     "The identified native composer must acquire keyboard focus before typing or Undo.")
             }
             func undoBackToList() throws {
                 _ = try XCTUnwrap(back.waitForExistence(timeout: 5) && back.isHittable ? true : nil)
                 back.click()
-                _ = try XCTUnwrap(waitUntil(timeout: 15) { listReady() } ? true : nil,
+                _ = try XCTUnwrap(
+                    waitUntil(timeout: 15) { listReady() } ? true : nil,
                     "Undo navigation must reach the inert conversation list.")
             }
             func openUndoLong() throws {
@@ -1309,9 +1314,11 @@ final class ScholiumPerformanceUITests: XCTestCase {
             try mark("chat_undo_probe_started", fields: excluded)
             try openUndoLong()
             try requireUndoDetail(long.draft, "Undo must start with the exact seeded long-conversation draft and completed history.")
-            try mark("chat_undo_input_precondition", fields: excluded.merging([
-                "xcui_textview_enabled": composer.isEnabled, "hittable": composer.isHittable,
-            ]) { _, current in current })
+            try mark(
+                "chat_undo_input_precondition",
+                fields: excluded.merging([
+                    "xcui_textview_enabled": composer.isEnabled, "hittable": composer.isHittable,
+                ]) { _, current in current })
             // Use the native text input route; never set the accessibility value
             // or replace the draft through an App/fixture-only hook.
             try focusUndoComposer()
@@ -1346,10 +1353,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
             try focusUndoComposer()
             application.typeKey("z", modifierFlags: .command)
             try requireUndoDetail(long.draft, "Undo after Library/Chat hiding must restore the exact seeded draft.")
-            try mark("chat_undo_probe_passed", fields: excluded.merging([
-                "draft_exact": true, "native_input": true, "undo_after_back": true,
-                "redo_exact": true, "undo_after_hide": true, "queue_absent": true,
-            ]) { _, current in current })
+            try mark(
+                "chat_undo_probe_passed",
+                fields: excluded.merging([
+                    "draft_exact": true, "native_input": true, "undo_after_back": true,
+                    "redo_exact": true, "undo_after_hide": true, "queue_absent": true,
+                ]) { _, current in current })
             // Leave the draft byte-identical to its seed, then restore the list
             // expected by the existing expanded-reader probe. The original
             // source/history/drafts archive oracle remains authoritative below.
@@ -1540,7 +1549,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "oracles_passed",
             fields: [
                 "markdown_count": 500, "exact_markdown": true, "exact_history": true, "exact_drafts": true,
-                "timing_scope": "Library uses the App probe; Chat uses driver observation upper bounds. Limited repeated returns do not prove absence of leaks.",
+                "timing_scope":
+                    "Library uses the App probe; Chat uses driver observation upper bounds. Limited repeated returns do not prove absence of leaks.",
             ])
     }
 

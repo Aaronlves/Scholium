@@ -697,20 +697,28 @@ struct AgentChatConversationDetailView: View {
     ) -> [MessageAction] {
         var items: [MessageAction] = []
         if hasEditBoundary {
-            items.append(.init(id: "Edit in New Branch", symbol: ScholiumSidebarAction.edit.symbol,
-                isEnabled: controller.canBranch, action: { controller.editInNewBranch(message.id) }))
+            items.append(
+                .init(
+                    id: "Edit in New Branch", symbol: ScholiumSidebarAction.edit.symbol,
+                    isEnabled: controller.canBranch, action: { controller.editInNewBranch(message.id) }))
         }
         if let turnID = message.turnID, hasBranchBoundary {
-            items.append(.init(id: "Branch from This Turn", symbol: ScholiumSidebarAction.branch.symbol,
-                isEnabled: controller.canBranch, action: { controller.branch(through: turnID) }))
+            items.append(
+                .init(
+                    id: "Branch from This Turn", symbol: ScholiumSidebarAction.branch.symbol,
+                    isEnabled: controller.canBranch, action: { controller.branch(through: turnID) }))
             if controller.canRetryInNewBranch(turnID: turnID) {
-                items.append(.init(id: "Retry in New Branch", symbol: ScholiumSidebarAction.retry.symbol,
-                    action: { controller.retryInNewBranch(turnID: turnID) }))
+                items.append(
+                    .init(
+                        id: "Retry in New Branch", symbol: ScholiumSidebarAction.retry.symbol,
+                        action: { controller.retryInNewBranch(turnID: turnID) }))
             }
         }
         if canQuote(message) {
-            items.append(.init(id: "Quote in Reply", symbol: ScholiumSidebarAction.quote.symbol,
-                action: { quote(message, selection: nil, in: conversationID) }))
+            items.append(
+                .init(
+                    id: "Quote in Reply", symbol: ScholiumSidebarAction.quote.symbol,
+                    action: { quote(message, selection: nil, in: conversationID) }))
         }
         return items
     }

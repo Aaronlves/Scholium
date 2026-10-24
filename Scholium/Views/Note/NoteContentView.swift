@@ -306,10 +306,7 @@ struct NoteContentView<ShellNotices: View>: View {
     private var presentationMode: NotePresentationMode {
         documentSession.presentationMode
     }
-    private var returnToReadAfterSave: Bool {
-        get { documentSession.returnToReadAfterSave }
-        nonmutating set { documentSession.returnToReadAfterSave = newValue }
-    }
+    private var returnToReadAfterSave: Bool { documentSession.returnToReadAfterSave }
     private var renderedReadHTML: String {
         get { documentSession.renderedReadHTML }
         nonmutating set { documentSession.renderedReadHTML = newValue }
@@ -553,7 +550,7 @@ struct NoteContentView<ShellNotices: View>: View {
             documentFind.refresh()
             outlineScrollFraction = documentSession.scrollFraction
             outlineScrollAnchor = documentSession.scrollAnchor
-            focusEditorIfPresented()
+            announceManagedCreationIfPresented()
             if !isEditing,
                 documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
             {
@@ -561,7 +558,7 @@ struct NoteContentView<ShellNotices: View>: View {
             }
         }
         .onChange(of: editorSession.presentedMode) { _, presentedMode in
-            focusEditorIfPresented()
+            announceManagedCreationIfPresented()
             if let presentedMode {
                 PerformanceProbe.shared.markEditorModeAcknowledged(
                     documentID: note.id.relativePath,
@@ -578,7 +575,7 @@ struct NoteContentView<ShellNotices: View>: View {
             PerformanceProbe.shared.markEditActivationLoaded(documentID: note.id.relativePath)
             PerformanceProbe.shared.markNoteOpeningEditorPhase(.loaded, editorSessionID: editorSession.sessionID)
             documentFind.refresh()
-            focusEditorIfPresented()
+            announceManagedCreationIfPresented()
         }
         .onChange(of: noteFingerprint.sha256) { _, _ in
             documentFind.refresh()
@@ -1749,99 +1746,15 @@ struct NoteContentView<ShellNotices: View>: View {
             )
             return
         }
-        if mode == .read {
-            guard isEditing else {
-                documentSession.resetPresentation()
-                actions.rememberPresentationMode(.read)
-                return
-            }
-            guard !returnToReadAfterSave else { return }
-            if !editorSession.isLoaded {
-                do {
-                    try finishEditing()
-                } catch {
-                    reportReviewHandoffError(error)
-                }
-                return
-            }
-            let handoffID = UUID()
-            documentSession.reviewHandoffID = handoffID
-            returnToReadAfterSave = true
-            Task {
-                defer {
-                    if documentSession.reviewHandoffID == handoffID {
-                        documentSession.reviewHandoffID = nil
-                        returnToReadAfterSave = false
-                        if controller.selectedDocument?.editingTarget == target {
-                            focusEditorIfPresented()
-                        }
-                    }
-                }
-                do {
-                    let handoffAnchor = try? await editorSession.currentScrollAnchor()
-                    guard documentSession.reviewHandoffID == handoffID,
-                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
-                    else { return }
-                    documentSession.adoptEditorScrollPositionForReview(anchor: handoffAnchor)
-                    actions.rememberScrollPosition(
-                        handoffAnchor?.fallbackFraction ?? documentSession.readScrollFraction
-                    )
-                    await editorSession.resignFocusAndWait()
-                    guard documentSession.reviewHandoffID == handoffID,
-                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
-                    else { return }
-                    // Capture and save after the editor has relinquished focus:
-                    // input accepted during scroll/focus work belongs in this final save.
-                    try await controller.flushForExternalOperation(
-                        session: documentSession,
-                        target: target
-                    )
-                    guard documentSession.reviewHandoffID == handoffID,
-                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
-                    else { return }
-                    let committedFingerprint = DocumentFingerprint(
-                        content: documentSession.originalEditingSource
-                    ).sha256
-                    if documentSession.renderedReadReadyFingerprint
-                        != committedFingerprint
-                    {
-                        // Never reveal a retained Review projection for the
-                        // pre-save revision while SwiftUI publishes the newly
-                        // committed Note and its hidden projection catches up.
-                        documentSession.renderedReadReadyFingerprint = ""
-                    }
-                    try finishEditing()
-                } catch is CancellationError {
-                    return
-                } catch {
-                    guard documentSession.reviewHandoffID == handoffID else { return }
-                    reportReviewHandoffError(error)
-                }
-            }
-            return
-        }
-
-        guard editingIsAvailable else {
+        guard mode == .read || editingIsAvailable else {
             actions.notify(
-                String(
-                    localized: "This note is read-only in Scholium.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                .information
-            )
+                String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module),
+                .information)
             return
         }
-        guard let editorMode = mode.editorMode else { return }
-        documentSession.reviewHandoffID = nil
-        returnToReadAfterSave = false
-        editorSession.authorizeAutomaticFocus()
-        if isEditing {
-            documentSession.switchEditorMode(to: editorMode)
-        } else {
-            beginEditing(mode: editorMode)
-        }
-        actions.rememberPresentationMode(mode)
+        controller.requestPresentationMode(
+            mode, session: documentSession, target: target,
+            source: note.document.rawContent, revision: noteFingerprint)
     }
 
     private func consumePendingPresentationRequest() {
@@ -1896,40 +1809,24 @@ struct NoteContentView<ShellNotices: View>: View {
         editorSession.goToLine(1)
     }
 
-    private func beginEditing(mode: MarkdownEditorMode = .livePreview) {
-        controller.beginEditing(
-            session: documentSession,
-            target: target,
-            source: note.document.rawContent,
-            revision: noteFingerprint,
-            mode: mode
-        )
+    private func focusEditorIfPresented() {
+        controller.requestEditorFocus(session: documentSession, target: target)
     }
 
-    /// Focus belongs to the mode that the Web editor has acknowledged, not
-    /// merely to the mode most recently requested by native UI. This keeps a
-    /// retained Source surface from receiving focus during Review -> Edit and
-    /// prevents rapid Edit/Source requests from racing the bridge handshake.
-    private func focusEditorIfPresented() {
+    private func announceManagedCreationIfPresented() {
         guard
             DocumentEditorPresentationGate().allowsEditorFocus(
-                isEditing: isEditing,
-                isReturningToReview: returnToReadAfterSave,
+                isEditing: isEditing, isReturningToReview: returnToReadAfterSave,
                 editorIsReady: editorSession.isLoaded,
-                presentedModeMatchesIntent:
-                    editorSession.presentedMode == documentSession.activeEditorMode
-            )
+                presentedModeMatchesIntent: editorSession.presentedMode == documentSession.activeEditorMode),
+            documentSession.managedCreationBodyStartUTF16 != nil
         else { return }
-        if documentSession.managedCreationBodyStartUTF16 != nil {
-            documentSession.completeManagedCreationEntry()
-            AccessibilityNotification.Announcement(
-                documentSession.activeEditorMode == .source
-                    ? String(localized: "New note created. Source is ready.")
-                    : String(localized: "New note created. Edit is ready.")
-            ).post()
-            return
-        }
-        editorSession.focusPreferred()
+        documentSession.completeManagedCreationEntry()
+        AccessibilityNotification.Announcement(
+            documentSession.activeEditorMode == .source
+                ? String(localized: "New note created. Source is ready.")
+                : String(localized: "New note created. Edit is ready.")
+        ).post()
     }
 
     private func retryEditor(in mode: MarkdownEditorMode) {
@@ -1950,26 +1847,10 @@ struct NoteContentView<ShellNotices: View>: View {
                 toUTF16: bodyStart
             )
         }
-        if documentSession.isEditing {
-            documentSession.switchEditorMode(to: mode)
-        } else {
-            beginEditing(mode: mode)
-        }
-        actions.rememberPresentationMode(mode.presentationMode)
+        controller.requestPresentationMode(
+            mode.presentationMode, session: documentSession, target: target,
+            source: note.document.rawContent, revision: noteFingerprint)
         editorSession.retryUnavailablePresentation()
-    }
-
-    private func finishEditing() throws {
-        try controller.finishEditing(session: documentSession, target: target)
-        actions.rememberPresentationMode(.read)
-    }
-
-    private func reportReviewHandoffError(_ error: Error) {
-        documentSession.editError = ScholiumErrorLocalization.message(error)
-        documentSession.canRetrySave = DocumentController.saveFailureAllowsRetry(error)
-        if controller.selectedDocument?.editingTarget == target {
-            controller.setSaveError(ScholiumErrorLocalization.message(error))
-        }
     }
 
     private func reloadFromDisk() {

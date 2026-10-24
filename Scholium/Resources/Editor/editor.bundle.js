@@ -16508,13 +16508,49 @@
       }
     }
     const readPreparation = {
-      async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt) {
+      async settle(expectedDocumentID, expectedFingerprint, expectedGeneration, expiresAt, phase) {
         const requireCurrent = () => {
-          if (readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+          if (!alive() || readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected || expectedDocumentID !== documentID || expectedFingerprint !== fingerprint || expectedGeneration !== loadGeneration || !Number.isFinite(expiresAt) || Date.now() >= expiresAt || phase !== "layout" && phase !== "viewport") {
             throw new Error("stale reader preparation");
           }
         };
-        return await settleLayout(requireCurrent);
+        const layout = await settleLayout(requireCurrent);
+        requireCurrent();
+        if (phase === "layout") return layout;
+        await new Promise((resolve, reject) => {
+          let top2 = scrollTop(), left = scrollLeft(), stableSamples = 0;
+          let timer;
+          let finished = false;
+          const finish = (error) => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            signal?.removeEventListener("abort", abort);
+            if (error === void 0) resolve();
+            else reject(error);
+          };
+          const abort = () => finish(new Error("stale reader preparation"));
+          const schedule = () => {
+            timer = window.setTimeout(sample, Math.min(16, Math.max(0, expiresAt - Date.now())));
+          };
+          const sample = () => {
+            try {
+              requireCurrent();
+              const nextTop = scrollTop(), nextLeft = scrollLeft();
+              stableSamples = top2 === nextTop && left === nextLeft ? stableSamples + 1 : 0;
+              top2 = nextTop;
+              left = nextLeft;
+              if (stableSamples >= 2) finish();
+              else schedule();
+            } catch (error) {
+              finish(error);
+            }
+          };
+          signal?.addEventListener("abort", abort, { once: true });
+          schedule();
+        });
+        requireCurrent();
+        return layout;
       }
     };
     readerWindow.scholiumReadPreparation = readPreparation;
@@ -18188,7 +18224,7 @@
         });
         return true;
       },
-      async prepare(expiresAt) {
+      async prepare(expiresAt, phase) {
         const expected = mountedProjection;
         if (!ready || !expected) throw new Error("Committed Review projection is unavailable");
         let timeout;
@@ -18206,7 +18242,7 @@
         if (expected !== mountedProjection || !reader.scholiumReadPreparation) throw new Error("stale Review preparation");
         const config2 = expected.configuration;
         try {
-          return await reader.scholiumReadPreparation.settle(config2.documentID, config2.fingerprint, config2.loadGeneration, expiresAt);
+          return await reader.scholiumReadPreparation.settle(config2.documentID, config2.fingerprint, config2.loadGeneration, expiresAt, phase);
         } catch (error) {
           if (mountedAbort) reportFailure(expected, mountedAbort);
           throw error;
@@ -45233,6 +45269,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     }
     scheduleEditorInteractionReport();
   }
+  function focusEditor(view) {
+    view.focus();
+    if (view.contentDOM.ownerDocument.activeElement === view.contentDOM) setDocumentFocusTarget("editor");
+  }
   function configuredEditorMode(state) {
     return state.facet(editorModeFacet);
   }
@@ -45278,7 +45318,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       scrollIntoView: true,
       annotations: Transaction.userEvent.of("select.pointer")
     });
-    view.focus();
+    focusEditor(view);
   }
   function modifiedProjectedLink(view, event) {
     if (!event.metaKey || event.ctrlKey) return false;
@@ -45327,7 +45367,21 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     if (!heading2) return null;
     const { rect, contentTop, contentBottom } = headingContentBounds(view, heading2);
     if (contentBottom > contentTop && event.clientY >= contentTop && event.clientY <= contentBottom) return null;
-    const contentY = contentBottom > contentTop ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5)) : (rect.top + rect.bottom) / 2;
+    const textRange2 = document.createRange();
+    const walker = document.createTreeWalker(heading2, NodeFilter.SHOW_TEXT);
+    const above = event.clientY < contentTop;
+    let fragment;
+    let node;
+    while (node = walker.nextNode()) {
+      textRange2.selectNodeContents(node);
+      for (const candidate of textRange2.getClientRects()) {
+        if (candidate.width <= 0 || candidate.height <= 0) continue;
+        if (!fragment || (above ? candidate.top < fragment.top : candidate.bottom > fragment.bottom)) {
+          fragment = candidate;
+        }
+      }
+    }
+    const contentY = fragment ? (fragment.top + fragment.bottom) / 2 : (contentTop + contentBottom) / 2;
     const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
     const caretNode = caret && heading2.contains(caret.startContainer) ? caret.startContainer : null;
     if (caretNode) {
@@ -47009,12 +47063,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           const requireCurrent = () => {
             if (request.expiresAt <= Date.now() || attachment !== documentAttachment || expectedGeneration !== documentVersion || request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint || configuredEditorMode(editor.state) !== "review") throw new Error("stale Review mode preparation");
           };
-          await reviewProjection.prepare(request.expiresAt);
+          await reviewProjection.prepare(request.expiresAt, "layout");
           requireCurrent();
           if (!sourcePosition.anchor || !reviewProjection.setAnchor(sourcePosition.anchor)) {
             reviewProjection.setFraction(sourcePosition.fraction);
           }
-          await reviewProjection.prepare(request.expiresAt);
+          await reviewProjection.prepare(request.expiresAt, "viewport");
           requireCurrent();
         }
         break;
@@ -47025,10 +47079,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       case "completePreparation": {
         if (configuredEditorMode(editor.state) === "review") {
           const preparationStartedAt2 = performance.now();
-          await reviewProjection.prepare(request.expiresAt);
+          await reviewProjection.prepare(request.expiresAt, "layout");
           if (operation.anchor) reviewProjection.setAnchor(operation.anchor);
           else if (operation.fraction !== void 0) reviewProjection.setFraction(operation.fraction);
-          await reviewProjection.prepare(request.expiresAt);
+          await reviewProjection.prepare(request.expiresAt, "viewport");
           recordEditorMetric("opening-preparation", preparationStartedAt2, { review: 1, completed: 1 });
           break;
         }
@@ -47159,9 +47213,13 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       case "releasePreparation": {
         const releaseStartedAt = performance.now();
-        if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") documentTitle.focus({ preventScroll: true });
-        else if (operation.focusTarget && configuredEditorMode(editor.state) === "review") reviewProjection.focus();
-        else if (operation.focusTarget) editor.focus();
+        if (operation.focusTarget === "title" && configuredEditorMode(editor.state) === "livePreview") {
+          if (documentTitle.focus({ preventScroll: true }) && document.activeElement?.matches("[data-scholium-title-input]")) {
+            setDocumentFocusTarget("title");
+          }
+        } else if (operation.focusTarget && configuredEditorMode(editor.state) === "review") reviewProjection.focus();
+        else if (operation.focusTarget) focusEditor(editor);
+        if (document.activeElement === editor.contentDOM) setDocumentFocusTarget("editor");
         if (configuredEditorMode(editor.state) !== "review") editor.coordsAtPos(editor.state.selection.main.head);
         recordEditorMetric("opening-release", releaseStartedAt);
         break;
@@ -47307,7 +47365,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           selection: { anchor: selection.head + text.length },
           annotations: [Transaction.userEvent.of("input.scholium.reference"), isolateHistory.of("full")]
         });
-        editor.focus();
+        focusEditor(editor);
         lastUndoLabel = lastRedoLabel = "Insert Wikilink";
         return successfulResult(request.requestID, true, "Insert Wikilink");
       }
@@ -47336,6 +47394,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         return successfulResult(request.requestID, true, undoLabel);
       }
       case "beginCitation": {
+        if (document.activeElement === editor.contentDOM) setDocumentFocusTarget("editor");
         if (citationTransaction !== null || editor.state.field(editorSuspensionState) !== null || document.activeElement?.closest("[data-scholium-title-input]")) {
           return rejected2(request.requestID, documentVersion, localized("A citation operation is already active or this editor is unavailable."));
         }
@@ -47480,6 +47539,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         if (!documentTitle.focus({ preventScroll: true })) {
           return rejected2(request.requestID, documentVersion, "document title is unavailable");
         }
+        if (document.activeElement?.matches("[data-scholium-title-input]")) setDocumentFocusTarget("title");
         break;
       }
       case "blur":
@@ -47949,7 +48009,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         ]
       });
       if (requestedLine === lineNumber) scheduleSmoothEditorReveal(line.from, initialTop, initialLeft);
-      if (focusesEditor) editor.focus();
+      if (focusesEditor) focusEditor(editor);
     },
     /** Selects an exact source range without changing Markdown or undo history. */
     revealSourceRange(requestedFromUTF16, requestedToUTF16, focusesEditor = true) {
@@ -47964,7 +48024,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       scrollCoordinator.revealPosition(to);
       measureSelectionAction(editor);
       if (focusesEditor) {
-        editor.focus();
+        focusEditor(editor);
       }
     },
     setScrollFraction(requestedFraction) {
@@ -48008,7 +48068,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       return false;
     },
     focus() {
-      editor.focus();
+      focusEditor(editor);
     },
     blur() {
       previewPopover.hide();
