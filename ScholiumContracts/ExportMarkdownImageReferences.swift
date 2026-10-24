@@ -30,6 +30,11 @@ public enum ExportMarkdownImageReferences {
             references.append(.unavailable("Nested rendering limit reached."))
             return
         }
+        // These are necessary source markers for images and every recursive
+        // body below. Their absence proves no image work is possible; possible
+        // resources still use the complete parsers and the depth guard above.
+        let body = document.body
+        guard body.utf8.contains(0x21) || body.utf8.contains(0x5E) || body.contains("{{") else { return }
         var walker = ImageWalker(noteRelativePath: document.relativePath)
         walker.visit(Document(parsing: document.body))
         references.append(contentsOf: walker.references)

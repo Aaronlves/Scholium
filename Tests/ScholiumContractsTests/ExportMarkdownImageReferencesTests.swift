@@ -97,4 +97,24 @@ struct ExportMarkdownImageReferencesTests {
         )
         #expect(ExportMarkdownImageReferences.references(in: document).isEmpty)
     }
+    @Test("No-image nested fragments preserve the rendering limit", arguments: [false, true], [11, 12])
+    func nestedNoImageDepthLimit(callout: Bool, depth: Int) {
+        var source = "Terminal prose without resource markers."
+        for level in (0..<depth).reversed() {
+            if callout {
+                source =
+                    "> [!state]\n"
+                    + source.split(separator: "\n", omittingEmptySubsequences: false)
+                    .map { "> " + $0 }.joined(separator: "\n")
+            } else {
+                source =
+                    "Reference.[^level\(level)]\n\n[^level\(level)]: "
+                    + source.replacingOccurrences(of: "\n", with: "\n  ")
+            }
+        }
+        let document = NoteDocument(relativePath: "Note.md", rawContent: source)
+        let expected: [ExportMarkdownImageReferences.Reference] = depth == 12 ? [.unavailable("Nested rendering limit reached.")] : []
+        #expect(ExportMarkdownImageReferences.references(in: document) == expected)
+    }
+
 }
