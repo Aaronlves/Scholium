@@ -28509,18 +28509,18 @@
         }
       }
     },
-    "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery." : {
+    "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery. Copy your text or use Export Note to keep a separate copy." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery."
+            "value" : "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery. Copy your text or use Export Note to keep a separate copy."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该笔记已在 Scholium 外部被删除。其逐字节编辑缓冲仍保持打开，以便恢复。"
+            "value" : "该笔记已在 Scholium 外部被删除。其逐字节编辑缓冲仍保持打开，以便恢复。请复制文本，或使用“导出笔记”保留单独副本。"
           }
         }
       }

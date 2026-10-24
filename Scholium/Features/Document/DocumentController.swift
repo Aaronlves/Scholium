@@ -3051,7 +3051,7 @@ final class DocumentController: ObservableObject {
         session.canRetrySave = false
         let message = String(
             localized:
-                "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery.",
+                "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery. Copy your text or use Export Note to keep a separate copy.",
             table: "Localizable",
             bundle: .module
         )

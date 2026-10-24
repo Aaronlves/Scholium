@@ -347,6 +347,66 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testDeletedDirtyDraftExportsWithoutRecreatingItsOriginal() throws {
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, autosaveDelayMS: 300_000)
+        app.launch()
+        waitForCurrentDocumentSurface()
+        let workspace = stableWorkspaceWindow(app.windows.firstMatch)
+        let vault = triptychDirectory.appendingPathComponent("01-analyses")
+        let noteURL = vault.appendingPathComponent("QA Autosave A.md")
+        let original = try Data(contentsOf: noteURL)
+        let imageURL = vault.appendingPathComponent("Recovery.png")
+        let imageBytes = try XCTUnwrap(
+            Data(
+                base64Encoded:
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        try imageBytes.write(to: imageURL)
+        selectDocumentMode("Source", in: workspace)
+        let editor = workspace.descendants(matching: .any)["Markdown source editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.click()
+        editor.typeKey(.end, modifierFlags: [.command])
+        try coveragePaste("\n\nPreserved recovery draft 中文 😀.\n\n![Retained image](Recovery.png)", into: editor)
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String ?? "").contains("Preserved recovery draft 中文 😀.") })
+        XCTAssertEqual(try Data(contentsOf: noteURL), original)
+        try FileManager.default.removeItem(at: noteURL)
+        let notice = workspace.descendants(matching: .any)["scholium.documentStatus.autosaveFailed"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 12))
+        let recoveryText = notice.staticTexts.firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { self.accessibilityText(of: recoveryText).contains("Export Note") })
+        XCTAssertTrue((editor.value as? String ?? "").contains("Preserved recovery draft 中文 😀."))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: noteURL.path))
+
+        let exports = testDirectory.appendingPathComponent("deleted-draft-exports")
+        try FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
+        let preview = coverageOpenExportPreview(from: workspace)
+        coverageSelectExportFormat("HTML", in: preview)
+        preview.buttons["Export"].firstMatch.click()
+        let panel = preview.sheets.firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        panel.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        XCTAssertTrue(preview.exists)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: noteURL.path))
+
+        let output = exports.appendingPathComponent("preserved-draft.html")
+        try coverageExportPreview(preview, to: output)
+        let html = try String(contentsOf: output, encoding: .utf8)
+        XCTAssertTrue(html.contains("Preserved recovery draft 中文 😀."))
+        XCTAssertTrue(html.contains("data:image/png;base64,"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: noteURL.path))
+        XCTAssertEqual(try Data(contentsOf: imageURL), imageBytes)
+        XCTAssertTrue((editor.value as? String ?? "").contains("Preserved recovery draft 中文 😀."))
+        let repeated = coverageOpenExportPreview(from: workspace)
+        repeated.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !repeated.exists })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: noteURL.path))
+        XCTAssertTrue((editor.value as? String ?? "").contains("Preserved recovery draft 中文 😀."))
+    }
+
+    @MainActor
     func testAuthoredPDFCommandClickGrantsExactOriginalOnceAndPreservesEdit() throws {
         app.terminate()
         let vault = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)

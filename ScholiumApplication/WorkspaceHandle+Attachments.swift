@@ -11,10 +11,17 @@ extension WorkspaceHandle {
         markdownSource: String
     ) async throws -> [String: RenderedMarkdownImage] {
         try requireActive()
+        try Task.checkCancellation()
         let repository = try repository(vaultID: note.vaultID)
-        // The caller may have an unsaved editor buffer. Parse that exact source,
-        // while checking that the selected Note still belongs to this vault.
-        _ = try await repository.load(relativePath: note.relativePath)
+        // Export reads an immutable retained source snapshot. Its original may
+        // have been deleted externally. Only proven absence may pass this check;
+        // invalid paths, unsafe objects and lost vault authority still fail.
+        do {
+            _ = try await repository.load(relativePath: note.relativePath)
+        } catch VaultRepositoryError.fileDoesNotExist(_) {
+            // Export neither recreates nor saves the missing canonical Note.
+        }
+        try Task.checkCancellation()
         let document = NoteDocument(relativePath: note.relativePath, rawContent: markdownSource)
         let references = ExportMarkdownImageReferences.references(in: document).compactMap {
             if case .local(let file) = $0 { file } else { nil }
