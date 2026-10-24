@@ -414,7 +414,16 @@ extension WorkspaceHandle {
 
     func agentChanges() async throws -> [AgentChange] {
         try requireActive()
-        return try await services.agentChangeStore.changes()
+        try Task.checkCancellation()
+        let changes: [AgentChange]
+        do {
+            changes = try await services.agentChangeStore.changes()
+        } catch {
+            try Task.checkCancellation()
+            throw error
+        }
+        try Task.checkCancellation()
+        return changes
     }
 
     func reviewAgentChange(id: UUID) async throws -> AgentChangeReview {
