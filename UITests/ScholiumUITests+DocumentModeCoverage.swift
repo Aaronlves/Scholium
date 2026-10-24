@@ -38,6 +38,30 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testUnsavedAuthoredLinkOpensDestinationThroughEdit() throws {
+        let fixture = try prepareWindowModeFixture(appearance: .light)
+        let window = stableWorkspaceWindow(app.windows.firstMatch)
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let editor = enterLivePreview(in: window)
+        editor.typeKey(.end, modifierFlags: [.command])
+        let linkSource = "\n\n[[QA Autosave B]]\n"
+        try pasteWindowModeTextAtSelection(linkSource, into: editor)
+        XCTAssertTrue(waitUntil(timeout: 8) { (editor.value as? String)?.contains("QA Autosave B") == true })
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(fixture.source.utf8))
+        let link = window.webViews.firstMatch.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@ OR value == %@", "QA Autosave B", "QA Autosave B")
+        ).firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data(fixture.source.utf8), "The authored link must still be unsaved when clicked.")
+        XCUIElement.perform(withKeyModifiers: [.command]) { link.click() }
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", in: window, timeout: 12))
+        assertWindowMode("Edit", in: window)
+        XCTAssertEqual(try Data(contentsOf: noteURL), Data((fixture.source + linkSource).utf8))
+        try assertWindowModePeerBytes(fixture)
+        captureWindowModeEvidence(window, name: "Unsaved authored link opens its Note through Edit")
+    }
+
+    @MainActor
     func testWindowDocumentModeStaysSelectedAcrossTabsAndTriptychRoles() throws {
         let fixture = try prepareWindowModeFixture(appearance: .light)
         let window = stableWorkspaceWindow(app.windows.firstMatch)

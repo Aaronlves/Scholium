@@ -407,6 +407,7 @@ extension WindowModel {
         mode: NotePresentationMode? = nil,
         inspectorMode: ResearchInspectorMode? = nil,
         sourceFingerprint: DocumentFingerprint? = nil,
+        requestsPassage: Bool = false,
         navigationRequest: DocumentTransitionCoordinator.Currency? = nil,
         validateDisplay: @escaping @MainActor () throws -> Void = {},
         validateSource: @escaping @MainActor () async throws -> Void = {}
@@ -417,12 +418,30 @@ extension WindowModel {
             guard requestIsCurrent() else { throw CancellationError() }
             try validateDisplay()
         }
-        if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+        let forwardToExistingOwner: @MainActor () async -> Bool = { [weak self] in
+            guard let self, requestIsCurrent(),
+                let owner = self.workspaceStore.documentLocations.existingOwner(of: reference, excluding: self)
+            else { return false }
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             await owner.openWorkspaceReference(
                 reference, line: line, mode: mode, inspectorMode: inspectorMode, sourceFingerprint: sourceFingerprint,
-                validateDisplay: validateNavigation, validateSource: validateSource)
-            return
+                requestsPassage: requestsPassage, validateDisplay: validateNavigation, validateSource: validateSource)
+            return true
+        }
+        if await forwardToExistingOwner() { return }
+        let validateOpeningSource: @MainActor () async throws -> Void = {
+            try validateNavigation()
+            // A peer may acquire the target while this request is queued or
+            // suspended. Route the complete arrival before preparing the origin.
+            if await forwardToExistingOwner() { throw CancellationError() }
+            do {
+                try await validateSource()
+            } catch {
+                try validateNavigation()
+                throw error
+            }
+            try validateNavigation()
+            if await forwardToExistingOwner() { throw CancellationError() }
         }
         let navigationMode = mode ?? presentedDocumentMode
         let retainedTarget = sourceFingerprint.flatMap { _ in
@@ -433,29 +452,37 @@ extension WindowModel {
         enqueueDocumentTransition(
             preparation: openingPreparation(for: reference), requestIsCurrent: requestIsCurrent,
             retainingCurrentDocument: retainedTarget,
-            validateBeforePreparation: validateNavigation, admitBeforePreparation: validateSource
+            validateBeforePreparation: validateNavigation, admitBeforePreparation: validateOpeningSource
         ) { [weak self] in
             guard let self else { return }
             try validateNavigation()
+            if await forwardToExistingOwner() { return }
             let alreadyCurrent =
                 sourceFingerprint != nil
                 && self.currentDocumentDescriptor?.reference.vaultID == reference.vaultID
                 && self.currentDocumentDescriptor?.reference.relativePath == reference.relativePath
+                && (retainedTarget == nil || self.currentDocumentDescriptor?.sessionKey == retainedTarget)
             if !alreadyCurrent {
                 try await self.activateWorkspaceReference(
                     reference,
-                    tabActivation: .place(.replaceSelected), validateDisplay: validateNavigation, validateSource: validateSource
+                    tabActivation: .place(.replaceSelected), validateDisplay: validateNavigation, validateSource: validateOpeningSource
                 )
             }
             try validateNavigation()
+            if await forwardToExistingOwner() { return }
             if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
             var verifiedLine = line
-            var locationNotice: String?
+            var locationNotice: String? =
+                requestsPassage && line == nil
+                ? String(
+                    localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module)
+                : nil
             if let sourceFingerprint, line != nil {
                 guard let capabilities = self.windowWorkspaceController.activeCapabilities,
                     let descriptor = self.currentDocumentDescriptor,
                     descriptor.reference.vaultID == reference.vaultID,
-                    descriptor.reference.relativePath == reference.relativePath
+                    descriptor.reference.relativePath == reference.relativePath,
+                    retainedTarget == nil || descriptor.sessionKey == retainedTarget
                 else { throw CancellationError() }
                 let session = self.documentController.session(for: descriptor)
                 let document: NoteDocument?
@@ -625,81 +652,103 @@ extension WindowModel {
         }
     }
 
-    func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
+    /// The returned task admits the request to its owning transition queue;
+    /// presentation and source preparation still finish in that queue.
+    @discardableResult
+    func openInternalLink(_ targetWithFragment: String, from sourcePath: String) -> Task<Void, Never>? {
         guard
             !ZoteroMarkdownFields.isCitationDestination(
                 targetWithFragment.trimmingCharacters(in: .whitespacesAndNewlines))
-        else { return }
+        else { return nil }
         guard let sourceContext = activeDocumentContext(for: sourcePath),
-            let graph = workspaceCatalog?.graph
+            let capabilities = windowWorkspaceController.activeCapabilities
         else {
             reportOperationIssue(
-                String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
-            return
+                String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module),
+                kind: .warning)
+            return nil
+        }
+        // A missing or ambiguous newer intent also revokes a queued arrival.
+        guard let requestIsCurrent = beginDocumentNavigation() else { return nil }
+        guard workspaceProjectionController.snapshotPhase == .complete, workspaceCatalog?.graph != nil else {
+            reportOperationIssue(
+                String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module),
+                kind: .warning)
+            return nil
         }
         let parts = targetWithFragment.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
-        let target = String(parts.first ?? "").removingPercentEncoding ?? String(parts.first ?? "")
-        let rawFragment = parts.count == 2 ? String(parts[1]) : nil
-        let fragment = rawFragment.flatMap { $0.removingPercentEncoding ?? $0 }
+        let rawTarget = String(parts.first ?? "")
+        let target = rawTarget.removingPercentEncoding ?? rawTarget
+        let rawFragment = parts.count == 2 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        let decodedFragment = rawFragment.flatMap { $0.removingPercentEncoding ?? $0 }
+        // Heading normalization already performs percent decoding. Blocks use
+        // exact keys, so only that fragment spelling is decoded here.
+        let fragment = decodedFragment?.hasPrefix("^") == true ? decodedFragment : rawFragment
         let source = VaultQualifiedNoteID(vaultID: sourceContext.vaultID, relativePath: sourcePath)
-        let matching = graph.outgoing[source, default: []].filter { edge in
-            let occurrenceTarget =
-                edge.occurrence.target.removingPercentEncoding
-                ?? edge.occurrence.target
-            let occurrenceFragment = edge.occurrence.fragment.flatMap {
-                $0.removingPercentEncoding ?? $0
-            }
-            return occurrenceTarget == target && occurrenceFragment == fragment
-        }
-        let resolved = matching.compactMap { edge -> (VaultQualifiedNoteID, Int?)? in
-            guard let destination = edge.destination else { return nil }
-            return (destination.note, destination.span?.start.line)
-        }
-        var destinations: [(note: VaultQualifiedNoteID, line: Int?)] = []
-        for (destination, line) in resolved
-        where !destinations.contains(where: { $0.note == destination }) {
-            destinations.append((destination, line))
-        }
-
-        guard destinations.count == 1, let destination = destinations.first else {
-            let hasAmbiguity = matching.contains {
-                if case .ambiguous = $0.occurrence.resolution { return true }
-                let edge = $0
-                return graph.diagnostics.contains {
-                    $0.source == edge.source && $0.span == edge.occurrence.span
-                        && ($0.code == .ambiguousBlock || $0.code == .ambiguousHeading)
-                }
-            }
+        let summaries = workspaceProjectionController.vaultSnapshotsByID.values.flatMap(\.documents)
+        let resolver = LinkResolutionCatalog(catalog: summaries.map(\.linkCatalog))
+        let destination: LinkDestination
+        switch resolver.resolveNavigation(target: target, fragment: fragment, from: source, scope: .workspace) {
+        case .resolved(let resolved):
+            destination = resolved
+        case .missingHeading, .missingBlock, .ambiguousHeading, .ambiguousBlock:
+            // The Note may be unambiguous even when its authored passage is
+            // unavailable. Keep that useful destination without inventing a line.
+            guard
+                case .resolved(let note) = resolver.resolveNavigation(
+                    target: target, fragment: nil, from: source, scope: .workspace)
+            else { return nil }
+            destination = note
+        case .ambiguous:
+            reportOperationIssue(
+                String(
+                    localized: "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate.", table: "Localizable",
+                    bundle: .module),
+                kind: .warning)
+            return nil
+        case .missingNote:
             let message =
-                hasAmbiguity
-                ? String(
-                    localized: "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-                : String(
-                    localized: "This Connection is broken or its destination no longer exists.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            reportOperationIssue(
-                message,
-                kind: .warning
-            )
-            return
+                workspaceProjectionController.snapshotPhase == .complete
+                ? String(localized: "This Connection is broken or its destination no longer exists.", table: "Localizable", bundle: .module)
+                : String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module)
+            reportOperationIssue(message, kind: .warning)
+            return nil
         }
-        guard
-            let reference = workspaceCatalog?.notes.first(where: {
-                $0.reference.vaultID == destination.note.vaultID
-                    && $0.reference.relativePath == destination.note.relativePath
-            })?.reference
-        else {
-            reportOperationIssue(
-                String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
-            return
+        guard let summary = summaries.first(where: { $0.id == destination.note }),
+            let vault = registeredVaults.first(where: { $0.id == destination.note.vaultID })
+        else { return nil }
+        let reference = VaultNoteReference(
+            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+            relativePath: summary.id.relativePath,
+            stableNoteID: summary.stableIdentity.resolvedID?.uuidString.lowercased())
+        let runtimeIdentity = capabilities.runtimeIdentity
+        let validateSource: @MainActor () async throws -> Void = { [weak self] in
+            @MainActor func validate() throws {
+                guard let self, requestIsCurrent(),
+                    self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity,
+                    self.workspaceProjectionController.snapshotPhase == .complete, self.workspaceCatalog?.graph != nil
+                else { throw CancellationError() }
+                guard
+                    let current = self.workspaceProjectionController.cachedNote(
+                        vaultID: summary.id.vaultID, stableNoteID: summary.stableIdentity.resolvedID,
+                        relativePath: summary.id.relativePath),
+                    current.hasSameSourceBinding(as: summary)
+                else { throw WorkspaceHydrationError.staleSnapshot }
+            }
+            try validate()
+            // A retained tab or an old path does not prove the canonical source
+            // still exists or belongs to this Note. Use the checked source owner.
+            _ = try await capabilities.documents.hydrate(summary)
+            try Task.checkCancellation()
+            try validate()
         }
-        guard let requestIsCurrent = beginDocumentNavigation() else { return }
-        Task { await openWorkspaceReference(reference, line: destination.line, navigationRequest: requestIsCurrent) }
+        return Task {
+            await openWorkspaceReference(
+                reference, line: destination.span?.start.line,
+                sourceFingerprint: summary.fingerprint,
+                requestsPassage: !(fragment?.isEmpty ?? true), navigationRequest: requestIsCurrent,
+                validateSource: validateSource)
+        }
     }
 
     func diskDocument(for path: String) async throws -> NoteDocument {

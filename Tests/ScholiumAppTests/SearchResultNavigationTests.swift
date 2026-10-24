@@ -534,6 +534,459 @@ struct SearchResultNavigationTests {
         }
     }
 
+    @Test("A newly authored link resolves without a saved graph occurrence and preserves its retained dirty origin")
+    func authoredUnsavedLinkWithoutGraphOccurrence() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let originSession = window.documentController.session(for: origin)
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let draft = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Draft.md" })
+            try await window.activateWorkspaceReference(draft.reference, tabActivation: .place(.replaceSelected))
+            originSession.suppressAutosave = true
+            let changed = String(decoding: fixture.originalDraft, as: UTF8.self) + "\n[[Source#Source]]\n"
+            let restore = try editSource(changed, session: originSession, in: window)
+            defer { restore() }
+            let mode = window.presentedDocumentMode
+            await finishAuthoredLink(window.openInternalLink("Source#Source", from: "Draft.md"), in: window)
+            #expect(window.selectedDocumentPath == "Source.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 1)
+            #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == fixture.result.fingerprint.sha256)
+            #expect(window.presentedDocumentMode == mode)
+            #expect(originSession.editingSource.utf8.elementsEqual(changed.utf8) && originSession.hasUnsavedChanges)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("Authored fragment navigation never applies a saved line to a dirty retained target")
+    func authoredDirtyDestinationDoesNotReceiveSavedLine() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let draftDescriptor = try #require(window.currentDocumentDescriptor)
+            let session = window.documentController.session(for: draftDescriptor)
+            session.suppressAutosave = true
+            let changed = "Leading unsaved lines.\n\n" + String(decoding: fixture.originalDraft, as: UTF8.self)
+            let restore = try editSource(changed, session: session, in: window)
+            defer { restore() }
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            window.documentController.requestSourceLocation(line: nil)
+            let mode = window.presentedDocumentMode
+            await finishAuthoredLink(window.openInternalLink("Draft#Draft", from: "Source.md"), in: window)
+            #expect(window.selectedDocumentPath == "Draft.md")
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(window.shellState.operationIssues.last?.message.contains("could not be verified") == true)
+            #expect(window.presentedDocumentMode == mode)
+            #expect(session.editingSource.utf8.elementsEqual(changed.utf8) && session.hasUnsavedChanges)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("A queued authored fragment rejects changed canonical source before departure and permits refreshed retry")
+    func authoredQueuedLocatorRevalidatesSource() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let origin = try #require(window.currentDocumentDescriptor)
+            // Hold the exact captured catalog while canonical bytes change.
+            // The owning hydration check, not a watcher refresh, must reject it.
+            window.workspaceCancellables.removeAll()
+            let gate = TransitionGate()
+            defer { gate.release() }
+            window.documentTransitionCoordinator.enqueue(
+                prepare: { await gate.wait() }, operation: {}, didFail: { _ in Issue.record("Fixture queue failed") })
+            try await waitForAuthoredBoundary { gate.started }
+            let admission = window.openInternalLink("Draft#Draft", from: "Source.md")
+            await admission?.value
+            let changed = "New external prefix.\n\n" + String(decoding: fixture.originalDraft, as: UTF8.self)
+            try Data(changed.utf8).write(to: fixture.draftFile)
+            gate.release()
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(window.shellState.operationIssues.last?.message == WorkspaceHydrationError.staleSnapshot.localizedDescription)
+            #expect(try Data(contentsOf: fixture.draftFile) == Data(changed.utf8))
+            try #require(await window.refreshAfterResearchHandoff() != nil)
+            await finishAuthoredLink(window.openInternalLink("Draft#Draft", from: "Source.md"), in: window)
+            #expect(window.selectedDocumentPath == "Draft.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 3)
+            #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == DocumentFingerprint(content: changed).sha256)
+            #expect(try Data(contentsOf: fixture.draftFile) == Data(changed.utf8))
+        }
+    }
+
+    @Test("A missing authored target retains the origin and permits an explicit retry after restoration")
+    func authoredMissingDestinationAndRetry() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let origin = try #require(window.currentDocumentDescriptor)
+            window.workspaceCancellables.removeAll()
+            try FileManager.default.removeItem(at: fixture.draftFile)
+            await finishAuthoredLink(window.openInternalLink("Draft#Draft", from: "Source.md"), in: window)
+            try #require(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(!window.shellState.operationIssues.isEmpty)
+            try fixture.originalDraft.write(to: fixture.draftFile)
+            try #require(await window.refreshAfterResearchHandoff() != nil)
+            await finishAuthoredLink(window.openInternalLink("Draft#Draft", from: "Source.md"), in: window)
+            #expect(window.selectedDocumentPath == "Draft.md")
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("A later missing authored link supersedes a queued valid destination")
+    func authoredMissingIntentSupersedesQueuedDestination() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let origin = try #require(window.currentDocumentDescriptor)
+            let gate = TransitionGate()
+            defer { gate.release() }
+            window.documentTransitionCoordinator.enqueue(
+                prepare: { await gate.wait() }, operation: {}, didFail: { _ in Issue.record("Fixture queue failed") })
+            try await waitForAuthoredBoundary { gate.started }
+            let admission = window.openInternalLink("Draft#Draft", from: "Source.md")
+            await admission?.value
+            window.openInternalLink("Actually Missing", from: "Source.md")
+            gate.release()
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(window.shellState.operationIssues.last?.message.contains("broken") == true)
+            #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("Repeated fragment-only navigation keeps the same session, mode and exact source", arguments: [false, true])
+    func authoredSameNoteFragment(dirty: Bool) async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let descriptor = try #require(window.currentDocumentDescriptor)
+            let session = window.documentController.session(for: descriptor)
+            session.suppressAutosave = true
+            let source = String(decoding: fixture.originalDraft, as: UTF8.self)
+            let changed = dirty ? "Unsaved prefix.\n\n" + source : source
+            let restore = try editSource(changed, session: session, in: window)
+            defer { restore() }
+            let mode = window.presentedDocumentMode
+            for _ in 0..<2 {
+                await finishAuthoredLink(window.openInternalLink("#Draft", from: "Draft.md"), in: window)
+                #expect(window.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey)
+                #expect(window.presentedDocumentMode == mode)
+                if dirty {
+                    #expect(window.documentController.sourceLocationRequest == nil)
+                    #expect(window.shellState.operationIssues.last?.message.contains("could not be verified") == true)
+                } else {
+                    #expect(window.documentController.sourceLocationRequest?.line == 1)
+                    #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == DocumentFingerprint(content: source).sha256)
+                }
+                #expect(session.editingSource.utf8.elementsEqual(changed.utf8))
+                #expect(session.hasUnsavedChanges == dirty)
+                #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            }
+        }
+    }
+
+    @Test(
+        "An unavailable or ambiguous passage opens its unambiguous Note without claiming passage arrival",
+        arguments: ["Missing", "^missing", "Repeated", "^repeated"])
+    func authoredUnavailableFragmentFallback(fragment: String) async throws {
+        let draft = "# Draft\n\n## Repeated\n\nFirst block. ^repeated\n\n## Repeated\n\nSecond block. ^repeated\n"
+        try await withFixture(authoredLinks: true, authoredDraft: draft) { fixture in
+            let window = fixture.window
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            let mode = window.presentedDocumentMode
+            await finishAuthoredLink(window.openInternalLink("Draft#" + fragment, from: "Source.md"), in: window)
+            #expect(window.selectedDocumentPath == "Draft.md")
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(window.shellState.operationIssues.last?.message.contains("could not be verified") == true)
+            #expect(window.presentedDocumentMode == mode)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("Authored paths and heading fragments use one percent decoding at their existing semantic boundary")
+    func authoredEncodedTargetAndHeading() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let folder = fixture.sourceFile.deletingLastPathComponent()
+            let intended = folder.appendingPathComponent("Literal%20.md")
+            let unintended = folder.appendingPathComponent("Literal .md")
+            let source = "# S\n\n## 53\n\nExact destination.\n"
+            try Data(source.utf8).write(to: intended)
+            try Data("# S\n\nUnrelated Note.\n".utf8).write(to: unintended)
+            try #require(await window.refreshAfterResearchHandoff() != nil)
+            try await window.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+            await finishAuthoredLink(window.openInternalLink("Literal%2520#%2553", from: "Source.md"), in: window)
+            #expect(window.selectedDocumentPath == "Literal%20.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 3)
+            #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == DocumentFingerprint(content: source).sha256)
+            #expect(try Data(contentsOf: intended) == Data(source.utf8))
+            #expect(try Data(contentsOf: unintended) == Data("# S\n\nUnrelated Note.\n".utf8))
+        }
+    }
+
+    @Test("A direct authored link forwards the complete locator to its owning peer without saving the origin", arguments: [false, true])
+    func authoredPeerDestination(dirty: Bool) async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let originSession = window.documentController.session(for: origin)
+            originSession.suppressAutosave = true
+            let changed = String(decoding: fixture.originalDraft, as: UTF8.self) + "\n[[Source#Source]]\n"
+            let restoreOrigin = try editSource(changed, session: originSession, in: window)
+            defer { restoreOrigin() }
+            try await withPeer(of: fixture) { peer in
+                try await peer.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+                let target = try #require(peer.currentDocumentDescriptor)
+                let session = peer.documentController.session(for: target)
+                session.suppressAutosave = true
+                let source = String(decoding: fixture.originalSource, as: UTF8.self)
+                let targetText = dirty ? "Unsaved target prefix.\n\n" + source : source
+                let restoreTarget = try editSource(targetText, session: session, in: peer)
+                defer { restoreTarget() }
+                await finishAuthoredLink(window.openInternalLink("Source#Source", from: "Draft.md"), in: window, peer: peer)
+                #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+                #expect(originSession.editingSource.utf8.elementsEqual(changed.utf8) && originSession.hasUnsavedChanges)
+                #expect(peer.currentDocumentDescriptor?.sessionKey == target.sessionKey)
+                if dirty {
+                    #expect(peer.documentController.sourceLocationRequest == nil)
+                    #expect(peer.shellState.operationIssues.last?.message.contains("could not be verified") == true)
+                } else {
+                    #expect(peer.documentController.sourceLocationRequest?.line == 1)
+                    #expect(peer.documentController.sourceLocationRequest?.sourceFingerprint == fixture.result.fingerprint.sha256)
+                }
+                #expect(session.editingSource.utf8.elementsEqual(targetText.utf8) && session.hasUnsavedChanges == dirty)
+                #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+                #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            }
+        }
+    }
+
+    @Test("A peer acquiring a queued authored destination receives its locator before origin preparation", arguments: [false, true])
+    func authoredQueuedPeerAcquisition(composing: Bool) async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let session = window.documentController.session(for: origin)
+            session.suppressAutosave = true
+            let changed = String(decoding: fixture.originalDraft, as: UTF8.self) + "\n[[Source#Source]]\n"
+            let restore = try editSource(changed, session: session, in: window)
+            defer { restore() }
+            setComposition(composing, on: session)
+            defer { setComposition(false, on: session) }
+            try await withPeer(of: fixture) { peer in
+                let gate = TransitionGate()
+                defer { gate.release() }
+                window.documentTransitionCoordinator.enqueue(
+                    prepare: { await gate.wait() }, operation: {}, didFail: { _ in Issue.record("Fixture queue failed") })
+                try await waitForAuthoredBoundary { gate.started }
+                let admission = window.openInternalLink("Source#Source", from: "Draft.md")
+                await admission?.value
+                try await peer.activateWorkspaceReference(fixture.reference, tabActivation: .place(.newTab))
+                let target = try #require(peer.currentDocumentDescriptor)
+                gate.release()
+                await window.waitForPendingDocumentTransitionsForTesting()
+                await peer.waitForPendingDocumentTransitionsForTesting()
+                #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+                #expect(session.editingSource.utf8.elementsEqual(changed.utf8) && session.hasUnsavedChanges)
+                #expect(session.editorSession.isComposing == composing)
+                #expect(session.editError == nil && window.lastSaveError == nil)
+                #expect(peer.currentDocumentDescriptor?.sessionKey == target.sessionKey)
+                #expect(peer.documentController.sourceLocationRequest?.line == 1)
+                #expect(peer.documentController.sourceLocationRequest?.sourceFingerprint == fixture.result.fingerprint.sha256)
+                #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            }
+        }
+    }
+
+    @Test("A queued authored target cannot capture a replacement at its former path")
+    func authoredMovedTargetDoesNotReuseOldPath() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let gate = TransitionGate()
+            defer { gate.release() }
+            window.documentTransitionCoordinator.enqueue(
+                prepare: { await gate.wait() }, operation: {}, didFail: { _ in Issue.record("Fixture queue failed") })
+            try await waitForAuthoredBoundary { gate.started }
+            let admission = window.openInternalLink("Source#Source", from: "Draft.md")
+            await admission?.value
+            let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
+            let noteID = try #require(fixture.result.stableNoteID.flatMap(UUID.init(uuidString:)))
+            let target = NoteMutationTarget(
+                documentID: .init(vaultID: fixture.result.vaultID, relativePath: "Source.md"),
+                stableNoteID: noteID, revision: fixture.result.fingerprint)
+            _ = try await capabilities.libraryMutations.move(target, to: "Relocated.md")
+            let replacement = Data("# Replacement\n\nDifferent Note.\n".utf8)
+            try replacement.write(to: fixture.sourceFile)
+            try #require(await window.refreshAfterResearchHandoff() != nil)
+            gate.release()
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(!window.shellState.operationIssues.isEmpty)
+            #expect(try Data(contentsOf: fixture.sourceFile) == replacement)
+            let moved = fixture.sourceFile.deletingLastPathComponent().appendingPathComponent("Relocated.md")
+            #expect(try Data(contentsOf: moved) == fixture.originalSource)
+            await finishAuthoredLink(window.openInternalLink("Relocated#Source", from: "Draft.md"), in: window)
+            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == noteID)
+            #expect(window.selectedDocumentPath == "Relocated.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 1)
+        }
+    }
+
+    @Test("A suspended source admission failure belongs only to its current navigation intent", arguments: [false, true])
+    func supersededSourceAdmissionFailure(superseded: Bool) async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let session = window.documentController.session(for: origin)
+            session.suppressAutosave = true
+            let changed = String(decoding: fixture.originalDraft, as: UTF8.self) + "\nRetained unsaved input.\n"
+            let restore = try editSource(changed, session: session, in: window)
+            defer { restore() }
+            let gate = TransitionGate()
+            defer { gate.release() }
+            await window.openWorkspaceReference(
+                fixture.reference, sourceFingerprint: fixture.result.fingerprint,
+                validateSource: {
+                    await gate.wait()
+                    throw WorkspaceHydrationError.staleSnapshot
+                })
+            try await waitForAuthoredBoundary { gate.started }
+            if superseded {
+                window.openInternalLink("Actually Missing", from: "Draft.md")
+                #expect(window.shellState.operationIssues.last?.message.contains("broken") == true)
+            }
+            let issueCount = window.shellState.operationIssues.count
+            gate.release()
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(session.editingSource.utf8.elementsEqual(changed.utf8) && session.hasUnsavedChanges)
+            #expect(session.editError == nil && window.lastSaveError == nil)
+            if superseded {
+                #expect(window.shellState.operationIssues.count == issueCount)
+                #expect(window.shellState.operationIssues.last?.message.contains("broken") == true)
+            } else {
+                #expect(window.shellState.operationIssues.count == issueCount + 1)
+                #expect(window.shellState.operationIssues.last?.message == WorkspaceHydrationError.staleSnapshot.localizedDescription)
+            }
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+        }
+    }
+
+    @Test("A new stable Note at a retained path cannot claim passage arrival in the former Note's session")
+    func authoredReusedPathCannotCountAsCurrentIdentity() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let former = try #require(window.currentDocumentDescriptor)
+            let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
+            let formerNote = VaultQualifiedNoteID(vaultID: former.sessionKey.vaultID, relativePath: "Draft.md")
+            let original = String(decoding: fixture.originalDraft, as: UTF8.self)
+            // Model a lagging window observer receiving a valid newer provider
+            // reference. Every identity and source below comes from real source
+            // operations; the old Document remains independently retained.
+            window.workspaceCancellables.removeAll()
+            let target = NoteMutationTarget(
+                documentID: formerNote, stableNoteID: former.sessionKey.noteID,
+                revision: DocumentFingerprint(content: original))
+            _ = try await capabilities.libraryMutations.move(target, to: "Former Draft.md")
+            _ = try await capabilities.documents.importMarkdownSource(original, at: formerNote)
+            let fresh = try await window.discoveryController.refreshWorkspace()
+            let replacement = try #require(fresh.document(id: formerNote))
+            let replacementID = try #require(replacement.stableIdentity.resolvedID)
+            try #require(replacementID != former.sessionKey.noteID)
+            try #require(replacement.fingerprint == DocumentFingerprint(content: original))
+            try #require(window.currentDocumentDescriptor == former)
+            let reference = VaultNoteReference(
+                vaultID: former.reference.vaultID, vaultName: former.reference.vaultName,
+                vaultRole: former.reference.vaultRole, relativePath: "Draft.md",
+                stableNoteID: replacementID.uuidString.lowercased())
+            window.documentController.requestSourceLocation(line: nil)
+            await window.openWorkspaceReference(reference, line: 1, sourceFingerprint: replacement.fingerprint)
+            await window.waitForPendingDocumentTransitionsForTesting()
+            // The stale window cannot open the newer identity until its source
+            // projection arrives. It must not count path+bytes as that identity.
+            #expect(window.currentDocumentDescriptor?.sessionKey == former.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(!window.shellState.operationIssues.isEmpty)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+            try #require(await window.refreshAfterResearchHandoff() != nil)
+            await window.openWorkspaceReference(reference, line: 1, sourceFingerprint: replacement.fingerprint)
+            await window.waitForPendingDocumentTransitionsForTesting()
+            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == replacementID)
+            #expect(window.selectedDocumentPath == "Draft.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 1)
+            #expect(window.documentController.sourceLocationRequest?.sourceFingerprint == replacement.fingerprint.sha256)
+            let moved = fixture.draftFile.deletingLastPathComponent().appendingPathComponent("Former Draft.md")
+            #expect(try Data(contentsOf: moved) == fixture.originalDraft)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    @Test("An opening phase cannot admit direct links from an older complete graph and recovers on completion")
+    func authoredLinkRequiresCompleteGeneration() async throws {
+        try await withFixture(authoredLinks: true) { fixture in
+            let window = fixture.window
+            let origin = try #require(window.currentDocumentDescriptor)
+            let capabilities = try #require(window.windowWorkspaceController.activeCapabilities)
+            window.workspaceCancellables.removeAll()
+            let complete = try await window.discoveryController.refreshWorkspace()
+            try #require(complete.discovery.catalog.graph != nil)
+            // Retain the last complete graph deliberately: its presence alone
+            // must not override the source cohort's explicit opening phase.
+            let opening = WorkspaceSnapshot(
+                triptych: complete.triptych, mode: complete.mode, phase: .opening,
+                generatedAt: complete.generatedAt, vaults: complete.vaults,
+                discovery: complete.discovery, research: complete.research,
+                sourceInventoryRevision: complete.sourceInventoryRevision,
+                documentChangesGeneration: complete.documentChangesGeneration)
+            try #require(
+                window.workspaceProjectionController.replaceSnapshot(
+                    opening, runtimeIdentity: capabilities.runtimeIdentity,
+                    status: .opening(.init(snapshot: opening)), context: window.workspaceProjectionContext) != nil)
+            await finishAuthoredLink(window.openInternalLink("Source#Source", from: "Draft.md"), in: window)
+            #expect(window.currentDocumentDescriptor?.sessionKey == origin.sessionKey)
+            #expect(window.documentController.sourceLocationRequest == nil)
+            #expect(window.shellState.operationIssues.last?.message.contains("still refreshing") == true)
+            // Completion publishes a newer source inventory cohort; replaying
+            // the same cohort cannot replace the accepted opening projection.
+            let completed = WorkspaceSnapshot(
+                triptych: complete.triptych, mode: complete.mode, phase: .complete,
+                generatedAt: complete.generatedAt, vaults: complete.vaults,
+                discovery: complete.discovery, research: complete.research,
+                sourceInventoryRevision: opening.sourceInventoryRevision + 1,
+                documentChangesGeneration: complete.documentChangesGeneration)
+            try #require(
+                window.workspaceProjectionController.replaceSnapshot(
+                    completed, runtimeIdentity: capabilities.runtimeIdentity,
+                    status: .current(.init(snapshot: completed)), context: window.workspaceProjectionContext) != nil)
+            try #require(window.workspaceProjectionController.snapshotPhase == .complete)
+            await finishAuthoredLink(window.openInternalLink("Source#Source", from: "Draft.md"), in: window)
+            #expect(window.selectedDocumentPath == "Source.md")
+            #expect(window.documentController.sourceLocationRequest?.line == 1)
+            #expect(try Data(contentsOf: fixture.sourceFile) == fixture.originalSource)
+            #expect(try Data(contentsOf: fixture.draftFile) == fixture.originalDraft)
+        }
+    }
+
+    private func finishAuthoredLink(_ admission: Task<Void, Never>?, in window: WindowModel, peer: WindowModel? = nil) async {
+        // Wait for actual queue admission before draining the owning queue. A
+        // previous issue or the destination's old tab is not a completion signal.
+        await admission?.value
+        await window.waitForPendingDocumentTransitionsForTesting()
+        await peer?.waitForPendingDocumentTransitionsForTesting()
+    }
+
+    private func waitForAuthoredBoundary(_ ready: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !ready(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        try #require(ready(), "The fixture transition gate did not start")
+    }
+
     private func editSource(_ source: String, session: DocumentSessionModel, in window: WindowModel) throws -> () -> Void {
         let snapshot = try #require(window.documentController.activeSnapshot)
         try #require(snapshot.stableIdentity.resolvedID == session.key?.noteID)
@@ -574,8 +1027,10 @@ struct SearchResultNavigationTests {
         }
     }
 
-    private func withFixture(identicalSources: Bool = false, _ body: (Fixture) async throws -> Void) async throws {
-        let fixture = try await Fixture.make(identicalSources: identicalSources)
+    private func withFixture(identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil, _ body: (Fixture) async throws -> Void)
+        async throws
+    {
+        let fixture = try await Fixture.make(identicalSources: identicalSources, authoredLinks: authoredLinks, authoredDraft: authoredDraft)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         do {
             try await body(fixture)
@@ -621,7 +1076,7 @@ struct SearchResultNavigationTests {
                 relativePath: result.relativePath, stableNoteID: result.stableNoteID)
         }
 
-        static func make(identicalSources: Bool = false) async throws -> Fixture {
+        static func make(identicalSources: Bool = false, authoredLinks: Bool = false, authoredDraft: String? = nil) async throws -> Fixture {
             let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             let root = repository.appendingPathComponent(".build/feature-audit/research-workflow/fixtures/\(UUID())")
             let triptych = root.appendingPathComponent("Triptych")
@@ -630,8 +1085,9 @@ struct SearchResultNavigationTests {
             let works = triptych.appendingPathComponent("Works")
             let sourceFile = analyses.appendingPathComponent("Source.md")
             let draftFile = works.appendingPathComponent("Draft.md")
-            let source = "\u{FEFF}# Source\r\n\r\nExact **source** 😀. [[Draft|writing]]{{Authored context.}}\r\n"
-            let draft = identicalSources ? source : "# Draft\n\nIndependent writing.\n"
+            let source =
+                "\u{FEFF}# Source\r\n\r\nExact **source** 😀. [[Draft|writing]]{{Authored context.}}\r\n" + (authoredLinks ? "\r\n[[Draft#Draft]]\r\n" : "")
+            let draft = authoredDraft ?? (identicalSources ? source : "# Draft\n\nIndependent writing.\n")
             var store: WorkspaceStore?
             do {
                 for directory in [analyses, topics, works] {
@@ -647,7 +1103,7 @@ struct SearchResultNavigationTests {
                 let window = WindowModel(workspaceStore: created, requestedTriptychID: capabilities.id)
                 await window.refreshWorkspaceAssignment(preferredTriptychID: capabilities.id)
                 try await window.openWorkspaceVault(.output)
-                window.documentController.rememberPresentationMode(.read)
+                window.documentController.rememberPresentationMode(authoredLinks ? .source : .read)
                 let sourceNote = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Source.md" })
                 let draftNote = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Draft.md" })
                 await window.openWorkspaceReference(draftNote.reference)
