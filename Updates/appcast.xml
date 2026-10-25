@@ -3,6 +3,15 @@
     <channel>
         <title>Scholium</title>
         <item>
+            <title>0.4.5</title>
+            <pubDate>Sun, 25 Oct 2026 22:04:31 +0800</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/Aaronlves/Scholium/releases/download/v0.4.5-beta.1/Scholium-v0.4.5-beta.1-macos-arm64.dmg" length="28765311" type="application/octet-stream" sparkle:edSignature="eE8b7c3ho6DupVMCuszKJ9UElR5ngRHRL86Z9S2p7DGod5vmhLstWuly6gkKdHwl1AnBU4p0FiENaZI9Z67FDA=="/>
+        </item>
+        <item>
             <title>0.4.4</title>
             <pubDate>Fri, 23 Oct 2026 01:58:12 +0800</pubDate>
             <sparkle:version>24</sparkle:version>

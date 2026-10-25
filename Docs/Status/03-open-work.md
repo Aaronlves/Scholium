@@ -87,7 +87,7 @@
 
 ## Gate and release boundary
 
-- `v0.4.4-beta.1` has artifact-specific proof and release-specific waivers recorded in
+- `v0.4.5-beta.1` has artifact-specific proof and release-specific waivers recorded in
   [Verification](04-verification.md); future candidates inherit no waiver.
 - Run the required complete gate and artifact checks for each subsequent release
   candidate; earlier passes are dated proof, not reusable release authorization.
