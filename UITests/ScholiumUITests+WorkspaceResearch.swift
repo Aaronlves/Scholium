@@ -189,7 +189,7 @@ extension ScholiumUITests {
         // nonempty and include the Topic's distinct vocabulary, so paragraph
         // expansion would visibly admit the unwanted Topic passage as well.
         app.menuBars.menuBarItems["Research"].click()
-        let find = app.menuItems["Find Writing References"].firstMatch
+        let find = app.menuItems["Find Related Material for Writing"].firstMatch
         XCTAssertTrue(find.waitForExistence(timeout: 5))
         XCTAssertTrue(find.isEnabled)
         find.click()
@@ -420,7 +420,7 @@ extension ScholiumUITests {
         let workBytes = try Data(contentsOf: workURL)
         try FileManager.default.removeItem(at: workURL)
         defer { try? workBytes.write(to: workURL) }
-        let unavailableMessage = "This source could not be opened. Use Find Writing References again to refresh the results."
+        let unavailableMessage = "This source could not be opened. Use Find Related Material for Writing again to refresh the results."
         let unavailableCard = card(containing: destinationWords)
         XCTAssertTrue(unavailableCard.exists && unavailableCard.isEnabled)
         XCTAssertTrue(workspace.frame.contains(unavailableCard.frame))

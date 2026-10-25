@@ -19,6 +19,12 @@ struct HotkeyPreferencesTests {
             ScholiumHotkeyPreferences.binding(for: .searchResearch, data: data)
                 == ScholiumHotkeyBinding(key: "f", modifiers: [.shift, .command])
         )
+        #expect(ScholiumHotkeyCommand.findWritingReferences.rawValue == "findWritingReferences")
+        #expect(ScholiumHotkeyCommand.findWritingReferences.title == LocalizedStringResource("Find Related Material for Writing"))
+        #expect(ScholiumHotkeyCommand.findWritingReferences.menuPath == LocalizedStringResource("Research → Find Related Material for Writing"))
+        #expect(
+            ScholiumHotkeyPreferences.binding(for: .findWritingReferences, data: data)
+                == ScholiumHotkeyBinding(key: "j", modifiers: [.shift, .command]))
         #expect(ScholiumHotkeyCommand.searchResearch.title == LocalizedStringResource("Advanced Search"))
         #expect(ScholiumHotkeyCommand.searchResearch.menuPath == LocalizedStringResource("View → Advanced Search"))
         #expect(

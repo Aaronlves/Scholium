@@ -3224,18 +3224,18 @@
     }
   }
 },
-    "The writing context changed. Use Find Writing References again before inserting a link.": {
+    "The writing context changed. Use Find Related Material for Writing again before inserting a link.": {
   "localizations": {
     "en": {
       "stringUnit": {
         "state": "translated",
-        "value": "The writing context changed. Use Find Writing References again before inserting a link."
+        "value": "The writing context changed. Use Find Related Material for Writing again before inserting a link."
       }
     },
     "zh-Hans": {
       "stringUnit": {
         "state": "translated",
-        "value": "写作上下文已变化。请再次使用“查找写作参考”，然后插入双链。"
+        "value": "写作上下文已变化。请再次使用“为写作查找相关材料”，然后插入双链。"
       }
     }
   }
@@ -3272,18 +3272,18 @@
     }
   }
 },
-    "Research → Find Writing References": {
+    "Research → Find Related Material for Writing": {
   "localizations": {
     "en": {
       "stringUnit": {
         "state": "translated",
-        "value": "Research → Find Writing References"
+        "value": "Research → Find Related Material for Writing"
       }
     },
     "zh-Hans": {
       "stringUnit": {
         "state": "translated",
-        "value": "研究 → 查找写作参考"
+        "value": "研究 → 为写作查找相关材料"
       }
     }
   }
@@ -3321,18 +3321,18 @@
     }
   }
 },
-    "Find Writing References": {
+    "Find Related Material for Writing": {
   "localizations": {
     "en": {
       "stringUnit": {
         "state": "translated",
-        "value": "Find Writing References"
+        "value": "Find Related Material for Writing"
       }
     },
     "zh-Hans": {
       "stringUnit": {
         "state": "translated",
-        "value": "查找写作参考"
+        "value": "为写作查找相关材料"
       }
     }
   }
@@ -14016,18 +14016,18 @@
         }
       }
     },
-    "Find Related Material" : {
+    "Explore Related Material" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Find Related Material"
+            "value" : "Explore Related Material"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "查找相关材料"
+            "value" : "探索相关材料"
           }
         }
       }
@@ -29562,18 +29562,18 @@
         }
       }
     },
-    "This source could not be opened. Use Find Writing References again to refresh the results." : {
+    "This source could not be opened. Use Find Related Material for Writing again to refresh the results." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This source could not be opened. Use Find Writing References again to refresh the results."
+            "value" : "This source could not be opened. Use Find Related Material for Writing again to refresh the results."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开此来源。请再次使用“查找写作参考”来刷新结果。"
+            "value" : "无法打开此来源。请再次使用“为写作查找相关材料”来刷新结果。"
           }
         }
       }

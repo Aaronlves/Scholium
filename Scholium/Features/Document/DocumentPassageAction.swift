@@ -50,7 +50,7 @@ enum DocumentPassageAction: String, CaseIterable, Sendable {
     var title: String {
         switch self {
         case .copyLink: ScholiumL10n.string("Copy Paragraph Link")
-        case .relatedMaterial: ScholiumL10n.string("Find Related Material")
+        case .relatedMaterial: ScholiumL10n.string("Explore Related Material")
         case .addToChat: ScholiumL10n.string("Add to Chat")
         case .extract: ScholiumL10n.string("Extract to New Note…")
         case .move: ScholiumL10n.string("Move Passage to Note…")

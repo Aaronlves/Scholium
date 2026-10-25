@@ -24,7 +24,7 @@ struct DocumentNoticeLayoutTests {
                     rootView:
                         VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                             ScholiumDocumentStatusNotice(
-                                "Reference Unavailable", detail: "This source could not be opened. 原文未改变，请重新查找写作参考。", kind: .information
+                                "Reference Unavailable", detail: "This source could not be opened. 原文未改变，请再次使用“为写作查找相关材料”。", kind: .information
                             ) { action("Dismiss") }
                             ScholiumDocumentStatusNotice(
                                 "Autosave Paused", detail: "Your edits remain available. 未保存的编辑仍然保留。", kind: .attention

@@ -691,11 +691,11 @@ private struct ScholiumResearchCommandContent: View {
     private var editorActions: ScholiumFocusedEditorActions? { appState?.currentEditorActions ?? external?.editorActions }
 
     var body: some View {
-        Button("Find Related Material") {
+        Button("Explore Related Material") {
             appState?.performPassageAction(.relatedMaterial)
         }
         .disabled(appState?.currentNote == nil || appState?.isDetachedDocumentWindow == true || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
-        Button("Find Writing References") {
+        Button("Find Related Material for Writing") {
             guard let appState else { return }
             appState.researchController.selectInspectorMode(.related)
             workspaceWindowActions?.setResearchInspectorVisible(true)

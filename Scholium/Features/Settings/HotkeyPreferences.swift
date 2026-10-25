@@ -111,7 +111,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .showSource: "Show Source"
         case .showAttention: "Notifications"
         case .insertFootnote: "Insert Footnote"
-        case .findWritingReferences: "Find Writing References"
+        case .findWritingReferences: "Find Related Material for Writing"
         case .insertInlineFootnote: "Insert Inline Footnote"
         }
     }
@@ -150,7 +150,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .showSource: "View → Document Mode → Source"
         case .showAttention: "Window → Notifications"
         case .insertFootnote: "Insert → Footnote"
-        case .findWritingReferences: "Research → Find Writing References"
+        case .findWritingReferences: "Research → Find Related Material for Writing"
         case .insertInlineFootnote: "Insert → Inline Footnote"
         }
     }

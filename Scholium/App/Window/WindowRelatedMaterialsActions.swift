@@ -262,7 +262,7 @@ extension WindowModel {
                     else { return false }
                     reportOperationIssue(
                         String(
-                            localized: "This source could not be opened. Use Find Writing References again to refresh the results.",
+                            localized: "This source could not be opened. Use Find Related Material for Writing again to refresh the results.",
                             bundle: .module
                         ),
                         kind: .information

@@ -47,7 +47,8 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
             String(
                 localized: "The source paragraph anchor was saved, but the link was not inserted. Find related material again before retrying.", bundle: .module
             )
-        case .insertionChanged: String(localized: "The writing context changed. Use Find Writing References again before inserting a link.", bundle: .module)
+        case .insertionChanged:
+            String(localized: "The writing context changed. Use Find Related Material for Writing again before inserting a link.", bundle: .module)
         case .staleIndex: String(localized: "Search needs refreshing before it can find current material.", bundle: .module)
         case .invalidSeed: String(localized: "This passage has no searchable wording. Try another selection.", bundle: .module)
         case .changedSource: String(localized: "A source has changed. Find related material again to use its current passage.", bundle: .module)

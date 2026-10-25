@@ -75,6 +75,10 @@ struct DocumentPassageActionsTests {
             composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil)
         let menu = web.makeEditorContextMenu(context: context, mode: .livePreview, canPaste: true)
         let passage = menu.items.filter { $0.identifier?.rawValue.hasPrefix("scholium.passage.") == true }
+        #expect(DocumentPassageAction.relatedMaterial.rawValue == "relatedMaterial")
+        #expect(
+            passage.first { $0.identifier?.rawValue == "scholium.passage.relatedMaterial" }?.title
+                == ScholiumL10n.string("Explore Related Material"))
         #expect(passage.count == DocumentPassageAction.allCases.count)
         #expect(passage.allSatisfy { !$0.isEnabled })
         #expect(menu.items.contains { $0.identifier?.rawValue == "scholium.editor.copy" && $0.isEnabled })

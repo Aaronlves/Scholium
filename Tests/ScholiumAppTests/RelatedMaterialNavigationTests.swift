@@ -112,7 +112,7 @@ struct RelatedMaterialNavigationTests {
             let unavailableNotice = try #require(window.shellState.operationIssues.last)
             #expect(unavailableNotice.kind == .information)
             #expect(unavailableNotice.message.contains("could not be opened"))
-            #expect(unavailableNotice.message.contains("Find Writing References"))
+            #expect(unavailableNotice.message.contains("Find Related Material for Writing"))
             #expect(!unavailableNotice.message.contains("Note was opened"))
             #expect(materials.seed?.request.id == retainedSeed.request.id)
             #expect(materials.cards == [card])

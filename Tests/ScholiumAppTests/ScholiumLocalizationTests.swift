@@ -7,6 +7,28 @@ struct ScholiumLocalizationTests {
     private let simplifiedChinese = Locale(identifier: "zh-Hans")
     private let english = Locale(identifier: "en")
 
+    @Test("Approved Related Material command names stay distinct in English and Simplified Chinese")
+    func relatedMaterialCommands() {
+        #expect(ScholiumL10n.string("Explore Related Material", locale: english) == "Explore Related Material")
+        #expect(ScholiumL10n.string("Find Related Material for Writing", locale: english) == "Find Related Material for Writing")
+        let expectations: [(String.LocalizationValue, String)] = [
+            ("Explore Related Material", "探索相关材料"),
+            ("Find Related Material for Writing", "为写作查找相关材料"),
+            ("Research → Find Related Material for Writing", "研究 → 为写作查找相关材料"),
+            (
+                "The writing context changed. Use Find Related Material for Writing again before inserting a link.",
+                "写作上下文已变化。请再次使用“为写作查找相关材料”，然后插入双链。"
+            ),
+            (
+                "This source could not be opened. Use Find Related Material for Writing again to refresh the results.",
+                "无法打开此来源。请再次使用“为写作查找相关材料”来刷新结果。"
+            ),
+        ]
+        for (key, expected) in expectations {
+            #expect(ScholiumL10n.string(key, locale: simplifiedChinese) == expected)
+        }
+    }
+
     @Test("Interface catalog localizes current Settings destinations")
     func settingsDestinations() {
         #expect(

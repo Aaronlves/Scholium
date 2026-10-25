@@ -100,8 +100,8 @@ Other input/caret/focus/composition/mode changes cancel requests/previews.
 YAML/code/math/HTML, hidden targets/markers and multiple selections suppress both.
 Statuses never enter source/history; spelling/grammar remains separate.
 
-**Find Writing References** in Research (default Shift-Command-J, configurable)
-shares selection recommendations' pane/session. It captures selections,
+**Find Related Material for Writing** in Research (default Shift-Command-J, configurable)
+shares **Explore Related Material**'s pane/session. It captures selections,
 otherwise the current logical source line, independent of soft wrapping. Blank
 lines never borrow preceding prose. Silent Note preparation works with the pane
 closed, changing no results, focus or errors. Source/index changes invalidate it;
