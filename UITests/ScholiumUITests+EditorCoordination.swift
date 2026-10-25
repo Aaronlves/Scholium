@@ -1290,6 +1290,86 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testSearchCurrentReviewRevealsMatchingHeadingWithoutChangingSource() throws {
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let openingHeading = "Lifecycle opening marker"
+        let locatorHeading = "lifecyclelocatorfixture target"
+        let middle = (1...60).map {
+            "Synthetic reading paragraph \($0). This text only makes the disposable QA document scrollable."
+        }.joined(separator: "\n\n")
+        let source = """
+            ---
+            summary: Synthetic browsing lifecycle fixture.
+            ---
+
+            # \(openingHeading)
+
+            Synthetic opening passage.
+
+            \(middle)
+
+            ## \(locatorHeading)
+
+            Synthetic Search destination near the end of the document.
+            """ + "\n"
+
+        // Install the long source before the explicit QA document route opens.
+        // The initial fixture was already opened by setUp, so replace only the
+        // disposable copy while that QA process is closed.
+        app.terminate()
+        try write(source, to: noteURL)
+        app = configuredApplication(sessionID: sessionID, openNote: "QA Autosave A.md")
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Review")
+        let rendered = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.renderedDocument.")
+        ).firstMatch
+        XCTAssertTrue(rendered.waitForExistence(timeout: 10))
+
+        func headingIsInViewport(_ title: String) -> Bool {
+            let heading = rendered.descendants(matching: .staticText).matching(
+                NSPredicate(
+                    format: "title == %@ OR value == %@ OR label == %@",
+                    title, title, title
+                )
+            ).firstMatch
+            guard heading.exists else { return false }
+            let frame = heading.frame
+            guard frame.minX.isFinite, frame.minY.isFinite,
+                frame.width.isFinite, frame.height.isFinite
+            else { return false }
+            let visible = frame.intersection(rendered.frame)
+            return !visible.isNull && visible.width >= 8 && visible.height >= 8
+        }
+
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(openingHeading) },
+            "The explicit initial opening must show the document start."
+        )
+        XCTAssertFalse(headingIsInViewport(locatorHeading))
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        selectResearchSearchScope("This Vault", in: app)
+        let query = advanced.searchFields["scholium.searchField"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        typeCommittedText("lifecyclelocatorfixture", into: query, in: app)
+        let result = searchResult(named: "QA Autosave A", in: advanced)
+        XCTAssertTrue(result.waitForExistence(timeout: 20))
+        result.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 8))
+        // Result activation raises the Document above Search; observe the
+        // destination there without clicking the now-background Search window.
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { headingIsInViewport(locatorHeading) },
+            "An explicit Search location must override the fresh-opening viewport."
+        )
+        XCTAssertEqual(try self.source(at: noteURL), source)
+    }
+
+    @MainActor
     func testOpenInNewTabUsesNativeToolbarTabsAndSharedLibrary() throws {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"

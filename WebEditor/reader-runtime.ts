@@ -287,6 +287,14 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   readerWindow.scholiumReadPreparation = readPreparation;
   let presentationUpdateSequence = 0;
   let viewportInputRevision = 0;
+  // One reader owns asynchronous viewport writes. Appearance must settle
+  // before an arrival computes geometry, or follow its completed position.
+  let viewportWork = Promise.resolve(true);
+  const runViewportOperation = (work: () => Promise<boolean>): Promise<boolean> => {
+    const current = viewportWork.then(work);
+    viewportWork = current.catch(() => false);
+    return current;
+  };
   const viewportInputTarget = host?.scrollDOM ?? window;
   const abandonAppearanceRestoration = () => { viewportInputRevision++; };
   const viewportInputEvents = ['wheel', 'pointerdown', 'touchstart', 'keydown'];
@@ -307,7 +315,11 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
   decorateAttachmentLinks(documentRoot);
   if (config.replyProjection) decorateChatReplyLinks(documentRoot);
   readerWindow.scholiumReadNavigation?.destroy();
-  readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot, host?.scrollDOM);
+  readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot, host?.scrollDOM, work => {
+    const inputRevision = viewportInputRevision;
+    return runViewportOperation(async () => inputRevision === viewportInputRevision && alive()
+      && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected ? work() : false);
+  });
   listenWindow('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
   documentRoot.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6').forEach(heading => {
     const level = Number(heading.tagName.slice(1));
@@ -586,34 +598,38 @@ export async function initializeReader(value: unknown, host?: ReaderRuntimeHost)
       return false;
     }
     const sequence = ++presentationUpdateSequence;
-    const inputRevision = viewportInputRevision;
-    const extent = Math.max(0, scrollHeight() - viewportHeight());
-    const fallbackTop = scrollTop();
-    const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
-    const anchor = currentReadScrollAnchor(fraction);
-    setPresentationStyles(nextPresentationCSS, nextUserCSS);
-    scheduleMermaidRefresh();
-    // Preparing/hidden WebKit pages can suspend animation frames. Resource
-    // completion and synchronous geometry, shared with initial preparation,
-    // establish readiness without requiring an already visible paint.
-    const isCurrent = () => sequence === presentationUpdateSequence
-      && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
-    try {
-      await settleLayout(() => { if (!isCurrent()) throw new Error('stale presentation update'); });
-    } catch (error) {
+    return runViewportOperation(async () => {
+      if (sequence !== presentationUpdateSequence || !alive()
+          || readerWindow.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected) return false;
+      const inputRevision = viewportInputRevision;
+      const extent = Math.max(0, scrollHeight() - viewportHeight());
+      const fallbackTop = scrollTop();
+      const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
+      const anchor = currentReadScrollAnchor(fraction);
+      setPresentationStyles(nextPresentationCSS, nextUserCSS);
+      scheduleMermaidRefresh();
+      // Preparing/hidden WebKit pages can suspend animation frames. Resource
+      // completion and synchronous geometry, shared with initial preparation,
+      // establish readiness without requiring an already visible paint.
+      const isCurrent = () => sequence === presentationUpdateSequence
+        && readerWindow.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
+      try {
+        await settleLayout(() => { if (!isCurrent()) throw new Error('stale presentation update'); });
+      } catch (error) {
+        if (!isCurrent()) return false;
+        throw error;
+      }
       if (!isCurrent()) return false;
-      throw error;
-    }
-    if (!isCurrent()) return false;
-    // The appearance still applied successfully. Only its saved viewport
-    // yields to the researcher's input while fonts/images were settling.
-    if (inputRevision !== viewportInputRevision) return true;
-    if (anchor) {
-      restoreReadScrollAnchor(anchor);
-    } else {
-      scrollTo({top: Math.max(0, fallbackTop), behavior: 'auto'});
-    }
-    return true;
+      // The appearance still applied successfully. Only its saved viewport
+      // yields to the researcher's input while fonts/images were settling.
+      if (inputRevision !== viewportInputRevision) return true;
+      if (anchor) {
+        restoreReadScrollAnchor(anchor);
+      } else {
+        scrollTo({top: Math.max(0, fallbackTop), behavior: 'auto'});
+      }
+      return true;
+    });
   };
   readerWindow.scholiumMermaidReady = renderMermaidNodes();
   await Promise.all([mathReady, readerWindow.scholiumMermaidReady]);

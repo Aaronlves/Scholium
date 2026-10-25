@@ -451,7 +451,7 @@
       blockText: element.textContent ?? ""
     } : null;
   }
-  function createReaderArrival(root, scrollDOM) {
+  function createReaderArrival(root, scrollDOM, runViewportOperation = (work) => work()) {
     let marker = null;
     let generation = 0;
     let timer;
@@ -472,53 +472,69 @@
       clear();
       const requestGeneration = generation;
       if (!Number.isSafeInteger(line) || line < 1 || !owner) return false;
-      const candidates = [...root.querySelectorAll("[data-source-line]")].filter((element) => Number(element.dataset.sourceLine) <= line && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line).sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line) || span(a) - span(b));
-      const target = candidates[0];
-      if (!target) return false;
-      const reduceMotion = typeof owner.matchMedia === "function" && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
-      const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
-      if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
-        const travel = Math.sign(destination - scrollTop()) * viewportHeight();
-        scrollTo({ top: destination - travel, behavior: "auto" });
-      }
-      target.scrollIntoView({
-        block: "start",
-        behavior: reduceMotion ? "auto" : "smooth"
+      return runViewportOperation(async () => {
+        if (generation !== requestGeneration || !root.isConnected) return false;
+        const candidates = [...root.querySelectorAll("[data-source-line]")].filter((element) => Number(element.dataset.sourceLine) <= line && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line).sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line) || span(a) - span(b));
+        const target = candidates[0];
+        if (!target) return false;
+        const reduceMotion = typeof owner.matchMedia === "function" && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+        const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+        if (!Number.isFinite(destination)) return false;
+        if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
+          const travel = Math.sign(destination - scrollTop()) * viewportHeight();
+          scrollTo({ top: destination - travel, behavior: "auto" });
+        }
+        const animationStart = scrollTop();
+        target.scrollIntoView({
+          block: "start",
+          behavior: reduceMotion ? "auto" : "smooth"
+        });
+        const deadline = Date.now() + 2e3;
+        let madeProgress = false;
+        while (Math.abs(scrollTop() - destination) > 1) {
+          if (generation !== requestGeneration || !root.isConnected || !target.isConnected) return false;
+          madeProgress ||= Math.abs(scrollTop() - animationStart) > 1;
+          if (Date.now() >= deadline) {
+            const currentExtent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+            const currentDestination = Math.max(0, Math.min(currentExtent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+            if (madeProgress || !(Math.abs(currentDestination - destination) <= 1)) return false;
+            scrollTo({ top: destination, behavior: "instant" });
+            if (!(Math.abs(scrollTop() - destination) <= 1)) return false;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 16));
+        }
+        if (generation !== requestGeneration || !target.isConnected) return false;
+        const range = root.ownerDocument.createRange();
+        range.selectNodeContents(target);
+        const rect = [...range.getClientRects()].find((rect2) => rect2.width > 0 && rect2.height > 0);
+        if (!rect) return false;
+        const block = target.closest("p, li, pre, td, th, h1, h2, h3, h4, h5, h6") ?? target;
+        const bounds = block.getBoundingClientRect();
+        const height = Math.max(rect.height, parseFloat(owner.getComputedStyle(block).lineHeight) || 0);
+        marker = root.ownerDocument.createElement("div");
+        marker.className = arrivalClass + " scholium-reader-arrival";
+        marker.setAttribute("aria-hidden", "true");
+        marker.dataset.arrivalLine = String(line);
+        Object.assign(marker.style, {
+          position: "absolute",
+          pointerEvents: "none",
+          left: `${bounds.left + owner.scrollX}px`,
+          top: `${rect.top + owner.scrollY - (height - rect.height) / 2}px`,
+          width: `${bounds.width}px`,
+          height: `${height}px`
+        });
+        root.ownerDocument.body.appendChild(marker);
+        timer = setTimeout(clear, arrivalDuration);
+        return true;
       });
-      const deadline = Date.now() + 2e3;
-      while (Math.abs(scrollTop() - destination) > 1) {
-        if (generation !== requestGeneration || Date.now() >= deadline) return false;
-        await new Promise((resolve) => setTimeout(resolve, 16));
-      }
-      if (generation !== requestGeneration || !target.isConnected) return false;
-      const range = root.ownerDocument.createRange();
-      range.selectNodeContents(target);
-      const rect = [...range.getClientRects()].find((rect2) => rect2.width > 0 && rect2.height > 0);
-      if (!rect) return false;
-      const block = target.closest("p, li, pre, td, th, h1, h2, h3, h4, h5, h6") ?? target;
-      const bounds = block.getBoundingClientRect();
-      const height = Math.max(rect.height, parseFloat(owner.getComputedStyle(block).lineHeight) || 0);
-      marker = root.ownerDocument.createElement("div");
-      marker.className = arrivalClass + " scholium-reader-arrival";
-      marker.setAttribute("aria-hidden", "true");
-      marker.dataset.arrivalLine = String(line);
-      Object.assign(marker.style, {
-        position: "absolute",
-        pointerEvents: "none",
-        left: `${bounds.left + owner.scrollX}px`,
-        top: `${rect.top + owner.scrollY - (height - rect.height) / 2}px`,
-        width: `${bounds.width}px`,
-        height: `${height}px`
-      });
-      root.ownerDocument.body.appendChild(marker);
-      timer = setTimeout(clear, arrivalDuration);
-      return true;
     }
-    owner?.addEventListener("resize", clear);
+    const interruptionEvents = ["resize", "wheel", "pointerdown", "touchstart", "keydown"];
+    for (const type of interruptionEvents) owner?.addEventListener(type, clear, { capture: true, passive: true });
     function destroy() {
       clear();
-      owner?.removeEventListener("resize", clear);
+      for (const type of interruptionEvents) owner?.removeEventListener(type, clear, true);
     }
     function revealRange(lower, upper, expected) {
       const target = sourceRangeElement(root, lower, upper);
@@ -5518,6 +5534,12 @@
     readerWindow2.scholiumReadPreparation = readPreparation;
     let presentationUpdateSequence = 0;
     let viewportInputRevision = 0;
+    let viewportWork = Promise.resolve(true);
+    const runViewportOperation = (work) => {
+      const current = viewportWork.then(work);
+      viewportWork = current.catch(() => false);
+      return current;
+    };
     const viewportInputTarget = host?.scrollDOM ?? window;
     const abandonAppearanceRestoration = () => {
       viewportInputRevision++;
@@ -5540,7 +5562,10 @@
     decorateAttachmentLinks(documentRoot);
     if (config.replyProjection) decorateChatReplyLinks(documentRoot);
     readerWindow2.scholiumReadNavigation?.destroy();
-    readerWindow2.scholiumReadNavigation = createReaderArrival(documentRoot, host?.scrollDOM);
+    readerWindow2.scholiumReadNavigation = createReaderArrival(documentRoot, host?.scrollDOM, (work) => {
+      const inputRevision = viewportInputRevision;
+      return runViewportOperation(async () => inputRevision === viewportInputRevision && alive() && readerWindow2.scholiumReadPreparation === readPreparation && documentRoot.isConnected ? work() : false);
+    });
     listenWindow("pagehide", () => readerWindow2.scholiumReadNavigation?.destroy(), { once: true });
     documentRoot.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
       const level = Number(heading.tagName.slice(1));
@@ -5818,30 +5843,33 @@
         return false;
       }
       const sequence = ++presentationUpdateSequence;
-      const inputRevision = viewportInputRevision;
-      const extent = Math.max(0, scrollHeight() - viewportHeight());
-      const fallbackTop = scrollTop();
-      const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
-      const anchor = currentReadScrollAnchor(fraction);
-      setPresentationStyles(nextPresentationCSS, nextUserCSS);
-      scheduleMermaidRefresh();
-      const isCurrent = () => sequence === presentationUpdateSequence && readerWindow2.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
-      try {
-        await settleLayout(() => {
-          if (!isCurrent()) throw new Error("stale presentation update");
-        });
-      } catch (error) {
+      return runViewportOperation(async () => {
+        if (sequence !== presentationUpdateSequence || !alive() || readerWindow2.scholiumReadPreparation !== readPreparation || !documentRoot.isConnected) return false;
+        const inputRevision = viewportInputRevision;
+        const extent = Math.max(0, scrollHeight() - viewportHeight());
+        const fallbackTop = scrollTop();
+        const fraction = extent > 0 ? Math.max(0, Math.min(1, fallbackTop / extent)) : 0;
+        const anchor = currentReadScrollAnchor(fraction);
+        setPresentationStyles(nextPresentationCSS, nextUserCSS);
+        scheduleMermaidRefresh();
+        const isCurrent = () => sequence === presentationUpdateSequence && readerWindow2.scholiumReadPreparation === readPreparation && documentRoot.isConnected;
+        try {
+          await settleLayout(() => {
+            if (!isCurrent()) throw new Error("stale presentation update");
+          });
+        } catch (error) {
+          if (!isCurrent()) return false;
+          throw error;
+        }
         if (!isCurrent()) return false;
-        throw error;
-      }
-      if (!isCurrent()) return false;
-      if (inputRevision !== viewportInputRevision) return true;
-      if (anchor) {
-        restoreReadScrollAnchor(anchor);
-      } else {
-        scrollTo({ top: Math.max(0, fallbackTop), behavior: "auto" });
-      }
-      return true;
+        if (inputRevision !== viewportInputRevision) return true;
+        if (anchor) {
+          restoreReadScrollAnchor(anchor);
+        } else {
+          scrollTo({ top: Math.max(0, fallbackTop), behavior: "auto" });
+        }
+        return true;
+      });
     };
     readerWindow2.scholiumMermaidReady = renderMermaidNodes();
     await Promise.all([mathReady, readerWindow2.scholiumMermaidReady]);

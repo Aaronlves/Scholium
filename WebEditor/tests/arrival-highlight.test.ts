@@ -109,10 +109,61 @@ describe("arrival feedback", () => {
     navigation.destroy();
     expect(vi.getTimerCount()).toBe(0);
   });
+  it("finishes an unstarted native animation with an immediate verified arrival", async () => {
+    vi.useFakeTimers();
+    const {root, navigation} = fixture();
+    const owner = root.ownerDocument.defaultView!;
+    for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+    const scrollTo = vi.fn(({top}: ScrollToOptions) => Object.assign(owner, {scrollY: top}));
+    Object.assign(owner, {scrollTo});
+    const arriving = navigation.reveal(2);
+    await vi.advanceTimersByTimeAsync(2016);
+    expect(await arriving).toBe(true);
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({top: 100, behavior: 'instant'});
+    expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.dataset.arrivalLine).toBe('2');
+    navigation.destroy();
+  });
+  it.each([0, NaN])("does not claim arrival after an invalid final position %s", async finalTop => {
+    vi.useFakeTimers();
+    const {root, navigation} = fixture();
+    const owner = root.ownerDocument.defaultView!;
+    for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+    Object.assign(owner, {scrollTo: () => Object.assign(owner, {scrollY: finalTop})});
+    const arriving = navigation.reveal(2);
+    await vi.advanceTimersByTimeAsync(2016);
+    expect(await arriving).toBe(false);
+    expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+    navigation.destroy();
+  });
+  it.each(['movement', 'geometry', 'geometry-invalid', 'disconnected', 'wheel', 'pointerdown', 'touchstart', 'keydown', 'superseded', 'destroyed'])(
+    "never finishes a stalled arrival after %s", async interruption => {
+      vi.useFakeTimers();
+      const {root, navigation} = fixture();
+      const owner = root.ownerDocument.defaultView!;
+      for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+      const scrollTo = vi.fn();
+      Object.assign(owner, {scrollTo});
+      const arriving = navigation.reveal(2);
+      await vi.advanceTimersByTimeAsync(32);
+      if (interruption === 'movement') Object.assign(owner, {scrollY: 25});
+      else if (interruption === 'geometry' || interruption === 'geometry-invalid') {
+        root.querySelector<HTMLElement>('p')!.getBoundingClientRect = () => ({top: interruption === 'geometry' ? 150 : NaN} as DOMRect);
+      }
+      else if (interruption === 'disconnected') root.remove();
+      else if (interruption === 'destroyed') navigation.destroy();
+      else if (interruption === 'superseded') navigation.clear();
+      else owner.dispatchEvent(new owner.Event(interruption));
+      await vi.advanceTimersByTimeAsync(2016);
+      expect(await arriving).toBe(false);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+      navigation.destroy();
+    });
   it("does not report a stalled or destroyed scroll as reached", async () => {
     vi.useFakeTimers();
     const {root, navigation} = fixture();
     for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+    Object.assign(root.ownerDocument.defaultView!, {scrollTo: vi.fn()});
     const stalled = navigation.reveal(2);
     await vi.advanceTimersByTimeAsync(2016);
     expect(await stalled).toBe(false);
@@ -123,6 +174,27 @@ describe("arrival feedback", () => {
     expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
     expect(vi.getTimerCount()).toBe(0);
   });
+  it.each(['superseded', 'destroyed'])("does not scroll a %s queued arrival", async ending => {
+    const {root, navigation: standalone} = fixture();
+    standalone.destroy();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const navigation = createReaderArrival(root, undefined, work => gate.then(work));
+    const first = navigation.reveal(2);
+    const second = ending === 'superseded' ? navigation.reveal(7) : null;
+    if (ending === 'destroyed') navigation.destroy();
+    release();
+    expect(await first).toBe(false);
+    if (second) {
+      expect(await second).toBe(true);
+      expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.dataset.arrivalLine).toBe('7');
+    } else {
+      expect(root.ownerDocument.defaultView!.scrollY).toBe(0);
+      expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+    }
+    navigation.destroy();
+  });
+
   it("editor feedback preserves exact text and selection and clears on a source change", () => {
     const source = '\uFEFF中文 😀\r\nSecond passage';
     let state = EditorState.create({doc: source, selection: {anchor: 2, head: 4}, extensions: [editorArrivalState, EditorState.lineSeparator.of('\r\n')]});

@@ -18,7 +18,8 @@ export function readerSourceRangeCandidate(root: HTMLElement, lower: number, upp
     blockUpper: Number(element.dataset.sourceUtf16End), blockText: element.textContent ?? ''} : null;
 }
 
-export function createReaderArrival(root: HTMLElement, scrollDOM?: HTMLElement) {
+export function createReaderArrival(root: HTMLElement, scrollDOM?: HTMLElement,
+  runViewportOperation: (work: () => Promise<boolean>) => Promise<boolean> = work => work()) {
   let marker: HTMLElement | null = null;
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -40,58 +41,79 @@ export function createReaderArrival(root: HTMLElement, scrollDOM?: HTMLElement) 
     clear();
     const requestGeneration = generation;
     if (!Number.isSafeInteger(line) || line < 1 || !owner) return false;
-    // Inline source locators identify the visual line within a wrapped block.
-    // Prefer an exact start and the narrowest source span, not a large ancestor.
-    const candidates = [...root.querySelectorAll<HTMLElement>('[data-source-line]')]
-      .filter(element => Number(element.dataset.sourceLine) <= line
-        && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line)
-      .sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line)
-        || span(a) - span(b));
-    const target = candidates[0];
-    if (!target) return false;
-    const reduceMotion = typeof owner.matchMedia === "function"
-      && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
-    const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
-    if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
-      const travel = Math.sign(destination - scrollTop()) * viewportHeight();
-      scrollTo({top: destination - travel, behavior: "auto"});
-    }
-    target.scrollIntoView({
-      block: "start",
-      behavior: reduceMotion ? "auto" : "smooth",
+    return runViewportOperation(async () => {
+      if (generation !== requestGeneration || !root.isConnected) return false;
+      // Inline source locators identify the visual line within a wrapped block.
+      // Prefer an exact start and the narrowest source span, not a large ancestor.
+      const candidates = [...root.querySelectorAll<HTMLElement>('[data-source-line]')]
+        .filter(element => Number(element.dataset.sourceLine) <= line
+          && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line)
+        .sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line)
+          || span(a) - span(b));
+      const target = candidates[0];
+      if (!target) return false;
+      const reduceMotion = typeof owner.matchMedia === "function"
+        && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const extent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+      const destination = Math.max(0, Math.min(extent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+      if (!Number.isFinite(destination)) return false;
+      if (!reduceMotion && Math.abs(destination - scrollTop()) > viewportHeight()) {
+        const travel = Math.sign(destination - scrollTop()) * viewportHeight();
+        scrollTo({top: destination - travel, behavior: "auto"});
+      }
+      const animationStart = scrollTop();
+      target.scrollIntoView({
+        block: "start",
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
+      // Starting native smooth scrolling is not an arrival receipt. Observe its
+      // destination before capturing the anchor or displaying arrival feedback.
+      // A bounded timer also works in a background WebView where frames pause.
+      const deadline = Date.now() + 2000;
+      let madeProgress = false;
+      while (Math.abs(scrollTop() - destination) > 1) {
+        if (generation !== requestGeneration || !root.isConnected || !target.isConnected) return false;
+        madeProgress ||= Math.abs(scrollTop() - animationStart) > 1;
+        if (Date.now() >= deadline) {
+          // Native smooth scrolling can be accepted without starting. Complete
+          // that unchanged intent once; never jump after input or partial travel.
+          const currentExtent = Math.max(0, (scrollDOM?.scrollHeight ?? root.ownerDocument.documentElement.scrollHeight) - viewportHeight());
+          const currentDestination = Math.max(0, Math.min(currentExtent, scrollTop() + target.getBoundingClientRect().top - viewportTop()));
+          if (madeProgress || !(Math.abs(currentDestination - destination) <= 1)) return false;
+          scrollTo({top: destination, behavior: "instant"});
+          if (!(Math.abs(scrollTop() - destination) <= 1)) return false;
+          break;
+        }
+        await new Promise<void>(resolve => setTimeout(resolve, 16));
+      }
+      if (generation !== requestGeneration || !target.isConnected) return false;
+      const range = root.ownerDocument.createRange();
+      range.selectNodeContents(target);
+      const rect = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);
+      if (!rect) return false;
+      const block = target.closest<HTMLElement>('p, li, pre, td, th, h1, h2, h3, h4, h5, h6') ?? target;
+      const bounds = block.getBoundingClientRect();
+      const height = Math.max(rect.height, parseFloat(owner.getComputedStyle(block).lineHeight) || 0);
+      marker = root.ownerDocument.createElement('div');
+      marker.className = arrivalClass + ' scholium-reader-arrival';
+      marker.setAttribute('aria-hidden', 'true');
+      marker.dataset.arrivalLine = String(line);
+      Object.assign(marker.style, {
+        position: 'absolute', pointerEvents: 'none',
+        left: `${bounds.left + owner.scrollX}px`, top: `${rect.top + owner.scrollY - (height - rect.height) / 2}px`,
+        width: `${bounds.width}px`, height: `${height}px`,
+      });
+      root.ownerDocument.body.appendChild(marker);
+      timer = setTimeout(clear, arrivalDuration);
+      return true;
     });
-    // Starting native smooth scrolling is not an arrival receipt. Observe its
-    // destination before capturing the anchor or displaying arrival feedback.
-    // A bounded timer also works in a background WebView where frames pause.
-    const deadline = Date.now() + 2000;
-    while (Math.abs(scrollTop() - destination) > 1) {
-      if (generation !== requestGeneration || Date.now() >= deadline) return false;
-      await new Promise<void>(resolve => setTimeout(resolve, 16));
-    }
-    if (generation !== requestGeneration || !target.isConnected) return false;
-    const range = root.ownerDocument.createRange();
-    range.selectNodeContents(target);
-    const rect = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);
-    if (!rect) return false;
-    const block = target.closest<HTMLElement>('p, li, pre, td, th, h1, h2, h3, h4, h5, h6') ?? target;
-    const bounds = block.getBoundingClientRect();
-    const height = Math.max(rect.height, parseFloat(owner.getComputedStyle(block).lineHeight) || 0);
-    marker = root.ownerDocument.createElement('div');
-    marker.className = arrivalClass + ' scholium-reader-arrival';
-    marker.setAttribute('aria-hidden', 'true');
-    marker.dataset.arrivalLine = String(line);
-    Object.assign(marker.style, {
-      position: 'absolute', pointerEvents: 'none',
-      left: `${bounds.left + owner.scrollX}px`, top: `${rect.top + owner.scrollY - (height - rect.height) / 2}px`,
-      width: `${bounds.width}px`, height: `${height}px`,
-    });
-    root.ownerDocument.body.appendChild(marker);
-    timer = setTimeout(clear, arrivalDuration);
-    return true;
   }
-  owner?.addEventListener('resize', clear);
-  function destroy() { clear(); owner?.removeEventListener('resize', clear); }
+  const interruptionEvents = ['resize', 'wheel', 'pointerdown', 'touchstart', 'keydown'];
+  for (const type of interruptionEvents) owner?.addEventListener(type, clear, {capture: true, passive: true});
+  function destroy() {
+    clear();
+    for (const type of interruptionEvents) owner?.removeEventListener(type, clear, true);
+  }
   function revealRange(lower: number, upper: number, expected: NonNullable<ReturnType<typeof readerSourceRangeCandidate>>) {
     const target = sourceRangeElement(root, lower, upper);
     const candidate = readerSourceRangeCandidate(root, lower, upper);

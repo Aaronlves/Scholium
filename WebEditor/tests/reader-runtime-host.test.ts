@@ -422,6 +422,32 @@ describe("reader installation in a CodeMirror-owned viewport", () => {
       f.dispose();
     });
 
+    if (kind === 'embedded') {
+      it(`recovers the ${kind} viewport tail after an appearance failure`, async () => {
+        const f = await appearanceFixture(kind);
+        Object.assign(f.host, {scopeStyles: {presentation: () => { throw new Error('Unavailable style adapter'); }, user: (css: string) => css}});
+        await expect(f.window.scholiumSetPresentationCSS!('p { color: red; }', '')).rejects.toThrow('Unavailable style adapter');
+        Object.assign(f.host, {scopeStyles: undefined});
+        expect(await f.window.scholiumSetPresentationCSS!('p { color: blue; }', '')).toBe(true);
+        f.dispose();
+      });
+
+    }
+
+    it(`drops a ${kind} queued arrival after reader disposal`, async () => {
+      const f = await appearanceFixture(kind);
+      const fonts = f.waitForFonts();
+      const updating = f.window.scholiumSetPresentationCSS!('p { color: red; }', '');
+      await fonts.started;
+      const before = f.scroll.scrollTop;
+      const arrival = f.window.scholiumReadNavigation!.reveal(1);
+      f.dispose();
+      fonts.finish();
+      await updating;
+      expect(await arrival).toBe(false);
+      expect(f.scroll.scrollTop).toBe(before);
+    });
+
     it(`removes all ${kind} appearance input listeners on disposal`, async () => {
       const f = await appearanceFixture(kind);
       const registrations = f.add.mock.calls.filter(([, listener]) =>

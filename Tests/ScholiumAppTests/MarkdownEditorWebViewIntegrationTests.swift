@@ -10,6 +10,98 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test(
+        "Review appearance and explicit arrival share one viewport without losing source or selection",
+        arguments: [false, true], [false, true])
+    func reviewAppearanceAndArrival(appearanceFirst: Bool, changesGeometry: Bool) async throws {
+        let source =
+            "# Opening\n\nSynthetic opening passage 中文 e\u{301}.\n\n"
+            + (1...60).map { "Synthetic reading paragraph \($0). Enough text to wrap across the disposable viewport." }
+            .joined(separator: "\n\n")
+            + "\n\n## Arrival target\n\nSynthetic destination near the end.\n"
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        harness.configureReview(
+            SafeMarkdownReadWebView(
+                documentID: harness.documentID, documentTitle: "Reading", document: document,
+                htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+                onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+                onRenderingFailure: { Issue.record(Comment(rawValue: $0)) }))
+        try await harness.waitUntilReady()
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                await window.scholiumReadReady;
+                const root = document.getElementById('scholium-document');
+                const scroller = document.querySelector('.cm-scroller'), target = root.querySelector('h2');
+                const range = document.createRange(); range.selectNodeContents(root.querySelector('p'));
+                const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+                const selected = selection.toString();
+                const css = geometry ? '.scholium-document { line-height: 1.8; }' : '.scholium-document { --qa-appearance: 1; }';
+                let arrival, appearance;
+                if (appearanceFirst) {
+                  appearance = window.scholiumSetPresentationCSS(css, '');
+                  arrival = window.scholiumReadNavigation.reveal(Number(target.dataset.sourceLine));
+                } else {
+                  arrival = window.scholiumReadNavigation.reveal(Number(target.dataset.sourceLine));
+                  appearance = window.scholiumSetPresentationCSS(css, '');
+                }
+                const [reached, applied] = await Promise.all([arrival, appearance]);
+                const bounds = scroller.getBoundingClientRect(), rect = target.getBoundingClientRect();
+                return {reached, applied, sameSelection: selection.toString() === selected,
+                  targetTop: rect.top, targetBottom: rect.bottom, viewportTop: bounds.top, viewportBottom: bounds.bottom,
+                  visible: rect.bottom > bounds.top && rect.top < bounds.bottom};
+                """, arguments: ["appearanceFirst": appearanceFirst, "geometry": changesGeometry]) as? [String: Any])
+        #expect(result["reached"] as? Bool == true, Comment(rawValue: "Arrival: \(result)"))
+        #expect(result["applied"] as? Bool == true)
+        #expect(result["visible"] as? Bool == true, Comment(rawValue: "Arrival: \(result)"))
+        #expect(result["sameSelection"] as? Bool == true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("A native Review locator reaches its target without bridge navigation")
+    func nativeReviewLocatorArrival() async throws {
+        let source =
+            "---\nsummary: Synthetic browsing lifecycle fixture.\n---\n\n# Lifecycle opening marker\n\nSynthetic opening passage.\n\n"
+            + (1...60).map { "Synthetic reading paragraph \($0). This text only makes the disposable QA document scrollable." }
+            .joined(separator: "\n\n")
+            + "\n\n## lifecyclelocatorfixture target\n\nSynthetic Search destination near the end of the document.\n"
+        let harness = EditorHarness(source: source, initialMode: .review)
+        defer { harness.close() }
+        let document = NoteDocument(relativePath: harness.documentID, rawContent: source)
+        var review = SafeMarkdownReadWebView(
+            documentID: harness.documentID, documentTitle: "Reading", document: document,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody, presentationCSS: "", userCSS: "",
+            onLinkClick: { _ in }, onOpenExternalURL: { _ in },
+            onRenderingFailure: { Issue.record(Comment(rawValue: $0)) })
+        harness.configureReview(review)
+        try await harness.waitUntilReady()
+        let id = UUID()
+        var receipt: UUID?
+        review.sourceLocationRequest = DocumentSourceLocationRequest(
+            id: id, target: .unavailable(vaultID: UUID(), relativePath: harness.documentID),
+            line: 129, range: nil, requiresExactSelection: false, sourceFingerprint: document.fingerprint.sha256)
+        review.onSourceLocationReached = { receipt = $0 }
+        harness.configureReview(review)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+        while receipt == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(receipt == id)
+        let visible =
+            try await harness.callPageJavaScript(
+                """
+                const target = document.querySelector('#scholium-document h2'), scroller = document.querySelector('.cm-scroller');
+                const bounds = scroller.getBoundingClientRect(), rect = target.getBoundingClientRect();
+                return rect.bottom > bounds.top && rect.top < bounds.bottom;
+                """) as? Bool
+        #expect(visible == true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
     @Test("Review reconstruction restores the captured viewport instead of trailing native observations")
     func reviewReconstructionUsesCapturedViewport() async throws {
         let source =
