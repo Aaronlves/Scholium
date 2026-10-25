@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.4-beta.1/Scholium-v0.4.4-beta.1-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="下载适用于 Apple 芯片 Mac 的 Scholium Beta"></a>
+  <a href="https://github.com/Aaronlves/Scholium/releases/download/v0.4.5-beta.1/Scholium-v0.4.5-beta.1-macos-arm64.dmg"><img src="https://img.shields.io/badge/macOS-Download_Beta-8B613E?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="下载适用于 Apple 芯片 Mac 的 Scholium Beta"></a>
 </p>
 
 <p align="center">
@@ -56,9 +56,9 @@ Scholium 将来源分析、概念研究与持续写作放在同一个研究环�
 
 **需要 macOS 26 或更高版本，以及 Apple 芯片 Mac。** 运行打包应用无需安装 Xcode。
 
-1. 从 [v0.4.4-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.4-beta.1)
+1. 从 [v0.4.5-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.5-beta.1)
    下载 DMG 及对应 SHA-256 文件。运行
-   `shasum -a 256 Scholium-v0.4.4-beta.1-macos-arm64.dmg`，与校验文件中的结果比较。
+   `shasum -a 256 Scholium-v0.4.5-beta.1-macos-arm64.dmg`，与校验文件中的结果比较。
 2. 打开 DMG，将 **Scholium** 拖到**应用程序**，然后推出 DMG。
 3. 尝试启动 Scholium。当前 Beta 采用 ad-hoc 签名，尚无 Developer ID 签名或公证。
    若被 macOS 阻止，打开**系统设置 → 隐私与安全性 → 仍要打开**，完成认证并确认
@@ -74,7 +74,7 @@ Scholium 将来源分析、概念研究与持续写作放在同一个研究环�
 当前公开发行属于 **Core App Beta**。外部 Agent 协作与可选的应用内 Chat 仍处于
 **Preview**。打包发行证据及尚未完成的人类 UI、辅助功能与性能验收，见
 [实现状态](Docs/IMPLEMENTATION_STATUS.md)与
-[发行说明](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.4-beta.1)。
+[发行说明](https://github.com/Aaronlves/Scholium/releases/tag/v0.4.5-beta.1)。
 
 ## 可选集成
 
