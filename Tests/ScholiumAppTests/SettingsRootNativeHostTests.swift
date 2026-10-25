@@ -60,6 +60,66 @@ struct SettingsRootNativeHostTests {
         }
     }
 
+    @Test("Root search restores browsing, while toolbar and external routes replace its temporary origin")
+    func searchBrowsingContinuity() async throws {
+        let fixture = try await RootFixture.make()
+        let session = RootSession(fixture: fixture, locale: "en", size: NSSize(width: 780, height: 560))
+        defer {
+            session.close()
+            fixture.removeDefaults()
+        }
+        try await session.mount()
+        _ = try await session.select(.document)
+        let documentHost = try #require(session.pageContainer?.selectedView)
+        let frame = session.window.frame
+        let root = try #require(session.window.contentView)
+        let field = try #require(
+            activeDescendants(root).compactMap { $0 as? NSSearchField }
+                .first { $0.accessibilityIdentifier() == "scholium.settings.search" })
+        let search = try #require(field.target as? ScholiumSettingsSearchField.Coordinator)
+        let target = try #require(SettingsSearchTarget.all.first { $0.section == .agentChatSidebar })
+
+        search.parent.text = "Chat"
+        await session.publishAndLayout()
+        search.parent.reveal(target)
+        await session.publishAndLayout()
+        try session.assertLayout(page: .agents)
+        #expect(fixture.defaults.string(forKey: "scholium.settings.selectedPane") == "document")
+        search.parent.text = "  "
+        await session.publishAndLayout()
+        try session.assertLayout(page: .document)
+        #expect(session.pageContainer?.selectedView === documentHost)
+
+        search.parent.text = "Chat"
+        await session.publishAndLayout()
+        search.parent.reveal(target)
+        await session.publishAndLayout()
+        let storage = try #require(session.window.toolbar?.items.first { $0.itemIdentifier.rawValue == "scholium.settings.category.storage" })
+        #expect(NSApp.sendAction(try #require(storage.action), to: storage.target, from: storage))
+        await session.publishAndLayout()
+        try session.assertLayout(page: .storage)
+        #expect(field.stringValue.isEmpty)
+        #expect(fixture.defaults.string(forKey: "scholium.settings.selectedPane") == "storage")
+
+        search.parent.text = "Chat"
+        await session.publishAndLayout()
+        search.parent.reveal(target)
+        await session.publishAndLayout()
+        _ = try await session.reveal(.agentBehavior, segment: 0)
+        #expect(field.stringValue.isEmpty)
+        _ = try await session.reveal(.agentBehavior, segment: 0)
+        search.parent.text = "unmatched synthetic query"
+        await session.publishAndLayout()
+        search.parent.text = ""
+        await session.publishAndLayout()
+        try session.assertLayout(page: .agents)
+        #expect(fixture.defaults.string(forKey: "scholium.settings.selectedPane") == "agents")
+        _ = try await session.select(.document)
+        #expect(session.pageContainer?.selectedView === documentHost && session.window.frame == frame)
+        try fixture.assertReadOnlyPreferences()
+        #expect(fixture.state.unexpected.isEmpty && fixture.styles.unexpected.isEmpty)
+    }
+
     @Test("Only a selected dependent page asks for its current synthetic Chat scope")
     func borrowedControllerAcquisition() async throws {
         let fixture = try await RootFixture.make()

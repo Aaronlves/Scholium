@@ -66,8 +66,7 @@ struct ScholiumSettingsView: View {
     @AppStorage private var persistedPane: String
     @AppStorage private var navigationRevision: String
     @State private var searchRevision = 0
-    @State private var destination = ScholiumSettingsDestination.workspace
-    @State private var destinationBeforeSearch: ScholiumSettingsDestination?
+    @State private var navigation = SettingsSearchNavigation<ScholiumSettingsDestination>(category: .workspace)
     @State private var searchQuery = ""
     @State private var searchTarget: SettingsSection?
     init(
@@ -98,33 +97,25 @@ struct ScholiumSettingsView: View {
             .accessibilityIdentifier("scholium.settings.root")
             .onAppear { restoreRequestedDestination() }
             .onChange(of: navigationRevision) { _, _ in
-                destinationBeforeSearch = nil
                 searchQuery = ""
                 searchTarget = nil
                 restoreRequestedDestination()
             }
             .onChange(of: persistedPane) { _, _ in
-                if !isSearching || persistedPane != destination.rawValue {
+                if !isSearching || persistedPane != navigation.category.rawValue {
                     searchQuery = ""
-                    destinationBeforeSearch = nil
                     restoreRequestedDestination()
                 }
             }
-            .onChange(of: destination) { _, destination in
+            .onChange(of: navigation.category) { _, destination in
                 if !isSearching { persistedPane = destination.rawValue }
             }
             .onChange(of: searchQuery) { _, _ in
-                if !isSearching {
-                    if let destinationBeforeSearch {
-                        searchTarget = nil
-                        destination = destinationBeforeSearch
-                        self.destinationBeforeSearch = nil
-                    }
-                    return
-                }
-                if destinationBeforeSearch == nil { destinationBeforeSearch = destination }
-                // Typing filters destinations; only choosing a result navigates.
-                searchTarget = nil
+                let wasSearching = navigation.isSearching
+                navigation.updateQuery(searchQuery)
+                // An external route resets navigation before clearing its query;
+                // do not erase the new contextual section in that later callback.
+                if isSearching || wasSearching { searchTarget = nil }
             }
     }
 
@@ -144,7 +135,7 @@ struct ScholiumSettingsView: View {
 
     private var selectedPage: some View {
         ScholiumSettingsPaneHost(
-            selection: destination,
+            selection: navigation.category,
             identifier: "scholium.settings.pages"
         ) { item in
             settingsDetail(for: item)
@@ -162,13 +153,16 @@ struct ScholiumSettingsView: View {
     }
 
     private func reveal(_ target: SettingsSearchTarget) {
+        guard isSearching else { return }
+        navigation.updateQuery(searchQuery)
+        navigation.reveal(target.destination)
         searchTarget = target.section
         searchRevision += 1
-        destination = target.destination
     }
 
     private func restoreRequestedDestination() {
-        destination = ScholiumSettingsDestination(rawValue: persistedPane) ?? .workspace
+        let destination = ScholiumSettingsDestination(rawValue: persistedPane) ?? .workspace
+        navigation = SettingsSearchNavigation(category: destination)
         if let target = SettingsNavigationRequest.takeRequestedSection(for: destination, defaults: preferences.defaults) {
             searchTarget = target
             searchRevision += 1
@@ -179,12 +173,11 @@ struct ScholiumSettingsView: View {
 
     private var categorySelection: Binding<ScholiumSettingsDestination> {
         Binding(
-            get: { destination },
+            get: { navigation.category },
             set: { value in
-                destinationBeforeSearch = nil
+                navigation = SettingsSearchNavigation(category: value)
                 searchQuery = ""
                 searchTarget = nil
-                destination = value
                 persistedPane = value.rawValue
             })
     }
