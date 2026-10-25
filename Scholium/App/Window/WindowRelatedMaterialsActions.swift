@@ -74,9 +74,11 @@ extension WindowModel {
                 else { return false }
                 return !automatic || (editor.hasWritingFocus && !editor.isComposing && self.presentedDocumentMode != .read)
             },
-            linkTarget: { [weak self] reference in
-                guard let self else { return nil }
-                return self.relatedLinkTarget(reference, from: descriptor)
+            prepareLinkTargets: { [weak self] references in
+                guard !Task.isCancelled, let self, let catalog = self.workspaceCatalog else { return [:] }
+                return RelatedMaterialLinkPreparation.targets(
+                    for: references, catalog: catalog.notes,
+                    from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
             })
     }
 
@@ -86,21 +88,10 @@ extension WindowModel {
     }
 
     @MainActor private func relatedLinkTarget(_ reference: VaultNoteReference, from descriptor: WindowDocumentDescriptor) -> String? {
-        guard !Task.isCancelled, let catalog = workspaceCatalog,
-            catalog.notes.contains(where: { $0.reference == reference })
-        else { return nil }
-        let resolver = LinkResolutionCatalog(
-            catalog: catalog.notes.map {
-                LinkCatalogNote(
-                    id: .init(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath),
-                    title: $0.title, aliases: $0.aliases)
-            })
-        guard
-            case .available(let target) = resolver.wikilinkTarget(
-                for: .init(vaultID: reference.vaultID, relativePath: reference.relativePath),
-                from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
-        else { return nil }
-        return target
+        guard !Task.isCancelled, let catalog = workspaceCatalog else { return nil }
+        return RelatedMaterialLinkPreparation.targets(
+            for: [reference], catalog: catalog.notes,
+            from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))[reference]
     }
 
     @MainActor

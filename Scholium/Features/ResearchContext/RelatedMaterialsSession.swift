@@ -274,7 +274,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         references: [VaultNoteReference],
         automatic: Bool = false,
         canPublish: @escaping @MainActor () -> Bool = { true },
-        linkTarget: @escaping @MainActor (VaultNoteReference) async -> String? = { _ in nil }
+        prepareLinkTargets: @escaping @MainActor ([VaultNoteReference]) -> [VaultNoteReference: String] = { _ in [:] }
     ) -> Task<Void, Never> {
         if isInsertingParagraphLink { return Task {} }
         // Foreground work has priority over speculative source reads. Already
@@ -343,9 +343,13 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                         continue
                     }
                     guard !loaded.contains(where: { $0.id == passage.id }) else { continue }
-                    let target = await linkTarget(reference)
-                    try Task.checkCancellation()
-                    loaded.append(.init(passage: passage, reference: reference, linkTarget: target))
+                    loaded.append(.init(passage: passage, reference: reference))
+                }
+                if !loaded.isEmpty {
+                    // No suspension divides catalog capture, target preparation
+                    // and publication. Workspace updates cannot mix cohorts.
+                    let targets = prepareLinkTargets(loaded.map(\.reference))
+                    for index in loaded.indices { loaded[index].linkTarget = targets[loaded[index].reference] }
                 }
                 try Task.checkCancellation()
                 guard ticket == generation else { return }

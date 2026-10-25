@@ -185,29 +185,52 @@ struct RelatedMaterialsTests {
         let model = research.relatedMaterials
         let original = seed()
         let response = populatedResponse(original)
-        let ready = AsyncStream<Void>.makeStream()
-        var release: CheckedContinuation<Void, Never>?
+        let gate = RelatedRetrievalGate()
         let oldOperation = model.find(
-            capture: { original }, retrieve: { _ in response }, references: [reference()],
-            linkTarget: { _ in
-                await withCheckedContinuation { continuation in
-                    release = continuation
-                    ready.continuation.yield(())
-                    ready.continuation.finish()
-                }
-                return "[[Source]]"
-            })
-        for await _ in ready.stream {}
+            capture: { original },
+            retrieve: { _ in
+                await gate.wait()
+                return response
+            }, references: [reference()])
+        for await _ in gate.ready.stream {}
         open(descriptor("Second.md"), in: documents)
         if returnToFirst { #expect(documents.selectRetainedDocument(.workspace(first))) }
         let current = seed("current context")
         let currentResponse = self.response(current.request)
         await model.find(capture: { current }, retrieve: { _ in currentResponse }, references: []).value
-        release?.resume()
+        gate.release()
         await oldOperation.value
         #expect(model.seed?.request.id == current.request.id)
         #expect(model.cards.isEmpty && model.presentation == .empty && !model.isLoading)
         #expect(model.issue == nil)
+    }
+
+    @Test("Synchronous batch preparation cannot publish after revoking its request", arguments: [false, true])
+    func batchPreparationRevocation(reset: Bool) async {
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let response = populatedResponse(seed)
+        var calls = 0
+        await model.find(
+            capture: { seed }, retrieve: { _ in response }, references: [reference()],
+            prepareLinkTargets: { references in
+                calls += 1
+                if reset { model.reset() } else { model.cancel() }
+                return Dictionary(references.map { ($0, "Source") }, uniquingKeysWith: { first, _ in first })
+            }
+        ).value
+        #expect(calls == 1 && model.cards.isEmpty && !model.isLoading && !model.didSearch)
+        if reset { #expect(model.seed == nil) }
+    }
+
+    @Test("Reading cards remain available without insertable link targets")
+    func readingWithoutTargets() async {
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let response = populatedResponse(seed)
+        await model.find(capture: { seed }, retrieve: { _ in response }, references: [reference()]).value
+        #expect(!model.cards.isEmpty && model.cards.allSatisfy { $0.linkTarget == nil })
+        #expect(model.presentation == .results && model.issue == nil)
     }
 
     @Test("A Note group retains both ranked paragraphs and exact source ranges")
@@ -231,15 +254,21 @@ struct RelatedMaterialsTests {
             requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
             freshnessToken: .init("fixture"), availability: .unavailable, state: .current, identityCandidates: [],
             lexicalCandidates: [candidate], identityHasMore: false, lexicalHasMore: false, passages: [first, second])
+        var linkPreparations = 0
         await model.find(
             capture: { seed },
             retrieve: { request in
                 #expect(request.seed.source.contains("unsaved"))
                 #expect(request.seed.focuses.first?.text == seed.attachment.text)
                 return response
-            }, references: [reference()]
+            }, references: [reference()],
+            prepareLinkTargets: { references in
+                linkPreparations += 1
+                return Dictionary(references.map { ($0, "Source") }, uniquingKeysWith: { first, _ in first })
+            }
         ).value
-        #expect(model.cards.count == 2)
+        #expect(linkPreparations == 1)
+        #expect(model.cards.count == 2 && model.cards.allSatisfy { $0.linkTarget == "Source" })
         #expect(model.noteGroups.count == 1)
         #expect(model.noteGroups.first?.passages.count == 2)
         #expect(model.noteGroups.first?.directoryContext == nil)
@@ -248,7 +277,7 @@ struct RelatedMaterialsTests {
         #expect(model.didSearch && !model.isLoading)
         #expect(model.cards.first?.attachment?.sourceRange == first.range)
         #expect(model.cards.first?.attachment?.text == "**自由**")
-        #expect(model.cards.first?.linkTarget == nil)  // Reading does not require an insertable link.
+        #expect(model.cards.first?.linkTarget == "Source")
         model.invalidateWritingContext()
         #expect(model.insertionPoint == nil && model.contextChanged)
         #expect(model.cards.first?.id == first.id)
@@ -372,9 +401,9 @@ struct RelatedMaterialsTests {
         var preparedLinks: [VaultNoteReference] = []
         await model.find(
             capture: { seed }, retrieve: { _ in result }, references: [workReference],
-            linkTarget: { reference in
-                preparedLinks.append(reference)
-                return "[[Earlier Work]]"
+            prepareLinkTargets: { references in
+                preparedLinks.append(contentsOf: references)
+                return [workReference: "[[Earlier Work]]"]
             }
         ).value
         #expect(model.presentation == .results && model.omittedCount == 0 && model.issue == nil)
@@ -735,4 +764,21 @@ struct RelatedMaterialsTests {
         #expect(!model.canInsertParagraphLink)
     }
 
+}
+
+@MainActor
+private final class RelatedRetrievalGate {
+    let ready = AsyncStream<Void>.makeStream()
+    private var continuation: CheckedContinuation<Void, Never>?
+    func wait() async {
+        await withCheckedContinuation {
+            continuation = $0
+            ready.continuation.yield(())
+            ready.continuation.finish()
+        }
+    }
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }

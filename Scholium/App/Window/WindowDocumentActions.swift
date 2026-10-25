@@ -197,8 +197,7 @@ extension WindowModel {
                     insertionPoint: nil, usesParagraph: false)
             }, retrieve: { try await capabilities.discovery.relatedContent($0) },
             references: workspaceCatalog?.notes.map(\.reference) ?? [], automatic: false,
-            canPublish: { [weak self] in self?.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey },
-            linkTarget: { _ in nil })
+            canPublish: { [weak self] in self?.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey })
     }
 
     private func openNoteRestructure(action: DocumentPassageAction?, captured: MarkdownSourceSelectionSnapshot?) async {
