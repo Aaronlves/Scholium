@@ -1174,6 +1174,92 @@ struct TriptychSearchIndexTests {
         #expect(visible.noteResults.map(\.relativePath) == ["A.md"])
     }
 
+    enum CohortAbortPriorState: String, CaseIterable, Sendable {
+        case empty, current, stale, failed
+    }
+
+    enum CohortAbortCallback: String, CaseIterable, Sendable {
+        case row, publication, unchangedPublication
+    }
+
+    @Test(
+        "A known source-cohort abort restores exact prior availability without abandoned progress", arguments: CohortAbortPriorState.allCases,
+        CohortAbortCallback.allCases)
+    func sourceCohortAbortAvailability(priorState: CohortAbortPriorState, callback: CohortAbortCallback) async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(isolatedDatabaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        let original = fixture.item(vault: fixture.analyses, path: "Original.md", source: "Original synthetic searchable source.")
+        let replacement = fixture.item(vault: fixture.analyses, path: "Original.md", source: "Replacement synthetic searchable source.")
+        var nextWorkspaceGeneration: UInt64 = 1
+        do {
+            if priorState == .current || priorState == .stale {
+                _ = try await index.synchronizeManifest(
+                    [SearchIndexManifestEntry(document: original)], workspaceGeneration: nextWorkspaceGeneration,
+                    loadChanged: { _ in original }, validateManifest: {})
+                nextWorkspaceGeneration += 1
+            }
+            if priorState == .stale || priorState == .failed {
+                do {
+                    _ = try await index.synchronizeManifest(
+                        [SearchIndexManifestEntry(document: replacement)], workspaceGeneration: nextWorkspaceGeneration,
+                        loadChanged: { _ in throw SearchIndexError.sqlite("Synthetic genuine backend failure") }, validateManifest: {})
+                    Issue.record("The genuine backend failure unexpectedly succeeded")
+                } catch {
+                    if case .sqlite = error as? SearchIndexError {} else { Issue.record("Lost genuine backend error: \(error)") }
+                }
+                nextWorkspaceGeneration += 1
+            }
+            let priorAvailability = await index.availability()
+            let priorGeneration = try await index.generation()
+            switch priorState {
+            case .empty: #expect(priorAvailability == .unavailable)
+            case .current:
+                guard case .current = priorAvailability else {
+                    Issue.record("Missing current fixture generation")
+                    return
+                }
+            case .stale:
+                guard case .stale = priorAvailability else {
+                    Issue.record("Missing genuine stale fixture outcome")
+                    return
+                }
+            case .failed:
+                guard case .failed = priorAvailability else {
+                    Issue.record("Missing genuine failed fixture outcome")
+                    return
+                }
+            }
+            do {
+                _ = try await index.synchronizeManifest(
+                    [SearchIndexManifestEntry(document: callback == .unchangedPublication ? original : replacement)],
+                    workspaceGeneration: nextWorkspaceGeneration,
+                    loadChanged: { _ in
+                        if callback == .row { throw SearchSourceCohortError.invalidated }
+                        return callback == .unchangedPublication ? original : replacement
+                    }, validateManifest: { throw SearchSourceCohortError.invalidated })
+                Issue.record("A changed source cohort unexpectedly committed")
+            } catch SearchSourceCohortError.invalidated {
+            } catch { Issue.record("Lost typed source-cohort outcome: \(error)") }
+            let restoredAvailability = await index.availability()
+            #expect(restoredAvailability == priorAvailability)
+            #expect(try await index.generation() == priorGeneration)
+            // A caller may choose not to recapture. No building/refreshing
+            // claim survives the ended transaction; a later explicit retry works.
+            let recovered = try await index.synchronizeManifest(
+                [SearchIndexManifestEntry(document: replacement)], workspaceGeneration: nextWorkspaceGeneration + 1,
+                loadChanged: { _ in replacement }, validateManifest: {})
+            #expect(await index.availability() == .current(recovered.generation))
+            print(
+                "CORE_COHORT_ABORT prior=\(priorState.rawValue) callback=\(callback.rawValue) exact_prior_restored=\(restoredAvailability == priorAvailability) retry_current=\(await index.availability() == .current(recovered.generation))"
+            )
+            await index.shutdown()
+        } catch {
+            await index.shutdown()
+            throw error
+        }
+    }
+
     private final class Fixture: @unchecked Sendable {
         let root: URL
         let databaseURL: URL

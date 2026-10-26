@@ -26,6 +26,12 @@ public struct TriptychSearchIndexOpenResult: Sendable {
     }
 }
 
+/// A caller-provided source cohort changed before its transaction could
+/// publish. The caller may recapture source; this is not an index failure.
+public enum SearchSourceCohortError: Error, Sendable {
+    case invalidated
+}
+
 public enum SearchIndexSynchronizationMode: Sendable, Equatable { case incremental, rebuild }
 
 public enum SearchIndexReclamationStatus: Sendable, Equatable { case completed, deferred, failed }
@@ -150,6 +156,7 @@ public actor TriptychSearchIndex {
     private struct ActiveSynchronization: Sendable {
         let id: UUID
         let previous: SearchGenerationID?
+        let priorAvailability: SearchAvailability
         let task: Task<SearchPublication, Error>
         let progress: ProgressDelivery?
     }
@@ -655,6 +662,7 @@ public actor TriptychSearchIndex {
         relatedPassageMemo.retainManifest(Array(desired.values))
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
+        let priorAvailability = currentAvailability
         let stored = try Self.indexedProjectionState(in: database)
         let desiredState = desired.mapValues(IndexedProjectionState.init)
         let changedKeys = desired.keys.filter { mode == .rebuild || stored[$0] != desiredState[$0] }
@@ -699,7 +707,7 @@ public actor TriptychSearchIndex {
                     preparation: .init())
             }
             let active = ActiveSynchronization(
-                id: identifier, previous: previous, task: task, progress: nil)
+                id: identifier, previous: previous, priorAvailability: priorAvailability, task: task, progress: nil)
             activeSynchronization = active
             let publication = try await finishSynchronization(active)
             recordSynchronizationTimings(
@@ -777,6 +785,7 @@ public actor TriptychSearchIndex {
         let active = ActiveSynchronization(
             id: identifier,
             previous: previous,
+            priorAvailability: priorAvailability,
             task: task,
             progress: progress
         )
@@ -854,6 +863,16 @@ public actor TriptychSearchIndex {
                 rankedSearchAccessClock = 0
             }
             return publication
+        } catch SearchSourceCohortError.invalidated {
+            await finishProgress(synchronization)
+            if activeSynchronization?.id == synchronization.id {
+                activeSynchronization = nil
+                // The transaction rolled back because its source authority
+                // changed, not because the retained index failed. Preserve a
+                // genuine prior stale/failed state as faithfully as current.
+                currentAvailability = synchronization.priorAvailability
+            }
+            throw SearchSourceCohortError.invalidated
         } catch is CancellationError {
             await finishProgress(synchronization)
             if activeSynchronization?.id == synchronization.id {

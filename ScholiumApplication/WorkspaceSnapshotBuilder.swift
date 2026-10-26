@@ -523,11 +523,17 @@ enum WorkspaceSnapshotBuilder {
             for entry in capturedManifest {
                 try Task.checkCancellation()
                 guard let repository = capturedRepositories[entry.vaultID],
-                    let version = capturedVersions[entry.vaultID]?[entry.relativePath],
-                    try await repository.sourceVersionIsCurrent(
-                        relativePath: entry.relativePath, version: version)
+                    let version = capturedVersions[entry.vaultID]?[entry.relativePath]
                 else {
-                    throw SearchIndexError.invalidDocuments("Source changed before complete publication")
+                    throw SearchIndexError.invalidDocuments("Search source authority is unavailable")
+                }
+                do {
+                    guard
+                        try await repository.sourceVersionIsCurrent(
+                            relativePath: entry.relativePath, version: version)
+                    else { throw SearchSourceCohortError.invalidated }
+                } catch VaultRepositoryError.fileDoesNotExist {
+                    throw SearchSourceCohortError.invalidated
                 }
             }
         }
@@ -554,18 +560,20 @@ enum WorkspaceSnapshotBuilder {
                         else {
                             throw SearchIndexError.invalidDocuments("Search source authority is unavailable")
                         }
-                        let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
-                        guard loaded.version == version,
-                            loaded.document.fingerprint == entry.fingerprint
-                        else {
-                            throw SearchIndexError.invalidDocuments("Search source changed before row preparation")
+                        do {
+                            let loaded = try await repository.loadCatalogSource(relativePath: entry.relativePath)
+                            guard loaded.version == version,
+                                loaded.document.fingerprint == entry.fingerprint
+                            else { throw SearchSourceCohortError.invalidated }
+                            return SearchIndexDocument(
+                                vaultID: entry.vaultID, vaultName: entry.vaultName,
+                                vaultRole: entry.vaultRole, document: loaded.document,
+                                stableNoteID: entry.stableNoteID,
+                                hasBrokenLink: entry.hasBrokenLink
+                            )
+                        } catch VaultRepositoryError.fileDoesNotExist {
+                            throw SearchSourceCohortError.invalidated
                         }
-                        return SearchIndexDocument(
-                            vaultID: entry.vaultID, vaultName: entry.vaultName,
-                            vaultRole: entry.vaultRole, document: loaded.document,
-                            stableNoteID: entry.stableNoteID,
-                            hasBrokenLink: entry.hasBrokenLink
-                        )
                     },
                     validateManifest: validatePublication
                 )

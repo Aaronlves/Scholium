@@ -448,11 +448,13 @@ extension WorkspaceHandle {
             }
             // Fresh row hydration can detect the newer bytes before Core
             // reaches final publication admission. It is still a superseded
-            // capture, not a derived failure for coherent callers. Departure,
-            // cancellation and unavailable root authority keep their meaning.
+            // capture, not a derived failure for coherent callers. Proven
+            // external replacement or deletion invalidates the cohort without
+            // acquiring this App's mutation token. Departure, cancellation and
+            // unavailable root authority keep their meaning.
             if !Task.isCancelled, !isShutDown, unavailableRootVaultIDs.isEmpty,
                 let authority = refreshSourceAuthority, authority.id == authorityID,
-                authority.sourceToken != sourceAuthorityToken,
+                error is SearchSourceCohortError || authority.sourceToken != sourceAuthorityToken,
                 await permitsSupersededSourceRecapture(after: error)
             {
                 throw WorkspaceRefreshPreparationError.superseded
@@ -1274,7 +1276,9 @@ extension WorkspaceHandle {
         authority.publicationStarted = .now
         refreshSourceAuthority = authority
         guard authority.sourceToken == sourceAuthorityToken else {
-            throw WorkspaceRefreshPreparationError.superseded
+            // This callback runs inside Core's source-bound transaction. Keep
+            // expected App-owned supersession distinct from an index failure.
+            throw SearchSourceCohortError.invalidated
         }
     }
 
