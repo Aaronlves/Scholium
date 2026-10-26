@@ -191,8 +191,12 @@ struct LibraryInspectorLifecycleTests {
                     relativePath: document.relativePath, editorSource: draft, diskSource: "Different disk revision\n",
                     baseRevision: DocumentFingerprint(content: Fixture.source))
             }
-            let retained = try await RetainedContext.capture(window)
+            // Session mode changes publish chrome asynchronously. Establish the
+            // intended Source baseline before capturing what browsing must retain.
             try await fixture.finishStartupPublication()
+            try #require(window.presentedDocumentMode == .source)
+            let retained = try await RetainedContext.capture(window)
+            retained.check(window)
             let originalError = session.editError
             let originalConflict = session.conflict
             let focusRevision = editor.focusRequestRevision

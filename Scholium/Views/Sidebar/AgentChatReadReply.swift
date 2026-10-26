@@ -116,16 +116,14 @@ struct AgentChatReadReply: View {
                                     readiness.ready = true
                                     acceptHydratedProjection()
                                 },
-                                onEvent: { receive($0, expectedSource: projection.document.rawContent) }
+                                onEvent: { receive($0, expectedSource: projection.document.rawContent) },
+                                onAppliedLayout: { size in
+                                    guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
+                                    readiness.applyLayout(size)
+                                }
                             )
                             .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                             .frame(height: height)
-                            .onGeometryChange(for: CGSize.self) {
-                                $0.size
-                            } action: {
-                                guard readerProjection?.presentationRevision == projection.presentationRevision else { return }
-                                readiness.applyLayout($0)
-                            }
                             .opacity(readerIsVisible ? 1 : 0)
                             .allowsHitTesting(readerIsVisible)
                             .overlay(alignment: .topLeading) {

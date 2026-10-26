@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+import WebKit
 
 @testable import ScholiumApp
 
@@ -297,6 +298,112 @@ struct AgentChatReaderReadinessTests {
         reader.applyNativeLayout(.init(measuredSize: measured, appliedSize: measured), fitsContent: false)
         session.presentPreparedHistoryIfReady()
         #expect(session.pendingHistoryPage == nil)
+        #expect(!window.isVisible)
+    }
+
+    @Test("Desired reader geometry cannot publish history before the native WebKit height applies")
+    func webGeometryMustApplyBeforePublication() async throws {
+        _ = NSApplication.shared
+        let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
+        let viewport = AgentChatTranscriptViewport.View(session: session, presentationID: presentationID)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        scroll.documentView = document
+        document.addSubview(viewport)
+        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        let reader = AgentChatReadReply.Readiness()
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        var nativeReceipts: [CGSize] = []
+        let pageExtension = AgentChatReadPageExtension()
+        pageExtension.update(
+            onEvent: { event in
+                if case .layout(let height, let width, _, _) = event {
+                    reader.measureLayout(height: height, viewportWidth: width)
+                }
+            },
+            onAppliedLayout: { size in
+                nativeReceipts.append(size)
+                reader.applyLayout(size)
+            }, isInteractive: true)
+        let native = try #require(pageExtension.makeWebView(configuration: configuration) as? AgentChatReadWebView)
+        native.frame = NSRect(x: 0, y: 0, width: 375, height: 319)
+        document.addSubview(native)
+        func reportDOM(height: Double) {
+            #expect(
+                pageExtension.handleMessage(
+                    type: "replyLayout",
+                    payload: ["height": height, "viewportWidth": 375.0, "intrinsicWidth": NSNull(), "objects": []],
+                    webView: native))
+        }
+        func finishNativeReport() async {
+            // Native reports leave layout through the main queue. One queue
+            // boundary observes that callback; no delay or convergence retry.
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+        defer {
+            reader.unmount()
+            pageExtension.cancel()
+            native.stopLoading()
+            viewport.retire()
+            window.contentView = nil
+            window.close()
+        }
+        session.attachViewport(viewport)
+        let ids = (0...AgentChatHistoryWindow.initialPageSize).map { "message-\($0)" }
+        session.mount(in: ids)
+        session.acknowledge(try #require(session.viewportRequest))
+        try #require(session.isInitialTranscriptReady)
+        session.page(earlier: true, in: ids, readerIDs: [ids[0]])
+        let page = try #require(session.pendingHistoryPage)
+        session.setPresentationActive(false, for: presentationID)
+        let marker = AgentChatReadingMarker.View(id: ids[0], session: session)
+        document.addSubview(marker)
+        reader.mount(in: session, readerID: ids[0], presentationID: presentationID)
+        reader.ready = true
+        reportDOM(height: 319)
+        try #require(reader.layoutIsApplied)
+
+        // DOM requests the new height while the native child still has its old
+        // frame. The extension must sample actual bounds, never desired size.
+        let desired = CGSize(width: 375, height: 198)
+        reportDOM(height: desired.height)
+        try #require(native.bounds.size == CGSize(width: 375, height: 319))
+        #expect(!reader.layoutIsApplied, "A desired SwiftUI size is not an actual native application receipt")
+        session.setPresentationActive(true, for: presentationID)
+        session.presentPreparedHistoryIfReady()
+        #expect(session.pendingHistoryPage?.itemIDs == page.itemIDs)
+
+        native.setFrameSize(desired)
+        await finishNativeReport()
+        #expect(reader.layoutIsApplied)
+        session.presentPreparedHistoryIfReady()
+        #expect(native.bounds.size == desired && session.pendingHistoryPage == nil)
+
+        native.setFrameSize(CGSize(width: 375, height: 220))
+        await finishNativeReport()
+        #expect(!reader.layoutIsApplied, "A later native resize revokes the previous application receipt")
+        reportDOM(height: 220)
+        #expect(reader.layoutIsApplied)
+        reader.reset()
+        reader.ready = true
+        native.reportAppliedLayout()
+        #expect(!reader.layoutIsApplied, "Native bounds alone cannot replace the new DOM measurement")
+        reportDOM(height: 220)
+        #expect(reader.layoutIsApplied)
+
+        native.setFrameSize(desired)
+        let receiptCount = nativeReceipts.count
+        pageExtension.cancel()
+        reader.unmount()
+        await finishNativeReport()
+        #expect(nativeReceipts.count == receiptCount, "Cancellation rejects an already queued native application report")
         #expect(!window.isVisible)
     }
 

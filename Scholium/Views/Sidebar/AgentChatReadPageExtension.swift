@@ -14,6 +14,62 @@ enum ReadReplyEvent {
 /// Identifies inline rich content to the transcript-owned wheel boundary.
 final class AgentChatReadWebView: DocumentNativeWebView {
     private(set) var isChatInteractive = true
+    private var onAppliedLayout: ((CGSize) -> Void)?
+    private var layoutObserverGeneration: UInt64 = 0
+    private var queuedLayout: CGSize?
+    private var reportedLayout: CGSize?
+
+    func observeAppliedLayout(_ observer: ((CGSize) -> Void)?) {
+        layoutObserverGeneration &+= 1
+        onAppliedLayout = observer
+        queuedLayout = nil
+        reportedLayout = nil
+        needsLayout = true
+    }
+
+    /// Only the native child knows when SwiftUI's requested size has applied.
+    /// A DOM callback also samples this boundary before page publication runs.
+    func reportAppliedLayout() {
+        guard window != nil, !isHiddenOrHasHiddenAncestor,
+            bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0
+        else { return }
+        reportedLayout = bounds.size
+        onAppliedLayout?(bounds.size)
+    }
+
+    override func layout() {
+        super.layout()
+        scheduleAppliedLayout()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        scheduleAppliedLayout()
+    }
+
+    override func setBoundsSize(_ newSize: NSSize) {
+        super.setBoundsSize(newSize)
+        scheduleAppliedLayout()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsLayout = true
+    }
+
+    private func scheduleAppliedLayout() {
+        let size = bounds.size
+        guard onAppliedLayout != nil, size != reportedLayout, size != queuedLayout else { return }
+        let generation = layoutObserverGeneration
+        queuedLayout = size
+        // Leave the native layout pass before publishing SwiftUI/session state.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.layoutObserverGeneration == generation, self.queuedLayout == size else { return }
+            self.queuedLayout = nil
+            guard self.bounds.size == size else { return }
+            self.reportAppliedLayout()
+        }
+    }
 
     func setChatInteractive(_ interactive: Bool) {
         guard isChatInteractive != interactive else { return }
@@ -68,6 +124,7 @@ struct ReadReplyObject: Identifiable, Equatable {
 @MainActor
 final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     var onEvent: ((ReadReplyEvent) -> Void)?
+    private var onAppliedLayout: ((CGSize) -> Void)?
     private var replyNavigationReady = false
     private var pendingReplyUpdate: (() -> Void)?
     private var replyPageFingerprint: String?
@@ -81,8 +138,12 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         self.onEvent = onEvent
     }
 
-    func update(onEvent: @escaping (ReadReplyEvent) -> Void, isInteractive: Bool) {
+    func update(
+        onEvent: @escaping (ReadReplyEvent) -> Void, onAppliedLayout: ((CGSize) -> Void)? = nil,
+        isInteractive: Bool
+    ) {
         self.onEvent = onEvent
+        self.onAppliedLayout = onAppliedLayout
         self.isInteractive = isInteractive
         nativeView?.setChatInteractive(isInteractive)
     }
@@ -94,7 +155,15 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
         let view = AgentChatReadWebView(frame: .zero, configuration: configuration)
         nativeView = view
         view.setChatInteractive(isInteractive)
+        installNativeLayoutObserver(in: view)
         return view
+    }
+
+    private func installNativeLayoutObserver(in view: AgentChatReadWebView) {
+        view.observeAppliedLayout { [weak self, weak view] size in
+            guard let self, let view, self.nativeView === view else { return }
+            self.onAppliedLayout?(size)
+        }
     }
 
     func preservesPage(
@@ -122,6 +191,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     }
 
     func willBeginLoad(fingerprint _: String) {
+        if let nativeView { installNativeLayoutObserver(in: nativeView) }
         replyPageGeneration &+= 1
         replyNavigationReady = false
         pendingReplyUpdate = nil
@@ -256,6 +326,9 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
                 let objects = ReadReplyObject.decode(payload["objects"])
             else { return true }
             onEvent?(.layout(height: height, viewportWidth: viewportWidth, intrinsicWidth: width.map { CGFloat($0) }, objects: objects))
+            // The callback above changes desired height. Sample actual native
+            // geometry in the same bridge turn, before queued publication.
+            (webView as? AgentChatReadWebView)?.reportAppliedLayout()
         case "replyNoteContext":
             guard isInteractive else { return true }
             guard let rawURL = payload["url"] as? String, rawURL.utf8.count <= 8_192,
@@ -285,6 +358,7 @@ final class AgentChatReadPageExtension: ScholiumReadPageExtension {
     }
 
     func cancel() {
+        nativeView?.observeAppliedLayout(nil)
         replyPageGeneration &+= 1
         replyUpdateTask?.cancel()
         replyUpdateTask = nil
@@ -315,6 +389,7 @@ struct AgentChatReadWebViewSurface: View {
     let onRenderingLoading: (() -> Void)?
     let onRenderingReady: (() -> Void)?
     let onEvent: (ReadReplyEvent) -> Void
+    let onAppliedLayout: (CGSize) -> Void
     @State private var pageExtension: AgentChatReadPageExtension
 
     init(
@@ -331,7 +406,8 @@ struct AgentChatReadWebViewSurface: View {
         onRenderingFailure: ((String) -> Void)?,
         onRenderingLoading: (() -> Void)?,
         onRenderingReady: (() -> Void)?,
-        onEvent: @escaping (ReadReplyEvent) -> Void
+        onEvent: @escaping (ReadReplyEvent) -> Void,
+        onAppliedLayout: @escaping (CGSize) -> Void
     ) {
         self.documentID = documentID
         self.documentTitle = documentTitle
@@ -347,11 +423,12 @@ struct AgentChatReadWebViewSurface: View {
         self.onRenderingLoading = onRenderingLoading
         self.onRenderingReady = onRenderingReady
         self.onEvent = onEvent
+        self.onAppliedLayout = onAppliedLayout
         _pageExtension = State(initialValue: AgentChatReadPageExtension(onEvent: onEvent))
     }
 
     var body: some View {
-        let _ = pageExtension.update(onEvent: onEvent, isInteractive: isEnabled && surfaceVisibility.isActive)
+        let _ = pageExtension.update(onEvent: onEvent, onAppliedLayout: onAppliedLayout, isInteractive: isEnabled && surfaceVisibility.isActive)
         SafeMarkdownReadWebView(
             documentID: documentID,
             documentTitle: documentTitle,
