@@ -203,9 +203,31 @@ public actor NoteSystemTrashDeletionCoordinator {
                     $0.vaultID == repository.identity.id
                 }) == true
             else { continue }
-            commits.append(try await perform(record))
+            commits.append(try await recoverInterruptedTransaction(record.id))
         }
         return commits
+    }
+
+    /// Continues only the selected durable plan. A proved move is never
+    /// dispatched again, and any unknown outcome blocks further native work.
+    public func recoverInterruptedTransaction(
+        _ recoveryRecordID: UUID
+    ) async throws -> SystemTrashDeletionCommit {
+        guard
+            let record = try await recoveryStore.pending().first(where: {
+                $0.id == recoveryRecordID && $0.operation == .systemTrashDeletion
+            }), let plan = record.systemTrashDeletionPlan
+        else {
+            throw TriptychTransactionError.invalidPlan("The selected system-Trash recovery record is unavailable.")
+        }
+        try validatePlanShape(plan, recoveryRecord: record)
+        guard plan.preview.sources.allSatisfy({ $0.vaultID == repository.identity.id }),
+            !plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown })
+        else {
+            throw TriptychTransactionError.invalidPlan(
+                "The selected system-Trash recovery belongs to another vault or has an unknown native outcome. Inspect Finder before resolving it.")
+        }
+        return try await perform(record)
     }
 
     /// Resolves only the irreducible native-Trash uncertainty case. This is
@@ -390,12 +412,7 @@ public actor NoteSystemTrashDeletionCoordinator {
             )
             try await recoveryStore.record(completedRecord)
             try await recoveryStore.resolve(completedRecord)
-            return SystemTrashDeletionCommit(
-                planID: plan.id,
-                noteIDs: Array(plan.affectedNoteIDs),
-                originalRelativePaths: plan.preview.sources.map(\.relativePath),
-                resultingTrashPaths: plan.sourceReceipts.compactMap(\.resultingTrashPath)
-            )
+            return completedCommit(plan)
         } catch {
             let updated = await makeRecord(
                 plan: plan,
@@ -416,8 +433,29 @@ public actor NoteSystemTrashDeletionCoordinator {
                 )
             }
             if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }) { throw error }
+            // The shape was validated before execution. Returning completion
+            // also requires this exact full receipt set to have persisted above.
+            if !plan.sourceReceipts.isEmpty,
+                plan.sourceReceipts.count == plan.preview.sources.count,
+                Set(plan.sourceReceipts.map(\.targetID)) == Set(plan.preview.sources.map(\.id)),
+                plan.sourceReceipts.allSatisfy({ $0.progress == .movedToSystemTrash })
+            {
+                return completedCommit(plan, pendingCleanupRecovery: updated)
+            }
             throw TriptychTransactionError.recoveryRequired(updated)
         }
+    }
+
+    private func completedCommit(
+        _ plan: SystemTrashDeletionPlan,
+        pendingCleanupRecovery: TriptychMutationRecoveryRecord? = nil
+    ) -> SystemTrashDeletionCommit {
+        SystemTrashDeletionCommit(
+            planID: plan.id,
+            noteIDs: Array(plan.affectedNoteIDs),
+            originalRelativePaths: plan.preview.sources.map(\.relativePath),
+            resultingTrashPaths: plan.sourceReceipts.compactMap(\.resultingTrashPath),
+            pendingCleanupRecovery: pendingCleanupRecovery)
     }
 
     private func replacingReceipt(

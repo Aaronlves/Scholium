@@ -219,8 +219,8 @@ final class WindowModel: ObservableObject {
             committedNoteMoved: { [weak self] outcome, target in
                 await self?.publishCommittedNoteMove(outcome, target: target)
             },
-            committedSystemTrash: { [weak self] preview, outcome in
-                await self?.publishSystemTrashResult(preview, outcome: outcome)
+            committedSystemTrash: { [weak self] preview, outcome, isCurrent in
+                await self?.publishSystemTrashResult(preview, outcome: outcome, isCurrent: isCurrent)
             },
             importedDocumentsCommitted: { [weak self] vault in
                 guard let self else { throw CancellationError() }
@@ -770,6 +770,7 @@ final class WindowModel: ObservableObject {
     private var performanceNotificationTokens: [Int32] = []
     #if DEBUG
         var performanceNoteOpeningCloseSetupTask: Task<Void, Never>?
+        var systemTrashPublicationBarrierForTesting: (@MainActor (SystemTrashPublicationBoundary) async -> Void)?
     #endif
 
     init(

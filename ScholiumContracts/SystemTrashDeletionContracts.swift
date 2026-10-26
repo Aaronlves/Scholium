@@ -79,16 +79,30 @@ public struct SystemTrashDeletionCommit: Hashable, Sendable {
     /// Machine-local Finder locations returned by the native Trash operation.
     /// They never enter Markdown or portable research state.
     public let resultingTrashPaths: [String]
+    /// Every native move is durably proved; only its retained application
+    /// recovery record still needs cleanup. This never authorizes another move.
+    public let pendingCleanupRecovery: TriptychMutationRecoveryRecord?
 
     public init(
         planID: UUID,
         noteIDs: [UUID],
         originalRelativePaths: [String],
-        resultingTrashPaths: [String]
+        resultingTrashPaths: [String],
+        pendingCleanupRecovery: TriptychMutationRecoveryRecord? = nil
     ) {
         self.planID = planID
         self.noteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
         self.originalRelativePaths = originalRelativePaths.sorted()
         self.resultingTrashPaths = resultingTrashPaths.sorted()
+        self.pendingCleanupRecovery = pendingCleanupRecovery
     }
+}
+
+/// Cleanup was explicitly retried, but its completed native moves remain proved.
+public struct SystemTrashCleanupPendingError: LocalizedError, Sendable {
+    public static let message = "The items moved to macOS Trash. Open Recovery to continue temporary cleanup; this will not repeat the move."
+    public let record: TriptychMutationRecoveryRecord
+
+    public init(record: TriptychMutationRecoveryRecord) { self.record = record }
+    public var errorDescription: String? { Self.message }
 }

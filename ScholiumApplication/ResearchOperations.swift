@@ -38,9 +38,7 @@ extension WorkspaceHandle {
                         vaultID: citationRecovery.vaultID, relativePath: citationRecovery.relativePath), .save))
             return
         }
-        if let plan = record.systemTrashDeletionPlan,
-            plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown })
-        {
+        if let plan = record.systemTrashDeletionPlan {
             guard let vaultID = plan.preview.sources.first?.vaultID,
                 plan.preview.sources.allSatisfy({ $0.vaultID == vaultID })
             else {
@@ -48,10 +46,21 @@ extension WorkspaceHandle {
                     "The unknown system-Trash outcome cannot be resolved automatically."
                 )
             }
-            try await resolveUnknownSystemTrashOutcome(
-                recoveryRecordID: record.id,
-                vaultID: vaultID
-            )
+            if plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }) {
+                try await resolveUnknownSystemTrashOutcome(recoveryRecordID: record.id, vaultID: vaultID)
+            } else {
+                let lease = try await beginSourceMutation()
+                var ownsLease = true
+                defer { if ownsLease { endSourceMutation(lease) } }
+                let commit = try await systemTrashCoordinator(vaultID: vaultID)
+                    .recoverInterruptedTransaction(record.id)
+                endSourceMutation(lease)
+                ownsLease = false
+                if let pending = commit.pendingCleanupRecovery {
+                    _ = try? await refresh(publication: .explicit)
+                    throw SystemTrashCleanupPendingError(record: pending)
+                }
+            }
             _ = try await refresh(publication: .explicit)
             return
         }

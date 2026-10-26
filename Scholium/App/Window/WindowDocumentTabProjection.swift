@@ -142,8 +142,10 @@ extension WindowModel {
 
     func removeDocumentTabs(
         vaultID: UUID,
-        removedPaths: Set<String>
+        removedPaths: Set<String>,
+        validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
+        try validateDisplay()
         let matchingTabs = Dictionary(
             uniqueKeysWithValues: documentTabController.tabs.compactMap { tab -> (UUID, DocumentEditingTarget)? in
                 guard let descriptor = tab.document.workspaceDescriptor,
@@ -161,10 +163,13 @@ extension WindowModel {
             reconcileDocumentSessionLeases()
             return
         }
-        try await removeDocumentTabs(matching: matchingTabs)
+        try await removeDocumentTabs(matching: matchingTabs, validateDisplay: validateDisplay)
     }
 
-    func removeDocumentTabs(matching expectedTabs: [UUID: DocumentEditingTarget]) async throws {
+    func removeDocumentTabs(
+        matching expectedTabs: [UUID: DocumentEditingTarget], validateDisplay: @MainActor () throws -> Void = {}
+    ) async throws {
+        try validateDisplay()
         let matchingIDs = Set(
             documentTabController.tabs.compactMap { tab in
                 expectedTabs[tab.id] == tab.document.editingTarget ? tab.id : nil
@@ -190,14 +195,19 @@ extension WindowModel {
             let unavailableSnapshotAtStart = documentController.unavailableSnapshot
             if let documentToActivate = plan.documentToActivate {
                 do {
+                    #if DEBUG
+                        await systemTrashPublicationBarrierForTesting?(.neighborActivation)
+                    #endif
                     try await activateResolvedDocument(
-                        documentToActivate, tabActivation: .preserveTabMembership
+                        documentToActivate, tabActivation: .preserveTabMembership, validateDisplay: validateDisplay
                     )
                 } catch {
+                    try validateDisplay()
                     restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
                     throw error
                 }
             }
+            try validateDisplay()
             guard documentTabController.apply(plan) else {
                 restoreAuthoritativeTabSelection(unavailableSnapshotAtStart: unavailableSnapshotAtStart)
                 throw DocumentControllerError.documentUnavailable

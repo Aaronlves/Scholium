@@ -562,7 +562,12 @@ extension WorkspaceHandle {
                 recoveryStore: services.transactionRecoveryStore
             )
             do {
-                try await coordinator.recoverInterruptedTransactions()
+                let commits = try await coordinator.recoverInterruptedTransactions()
+                for commit in commits {
+                    if let pending = commit.pendingCleanupRecovery {
+                        issues.append(SystemTrashCleanupPendingError(record: pending).localizedDescription)
+                    }
+                }
             } catch {
                 issues.append("Vault \(vaultID.uuidString): \(error.localizedDescription)")
             }

@@ -368,27 +368,30 @@ extension WindowModel {
         documentController.rememberPresentationMode(.read)
     }
 
-    func refreshWindowProjection() async {
+    func refreshWindowProjection(isCurrent: @MainActor () -> Bool = { true }) async {
+        guard isCurrent() else { return }
         // `WorkspaceStore` publishes the authoritative Triptych index and
         // Triptych graph. Keep this method as a window projection refresh for
         // existing callers; it must not create a second graph or index.
         projectionRefreshToken &+= 1
         let refreshToken = projectionRefreshToken
         let startingVaultID = currentRegisteredVault?.id
-        await refreshIdentityState()
-        guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
+        await refreshIdentityState(isCurrent: isCurrent)
+        guard isCurrent(), refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
 
         if let catalog = try? await discoveryController.discoverySnapshot().catalog {
+            guard isCurrent() else { return }
             workspaceProjectionController.replaceCatalog(catalog)
         }
-        guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
+        guard isCurrent(), refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
         if let vaultID = startingVaultID,
             let vault = try? await documentController.workspaceSnapshot(vaultID: vaultID)
         {
+            guard isCurrent() else { return }
             let snapshots = Dictionary(uniqueKeysWithValues: vault.documents.map { ($0.id.relativePath, $0) })
             workspaceProjectionController.refreshVisibleNoteSnapshots(snapshots)
         }
-        guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
+        guard isCurrent(), refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
 
         if noteSourceScope == .library, workspaceAssignment != nil {
             scheduleWorkspaceCatalogRefresh()
@@ -435,7 +438,8 @@ extension WindowModel {
         }
     }
 
-    func refreshLibrarySourceScope() async throws {
+    func refreshLibrarySourceScope(isCurrent: @MainActor () -> Bool = { true }) async throws {
+        guard isCurrent() else { throw CancellationError() }
         guard let workspaceSlot = currentWorkspaceSlot else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
@@ -450,15 +454,17 @@ extension WindowModel {
                 vaultID: currentRegisteredVault?.id
             )
         } catch {
+            guard isCurrent() else { throw CancellationError() }
             discoveryController.failLibraryRequest(error.localizedDescription, for: request)
             throw error
         }
+        guard isCurrent() else { throw CancellationError() }
         guard discoveryController.receiveLibraryResult(for: request) else { return }
         workspaceProjectionController.replaceVisibleNotes(
             loaded.sorted(by: notesAreOrdered)
         )
-        await refreshIdentityState()
-        await refreshWindowProjection()
+        await refreshIdentityState(isCurrent: isCurrent)
+        await refreshWindowProjection(isCurrent: isCurrent)
     }
 
     private func loadNotes(

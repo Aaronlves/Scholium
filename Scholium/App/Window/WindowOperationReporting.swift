@@ -91,12 +91,14 @@ extension WindowModel {
     @discardableResult
     func reportCommittedMutationWarnings<CommittedValue: Sendable>(
         _ outcome: WorkspaceMutationOutcome<CommittedValue>,
-        presentationWarning: String? = nil
+        presentationWarning: String? = nil,
+        completionWarning: String? = nil
     ) -> Bool {
         reportCommittedMutationWarnings(
             derivedRefreshWarnings: outcome.derivedRefreshWarning.map { [$0] } ?? [],
             identityRecoveryWarnings: outcome.identityRecoveryWarning.map { [$0] } ?? [],
-            presentationWarning: presentationWarning
+            presentationWarning: presentationWarning,
+            completionWarning: completionWarning
         )
     }
 
@@ -104,9 +106,10 @@ extension WindowModel {
     private func reportCommittedMutationWarnings(
         derivedRefreshWarnings: [String],
         identityRecoveryWarnings: [String],
-        presentationWarning: String? = nil
+        presentationWarning: String? = nil,
+        completionWarning: String? = nil
     ) -> Bool {
-        var messages: [String] = []
+        var messages: [String] = completionWarning.map { [$0] } ?? []
         if !derivedRefreshWarnings.isEmpty {
             messages.append(
                 String(

@@ -1,6 +1,12 @@
 import Foundation
 import ScholiumContracts
 
+#if DEBUG
+    enum SystemTrashPublicationBoundary: CaseIterable, Sendable {
+        case cacheRead, neighborActivation, recoveryRead
+    }
+#endif
+
 /// Publication of committed library mutations: Application has already
 /// accepted the change, so these commands only project it into the window's
 /// library, disclosure and selection state.
@@ -144,7 +150,8 @@ extension WindowModel {
     /// actor. Refresh the exact vault cache before rebuilding the visible tree
     /// so newly created empty folders and folder moves cannot be hidden by the
     /// preceding window generation.
-    func refreshCachedWorkspaceVaultSnapshot(vaultID: UUID) async throws {
+    func refreshCachedWorkspaceVaultSnapshot(vaultID: UUID, isCurrent: @MainActor () -> Bool = { true }) async throws {
+        guard isCurrent() else { throw CancellationError() }
         guard
             let snapshot = try await documentController.workspaceSnapshot(
                 vaultID: vaultID
@@ -152,6 +159,10 @@ extension WindowModel {
         else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        #if DEBUG
+            await systemTrashPublicationBarrierForTesting?(.cacheRead)
+        #endif
+        guard isCurrent() else { throw CancellationError() }
         workspaceProjectionController.replaceVaultSnapshot(snapshot)
     }
 
@@ -360,26 +371,47 @@ extension WindowModel {
 
     func publishSystemTrashResult(
         _ preview: SystemTrashDeletionPreview,
-        outcome: WorkspaceMutationOutcome<SystemTrashDeletionCommit>?
+        outcome: WorkspaceMutationOutcome<SystemTrashDeletionCommit>?,
+        isCurrent: @escaping @MainActor () -> Bool = { true }
     ) async {
+        guard isCurrent(), !windowCloseCoordinator.isFinalized,
+            let capabilities = windowWorkspaceController.activeCapabilities,
+            capabilities.id == preview.triptychID
+        else { return }
+        let runtimeIdentity = capabilities.runtimeIdentity
+        let projection = workspaceProjectionController
+        let mayPublish: @MainActor () -> Bool = {
+            isCurrent() && !self.windowCloseCoordinator.isFinalized
+                && self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity
+                && self.workspaceProjectionController === projection
+        }
         guard let outcome else {
-            _ = try? await discoveryController.refreshWorkspace()
-            await synchronizeSystemTrashPresentation(preview)
+            _ = try? await capabilities.discovery.refresh()
+            guard mayPublish() else { return }
+            await synchronizeSystemTrashPresentation(preview, isCurrent: mayPublish)
             return
         }
-        await synchronizeSystemTrashPresentation(preview)
+        await synchronizeSystemTrashPresentation(preview, isCurrent: mayPublish)
+        guard mayPublish() else { return }
         sourceMutationGeneration &+= 1
-        reportCommittedMutationWarnings(
-            outcome,
-            presentationWarning: nil
-        )
+        if let pending = outcome.committedValue.pendingCleanupRecovery {
+            try? researchController.retainTransactionRecovery(pending)
+            await refreshTransactionRecoveryRecords()
+            #if DEBUG
+                await systemTrashPublicationBarrierForTesting?(.recoveryRead)
+            #endif
+            guard mayPublish() else { return }
+        }
+        guard mayPublish() else { return }
+        reportCommittedMutationWarnings(outcome, completionWarning: outcome.committedValue.pendingCleanupWarning)
     }
 
     private func synchronizeSystemTrashPresentation(
-        _ preview: SystemTrashDeletionPreview
+        _ preview: SystemTrashDeletionPreview, isCurrent: @MainActor () -> Bool
     ) async {
-        guard let vaultID = preview.sources.first?.vaultID else { return }
-        try? await refreshCachedWorkspaceVaultSnapshot(vaultID: vaultID)
+        guard isCurrent(), let vaultID = preview.sources.first?.vaultID else { return }
+        try? await refreshCachedWorkspaceVaultSnapshot(vaultID: vaultID, isCurrent: isCurrent)
+        guard isCurrent() else { return }
         let currentPaths = Set(
             workspaceProjectionController.vaultSnapshot(id: vaultID)?
                 .documents.map { $0.id.relativePath } ?? []
@@ -388,15 +420,29 @@ extension WindowModel {
         let removedPaths = plannedPaths.subtracting(currentPaths)
         guard !removedPaths.isEmpty else { return }
         do {
-            try await removeDocumentTabs(vaultID: vaultID, removedPaths: removedPaths)
+            try await removeDocumentTabs(
+                vaultID: vaultID, removedPaths: removedPaths,
+                validateDisplay: {
+                    guard isCurrent() else { throw CancellationError() }
+                })
         } catch {
+            guard isCurrent() else { return }
             if currentDocumentVaultID == vaultID {
                 documentController.clearSelection(forRemovedPaths: removedPaths)
             }
         }
+        guard isCurrent() else { return }
         if currentRegisteredVault?.id == vaultID {
-            try? await refreshLibrarySourceScope()
+            try? await refreshLibrarySourceScope(isCurrent: isCurrent)
         }
+        guard isCurrent() else { return }
         scheduleWorkspaceCatalogRefresh()
+    }
+}
+
+extension SystemTrashDeletionCommit {
+    var pendingCleanupWarning: String? {
+        guard pendingCleanupRecovery != nil else { return nil }
+        return ScholiumL10n.dynamicString(SystemTrashCleanupPendingError.message)
     }
 }

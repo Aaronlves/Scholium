@@ -260,10 +260,23 @@ extension WindowModel {
 
     func commitNoteRestructure(_ preview: NoteRestructurePreview) async throws {
         guard let capabilities = windowWorkspaceController.activeCapabilities else { throw AgentChatNoteMaterialError.unavailable }
+        let runtimeIdentity = capabilities.runtimeIdentity
+        let isCurrent: @MainActor () -> Bool = {
+            !self.windowCloseCoordinator.isFinalized
+                && self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity
+        }
         try await workspaceStore.flushEditors(in: capabilities.runtimeIdentity.triptychID)
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         do {
             let outcome = try await capabilities.documents.commitNoteRestructure(preview)
-            _ = await refreshAfterResearchHandoff()
+            // A merge may have completed its source Trash move while its
+            // durable receipt still needs cleanup. Keep that recovery visible.
+            guard isCurrent() else { return }
+            await refreshTransactionRecoveryRecords()
+            guard isCurrent() else { return }
+            _ = await refreshAfterResearchHandoff(isCurrent: isCurrent)
+            guard isCurrent() else { return }
             if outcome.derivedRefreshWarning != nil || outcome.identityRecoveryWarning != nil {
                 reportOperationIssue(
                     ScholiumL10n.string("Notes reorganized; some views could not refresh. Use Refresh instead of repeating the operation."), kind: .information)
@@ -273,12 +286,17 @@ extension WindowModel {
                 $0.reference.vaultID == outcome.committedValue.destination.vaultID
                     && $0.reference.relativePath == outcome.committedValue.destination.relativePath
             })?.reference {
-                await openWorkspaceReference(reference)
+                await openWorkspaceReference(
+                    reference,
+                    validateDisplay: {
+                        guard isCurrent() else { throw CancellationError() }
+                    })
             }
         } catch {
-            await refreshTransactionRecoveryRecords()
+            if isCurrent() { await refreshTransactionRecoveryRecords() }
             throw error
         }
+        guard isCurrent() else { return }
         reportOperationIssue(ScholiumL10n.string("Notes reorganized."), kind: .information)
     }
 }

@@ -116,7 +116,8 @@ extension WindowModel {
             ?? workspaceProjectionController.catalogError
     }
 
-    func refreshIdentityState() async {
+    func refreshIdentityState(isCurrent: @MainActor () -> Bool = { true }) async {
+        guard isCurrent() else { return }
         identityRefreshGeneration &+= 1
         let refreshGeneration = identityRefreshGeneration
         guard let vault = currentRegisteredVault else {
@@ -127,7 +128,7 @@ extension WindowModel {
             return
         }
         let sourceScope = noteSourceScope
-        guard refreshGeneration == identityRefreshGeneration,
+        guard isCurrent(), refreshGeneration == identityRefreshGeneration,
             currentRegisteredVault?.id == vault.id,
             noteSourceScope == sourceScope
         else { return }
@@ -144,7 +145,7 @@ extension WindowModel {
             vaultSnapshot = snapshot
             recovery = snapshot.identityRecovery
         } catch {
-            guard refreshGeneration == identityRefreshGeneration,
+            guard isCurrent(), refreshGeneration == identityRefreshGeneration,
                 currentRegisteredVault?.id == vault.id,
                 noteSourceScope == sourceScope
             else { return }
@@ -152,7 +153,7 @@ extension WindowModel {
             identityResolutionError = error.localizedDescription
             return
         }
-        guard refreshGeneration == identityRefreshGeneration,
+        guard isCurrent(), refreshGeneration == identityRefreshGeneration,
             currentRegisteredVault?.id == vault.id,
             noteSourceScope == sourceScope
         else { return }

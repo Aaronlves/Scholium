@@ -76,7 +76,8 @@ struct WindowLibraryMutationDependencies {
     let committedSystemTrash:
         @MainActor (
             SystemTrashDeletionPreview,
-            WorkspaceMutationOutcome<SystemTrashDeletionCommit>?
+            WorkspaceMutationOutcome<SystemTrashDeletionCommit>?,
+            @escaping @MainActor () -> Bool
         ) async -> Void
     let importedDocumentsCommitted: @MainActor (RegisteredVault) async throws -> Void
     let presentImportOutcome: @MainActor (WindowMarkdownImportBatchOutcome) -> Void
@@ -122,6 +123,7 @@ final class WindowLibraryMutationController: ObservableObject {
 
     let dependencies: WindowLibraryMutationDependencies
     private var operations: (any LibraryMutationUseCases)?
+    private(set) var bindingID = UUID()
     private var markdownImportTask: (id: UUID, task: Task<Void, Never>)?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
@@ -144,11 +146,15 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func bind(to operations: any LibraryMutationUseCases) {
+        bindingID = UUID()
+        lastBatchOutcome = nil
         cancelAll()
         self.operations = operations
     }
 
     func unbind() {
+        bindingID = UUID()
+        lastBatchOutcome = nil
         cancelAll()
         operations = nil
     }
@@ -492,15 +498,38 @@ final class WindowLibraryMutationController: ObservableObject {
         else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        let admission = try captureSystemTrashAdmission(preview)
         try await dependencies.flushEditors(context.assignmentID)
+        try Task.checkCancellation()
+        guard admission.isCurrent() else { throw CancellationError() }
         do {
-            let outcome = try await requireOperations().moveToSystemTrash(preview)
-            await dependencies.committedSystemTrash(preview, outcome)
+            let outcome = try await admission.operations.moveToSystemTrash(preview)
+            await dependencies.committedSystemTrash(preview, outcome, admission.isCurrent)
         } catch {
-            await dependencies.refreshTransactionRecovery()
-            await dependencies.committedSystemTrash(preview, nil)
+            if admission.isCurrent() { await dependencies.refreshTransactionRecovery() }
+            await dependencies.committedSystemTrash(preview, nil, admission.isCurrent)
             throw error
         }
+    }
+
+    /// Capture the actual operation owner before suspension. Library browsing
+    /// does not revoke admission; binding replacement and window departure do.
+    func captureSystemTrashAdmission(
+        _ preview: SystemTrashDeletionPreview
+    ) throws -> (operations: any LibraryMutationUseCases, isCurrent: @MainActor () -> Bool) {
+        guard let context = dependencies.context(), context.assignmentID == preview.triptychID else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let operations = try requireOperations()
+        let admittedBinding = bindingID
+        let assignmentID = context.assignmentID
+        return (
+            operations,
+            { [weak self] in
+                guard let self else { return false }
+                return self.bindingID == admittedBinding && self.dependencies.context()?.assignmentID == assignmentID
+            }
+        )
     }
 
     func requestMarkdownImport(_ urls: [URL]) {
@@ -643,9 +672,9 @@ final class WindowLibraryMutationController: ObservableObject {
             }
         }
         return try await withTaskCancellationHandler {
-            let value = try await task.value
-            if task.isCancelled { throw CancellationError() }
-            return value
+            // Cancellation can stop queued or uncommitted work, but cannot
+            // turn an operation's completed result into a retryable failure.
+            try await task.value
         } onCancel: {
             task.cancel()
         }

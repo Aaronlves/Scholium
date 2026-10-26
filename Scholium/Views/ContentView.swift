@@ -648,9 +648,9 @@ struct ContentView: View {
                 preview: preview,
                 confirm: { preview in
                     let outcome = await libraryMutationController.executeNotesSystemTrash(preview)
-                    appState.presentLibraryBatchOutcome(outcome)
+                    appState.presentLibraryBatchOutcome(outcome, if: route.id)
                 },
-                cancel: { presentationRouter.dismissSheet() })
+                cancel: { presentationRouter.dismissSheet(if: route.id) })
         case .noteRestructure(let request):
             NoteRestructureView(
                 request: request, prepare: appState.prepareNoteRestructure,
@@ -691,9 +691,9 @@ struct ContentView: View {
                 preview: preview,
                 confirm: { preview in
                     try await appState.libraryMutationController.executeSystemTrash(preview)
-                    appState.presentationRouter.dismissSheet()
+                    appState.presentationRouter.dismissSheet(if: route.id)
                 },
-                cancel: { appState.presentationRouter.dismissSheet() }
+                cancel: { appState.presentationRouter.dismissSheet(if: route.id) }
             )
         case .transactionRecovery:
             TransactionRecoveryView(

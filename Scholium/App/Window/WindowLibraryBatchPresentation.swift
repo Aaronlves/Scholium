@@ -83,9 +83,21 @@ extension WindowModel {
         }
     }
 
-    func presentLibraryBatchOutcome(_ outcome: LibraryNoteBatchOutcome) {
+    func presentLibraryBatchOutcome(_ outcome: LibraryNoteBatchOutcome, if routeID: String? = nil) {
+        guard !windowCloseCoordinator.isFinalized,
+            libraryMutationController.lastBatchOutcome?.id == outcome.id,
+            let sheet = presentationRouter.sheet,
+            routeID == nil || sheet.id == routeID
+        else { return }
+        switch sheet {
+        case .libraryNoteBatch(let request):
+            guard request.id == outcome.id else { return }
+        case .libraryBatchTrash(let preview):
+            guard preview.id == outcome.id else { return }
+        default: return
+        }
         if outcome.isComplete && outcome.warnings.isEmpty {
-            presentationRouter.dismissSheet()
+            presentationRouter.dismissSheet(if: sheet.id)
         } else {
             presentationRouter.present(.libraryNoteBatch(outcome.request))
         }

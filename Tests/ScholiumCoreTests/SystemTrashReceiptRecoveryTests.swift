@@ -75,25 +75,37 @@ struct SystemTrashReceiptRecoveryTests {
         #expect(try await fixture.control.identityRecord(vaultID: fixture.vaultID, relativePath: fixture.note.lastPathComponent)?.id == fixture.noteID)
     }
 
-    @Test("A persisted native move receipt resumes cleanup without another filesystem operation")
+    @Test("A completed native move remains successful while its durable receipt awaits cleanup")
     func completedReceiptDoesNotRetryNativeMove() async throws {
         let fixture = try await Fixture.make(point: .afterSourceReceipts)
         defer { fixture.remove() }
         let preview = try await fixture.preview()
-        await #expect(throws: TriptychTransactionError.self) {
-            try await fixture.coordinator.moveToSystemTrash(preview)
+        let commit: SystemTrashDeletionCommit?
+        let completionError: (any Error)?
+        do {
+            commit = try await fixture.coordinator.moveToSystemTrash(preview)
+            completionError = nil
+        } catch {
+            commit = nil
+            completionError = error
         }
         let record = try #require(try await fixture.recovery.pending().first)
         let receipt = try #require(record.systemTrashDeletionPlan?.sourceReceipts.first)
         #expect(receipt.progress == .movedToSystemTrash)
         let destination = URL(fileURLWithPath: try #require(receipt.resultingTrashPath))
         defer { try? FileManager.default.removeItem(at: destination) }
+        if let completionError { Issue.record("A proved native move was reported as failure: \(completionError)") }
+        guard let commit else { return }
+        print("Disposable native Trash fixture: \(destination.path)")
+        #expect(commit.planID == preview.id && commit.noteIDs == [fixture.noteID])
+        #expect(commit.pendingCleanupRecovery == record)
+        #expect(commit.resultingTrashPaths == [destination.path])
         let resumed = NoteSystemTrashDeletionCoordinator(
             triptychID: fixture.triptychID, repository: fixture.repository,
             controlStore: fixture.control, recoveryStore: fixture.recovery)
-        let commits = try await resumed.recoverInterruptedTransactions()
-        #expect(commits.count == 1)
-        #expect(commits.first?.resultingTrashPaths == [destination.path])
+        let recovered = try await resumed.recoverInterruptedTransaction(record.id)
+        #expect(recovered.pendingCleanupRecovery == nil)
+        #expect(recovered.resultingTrashPaths == [destination.path])
         #expect(try await fixture.recovery.pending().isEmpty)
         #expect(try Data(contentsOf: destination) == fixture.bytes)
         #expect(!FileManager.default.fileExists(atPath: fixture.note.path))

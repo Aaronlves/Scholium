@@ -10,6 +10,15 @@ struct ScholiumErrorLocalizationTests {
     private let chinese = Locale(identifier: "zh-Hans")
     private let english = Locale(identifier: "en")
 
+    @Test("Completed Trash cleanup remains distinct from an unknown or failed native move")
+    func completedTrashCleanupMessage() {
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(), operation: .systemTrashDeletion, failure: "Synthetic cleanup", files: [])
+        let error = SystemTrashCleanupPendingError(record: record)
+        #expect(ScholiumErrorLocalization.message(error, locale: english) == SystemTrashCleanupPendingError.message)
+        #expect(ScholiumErrorLocalization.message(error, locale: chinese) == "项目已移至 macOS 纸篓。请打开“恢复”继续清理临时操作记录；这不会重复移动文件。")
+    }
+
     @Test("Storage failures and committed index-clear warnings retain their distinct consequences in Chinese")
     func storageManagementMessages() {
         #expect(ScholiumErrorLocalization.message(ScholiumStorageManagementError.operationInProgress, locale: chinese) == "另一个存储操作正在运行。")

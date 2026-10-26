@@ -181,7 +181,8 @@ private final class LibraryMutationFixture {
                 captureBatchTargets: { $0 },
                 committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
                 committedFolderMoved: { _ in }, committedNoteDuplicated: { _, _, _ in }, committedNoteMoved: { _, _ in },
-                committedSystemTrash: { [unowned self] _, outcome in
+                committedSystemTrash: { [unowned self] _, outcome, isCurrent in
+                    guard isCurrent() else { return }
                     trashResultWasRejected = outcome == nil
                     if let commit = outcome?.committedValue, commit.noteIDs == [target.stableNoteID] {
                         trashedFixturePaths = commit.resultingTrashPaths

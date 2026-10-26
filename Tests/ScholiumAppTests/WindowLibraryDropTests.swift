@@ -219,7 +219,7 @@ private final class DropFixture {
                     committedNotes += 1
                     await publish()
                 },
-                committedSystemTrash: { _, _ in }, importedDocumentsCommitted: { _ in },
+                committedSystemTrash: { _, _, _ in }, importedDocumentsCommitted: { _ in },
                 presentImportOutcome: { _ in }, presentSystemTrash: { _ in }, clearPresentedAlert: {},
                 reportError: { [unowned self] in errors.append($0) }, reportInformation: { _ in },
                 refreshTransactionRecovery: { [unowned self] in recoveryRefreshes += 1 }))

@@ -472,9 +472,16 @@ final class ResearchController: ObservableObject {
     func receive(_ snapshot: WorkspaceSnapshot) {
         let becameComplete = !hasCompleteWorkspaceSnapshot && snapshot.phase.isComplete
         hasCompleteWorkspaceSnapshot = snapshot.phase.isComplete
+        let recoveryChanged = researchSnapshot?.recoveryRecords != snapshot.research.recoveryRecords
         researchSnapshot = snapshot.research
         errorMessage = nil
         if becameComplete { scheduleDocumentChangesRefresh() }
+        if snapshot.phase.isComplete && (becameComplete || recoveryChanged) {
+            // External Agent commits carry durable recovery evidence in the
+            // workspace publication. Read current records instead of copying
+            // a potentially older snapshot over a completed recovery action.
+            Task { @MainActor [weak self] in await self?.refreshTransactionRecoveryRecords() }
+        }
     }
 
     private func requireResearch() throws -> any ResearchUseCases {

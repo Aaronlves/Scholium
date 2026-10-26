@@ -191,6 +191,8 @@ enum ScholiumErrorLocalization {
             case .runtimeConfigurationUnavailable:
                 ScholiumL10n.string("This fixed workspace snapshot cannot change Triptych registration or access.", locale: locale)
             }
+        case is SystemTrashCleanupPendingError:
+            return ScholiumL10n.string(String.LocalizationValue(stringLiteral: SystemTrashCleanupPendingError.message), locale: locale)
         case let error as TriptychTransactionError:
             return switch error {
             case .invalidPlan(let detail): ScholiumL10n.string("The note move plan is invalid: \(detail)", locale: locale)

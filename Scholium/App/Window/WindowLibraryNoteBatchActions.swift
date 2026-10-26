@@ -94,22 +94,26 @@ extension WindowLibraryMutationController {
             id: preview.id, assignmentID: preview.triptychID,
             vaultID: preview.sources.first?.vaultID ?? UUID(), targets: targets)
         return await ownNoteBatch(request, operation: .systemTrash) { [self] in
+            let admission: (operations: any LibraryMutationUseCases, isCurrent: @MainActor () -> Bool)
+            do { admission = try captureSystemTrashAdmission(preview) } catch {
+                return LibraryNoteBatchExecution.trashFailure(request, preview: preview, error: error)
+            }
             do {
                 try Task.checkCancellation()
                 guard batchIsCurrent(request) else { throw CancellationError() }
                 try await dependencies.flushEditors(request.assignmentID)
                 try Task.checkCancellation()
-                guard batchIsCurrent(request) else { throw CancellationError() }
-                let outcome = try await requireOperations().moveToSystemTrash(preview)
-                await dependencies.committedSystemTrash(preview, outcome)
+                guard admission.isCurrent(), batchIsCurrent(request) else { throw CancellationError() }
+                let outcome = try await admission.operations.moveToSystemTrash(preview)
+                await dependencies.committedSystemTrash(preview, outcome, admission.isCurrent)
                 return LibraryNoteBatchOutcome(
                     request: request, operation: .systemTrash,
                     items: targets.map { .init(target: $0, destinationRelativePath: nil, status: .succeeded) },
-                    recoveryRequired: false,
-                    warnings: [outcome.derivedRefreshWarning, outcome.identityRecoveryWarning].compactMap { $0 })
+                    recoveryRequired: outcome.committedValue.pendingCleanupRecovery != nil,
+                    warnings: [outcome.committedValue.pendingCleanupWarning, outcome.derivedRefreshWarning, outcome.identityRecoveryWarning].compactMap { $0 })
             } catch {
-                await dependencies.refreshTransactionRecovery()
-                await dependencies.committedSystemTrash(preview, nil)
+                if admission.isCurrent() { await dependencies.refreshTransactionRecovery() }
+                await dependencies.committedSystemTrash(preview, nil, admission.isCurrent)
                 return LibraryNoteBatchExecution.trashFailure(request, preview: preview, error: error)
             }
         }
@@ -128,6 +132,7 @@ extension WindowLibraryMutationController {
         guard !isBatchWorking, !hasActiveLibraryMutation else {
             return LibraryNoteBatchExecution.failure(request, operation: operation, error: LibraryNoteBatchError.operationInProgress)
         }
+        let admittedBinding = bindingID
         isBatchWorking = true
         let task = Task { await perform() }
         batchCancellation = { task.cancel() }
@@ -141,7 +146,7 @@ extension WindowLibraryMutationController {
         } onCancel: {
             task.cancel()
         }
-        lastBatchOutcome = outcome
+        if bindingID == admittedBinding { lastBatchOutcome = outcome }
         return outcome
     }
 }

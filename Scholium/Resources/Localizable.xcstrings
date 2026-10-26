@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The items moved to macOS Trash. Open Recovery to continue temporary cleanup; this will not repeat the move." : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The items moved to macOS Trash. Open Recovery to continue temporary cleanup; this will not repeat the move."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "项目已移至 macOS 纸篓。请打开“恢复”继续清理临时操作记录；这不会重复移动文件。"}}}},
     "Receipt or history could not be refreshed." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt or history could not be refreshed."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法刷新修改记录或历史。"}}}},
     "Receipt refresh was interrupted." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt refresh was interrupted."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "修改记录刷新已中断。"}}}},
     "The refreshed receipt does not yet show the completed Undo." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The refreshed receipt does not yet show the completed Undo."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "刷新后的修改记录尚未显示已完成的撤销。"}}}},

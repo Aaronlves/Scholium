@@ -19,20 +19,20 @@ extension WindowModel {
         )
     }
 
-    func refreshAfterResearchHandoff() async -> WorkspaceSnapshot? {
-        await refreshWorkspaceProjection(refreshingStatus: nil)
+    func refreshAfterResearchHandoff(isCurrent: @MainActor () -> Bool = { true }) async -> WorkspaceSnapshot? {
+        await refreshWorkspaceProjection(refreshingStatus: nil, isCurrent: isCurrent)
     }
 
     private func refreshWorkspaceProjection(
-        refreshingStatus: String?
+        refreshingStatus: String?, isCurrent: @MainActor () -> Bool = { true }
     ) async -> WorkspaceSnapshot? {
-        guard let vaultID = currentRegisteredVault?.id,
+        guard isCurrent(), let vaultID = currentRegisteredVault?.id,
             let runtimeIdentity = windowWorkspaceController.activeCapabilities?.runtimeIdentity
         else { return nil }
         if let refreshingStatus { refreshStatusText = refreshingStatus }
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
-            guard currentRegisteredVault?.id == vaultID,
+            guard isCurrent(), currentRegisteredVault?.id == vaultID,
                 let capabilities = windowWorkspaceController.activeCapabilities,
                 capabilities.runtimeIdentity == runtimeIdentity,
                 let commit = workspaceProjectionController.replaceSnapshot(
@@ -49,7 +49,7 @@ extension WindowModel {
             workspaceProjectionController.reportCatalogError(nil)
             return snapshot
         } catch {
-            guard currentRegisteredVault?.id == vaultID,
+            guard isCurrent(), currentRegisteredVault?.id == vaultID,
                 windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtimeIdentity
             else { return nil }
             refreshStatusText = "Triptych refresh failed"

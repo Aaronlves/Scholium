@@ -301,6 +301,42 @@ struct ResearchRecoveryRefreshTests {
         #expect(controller.retainedCitationRecoveryError == nil)
     }
 
+    @Test("Published recovery changes read current durable records instead of restoring an old snapshot")
+    func publishedRecoveryUsesCurrentStore() async throws {
+        let controller = ResearchController()
+        let operations = RecoveryOperations()
+        let triptychID = UUID()
+        let current = TriptychMutationRecoveryRecord(
+            triptychID: triptychID, operation: .systemTrashDeletion, failure: "Current cleanup", files: [])
+        let stale = TriptychMutationRecoveryRecord(
+            triptychID: triptychID, operation: .systemTrashDeletion, failure: "Older publication", files: [])
+        var reads = 0
+        operations.transactionLoad = {
+            reads += 1
+            return [current]
+        }
+        controller.bind(to: capabilities(operations, triptychID: triptychID))
+        defer { controller.unbind() }
+        let triptych = ScholiumTriptych(
+            id: triptychID, paperAnalysisVaultID: UUID(), topicKnowledgeVaultID: UUID(), outputVaultID: UUID())
+        func snapshot(_ phase: WorkspaceSnapshotPhase) -> WorkspaceSnapshot {
+            .init(
+                triptych: triptych, mode: .live, phase: phase, generatedAt: Date(), vaults: [],
+                discovery: .init(catalog: WorkspaceCatalogBuilder.build(vaults: [], documents: [:]), searchGeneration: nil),
+                research: .init(recoveryRecords: [stale], healthIssues: []))
+        }
+        controller.receive(snapshot(.opening))
+        #expect(reads == 0 && controller.transactionRecoveryRecords.isEmpty)
+        controller.receive(snapshot(.complete))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while controller.transactionRecoveryRecords != [current] {
+            try #require(ContinuousClock.now < deadline, "Published recovery did not refresh the current store")
+            await Task.yield()
+        }
+        #expect(reads == 1)
+        #expect(!controller.transactionRecoveryRecords.contains(stale))
+    }
+
     private func capabilities(_ operations: RecoveryOperations, triptychID: UUID = UUID())
         -> ResearchControllerCapabilities
     {
