@@ -34,7 +34,7 @@ extension WindowModel {
                 let captured = try await editor.writingContextSnapshot(mode: .selectionOrCurrentLine)
                 selection = captured.snapshot
                 guard let self,
-                    self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                    self.currentDocumentDescriptor == descriptor,
                     self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
                 else {
                     throw CancellationError()
@@ -66,16 +66,14 @@ extension WindowModel {
             }, references: workspaceCatalog?.notes.map(\.reference) ?? [], automatic: automatic,
             canPublish: { [weak self] in
                 guard let self,
-                    self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                    self.currentDocumentDescriptor == descriptor,
                     self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
                 else { return false }
                 return !automatic || (editor.hasWritingFocus && !editor.isComposing && self.presentedDocumentMode != .read)
             },
             prepareLinkTargets: { [weak self] references in
-                guard !Task.isCancelled, let self, let catalog = self.workspaceCatalog else { return [:] }
-                return RelatedMaterialLinkPreparation.targets(
-                    for: references, catalog: catalog.notes,
-                    from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
+                guard let self else { throw CancellationError() }
+                return try await self.relatedLinkTargets(for: references, from: descriptor)
             })
     }
 
@@ -98,11 +96,17 @@ extension WindowModel {
         findRelatedMaterials(refreshIndex: researchController.relatedMaterials.needsRefresh)
     }
 
-    @MainActor private func relatedLinkTarget(_ reference: VaultNoteReference, from descriptor: WindowDocumentDescriptor) -> String? {
-        guard !Task.isCancelled, let catalog = workspaceCatalog else { return nil }
-        return RelatedMaterialLinkPreparation.targets(
-            for: [reference], catalog: catalog.notes,
-            from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))[reference]
+    @MainActor private func relatedLinkTargets(
+        for references: [VaultNoteReference], from descriptor: WindowDocumentDescriptor
+    ) async throws -> [VaultNoteReference: String] {
+        try Task.checkCancellation()
+        guard let notes = workspaceCatalog?.notes else { return [:] }
+        let targets = try await RelatedMaterialLinkPreparation.targets(
+            for: references, catalog: notes,
+            from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
+        try Task.checkCancellation()
+        guard workspaceCatalog?.notes == notes else { throw CancellationError() }
+        return targets
     }
 
     @MainActor
@@ -111,15 +115,25 @@ extension WindowModel {
         guard canFindWritingReferences, !materials.isLoading, !materials.isInsertingParagraphLink,
             let descriptor = currentDocumentDescriptor, let point = materials.insertionPoint,
             let seed = materials.seed,
+            let capabilities = windowWorkspaceController.activeCapabilities,
             seed.request.seed.noteID == VaultQualifiedNoteID(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath)
         else {
             materials.report(RelatedMaterialsError.insertionChanged)
             return
         }
-        let editor = documentController.session(for: descriptor).editorSession
+        let session = documentController.session(for: descriptor)
+        let editor = session.editorSession
         do {
-            guard let target = relatedLinkTarget(card.reference, from: descriptor),
+            let targets = try await relatedLinkTargets(for: [card.reference], from: descriptor)
+            try Task.checkCancellation()
+            guard let target = targets[card.reference], canFindWritingReferences,
+                currentDocumentDescriptor == descriptor,
+                windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                documentController.retainedSession(for: descriptor.sessionKey) === session,
+                !materials.isLoading, !materials.isInsertingParagraphLink,
                 materials.seed?.request.id == seed.request.id, materials.insertionPoint == point,
+                materials.cards.contains(card),
+                workspaceCatalog?.notes.contains(where: { $0.reference == card.reference }) == true,
                 editor.acceptsInsertionPoint(point)
             else { throw RelatedMaterialsError.insertionChanged }
             try await editor.insertReference(target, at: point)
@@ -138,15 +152,19 @@ extension WindowModel {
             let capabilities = windowWorkspaceController.activeCapabilities,
             seed.request.seed.noteID == .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath),
             card.candidate.note != seed.request.seed.noteID,
-            materials.beginParagraphInsertion(card)
+            let insertionToken = materials.beginParagraphInsertion(card)
         else { return }
-        defer { materials.finishParagraphInsertion() }
-        let editor = documentController.session(for: descriptor).editorSession
+        defer { materials.finishParagraphInsertion(insertionToken) }
+        let session = documentController.session(for: descriptor)
+        let editor = session.editorSession
         var savedNewAnchor = false
         func validateDestination() throws {
+            try Task.checkCancellation()
             guard canFindWritingReferences,
-                currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                currentDocumentDescriptor == descriptor,
                 windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                documentController.retainedSession(for: descriptor.sessionKey) === session,
+                materials.paragraphInsertionToken == insertionToken,
                 materials.seed?.request.id == seed.request.id, materials.insertionPoint == point,
                 editor.acceptsInsertionPoint(point),
                 workspaceCatalog?.notes.contains(where: { $0.reference == card.reference }) == true
@@ -154,7 +172,7 @@ extension WindowModel {
         }
         do {
             try validateDestination()
-            guard let noteLink = relatedLinkTarget(card.reference, from: descriptor) else {
+            guard let noteLink = try await relatedLinkTargets(for: [card.reference], from: descriptor)[card.reference] else {
                 throw RelatedMaterialsError.changedSource
             }
             try validateDestination()
@@ -209,9 +227,11 @@ extension WindowModel {
                     savedNewAnchor = true
                 }
             }
-            guard relatedLinkTarget(card.reference, from: descriptor) == noteLink else {
+            guard try await relatedLinkTargets(for: [card.reference], from: descriptor)[card.reference] == noteLink else {
                 throw RelatedMaterialsError.changedSource
             }
+            try validateDestination()
+            try validateSourceOwner()
             let saved = try await capabilities.documents.load(card.candidate.note)
             try RelatedParagraphLink.verify(plan, saved: saved)
             if !plan.edits.isEmpty { savedNewAnchor = true }
@@ -236,7 +256,9 @@ extension WindowModel {
             // insertion and the single destination Undo transaction.
             try await editor.insertReference("\(noteLink)#^\(plan.anchorID)", at: point)
         } catch {
-            guard materials.seed?.request.id == seed.request.id else {
+            guard materials.paragraphInsertionToken == insertionToken,
+                materials.seed?.request.id == seed.request.id
+            else {
                 if savedNewAnchor { reportOperationIssue(RelatedMaterialsError.anchorSavedWithoutLink.localizedDescription, kind: .error) }
                 return
             }

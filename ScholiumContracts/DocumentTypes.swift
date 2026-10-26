@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Synchronization
 import Yams
 
 public enum NewlineStyle: String, Codable, Sendable {
@@ -37,6 +38,16 @@ public indirect enum YAMLValue: Codable, Hashable, Sendable {
     case array([YAMLValue])
     case object([String: YAMLValue])
 
+    // Preserve ISO8601DateFormatter's existing millisecond rounding while
+    // avoiding its expensive configuration for each parsed timestamp. Only
+    // this synchronous conversion owns the formatter; it never escapes the lock.
+    private static let timestampFormatter = Mutex<ISO8601DateFormatter>(
+        {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }())
+
     static func convert(_ value: Any) -> YAMLValue {
         switch value {
         case let value as String: return .string(value)
@@ -44,9 +55,7 @@ public indirect enum YAMLValue: Codable, Hashable, Sendable {
         case let value as Int: return .integer(value)
         case let value as Double: return .double(value)
         case let value as Date:
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return .string(formatter.string(from: value))
+            return .string(timestampFormatter.withLock { $0.string(from: value) })
         case let value as [Any]: return .array(value.map(Self.convert))
         case let value as [String: Any]: return .object(value.mapValues(Self.convert))
         default: return .null

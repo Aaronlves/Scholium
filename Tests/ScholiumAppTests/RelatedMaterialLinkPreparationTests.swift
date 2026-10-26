@@ -18,7 +18,7 @@ struct RelatedMaterialLinkPreparationTests {
     }
 
     @Test("A batch retains exact resolver semantics for repeated, missing and unsupported references")
-    func exactTargets() {
+    func exactTargets() async throws {
         let source = reference("FolderA/Source.md")
         let unsupported = reference("Bad#path.md", identity: "bad")
         let bad = WorkspaceCatalogNote(
@@ -26,7 +26,7 @@ struct RelatedMaterialLinkPreparationTests {
             fingerprint: .init(content: "Other"), validationWarnings: [])
         let catalog = [note(source), bad]
         let references = [source, source, reference("Missing.md"), unsupported]
-        let actual = RelatedMaterialLinkPreparation.targets(for: references, catalog: catalog, from: origin)
+        let actual = try await RelatedMaterialLinkPreparation.targets(for: references, catalog: catalog, from: origin)
         let resolver = LinkResolutionCatalog(
             catalog: catalog.map {
                 .init(id: .init(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath), title: $0.title, aliases: $0.aliases)
@@ -41,25 +41,37 @@ struct RelatedMaterialLinkPreparationTests {
         }
         #expect(actual == expected && actual[source] != nil)
         #expect(actual[unsupported] == nil && actual[references[2]] == nil)
-        #expect(RelatedMaterialLinkPreparation.targets(for: [], catalog: catalog, from: origin).isEmpty)
+        let empty = try await RelatedMaterialLinkPreparation.targets(for: [], catalog: catalog, from: origin)
+        #expect(empty.isEmpty)
     }
 
     @Test("A same-path replacement cannot prepare a target for the displaced stable identity")
-    func replacementIdentity() {
+    func replacementIdentity() async throws {
         let displaced = reference("Source.md", identity: "displaced")
         let replacement = reference("Source.md", identity: "replacement")
-        let actual = RelatedMaterialLinkPreparation.targets(for: [displaced, replacement], catalog: [note(replacement)], from: origin)
+        let actual = try await RelatedMaterialLinkPreparation.targets(for: [displaced, replacement], catalog: [note(replacement)], from: origin)
         #expect(actual[displaced] == nil && actual[replacement] != nil)
     }
 
     @Test("Each preparation uses its supplied catalog rather than an earlier navigation cohort")
-    func independentCohorts() {
+    func independentCohorts() async throws {
         let source = reference("FolderA/Source.md")
         let collision = reference("FolderB/Source.md", identity: "collision")
-        let before = RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source)], from: origin)
-        let after = RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source), note(collision)], from: origin)
+        let before = try await RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source)], from: origin)
+        let after = try await RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source), note(collision)], from: origin)
         #expect(before[source] != nil && after[source] != nil && before[source] != after[source])
-        #expect(RelatedMaterialLinkPreparation.targets(for: [source], catalog: [], from: origin).isEmpty)
-        #expect(RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source)], from: origin) == before)
+        let missing = try await RelatedMaterialLinkPreparation.targets(for: [source], catalog: [], from: origin)
+        let returned = try await RelatedMaterialLinkPreparation.targets(for: [source], catalog: [note(source)], from: origin)
+        #expect(missing.isEmpty && returned == before)
+    }
+
+    @Test("Cancellation rejects preparation before even an empty batch can complete")
+    func cancelledPreparation() async {
+        let source = origin
+        let operation = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await RelatedMaterialLinkPreparation.targets(for: [], catalog: [], from: source)
+        }
+        await #expect(throws: CancellationError.self) { try await operation.value }
     }
 }

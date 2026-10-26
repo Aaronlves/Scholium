@@ -19,7 +19,7 @@ struct RelatedMaterialLinkPreparationPerformanceTests {
     }
 
     @Test("Attribute bounded card targets over a realistic catalog", arguments: [500, 5_000])
-    func cardTargets(count: Int) throws {
+    func cardTargets(count: Int) async throws {
         let vaults = (1...3).map { UUID(uuidString: String(format: "00000000-0000-0000-0000-%012x", $0))! }
         let roles: [VaultRole] = [.sourceCorpus, .topicKnowledge, .draftProject]
         let rows = (0..<count).map { index in
@@ -50,36 +50,34 @@ struct RelatedMaterialLinkPreparationPerformanceTests {
                     return target
                 }
             }
-            func oneResolver() -> [String?] {
-                let targets = RelatedMaterialLinkPreparation.targets(for: references, catalog: catalog, from: origin)
+            func oneResolver() async throws -> [String?] {
+                let targets = try await RelatedMaterialLinkPreparation.targets(for: references, catalog: catalog, from: origin)
                 return references.map { targets[$0] }
             }
 
             var baseline: [Double] = []
             var proposed: [Double] = []
             let expected = current()
-            func measure(_ body: () -> [String?]) -> ([String?], Double) {
+            @MainActor func measure(_ body: @MainActor () async throws -> [String?]) async throws -> ([String?], Double) {
                 let start = ContinuousClock.now
-                let value = body()
+                let value = try await body()
                 let duration = start.duration(to: .now).components
                 return (value, Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15)
             }
             for iteration in 0..<12 {
-                try autoreleasepool {
-                    let before: ([String?], Double)
-                    let after: ([String?], Double)
-                    if iteration.isMultiple(of: 2) {
-                        before = measure(current)
-                        after = measure(oneResolver)
-                    } else {
-                        after = measure(oneResolver)
-                        before = measure(current)
-                    }
-                    try #require(before.0 == expected && after.0 == expected)
-                    if iteration >= 2 {
-                        baseline.append(before.1)
-                        proposed.append(after.1)
-                    }
+                let before: ([String?], Double)
+                let after: ([String?], Double)
+                if iteration.isMultiple(of: 2) {
+                    before = try await measure { current() }
+                    after = try await measure(oneResolver)
+                } else {
+                    after = try await measure(oneResolver)
+                    before = try await measure { current() }
+                }
+                try #require(before.0 == expected && after.0 == expected)
+                if iteration >= 2 {
+                    baseline.append(before.1)
+                    proposed.append(after.1)
                 }
             }
             reports.append([
@@ -92,7 +90,7 @@ struct RelatedMaterialLinkPreparationPerformanceTests {
             .appendingPathComponent(".build/related-link-preparation")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let report: [String: Any] = [
-            "configuration": "Debug phase-only diagnostic; not native or retrieval latency",
+            "configuration": "Debug phase-only diagnostic including production executor hop; not native or retrieval latency",
             "warmups": 2, "samples": 10, "reports": reports,
         ]
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])

@@ -72,23 +72,29 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     @Published private(set) var needsRefresh = false
     @Published private(set) var insertionPoint: MarkdownEditorInsertionPoint?
     @Published private(set) var contextChanged = false
-    @Published private(set) var isInsertingParagraphLink = false
+    @Published private(set) var paragraphInsertionToken: UUID?
     private var hasCompleteCurrentResults = false
+
+    var isInsertingParagraphLink: Bool { paragraphInsertionToken != nil }
 
     var canInsertParagraphLink: Bool {
         hasCompleteCurrentResults && !isLoading && !isInsertingParagraphLink
             && issue == nil && omittedCount == 0 && insertionPoint != nil
     }
 
-    func beginParagraphInsertion(_ card: RelatedMaterialCard) -> Bool {
-        guard canInsertParagraphLink, cards.contains(card) else { return false }
+    func beginParagraphInsertion(_ card: RelatedMaterialCard) -> UUID? {
+        guard canInsertParagraphLink, cards.contains(card) else { return nil }
         stopAutomaticSearch()
         stopBackgroundPreparation()
-        isInsertingParagraphLink = true
-        return true
+        let token = UUID()
+        paragraphInsertionToken = token
+        return token
     }
 
-    func finishParagraphInsertion() { isInsertingParagraphLink = false }
+    func finishParagraphInsertion(_ token: UUID) {
+        guard paragraphInsertionToken == token else { return }
+        paragraphInsertionToken = nil
+    }
 
     struct NoteGroup: Identifiable {
         let id: VaultQualifiedNoteID
@@ -235,6 +241,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
 
     func reset() {
         cancel()
+        paragraphInsertionToken = nil
         preparedBackground = nil
         selectedTermGroup = nil
         seed = nil
@@ -307,7 +314,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         references: [VaultNoteReference],
         automatic: Bool = false,
         canPublish: @escaping @MainActor () -> Bool = { true },
-        prepareLinkTargets: @escaping @MainActor ([VaultNoteReference]) -> [VaultNoteReference: String] = { _ in [:] }
+        prepareLinkTargets: @escaping @MainActor ([VaultNoteReference]) async throws -> [VaultNoteReference: String] = { _ in [:] }
     ) -> Task<Void, Never> {
         if isInsertingParagraphLink { return Task {} }
         // Foreground work has priority over speculative source reads. Already
@@ -406,9 +413,9 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                     loaded.append(.init(passage: passage, reference: reference))
                 }
                 if !loaded.isEmpty {
-                    // No suspension divides catalog capture, target preparation
-                    // and publication. Workspace updates cannot mix cohorts.
-                    let targets = prepareLinkTargets(loaded.map(\.reference))
+                    // The provider validates its captured catalog after preparation;
+                    // this request's ownership is rechecked before publication.
+                    let targets = try await prepareLinkTargets(loaded.map(\.reference))
                     for index in loaded.indices { loaded[index].linkTarget = targets[loaded[index].reference] }
                 }
                 try Task.checkCancellation()

@@ -205,7 +205,7 @@ struct RelatedMaterialsTests {
         #expect(model.issue == nil)
     }
 
-    @Test("Synchronous batch preparation cannot publish after revoking its request", arguments: [false, true])
+    @Test("Batch preparation cannot publish after revoking its request", arguments: [false, true])
     func batchPreparationRevocation(reset: Bool) async {
         let model = RelatedMaterialsSession()
         let seed = seed()
@@ -221,6 +221,137 @@ struct RelatedMaterialsTests {
         ).value
         #expect(calls == 1 && model.cards.isEmpty && !model.isLoading && !model.didSearch)
         if reset { #expect(model.seed == nil) }
+    }
+
+    @Test("A paused link preparation cannot replace newer results after cancellation or reset", arguments: [false, true])
+    func lateLinkPreparation(reset: Bool) async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let firstResponse = populatedResponse(original)
+        let source = reference()
+        let gate = RelatedRetrievalGate()
+        defer { gate.release() }
+        let first = model.find(
+            capture: { original }, retrieve: { _ in firstResponse }, references: [source],
+            prepareLinkTargets: { references in
+                await gate.wait()
+                // Deliberately ignore cancellation: request ownership must
+                // reject this late result independently of cooperation.
+                return Dictionary(references.map { ($0, "Old Source") }, uniquingKeysWith: { first, _ in first })
+            })
+        for await _ in gate.ready.stream {}
+        #expect(model.isLoading && model.cards.isEmpty)
+        if reset { model.reset() } else { model.cancel() }
+        var newer = seed("current writing")
+        newer.insertionPoint = .init(
+            sessionID: UUID(), documentID: "Draft.md", generation: 2, selection: .init(anchor: 4, head: 4))
+        let current = newer
+        let currentResponse = populatedResponse(current)
+        await model.find(
+            capture: { current }, retrieve: { _ in currentResponse }, references: [source],
+            prepareLinkTargets: { references in
+                Dictionary(references.map { ($0, "Current Source") }, uniquingKeysWith: { first, _ in first })
+            }).value
+        let currentCards = model.cards
+        #expect(currentCards.count == 1 && currentCards[0].linkTarget == "Current Source")
+        gate.release()
+        await first.value
+        #expect(model.cards == currentCards && model.seed?.request.id == current.request.id)
+        #expect(model.insertionPoint == current.insertionPoint && model.didSearch)
+        #expect(!model.isLoading && model.issue == nil && !model.needsRefresh)
+    }
+
+    @Test("Document departure during link preparation cannot publish even after returning", arguments: [false, true])
+    func documentDepartureDuringLinkPreparation(returnToFirst: Bool) async {
+        let documents = DocumentController()
+        let research = ResearchController(selectedDocuments: documents.$selectedDocument.eraseToAnyPublisher())
+        let firstDocument = descriptor("First.md")
+        open(firstDocument, in: documents)
+        let model = research.relatedMaterials
+        let original = seed()
+        let firstResponse = populatedResponse(original)
+        let source = reference()
+        let gate = RelatedRetrievalGate()
+        defer { gate.release() }
+        let first = model.find(
+            capture: { original }, retrieve: { _ in firstResponse }, references: [source],
+            prepareLinkTargets: { references in
+                await gate.wait()
+                return Dictionary(references.map { ($0, "Departed Source") }, uniquingKeysWith: { first, _ in first })
+            })
+        for await _ in gate.ready.stream {}
+        open(descriptor("Second.md"), in: documents)
+        if returnToFirst { #expect(documents.selectRetainedDocument(.workspace(firstDocument))) }
+        let current = seed("new document context")
+        let currentResponse = self.response(current.request)
+        await model.find(capture: { current }, retrieve: { _ in currentResponse }, references: []).value
+        gate.release()
+        await first.value
+        #expect(model.seed?.request.id == current.request.id)
+        #expect(model.cards.isEmpty && model.presentation == .empty && !model.isLoading && model.issue == nil)
+    }
+
+    @Test("A changed publication context is rechecked after asynchronous link preparation")
+    func linkPreparationPublicationContextChanged() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let firstResponse = populatedResponse(original)
+        let source = reference()
+        let gate = RelatedRetrievalGate()
+        defer { gate.release() }
+        var contextIsCurrent = true
+        let first = model.find(
+            capture: { original }, retrieve: { _ in firstResponse }, references: [source],
+            canPublish: { contextIsCurrent },
+            prepareLinkTargets: { references in
+                await gate.wait()
+                return Dictionary(references.map { ($0, "Source") }, uniquingKeysWith: { first, _ in first })
+            })
+        for await _ in gate.ready.stream {}
+        contextIsCurrent = false
+        gate.release()
+        await first.value
+        #expect(model.cards.isEmpty && !model.didSearch && !model.isLoading && model.issue == nil)
+        #expect(model.insertionPoint == nil)
+    }
+
+    @Test("A revoked catalog preparation cannot clear a newer request that is still waiting")
+    func revokedCatalogPreparationKeepsNewerLoading() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let firstResponse = populatedResponse(original)
+        let source = reference()
+        let firstGate = RelatedRetrievalGate()
+        let currentGate = RelatedRetrievalGate()
+        defer {
+            firstGate.release()
+            currentGate.release()
+        }
+        let first = model.find(
+            capture: { original }, retrieve: { _ in firstResponse }, references: [source],
+            prepareLinkTargets: { _ in
+                await firstGate.wait()
+                // The window provider throws this when its exact captured
+                // catalog no longer matches at the asynchronous boundary.
+                throw CancellationError()
+            })
+        for await _ in firstGate.ready.stream {}
+        let current = seed("new catalog context")
+        let currentResponse = populatedResponse(current)
+        let next = model.find(
+            capture: { current }, retrieve: { _ in currentResponse }, references: [source],
+            prepareLinkTargets: { references in
+                await currentGate.wait()
+                return Dictionary(references.map { ($0, "Current Source") }, uniquingKeysWith: { first, _ in first })
+            })
+        for await _ in currentGate.ready.stream {}
+        firstGate.release()
+        await first.value
+        #expect(model.isLoading && model.cards.isEmpty && !model.didSearch && model.issue == nil)
+        currentGate.release()
+        await next.value
+        #expect(model.seed?.request.id == current.request.id && model.cards.first?.linkTarget == "Current Source")
+        #expect(!model.isLoading && model.didSearch && model.issue == nil)
     }
 
     @Test("Reading cards remain available without insertable link targets")
@@ -1091,9 +1222,10 @@ struct RelatedMaterialsTests {
         await model.find(capture: { captured }, retrieve: { _ in response }, references: [reference()]).value
         let card = model.cards[0]
         #expect(model.canInsertParagraphLink == !partial)
-        #expect(model.beginParagraphInsertion(card) == !partial)
-        #expect(!model.beginParagraphInsertion(card))
-        if !partial {
+        let insertionToken = model.beginParagraphInsertion(card)
+        #expect((insertionToken != nil) == !partial)
+        #expect(model.beginParagraphInsertion(card) == nil)
+        if let insertionToken {
             await model.find(
                 capture: { captured },
                 retrieve: { _ in
@@ -1103,11 +1235,38 @@ struct RelatedMaterialsTests {
             ).value
             #expect(model.cards == [card])
             model.invalidateWritingContext()
-            model.finishParagraphInsertion()
+            model.finishParagraphInsertion(insertionToken)
             #expect(!model.canInsertParagraphLink)
         }
         model.reset()
         #expect(!model.canInsertParagraphLink)
+    }
+
+    @Test("A departed paragraph insertion cannot release a newer insertion's ownership")
+    func paragraphInsertionOwnershipAfterReset() async throws {
+        let model = RelatedMaterialsSession()
+        var prepared = seed()
+        prepared.insertionPoint = .init(
+            sessionID: UUID(), documentID: "Draft.md", generation: 1, selection: .init(anchor: 3, head: 3))
+        let captured = prepared
+        let response = populatedResponse(captured)
+        let source = reference()
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [source]).value
+        let card = try #require(model.cards.first)
+        let departedToken = try #require(model.beginParagraphInsertion(card))
+        model.reset()
+        #expect(!model.isInsertingParagraphLink)
+        // Deliberately reuse the exact request and caret. Only the unique
+        // insertion token, rather than seed identity, owns cleanup.
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [source]).value
+        let currentToken = try #require(model.beginParagraphInsertion(card))
+        #expect(currentToken != departedToken && model.isInsertingParagraphLink)
+        model.finishParagraphInsertion(departedToken)
+        #expect(model.paragraphInsertionToken == currentToken && model.isInsertingParagraphLink)
+        #expect(!model.canInsertParagraphLink)
+        model.finishParagraphInsertion(currentToken)
+        #expect(model.paragraphInsertionToken == nil && !model.isInsertingParagraphLink)
+        #expect(model.canInsertParagraphLink)
     }
 
 }
