@@ -621,7 +621,45 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var linkCompletionQueryRequestID: String?
         let writingContinuation = EditorWritingContinuationController()
         private var documentTitleRenameTask: Task<Void, Never>?
+        private var documentTitleRenameTaskID: UUID?
         private var documentTitleRenameRequestID: String?
+        private final class DocumentTitleCompletion {
+            let requestID: String
+            let sessionID: UUID
+            let documentID: String
+            let pageGeneration: UInt64
+            weak var webView: WKWebView?
+            let accepted: Bool
+            let title: String
+            let error: String
+
+            init(
+                requestID: String, sessionID: UUID, documentID: String, pageGeneration: UInt64,
+                webView: WKWebView, accepted: Bool, title: String, error: String
+            ) {
+                self.requestID = requestID
+                self.sessionID = sessionID
+                self.documentID = documentID
+                self.pageGeneration = pageGeneration
+                self.webView = webView
+                self.accepted = accepted
+                self.title = title
+                self.error = error
+            }
+        }
+        private var documentTitleCompletion: DocumentTitleCompletion?
+        private final class DeferredDocumentTitleRename {
+            let request: EditorDocumentTitleRenameMessage
+            let pageGeneration: UInt64
+            weak var webView: WKWebView?
+
+            init(request: EditorDocumentTitleRenameMessage, pageGeneration: UInt64, webView: WKWebView) {
+                self.request = request
+                self.pageGeneration = pageGeneration
+                self.webView = webView
+            }
+        }
+        private var deferredDocumentTitleRename: DeferredDocumentTitleRename?
 
         init(
             session: MarkdownEditorSession,
@@ -905,6 +943,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     validEnvelope(request.envelope),
                     let webView = message.webView ?? activeWebView
                 else { return }
+                if deferDocumentTitleRenameWhileSourcePending(request, in: webView) { return }
                 guard request.expectedTitle == documentTitle else {
                     rejectChangedDocumentTitleRename(request, in: webView)
                     return
@@ -1308,77 +1347,189 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         func cancelDocumentTitleRename() {
             documentTitleRenameTask?.cancel()
             documentTitleRenameTask = nil
+            documentTitleRenameTaskID = nil
             documentTitleRenameRequestID = nil
+            documentTitleCompletion = nil
+            deferredDocumentTitleRename = nil
+            session.clearTitleCompletionRecovery(owner: self)
+        }
+
+        private func deferDocumentTitleRenameWhileSourcePending(
+            _ request: EditorDocumentTitleRenameMessage, in webView: WKWebView
+        ) -> Bool {
+            guard documentTitleRenameTask != nil, documentTitleCompletion == nil else { return false }
+            if documentTitleRenameRequestID != request.requestID,
+                deferredDocumentTitleRename?.request.requestID != request.requestID
+            {
+                // Metadata may settle the visible title before its native
+                // callback returns. Retain only the page's latest successor;
+                // never overlap its source operation with the preceding one.
+                deferredDocumentTitleRename = DeferredDocumentTitleRename(
+                    request: request, pageGeneration: pageGeneration, webView: webView)
+            }
+            return true
+        }
+
+        private func resumeDeferredDocumentTitleRename() {
+            guard documentTitleRenameTask == nil, documentTitleCompletion == nil,
+                let deferred = deferredDocumentTitleRename
+            else { return }
+            deferredDocumentTitleRename = nil
+            let request = deferred.request
+            guard !Task.isCancelled, deferred.pageGeneration == pageGeneration,
+                request.envelope.sessionID == session.sessionID.uuidString,
+                request.envelope.documentID == documentID, session.documentID == documentID,
+                let webView = deferred.webView, activeWebView === webView,
+                session.webView === webView, webView.navigationDelegate === self
+            else { return }
+            guard request.expectedTitle == documentTitle else {
+                rejectChangedDocumentTitleRename(request, in: webView)
+                return
+            }
+            beginDocumentTitleRename(request, in: webView)
+        }
+
+        private func admitDocumentTitleRename(
+            _ request: EditorDocumentTitleRenameMessage
+        ) -> Bool {
+            if documentTitleRenameRequestID == request.requestID {
+                if let completion = documentTitleCompletion, documentTitleRenameTask == nil {
+                    retryDocumentTitleCompletion(completion)
+                }
+                return false
+            }
+            // A new request from the same admitted page supersedes only a
+            // completed source operation. Its old acknowledgement cannot own
+            // the new title control, even if the transport reply arrives late.
+            if documentTitleCompletion != nil { cancelDocumentTitleRename() }
+            guard documentTitleRenameTask == nil else { return false }
+            documentTitleRenameRequestID = request.requestID
+            return true
         }
 
         private func beginDocumentTitleRename(
             _ request: EditorDocumentTitleRenameMessage,
             in webView: WKWebView
         ) {
-            guard documentTitleRenameTask == nil else { return }
-            documentTitleRenameRequestID = request.requestID
+            guard admitDocumentTitleRename(request) else { return }
+            let taskID = UUID()
+            documentTitleRenameTaskID = taskID
+            let transport = session.sessionID
+            let document = documentID
+            let generation = pageGeneration
             documentTitleRenameTask = Task { @MainActor [weak self, weak webView] in
                 guard let self else { return }
+                defer { self.finishDocumentTitleTask(taskID) }
                 let result: (accepted: Bool, title: String, error: String)
                 do {
-                    let title = try await onRequestDocumentTitleRename(
-                        request.expectedTitle,
-                        request.requestedTitle
-                    )
+                    let title = try await onRequestDocumentTitleRename(request.expectedTitle, request.requestedTitle)
                     result = (true, title, "")
                 } catch {
-                    result = (
-                        false,
-                        request.expectedTitle,
-                        String(ScholiumErrorLocalization.message(error).prefix(2_000))
-                    )
+                    result = (false, request.expectedTitle, String(ScholiumErrorLocalization.message(error).prefix(2_000)))
                 }
-                guard !Task.isCancelled,
+                guard !Task.isCancelled, documentTitleRenameTaskID == taskID,
                     documentTitleRenameRequestID == request.requestID,
-                    let webView,
-                    webView.navigationDelegate === self
+                    let webView, activeWebView === webView, session.webView === webView,
+                    webView.navigationDelegate === self, session.sessionID == transport,
+                    session.documentID == document, documentID == document, pageGeneration == generation
                 else { return }
-                documentTitleRenameTask = nil
-                documentTitleRenameRequestID = nil
-                _ = try? await webView.callAsyncJavaScript(
-                    "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
-                    arguments: [
-                        "requestID": request.requestID,
-                        "accepted": result.accepted,
-                        "title": result.title,
-                        "error": result.error,
-                    ],
-                    in: nil,
-                    contentWorld: .page
-                )
+                // The page has already moved on to a distinct request. Its
+                // predecessor's acknowledgement no longer owns that control.
+                guard deferredDocumentTitleRename == nil else { return }
+                let completion = DocumentTitleCompletion(
+                    requestID: request.requestID, sessionID: transport, documentID: document,
+                    pageGeneration: generation, webView: webView,
+                    accepted: result.accepted, title: result.title, error: result.error)
+                documentTitleCompletion = completion
+                await deliverDocumentTitleCompletion(completion)
             }
+        }
+
+        private func finishDocumentTitleTask(_ id: UUID) {
+            guard documentTitleRenameTaskID == id else { return }
+            documentTitleRenameTask = nil
+            documentTitleRenameTaskID = nil
+            if documentTitleCompletion == nil { documentTitleRenameRequestID = nil }
+            resumeDeferredDocumentTitleRename()
+        }
+
+        private func currentTitleCompletionWebView(_ completion: DocumentTitleCompletion) -> WKWebView? {
+            guard !Task.isCancelled, documentTitleCompletion === completion,
+                documentTitleRenameRequestID == completion.requestID,
+                session.sessionID == completion.sessionID, session.documentID == completion.documentID,
+                documentID == completion.documentID, pageGeneration == completion.pageGeneration,
+                let webView = completion.webView, activeWebView === webView,
+                session.webView === webView, webView.navigationDelegate === self
+            else { return nil }
+            return webView
+        }
+
+        private func retryDocumentTitleCompletion(_ completion: DocumentTitleCompletion) {
+            guard documentTitleRenameTask == nil, currentTitleCompletionWebView(completion) != nil else { return }
+            if session.titleCompletionRecovery?.requestID == completion.requestID {
+                publishDocumentTitleCompletionRecovery(completion, isRetrying: true)
+            }
+            let taskID = UUID()
+            documentTitleRenameTaskID = taskID
+            documentTitleRenameTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.finishDocumentTitleTask(taskID) }
+                await self.deliverDocumentTitleCompletion(completion)
+            }
+        }
+
+        private func deliverDocumentTitleCompletion(_ completion: DocumentTitleCompletion) async {
+            // Resolving the same request is idempotent on the page. Replay
+            // only this completion once, never its filesystem operation.
+            for attempt in 0..<2 {
+                guard let webView = currentTitleCompletionWebView(completion) else { return }
+                do {
+                    _ = try await webView.callAsyncJavaScript(
+                        "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
+                        arguments: [
+                            "requestID": completion.requestID, "accepted": completion.accepted,
+                            "title": completion.title, "error": completion.error,
+                        ], in: nil, contentWorld: .page)
+                    guard currentTitleCompletionWebView(completion) != nil else { return }
+                    documentTitleCompletion = nil
+                    documentTitleRenameRequestID = nil
+                    session.clearTitleCompletionRecovery(owner: self, requestID: completion.requestID)
+                    return
+                } catch {
+                    guard currentTitleCompletionWebView(completion) != nil else { return }
+                    if attempt == 1 { publishDocumentTitleCompletionRecovery(completion, isRetrying: false) }
+                }
+            }
+        }
+
+        private func publishDocumentTitleCompletionRecovery(_ completion: DocumentTitleCompletion, isRetrying: Bool) {
+            guard currentTitleCompletionWebView(completion) != nil else { return }
+            var message =
+                completion.accepted
+                ? ScholiumL10n.string("The note was renamed, but its title display could not be updated. Retry the title update.")
+                : ScholiumL10n.string("The filename-change result could not be displayed. Retry the title update.")
+            if !completion.accepted, !completion.error.isEmpty { message += " " + completion.error }
+            session.reportTitleCompletionRecovery(
+                owner: self, requestID: completion.requestID, message: message, isRetrying: isRetrying,
+                retry: { [weak self, weak completion] in
+                    guard let self, let completion else { return }
+                    self.retryDocumentTitleCompletion(completion)
+                })
         }
 
         private func rejectChangedDocumentTitleRename(
             _ request: EditorDocumentTitleRenameMessage,
             in webView: WKWebView
         ) {
-            let error = String(
-                localized: "The note was renamed elsewhere. Review its current title before renaming again.",
-                table: "Localizable",
-                bundle: .module
-            )
-            Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView,
-                    webView.navigationDelegate === self
-                else { return }
-                _ = try? await webView.callAsyncJavaScript(
-                    "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
-                    arguments: [
-                        "requestID": request.requestID,
-                        "accepted": false,
-                        "title": documentTitle,
-                        "error": error,
-                    ],
-                    in: nil,
-                    contentWorld: .page
-                )
-            }
+            guard admitDocumentTitleRename(request) else { return }
+            let completion = DocumentTitleCompletion(
+                requestID: request.requestID, sessionID: session.sessionID, documentID: documentID,
+                pageGeneration: pageGeneration, webView: webView, accepted: false, title: documentTitle,
+                error: String(
+                    localized: "The note was renamed elsewhere. Review its current title before renaming again.",
+                    table: "Localizable", bundle: .module))
+            documentTitleCompletion = completion
+            retryDocumentTitleCompletion(completion)
         }
 
         func webView(

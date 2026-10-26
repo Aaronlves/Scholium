@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Title Update Unavailable" : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Title Update Unavailable"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题更新不可用"}}}},
+    "Retry Title Update" : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Retry Title Update"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重试标题更新"}}}},
+    "The note was renamed, but its title display could not be updated. Retry the title update." : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The note was renamed, but its title display could not be updated. Retry the title update."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "笔记已重命名，但标题显示未能更新。请重试标题更新。"}}}},
+    "The filename-change result could not be displayed. Retry the title update." : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The filename-change result could not be displayed. Retry the title update."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法显示文件名修改结果。请重试标题更新。"}}}},
     "The items moved to macOS Trash. Open Recovery to continue temporary cleanup; this will not repeat the move." : {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "The items moved to macOS Trash. Open Recovery to continue temporary cleanup; this will not repeat the move."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "项目已移至 macOS 纸篓。请打开“恢复”继续清理临时操作记录；这不会重复移动文件。"}}}},
     "Receipt or history could not be refreshed." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt or history could not be refreshed."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法刷新修改记录或历史。"}}}},
     "Receipt refresh was interrupted." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Receipt refresh was interrupted."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "修改记录刷新已中断。"}}}},

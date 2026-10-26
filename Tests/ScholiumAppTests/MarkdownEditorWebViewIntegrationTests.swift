@@ -7367,6 +7367,301 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("An interrupted title completion is replayed on the same page without repeating its source mutation", arguments: [false, true])
+    func inlineTitleRenameRecoversInterruptedCompletion(deliveredBeforeFailure: Bool) async throws {
+        let source = "\u{FEFF}Argument e\u{301} 🦉.\r\n"
+        var renameRequests = 0
+        let harness = EditorHarness(
+            documentTitle: "Argument", source: source,
+            onTitleRename: { _, requested in
+                renameRequests += 1
+                return requested
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let transport = harness.session.sessionID
+        let reconstruction = harness.session.viewReconstructionID
+        _ = try await harness.callPageJavaScript(
+            """
+            const resolve = window.scholiumEditor.resolveDocumentTitleRename;
+            window.scholiumTitleCompletionAttempts = 0;
+            window.scholiumEditor.resolveDocumentTitleRename = (...args) => {
+              window.scholiumTitleCompletionAttempts += 1;
+              if (window.scholiumTitleCompletionAttempts === 1) {
+                if (deliveredBeforeFailure) resolve(...args);
+                throw new Error('Synthetic interrupted title completion');
+              }
+              return resolve(...args);
+            };
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Renamed Argument';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """, arguments: ["deliveredBeforeFailure": deliveredBeforeFailure])
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var state: [String: Any] = [:]
+        repeat {
+            state = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const input = document.querySelector('.scholium-note-title-input');
+                    return {attempts: window.scholiumTitleCompletionAttempts,
+                      disabled: input?.disabled ?? true, value: input?.value ?? '',
+                      busy: input?.getAttribute('aria-busy') ?? ''};
+                    """) as? [String: Any])
+            if state["attempts"] as? Int == 2, state["disabled"] as? Bool == false { break }
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+        #expect(state["attempts"] as? Int == 2, "The interrupted completion must be replayed only once.")
+        #expect(state["disabled"] as? Bool == false, "The completed rename must not leave its title control disabled.")
+        #expect(state["busy"] as? String != "true")
+        #expect(state["value"] as? String == "Renamed Argument")
+        #expect(renameRequests == 1, "Replaying a completion must not repeat its source mutation.")
+        #expect(harness.session.webView === webView)
+        #expect(harness.session.sessionID == transport)
+        #expect(harness.session.viewReconstructionID == reconstruction)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        do {
+            try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+            if let suspension = harness.session.detachmentSuspensionID {
+                try await harness.session.resumeAfterDetachment(suspensionID: suspension)
+            }
+        } catch {
+            Issue.record("The settled rename still blocks document departure: \(error)")
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Persistent title delivery failure offers same-page retry without repeating source work", arguments: [false, true])
+    func inlineTitleRenameRetriesCompletionOnly(sourceRejects: Bool) async throws {
+        enum RenameFailure: LocalizedError {
+            case collision
+            var errorDescription: String? { "Synthetic filename collision." }
+        }
+        let source = "Argument e\u{301} 🦉.\r\n"
+        var renameRequests = 0
+        let harness = EditorHarness(
+            documentTitle: "Argument", source: source,
+            onTitleRename: { _, requested in
+                renameRequests += 1
+                if sourceRejects { throw RenameFailure.collision }
+                return requested
+            })
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let transport = harness.session.sessionID
+        _ = try await harness.callPageJavaScript(
+            """
+            const resolve = window.scholiumEditor.resolveDocumentTitleRename;
+            window.scholiumTitleCompletionAttempts = 0;
+            window.scholiumTitleDeliveryAvailable = false;
+            window.scholiumEditor.resolveDocumentTitleRename = (...args) => {
+              window.scholiumTitleCompletionAttempts += 1;
+              if (!window.scholiumTitleDeliveryAvailable) throw new Error('Synthetic title delivery outage');
+              return resolve(...args);
+            };
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Requested Title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """)
+        var deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.titleCompletionRecovery == nil || harness.session.titleCompletionRecovery?.isRetrying == true {
+            try #require(ContinuousClock.now < deadline, "Persistent title delivery failure was not made recoverable.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let recovery = try #require(harness.session.titleCompletionRecovery)
+        #expect(harness.session.isLoaded && harness.session.errorMessage == nil)
+        #expect(!recovery.isRetrying)
+        if sourceRejects { #expect(recovery.message.contains("Synthetic filename collision.")) }
+        #expect(renameRequests == 1)
+        #expect(try await harness.callPageJavaScript("return window.scholiumTitleCompletionAttempts;") as? Int == 2)
+        _ = try await harness.callPageJavaScript("window.scholiumTitleDeliveryAvailable = true; return true;")
+        harness.session.retryTitleCompletionDelivery()
+        deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.titleCompletionRecovery != nil {
+            try #require(ContinuousClock.now < deadline, "The explicit delivery retry did not settle.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await harness.callPageJavaScript("return window.scholiumTitleCompletionAttempts;") as? Int == 3)
+        let state = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                return {disabled: input?.disabled ?? true, value: input?.value ?? '',
+                  invalid: input?.getAttribute('aria-invalid') ?? ''};
+                """) as? [String: Any])
+        #expect(state["disabled"] as? Bool == false)
+        #expect(state["value"] as? String == "Requested Title")
+        #expect(state["invalid"] as? String == (sourceRejects ? "true" : ""))
+        #expect(renameRequests == 1)
+        #expect(harness.session.webView === webView && harness.session.sessionID == transport)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        if sourceRejects {
+            _ = try await harness.callPageJavaScript(
+                "document.querySelector('.scholium-note-title-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); return true;")
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("A late native title result cannot cross a closed page and new attachment")
+    func inlineTitleRenameCompletionDoesNotCrossAttachment() async throws {
+        var renameRequests = 0
+        var releaseSource: CheckedContinuation<Void, Never>?
+        var sourceFinished = false
+        let first = EditorHarness(
+            documentTitle: "Argument", source: "Original body.\n",
+            onTitleRename: { _, requested in
+                renameRequests += 1
+                await withCheckedContinuation { releaseSource = $0 }
+                sourceFinished = true
+                return requested
+            })
+        defer {
+            releaseSource?.resume()
+            first.close()
+        }
+        try await first.waitUntilReady()
+        let session = first.session
+        let oldTransport = session.sessionID
+        _ = try await first.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Old Title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """)
+        var deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while releaseSource == nil {
+            try #require(ContinuousClock.now < deadline, "The old native source callback did not suspend.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        await first.closeAndDrain()
+        let second = EditorHarness(documentID: "Other.md", documentTitle: "Other", source: "New body.\n", suppliedSession: session)
+        defer { second.close() }
+        try await second.waitUntilReady()
+        #expect(session.sessionID != oldTransport)
+        releaseSource?.resume()
+        releaseSource = nil
+        deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !sourceFinished {
+            try #require(ContinuousClock.now < deadline, "The retired native callback did not complete.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        session.retryTitleCompletionDelivery()
+        #expect(session.titleCompletionRecovery == nil)
+        #expect(renameRequests == 1)
+        #expect(try await second.callPageJavaScript("return document.querySelector('.scholium-note-title-input')?.value;") as? String == "Other")
+        #expect(try await session.currentText(for: second.documentID) == "New body.\n")
+        await second.closeAndDrain()
+    }
+
+    @Test("A same-page title request survives metadata acknowledgement while the preceding native callback is pending")
+    func inlineTitleRenameDefersSuccessorDuringSourceCompletion() async throws {
+        var requests: [(expected: String, requested: String)] = []
+        var releaseFirst: CheckedContinuation<Void, Never>?
+        let source = "Argument e\u{301} 🦉.\r\n"
+        let harness = EditorHarness(
+            documentTitle: "Argument", source: source,
+            onTitleRename: { expected, requested in
+                requests.append((expected, requested))
+                if requests.count == 1 { await withCheckedContinuation { releaseFirst = $0 } }
+                return requested
+            })
+        defer {
+            releaseFirst?.resume()
+            harness.close()
+        }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let transport = harness.session.sessionID
+        let coordinator = try #require(webView.navigationDelegate as? MarkdownEditorWebView.Coordinator)
+        let probe = TitleRenameReceiptProbe(forwarding: coordinator)
+        let messages = webView.configuration.userContentController
+        messages.removeScriptMessageHandler(forName: "scholium")
+        messages.add(probe, name: "scholium")
+        defer {
+            if webView.navigationDelegate === coordinator {
+                messages.removeScriptMessageHandler(forName: "scholium")
+                messages.add(coordinator, name: "scholium")
+            }
+        }
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'First Title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """)
+        var deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while releaseFirst == nil {
+            try #require(ContinuousClock.now < deadline, "The first native callback did not suspend.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // The real source owner can publish the renamed title before its
+        // post-commit callback resumes. That acknowledgement re-enables input.
+        harness.setDocumentTitle("First Title")
+        deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "const input = document.querySelector('.scholium-note-title-input'); return input?.value === 'First Title' && !input.disabled;") as? Bool != true
+        {
+            try #require(ContinuousClock.now < deadline, "The same-page title projection did not acknowledge metadata.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Second Title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """)
+        deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while probe.receivedTitles < 2 {
+            try #require(ContinuousClock.now < deadline, "The second request never reached native admission.")
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(requests.count == 1, "Source mutations must not overlap while the first callback is pending.")
+        releaseFirst?.resume()
+        releaseFirst = nil
+        deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var enabled = false
+        repeat {
+            enabled =
+                try await harness.callPageJavaScript(
+                    "const input = document.querySelector('.scholium-note-title-input'); return input?.value === 'Second Title' && !input.disabled;") as? Bool
+                == true
+            if requests.count == 2 && enabled { break }
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+        #expect(requests.map { $0.requested } == ["First Title", "Second Title"])
+        #expect(requests.last?.expected == "First Title")
+        #expect(enabled, "A valid successor must not remain disabled after the first callback finishes.")
+        #expect(harness.session.titleCompletionRecovery == nil)
+        #expect(harness.session.webView === webView && harness.session.sessionID == transport)
+        #expect(try await harness.session.currentText(for: harness.documentID).utf8.elementsEqual(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class TitleRenameReceiptProbe: NSObject, WKScriptMessageHandler {
+        private weak var coordinator: MarkdownEditorWebView.Coordinator?
+        private(set) var receivedTitles = 0
+
+        init(forwarding coordinator: MarkdownEditorWebView.Coordinator) { self.coordinator = coordinator }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if (message.body as? [String: Any])?["type"] as? String == "requestDocumentTitleRename" { receivedTitles += 1 }
+            coordinator?.userContentController(userContentController, didReceive: message)
+        }
+    }
+
     @Test("A rejected inline title rename preserves the draft and reports the error")
     func rejectedInlineTitleRenamePreservesDraft() async throws {
         enum RenameFailure: LocalizedError {

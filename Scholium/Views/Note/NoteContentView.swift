@@ -531,6 +531,10 @@ struct NoteContentView<ShellNotices: View>: View {
             guard let presentation = documentIntegrityPresentation else { return }
             AccessibilityNotification.Announcement(presentation.announcement).post()
         }
+        .task(id: editorSession.titleCompletionRecovery?.message) {
+            guard let message = editorSession.titleCompletionRecovery?.message else { return }
+            AccessibilityNotification.Announcement(message).post()
+        }
         .task(id: documentSession.inputResumeError) {
             guard let error = documentSession.inputResumeError else { return }
             AccessibilityNotification.Announcement(error).post()
@@ -696,6 +700,7 @@ struct NoteContentView<ShellNotices: View>: View {
             || state.pendingIdentityRebinding != nil
             || documentIntegrityPresentation != nil
             || documentSession.inputResumeError != nil
+            || editorSession.titleCompletionRecovery != nil
             || citationPresentation.isVisible
     }
 
@@ -736,6 +741,18 @@ struct NoteContentView<ShellNotices: View>: View {
             ) {
                 await actions.retryIdentityRecovery()
             }
+        }
+
+        if let recovery = editorSession.titleCompletionRecovery {
+            ScholiumDocumentStatusNotice(
+                ScholiumL10n.string("Title Update Unavailable"), detail: recovery.message, kind: .attention
+            ) {
+                Button("Retry Title Update") { editorSession.retryTitleCompletionDelivery() }
+                    .disabled(recovery.isRetrying)
+                    .scholiumActivationPointer()
+                    .controlSize(.small)
+            }
+            .accessibilityIdentifier("scholium.documentStatus.titleUpdateUnavailable")
         }
 
         if let error = documentSession.inputResumeError {

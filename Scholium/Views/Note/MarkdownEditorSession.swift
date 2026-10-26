@@ -101,6 +101,14 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
     case superseded
 }
 
+struct MarkdownEditorTitleCompletionRecovery: Equatable {
+    let requestID: String
+    let sessionID: UUID
+    let documentID: String
+    let message: String
+    let isRetrying: Bool
+}
+
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Caller cancellation revokes admission, but cannot release the mutation
@@ -110,6 +118,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         var isCancelled: Bool { state.withLock { $0 } }
         func cancel() { state.withLock { $0 = true } }
     }
+
+    @Published private(set) var titleCompletionRecovery: MarkdownEditorTitleCompletionRecovery?
+    private weak var titleCompletionRecoveryOwner: AnyObject?
+    private var titleCompletionRetry: (@MainActor () -> Void)?
 
     private static let modeChangeRecoveryMessage = ScholiumL10n.string(
         "The document mode change was not applied because the editor changed during text composition.")
@@ -610,6 +622,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func attach(_ webView: WKWebView) {
+        resetTitleCompletionRecovery()
         updatePublished(\.citationStatus, to: nil)
         presentationIsClosed = false
         floatingSurfaces.reset()
@@ -661,6 +674,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             // Even a never-ready page completes a lifecycle transition here.
             // Publish its detachment so the document owner can release a
             // closed session after SwiftUI's teardown has returned.
+            self.resetTitleCompletionRecovery()
             self.presentation = MarkdownEditorPresentationState()
         }
     }
@@ -787,6 +801,53 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         flushPendingSourceRange()
         return true
+    }
+
+    func reportTitleCompletionRecovery(
+        owner: AnyObject, requestID: String, message: String, isRetrying: Bool,
+        retry: @escaping @MainActor () -> Void
+    ) {
+        guard webView != nil else { return }
+        titleCompletionRecoveryOwner = owner
+        titleCompletionRetry = retry
+        updatePublished(
+            \.titleCompletionRecovery,
+            to: MarkdownEditorTitleCompletionRecovery(
+                requestID: requestID, sessionID: sessionID, documentID: documentID,
+                message: message, isRetrying: isRetrying))
+    }
+
+    func retryTitleCompletionDelivery() {
+        guard let recovery = titleCompletionRecovery,
+            recovery.sessionID == sessionID, recovery.documentID == documentID,
+            titleCompletionRecoveryOwner != nil, !recovery.isRetrying
+        else { return }
+        titleCompletionRetry?()
+    }
+
+    func clearTitleCompletionRecovery(owner: AnyObject, requestID: String? = nil) {
+        guard titleCompletionRecoveryOwner === owner,
+            requestID == nil || titleCompletionRecovery?.requestID == requestID
+        else { return }
+        titleCompletionRecoveryOwner = nil
+        titleCompletionRetry = nil
+        let previous = titleCompletionRecovery
+        // Cancellation also runs during representable teardown. Retire the
+        // callback now; publish only after that transaction, unless a successor
+        // has installed its own recovery in the meantime.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.titleCompletionRecoveryOwner == nil,
+                self.titleCompletionRecovery == previous
+            else { return }
+            self.updatePublished(\.titleCompletionRecovery, to: nil)
+        }
+    }
+
+    private func resetTitleCompletionRecovery() {
+        titleCompletionRecoveryOwner = nil
+        titleCompletionRetry = nil
+        updatePublished(\.titleCompletionRecovery, to: nil)
     }
 
     func reportError(_ message: String) {
