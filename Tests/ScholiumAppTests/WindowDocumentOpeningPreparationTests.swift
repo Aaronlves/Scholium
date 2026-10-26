@@ -302,6 +302,186 @@ struct WindowDocumentOpeningPreparationTests {
         #expect(model.shellState.operationIssues.last?.message == FixtureFailure.destination.localizedDescription)
     }
 
+    @Test("A retained-document failure never reveals a same-path Note in an independently browsed Library")
+    func failureRevealDoesNotTargetBrowsedTwin() async throws {
+        let fixture = try await OpeningFixture.make(includeSameNamedAnalysis: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        do {
+            let window = fixture.window
+            let document = try #require(window.documentController.selectedDocument)
+            let analysis = try #require(window.workspaceAssignment?.vault(for: .paperAnalysis))
+            await window.libraryRevealTask?.value
+            try await window.prepareWorkspaceSelection(.paperAnalysis, sourceScope: .library)
+            try #require(window.documentController.selectedDocument == document)
+            try #require(window.currentRegisteredVault?.id == analysis.id)
+            try #require(window.discoveryController.library.workspaceSlot == .paperAnalysis)
+            try #require(window.notes.contains { $0.relativePath == document.relativePath })
+            if let previous = window.discoveryController.libraryRevealRequest {
+                window.discoveryController.consumeLibraryRevealRequest(previous)
+            }
+            let selection = window.discoveryController.library.selectedRowIDs
+            window.enqueueDocumentTransition(preparation: .operationOnly) { throw FixtureFailure.destination }
+            await window.waitForDocumentTransitions()
+
+            #expect(window.documentController.selectedDocument == document)
+            #expect(window.currentRegisteredVault?.id == analysis.id)
+            #expect(window.discoveryController.library.selectedRowIDs == selection)
+            #expect(
+                window.discoveryController.libraryRevealRequest == nil, "The retained Works Note cannot reveal its Analyses twin or leave an off-scope reveal")
+            #expect(window.shellState.operationIssues.last?.message == FixtureFailure.destination.localizedDescription)
+            #expect(try Data(contentsOf: fixture.works.appendingPathComponent("Origin.md")) == Data(OpeningFixture.source.utf8))
+            #expect(try Data(contentsOf: fixture.analyses.appendingPathComponent("Origin.md")) == Data(OpeningFixture.source.utf8))
+            window.windowCloseCoordinator.finalize()
+            await fixture.store.shutdownApplicationRuntime()
+        } catch {
+            fixture.window.documentTransitionCoordinator.cancelAll()
+            fixture.window.windowCloseCoordinator.finalize()
+            await fixture.store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    enum DestinationFailureCurrency: CaseIterable, Equatable, Sendable {
+        case current, superseded, closed
+    }
+
+    @Test(
+        "Only a current destination failure may publish its banner and retained-document reveal",
+        .timeLimit(.minutes(1)), arguments: DestinationFailureCurrency.allCases)
+    func destinationFailurePresentationRespectsCurrency(currency: DestinationFailureCurrency) async throws {
+        let fixture = try await OpeningFixture.make()
+        let arrival = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        defer {
+            release?.resume()
+            arrival.continuation.finish()
+            fixture.window.documentTransitionCoordinator.cancelAll()
+            fixture.window.windowCloseCoordinator.finalize()
+            try? FileManager.default.removeItem(at: fixture.root)
+        }
+        do {
+            let window = fixture.window
+            let document = try #require(window.documentController.selectedDocument)
+            var completionFailure: Error?
+            var finishCount = 0
+            window.enqueueDocumentTransition(
+                preparation: .operationOnly,
+                {
+                    // This destination intentionally finishes with its own
+                    // error after cancellation instead of throwing CancellationError.
+                    await withCheckedContinuation {
+                        release = $0
+                        arrival.continuation.yield(())
+                    }
+                    throw FixtureFailure.destination
+                },
+                didFinish: {
+                    finishCount += 1
+                    arrival.continuation.finish()
+                },
+                completion: {
+                    if case .failure(let error) = $0 { completionFailure = error }
+                })
+            for await _ in arrival.stream { break }
+            try #require(release != nil)
+            // Successful opening owns a separate queued Library reveal. Join
+            // that owner and retain its exact request as the admitted baseline.
+            await window.libraryRevealTask?.value
+            let previousReveal = window.discoveryController.libraryRevealRequest
+            let previousIssues = window.shellState.operationIssues
+            switch currency {
+            case .current: break
+            case .superseded: try #require(window.beginDocumentNavigation() != nil)
+            case .closed: window.windowCloseCoordinator.finalize()
+            }
+            release?.resume()
+            release = nil
+            await window.waitForDocumentTransitions()
+
+            #expect(finishCount == 1)
+            let failure = try #require(completionFailure as? FixtureFailure)
+            if case .destination = failure {} else { Issue.record("The destination's actual result was discarded") }
+            #expect(window.documentController.selectedDocument == document)
+            #expect(window.lastSaveError == nil)
+            if currency == .current {
+                #expect(window.shellState.operationIssues.last?.message == FixtureFailure.destination.localizedDescription)
+                #expect(window.discoveryController.libraryRevealRequest?.scope.vaultID == document.vaultID)
+                #expect(window.discoveryController.libraryRevealRequest?.relativePath == document.relativePath)
+                #expect(window.discoveryController.libraryRevealRequest != previousReveal)
+            } else {
+                #expect(window.shellState.operationIssues == previousIssues, "An obsolete destination added a stale issue")
+                #expect(window.discoveryController.libraryRevealRequest == previousReveal, "An obsolete destination changed the admitted Library reveal")
+            }
+            #expect(try Data(contentsOf: fixture.works.appendingPathComponent("Origin.md")) == Data(OpeningFixture.source.utf8))
+            window.windowCloseCoordinator.finalize()
+            await fixture.store.shutdownApplicationRuntime()
+        } catch {
+            release?.resume()
+            release = nil
+            fixture.window.documentTransitionCoordinator.cancelAll()
+            await fixture.window.waitForDocumentTransitions()
+            fixture.window.windowCloseCoordinator.finalize()
+            await fixture.store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test(
+        "Revoking presentation preserves custom failure receipts and retained source",
+        .timeLimit(.minutes(1)), arguments: [DestinationFailureCurrency.superseded, .closed])
+    func revokedPresentationStillDeliversCustomFailure(currency: DestinationFailureCurrency) async throws {
+        let (model, background, outgoing) = makeModel()
+        let arrival = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let draft = "\u{FEFF}Retained researcher source 中文 😀 e\u{301}。\r\n"
+        outgoing.beginEditing(in: .source)
+        outgoing.editingSource = draft
+        outgoing.suppressAutosave = true
+        defer {
+            release?.resume()
+            arrival.continuation.finish()
+            model.documentTransitionCoordinator.cancelAll()
+            model.windowCloseCoordinator.finalize()
+            background.cancelScheduledWork()
+            outgoing.cancelScheduledWork()
+        }
+        var receivedFailure: Error?
+        var completedFailure: Error?
+        var finishCount = 0
+        model.enqueueDocumentTransition(
+            preparation: .operationOnly,
+            {
+                await withCheckedContinuation {
+                    release = $0
+                    arrival.continuation.yield(())
+                }
+                throw FixtureFailure.destination
+            },
+            didFail: { receivedFailure = $0 },
+            didFinish: {
+                finishCount += 1
+                arrival.continuation.finish()
+            },
+            completion: { if case .failure(let error) = $0 { completedFailure = error } })
+        for await _ in arrival.stream { break }
+        try #require(release != nil)
+        switch currency {
+        case .current: Issue.record("This case must revoke presentation")
+        case .superseded:
+            for _ in 0..<16 { try #require(model.beginDocumentNavigation() != nil) }
+        case .closed: model.windowCloseCoordinator.finalize()
+        }
+        release?.resume()
+        release = nil
+        await model.waitForDocumentTransitions()
+        #expect(receivedFailure?.localizedDescription == FixtureFailure.destination.localizedDescription)
+        #expect(completedFailure?.localizedDescription == FixtureFailure.destination.localizedDescription)
+        #expect(finishCount == 1)
+        #expect(model.shellState.operationIssues.isEmpty)
+        #expect(model.discoveryController.libraryRevealRequest == nil)
+        #expect(Data(outgoing.editingSource.utf8) == Data(draft.utf8) && outgoing.hasUnsavedChanges)
+    }
+
     @Test("A registered editor capture failure after flushing retains the Note without declaring a failed save")
     func registeredCaptureFailureDoesNotInventSaveFailure() async throws {
         let (model, background, outgoing) = makeModel()
@@ -490,7 +670,7 @@ struct WindowDocumentOpeningPreparationTests {
         let store: WorkspaceStore
         let window: WindowModel
 
-        static func make() async throws -> Self {
+        static func make(includeSameNamedAnalysis: Bool = false) async throws -> Self {
             let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             let root = repository.appendingPathComponent(".build/feature-review/core-fixtures/\(UUID())")
             let triptych = root.appendingPathComponent("Triptych")
@@ -502,6 +682,9 @@ struct WindowDocumentOpeningPreparationTests {
             }
             try Data(source.utf8).write(to: analyses.appendingPathComponent("Destination.md"))
             try Data(source.utf8).write(to: works.appendingPathComponent("Origin.md"))
+            if includeSameNamedAnalysis {
+                try Data(source.utf8).write(to: analyses.appendingPathComponent("Origin.md"))
+            }
             let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
             do {
                 let configured = try await store.configureTriptychCapabilities(

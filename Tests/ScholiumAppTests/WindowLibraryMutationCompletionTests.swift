@@ -215,6 +215,83 @@ struct WindowLibraryMutationCompletionTests {
         #expect(fixture.completedPlans == [preview.id] && fixture.rejectedPublications == 0)
     }
 
+    @Test(
+        "A completed move batch cannot publish into replacement capabilities with the same assignment and vault",
+        arguments: [false, true])
+    func completedMoveBatchRejectsReplacementBinding(unbindFirst: Bool) async throws {
+        let fixture = CompletionFixture()
+        let committed = CompletionGate()
+        fixture.operations.afterMoveCommit = { await committed.hold() }
+        let target = NoteMutationTarget(
+            documentID: .init(vaultID: fixture.vault.id, relativePath: "Note.md"),
+            stableNoteID: UUID(), revision: DocumentFingerprint(content: "Exact source\n"))
+        let request = LibraryNoteBatchRequest(
+            assignmentID: fixture.assignmentID, vaultID: fixture.vault.id, targets: [target])
+        let task = Task {
+            defer { committed.finish() }
+            return await fixture.controller.moveNotes(request, toFolder: "Moved")
+        }
+        defer {
+            task.cancel()
+            committed.release()
+            fixture.controller.unbind()
+        }
+        await committed.waitUntilEntered()
+        try #require(committed.didEnter)
+        #expect(fixture.operations.committedMoveTargets == [target.documentID])
+        let previousBinding = fixture.controller.bindingID
+        let replacement = CompletionOperations()
+        if unbindFirst { fixture.controller.unbind() }
+        fixture.controller.bind(to: replacement)
+        #expect(fixture.controller.bindingID != previousBinding)
+        committed.release()
+
+        let outcome = await task.value
+        #expect(outcome.items.map(\.status) == [.succeeded])
+        #expect(outcome.retryTargets.isEmpty)
+        #expect(replacement.committedMoveTargets.isEmpty)
+        #expect(fixture.movePublications == 0, "An old durable result was presented through replacement window capabilities")
+        #expect(fixture.controller.lastBatchOutcome == nil)
+    }
+
+    @Test("A departed move failure retains its result without refreshing replacement recovery state")
+    func departedMoveFailureDoesNotRefreshReplacementRecovery() async throws {
+        let fixture = CompletionFixture()
+        let gate = CompletionGate()
+        fixture.operations.shouldFailMove = true
+        fixture.operations.beforeMoveFailure = { await gate.hold() }
+        let target = NoteMutationTarget(
+            documentID: .init(vaultID: fixture.vault.id, relativePath: "Note.md"),
+            stableNoteID: UUID(), revision: DocumentFingerprint(content: "Exact source\n"))
+        let request = LibraryNoteBatchRequest(
+            assignmentID: fixture.assignmentID, vaultID: fixture.vault.id, targets: [target])
+        let task = Task {
+            defer { gate.finish() }
+            return await fixture.controller.moveNotes(request, toFolder: "Moved")
+        }
+        defer {
+            task.cancel()
+            gate.release()
+            fixture.controller.unbind()
+        }
+        await gate.waitUntilEntered()
+        try #require(gate.didEnter)
+        let replacement = CompletionOperations()
+        fixture.controller.bind(to: replacement)
+        gate.release()
+        let outcome = await task.value
+        let item = try #require(outcome.items.first)
+        if case .failed(let message) = item.status {
+            #expect(message == CocoaError(.fileWriteNoPermission).localizedDescription)
+        } else {
+            Issue.record("The admitted operation's actual failure was discarded")
+        }
+        #expect(fixture.operations.committedMoveTargets.isEmpty)
+        #expect(replacement.committedMoveTargets.isEmpty)
+        #expect(fixture.movePublications == 0 && fixture.recoveryRefreshes == 0)
+        #expect(fixture.controller.lastBatchOutcome == nil)
+    }
+
     enum CancellationSource: CaseIterable, Sendable {
         case none, caller, controller
 
@@ -272,6 +349,7 @@ private final class CompletionFixture {
     var completedPlans: [UUID] = []
     var rejectedPublications = 0
     var recoveryRefreshes = 0
+    var movePublications = 0
     var publish: @MainActor () async -> Void = {}
     var beforeFlush: @MainActor () async -> Void = {}
     var browsedVault: RegisteredVault?
@@ -291,14 +369,16 @@ private final class CompletionFixture {
         let controller = WindowLibraryMutationController(
             dependencies: .init(
                 context: { [unowned self] in
-                    .init(assignmentID: assignmentID, vault: vault, sourceScope: .library)
+                    .init(assignmentID: assignmentID, vault: browsedVault ?? vault, sourceScope: .library)
                 },
                 enqueueDocumentTransition: { _, _, _ in Issue.record("Unexpected creation") },
                 flushEditors: { [unowned self] _ in await beforeFlush() }, flushActiveTarget: { _ in },
                 expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
                 committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
                 committedFolderMoved: { _ in }, committedNoteDuplicated: { _, _, _ in },
-                committedNoteMoved: { _, _, _ in },
+                committedNoteMoved: { [unowned self] _, _, isCurrent in
+                    if isCurrent() { movePublications += 1 }
+                },
                 committedSystemTrash: { [unowned self] preview, outcome, isCurrent in
                     guard isCurrent() else { return }
                     if let outcome {
@@ -321,13 +401,18 @@ private final class CompletionFixture {
 }
 
 @MainActor
-private final class CompletionOperations: LibraryMutationUseCases {
+final class CompletionOperations: LibraryMutationUseCases {
     var shouldFail = false
     var pendingCleanupRecovery: TriptychMutationRecoveryRecord?
     var derivedRefreshWarning: String?
     var beforeCommit: @MainActor () async -> Void = {}
+    var afterTrashCommit: @MainActor () async -> Void = {}
     var enteredPlans: [UUID] = []
     var committedPlans: [UUID] = []
+    var committedMoveTargets: [VaultQualifiedNoteID] = []
+    var afterMoveCommit: @MainActor () async -> Void = {}
+    var shouldFailMove = false
+    var beforeMoveFailure: @MainActor () async -> Void = {}
 
     func moveToSystemTrash(_ preview: SystemTrashDeletionPreview) async throws
         -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>
@@ -337,6 +422,7 @@ private final class CompletionOperations: LibraryMutationUseCases {
         try Task.checkCancellation()
         if shouldFail { throw CocoaError(.fileWriteNoPermission) }
         committedPlans.append(preview.id)
+        await afterTrashCommit()
         return .init(
             committedValue: .init(
                 planID: preview.id, noteIDs: Array(preview.affectedNoteIDs),
@@ -378,7 +464,20 @@ private final class CompletionOperations: LibraryMutationUseCases {
     func move(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws
         -> WorkspaceMutationOutcome<TriptychMoveCommit>
     {
-        throw CocoaError(.featureUnsupported)
+        if shouldFailMove {
+            await beforeMoveFailure()
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        committedMoveTargets.append(target.documentID)
+        // A proved source operation may finish publication after its caller is
+        // cancelled. This gate intentionally does not revoke that receipt.
+        await afterMoveCommit()
+        return .init(
+            committedValue: .init(
+                movedNote: target.documentID,
+                destination: .init(vaultID: target.documentID.vaultID, relativePath: destinationRelativePath),
+                previousRevision: target.revision, committedRevision: target.revision,
+                graphGeneration: 1, rewrites: []))
     }
     func prepareSystemTrash(_ target: NoteMutationTarget) async throws -> SystemTrashDeletionPreview {
         throw CocoaError(.featureUnsupported)

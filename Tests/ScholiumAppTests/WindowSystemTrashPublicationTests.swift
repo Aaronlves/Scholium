@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+import ScholiumCore
 import Testing
 
 @testable import ScholiumApp
@@ -71,6 +72,85 @@ struct WindowSystemTrashPublicationTests {
             #expect(!FileManager.default.fileExists(atPath: fixture.deleted.path))
             await fixture.shutdown()
         } catch {
+            await fixture.shutdown()
+            throw error
+        }
+    }
+
+    enum BatchBrowseBoundary: CaseIterable, Equatable, Sendable { case committedResult, cacheRead }
+
+    @Test(
+        "Browsing another vault after batch Trash commits retains tab cleanup and pending recovery",
+        arguments: BatchBrowseBoundary.allCases)
+    func batchTrashBrowseRetainsCommittedCleanup(boundary: BatchBrowseBoundary) async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.remove() }
+        let gate = PublicationGate()
+        let window = fixture.window
+        let operations = CompletionOperations()
+        operations.pendingCleanupRecovery = fixture.outcome.committedValue.pendingCleanupRecovery
+        let recovery = try #require(operations.pendingCleanupRecovery)
+        let recoveryURL = try #require(window.researchController.recoveryRecordsURL)
+        let recoveryStore = try TriptychMutationRecoveryStore(storageURL: recoveryURL)
+        try await recoveryStore.record(recovery)
+        let neighbor = try #require(window.documentTabController.tabs.first { $0.document.relativePath == "Neighbor.md" })
+        window.selectDocumentTab(withID: neighbor.id)
+        await window.waitForDocumentTransitions()
+        await window.libraryRevealTask?.value
+        try #require(window.documentController.selectedDocument?.relativePath == "Neighbor.md")
+        try #require(window.documentTabController.tabs.contains { $0.document.relativePath == "Deleted.md" })
+        if boundary == .committedResult {
+            operations.afterTrashCommit = { await gate.hold() }
+        } else {
+            var didHold = false
+            window.systemTrashPublicationBarrierForTesting = { reached in
+                guard reached == .cacheRead, !didHold else { return }
+                didHold = true
+                await gate.hold()
+            }
+        }
+        window.libraryMutationController.bind(to: operations)
+        let binding = window.libraryMutationController.bindingID
+        let runtime = try #require(window.windowWorkspaceController.activeCapabilities?.runtimeIdentity)
+        let assignment = try #require(window.workspaceAssignment?.id)
+        let batch = Task {
+            defer { gate.finish() }
+            return await window.libraryMutationController.executeNotesSystemTrash(fixture.preview)
+        }
+        do {
+            await gate.waitUntilEntered()
+            try #require(gate.didEnter)
+            #expect(operations.committedPlans == [fixture.preview.id])
+            try #require(window.libraryMutationController.bindingID == binding)
+            try #require(window.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime)
+            try #require(window.workspaceAssignment?.id == assignment)
+            let browsed = try #require(window.workspaceAssignment?.vault(for: .paperAnalysis))
+            try await window.prepareWorkspaceSelection(.paperAnalysis, sourceScope: .library)
+            try #require(window.currentRegisteredVault?.id == browsed.id)
+            try #require(window.discoveryController.library.workspaceSlot == .paperAnalysis)
+            try #require(window.libraryMutationController.bindingID == binding)
+            try #require(window.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime)
+            try #require(window.workspaceAssignment?.id == assignment)
+            gate.release()
+            let outcome = await batch.value
+
+            #expect(outcome.succeededCount == fixture.preview.affectedNoteIDs.count && outcome.retryTargets.isEmpty)
+            #expect(outcome.recoveryRequired)
+            #expect(operations.committedPlans == [fixture.preview.id])
+            #expect(window.documentTabController.tabs.map(\.document.relativePath) == ["Neighbor.md"])
+            #expect(window.documentController.selectedDocument?.relativePath == "Neighbor.md")
+            #expect(window.currentRegisteredVault?.id == browsed.id)
+            #expect(window.discoveryController.library.workspaceSlot == .paperAnalysis)
+            #expect(window.researchController.transactionRecoveryRecords.contains { $0.id == recovery.id })
+            #expect(window.shellState.operationIssues.count == 1)
+            #expect(window.shellState.operationIssues.first?.kind == .warning)
+            #expect(!FileManager.default.fileExists(atPath: fixture.deleted.path))
+            #expect(try Data(contentsOf: fixture.neighbor) == fixture.currentNeighborBytes)
+            await fixture.shutdown()
+        } catch {
+            batch.cancel()
+            gate.release()
+            _ = await batch.value
             await fixture.shutdown()
             throw error
         }

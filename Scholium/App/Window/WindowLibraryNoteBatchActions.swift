@@ -1,6 +1,13 @@
 import Foundation
 import ScholiumContracts
 
+@MainActor
+private struct LibraryNoteBatchAdmission {
+    let operations: any LibraryMutationUseCases
+    let isCurrent: @MainActor () -> Bool
+    let originIsCurrent: @MainActor () -> Bool
+}
+
 enum LibraryNoteBatchError: LocalizedError {
     case operationInProgress
     case selectionChanged
@@ -28,12 +35,15 @@ extension WindowLibraryMutationController {
             Set(targets.map(\.stableNoteID)).count == targets.count,
             Set(targets.map(\.documentID)).count == targets.count
         else { throw LibraryNoteBatchError.selectionChanged }
+        let admittedBinding = bindingID
         isBatchWorking = true
         defer { isBatchWorking = false }
         try await dependencies.flushEditors(context.assignmentID)
         try Task.checkCancellation()
-        guard dependencies.context()?.assignmentID == context.assignmentID,
-            dependencies.context()?.vault.id == context.vault.id
+        guard bindingID == admittedBinding,
+            dependencies.context()?.assignmentID == context.assignmentID,
+            dependencies.context()?.vault.id == context.vault.id,
+            dependencies.context()?.sourceScope == .library
         else { throw CancellationError() }
         let captured = try dependencies.captureBatchTargets(targets)
         guard captured.count == targets.count,
@@ -46,20 +56,22 @@ extension WindowLibraryMutationController {
 
     func moveNotes(_ request: LibraryNoteBatchRequest, toFolder folderRelativePath: String) async -> LibraryNoteBatchOutcome {
         let operation = LibraryNoteBatchOperation.move(folderRelativePath: folderRelativePath)
-        return await ownNoteBatch(request, operation: operation) { [self] in
+        return await ownNoteBatch(request, operation: operation) { [self] admission in
             await LibraryNoteBatchExecution.move(
                 request, toFolder: folderRelativePath,
-                isCurrent: { [self] in batchIsCurrent(request) },
+                isCurrent: admission.isCurrent,
                 move: { [self] target, destination in
                     try await dependencies.flushEditors(request.assignmentID)
                     try Task.checkCancellation()
-                    guard batchIsCurrent(request) else { throw CancellationError() }
-                    return try await requireOperations().move(target, to: destination)
+                    guard admission.isCurrent() else { throw CancellationError() }
+                    return try await admission.operations.move(target, to: destination)
                 },
                 didCommit: { [self] outcome, target in
-                    await dependencies.committedNoteMoved(outcome, target, { [self] in batchIsCurrent(request) })
+                    await dependencies.committedNoteMoved(outcome, target, admission.isCurrent)
                 },
-                didFail: { [self] in await dependencies.refreshTransactionRecovery() }
+                didFail: { [self] in
+                    if admission.isCurrent() { await dependencies.refreshTransactionRecovery() }
+                }
             )
         }
     }
@@ -67,18 +79,20 @@ extension WindowLibraryMutationController {
     func prepareNotesSystemTrash(_ request: LibraryNoteBatchRequest) async throws -> SystemTrashDeletionPreview {
         guard !isBatchWorking, !hasActiveLibraryMutation else { throw LibraryNoteBatchError.operationInProgress }
         guard batchIsCurrent(request) else { throw LibraryNoteBatchError.selectionChanged }
+        let admittedBinding = bindingID
+        let operations = try requireOperations()
         isBatchWorking = true
         defer { isBatchWorking = false }
         var sources: [SystemTrashDeletionSourceTarget] = []
         for target in request.targets {
             try Task.checkCancellation()
-            guard batchIsCurrent(request) else { throw CancellationError() }
-            let preview = try await requireOperations().prepareSystemTrash(target)
+            guard bindingID == admittedBinding, batchIsCurrent(request) else { throw CancellationError() }
+            let preview = try await operations.prepareSystemTrash(target)
             guard preview.triptychID == request.assignmentID else { throw LibraryNoteBatchError.selectionChanged }
             sources.append(contentsOf: preview.sources)
         }
         try Task.checkCancellation()
-        guard batchIsCurrent(request) else { throw CancellationError() }
+        guard bindingID == admittedBinding, batchIsCurrent(request) else { throw CancellationError() }
         return SystemTrashDeletionPreview(triptychID: request.assignmentID, sources: sources)
     }
 
@@ -93,27 +107,23 @@ extension WindowLibraryMutationController {
         let request = LibraryNoteBatchRequest(
             id: preview.id, assignmentID: preview.triptychID,
             vaultID: preview.sources.first?.vaultID ?? UUID(), targets: targets)
-        return await ownNoteBatch(request, operation: .systemTrash) { [self] in
-            let admission: (operations: any LibraryMutationUseCases, isCurrent: @MainActor () -> Bool)
-            do { admission = try captureSystemTrashAdmission(preview) } catch {
-                return LibraryNoteBatchExecution.trashFailure(request, preview: preview, error: error)
-            }
+        return await ownNoteBatch(request, operation: .systemTrash) { [self] admission in
             do {
                 try Task.checkCancellation()
-                guard batchIsCurrent(request) else { throw CancellationError() }
+                guard admission.isCurrent() else { throw CancellationError() }
                 try await dependencies.flushEditors(request.assignmentID)
                 try Task.checkCancellation()
-                guard admission.isCurrent(), batchIsCurrent(request) else { throw CancellationError() }
+                guard admission.isCurrent() else { throw CancellationError() }
                 let outcome = try await admission.operations.moveToSystemTrash(preview)
-                await dependencies.committedSystemTrash(preview, outcome, admission.isCurrent)
+                await dependencies.committedSystemTrash(preview, outcome, admission.originIsCurrent)
                 return LibraryNoteBatchOutcome(
                     request: request, operation: .systemTrash,
                     items: targets.map { .init(target: $0, destinationRelativePath: nil, status: .succeeded) },
                     recoveryRequired: outcome.committedValue.pendingCleanupRecovery != nil,
                     warnings: [outcome.committedValue.pendingCleanupWarning, outcome.derivedRefreshWarning, outcome.identityRecoveryWarning].compactMap { $0 })
             } catch {
-                if admission.isCurrent() { await dependencies.refreshTransactionRecovery() }
-                await dependencies.committedSystemTrash(preview, nil, admission.isCurrent)
+                if admission.originIsCurrent() { await dependencies.refreshTransactionRecovery() }
+                await dependencies.committedSystemTrash(preview, nil, admission.originIsCurrent)
                 return LibraryNoteBatchExecution.trashFailure(request, preview: preview, error: error)
             }
         }
@@ -127,14 +137,32 @@ extension WindowLibraryMutationController {
 
     private func ownNoteBatch(
         _ request: LibraryNoteBatchRequest, operation: LibraryNoteBatchOperation,
-        perform: @escaping @MainActor () async -> LibraryNoteBatchOutcome
+        perform: @escaping @MainActor (LibraryNoteBatchAdmission) async -> LibraryNoteBatchOutcome
     ) async -> LibraryNoteBatchOutcome {
         guard !isBatchWorking, !hasActiveLibraryMutation else {
             return LibraryNoteBatchExecution.failure(request, operation: operation, error: LibraryNoteBatchError.operationInProgress)
         }
         let admittedBinding = bindingID
+        let operations: any LibraryMutationUseCases
+        do { operations = try requireOperations() } catch {
+            return LibraryNoteBatchExecution.failure(request, operation: operation, error: error)
+        }
+        let originIsCurrent: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.bindingID == admittedBinding
+                && self.dependencies.context()?.assignmentID == request.assignmentID
+        }
+        let admission = LibraryNoteBatchAdmission(
+            operations: operations,
+            isCurrent: { [weak self] in
+                guard let self else { return false }
+                return originIsCurrent() && self.batchIsCurrent(request)
+            },
+            // Committed Trash cleanup still belongs to this window while its
+            // Library independently browses another role or source scope.
+            originIsCurrent: originIsCurrent)
         isBatchWorking = true
-        let task = Task { await perform() }
+        let task = Task { await perform(admission) }
         batchCancellation = { task.cancel() }
         defer {
             batchCancellation = nil

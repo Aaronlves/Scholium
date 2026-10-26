@@ -180,8 +180,9 @@ extension WindowModel {
         var resolvedPreparation = preparation
         var retainedOpeningTab: DocumentTabItem?
         var failurePhase = DocumentTransitionFailurePhase.operation
+        let transitionIsCurrent = requestIsCurrent ?? documentTransitionCoordinator.beginRequest()
         documentTransitionCoordinator.enqueueCurrencyAware(
-            requestIsCurrent: requestIsCurrent,
+            requestIsCurrent: transitionIsCurrent,
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 PerformanceProbe.shared.markNoteOpeningPhase(.transitionStarted, attemptID: openingMeasurement)
@@ -278,11 +279,16 @@ extension WindowModel {
             didFail: { [weak self] error in
                 outcome = .failure(error)
                 guard let self else { return }
-                self.revealRetainedDocumentAfterTransitionFailure()
                 if let customFailure {
+                    // Custom handlers also deliver source/Chat failure receipts.
+                    // Presentation currency must not discard that actual result.
                     customFailure(error)
                     return
                 }
+                guard !self.windowCloseCoordinator.isFinalized,
+                    failurePhase != .operation || transitionIsCurrent()
+                else { return }
+                self.revealRetainedDocumentAfterTransitionFailure()
                 if let issueID = self.documentTransitionIssueID {
                     self.shellState.dismissOperationIssue(id: issueID)
                 }
@@ -329,6 +335,7 @@ extension WindowModel {
     private func revealRetainedDocumentAfterTransitionFailure() {
         guard let document = documentController.selectedDocument,
             let vaultID = currentRegisteredVault?.id,
+            document.vaultID == vaultID,
             discoveryController.library.sourceScope == .library
         else { return }
         discoveryController.prepareLibraryNoteReveal(
