@@ -11,7 +11,7 @@ struct AgentChatNativeParagraph: NSViewRepresentable {
     let fitsContent: Bool
     let isInteractive: Bool
     let onInteraction: () -> Void
-    let onLayout: (String, CGSize) -> Void
+    let onLayout: (String, AgentChatNativeParagraphView.LayoutReceipt) -> Void
 
     func makeNSView(context: Context) -> AgentChatNativeParagraphView {
         AgentChatNativeParagraphView()
@@ -46,16 +46,21 @@ struct AgentChatNativeParagraph: NSViewRepresentable {
     private var interactionIsEnabled = false
     private var suppressSelectionNotification = false
     private var onInteraction: (() -> Void)?
-    private var onLayout: ((String, CGSize) -> Void)?
+    private var onLayout: ((String, LayoutReceipt) -> Void)?
     private var layoutGeneration: UInt64 = 0
     private var pendingLayout: LayoutReport?
     private var reportedLayout: LayoutReport?
     private var reportIsScheduled = false
 
+    struct LayoutReceipt: Equatable {
+        let measuredSize: CGSize
+        let appliedSize: CGSize
+    }
+
     private struct LayoutReport: Equatable {
         let generation: UInt64
         let revision: String
-        let size: CGSize
+        let receipt: LayoutReceipt
     }
 
     init() {
@@ -109,7 +114,7 @@ struct AgentChatNativeParagraph: NSViewRepresentable {
 
     func configure(
         source: String, revision: String, fitsContent: Bool, isInteractive: Bool,
-        onInteraction: @escaping () -> Void, onLayout: @escaping (String, CGSize) -> Void
+        onInteraction: @escaping () -> Void, onLayout: @escaping (String, LayoutReceipt) -> Void
     ) {
         self.onInteraction = onInteraction
         self.onLayout = onLayout
@@ -183,7 +188,10 @@ struct AgentChatNativeParagraph: NSViewRepresentable {
         if textContainer.containerSize != size { textContainer.containerSize = size }
         layoutManager.ensureLayout(for: textContainer)
         guard window != nil, !isHiddenOrHasHiddenAncestor else { return }
-        enqueueLayout(LayoutReport(generation: layoutGeneration, revision: revision, size: bounds.size))
+        // Width can reach AppKit before SwiftUI applies the matching height.
+        // Report both facts, including a mismatch that revokes earlier readiness.
+        let receipt = LayoutReceipt(measuredSize: fittingSize(proposedWidth: width), appliedSize: bounds.size)
+        enqueueLayout(LayoutReport(generation: layoutGeneration, revision: revision, receipt: receipt))
     }
 
     private func enqueueLayout(_ report: LayoutReport) {
@@ -199,12 +207,12 @@ struct AgentChatNativeParagraph: NSViewRepresentable {
             guard let report = self.pendingLayout else { return }
             self.pendingLayout = nil
             guard report.generation == self.layoutGeneration,
-                report.size == self.bounds.size,
+                report.receipt.appliedSize == self.bounds.size,
                 self.window != nil, !self.isHiddenOrHasHiddenAncestor,
                 let onLayout = self.onLayout
             else { return }
             self.reportedLayout = report
-            onLayout(report.revision, report.size)
+            onLayout(report.revision, report.receipt)
         }
     }
 

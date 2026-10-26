@@ -170,7 +170,8 @@ struct AgentChatNativeParagraphTests {
         func configure(_ source: String, _ revision: String) {
             view.configure(
                 source: source, revision: revision, fitsContent: false, isInteractive: true,
-                onInteraction: {}, onLayout: { reports.append(($0, $1)) })
+                onInteraction: {}, onLayout: { reports.append(($0, $1.appliedSize)) })
+            view.frame.size = view.fittingSize(proposedWidth: 300)
             view.layout()
         }
         configure("原文 一", "first")
@@ -192,6 +193,55 @@ struct AgentChatNativeParagraphTests {
         view.detach()
         await mainTurn()
         #expect(reports.count == count)
+    }
+
+    @Test("Native readiness rejects stale frame heights until measured text fits", arguments: [false, true])
+    func nativeLayoutRejectsStaleHeight(narrowing: Bool) async throws {
+        let fixture = NativeFixture()
+        defer { fixture.close() }
+        let view = fixture.view
+        let readiness = AgentChatReadReply.Readiness()
+        let source = String(repeating: "Mixed 中文 Cafe\u{301} and😀 retain exact source. ", count: 30)
+        var reports: [CGSize] = []
+        view.configure(
+            source: source, revision: "same-source", fitsContent: false, isInteractive: true,
+            onInteraction: {},
+            onLayout: { _, layout in
+                reports.append(layout.measuredSize)
+                readiness.applyNativeLayout(layout, fitsContent: false)
+            })
+        let firstWidth: CGFloat = narrowing ? 300 : 120
+        let nextWidth: CGFloat = narrowing ? 120 : 300
+        let initial = view.fittingSize(proposedWidth: firstWidth)
+        view.frame.size = initial
+        view.layout()
+        await mainTurn()
+        try #require(readiness.layoutIsApplied && reports.last == initial)
+        view.setSelectedRange(NSRange(location: 0, length: 5))
+        let selection = view.selectedRanges
+
+        let fitted = view.fittingSize(proposedWidth: nextWidth)
+        let stale = CGSize(width: fitted.width, height: initial.height)
+        try #require(abs(stale.height - fitted.height) > 1)
+        view.frame.size = stale
+        view.layout()
+        await mainTurn()
+        try #require(view.bounds.size == stale)
+        let container = try #require(view.textContainer)
+        let layout = try #require(view.layoutManager)
+        layout.ensureLayout(for: container)
+        let measuredHeight = max(ScholiumChatAppearance.messageLoadingHeight, ceil(layout.usedRect(for: container).height))
+        try #require(abs(measuredHeight - fitted.height) <= 1)
+        let report = try #require(reports.last)
+        #expect(abs(report.height - measuredHeight) <= 1, "A native frame cannot stand in for its text's measured height")
+        #expect(!readiness.layoutIsApplied, "A prior valid receipt must be revoked while the resized frame has stale height")
+
+        view.frame.size = fitted
+        view.layout()
+        await mainTurn()
+        #expect(readiness.layoutIsApplied && reports.last == fitted)
+        #expect(view.selectedRanges == selection && view.string.utf8.elementsEqual(source.utf8))
+        print("CHAT_NATIVE_HEIGHT narrowing=\(narrowing) stale=\(stale.height) measured=\(measuredHeight) final=\(view.bounds.height)")
     }
 
     @Test(
@@ -248,7 +298,7 @@ struct AgentChatNativeParagraphTests {
         ) -> some View {
             AgentChatNativeParagraph(
                 source: source, revision: revision, fitsContent: false, isInteractive: interactive,
-                onInteraction: { interactions += 1 }, onLayout: { reports.append(($0, $1)) }
+                onInteraction: { interactions += 1 }, onLayout: { reports.append(($0, $1.appliedSize)) }
             )
             .environment(\.scholiumDocumentSurfaceVisibility, visibility)
             .frame(width: 240)

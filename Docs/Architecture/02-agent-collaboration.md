@@ -255,7 +255,7 @@ Execution owns streaming; IO-free Remend/JavaScriptCore
 completion precedes coalesced off-actor rendering.
 Exact bytes own documents/actions; provisional HTML grants no source ranges or pending destinations.
 Completed source-identical plain user paragraphs use native selectable text;
-others use safe WebKit.
+others safe WebKit. Publication requires measured/applied agreement.
 Preview/reader share snapshots; DOM updates retain decorated nodes/selection.
 
 Live notification validity remains execution-owned and is never replayed from

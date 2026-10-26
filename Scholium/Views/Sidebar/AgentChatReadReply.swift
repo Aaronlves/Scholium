@@ -70,14 +70,13 @@ struct AgentChatReadReply: View {
                         isInteractive: readerIsVisible && readiness.acceptsInteraction
                             && ScholiumExactUTF8.equal(source, paragraph),
                         onInteraction: readingInteraction,
-                        onLayout: { revision, size in
+                        onLayout: { revision, layout in
+                            let size = layout.appliedSize
                             guard readerProjection?.presentationRevision == revision,
                                 ScholiumExactUTF8.equal(source, paragraph), size.width.isFinite, size.height.isFinite,
                                 size.width > 0, size.height > 0
                             else { return }
-                            readiness.measureLayout(height: size.height, viewportWidth: size.width, maximumWidth: fitsContent ? size.width : nil)
-                            readiness.applyLayout(size)
-                            readiness.ready = true
+                            readiness.applyNativeLayout(layout, fitsContent: fitsContent)
                             acceptHydratedProjection()
                         }
                     )
@@ -545,6 +544,16 @@ extension AgentChatReadReply {
                 return nil
             }
             return Admission(queue: session.readerPreparation, permit: permit)
+        }
+
+        func applyNativeLayout(_ layout: AgentChatNativeParagraphView.LayoutReceipt, fitsContent: Bool) {
+            // Install the paired native receipt before publishing either readiness
+            // flag. A stale applied height must invalidate an earlier valid layout.
+            measuredSize = layout.measuredSize
+            maximumLayoutWidth = fitsContent ? layout.measuredSize.width : nil
+            appliedSize = layout.appliedSize
+            hasMeasuredLayout = true
+            ready = true
         }
 
         var isHydrated: Bool { (ready && hasMeasuredLayout) || failure != nil }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -245,6 +246,58 @@ struct AgentChatReaderReadinessTests {
         reader.reset()
         #expect(!session.areReadersHydrated(["reply"]))
         #expect(session.isInitialTranscriptReady)
+    }
+
+    @Test("Native size changes revoke the stored page-publication receipt until geometry agrees")
+    func nativeGeometryRevokesPendingPublication() throws {
+        _ = NSApplication.shared
+        let session = AgentChatReadingSession()
+        let presentationID = UUID()
+        session.beginPresentation(presentationID)
+        let viewport = AgentChatTranscriptViewport.View(session: session, presentationID: presentationID)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 600))
+        scroll.documentView = document
+        viewport.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
+        document.addSubview(viewport)
+        let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        let reader = AgentChatReadReply.Readiness()
+        defer {
+            reader.unmount()
+            viewport.retire()
+            window.contentView = nil
+            window.close()
+        }
+        session.attachViewport(viewport)
+        let ids = (0...AgentChatHistoryWindow.initialPageSize).map { "message-\($0)" }
+        session.mount(in: ids)
+        session.acknowledge(try #require(session.viewportRequest))
+        try #require(session.isInitialTranscriptReady)
+        session.page(earlier: true, in: ids, readerIDs: [ids[0]])
+        let page = try #require(session.pendingHistoryPage)
+        try #require(page.itemIDs == [ids[0]])
+        session.setPresentationActive(false, for: presentationID)
+        let marker = AgentChatReadingMarker.View(id: ids[0], session: session)
+        marker.frame = NSRect(x: 0, y: 0, width: 300, height: 60)
+        document.addSubview(marker)
+        reader.mount(in: session, readerID: ids[0], presentationID: presentationID)
+        let oldSize = CGSize(width: 300, height: 60)
+        let measured = CGSize(width: 300, height: 100)
+        reader.applyNativeLayout(.init(measuredSize: oldSize, appliedSize: oldSize), fitsContent: false)
+        try #require(reader.layoutIsApplied)
+        reader.applyNativeLayout(.init(measuredSize: measured, appliedSize: oldSize), fitsContent: false)
+        #expect(reader.isHydrated && !reader.layoutIsApplied)
+        session.setPresentationActive(true, for: presentationID)
+        session.presentPreparedHistoryIfReady()
+        #expect(
+            session.pendingHistoryPage?.itemIDs == page.itemIDs,
+            "Unchanged hydration flags cannot leave an old valid geometry receipt in the session")
+        reader.applyNativeLayout(.init(measuredSize: measured, appliedSize: measured), fitsContent: false)
+        session.presentPreparedHistoryIfReady()
+        #expect(session.pendingHistoryPage == nil)
+        #expect(!window.isVisible)
     }
 
     @Test("DOM measurement and applied reader size must agree, and reset requires a fresh measurement", arguments: [false, true])
