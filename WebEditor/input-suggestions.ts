@@ -1291,6 +1291,7 @@ export function createEditorInputSuggestions(
   const nativePresentation = ViewPlugin.fromClass(class {
     private destroyed = false;
     private signature = "";
+    private presentedCompletions: readonly Completion[] = [];
     private revision = 0;
     private measureRevision = 0;
     private measureFallback: number | undefined;
@@ -1330,10 +1331,12 @@ export function createEditorInputSuggestions(
       // A keyed measure can outlive its triggering transaction, or run after
       // the idle fallback. Reject departed contexts before asking for geometry.
       if (measureRevision !== this.measureRevision || !this.eligible()) return null;
-      const items = currentCompletions(this.view.state).slice(0, 100);
+      const completions = currentCompletions(this.view.state).slice();
+      const items = completions.slice(0, 100);
       if (!items.length) return null;
       return {
         state: this.view.state,
+        completions,
         items: items
           .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item)})),
         anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
@@ -1343,7 +1346,7 @@ export function createEditorInputSuggestions(
     private write(value: ReturnType<typeof this.read>, measureRevision: number) {
       if (this.destroyed || measureRevision !== this.measureRevision) return;
       if (!value || !this.eligible()) { this.suspend(); return; }
-      const {items, anchor, selected, state} = value;
+      const {items, anchor, selected, state, completions} = value;
       for (const option of this.view.dom?.querySelectorAll<HTMLElement>(".cm-tooltip-autocomplete [role=option]") ?? []) {
         option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
       }
@@ -1351,12 +1354,18 @@ export function createEditorInputSuggestions(
       this.measureFallback = undefined;
       this.measureRevision++;
       if (!anchor) { this.suspend(); return; }
+      // Public completion objects carry their candidate and apply context.
+      // A label or index can stay equal while its actual target has changed.
+      const sameResults = (other: readonly Completion[]) => other.length === completions.length
+        && other.every((completion, index) => completion === completions[index]);
       const valid = () => !this.destroyed && state.doc === this.view.state.doc
         && state.selection.eq(this.view.state.selection)
+        && sameResults(currentCompletions(this.view.state))
         && this.eligible();
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
-      if (signature === this.signature) return;
+      if (signature === this.signature && sameResults(this.presentedCompletions)) return;
       this.signature = signature;
+      this.presentedCompletions = completions;
       nativeID = options.nativeFloating.show({
         left: anchor.left, top: anchor.top, bottom: anchor.bottom, items, selected,
       }, {
@@ -1398,6 +1407,7 @@ export function createEditorInputSuggestions(
       this.measureRevision++;
       if (this.signature) options.nativeFloating.hide(nativeID);
       this.signature = "";
+      this.presentedCompletions = [];
     }
     destroy() { this.destroyed = true; refreshLinkChoices = undefined; this.suspend(); }
   }, {

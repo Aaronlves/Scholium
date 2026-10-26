@@ -38491,6 +38491,12 @@ ${blankRow(table.position.columnCount)}`;
         };
         let composing = false;
         let commitAfterComposition = false;
+        const clearError = () => {
+          documentTitleError = null;
+          input.removeAttribute("aria-invalid");
+          input.removeAttribute("aria-describedby");
+          wrapper.querySelector(".scholium-note-title-error")?.remove();
+        };
         const normalizeInput = () => {
           if (attachment !== options.attachment()) return;
           if (composing) {
@@ -38503,10 +38509,7 @@ ${blankRow(table.position.columnCount)}`;
           if (normalized2 !== input.value) input.value = normalized2;
           documentTitleDraft = input.value;
           wrapper.setAttribute("aria-label", input.value || this.title);
-          documentTitleError = null;
-          input.removeAttribute("aria-invalid");
-          input.removeAttribute("aria-describedby");
-          wrapper.querySelector(".scholium-note-title-error")?.remove();
+          clearError();
           resize();
         };
         const commit = () => {
@@ -38563,7 +38566,7 @@ ${blankRow(table.position.columnCount)}`;
             event.preventDefault();
             cancelling = true;
             documentTitleDraft = null;
-            documentTitleError = null;
+            clearError();
             input.value = documentTitle2;
             wrapper.setAttribute("aria-label", documentTitle2);
             resize();
@@ -42421,6 +42424,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       view;
       destroyed = false;
       signature = "";
+      presentedCompletions = [];
       revision = 0;
       measureRevision = 0;
       measureFallback;
@@ -42437,10 +42441,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       }
       read(measureRevision) {
         if (measureRevision !== this.measureRevision || !this.eligible()) return null;
-        const items = currentCompletions(this.view.state).slice(0, 100);
+        const completions = currentCompletions(this.view.state).slice();
+        const items = completions.slice(0, 100);
         if (!items.length) return null;
         return {
           state: this.view.state,
+          completions,
           items: items.map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024), disabled: completionIsUnavailable(item) })),
           anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
           selected: selectedCompletionIndex(this.view.state) ?? -1
@@ -42452,7 +42458,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           this.suspend();
           return;
         }
-        const { items, anchor, selected, state } = value;
+        const { items, anchor, selected, state, completions } = value;
         for (const option of this.view.dom?.querySelectorAll(".cm-tooltip-autocomplete [role=option]") ?? []) {
           option.setAttribute("aria-disabled", String(option.classList.contains("scholium-completion-unavailable")));
         }
@@ -42463,10 +42469,12 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
           this.suspend();
           return;
         }
-        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && this.eligible();
+        const sameResults2 = (other) => other.length === completions.length && other.every((completion, index) => completion === completions[index]);
+        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && sameResults2(currentCompletions(this.view.state)) && this.eligible();
         const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
-        if (signature === this.signature) return;
+        if (signature === this.signature && sameResults2(this.presentedCompletions)) return;
         this.signature = signature;
+        this.presentedCompletions = completions;
         nativeID = options.nativeFloating.show({
           left: anchor.left,
           top: anchor.top,
@@ -42513,6 +42521,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         this.measureRevision++;
         if (this.signature) options.nativeFloating.hide(nativeID);
         this.signature = "";
+        this.presentedCompletions = [];
       }
       destroy() {
         this.destroyed = true;

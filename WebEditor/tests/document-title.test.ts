@@ -86,6 +86,30 @@ describe("filename title ownership", () => {
     }
   });
 
+  it("clears a rejected rename's error projection when Escape restores the saved title", async () => {
+    const h = harness();
+    let input = h.render();
+    for (const [index, draft] of ["Rejected 中文", "Rejected again 🦉"].entries()) {
+      h.draft(input, draft); h.event(input, "blur");
+      h.title.resolveRename(`rename-${index + 1}`, false, "Title", "Name already exists");
+      input = h.render(); await Promise.resolve();
+      const heading = input.parentElement!;
+      input.blur = () => { h.event(input, "blur"); };
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(input.getAttribute("aria-describedby")).toBe("scholium-note-title-error");
+      expect(heading.querySelector("[role=alert]")?.textContent).toBe("Name already exists");
+      h.event(input, "keydown", "Escape");
+      expect(input.value).toBe("Title");
+      expect(heading.getAttribute("aria-label")).toBe("Title");
+      expect(input.getAttribute("aria-invalid")).toBeNull();
+      expect(input.getAttribute("aria-describedby")).toBeNull();
+      expect(heading.querySelector("[role=alert]")).toBeNull();
+      expect(h.requestRename).toHaveBeenCalledTimes(index + 1);
+      expect(h.title.allowsDetachment()).toBe(true);
+      h.expectSourceUnchanged();
+    }
+  });
+
   it("keeps drafts and rename failures outside source and blocks detachment until settled", async () => {
     const h = harness();
     let input = h.render();

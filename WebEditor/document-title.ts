@@ -70,6 +70,12 @@ export function createDocumentTitle(options: DocumentTitleOptions) {
       };
       let composing = false;
       let commitAfterComposition = false;
+      const clearError = () => {
+        documentTitleError = null;
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+        wrapper.querySelector(".scholium-note-title-error")?.remove();
+      };
       const normalizeInput = () => {
         if (attachment !== options.attachment()) return;
         if (composing) {
@@ -82,10 +88,7 @@ export function createDocumentTitle(options: DocumentTitleOptions) {
         if (normalized !== input.value) input.value = normalized;
         documentTitleDraft = input.value;
         wrapper.setAttribute("aria-label", input.value || this.title);
-        documentTitleError = null;
-        input.removeAttribute("aria-invalid");
-        input.removeAttribute("aria-describedby");
-        wrapper.querySelector(".scholium-note-title-error")?.remove();
+        clearError();
         resize();
       };
       const commit = () => {
@@ -142,7 +145,7 @@ export function createDocumentTitle(options: DocumentTitleOptions) {
           event.preventDefault();
           cancelling = true;
           documentTitleDraft = null;
-          documentTitleError = null;
+          clearError();
           input.value = documentTitle;
           wrapper.setAttribute("aria-label", documentTitle);
           resize();

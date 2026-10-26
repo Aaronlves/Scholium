@@ -59,6 +59,7 @@ async function runtime() {
   const {EditorView, runScopeHandlers} = await import("@codemirror/view");
   const {Transaction} = await import("@codemirror/state");
   const completions = await import("@codemirror/autocomplete");
+  const commands = await import("@codemirror/commands");
   const view = EditorView.findFromDOM(document.querySelector(".cm-editor")!)!;
   const api = (window as unknown as RuntimeWindow).scholiumEditor;
   content = view.contentDOM;
@@ -98,7 +99,8 @@ async function runtime() {
   }
   return {api, view, window: window as unknown as RuntimeWindow, messages, count, request, initialize, edit, settle, surface, domEvent,
     setFocus(value: boolean) { focused = value; focusTarget = null; },
-    setFocusedElement(value: HTMLElement) { focused = true; focusTarget = value; }, completions,
+    setFocusedElement(value: HTMLElement) { focused = true; focusTarget = value; }, completions, commands,
+    advance: (milliseconds: number) => vi.advanceTimersByTimeAsync(milliseconds),
     escape() { return runScopeHandlers(view, {key: "Escape", keyCode: 27, altKey: false, ctrlKey: false, shiftKey: false, metaKey: false,
       preventDefault() {}, stopPropagation() {}} as KeyboardEvent, "editor"); },
     destroy() { focused = false; view.destroy(); },
@@ -108,6 +110,61 @@ async function runtime() {
 const available = (label: string) => ({label, insertion: label, displayText: label, detail: "Synthetic source", availability: "available"});
 
 describe("Suggestion lifecycle through the full editor content reporter", () => {
+  it.each([
+    {action: "choose", freshLabel: "Other"}, {action: "select", freshLabel: "Other"},
+    {action: "choose", freshLabel: "Kerr"}, {action: "select", freshLabel: "Kerr"},
+  ] as const)("binds native $action to the displayed result set before publishing fresh $freshLabel rows", async ({action, freshLabel}) => {
+    const f = await runtime();
+    try {
+      await f.initialize(); f.edit("@"); await f.settle();
+      const initialQuery = f.messages.filter(message => message.type === "linkCompletionQuery").at(-1)!;
+      f.api.resolveLinkCompletionQuery(initialQuery.requestID!, [available("Kerr")]); await f.settle();
+      const oldSurface = f.surface();
+      const oldIndex = oldSurface.items.findIndex(item => item.label === "Kerr");
+      expect(oldIndex).toBeGreaterThanOrEqual(0);
+      const beforeSelection = f.view.state.selection;
+      const beforeHistory = f.commands.undoDepth(f.view.state);
+      const refreshed = await f.api.dispatch(f.request({type: "setPresentation", value: presentation("replacement-catalog")}));
+      expect(refreshed.accepted, refreshed.error).toBe(true);
+      // Start the documented explicit query delay, then drain only provider
+      // microtasks. RAF is held by this fixture, and native's 50ms fallback has
+      // not run: CM has new rows while the real native port still owns old rows.
+      await f.advance(50);
+      const freshQuery = f.messages.filter(message => message.type === "linkCompletionQuery").at(-1)!;
+      expect(freshQuery.requestID).not.toBe(initialQuery.requestID);
+      const insertion = freshLabel === "Kerr" ? "People/Kerr" : freshLabel;
+      f.api.resolveLinkCompletionQuery(freshQuery.requestID!, [{...available(freshLabel), insertion}]);
+      await f.advance(0);
+      const freshIndex = f.completions.currentCompletions(f.view.state).findIndex(item => item.label === freshLabel);
+      expect(freshIndex).toBeGreaterThanOrEqual(0);
+      expect(f.surface().id).toBe(oldSurface.id);
+      expect(f.surface().items[oldIndex].label).toBe("Kerr");
+      const selectedBeforeCallback = f.completions.selectedCompletionIndex(f.view.state);
+      const accepted = f.window.scholiumNativeFloatingEvent(oldSurface.id, action, oldIndex);
+      expect(f.view.state.doc.toString(), "An old visible row must never insert a newly ranked target").toBe("@");
+      expect(f.completions.selectedCompletionIndex(f.view.state)).toBe(selectedBeforeCallback);
+      if (action === "choose") expect(accepted).toBe(false);
+      expect(f.view.state.selection.eq(beforeSelection)).toBe(true);
+      expect(f.commands.undoDepth(f.view.state)).toBe(beforeHistory);
+      expect(f.count("documentChanged")).toBe(1);
+
+      await f.settle();
+      const freshSurface = f.surface();
+      expect(freshSurface.id).not.toBe(oldSurface.id);
+      expect(f.window.scholiumNativeFloatingEvent(oldSurface.id, "choose", oldIndex)).toBe(false);
+      const visibleIndex = freshSurface.items.findIndex(item => item.label === freshLabel);
+      expect(visibleIndex).toBeGreaterThanOrEqual(0);
+      expect(f.window.scholiumNativeFloatingEvent(freshSurface.id, "choose", visibleIndex)).toBe(true); await f.settle();
+      const expected = insertion === freshLabel ? `[[${insertion}]]` : `[[${insertion}|${freshLabel}]]`;
+      expect(f.view.state.doc.toString()).toBe(expected);
+      expect(f.count("documentChanged")).toBe(2);
+      expect(f.commands.undo(f.view)).toBe(true);
+      expect(f.view.state.doc.toString()).toBe("@");
+      expect(f.commands.redo(f.view)).toBe(true);
+      expect(f.view.state.doc.toString()).toBe(expected);
+    } finally { f.destroy(); }
+  });
+
   it("refreshes a changed catalog without dismissing or remounting the active native suggestion list", async () => {
     const f = await runtime();
     const lifetimes = {mounted: 0, removed: 0};
