@@ -9,7 +9,7 @@ import Testing
 struct VaultMutationCoordinatorTests {
     private struct InjectedFailure: Error {}
 
-    @Test("An existing note uses coordinated system replacement and exact readback")
+    @Test("An existing note uses coordinated descriptor replacement and exact readback")
     func successfulExistingUpdate() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -24,7 +24,7 @@ struct VaultMutationCoordinatorTests {
 
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
         #expect(try Data(contentsOf: fixture.root.appendingPathComponent(VaultMutationCoordinator.replacementBackupName(backupID))) == fixture.original)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().count == 1)
     }
 
     @Test("Failures before replacement preserve the source and remove the candidate")
@@ -47,7 +47,28 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: fixture.note) == fixture.original)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().isEmpty)
+    }
+
+    @Test("A peer's in-place edit to the exchange slot survives a refused commit")
+    func changedExchangeSlotRemainsRecoverable() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let backupID = UUID()
+        let slot = fixture.root.appendingPathComponent(VaultMutationCoordinator.replacementBackupName(backupID))
+        let external = Data("unique external slot bytes".utf8)
+        let coordinator = try VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                if phase == .replacing { try external.write(to: slot) }
+            }))
+
+        #expect(throws: VaultRepositoryError.self) {
+            try coordinator.updateExisting(
+                path: fixture.path, expected: fixture.original, candidate: fixture.candidate, backupID: backupID)
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.original)
+        #expect(try Data(contentsOf: slot) == external)
     }
 
     @Test("A failure after replacement does not perform a second source mutation")
@@ -70,7 +91,9 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().count == 1)
+        let retained = try #require(try fixture.exchangeFiles().first)
+        #expect(try Data(contentsOf: retained) == fixture.original)
     }
 
     @Test("An external writer before final authorization causes a conflict")
@@ -96,7 +119,7 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: fixture.note) == external)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().isEmpty)
     }
 
     @Test("A symlink substitution cannot escape the vault")
@@ -129,11 +152,11 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: outside) == outsideBytes)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().isEmpty)
     }
 
-    @Test("A parent-directory exchange cannot retarget the replacement")
-    func parentSymlinkExchange() throws {
+    @Test("A parent-directory exchange cannot retarget the replacement", arguments: [false, true])
+    func parentSymlinkExchange(afterFinalAuthorization: Bool) throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -152,6 +175,7 @@ struct VaultMutationCoordinatorTests {
         let original = Data("authorized original".utf8)
         let candidate = Data("candidate".utf8)
         let outsideBytes = Data("outside sentinel".utf8)
+        let backupID = UUID()
         try original.write(to: parent.appendingPathComponent("Note.md"))
         try outsideBytes.write(to: outside.appendingPathComponent("Note.md"))
         let path = try MarkdownRelativePath("Folder/Note.md")
@@ -162,7 +186,14 @@ struct VaultMutationCoordinatorTests {
                 normalizationSensitive: true
             ),
             hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .finalCheck else { return }
+                guard phase == (afterFinalAuthorization ? .replacing : .finalCheck) else { return }
+                // A redirected absolute-URL replacement can find both operands
+                // in the foreign directory. Descriptor-relative commit must
+                // still affect only the originally authorized parent.
+                for file in try FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil)
+                where file.lastPathComponent.hasPrefix(".scholium-") {
+                    try FileManager.default.copyItem(at: file, to: outside.appendingPathComponent(file.lastPathComponent))
+                }
                 try FileManager.default.moveItem(at: parent, to: detached)
                 try FileManager.default.createSymbolicLink(
                     at: parent,
@@ -176,11 +207,72 @@ struct VaultMutationCoordinatorTests {
                 path: path,
                 expected: original,
                 candidate: candidate,
-                backupID: UUID()
+                backupID: backupID
             )
         }
-        #expect(try Data(contentsOf: detached.appendingPathComponent("Note.md")) == original)
         #expect(try Data(contentsOf: outside.appendingPathComponent("Note.md")) == outsideBytes)
+        if !afterFinalAuthorization {
+            #expect(try Data(contentsOf: detached.appendingPathComponent("Note.md")) == original)
+        } else {
+            #expect(try Data(contentsOf: detached.appendingPathComponent("Note.md")) == candidate)
+            let displaced = detached.appendingPathComponent(VaultMutationCoordinator.replacementBackupName(backupID))
+            #expect(try Data(contentsOf: displaced) == original)
+        }
+    }
+
+    @Test("Descriptor replacement preserves permissions, ACLs, attributes and creation date with a new modification time")
+    func replacementPreservesMetadata() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let fileManager = FileManager.default
+        let creationDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o640, .creationDate: creationDate, .modificationDate: creationDate],
+            ofItemAtPath: fixture.note.path)
+        let chmod = Process()
+        chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        chmod.arguments = ["+a", "everyone allow read", fixture.note.path]
+        try chmod.run()
+        chmod.waitUntilExit()
+        try #require(chmod.terminationStatus == 0)
+        let originalACL = try aclText(at: fixture.note)
+        let attributeName = "com.scholium.replacement-test"
+        let attribute = Data("researcher-owned".utf8)
+        try attribute.withUnsafeBytes { bytes in
+            guard setxattr(fixture.note.path, attributeName, bytes.baseAddress, bytes.count, 0, 0) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
+        let before = try fileManager.attributesOfItem(atPath: fixture.note.path)
+
+        try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
+            path: fixture.path, expected: fixture.original, candidate: fixture.candidate, backupID: UUID())
+
+        let after = try fileManager.attributesOfItem(atPath: fixture.note.path)
+        #expect(after[.posixPermissions] as? NSNumber == before[.posixPermissions] as? NSNumber)
+        #expect(after[.creationDate] as? Date == before[.creationDate] as? Date)
+        #expect(try aclText(at: fixture.note) == originalACL)
+        #expect(try #require(after[.modificationDate] as? Date) > creationDate)
+        var observed = Data(count: attribute.count)
+        let count = observed.withUnsafeMutableBytes {
+            getxattr(fixture.note.path, attributeName, $0.baseAddress, $0.count, 0, 0)
+        }
+        #expect(count == attribute.count)
+        #expect(observed == attribute)
+        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
+    }
+
+    private func aclText(at url: URL) throws -> String {
+        guard let acl = acl_get_file(url.path, ACL_TYPE_EXTENDED) else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        var count: ssize_t = 0
+        guard let text = acl_to_text(acl, &count) else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { acl_free(text) }
+        return String(cString: text)
     }
 
     @Test("A readback mismatch never reports success or rewrites the external bytes")
@@ -206,7 +298,9 @@ struct VaultMutationCoordinatorTests {
             )
         }
         #expect(try Data(contentsOf: fixture.note) == external)
-        #expect(try fixture.replacementFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().count == 1)
+        let retained = try #require(try fixture.exchangeFiles().first)
+        #expect(try Data(contentsOf: retained) == fixture.original)
     }
 
     @Test("Filesystem metadata changes do not become save failures")
@@ -319,11 +413,11 @@ struct VaultMutationCoordinatorTests {
             )
         }
 
-        func replacementFiles() throws -> [URL] {
+        func exchangeFiles() throws -> [URL] {
             try FileManager.default.contentsOfDirectory(
                 at: root,
                 includingPropertiesForKeys: nil
-            ).filter { $0.lastPathComponent.hasPrefix(".scholium-replacement-") }
+            ).filter { $0.lastPathComponent.hasPrefix(".scholium-save-backup-") }
         }
 
         func remove() {

@@ -64,7 +64,7 @@ struct RelatedContentGraphEvaluationTests {
         let corpusVersion = 1
         let judgmentAuthority = "Fixed synthetic agent-authored grades; not researcher acceptance or blind evaluation."
         let treatment =
-            "Identical sources, request, index, and snapshot runtime. Control temporarily marks derived graph state ineligible via existing actor state; treatment restores it. Both arms call discovery.relatedContent. No production switch, source edit, or reindex between arms."
+            "Identical sources, request, index, and snapshot runtime. Control temporarily removes only the graph projection; treatment restores it. Both arms call discovery.relatedContent with current derived state. No production switch, source edit, or reindex between arms."
         let metricDefinition =
             "Grades: 0 irrelevant, 1 indirectly useful, 2 directly useful for the stated synthetic task. Recall@6 counts distinct useful Notes in the first six displayed slots, divided by all judged useful Notes. nDCG@6 uses gain=2^grade-1 and discount=log2(rank+1), with zero gain for repeated Notes and unfilled slots; ideal order includes all judgments. Deltas are withGraph minus withoutGraph. No aggregate or general usefulness claim."
         let cases: [CaseResult]
@@ -379,14 +379,26 @@ struct RelatedContentGraphEvaluationTests {
 }
 
 private extension WorkspaceHandle {
-    /// Test-only access to the existing graph-eligibility seam. Snapshot mode
-    /// has no watcher or other caller here; defer restores the state even when
-    /// retrieval throws. Source bytes, catalog, index and request stay identical.
+    /// Snapshot mode has no watcher or other caller here. Remove only the
+    /// optional graph projection, preserving healthy lexical access; a failed
+    /// derived-state flag would invalidate the control instead of ablating it.
     func relatedContentWithoutGraphForEvaluation(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         try #require(mode == .snapshot)
         try #require(!derivedStateRequiresRefresh)
-        derivedStateRequiresRefresh = true
-        defer { derivedStateRequiresRefresh = false }
+        let original = currentSnapshot
+        let catalog = original.discovery.catalog
+        currentSnapshot = WorkspaceSnapshot(
+            triptych: original.triptych, mode: original.mode, phase: original.phase,
+            generatedAt: original.generatedAt, vaults: original.vaults,
+            discovery: WorkspaceDiscoverySnapshot(
+                catalog: WorkspaceCatalogSnapshot(
+                    generatedAt: catalog.generatedAt, notes: catalog.notes,
+                    attention: catalog.attention, graph: nil),
+                searchGeneration: original.discovery.searchGeneration),
+            research: original.research,
+            sourceInventoryRevision: original.sourceInventoryRevision,
+            documentChangesGeneration: original.documentChangesGeneration)
+        defer { currentSnapshot = original }
         return try await discovery.relatedContent(request)
     }
 }

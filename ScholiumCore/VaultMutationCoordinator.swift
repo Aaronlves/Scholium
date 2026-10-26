@@ -95,14 +95,44 @@ final class VaultMutationCoordinator {
                     )
                 }
 
-                let stagingName = ".scholium-replacement-\(UUID().uuidString.lowercased()).md"
+                // The same transaction-bound slot holds the candidate before
+                // exchange and the displaced source afterwards. A process may
+                // stop at either point without losing the recovery address.
+                let backupName = Self.replacementBackupName(backupID)
                 let stagingFD = try self.openNewFile(
                     candidate,
-                    name: stagingName,
+                    name: backupName,
                     parentFD: parentFD
                 )
                 defer { close(stagingFD) }
-                defer { _ = unlinkat(parentFD, stagingName, 0) }
+                let stagingIdentity = try VaultDescriptorAccess.identity(descriptor: stagingFD)
+                var exchanged = false
+                defer {
+                    // Never remove a peer's substituted entry, or any source
+                    // displaced by a completed/uncertain exchange.
+                    if !exchanged,
+                        (try? self.readFile(descriptor: stagingFD)) == candidate,
+                        (try? VaultDescriptorAccess.identity(name: backupName, parentDescriptor: parentFD)) == stagingIdentity
+                    {
+                        _ = unlinkat(parentFD, backupName, 0)
+                    }
+                }
+                var stagedStatus = stat()
+                guard fstat(stagingFD, &stagedStatus) == 0,
+                    fcopyfile(originalFD, stagingFD, nil, copyfile_flags_t(COPYFILE_METADATA)) == 0
+                else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                // Let the platform copy ACLs, xattrs, ownership and flags, but
+                // retain creation identity and the new content's modification
+                // time. copyfile's stat copy does not include birth time.
+                var attributes = attrlist()
+                attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+                attributes.commonattr = attrgroup_t(ATTR_CMN_CRTIME)
+                var birthTime = originalStatus.st_birthtimespec
+                var times = [originalStatus.st_atimespec, stagedStatus.st_mtimespec]
+                guard fsetattrlist(stagingFD, &attributes, &birthTime, MemoryLayout<timespec>.size, 0) == 0,
+                    futimens(stagingFD, &times) == 0, fsync(stagingFD) == 0,
+                    fsync(parentFD) == 0
+                else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                 try self.hooks.didReach?(.staged)
 
                 let rechecked = try self.readFile(at: name, parentFD: parentFD)
@@ -124,25 +154,26 @@ final class VaultMutationCoordinator {
                     retainedDescriptor: parentFD
                 )
 
-                let stagingURL = targetURL.deletingLastPathComponent()
-                    .appendingPathComponent(stagingName, isDirectory: false)
-                let backupName = Self.replacementBackupName(backupID)
-                guard self.filePresence(name: backupName, parentFD: parentFD) == .absent else {
-                    throw VaultRepositoryError.commitUncertain("The save backup location is not vacant.")
-                }
                 try self.hooks.didReach?(.replacing)
-                do {
-                    _ = try FileManager.default.replaceItemAt(
-                        targetURL,
-                        withItemAt: stagingURL,
-                        backupItemName: backupName,
-                        options: [.withoutDeletingBackupItem]
-                    )
-                } catch {
-                    throw VaultRepositoryError.commitUncertain(
-                        "The coordinated system replacement did not return a proven result: \(error.localizedDescription)"
-                    )
+                guard try VaultDescriptorAccess.identity(name: backupName, parentDescriptor: parentFD) == stagingIdentity,
+                    try self.readFile(descriptor: stagingFD) == candidate
+                else {
+                    throw VaultRepositoryError.commitUncertain("The staged source changed before replacement.")
                 }
+                // Both operands are basenames relative to the authorized open
+                // directory: a concurrent parent-path substitution cannot
+                // redirect this consequential operation to another inode.
+                guard renameatx_np(parentFD, backupName, parentFD, name, UInt32(RENAME_SWAP)) == 0 else {
+                    let code = errno
+                    if code == ENOTSUP || code == EINVAL || code == ENOSYS {
+                        throw VaultRepositoryError.atomicCommitUnsupported(String(cString: strerror(code)))
+                    }
+                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+                exchanged = true
+                // Once exchanged, exact source/recovery proof owns the save
+                // outcome. Directory housekeeping cannot invite a second write.
+                _ = fsync(parentFD)
                 try self.hooks.didReach?(.replaced)
                 try self.hooks.didReach?(.readback)
                 let canonical = try self.readFile(at: name, parentFD: parentFD)
@@ -150,6 +181,11 @@ final class VaultMutationCoordinator {
                     throw VaultRepositoryError.readbackMismatch(
                         expected: DocumentFingerprint(data: candidate),
                         current: DocumentFingerprint(data: canonical)
+                    )
+                }
+                guard try VaultDescriptorAccess.identity(name: name, parentDescriptor: parentFD) == stagingIdentity else {
+                    throw VaultRepositoryError.commitUncertain(
+                        "The canonical source changed identity during replacement readback."
                     )
                 }
                 try self.descriptorAccess.verifyCurrentParent(

@@ -345,7 +345,7 @@ extension AgentChatController {
                                 "The previous turn has ended. Your input is preserved; send it as a new request.", bundle: .module))
                     return
                 }
-                if expectedTurnID == nil { self.configureTools(in: conversationID) }
+                if expectedTurnID == nil { try self.configureTools(in: conversationID) }
                 self.update(in: conversationID) {
                     $0.messages.append(message)
                     $0.pendingMessageID = message.id
@@ -450,6 +450,14 @@ extension AgentChatController {
                 receipt = .received
                 self.persist()
             } catch {
+                if let transportError = error as? CodexConnectionError,
+                    case .capacityExceeded = transportError
+                {
+                    // This error proves the current request was never queued.
+                    // Previously admitted requests fail as disconnected and
+                    // retain their uncertain delivery instead.
+                    receipt = .unavailable
+                }
                 guard self.connectionID == connectionID else { return }
                 guard receipt == .unconfirmed else {
                     if !Task.isCancelled {
@@ -473,41 +481,36 @@ extension AgentChatController {
         }
     }
 
-    private func configureTools(in conversationID: UUID) {
-        guard helperURL != nil else { return }
+    private func configureTools(in conversationID: UUID) throws {
+        let scope = executions[conversationID]?.routeToken ?? UUID()
+        let configuration = try toolConfiguration(token: scope)
         executions[conversationID]?.permission = conversation(conversationID)?.permission ?? .ask
         executions[conversationID]?.notificationTurnID = nil
-        let scope = executions[conversationID]?.routeToken ?? UUID()
         executions[conversationID]?.routeToken = scope
         executions[conversationID]?.admissionID = UUID()
         executions[conversationID]?.displayScope = displayWindow(conversationID)
         executions[conversationID]?.interruptRequestedTurnID = nil
         executions[conversationID]?.runtimeItems.removeAll()
-        executions[conversationID]?.configuration = toolConfiguration(token: scope)
+        executions[conversationID]?.configuration = configuration
     }
 
-    func toolConfiguration(token scope: UUID) -> [String: MCPJSONValue] {
-        guard let helperURL else { return [:] }
-        var server: [String: MCPJSONValue] = [
-            "command": .string(helperURL.path),
-            "args": .array([
-                .string("mcp"), .string("serve"), .string("--conversation-token"),
-                .string(scope.uuidString),
-            ]),
-            "required": .bool(true), "tool_timeout_sec": .integer(600),
-        ]
-        // Preserve the App's explicitly isolated QA bridge, never point QA at user vaults.
-        if let home = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"] {
-            server["env"] = .object(["SCHOLIUM_HOME": .string(home)])
+    func toolConfiguration(token scope: UUID) throws -> [String: MCPJSONValue] {
+        guard let helperURL, let appBridgeContainerURL else {
+            throw ScholiumAppBridgeError.unavailable
         }
-        let zoteroServer: [String: MCPJSONValue] = [
-            "command": .string(helperURL.path),
-            "args": .array([.string("zotero"), .string("mcp"), .string("serve")]),
-            "required": .bool(true), "tool_timeout_sec": .integer(600),
-        ]
+        // Both helpers bind the App's resolved endpoint, independent of runtime
+        // environment filtering or the helper build's default path policy.
+        func server(arguments: [String]) -> MCPJSONValue {
+            .object([
+                "command": .string(helperURL.path),
+                "args": .array(arguments.map(MCPJSONValue.string)),
+                "env": .object(["SCHOLIUM_APP_BRIDGE_CONTAINER": .string(appBridgeContainerURL.path)]),
+                "required": .bool(true), "tool_timeout_sec": .integer(600),
+            ])
+        }
         let servers: [String: MCPJSONValue] = [
-            "scholium": .object(server),
-            "scholium-zotero": .object(zoteroServer),
+            "scholium": server(arguments: ["mcp", "serve", "--conversation-token", scope.uuidString]),
+            "scholium-zotero": server(arguments: ["zotero", "mcp", "serve"]),
         ]
         return ["mcp_servers": .object(servers)]
     }

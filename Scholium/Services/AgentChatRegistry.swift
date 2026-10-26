@@ -6,6 +6,7 @@ import ScholiumContracts
 final class AgentChatRegistry {
     private var controllers: [UUID: AgentChatController] = [:]
     private let root: URL
+    private let appBridgeContainerURL: URL?
     private let contextAccessPreferences: AgentContextAccessPreferences
     private let workspaceDirectory: @MainActor (UUID) async throws -> URL
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
@@ -16,7 +17,7 @@ final class AgentChatRegistry {
     private let notificationSink: AgentChatNotificationSink
 
     init(
-        root: URL,
+        root: URL, appBridgeContainerURL: URL?,
         contextAccessPreferences: AgentContextAccessPreferences = .shared,
         workspaceDirectory: @escaping @MainActor (UUID) async throws -> URL,
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
@@ -30,6 +31,7 @@ final class AgentChatRegistry {
         handler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.root = root
+        self.appBridgeContainerURL = appBridgeContainerURL
         self.contextAccessPreferences = contextAccessPreferences
         self.workspaceDirectory = workspaceDirectory
         self.displayWindow = displayWindow
@@ -45,6 +47,7 @@ final class AgentChatRegistry {
         let controller = AgentChatController(
             triptychID: triptychID,
             root: root,
+            appBridgeContainerURL: appBridgeContainerURL,
             workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) },
             contextAccessPreferences: contextAccessPreferences,
             displayWindow: { displayWindow(triptychID, $0) },

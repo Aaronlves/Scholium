@@ -245,7 +245,9 @@ private final class UnusedChatMaterialFixture {
         self.reader = reader
         let workspace = root
         controller = AgentChatController(
-            triptychID: triptychID, root: chatRoot, workspaceDirectory: { workspace },
+            triptychID: triptychID, root: chatRoot,
+            appBridgeContainerURL: root.appendingPathComponent("AppBridge", isDirectory: true),
+            workspaceDirectory: { workspace },
             methodDefaults: defaults, contextAccessPreferences: AgentContextAccessPreferences(defaults: defaults),
             loadHistory: { try await reader.load() },
             toolHandler: { request, _ in

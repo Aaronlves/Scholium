@@ -48,9 +48,10 @@ enters Registry Recovery; unsafe, unreadable or newer state never yields an empt
 registry or temporary fallback. Relinking validates ownership without scanning or
 mutating Markdown. QA uses the same validation.
 
-Live runtimes pool vault repositories, catalogs and watchers for borrowing windows.
-Snapshot runtimes load once without watchers and shut down after use. Replaced
-roots remain unavailable until explicit access restoration renews authorization.
+Live runtimes pool repositories, catalogs and watchers across windows; snapshot
+runtimes load once without watchers, then shut down. Replaced roots remain unavailable until
+explicit access restoration. Derived queries recheck this Handle-owned access at
+admission and delivery; last-good snapshots remain inspectable for Recovery.
 
 Live opening publishes the requested vault's catalog and portable identities
 as `.opening`; `WorkspaceSearchIndexOwner` remains lazy. Document load and exact

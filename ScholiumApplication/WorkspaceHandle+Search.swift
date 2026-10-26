@@ -107,6 +107,36 @@ struct RelatedContentRefreshWaiter {
 }
 
 extension WorkspaceHandle {
+    /// Derived reads bind admission and delivery to the activation's current
+    /// source access. Root invalidation remains latched until replacement.
+    private func withDiscoveryAccess<Value: Sendable>(
+        _ operation: () async throws -> Value
+    ) async throws -> Value {
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        try Task.checkCancellation()
+        let value = try await operation()
+        #if DEBUG
+            await discoveryResultDeliveryBarrierForTesting?()
+        #endif
+        try Task.checkCancellation()
+        try requireActive()
+        try requireRootAuthoritiesAvailable()
+        return value
+    }
+
+    func links(for note: VaultQualifiedNoteID, direction: WorkspaceLinkDirection) async throws -> [LinkGraphEdge] {
+        try await withDiscoveryAccess {
+            try WorkspaceGraphQueries(catalog: currentSnapshot.discovery.catalog).links(for: note, direction: direction)
+        }
+    }
+
+    func linkDiagnostics() async throws -> [LinkGraphDiagnostic] {
+        try await withDiscoveryAccess {
+            try WorkspaceGraphQueries(catalog: currentSnapshot.discovery.catalog).diagnostics()
+        }
+    }
+
     /// Observes only work already admitted by the owning refresh pumps. Each
     /// waiter ends at the captured batch boundary, not pump quiescence. Stream
     /// cancellation removes the query without cancelling shared source work.
@@ -164,6 +194,10 @@ extension WorkspaceHandle {
     /// result state, and never replaces the foreground's current-source checks.
     @discardableResult
     func prepareRelatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentPreparationMeasurement? {
+        try await withDiscoveryAccess { try await prepareAuthorizedRelatedContent(request) }
+    }
+
+    private func prepareAuthorizedRelatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentPreparationMeasurement? {
         try requireActive()
         try Task.checkCancellation()
         guard currentSnapshot.phase.isComplete else { throw ScholiumApplicationError.workspaceStillLoading(id) }
@@ -235,6 +269,10 @@ extension WorkspaceHandle {
     }
 
     func writingCompletions(matching query: String) async throws -> [String] {
+        try await withDiscoveryAccess { try await authorizedWritingCompletions(matching: query) }
+    }
+
+    private func authorizedWritingCompletions(matching query: String) async throws -> [String] {
         try requireActive()
         try Task.checkCancellation()
         guard currentSnapshot.phase.isComplete else { throw WritingCompletionLookupError.indexNotCurrent }
@@ -304,6 +342,10 @@ extension WorkspaceHandle {
     }
 
     func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
+        try await withDiscoveryAccess { try await authorizedRelatedContent(request) }
+    }
+
+    private func authorizedRelatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
         lastRelatedContentMeasurement = nil
         let started = ContinuousClock.now
         try requireActive()
@@ -491,6 +533,10 @@ extension WorkspaceHandle {
     }
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {
+        try await withDiscoveryAccess { try await authorizedSearch(request) }
+    }
+
+    private func authorizedSearch(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
         if let diagnostic = searchScopeDiagnostic(request) {
             return await searchDiagnosticResponse(
@@ -600,6 +646,12 @@ extension WorkspaceHandle {
     }
 
     func searchCompletions(
+        _ request: SearchCompletionRequest
+    ) async throws -> SearchCompletionResponse {
+        try await withDiscoveryAccess { try await authorizedSearchCompletions(request) }
+    }
+
+    private func authorizedSearchCompletions(
         _ request: SearchCompletionRequest
     ) async throws -> SearchCompletionResponse {
         try requireActive()

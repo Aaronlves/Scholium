@@ -24,7 +24,11 @@ extension AgentChatController {
         connectedAutomaticallyDiscovered = automaticallyDiscovered
         connectionState = .connecting
         connectionError = nil
-        let connection = CodexAppServer()
+        #if DEBUG
+            let connection = runtimeFactoryForTesting?() ?? CodexAppServer()
+        #else
+            let connection = CodexAppServer()
+        #endif
         let connectionToken = UUID()
         runtime = connection
         connectionID = connectionToken

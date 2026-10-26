@@ -239,7 +239,8 @@ struct AgentChatCurrentStateObservationTests {
         let preferences = AgentContextAccessPreferences(defaults: defaults)
         let capture = ObservationCapture()
         let registry = AgentChatRegistry(
-            root: root, contextAccessPreferences: preferences, workspaceDirectory: { _ in root },
+            root: root, appBridgeContainerURL: root.appendingPathComponent("AppBridge", isDirectory: true),
+            contextAccessPreferences: preferences, workspaceDirectory: { _ in root },
             displayWindow: { _, _ in capture.visible ? capture.scope : nil },
             observeCurrentState: { triptych, scope, conversation, admitted in
                 try await capture.observe(triptych: triptych, scope: scope, conversation: conversation, admitted: admitted)

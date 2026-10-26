@@ -494,6 +494,7 @@ struct AgentChatTests {
         let registryPreferences = AgentChatFixturePreferenceStore()
         let registry = AgentChatRegistry(
             root: root,
+            appBridgeContainerURL: root.appendingPathComponent("AppBridge", isDirectory: true),
             contextAccessPreferences: AgentContextAccessPreferences(defaults: registryPreferences.defaults),
             workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: $0) }, previewUpdate: preview
         ) { request, _ in

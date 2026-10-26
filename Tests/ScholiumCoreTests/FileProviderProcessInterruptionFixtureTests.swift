@@ -64,7 +64,7 @@ struct FileProviderProcessInterruptionFixtureTests {
 
         repository = nil
         let reopened = try fixture.repository()
-        #expect(try fixture.stagedFiles().isEmpty)
+        #expect(try fixture.exchangeFiles().isEmpty)
         #expect(try fixture.pendingMutationDirectories().isEmpty)
         #expect(try await reopened.load(relativePath: fixture.relativePath).rawContent == fixture.external)
         #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
@@ -146,15 +146,21 @@ struct FileProviderProcessInterruptionFixtureTests {
             ? fixture.original
             : fixture.candidateData
         #expect(try Data(contentsOf: fixture.note) == expectedCanonical)
-        let stagedFiles = try fixture.stagedFiles()
-        if point == .staged {
-            #expect(stagedFiles.count == 1)
-            #expect(try Data(contentsOf: stagedFiles[0]) == fixture.candidateData)
+        let exchangeFiles = try fixture.exchangeFiles()
+        if point == .staged || point == .replaced || point == .replacedExternal {
+            try #require(exchangeFiles.count == 1)
+            let slot = try #require(exchangeFiles.first)
+            let slotBytes =
+                point == .staged
+                ? fixture.candidateData
+                : point == .replacedExternal ? fixture.externalData : fixture.original
+            #expect(try Data(contentsOf: slot) == slotBytes)
         } else {
-            #expect(stagedFiles.isEmpty)
+            #expect(exchangeFiles.isEmpty)
         }
 
         let reopened = try fixture.repository()
+        #expect(try fixture.exchangeFiles().isEmpty)
         let reopenedDocument = try await reopened.load(relativePath: fixture.relativePath)
         let expectedCanonicalContent =
             point == .staged || point == .unstaged
@@ -168,9 +174,10 @@ struct FileProviderProcessInterruptionFixtureTests {
             #expect(try await repeated.interruptedSaveRecoveries().count == (point == .staged || point == .replacedExternal ? 1 : 0))
         }
         if point == .staged {
-            #expect(pending.count == 1)
+            try #require(pending.count == 1)
+            let transaction = try #require(pending.first)
             #expect(
-                try Data(contentsOf: pending[0].appendingPathComponent("candidate.md"))
+                try Data(contentsOf: transaction.appendingPathComponent("candidate.md"))
                     == fixture.candidateData
             )
             #expect(
@@ -457,11 +464,11 @@ struct FileProviderProcessInterruptionFixtureTests {
             }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         }
 
-        func stagedFiles() throws -> [URL] {
+        func exchangeFiles() throws -> [URL] {
             try FileManager.default.contentsOfDirectory(
                 at: note.deletingLastPathComponent(),
                 includingPropertiesForKeys: nil
-            ).filter { $0.lastPathComponent.hasPrefix(".scholium-replacement-") }
+            ).filter { $0.lastPathComponent.hasPrefix(".scholium-save-backup-") }
         }
 
         func verifyOwnedWriterTermination() throws {

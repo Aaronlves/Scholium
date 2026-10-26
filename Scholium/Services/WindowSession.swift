@@ -116,6 +116,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         if let current = chatRegistryStorage { return current }
         let registry = AgentChatRegistry(
             root: applicationSupportURL.appendingPathComponent("Chat"),
+            appBridgeContainerURL: appBridgeContainerURL,
             workspaceDirectory: { [applicationRuntime] id in
                 let workspace = try await applicationRuntime.workspace(id: id)
                 return try await workspace.agentChatWorkspaceURL()
@@ -147,6 +148,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         return registry
     }
     private(set) var appBridge: ScholiumAppBridgeServer?
+    private(set) var appBridgeContainerURL: URL?
     private(set) var appBridgeStartupFailure: ScholiumAppBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
@@ -241,6 +243,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             ) { request in
                 await router.handle(request)
             }
+            appBridgeContainerURL = bridgeContainerURL
             appBridgeStartupFailure = nil
         } catch let error as ScholiumAppBridgeError {
             appBridge = nil

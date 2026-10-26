@@ -103,10 +103,12 @@ recovery notices retain actions at 300/520 points. Original private-Note/install
 binary reproduction and human VoiceOver remain unverified. Evidence:
 `.build/image-inline-evidence/RESULTS.md`.
 
-**2026-10-21 — Full gate (working tree, `9c6a99b0` base):** Default `verify.sh`
-passes all 14 phases, including measurement/display, WebKit and clean Release
-compilation: `.build/ci-verification/runs/full-20261020T214014-38151/summary.md`.
-Prior Settings/exact-source and performance comparisons remain in
+**2026-10-26 — Architecture repairs (`7199e207` base):** Default `verify.sh`
+passes all 14 phases, including measurements, WebKit and clean Release:
+`.build/ci-verification/runs/full-20261026T153207-95822/summary.md`.
+Regressions cover descriptor-bound saving/restart recovery, helper isolation,
+discovery revocation and bounded transport. Removing discovery's final guard fails
+seven controlled cases. Settings/performance baselines:
 `.build/performance-evidence/current-settings-phase-summary.json` and
 `current-performance-phase-summary.json`. Declared skips remain; packaged,
 real-service and human acceptance are unproved.

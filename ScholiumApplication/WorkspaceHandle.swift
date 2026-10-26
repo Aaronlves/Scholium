@@ -129,6 +129,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var reviewedSnapshotPublicationBarrierForTesting: (@Sendable () async -> Void)?
         var preparedSourceCatalogBarrierForTesting: (@Sendable (UUID) async -> Void)?
         var relatedContentFinalValidationBarrierForTesting: (@Sendable () async -> Void)?
+        var discoveryResultDeliveryBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setDiscoveryResultDeliveryBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            discoveryResultDeliveryBarrierForTesting = barrier
+        }
 
         func setRelatedContentFinalValidationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
             relatedContentFinalValidationBarrierForTesting = barrier

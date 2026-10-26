@@ -463,16 +463,11 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection
     ) async throws -> [LinkGraphEdge] {
-        try await graphQueries().links(for: note, direction: direction)
+        try await reference.requireHandle().links(for: note, direction: direction)
     }
 
     public func linkDiagnostics() async throws -> [LinkGraphDiagnostic] {
-        try await graphQueries().diagnostics()
-    }
-
-    private func graphQueries() async throws -> WorkspaceGraphQueries {
-        let handle = try await reference.requireHandle()
-        return WorkspaceGraphQueries(catalog: try await handle.snapshot().discovery.catalog)
+        try await reference.requireHandle().linkDiagnostics()
     }
 }
 

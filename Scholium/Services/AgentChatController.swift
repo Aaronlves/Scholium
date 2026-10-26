@@ -93,6 +93,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private var capabilityObservation: AnyCancellable?
     let triptychID: UUID
     let runtimeHome: URL
+    let appBridgeContainerURL: URL?
     let workspaceDirectory: @MainActor () async throws -> URL
     var connectedHome: URL?
     let loadHistory: @MainActor () async throws -> AgentChatHistorySnapshot
@@ -110,6 +111,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     let contextAccessPreferences: AgentContextAccessPreferences
     let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
     var runtime: CodexAppServer?
+    #if DEBUG
+        var runtimeFactoryForTesting: (() -> CodexAppServer)?
+    #endif
     @Published var writingAssistanceExecution: CodexWritingAssistance?
     var writingAssistanceID: UUID?
     var eventTask: Task<Void, Never>?
@@ -143,7 +147,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var connectionIntentKey: String { "agent.codex.connected.\(triptychID.uuidString)" }
 
     init(
-        triptychID: UUID, root: URL,
+        triptychID: UUID, root: URL, appBridgeContainerURL: URL?,
         workspaceDirectory: @escaping @MainActor () async throws -> URL,
         methodDefaults: UserDefaults = .standard,
         contextAccessPreferences: AgentContextAccessPreferences = .shared,
@@ -161,6 +165,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         toolHandler: @escaping @MainActor (ScholiumMCPBridgeRequest, AgentMutationAdmission?) async -> ScholiumMCPBridgeResponse
     ) {
         self.triptychID = triptychID
+        self.appBridgeContainerURL = appBridgeContainerURL
         self.contextAccessPreferences = contextAccessPreferences
         self.workspaceDirectory = workspaceDirectory
         self.toolHandler = toolHandler
@@ -398,7 +403,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         } catch let error as CodexConnectionError {
             let failure: AgentChatWritingContinuationFailure
             switch error {
-            case .disconnected, .server: failure = .connectionError
+            case .disconnected, .capacityExceeded, .server: failure = .connectionError
             case .timedOut: failure = .timedOut
             case .invalidMessage, .installationChanged: failure = .serviceError
             }

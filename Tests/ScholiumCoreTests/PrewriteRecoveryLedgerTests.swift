@@ -6,6 +6,26 @@ import Testing
 
 @Suite("Interrupted save transactions")
 struct PrewriteRecoveryLedgerTests {
+    @Test("An interruption before exchange retains the candidate without inventing displaced source")
+    func stagedCandidateIsNotDisplacedSource() throws {
+        let fixture = try Fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try fixture.writeVault("before", path: "Note.md")
+        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
+        let transaction = try ledger.beginMutation(
+            relativePath: "Note.md", expected: Data("before".utf8), candidate: Data("candidate".utf8))
+        // The transaction-bound exchange slot contains our candidate until
+        // one atomic swap makes it the displaced source.
+        try fixture.writeVault("candidate", path: transaction.backupPath.rawValue)
+
+        let reopened = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        let retained = try #require(reopened.retainedMutations().only)
+        #expect(retained.displaced == nil)
+        #expect(retained.recoveryExpected == DocumentFingerprint(content: "before"))
+        #expect(try reopened.candidateData(for: retained) == Data("candidate".utf8))
+        #expect(try Data(contentsOf: fixture.vault.appendingPathComponent("Note.md")) == Data("before".utf8))
+    }
+
     @Test("An interrupted manifest publication does not hide a verified recovery")
     func incompleteTransactionDoesNotHideRecovery() throws {
         let fixture = try Fixture()

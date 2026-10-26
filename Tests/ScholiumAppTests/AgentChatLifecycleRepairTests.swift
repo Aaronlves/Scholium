@@ -1,13 +1,43 @@
 import Foundation
-import ScholiumApplication
 import ScholiumContracts
 import SwiftUI
 import Testing
 
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 @Suite("Chat lifecycle repairs", .serialized) @MainActor
 struct AgentChatLifecycleRepairTests {
+    #if DEBUG
+        @Test("Transport refusal before queueing restores the exact unsent draft", .timeLimit(.minutes(1)))
+        func transportCapacityPreservesUnsentDraft() async throws {
+            try await withController(runtimeFactory: {
+                CodexAppServer(
+                    limits: .init(
+                        incomingCount: 256, incomingBytes: 16 * 1_024 * 1_024,
+                        outgoingCount: 128, outgoingBytes: 128 * 1_024, pendingOperations: 128))
+            }) { controller in
+                let draft = String(repeating: "x", count: 256 * 1_024)
+                let conversationID = try #require(controller.selectedID)
+                controller.editDraft(draft)
+                try #require(controller.canSend)
+                controller.send()
+                let operation = try #require(controller.executions[conversationID]?.operationTask)
+                await operation.value
+                let conversation = try #require(controller.conversation(conversationID))
+                #expect(conversation.draft.utf8.elementsEqual(draft.utf8))
+                #expect(conversation.pendingMessageID == nil)
+                #expect(conversation.messages.isEmpty)
+                #expect(conversation.lastRunStatus != .uncertain)
+                #expect(controller.materialErrors[conversationID] == nil)
+                #expect(conversation.threadID != nil)
+                #expect(!FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("last-turn.json").path))
+                try await controller.flushPersistence()
+                #expect(controller.historySaveError == nil)
+            }
+        }
+    #endif
+
     @Test("Repeated Sign In joins one pending request without replacing connection setup")
     func loginIsDeduplicated() async throws {
         try await withController(signedOut: true) { controller in
@@ -186,7 +216,10 @@ struct AgentChatLifecycleRepairTests {
             try await Task.sleep(for: .milliseconds(10))
         }
     }
-    private func withController(signedOut: Bool = false, _ body: (AgentChatController) async throws -> Void) async throws {
+    private func withController(
+        signedOut: Bool = false, runtimeFactory: (() -> CodexAppServer)? = nil,
+        _ body: (AgentChatController) async throws -> Void
+    ) async throws {
         let root = repository.appendingPathComponent(".build/chat-lifecycle-repair-tests/\(UUID())")
         let suite = "scholium.qa.chatLifecycleRepair.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -197,6 +230,9 @@ struct AgentChatLifecycleRepairTests {
         let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
+        #if DEBUG
+            controller.runtimeFactoryForTesting = runtimeFactory
+        #endif
         controller.openAuthenticationURL = { _ in Issue.record("A fixture must never open live authentication") }
         do {
             #expect(await controller.waitUntilLoaded())

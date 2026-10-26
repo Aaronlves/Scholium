@@ -4,6 +4,9 @@ import Subprocess
 
 public enum CodexConnectionError: LocalizedError, Sendable {
     case disconnected, timedOut, invalidMessage, installationChanged
+    /// The current outbound operation was refused before queueing or writing.
+    /// Previously accepted operations fail as disconnected and remain uncertain.
+    case capacityExceeded
     case server(String)
     public var errorDescription: String? {
         switch self {
@@ -11,6 +14,7 @@ public enum CodexConnectionError: LocalizedError, Sendable {
         case .timedOut: "Codex did not confirm the request. Check its outcome before sending again."
         case .invalidMessage: "Codex returned an invalid protocol message."
         case .installationChanged: "The Codex installation changed. Reconnect after checking the installation."
+        case .capacityExceeded: "Codex exceeded its transport capacity and disconnected. Check the conversation before sending again."
         case .server(let message): message
         }
     }
@@ -19,7 +23,8 @@ public enum CodexConnectionError: LocalizedError, Sendable {
 /// Official App Server transport only. It owns no Agent loop or research state.
 public actor CodexAppServer {
     public nonisolated let events: AsyncStream<[String: MCPJSONValue]>
-    private let continuation: AsyncStream<[String: MCPJSONValue]>.Continuation
+    private let incoming: CodexTransportBuffer<[String: MCPJSONValue]>
+    private let limits: CodexTransportLimits
     private struct Outbound: Sendable {
         enum Destination: Sendable {
             case request(Int)
@@ -30,7 +35,7 @@ public actor CodexAppServer {
         var admission: (@Sendable () async -> Bool)? = nil
     }
     private var connectionTask: Task<Void, Never>?
-    private var outgoing: AsyncStream<Outbound>.Continuation?
+    private var outgoing: CodexTransportBuffer<Outbound>?
     private var startup: [CheckedContinuation<Void, Error>] = []
     private var writes: [UUID: CheckedContinuation<Void, Error>] = [:]
     private var isReady = false
@@ -43,15 +48,24 @@ public actor CodexAppServer {
     private static let maximumFrameBytes = 8 * 1_024 * 1_024
 
     public init() {
-        let stream = AsyncStream<[String: MCPJSONValue]>.makeStream()
-        events = stream.stream
-        continuation = stream.continuation
+        self.init(limits: .standard)
+    }
+
+    init(limits: CodexTransportLimits) {
+        precondition(limits.pendingOperations > 0)
+        self.limits = limits
+        let incoming = CodexTransportBuffer<[String: MCPJSONValue]>(
+            maximumCount: limits.incomingCount, maximumBytes: limits.incomingBytes)
+        self.incoming = incoming
+        // Unfolding adds no second buffer. The standard stream owns suspended
+        // consumers and cancellation; the bounded owner accounts each dequeue.
+        events = AsyncStream(unfolding: { await incoming.next() }, onCancel: { incoming.finish() })
     }
 
     deinit {
         outgoing?.finish()
         connectionTask?.cancel()
-        continuation.finish()
+        incoming.finish()
     }
 
     public func start(
@@ -68,8 +82,9 @@ public actor CodexAppServer {
                 attributes: [.posixPermissions: 0o700])
             let token = UUID()
             generation = token
-            let queue = AsyncStream<Outbound>.makeStream()
-            outgoing = queue.continuation
+            let queue = CodexTransportBuffer<Outbound>(
+                maximumCount: limits.outgoingCount, maximumBytes: limits.outgoingBytes)
+            outgoing = queue
             let environment = Self.processEnvironment(ProcessInfo.processInfo.environment, home: home)
             // Own exactly one task for the connection. All process handles stay inside run.
             connectionTask = Task { [weak self] in
@@ -109,7 +124,7 @@ public actor CodexAppServer {
                                 throw CodexConnectionError.disconnected
                             }
                             group.addTask { [weak self] in
-                                for await frame in queue.stream {
+                                while let frame = await queue.next() {
                                     try Task.checkCancellation()
                                     guard await self?.admitted(frame, token: token) == true else { continue }
                                     let count = try await execution.standardInputWriter.write(frame.data)
@@ -131,7 +146,14 @@ public actor CodexAppServer {
         }
         let token = generation
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { startup.append($0) }
+            try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<Void, Error>) in
+                guard startup.count < limits.pendingOperations else {
+                    interruptForCapacity()
+                    waiter.resume(throwing: CodexConnectionError.capacityExceeded)
+                    return
+                }
+                startup.append(waiter)
+            }
         } onCancel: {
             Task { await self.cancelStartup(token: token) }
         }
@@ -168,6 +190,7 @@ public actor CodexAppServer {
     {
         try Task.checkCancellation()
         guard isReady, let outgoing else { throw CodexConnectionError.disconnected }
+        try requireOperationCapacity()
         nextID += 1
         let id = nextID
         let data = try encode(["id": .integer(id), "method": .string(method), "params": .object(params)])
@@ -178,7 +201,14 @@ public actor CodexAppServer {
                     return
                 }
                 pending[id] = reply
-                outgoing.yield(Outbound(destination: .request(id), data: data))
+                guard outgoing.offer(Outbound(destination: .request(id), data: data), bytes: data.count) else {
+                    // This request never entered the writer's FIFO. Separate
+                    // definite local rejection from accepted, uncertain RPCs.
+                    pending.removeValue(forKey: id)
+                    interruptForCapacity()
+                    reply.resume(throwing: CodexConnectionError.capacityExceeded)
+                    return
+                }
                 timeouts[id] = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(90)) } catch { return }
                     await self?.fail(id: id, error: CodexConnectionError.timedOut)
@@ -211,7 +241,15 @@ public actor CodexAppServer {
     }
 
     private func encode(_ value: [String: MCPJSONValue]) throws -> Data {
-        try JSONEncoder().encode(MCPJSONValue.object(value)) + Data([10])
+        let data = try JSONEncoder().encode(MCPJSONValue.object(value))
+        // Several individually valid materials can exceed the incoming 8 MiB
+        // ceiling. The complete outgoing envelope, including its newline,
+        // uses the independent outgoing queue byte budget.
+        guard data.count < limits.outgoingBytes else {
+            interruptForCapacity()
+            throw CodexConnectionError.capacityExceeded
+        }
+        return data + Data([10])
     }
 
     private func write(
@@ -219,6 +257,7 @@ public actor CodexAppServer {
     ) async throws {
         try Task.checkCancellation()
         guard isReady, let outgoing else { throw CodexConnectionError.disconnected }
+        try requireOperationCapacity()
         let id = UUID()
         let data = try encode(value)
         try await withTaskCancellationHandler {
@@ -228,7 +267,12 @@ public actor CodexAppServer {
                     return
                 }
                 writes[id] = reply
-                outgoing.yield(Outbound(destination: .message(id), data: data, admission: admission))
+                guard outgoing.offer(Outbound(destination: .message(id), data: data, admission: admission), bytes: data.count) else {
+                    writes.removeValue(forKey: id)
+                    interruptForCapacity()
+                    reply.resume(throwing: CodexConnectionError.capacityExceeded)
+                    return
+                }
             }
         } onCancel: {
             Task { await self.cancelWrite(id: id) }
@@ -279,7 +323,10 @@ public actor CodexAppServer {
                 throw CodexConnectionError.invalidMessage
             }
             if object["method"] != nil {
-                continuation.yield(object)
+                guard incoming.offer(object, bytes: frame.count) else {
+                    interruptForCapacity()
+                    throw CodexConnectionError.capacityExceeded
+                }
             } else if let id = object["id"]?.intValue, let callback = pending.removeValue(forKey: id) {
                 timeouts.removeValue(forKey: id)?.cancel()
                 if let error = object["error"]?.objectValue {
@@ -308,7 +355,28 @@ public actor CodexAppServer {
         connectionTask = nil
         isClosing = false
         generation = UUID()
-        if unexpected { continuation.yield(["method": .string("scholium/disconnected")]) }
+        if unexpected { incoming.offerTerminal(["method": .string("scholium/disconnected")]) }
+    }
+
+    private func requireOperationCapacity() throws {
+        guard pending.count + writes.count < limits.pendingOperations else {
+            interruptForCapacity()
+            throw CodexConnectionError.capacityExceeded
+        }
+    }
+
+    private func interruptForCapacity() {
+        guard !isClosing else { return }
+        let notify = isReady
+        isClosing = true
+        clearPending(startupError: CodexConnectionError.capacityExceeded)
+        connectionTask?.cancel()
+        if notify {
+            incoming.offerTerminal([
+                "method": .string("scholium/disconnected"),
+                "params": .object(["reason": .string("capacityExceeded")]),
+            ])
+        }
     }
 
     private func clearPending(startupError: Error) {

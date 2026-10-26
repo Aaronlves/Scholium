@@ -158,8 +158,8 @@ final class PrewriteRecoveryLedger {
         }
     }
 
-    /// Capture the system-preserved original before either backup or transaction
-    /// cleanup. A late external revision becomes the existing Recovery candidate.
+    /// Reconcile the exchange slot before either it or the transaction is removed.
+    /// Before exchange it holds our candidate; afterwards it holds displaced source.
     func reconcileReplacementBackup(
         _ transaction: MutationTransaction,
         access: VaultDescriptorAccess,
@@ -187,7 +187,10 @@ final class PrewriteRecoveryLedger {
             return transaction
         }
         let fingerprint = DocumentFingerprint(data: data)
-        if fingerprint != transaction.expected {
+        // Either known source is already durable in this transaction. An
+        // interrupted pre-exchange candidate must not invent an external
+        // displaced version or change the restore precondition.
+        if fingerprint != transaction.expected && fingerprint != transaction.candidate {
             if let displaced = transaction.displaced, displaced != fingerprint {
                 throw VaultRepositoryError.recoveryLedgerUnavailable("The retained external source changed; its backup remains untouched.")
             }

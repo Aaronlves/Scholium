@@ -1245,7 +1245,7 @@ extension ScholiumErrorLocalization {
             }
         case let error as CodexConnectionError:
             return switch error {
-            case .disconnected: ScholiumL10n.string("Codex disconnected. Check the conversation before sending again.", locale: locale)
+            case .disconnected, .capacityExceeded: ScholiumL10n.string("Codex disconnected. Check the conversation before sending again.", locale: locale)
             case .timedOut: ScholiumL10n.string("Codex did not confirm the request. Check its outcome before sending again.", locale: locale)
             case .invalidMessage: ScholiumL10n.string("Codex returned an invalid protocol message.", locale: locale)
             case .installationChanged: ScholiumL10n.string("The Codex installation changed. Reconnect after checking the installation.", locale: locale)

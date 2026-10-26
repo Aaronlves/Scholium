@@ -1,8 +1,9 @@
 import Darwin
 import Foundation
-import ScholiumApplication
 import ScholiumContracts
 import Testing
+
+@testable import ScholiumApplication
 
 @Suite("Codex subprocess transport")
 struct CodexAppServerTransportTests {
@@ -226,6 +227,163 @@ struct CodexAppServerTransportTests {
             #expect(try await runtime.request("echo") == .object([:]))
         }
     }
+
+    @Test("A paused event consumer cannot grow the FIFO; its accepted prefix and disconnect survive", arguments: [false, true])
+    func incomingOverloadIsExplicit(byteLimit: Bool) async throws {
+        let limits = CodexTransportLimits(
+            incomingCount: byteLimit ? 8 : 2, incomingBytes: byteLimit ? 600 : 2_048,
+            outgoingCount: 8, outgoingBytes: 4_096, pendingOperations: 8)
+        try await withTransportFixture(limits: limits) { runtime, fixture in
+            let pid = pid_t(try #require(try await runtime.request("pid").intValue))
+            do {
+                _ = try await runtime.request(
+                    "burst",
+                    params: [
+                        "count": .integer(4), "text": .string(String(repeating: "x", count: byteLimit ? 400 : 32)),
+                    ])
+                Issue.record("An unread event burst beyond either budget must disconnect")
+            } catch CodexConnectionError.disconnected {}
+
+            // No event iterator ran during the burst. A reserved control slot
+            // preserves disconnect after every event accepted before overflow.
+            for index in 0..<(byteLimit ? 1 : 2) {
+                let event = try #require(await runtime.events.first { _ in true })
+                #expect(event["method"]?.stringValue == "fixture/event")
+                #expect(event["params"]?.objectValue?["index"]?.intValue == index)
+            }
+            let terminal = try #require(await runtime.events.first { _ in true })
+            #expect(terminal["method"]?.stringValue == "scholium/disconnected")
+            #expect(terminal["params"]?.objectValue?["reason"]?.stringValue == "capacityExceeded")
+            await runtime.close()
+            expectProcessReaped(pid)
+            try await runtime.start(executable: fixture.executable, home: fixture.root, workingDirectory: fixture.root)
+            #expect(try await runtime.request("echo") == .object([:]))
+        }
+    }
+
+    @Test("A full event FIFO does not block RPC replies on the same stdout")
+    func eventConsumerDoesNotOwnRPCProgress() async throws {
+        let limits = CodexTransportLimits(
+            incomingCount: 2, incomingBytes: 2_048,
+            outgoingCount: 8, outgoingBytes: 4_096, pendingOperations: 8)
+        try await withTransportFixture(limits: limits) { runtime, _ in
+            #expect(try await runtime.request("burst", params: ["count": .integer(2)]) == .string("burst sent"))
+            #expect(try await runtime.request("echo", params: ["alive": .bool(true)]) == .object(["alive": .bool(true)]))
+            for index in 0..<2 {
+                let event = try #require(await runtime.events.first { _ in true })
+                #expect(event["params"]?.objectValue?["index"]?.intValue == index)
+            }
+        }
+    }
+
+    @Test("A paused writer disconnects on outgoing byte or count overload and releases all callers", arguments: [false, true])
+    func outgoingOverloadReleasesWaiters(byteLimit: Bool) async throws {
+        let limits = CodexTransportLimits(
+            incomingCount: 8, incomingBytes: 4_096,
+            outgoingCount: byteLimit ? 8 : 2, outgoingBytes: byteLimit ? 220 : 4_096,
+            pendingOperations: 32)
+        try await withTransportFixture(limits: limits) { runtime, fixture in
+            let pid = pid_t(try #require(try await runtime.request("pid").intValue))
+            let admission = TransportAdmissionGate()
+            let paused = Task {
+                try await runtime.respond(id: .string("paused"), result: .null) { await admission.admit() }
+            }
+            defer { paused.cancel() }
+            #expect(await admission.waitForEntry())
+            let rejectedBeforeQueueing = await withTaskGroup(of: Bool.self) { group in
+                for _ in 0..<4 {
+                    group.addTask {
+                        do {
+                            try await runtime.notify(
+                                "record",
+                                params: [
+                                    "index": .integer(0), "padding": .string(String(repeating: "x", count: 100)),
+                                ])
+                            Issue.record("A paused writer must not report queued notifications as written")
+                        } catch CodexConnectionError.capacityExceeded {
+                            return true
+                        } catch CodexConnectionError.disconnected {} catch {
+                            Issue.record("Unexpected overload result: \(error)")
+                        }
+                        return false
+                    }
+                }
+                var rejected = 0
+                for await rejection in group where rejection { rejected += 1 }
+                return rejected
+            }
+            // Only the frame refused before admission is definitely unsent.
+            #expect(rejectedBeforeQueueing == 1)
+            do {
+                try await paused.value
+                Issue.record("Paused admission survived disconnect")
+            } catch CodexConnectionError.disconnected {} catch is CancellationError {}
+            let terminal = try #require(await runtime.events.first { _ in true })
+            #expect(terminal["method"]?.stringValue == "scholium/disconnected")
+            #expect(terminal["params"]?.objectValue?["reason"]?.stringValue == "capacityExceeded")
+            await runtime.close()
+            expectProcessReaped(pid)
+            try await runtime.start(executable: fixture.executable, home: fixture.root, workingDirectory: fixture.root)
+            #expect(try await runtime.request("clientResponses") == .array([]))
+        }
+    }
+
+    @Test("Unanswered requests are bounded after the writer drains their frames")
+    func outstandingRequestLimit() async throws {
+        let limits = CodexTransportLimits(
+            incomingCount: 16, incomingBytes: 4_096,
+            outgoingCount: 16, outgoingBytes: 4_096, pendingOperations: 2)
+        try await withTransportFixture(limits: limits) { runtime, _ in
+            let first = Task { try await runtime.request("hold") }
+            defer { first.cancel() }
+            _ = try #require(await runtime.events.first { $0["method"]?.stringValue == "fixture/holding" })
+            let second = Task { try await runtime.request("hold") }
+            defer { second.cancel() }
+            _ = try #require(await runtime.events.first { $0["method"]?.stringValue == "fixture/holding" })
+            do {
+                _ = try await runtime.request("echo")
+                Issue.record("Drained request frames must still count against pending-operation capacity")
+            } catch CodexConnectionError.capacityExceeded {}
+            for request in [first, second] {
+                do {
+                    _ = try await request.value
+                    Issue.record("Disconnect did not release an unanswered request")
+                } catch CodexConnectionError.disconnected {}
+            }
+            let terminal = try #require(await runtime.events.first { _ in true })
+            #expect(terminal["method"]?.stringValue == "scholium/disconnected")
+        }
+    }
+
+    @Test("Several valid text materials can exceed the incoming frame ceiling")
+    func aggregateMaterialInput() async throws {
+        try await withTransportFixture { runtime, _ in
+            let text = String(repeating: "x", count: 1_024 * 1_024)
+            let input: [MCPJSONValue] = (0..<9).map { _ in .object(["type": .string("text"), "text": .string(text)]) }
+            let result = try await runtime.request("inputSize", params: ["input": .array(input)])
+            #expect(result == .integer(9 * 1_024 * 1_024))
+        }
+    }
+
+    @Test("An outgoing envelope beyond its byte budget disconnects before writing")
+    func oversizedOutgoingFrame() async throws {
+        let limits = CodexTransportLimits(
+            incomingCount: 8, incomingBytes: 4_096,
+            outgoingCount: 8, outgoingBytes: 1_024, pendingOperations: 8)
+        try await withTransportFixture(limits: limits) { runtime, _ in
+            do {
+                try await runtime.notify(
+                    "record",
+                    params: [
+                        "index": .integer(0), "padding": .string(String(repeating: "x", count: 1_024)),
+                    ])
+                Issue.record("An envelope beyond the byte budget must not enter the outgoing queue")
+            } catch CodexConnectionError.capacityExceeded {}
+            let terminal = try #require(await runtime.events.first { _ in true })
+            #expect(terminal["method"]?.stringValue == "scholium/disconnected")
+            #expect(terminal["params"]?.objectValue?["reason"]?.stringValue == "capacityExceeded")
+        }
+    }
 }
 
 private enum TransportFixtureFailure: Error { case deadlineExceeded }
@@ -289,11 +447,12 @@ private func expectProcessReaped(_ pid: pid_t) {
 
 private func withTransportFixture(
     start: Bool = true,
+    limits: CodexTransportLimits = .standard,
     _ operation: @escaping @Sendable (CodexAppServer, TransportFixture) async throws -> Void
 ) async throws {
     let fixture = try TransportFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
-    let runtime = CodexAppServer()
+    let runtime = CodexAppServer(limits: limits)
     do {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
@@ -378,6 +537,10 @@ private struct TransportFixture: Sendable {
                     signal.pause()
             if method == "record":
                 recorded.append(params["index"])
+            elif method == "burst":
+                for index in range(params.get("count", 1)):
+                    emit({"method": "fixture/event", "params": {"index": index, "text": params.get("text", "")}})
+                emit({"id": identifier, "result": "burst sent"})
             elif method == "askClient":
                 emit({"id": "fixture-question", "method": "fixture/question"})
             elif method == "release":
@@ -397,6 +560,8 @@ private struct TransportFixture: Sendable {
                     result = client_responses
                 elif method == "pid":
                     result = os.getpid()
+                elif method == "inputSize":
+                    result = sum(len(item.get("text", "").encode("utf-8")) for item in params.get("input", []))
                 elif method == "fragment":
                     sys.stderr.buffer.write(b"synthetic diagnostic\n" * 16384)
                     sys.stderr.buffer.flush()

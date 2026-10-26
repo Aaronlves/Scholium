@@ -90,6 +90,7 @@ func fixtureChatControllerWithAdmission(
         ?? AgentContextAccessPreferences(defaults: ownedStore!.defaults)
     return AgentChatController(
         triptychID: triptychID, root: root,
+        appBridgeContainerURL: root.appendingPathComponent("AppBridge", isDirectory: true),
         workspaceDirectory: { [ownedStore] in
             // The controller's existing closure retains its generated suite for
             // the whole fixture lifetime, including an admitted asynchronous read.

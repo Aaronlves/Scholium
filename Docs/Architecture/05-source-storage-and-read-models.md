@@ -17,22 +17,18 @@ Enumeration admits candidates only. Loads, fingerprints, final authorization,
 readback and recovery all use this boundary. Presence distinguishes confirmed
 absence from inaccessible/error; only confirmed absence completes deletion.
 
-Core's mutation coordinator wraps short native coordinated accessors around
-descriptor authority. Create/move use exclusive no-replace rename. Update retains
-the original descriptor, synchronizes a same-directory candidate, rechecks expected
-bytes/parent identity and performs Foundation atomic replacement in a replacing
-accessor. The system-managed sibling backup is retained until reconciliation.
-Foundation owns preservation/adjustment of standard filesystem metadata; Scholium
-does not reconstruct or compare the full ACL/xattr/ownership/flags envelope.
+Core coordinates descriptor-bound writes. Create/move use exclusive no-replace
+rename; update atomically swaps same-parent entries. One transaction slot holds
+candidate then displaced source. `fcopyfile` supplies metadata; descriptor attributes
+retain creation time and set candidate modification time. Expected bytes,
+entry/parent identity and exact readback gate acceptance; displaced bytes await
+ledger reconciliation.
 
-Durable machine-local recovery binds exact expected/candidate bytes, fingerprints
-and path before replacement. Prewrite failure preserves source; postwrite failure
-never compensates automatically. No-follow canonical/backup reads and parent
-identity must prove commit before Saved or cleanup. Differing displaced bytes
-are durably transaction-bound before backup removal; failure retains backup for
-startup reconciliation at its exact location. Expected, candidate and displaced
-bytes survive uncertainty even when candidate bytes are canonical. Proven saves
-retain no history.
+Prewrite recovery durably binds exact expected/candidate bytes, fingerprints and
+path. No-follow canonical/slot reads and parent identity prove commit. Known byte
+duplicates create no displaced version; distinct displaced bytes are retained
+durably before slot cleanup. Failure/startup preserve unresolved slots; postwrite
+failure never compensates automatically. Proven saves leave no history.
 
 Research borrows recovery projections; inspection grants no writes. Pending
 transactions, interrupted-save candidates and retained citation-pair copies have

@@ -7,9 +7,10 @@ MCP delivery, conversation admission, and runtime-owned capabilities.
 
 The App-bundled helper owns incremental stdio framing, JSON-RPC initialization,
 fixed discovery, closed schemas and error envelopes, then calls the authenticated
-current-user App endpoint. It cannot launch the App, construct a workspace runtime
-or independently access Triptych files. The router serves only open workspace
-capabilities; multiple Triptychs require an exact stable workspace identity.
+current-user App endpoint. App composition resolves its namespace once; both Chat
+helpers receive that exact endpoint or fail configuration. Helpers cannot launch
+the App, construct runtimes or access Triptych files. The router serves open
+capabilities; multiple Triptychs require an exact workspace identity.
 Complete-envelope bounds apply at both transports. Contracts' `mayHaveSideEffects`
 classifies source, receipt, navigation and runtime-setting operations. Lost or
 oversized replies after their admission remain uncertain and forbid automatic
@@ -94,10 +95,11 @@ receipt recovery eligibility.
 
 ## Native Chat client
 
-Application owns bounded framing, correlation, timeouts and replies, without an
-Agent loop. Swift Subprocess manages its single stdio process, I/O and teardown.
-Runtime authentication/configuration retains selected-directory ownership;
-credentials and raw stderr never enter logs.
+Application bounds frames, queued wire bytes/count and pending operations.
+Overflow revokes transport admission, fails pending calls and delivers a reserved
+disconnect marker after accepted events; RPC replies never await event consumption.
+Subprocess owns process I/O/teardown; selected-directory configuration owns credentials.
+Secrets and raw stderr never enter logs.
 
 One Triptych Chat controller is shared across windows. It owns conversation
 inventory, public messages, drafts and permission; each conversation owns one
