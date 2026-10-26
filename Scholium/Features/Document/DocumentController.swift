@@ -197,6 +197,8 @@ final class DocumentController: ObservableObject {
         let task: Task<Void, Never>
     }
     private var pendingHydrations: [DocumentEditingTarget: PendingHydration] = [:]
+    // A newer completed or failed read still supersedes an older move read.
+    private var latestHydrationTokens: [DocumentEditingTarget: UUID] = [:]
     private struct PendingEditorReconciliation {
         let token: UUID
         let task: Task<Void, Never>
@@ -1522,13 +1524,14 @@ final class DocumentController: ObservableObject {
             relativePath: snapshot.id.relativePath,
             stableNoteID: stableID.uuidString
         )
-        retainedReferences[key] = reference
         if activeDocument?.sessionKey == key {
             updateDocumentProjection(
                 WindowDocumentDescriptor(
                     sessionKey: key,
                     reference: reference
                 ))
+        } else {
+            retainedReferences[key] = reference
         }
         if let session = retainedSession(for: key) {
             reconcile(session: session, with: snapshot)
@@ -1536,6 +1539,129 @@ final class DocumentController: ObservableObject {
                 applyCurrentPresentationMode(to: session, target: target)
             }
         }
+    }
+
+    /// Adopts only the retained document addressed by a successful, current
+    /// app-owned move. Location-only commits reuse exact bytes; rewritten source
+    /// is hydrated and checked before source adoption.
+    @discardableResult
+    func recordCommittedNoteMove(
+        _ commit: TriptychMoveCommit,
+        target: NoteMutationTarget,
+        summary: WorkspaceNoteSummary,
+        vaultName: String,
+        vaultRole: VaultRole,
+        isCurrent: @MainActor () -> Bool
+    ) async throws -> Bool {
+        guard isCurrent() else { throw CancellationError() }
+        guard commit.movedNote == target.documentID,
+            commit.previousRevision == target.revision,
+            commit.destination.vaultID == target.documentID.vaultID,
+            summary.id == commit.destination,
+            summary.stableIdentity.resolvedID == target.stableNoteID,
+            summary.fingerprint == commit.committedRevision
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        let key = DocumentSessionKey(vaultID: target.documentID.vaultID, noteID: target.stableNoteID)
+        let editingTarget = DocumentEditingTarget.workspace(key)
+        func publicationMatchesMove() -> Bool {
+            guard let published = publishedSummaries[editingTarget],
+                published.stableIdentity.resolvedID == key.noteID
+            else { return false }
+            return published.id == commit.movedNote && published.fingerprint == commit.previousRevision
+                || published.id == commit.destination && published.fingerprint == commit.committedRevision
+        }
+        guard var retained = snapshots[key],
+            let session = sessions.retainedSession(for: .workspace(key))
+        else { return false }
+        guard publicationMatchesMove(), retained.stableIdentity.resolvedID == key.noteID,
+            retained.id == commit.movedNote && retained.fingerprint == commit.previousRevision
+                || retained.id == commit.destination && retained.fingerprint == commit.committedRevision
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        let sameParent = (commit.movedNote.relativePath as NSString).deletingLastPathComponent.utf8.elementsEqual(
+            (commit.destination.relativePath as NSString).deletingLastPathComponent.utf8)
+        if sameParent, retained.fingerprint != commit.committedRevision, retained.id != commit.destination {
+            // The receipt proves the new location, not the pending body bytes.
+            // Keep the old exact revision visible there while its checked read
+            // (or a newer publication) owns source and companion adoption.
+            let document = NoteDocument(
+                relativePath: commit.destination.relativePath,
+                rawContent: retained.document.rawContent,
+                citationSnapshot: retained.document.citationSnapshot)
+            let provisional = WorkspaceNoteSummary(
+                id: commit.destination, vaultRole: retained.vaultRole,
+                stableIdentity: retained.stableIdentity, document: document,
+                semantic: retained.cachedSemanticDocument,
+                fileMetadata: retained.fileMetadata, graphCounts: retained.graphCounts,
+                derivedProjectionState: .sourceAhead)
+            retained = WorkspaceNoteSnapshot(
+                summary: provisional, document: document,
+                cachedSemanticDocument: retained.cachedSemanticDocument)
+            snapshots[key] = retained
+            let descriptor = WindowDocumentDescriptor(
+                sessionKey: key,
+                reference: VaultNoteReference(
+                    vaultID: commit.destination.vaultID, vaultName: vaultName, vaultRole: vaultRole,
+                    relativePath: commit.destination.relativePath, stableNoteID: key.noteID.uuidString))
+            if selectedDocument?.sessionKey == key {
+                updateDocumentProjection(descriptor)
+                // The known rewritten revision must reconcile before an old
+                // base can retry. New writing still retains normal conflict checks.
+                session.cancelAutosave()
+            } else {
+                retainedReferences[key] = descriptor.reference
+            }
+        }
+        let epoch = hydrationEpoch
+        var observedHydration = latestHydrationTokens[editingTarget]
+        var supersededByHydration = false
+        let snapshot: WorkspaceNoteSnapshot
+        if retained.fingerprint == commit.committedRevision {
+            let document = NoteDocument(
+                relativePath: summary.id.relativePath,
+                rawContent: retained.document.rawContent,
+                citationSnapshot: retained.document.citationSnapshot)
+            snapshot = WorkspaceNoteSnapshot(
+                summary: summary, document: document,
+                cachedSemanticDocument: retained.cachedSemanticDocument)
+        } else if let hydrationLoader {
+            snapshot = try await hydrationLoader(summary)
+        } else {
+            snapshot = try await requireOperations().hydrate(summary)
+        }
+        guard isCurrent() else { throw CancellationError() }
+        while latestHydrationTokens[editingTarget] != observedHydration {
+            guard hydrationEpoch == epoch, publicationMatchesMove(), isCurrent(),
+                sessions.retainedSession(for: editingTarget) === session
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            if snapshots[key]?.summary.hasSameSourceBinding(as: summary) == true { return true }
+            guard let pending = pendingHydrations[editingTarget],
+                pending.expected.hasSameSourceBinding(as: summary)
+            else { throw WorkspaceHydrationError.staleSnapshot }
+            observedHydration = pending.token
+            supersededByHydration = true
+            await pending.task.value
+        }
+        guard isCurrent() else { throw CancellationError() }
+        guard hydrationEpoch == epoch, publicationMatchesMove(), snapshot.summary.hasSameSourceBinding(as: summary),
+            sessions.retainedSession(for: editingTarget) === session,
+            let current = snapshots[key], current.stableIdentity.resolvedID == key.noteID,
+            current.summary.hasSameSourceBinding(as: retained.summary)
+                || current.summary.hasSameSourceBinding(as: summary)
+        else { throw WorkspaceHydrationError.staleSnapshot }
+        // The delivered destination owns its companion and any newer reads;
+        // a late equal-source result must not replace it or cancel that work.
+        if current.summary.hasSameSourceBinding(as: summary) { return true }
+        guard !supersededByHydration else { throw WorkspaceHydrationError.staleSnapshot }
+        let latestSummary =
+            publishedSummaries[editingTarget].flatMap {
+                $0.hasSameSourceBinding(as: summary) ? $0 : nil
+            } ?? summary
+        recordCommittedSnapshot(
+            WorkspaceNoteSnapshot(
+                summary: latestSummary, document: snapshot.document,
+                cachedSemanticDocument: snapshot.cachedSemanticDocument),
+            vaultName: vaultName, vaultRole: vaultRole)
+        return true
     }
 
     /// Folder moves carry exact committed bytes. Materialize them only for a
@@ -1795,6 +1921,7 @@ final class DocumentController: ObservableObject {
             sessions.retainedSession(for: .workspace($0.key)) != nil
                 || selectedDocument?.sessionKey == $0.key
         }
+        latestHydrationTokens = latestHydrationTokens.filter { sessions.retainedSession(for: $0.key) != nil }
         for (target, pending) in pendingHydrations {
             guard case .workspace(let key) = target,
                 sessions.retainedSession(for: target) == nil,
@@ -2953,6 +3080,7 @@ final class DocumentController: ObservableObject {
         let hydrationLoader = self.hydrationLoader
         let operations = self.operations
         let token = UUID()
+        latestHydrationTokens[target] = token
         let epoch = hydrationEpoch
         let retainedSession = sessions.retainedSession(for: target)
         let retainedForHistory = retainedSession?.editorSession.hasRetainedHistory == true
@@ -3037,6 +3165,7 @@ final class DocumentController: ObservableObject {
         hydrationEpoch &+= 1
         for pending in pendingHydrations.values { pending.task.cancel() }
         pendingHydrations.removeAll()
+        latestHydrationTokens.removeAll()
         for pending in pendingEditorReconciliations.values { pending.task.cancel() }
         pendingEditorReconciliations.removeAll()
         publishedSummaries.removeAll()

@@ -1439,7 +1439,7 @@ struct WindowControllerArchitectureTests {
             "requireOperations().createUntitledNote(",
             "requireOperations().createUntitledFolder(",
             "requireOperations().importMarkdown(",
-            "requireOperations().moveToSystemTrash(",
+            "admission.operations.moveToSystemTrash(preview)",
         ] {
             #expect(libraryMutationSource.contains(directCapabilityCall))
         }

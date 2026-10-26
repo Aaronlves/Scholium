@@ -216,8 +216,8 @@ final class WindowModel: ObservableObject {
                     destination: destination
                 )
             },
-            committedNoteMoved: { [weak self] outcome, target in
-                await self?.publishCommittedNoteMove(outcome, target: target)
+            committedNoteMoved: { [weak self] outcome, target, isCurrent in
+                await self?.publishCommittedNoteMove(outcome, target: target, isCurrent: isCurrent)
             },
             committedSystemTrash: { [weak self] preview, outcome, isCurrent in
                 await self?.publishSystemTrashResult(preview, outcome: outcome, isCurrent: isCurrent)

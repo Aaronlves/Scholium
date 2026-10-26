@@ -21,7 +21,12 @@ struct WindowNoteMoveRecoveryTests {
             for destination in ["Sibling/Note.md", "Note.md", "Nested/Note.md"] {
                 let current = try #require(window.currentNote)
                 let target = try #require(NoteMutationTarget(current))
+                let focusRevision = session.editorSession.focusRequestRevision
                 try await window.libraryMutationController.moveNote(target, to: destination)
+                #expect(window.documentController.activeSnapshot?.id.relativePath == destination)
+                #expect(window.documentController.activeSnapshot?.document.relativePath == destination)
+                #expect(window.documentController.activeSnapshot?.document.sourceBytes == Fixture.source)
+                #expect(session.editorSession.focusRequestRevision == focusRevision)
                 await window.retryDerivedRefresh()
                 #expect(window.currentDocumentDescriptor?.sessionKey == original.sessionKey)
                 #expect(window.currentDocumentDescriptor?.reference.relativePath == destination)

@@ -57,7 +57,7 @@ extension WindowLibraryMutationController {
                     return try await requireOperations().move(target, to: destination)
                 },
                 didCommit: { [self] outcome, target in
-                    await dependencies.committedNoteMoved(outcome, target)
+                    await dependencies.committedNoteMoved(outcome, target, { [self] in batchIsCurrent(request) })
                 },
                 didFail: { [self] in await dependencies.refreshTransactionRecovery() }
             )

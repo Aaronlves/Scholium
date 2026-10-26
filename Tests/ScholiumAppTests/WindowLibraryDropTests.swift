@@ -215,7 +215,7 @@ private final class DropFixture {
                 committedFolderCreated: { [unowned self] in createdFolders.append($0.committedValue.rawValue) },
                 committedFolderMoved: { [unowned self] _ in committedFolders += 1 },
                 committedNoteDuplicated: { _, _, _ in },
-                committedNoteMoved: { [unowned self] _, _ in
+                committedNoteMoved: { [unowned self] _, _, _ in
                     committedNotes += 1
                     await publish()
                 },

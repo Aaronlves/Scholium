@@ -469,9 +469,19 @@ struct ContentView: View {
                 guard destination != currentNote.relativePath else {
                     return currentNote.displayName
                 }
+                let key = DocumentSessionKey(vaultID: target.documentID.vaultID, noteID: target.stableNoteID)
+                let editor = appState.documentController.session(for: key).editorSession
+                let presentationID = editor.openingPresentationID
+                let runtime = appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity
                 try await appState.libraryMutationController.moveNote(
                     target,
-                    to: destination
+                    to: destination,
+                    isCurrentRequest: {
+                        appState.currentDocumentDescriptor?.sessionKey == key
+                            && appState.documentController.peekRetainedSession(for: .workspace(key))?.editorSession === editor
+                            && editor.openingPresentationID == presentationID
+                            && appState.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+                    }
                 )
                 return URL(fileURLWithPath: destination)
                     .deletingPathExtension()

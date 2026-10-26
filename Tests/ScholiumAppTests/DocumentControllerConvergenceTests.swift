@@ -1753,6 +1753,449 @@ struct DocumentControllerConvergenceTests {
         #expect(session.conflict == nil)
     }
 
+    @Test("A retained rename keeps the selected document visible before workspace publication")
+    func retainedRenameKeepsVisibleSnapshot() async throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let source = "\u{FEFF}---\r\ntags: [draft]\r\n---\r\n\r\nArgument e\u{301} 🦉.\r\n"
+        let original = note(vaultID: vaultID, noteID: noteID, path: "Untitled.md", source: source)
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let initial = try #require(controller.activeDocument)
+        let session = controller.session(for: initial)
+        session.scrollFraction = 0.57
+        let bridgeID = session.editorSession.bridgeDocumentID
+        let reconstructionID = session.editorSession.viewReconstructionID
+        let destination = WindowDocumentDescriptor(
+            sessionKey: initial.sessionKey,
+            reference: VaultNoteReference(
+                vaultID: vaultID, vaultName: "Works", vaultRole: .draftProject,
+                relativePath: "A Researcher's Title.md", stableNoteID: noteID.uuidString))
+
+        // Local move completion migrates this projection before the later
+        // workspace publication. The Document feature only presents matching paths.
+        let renamed = note(vaultID: vaultID, noteID: noteID, path: destination.reference.relativePath, source: source)
+        try await controller.recordCommittedNoteMove(
+            renameCommit(from: original, to: renamed),
+            target: NoteMutationTarget(documentID: original.id, stableNoteID: noteID, revision: original.fingerprint),
+            summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+        controller.updateDocumentProjection(destination)
+
+        let visible = try #require(controller.activeSnapshot)
+        #expect(visible.id.relativePath == controller.selectedDocumentPath)
+        #expect(visible.id.relativePath == destination.reference.relativePath)
+        #expect(visible.document.relativePath == destination.reference.relativePath)
+        #expect(visible.document.rawContent.utf8.elementsEqual(source.utf8))
+        #expect(visible.fingerprint == original.fingerprint)
+        #expect(controller.session(for: destination) === session)
+        #expect(session.editorSession.bridgeDocumentID == bridgeID)
+        #expect(session.editorSession.viewReconstructionID == reconstructionID)
+        #expect(session.scrollFraction == 0.57)
+        #expect(session.conflict == nil)
+        controller.unbind()
+    }
+
+    @Test("A newer external publication wins while a committed rename is hydrating")
+    func externalPublicationSupersedesRenameHydration() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "[[Before]]\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: "[[After]]\n")
+        let external = note(vaultID: vault, noteID: id, path: "After.md", source: "External source wins.\n")
+        let renameGate = HydrationGate()
+        let externalGate = HydrationGate()
+        var renameStarted = false
+        var externalStarted = false
+        let controller = DocumentController(hydrationLoader: { expected in
+            if expected.hasSameSourceBinding(as: renamed.summary) {
+                renameStarted = true
+                await renameGate.pause()
+                return renamed
+            }
+            guard expected.hasSameSourceBinding(as: external.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            externalStarted = true
+            await externalGate.pause()
+            return external
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let selected = try #require(controller.selectedDocument)
+        let key = try #require(selected.sessionKey)
+        let commit = renameCommit(from: original, to: renamed)
+        let task = Task { @MainActor () -> Bool in
+            do {
+                try await controller.recordCommittedNoteMove(
+                    commit, target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                    summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+                return false
+            } catch WorkspaceHydrationError.staleSnapshot { return true }
+        }
+        defer {
+            task.cancel()
+            renameGate.release()
+            externalGate.release()
+            controller.unbind()
+        }
+        try await waitForPresentation { renameStarted }
+        controller.receive(workspace(vaultID: vault, notes: [external]), openDocuments: [selected])
+        try await waitForPresentation { externalStarted }
+        #expect(controller.snapshots[key]?.fingerprint == original.fingerprint)
+        renameGate.release()
+        #expect(try await task.value, "The completed old rename must not supersede a newer published source.")
+        externalGate.release()
+        await controller.waitForPendingHydrations()
+        #expect(controller.activeSnapshot?.fingerprint == external.fingerprint)
+        #expect(controller.activeSnapshot?.document.rawContent == external.document.rawContent)
+    }
+
+    @Test("An unrelated or stale move receipt cannot retarget a retained document", arguments: ["identity", "path", "revision", "summary", "vault"])
+    func retainedRenameRejectsWrongReceipt(fault: String) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "Exact source\r\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: original.document.rawContent)
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        defer { controller.unbind() }
+        let initial = try #require(controller.selectedDocument)
+        var target = NoteMutationTarget(documentID: original.id, stableNoteID: id, revision: original.fingerprint)
+        var commit = renameCommit(from: original, to: renamed)
+        var summary = renamed.summary
+        switch fault {
+        case "identity": target = .init(documentID: original.id, stableNoteID: UUID(), revision: original.fingerprint)
+        case "path":
+            commit = TriptychMoveCommit(
+                movedNote: .init(vaultID: vault, relativePath: "Other.md"), destination: renamed.id,
+                previousRevision: original.fingerprint, committedRevision: renamed.fingerprint, graphGeneration: 1, rewrites: [])
+        case "revision": target = .init(documentID: original.id, stableNoteID: id, revision: DocumentFingerprint(content: "Older source"))
+        case "summary": summary = note(vaultID: vault, noteID: id, path: "After.md", source: "Wrong revision").summary
+        default:
+            commit = TriptychMoveCommit(
+                movedNote: original.id, destination: .init(vaultID: UUID(), relativePath: "After.md"),
+                previousRevision: original.fingerprint, committedRevision: renamed.fingerprint, graphGeneration: 1, rewrites: [])
+        }
+        do {
+            try await controller.recordCommittedNoteMove(
+                commit, target: target, summary: summary,
+                vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+            Issue.record("A mismatched receipt was accepted.")
+        } catch WorkspaceHydrationError.staleSnapshot {} catch { Issue.record("Unexpected error: \(error)") }
+        #expect(controller.selectedDocument == initial)
+        #expect(controller.activeSnapshot == original)
+    }
+
+    @Test("Repeated and inactive committed renames retain selection and exact source")
+    func retainedRenameRepeatsWithoutActivatingDocument() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "Body\r\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: original.document.rawContent)
+        let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let key = try #require(controller.activeDocument?.sessionKey)
+        let session = controller.session(for: key)
+        session.scrollFraction = 0.68
+        controller.installOpenedDocument(other, vaultName: "Works", vaultRole: .draftProject)
+        let selected = controller.selectedDocument
+        defer { controller.unbind() }
+        for _ in 0..<2 {
+            try await controller.recordCommittedNoteMove(
+                renameCommit(from: original, to: renamed),
+                target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+            #expect(controller.selectedDocument == selected)
+            #expect(controller.activeSnapshot == other)
+            #expect(controller.snapshots[key]?.id == renamed.id)
+            #expect(controller.snapshots[key]?.document.rawContent == original.document.rawContent)
+            #expect(controller.retainedSession(for: key) === session)
+            #expect(session.scrollFraction == 0.68)
+        }
+    }
+
+    @Test("A rename with rewritten body hydrates exact bytes and preserves concurrent draft conflicts", arguments: ["clean", "dirty", "composing"])
+    func retainedRenameHydratesRewrittenSource(state: String) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "[[Before]]\r\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: "[[After]]\r\n")
+        var hydrations = 0
+        let controller = DocumentController(hydrationLoader: { expected in
+            hydrations += 1
+            guard expected.hasSameSourceBinding(as: renamed.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            return renamed
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let key = try #require(controller.activeDocument?.sessionKey)
+        let session = controller.session(for: key)
+        defer {
+            session.cancelScheduledWork()
+            controller.unbind()
+        }
+        let draft = original.document.rawContent + "Researcher's unsaved writing e\u{301}.\r\n"
+        let dirty = state == "dirty"
+        if dirty { try acceptCheckedDraft(draft, in: session) }
+        if state == "composing" {
+            let selection = MarkdownEditorSelectionRange(anchor: 2, head: 2)
+            session.editorSession.updateInteraction(
+                selections: [selection], line: 1, column: 3, lineCount: 1,
+                documentVersion: session.editorSession.generation, interactionRevision: 0,
+                context: MarkdownEditorContext(
+                    selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
+                    composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
+        }
+        let bridge = session.editorSession.bridgeDocumentID
+        let reconstruction = session.editorSession.viewReconstructionID
+        try await controller.recordCommittedNoteMove(
+            renameCommit(from: original, to: renamed),
+            target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+            summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+        #expect(hydrations == 1)
+        #expect(controller.activeSnapshot?.id == renamed.id)
+        #expect(controller.activeSnapshot?.document.rawContent == renamed.document.rawContent)
+        #expect(controller.activeSnapshot?.fingerprint == renamed.fingerprint)
+        #expect(session.editorSession.bridgeDocumentID == bridge)
+        #expect(session.editorSession.viewReconstructionID == reconstruction)
+        if dirty || state == "composing" {
+            let retainedSource = dirty ? draft : original.document.rawContent
+            #expect(session.retainedExactSource == retainedSource)
+            #expect(session.conflict?.editorSource == retainedSource)
+            #expect(session.conflict?.diskSource == renamed.document.rawContent)
+            #expect(session.editorSession.isComposing == (state == "composing"))
+            #expect(session.editingRevision == original.fingerprint)
+        } else {
+            #expect(session.editingSource == renamed.document.rawContent)
+            #expect(session.editingRevision == renamed.fingerprint)
+            #expect(session.conflict == nil)
+        }
+    }
+
+    @Test("A retired title request cannot adopt late hydrated source")
+    func retainedRenameRejectsRetiredRequest() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "[[Before]]\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: "[[After]]\n")
+        var current = true
+        let controller = DocumentController(hydrationLoader: { _ in
+            current = false
+            return renamed
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        defer { controller.unbind() }
+        do {
+            try await controller.recordCommittedNoteMove(
+                renameCommit(from: original, to: renamed),
+                target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { current })
+            Issue.record("The retired request adopted source.")
+        } catch is CancellationError {} catch { Issue.record("Unexpected error: \(error)") }
+        #expect(controller.activeSnapshot?.fingerprint == original.fingerprint)
+        #expect(controller.activeSnapshot?.document.rawContent == original.document.rawContent)
+        #expect(controller.selectedDocumentPath == renamed.id.relativePath)
+    }
+
+    @Test("A matching rename redirects a dirty buffer's held old-path save without replacing its source")
+    func retainedRenameRetainsDirtySaveContinuity() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "Saved\r\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: original.document.rawContent)
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let key = try #require(controller.activeDocument?.sessionKey)
+        let session = controller.session(for: key)
+        let draft = original.document.rawContent + "New input after flush.\r\n"
+        try acceptCheckedDraft(draft, in: session)
+        let gate = HydrationGate()
+        var saveStarted = false
+        let save = Task<EditorSaveOutcome, Error> { @MainActor in
+            saveStarted = true
+            await gate.pause()
+            return .clean
+        }
+        session.beginSaveAttempt(.init(task: save))
+        defer {
+            session.cancelScheduledWork()
+            save.cancel()
+            gate.release()
+            controller.unbind()
+        }
+        try await waitForPresentation { saveStarted }
+        try await controller.recordCommittedNoteMove(
+            renameCommit(from: original, to: renamed),
+            target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+            summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+        #expect(controller.editingDocumentPath == renamed.id.relativePath)
+        #expect(controller.relativePath(for: .workspace(key)) == renamed.id.relativePath)
+        #expect(session.autosaveTask != nil && session.autosaveToken != nil)
+        #expect(session.retainedExactSource == draft)
+        #expect(session.editingRevision == original.fingerprint)
+        #expect(session.conflict == nil)
+    }
+
+    @Test("A published external revision blocks rename adoption before its full source hydrates")
+    func retainedRenameRejectsAlreadyPublishedExternalSource() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "Saved\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: original.document.rawContent)
+        let external = note(vaultID: vault, noteID: id, path: "After.md", source: "External source\n")
+        let gate = HydrationGate()
+        var started = false
+        let controller = DocumentController(hydrationLoader: { expected in
+            guard expected.hasSameSourceBinding(as: external.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            started = true
+            await gate.pause()
+            return external
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let selected = try #require(controller.selectedDocument)
+        defer {
+            gate.release()
+            controller.unbind()
+        }
+        controller.receive(workspace(vaultID: vault, notes: [external]), openDocuments: [selected])
+        try await waitForPresentation { started }
+        #expect(controller.activeSnapshot?.fingerprint == original.fingerprint)
+        do {
+            try await controller.recordCommittedNoteMove(
+                renameCommit(from: original, to: renamed),
+                target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                summary: renamed.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+            Issue.record("An older commit replaced a published external revision.")
+        } catch WorkspaceHydrationError.staleSnapshot {} catch { Issue.record("Unexpected error: \(error)") }
+        gate.release()
+        await controller.waitForPendingHydrations()
+        #expect(controller.activeSnapshot?.fingerprint == external.fingerprint)
+    }
+
+    @Test("Late rewritten-source hydration cannot replace a newer full destination snapshot", arguments: ["delivered", "pending", "failed"])
+    func retainedRenamePreservesNewerCitationSnapshot(state: String) async throws {
+        enum CompanionFailure: Error { case unavailable }
+        let pending = state != "delivered"
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before.md", source: "[[Before]]\n")
+        let renamed = note(vaultID: vault, noteID: id, path: "After.md", source: "[[After]]\n")
+        func snapshot(preferences: String, incoming: Int) -> WorkspaceNoteSnapshot {
+            let citation = ZoteroCitationSnapshot(
+                noteID: id, vaultID: vault, revision: DocumentFingerprint(content: preferences),
+                sourceFingerprint: renamed.fingerprint, data: ZoteroCitationData(documentData: preferences), status: .available)
+            let summary = WorkspaceNoteSummary(
+                id: renamed.id, stableIdentity: renamed.stableIdentity, document: renamed.document,
+                fileMetadata: renamed.fileMetadata,
+                graphCounts: .init(incoming: incoming, outgoing: 1, broken: 0, ambiguous: 0))
+            return WorkspaceNoteSnapshot(summary: summary, document: renamed.document.withCitationSnapshot(citation))
+        }
+        let earlier = snapshot(preferences: "earlier companion", incoming: 1)
+        let newer = snapshot(preferences: "newer companion", incoming: 7)
+        let gate = HydrationGate()
+        let companionGate = HydrationGate()
+        var started = false
+        var companionStarted = false
+        let controller = DocumentController(hydrationLoader: { _ in
+            if !started {
+                started = true
+                await gate.pause()
+                return earlier
+            }
+            companionStarted = true
+            await companionGate.pause()
+            if state == "failed" { throw CompanionFailure.unavailable }
+            return newer
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let task = Task { @MainActor in
+            try await controller.recordCommittedNoteMove(
+                renameCommit(from: original, to: renamed),
+                target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                summary: earlier.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+        }
+        defer {
+            task.cancel()
+            gate.release()
+            companionGate.release()
+            controller.unbind()
+        }
+        try await waitForPresentation { started }
+        if pending {
+            let selected = try #require(controller.selectedDocument)
+            controller.receive(workspace(vaultID: vault, notes: [newer]), openDocuments: [selected])
+            try await waitForPresentation { companionStarted }
+            #expect(controller.activeSnapshot?.id.relativePath == controller.selectedDocumentPath)
+            #expect(controller.activeSnapshot?.document.relativePath == controller.selectedDocumentPath)
+            #expect(controller.activeSnapshot?.fingerprint == original.fingerprint)
+        } else {
+            controller.recordCommittedSnapshot(newer, vaultName: "Works", vaultRole: .draftProject)
+        }
+        gate.release()
+        if pending {
+            await gate.waitUntilReturned()
+            await Task.yield()
+            companionGate.release()
+        }
+        if state == "failed" {
+            do {
+                _ = try await task.value
+                Issue.record("A late read hid a newer failed companion refresh.")
+            } catch WorkspaceHydrationError.staleSnapshot {} catch { Issue.record("Unexpected error: \(error)") }
+            await controller.waitForPendingHydrations()
+            #expect(controller.activeSnapshot?.fingerprint == original.fingerprint)
+            #expect(controller.lastSaveError != nil)
+        } else {
+            _ = try await task.value
+            await controller.waitForPendingHydrations()
+            #expect(controller.activeSnapshot?.document.citationSnapshot == newer.document.citationSnapshot)
+            #expect(controller.activeSnapshot?.graphCounts == newer.graphCounts)
+            #expect(controller.activeSnapshot?.document.rawContent == renamed.document.rawContent)
+        }
+    }
+
+    @Test("A rewritten cross-folder move keeps old relative resources at their original source location until hydration")
+    func retainedRenameKeepsCrossFolderSourceOrigin() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Before/Note.md", source: "![Figure](figure.png)\n[[Peer]]\n")
+        let moved = note(vaultID: vault, noteID: id, path: "After/Note.md", source: "![Figure](../Before/figure.png)\n[[Before/Peer]]\n")
+        let gate = HydrationGate()
+        var started = false
+        let controller = DocumentController(hydrationLoader: { expected in
+            guard expected.hasSameSourceBinding(as: moved.summary) else { throw WorkspaceHydrationError.staleSnapshot }
+            started = true
+            await gate.pause()
+            return moved
+        })
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let task = Task { @MainActor in
+            try await controller.recordCommittedNoteMove(
+                renameCommit(from: original, to: moved),
+                target: .init(documentID: original.id, stableNoteID: id, revision: original.fingerprint),
+                summary: moved.summary, vaultName: "Works", vaultRole: .draftProject, isCurrent: { true })
+        }
+        defer {
+            task.cancel()
+            gate.release()
+            controller.unbind()
+        }
+        try await waitForPresentation { started }
+        #expect(controller.activeSnapshot?.id == original.id)
+        #expect(controller.activeSnapshot?.document.relativePath == original.document.relativePath)
+        #expect(controller.selectedDocumentPath == original.id.relativePath)
+        #expect(controller.activeSnapshot?.document.rawContent == original.document.rawContent)
+        gate.release()
+        _ = try await task.value
+        #expect(controller.activeSnapshot?.id == moved.id)
+        #expect(controller.activeSnapshot?.document.rawContent == moved.document.rawContent)
+        #expect(controller.activeSnapshot?.fingerprint == moved.fingerprint)
+    }
+
+    private func renameCommit(from original: WorkspaceNoteSnapshot, to renamed: WorkspaceNoteSnapshot) -> TriptychMoveCommit {
+        TriptychMoveCommit(
+            movedNote: original.id, destination: renamed.id,
+            previousRevision: original.fingerprint, committedRevision: renamed.fingerprint,
+            graphGeneration: 1, rewrites: [])
+    }
+
     @Test("Resolved rename updates each path projection without replacing sessions")
     func renamePreservesSessionIdentity() throws {
         let vaultID = UUID()

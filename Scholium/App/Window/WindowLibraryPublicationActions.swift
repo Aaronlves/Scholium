@@ -270,8 +270,10 @@ extension WindowModel {
 
     func publishCommittedNoteMove(
         _ outcome: WorkspaceMutationOutcome<TriptychMoveCommit>,
-        target: NoteMutationTarget
+        target: NoteMutationTarget,
+        isCurrent: @escaping @MainActor () -> Bool
     ) async {
+        guard isCurrent() else { return }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == target.documentID.vaultID
@@ -286,6 +288,33 @@ extension WindowModel {
         let preservesDocument = libraryMutationController.isBatchWorking
         let commit = outcome.committedValue
         let destination = commit.destination.relativePath
+        let continuesSelectedDocument =
+            currentDocumentDescriptor?.sessionKey
+            == DocumentSessionKey(vaultID: target.documentID.vaultID, noteID: target.stableNoteID)
+        guard commit.movedNote == target.documentID,
+            commit.previousRevision == target.revision,
+            commit.destination.vaultID == target.documentID.vaultID
+        else {
+            reportCommittedMutationWarnings(outcome, presentationWarning: WorkspaceHydrationError.staleSnapshot.localizedDescription)
+            return
+        }
+        if outcome.identityRecoveryWarning == nil,
+            let summary = outcome.committedSourceSummaries.first(where: { $0.id == commit.destination })
+        {
+            do {
+                try await documentController.recordCommittedNoteMove(
+                    commit, target: target, summary: summary,
+                    vaultName: vault.name, vaultRole: vault.role, isCurrent: isCurrent)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isCurrent() else { return }
+                scheduleWorkspaceCatalogRefresh()
+                reportCommittedMutationWarnings(outcome, presentationWarning: error.localizedDescription)
+                return
+            }
+        }
+        guard isCurrent() else { return }
         migrateAppOwnedState(
             sourcePath: target.relativePath,
             destinationPath: destination,
@@ -305,8 +334,8 @@ extension WindowModel {
                 visibleSourceScope: noteSourceScope
             )
         {
-            // The move receipt has no source bytes. The changed retained
-            // document converges from the authorized snapshot publication.
+            // Retained source was adopted above before migrating its visible
+            // location; the Library continues to own only compact summaries.
             workspaceProjectionController.recordCommittedSources(
                 outcome.committedSourceSummaries.filter { $0.id != commit.destination },
                 baseSourceInventoryRevision: baseSourceInventoryRevision,
@@ -314,35 +343,56 @@ extension WindowModel {
                 visibleSourceScope: noteSourceScope)
             if !preservesDocument {
                 do {
-                    try await activateWorkspaceReference(
-                        VaultNoteReference(
-                            vaultID: projection.note.id.vaultID,
-                            vaultName: projection.vault.name,
-                            vaultRole: projection.vault.role,
-                            relativePath: projection.note.id.relativePath,
-                            stableNoteID: target.stableNoteID.uuidString.lowercased()
-                        ),
-                        tabActivation: .place(.replaceSelected)
-                    )
+                    if !continuesSelectedDocument {
+                        try await activateWorkspaceReference(
+                            VaultNoteReference(
+                                vaultID: projection.note.id.vaultID,
+                                vaultName: projection.vault.name,
+                                vaultRole: projection.vault.role,
+                                relativePath: projection.note.id.relativePath,
+                                stableNoteID: target.stableNoteID.uuidString.lowercased()
+                            ),
+                            tabActivation: .place(.replaceSelected),
+                            validateDisplay: { guard isCurrent() else { throw CancellationError() } }
+                        )
+                    }
+                    guard isCurrent() else { return }
                     revealCreatedNoteInLibrary(
                         projection.note.id.relativePath,
                         vaultID: projection.note.id.vaultID
                     )
                 } catch {
+                    guard isCurrent() else { return }
                     presentationWarning = error.localizedDescription
                 }
             }
         } else {
             do {
                 try await refreshCachedWorkspaceVaultSnapshot(
-                    vaultID: target.documentID.vaultID
+                    vaultID: target.documentID.vaultID, isCurrent: isCurrent
                 )
-                try await browseRegisteredVault(vault)
-                if !preservesDocument { try await openNote(destination) }
+                let staged = try await stageRegisteredVault(vault)
+                guard isCurrent() else { return }
+                _ = try commitStagedWorkspaceLibrarySelection(staged)
+                await refreshIdentityState(isCurrent: isCurrent)
+                guard isCurrent() else { return }
+                if !preservesDocument, !continuesSelectedDocument {
+                    let summary = workspaceProjectionController.cachedNote(
+                        vaultID: vault.id, stableNoteID: nil, relativePath: destination)
+                    try await activateWorkspaceReference(
+                        VaultNoteReference(
+                            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+                            relativePath: destination,
+                            stableNoteID: summary?.stableIdentity.resolvedID?.uuidString),
+                        tabActivation: .place(.replaceSelected),
+                        validateDisplay: { guard isCurrent() else { throw CancellationError() } })
+                }
             } catch {
+                guard isCurrent() else { return }
                 presentationWarning = error.localizedDescription
             }
         }
+        guard isCurrent() else { return }
         scheduleWorkspaceCatalogRefresh()
         reportCommittedMutationWarnings(
             outcome,

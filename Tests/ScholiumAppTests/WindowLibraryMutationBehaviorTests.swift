@@ -127,6 +127,24 @@ struct WindowLibraryMutationBehaviorTests {
         }
     }
 
+    @Test("A retired or rebound title request does not move source", arguments: ["queued", "afterFlush", "binding"])
+    func retiredRenameRequestPreservesSource(invalidation: String) async throws {
+        try await withFixture { fixture in
+            var current = invalidation != "queued"
+            fixture.beforeFlush = {
+                if invalidation == "afterFlush" { current = false }
+                if invalidation == "binding" { fixture.controller.unbind() }
+            }
+            await #expect(throws: CancellationError.self) {
+                try await fixture.controller.moveNote(fixture.target, to: "Renamed.md", isCurrentRequest: { current })
+            }
+            let preservedSource = try Data(contentsOf: fixture.file)
+            #expect(preservedSource == Data(fixture.original.utf8))
+            #expect(!FileManager.default.fileExists(atPath: fixture.vaultURL.appendingPathComponent("Renamed.md").path))
+            #expect(!fixture.controller.hasActiveLibraryMutation)
+        }
+    }
+
     private func withFixture(_ body: @MainActor (LibraryMutationFixture) async throws -> Void) async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/library-mutation-behavior-\(UUID())")
@@ -176,11 +194,11 @@ private final class LibraryMutationFixture {
                 context: { [unowned self] in .init(assignmentID: capabilities.assignment.id, vault: vault, sourceScope: .library) },
                 enqueueDocumentTransition: { _, _, _ in Issue.record("Unexpected Note creation") },
                 flushEditors: { [unowned self] _ in try await flushDraft() },
-                flushActiveTarget: { _ in Issue.record("Unexpected active-target flush") },
+                flushActiveTarget: { [unowned self] _ in try await flushDraft() },
                 expectedRevision: { [unowned self] _ in revision },
                 captureBatchTargets: { $0 },
                 committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
-                committedFolderMoved: { _ in }, committedNoteDuplicated: { _, _, _ in }, committedNoteMoved: { _, _ in },
+                committedFolderMoved: { _ in }, committedNoteDuplicated: { _, _, _ in }, committedNoteMoved: { _, _, _ in },
                 committedSystemTrash: { [unowned self] _, outcome, isCurrent in
                     guard isCurrent() else { return }
                     trashResultWasRejected = outcome == nil

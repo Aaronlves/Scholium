@@ -71,7 +71,8 @@ struct WindowLibraryMutationDependencies {
     let committedNoteMoved:
         @MainActor (
             WorkspaceMutationOutcome<TriptychMoveCommit>,
-            NoteMutationTarget
+            NoteMutationTarget,
+            @escaping @MainActor () -> Bool
         ) async -> Void
     let committedSystemTrash:
         @MainActor (
@@ -189,7 +190,7 @@ final class WindowLibraryMutationController: ObservableObject {
             vaultID: target.documentID.vaultID,
             failureMessage: { ScholiumL10n.string("Could not move this note. \(ScholiumErrorLocalization.message($0))") }
         ) { [self] in
-            try await performMoveNote(target, to: destinationRelativePath)
+            try await performMoveNote(target, to: destinationRelativePath, isCurrentRequest: { true })
         }
     }
 
@@ -433,24 +434,33 @@ final class WindowLibraryMutationController: ObservableObject {
 
     func moveNote(
         _ target: NoteMutationTarget,
-        to requestedPath: String
+        to requestedPath: String,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency = { true }
     ) async throws {
         try await withOwnedMutation { [self] in
-            try await performMoveNote(target, to: requestedPath)
+            try await performMoveNote(target, to: requestedPath, isCurrentRequest: isCurrentRequest)
         }
     }
 
     private func performMoveNote(
         _ target: NoteMutationTarget,
-        to requestedPath: String
+        to requestedPath: String,
+        isCurrentRequest: @escaping DocumentTransitionCoordinator.Currency
     ) async throws {
         guard let context = dependencies.context() else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        let admittedBinding = bindingID
+        let isCurrent: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.bindingID == admittedBinding
+                && self.dependencies.context()?.assignmentID == context.assignmentID
+                && isCurrentRequest()
+        }
+        guard isCurrent() else { throw CancellationError() }
         try await dependencies.flushActiveTarget(target)
         try Task.checkCancellation()
-        guard dependencies.context()?.assignmentID == context.assignmentID,
-            dependencies.context()?.vault.id == context.vault.id
+        guard isCurrent(), dependencies.context()?.vault.id == context.vault.id
         else { throw CancellationError() }
         let authorizedTarget = try currentTarget(target)
         do {
@@ -458,9 +468,11 @@ final class WindowLibraryMutationController: ObservableObject {
                 authorizedTarget,
                 to: Self.markdownPath(requestedPath)
             )
-            await dependencies.committedNoteMoved(outcome, target)
+            await dependencies.committedNoteMoved(outcome, authorizedTarget, isCurrent)
         } catch {
-            await dependencies.refreshTransactionRecovery()
+            if bindingID == admittedBinding, dependencies.context()?.assignmentID == context.assignmentID {
+                await dependencies.refreshTransactionRecovery()
+            }
             throw error
         }
     }

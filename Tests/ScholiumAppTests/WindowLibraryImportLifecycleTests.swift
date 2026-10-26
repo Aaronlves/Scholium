@@ -139,7 +139,7 @@ private final class ImportFixture {
                 context: { [unowned self] in context }, enqueueDocumentTransition: { _, _, _ in },
                 flushEditors: { _ in }, flushActiveTarget: { _ in }, expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
                 committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in }, committedFolderMoved: { _ in },
-                committedNoteDuplicated: { _, _, _ in }, committedNoteMoved: { _, _ in }, committedSystemTrash: { _, _, _ in },
+                committedNoteDuplicated: { _, _, _ in }, committedNoteMoved: { _, _, _ in }, committedSystemTrash: { _, _, _ in },
                 importedDocumentsCommitted: { [unowned self] _ in if refreshFails { throw Failure.refresh } },
                 presentImportOutcome: { [unowned self] in outcomes.append($0) }, presentSystemTrash: { _ in }, clearPresentedAlert: {},
                 reportError: { [unowned self] in errors.append($0) }, reportInformation: { [unowned self] in information.append($0) },

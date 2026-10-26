@@ -298,7 +298,7 @@ private final class CompletionFixture {
                 expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
                 committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
                 committedFolderMoved: { _ in }, committedNoteDuplicated: { _, _, _ in },
-                committedNoteMoved: { _, _ in },
+                committedNoteMoved: { _, _, _ in },
                 committedSystemTrash: { [unowned self] preview, outcome, isCurrent in
                     guard isCurrent() else { return }
                     if let outcome {
