@@ -1,6 +1,5 @@
 import Foundation
 import ScholiumContracts
-import ScholiumCore
 import Testing
 
 @testable import ScholiumApp
@@ -91,8 +90,16 @@ struct WindowSystemTrashPublicationTests {
         operations.pendingCleanupRecovery = fixture.outcome.committedValue.pendingCleanupRecovery
         let recovery = try #require(operations.pendingCleanupRecovery)
         let recoveryURL = try #require(window.researchController.recoveryRecordsURL)
-        let recoveryStore = try TriptychMutationRecoveryStore(storageURL: recoveryURL)
-        try await recoveryStore.record(recovery)
+        try #require(recoveryURL.path.hasPrefix(fixture.root.path + "/"))
+        // Seed only this disposable fixture's public Codable record. The
+        // Application reader below validates it; delivery tests never import
+        // or construct the internal Core recovery owner.
+        let records = recoveryURL.appendingPathComponent("records", isDirectory: true)
+        try FileManager.default.createDirectory(at: records, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let recordURL = records.appendingPathComponent(recovery.id.uuidString.lowercased() + ".json")
+        try #require(FileManager.default.createFile(atPath: recordURL.path, contents: JSONEncoder().encode(recovery), attributes: [.posixPermissions: 0o600]))
+        let persisted = try await window.researchController.recoveryRecords()
+        try #require(persisted.contains { $0 == recovery })
         let neighbor = try #require(window.documentTabController.tabs.first { $0.document.relativePath == "Neighbor.md" })
         window.selectDocumentTab(withID: neighbor.id)
         await window.waitForDocumentTransitions()
