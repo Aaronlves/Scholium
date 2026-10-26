@@ -1352,6 +1352,7 @@ extension WorkspaceHandle {
         {
             let queued = pendingSourceCommitRefreshes
             pendingSourceCommitRefreshes.removeAll(keepingCapacity: true)
+            defer { completeRelatedRefreshObservation(.sourceCommit) }
             do {
                 let payload = try WorkspaceRefreshPayload.merged(queued)
                 if let barrier = committedMutationRefreshBarrierForTesting { await barrier() }
@@ -1372,6 +1373,7 @@ extension WorkspaceHandle {
             guard !sourceOperationGate.sourceMutationIsActive else { break }
             let pending = pendingLiveEvents
             pendingLiveEvents.removeAll()
+            defer { completeRelatedRefreshObservation(.liveInventory) }
             var changedVaultIDs: Set<UUID> = []
             var rootChangedVaultIDs: Set<UUID> = []
             for (vaultID, var journal) in pending {

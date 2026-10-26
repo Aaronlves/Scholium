@@ -202,6 +202,10 @@ public actor WorkspaceEventSource {
         continuations[id] = nil
     }
 
+    /// The last published freshness belongs to this event owner, including
+    /// the original reason for a failed or stale derived publication.
+    var derivedRefreshStatus: WorkspaceDerivedRefreshStatus { currentDerivedRefreshStatus }
+
     // Internal test evidence for cancellation cleanup; not application API.
     var subscriberCount: Int { continuations.count }
     var publishedGeneration: UInt64 { generation }

@@ -35,6 +35,10 @@ struct WorkspaceSourceOperationGate {
         activeLease?.kind == .sourceMutation
     }
 
+    var currentSourceMutation: WorkspaceSourceOperationLease? {
+        sourceMutationIsActive ? activeLease : nil
+    }
+
     var refreshCycleIsActive: Bool {
         activeLease?.kind == .refreshCycle
     }
@@ -127,6 +131,19 @@ extension WorkspaceSourceOperationGateOwner {
             }
             try await waitForWorkspaceSourceOperationChange()
         }
+    }
+
+    /// Observes the already-admitted mutation without acquiring source
+    /// authority or following replacement mutations. Cancellation removes only
+    /// this reader's existing gate waiter.
+    func observeAdmittedSourceMutation() async throws -> Bool {
+        try Task.checkCancellation()
+        guard let admitted = sourceOperationGate.currentSourceMutation else { return false }
+        while sourceOperationGate.currentSourceMutation == admitted {
+            try await waitForWorkspaceSourceOperationChange()
+        }
+        try Task.checkCancellation()
+        return true
     }
 
     func releaseWorkspaceSourceOperation(_ lease: WorkspaceSourceOperationLease) {

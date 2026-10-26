@@ -43,6 +43,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     // extensions. They remain one actor-isolated state owner, not secondary
     // runtime or transaction owners.
     var lastRelatedContentMeasurement: RelatedContentRetrievalMeasurement?
+    var relatedContentRefreshWaiters: [UUID: RelatedContentRefreshWaiter] = [:]
     var writingCompletionMemo = WritingCompletionProjectionMemo()
     var lastWritingCompletionMeasurement: WritingCompletionLookupMeasurement?
     var writingCompletionPostSourceReadBarrierForTesting: (@Sendable () async -> Void)?
@@ -127,6 +128,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
         var reviewedSnapshotPublicationBarrierForTesting: (@Sendable () async -> Void)?
         var preparedSourceCatalogBarrierForTesting: (@Sendable (UUID) async -> Void)?
+        var relatedContentFinalValidationBarrierForTesting: (@Sendable () async -> Void)?
+
+        func setRelatedContentFinalValidationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            relatedContentFinalValidationBarrierForTesting = barrier
+        }
 
         func setPreparedSourceCatalogBarrierForTesting(_ barrier: (@Sendable (UUID) async -> Void)?) {
             preparedSourceCatalogBarrierForTesting = barrier
@@ -633,9 +639,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     private func finishShutdown() async {
+        for waiter in relatedContentRefreshWaiters.values { waiter.completion.finish() }
+        relatedContentRefreshWaiters.removeAll()
         writingCompletionMemo.clear()
         lastWritingCompletionMeasurement = nil
         writingCompletionPostSourceReadBarrierForTesting = nil
+        #if DEBUG
+            relatedContentFinalValidationBarrierForTesting = nil
+        #endif
         let sourceCommitRefresh = sourceCommitRefreshTask
         sourceCommitRefreshTask = nil
         pendingSourceCommitRefreshes.removeAll()

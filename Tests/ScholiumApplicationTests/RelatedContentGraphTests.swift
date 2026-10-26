@@ -192,6 +192,372 @@ struct RelatedContentGraphTests {
         }
         await runtime.shutdown()
     }
+
+    #if DEBUG
+        @Test("A completed source-identical refresh does not strand Related at the same Search generation", .timeLimit(.minutes(1)))
+        func sameSearchGenerationRefreshRemainsLive() async throws {
+            let fixture = try await ApplicationFixture.make()
+            defer { fixture.remove() }
+            try Data("# Middle\n\n[[Target]]\n".utf8).write(to: fixture.topicsURL.appendingPathComponent("Middle.md"))
+            let target = fixture.topicsURL.appendingPathComponent("Target.md")
+            let targetBytes = Data("# Target\n\nAgency requires a deliberate choice.\n".utf8)
+            try targetBytes.write(to: target)
+            let runtime = try await WorkspaceRuntime.snapshot(
+                applicationSupportURL: fixture.applicationSupportURL, workspaceRegistryStorageURL: fixture.registryStorageURL)
+            let handle: WorkspaceHandle
+            do { handle = try await runtime.openWorkspace(id: fixture.assignment.id) } catch {
+                await runtime.shutdown()
+                throw error
+            }
+            let request = RelatedContentRequest(
+                seed: .init(
+                    noteID: fixture.analysisNoteID, source: "# Agency\n\nAgency [[Middle]].",
+                    focuses: [.init(kind: .selectedPassage, text: "agency deliberate choice")]))
+            let gate = RelatedFinalValidationGate()
+            var query: Task<RelatedContentResponse, Error>?
+            do {
+                let initialResult = try await handle.discovery.relatedContent(request)
+                try #require(initialResult.state == .current && !initialResult.passages.isEmpty)
+                try #require(await handle.lastRelatedContentMeasurement?.graphUsed == true)
+                let initial = try await handle.snapshot()
+                let initialSearch = try #require(initial.discovery.searchGeneration)
+                let initialGraph = try #require(initial.discovery.catalog.graph?.generation)
+                let initialSources = Dictionary(uniqueKeysWithValues: initial.vaults.flatMap(\.documents).map { ($0.id, $0.fingerprint) })
+                await handle.setRelatedContentFinalValidationBarrierForTesting { await gate.holdOnce() }
+                let pending = Task {
+                    do {
+                        let response = try await handle.discovery.relatedContent(request)
+                        await gate.finish()
+                        return response
+                    } catch {
+                        await gate.finish()
+                        throw error
+                    }
+                }
+                query = pending
+                try #require(await gate.waitUntilArrived())
+                let refreshed = try await handle.refresh()
+                let refreshedGraph = try #require(refreshed.discovery.catalog.graph?.generation)
+                #expect(refreshed.discovery.searchGeneration == initialSearch)
+                #expect(refreshedGraph > initialGraph)
+                #expect(refreshed.sourceInventoryRevision > initial.sourceInventoryRevision)
+                #expect(Dictionary(uniqueKeysWithValues: refreshed.vaults.flatMap(\.documents).map { ($0.id, $0.fingerprint) }) == initialSources)
+                #expect(try Data(contentsOf: target) == targetBytes)
+                await gate.release()
+                let response = try await pending.value
+                print(
+                    "RELATED_SAME_G state=\(response.state) search_unchanged=\(refreshed.discovery.searchGeneration == initialSearch) graph_advanced=\(refreshedGraph > initialGraph) publication_advanced=\(refreshed.sourceInventoryRevision > initial.sourceInventoryRevision)"
+                )
+                #expect(response.state == .current)
+                #expect(response.availability == .current(initialSearch))
+                #expect(response.passages.map(\.source) == initialResult.passages.map(\.source))
+                await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+            } catch {
+                query?.cancel()
+                await gate.release()
+                _ = try? await query?.value
+                await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+                await runtime.shutdown()
+                throw error
+            }
+            await runtime.shutdown()
+        }
+
+        enum RefreshObservationControl: CaseIterable, Equatable, Sendable {
+            case harmless, followOn, bufferedDuringSourceMutation, bufferedCancellation, bufferedShutdown, changedSource, changedSourceWithFollowOn,
+                failedPreparationWithFollowOn, cancel,
+                shutdown
+
+            var buffersDuringMutation: Bool {
+                self == .bufferedDuringSourceMutation || self == .bufferedCancellation || self == .bufferedShutdown
+            }
+
+            var changesSource: Bool { self == .changedSource || self == .changedSourceWithFollowOn }
+        }
+
+        @Test(
+            "Related observes harmless admitted work without requiring publication or repeating retrieval",
+            .timeLimit(.minutes(1)), arguments: RefreshObservationControl.allCases)
+        func admittedRefreshObservation(control: RefreshObservationControl) async throws {
+            let fixture = try await ApplicationFixture.make()
+            defer { fixture.remove() }
+            let middle = fixture.topicsURL.appendingPathComponent("Middle.md")
+            try Data("# Middle\n\n[[Target]]\n".utf8).write(to: middle)
+            try Data("# Target\n\nAgency requires a deliberate choice.\n".utf8)
+                .write(to: fixture.topicsURL.appendingPathComponent("Target.md"))
+            let runtime = WorkspaceRuntime(
+                configuration: .live(
+                    .init(applicationSupportURL: fixture.applicationSupportURL, workspaceRegistryStorageURL: fixture.registryStorageURL)))
+            let handle: WorkspaceHandle
+            do { handle = try await runtime.openWorkspace(id: fixture.assignment.id) } catch {
+                await runtime.shutdown()
+                throw error
+            }
+            let queryGate = RelatedFinalValidationGate()
+            let firstPreflight = RelatedFinalValidationGate()
+            let secondPreflight = RelatedFinalValidationGate()
+            let changedPublication = RelatedFinalValidationGate()
+            let progress = RelatedObservationProgress()
+            var query: Task<RelatedContentResponse, Error>?
+            var shutdown: Task<Void, Never>?
+            var sourceLease: WorkspaceSourceOperationLease?
+            do {
+                await handle.openingPresentationDidComplete()
+                await handle.awaitOpeningCompletionForTesting()
+                _ = try await handle.refresh()
+                if let live = await handle.liveIndexRefreshTask?.task { await live.value }
+                let request = RelatedContentRequest(
+                    seed: .init(
+                        noteID: fixture.analysisNoteID, source: "# Agency\n\nAgency [[Middle]].",
+                        focuses: [.init(kind: .selectedPassage, text: "agency deliberate choice")]))
+                let original = try await handle.discovery.relatedContent(request)
+                try #require(original.state == .current && !original.passages.isEmpty)
+                try #require(await handle.lastRelatedContentMeasurement?.graphUsed == true)
+                let initial = try await handle.snapshot()
+                let initialSearch = try #require(initial.discovery.searchGeneration)
+                let publications = await handle.events.publishedGeneration
+                let graphAttempts = await handle.nextGraphGeneration
+                await handle.setRelatedContentFinalValidationBarrierForTesting { await queryGate.holdOnce() }
+                await handle.setLiveInventoryPreflightBarrierForTesting {
+                    switch await progress.nextPreflight() {
+                    case 1: await firstPreflight.holdOnce()
+                    case 2 where control == .followOn: await secondPreflight.holdOnce()
+                    case 3 where control == .changedSourceWithFollowOn: await secondPreflight.holdOnce()
+                    default: break
+                    }
+                }
+                let pending = Task {
+                    do {
+                        let response = try await handle.discovery.relatedContent(request)
+                        await progress.finishQuery()
+                        await queryGate.finish()
+                        return response
+                    } catch {
+                        await progress.finishQuery()
+                        await queryGate.finish()
+                        throw error
+                    }
+                }
+                query = pending
+                try #require(await queryGate.waitUntilArrived())
+                if control.buffersDuringMutation {
+                    sourceLease = try await handle.beginSourceMutation()
+                }
+                try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 100), vaultID: fixture.analysisNoteID.vaultID)
+                if control.buffersDuringMutation {
+                    #expect(await handle.liveIndexRefreshTask == nil)
+                    await queryGate.release()
+                    try await waitForRelatedProbe {
+                        let completed = await progress.queryFinished
+                        let observing = await handle.sourceOperationGate.waitingCount > 0
+                        return completed || observing
+                    }
+                    #expect(!(await progress.queryFinished), "A buffered harmless event escaped observation while its source gate was held")
+                    if control == .bufferedCancellation || control == .bufferedShutdown {
+                        if control == .bufferedCancellation {
+                            pending.cancel()
+                            await #expect(throws: CancellationError.self) { try await pending.value }
+                        } else {
+                            shutdown = Task { await runtime.shutdown() }
+                            await #expect(throws: (any Error).self) { try await pending.value }
+                        }
+                        #expect(await handle.sourceOperationGate.waitingCount == 0)
+                        #expect(await handle.sourceOperationGate.currentSourceMutation == sourceLease, "Observation changed the admitted mutation lease")
+                        #expect(await handle.relatedContentRefreshWaiters.isEmpty)
+                        #expect(await queryGate.entryCount == 1)
+                        await firstPreflight.release()
+                        await secondPreflight.release()
+                        if let held = sourceLease {
+                            sourceLease = nil
+                            await handle.endSourceMutation(held)
+                        }
+                        await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+                        await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                        await handle.setCapturedSearchManifestBarrierForTesting(nil)
+                        await handle.setPreparedSourceCatalogBarrierForTesting(nil)
+                        await changedPublication.release()
+                        await runtime.shutdown()
+                        await shutdown?.value
+                        return
+                    }
+                    if let held = sourceLease {
+                        sourceLease = nil
+                        await handle.endSourceMutation(held)
+                    }
+                }
+                try #require(await firstPreflight.waitUntilArrived())
+                await queryGate.release()
+                try await waitForRelatedProbe {
+                    let completed = await progress.queryFinished
+                    let observing = await handle.relatedContentRefreshWaiters.count == 1
+                    return completed || observing
+                }
+                #expect(!(await progress.queryFinished), "The query returned while its captured harmless preflight was still held")
+                #expect(await handle.relatedContentRefreshWaiters.count == 1)
+                switch control {
+                case .cancel:
+                    pending.cancel()
+                    await #expect(throws: CancellationError.self) { try await pending.value }
+                    #expect(await handle.relatedContentRefreshWaiters.isEmpty)
+                    #expect(await handle.liveIndexRefreshTask != nil)
+                case .shutdown:
+                    shutdown = Task { await runtime.shutdown() }
+                    await #expect(throws: (any Error).self) { try await pending.value }
+                    #expect(await handle.relatedContentRefreshWaiters.isEmpty)
+                case .followOn:
+                    try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 101), vaultID: fixture.analysisNoteID.vaultID)
+                    await firstPreflight.release()
+                    try #require(await secondPreflight.waitUntilArrived())
+                    try await waitForRelatedProbe { await handle.relatedContentRefreshWaiters.count == 1 }
+                    #expect(!(await progress.queryFinished))
+                    await secondPreflight.release()
+                case .changedSource, .changedSourceWithFollowOn:
+                    if control == .changedSourceWithFollowOn {
+                        await handle.setCapturedSearchManifestBarrierForTesting { await changedPublication.holdOnce() }
+                    }
+                    let changed = "# Middle\n\nThe intermediary no longer links to Target.\n"
+                    try Data(changed.utf8).write(to: middle)
+                    let topicsID = try #require(fixture.assignment.vault(for: .topicKnowledge)?.id)
+                    try await runtime.deliverPooledVaultEventForTesting(
+                        .init(added: [], modified: ["Middle.md"], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false), vaultID: topicsID)
+                    let repository = try await handle.repository(vaultID: topicsID)
+                    let authoritative = try await repository.load(relativePath: "Middle.md")
+                    #expect(authoritative.sourceBytes == Data(changed.utf8))
+                    #expect(authoritative.fingerprint != initial.document(id: .init(vaultID: topicsID, relativePath: "Middle.md"))?.fingerprint)
+                    if control == .changedSourceWithFollowOn {
+                        await firstPreflight.release()
+                        try #require(await changedPublication.waitUntilArrived())
+                        try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 102), vaultID: fixture.analysisNoteID.vaultID)
+                        await changedPublication.release()
+                        try #require(await secondPreflight.waitUntilArrived())
+                        try await waitForRelatedProbe {
+                            let completed = await progress.queryFinished
+                            let observing = await handle.relatedContentRefreshWaiters.count == 1
+                            return completed || observing
+                        }
+                        let completed = await progress.queryFinished
+                        #expect(completed, "An obsolete query joined later held work after its captured cohort changed")
+                        if !completed { await secondPreflight.release() }
+                        let stale = try await pending.value
+                        #expect(stale.state == .stale && stale.passages.isEmpty)
+                        if completed { #expect(await handle.liveIndexRefreshTask != nil, "The query cancelled the later shared work") }
+                    }
+                case .failedPreparationWithFollowOn:
+                    await handle.setPreparedSourceCatalogBarrierForTesting { vaultID in
+                        guard vaultID == fixture.analysisNoteID.vaultID else { return }
+                        switch await progress.nextPreparation() {
+                        case 1: await changedPublication.holdOnce()
+                        case 2: await secondPreflight.holdOnce()
+                        default: break
+                        }
+                    }
+                    let unreadable = fixture.topicsURL.appendingPathComponent("Unreadable.md")
+                    let invalidBytes = Data([0xFF, 0xFE, 0xFD])
+                    try invalidBytes.write(to: unreadable)
+                    let topicsID = try #require(fixture.assignment.vault(for: .topicKnowledge)?.id)
+                    try await runtime.deliverPooledVaultEventForTesting(
+                        .init(added: ["Unreadable.md"], modified: [], deleted: [], sequence: 101, requiresFullRescan: false, rootChanged: false),
+                        vaultID: topicsID)
+                    #expect(try Data(contentsOf: unreadable) == invalidBytes)
+                    await firstPreflight.release()
+                    try #require(await changedPublication.waitUntilArrived())
+                    try await runtime.deliverPooledVaultEventForTesting(.reconciliationRequired(sequence: 102), vaultID: fixture.analysisNoteID.vaultID)
+                    await changedPublication.release()
+                    try #require(await secondPreflight.waitUntilArrived())
+                    try await waitForRelatedProbe {
+                        let completed = await progress.queryFinished
+                        let observing = await handle.relatedContentRefreshWaiters.count == 1
+                        return completed || observing
+                    }
+                    let completed = await progress.queryFinished
+                    #expect(completed, "A known failed derived preparation kept an invalid query waiting behind later held work")
+                    #expect(await handle.derivedStateRequiresRefresh)
+                    let status = await handle.events.derivedRefreshStatus
+                    let failureReason: String
+                    if case .failed(let issue) = status {
+                        failureReason = issue.reason
+                        #expect(!failureReason.isEmpty)
+                    } else {
+                        Issue.record("The genuine preparation error lost its failed publication")
+                        failureReason = ""
+                    }
+                    if !completed { await secondPreflight.release() }
+                    let failed = try await pending.value
+                    #expect(failed.state == .stale && failed.passages.isEmpty)
+                    if case .failed(let lastGood, let reason) = failed.availability {
+                        #expect(lastGood == initialSearch && reason == failureReason)
+                    } else {
+                        Issue.record("A genuine derived failure was returned as transient current-generation staleness")
+                    }
+                    #expect(try await handle.snapshot().discovery.searchGeneration == initialSearch)
+                    #expect(await queryGate.entryCount == 1)
+                    try FileManager.default.removeItem(at: unreadable)
+                    await handle.setPreparedSourceCatalogBarrierForTesting(nil)
+                    let retry = Task { try await handle.refresh() }
+                    await secondPreflight.release()
+                    let retried = try await retry.value
+                    #expect(retried.discovery.searchGeneration == initialSearch)
+                    #expect(!(await handle.derivedStateRequiresRefresh))
+                    await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+                    let recovered = try await handle.discovery.relatedContent(request)
+                    #expect(recovered.state == .current && recovered.availability == .current(initialSearch))
+                    #expect(recovered.passages.map(\.source) == original.passages.map(\.source))
+                case .harmless, .bufferedDuringSourceMutation, .bufferedCancellation, .bufferedShutdown: break
+                }
+                await firstPreflight.release()
+                await secondPreflight.release()
+                if control != .cancel && control != .shutdown && control != .failedPreparationWithFollowOn {
+                    let response = try await pending.value
+                    let final = try await handle.snapshot()
+                    if control.changesSource {
+                        #expect(response.state == .stale && response.passages.isEmpty)
+                        #expect(final.discovery.searchGeneration != initialSearch)
+                    } else {
+                        #expect(response.state == .current && response.availability == .current(initialSearch))
+                        #expect(response.passages.map(\.source) == original.passages.map(\.source))
+                        #expect(final.sourceInventoryRevision == initial.sourceInventoryRevision)
+                        #expect(await handle.events.publishedGeneration == publications)
+                        #expect(await handle.nextGraphGeneration == graphAttempts)
+                    }
+                }
+                #expect(await queryGate.entryCount == 1, "Observation repeated candidate/source/ranking work")
+                #expect(await handle.relatedContentRefreshWaiters.isEmpty)
+                await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                await handle.setCapturedSearchManifestBarrierForTesting(nil)
+                await handle.setPreparedSourceCatalogBarrierForTesting(nil)
+                await changedPublication.release()
+            } catch {
+                query?.cancel()
+                if let held = sourceLease {
+                    sourceLease = nil
+                    await handle.endSourceMutation(held)
+                }
+                await queryGate.release()
+                await firstPreflight.release()
+                await secondPreflight.release()
+                await changedPublication.release()
+                _ = try? await query?.value
+                await handle.setRelatedContentFinalValidationBarrierForTesting(nil)
+                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                await handle.setCapturedSearchManifestBarrierForTesting(nil)
+                await handle.setPreparedSourceCatalogBarrierForTesting(nil)
+                await runtime.shutdown()
+                await shutdown?.value
+                throw error
+            }
+            await runtime.shutdown()
+            await shutdown?.value
+        }
+
+        private func waitForRelatedProbe(_ predicate: @escaping @Sendable () async -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while !(await predicate()) {
+                try #require(ContinuousClock.now < deadline, "Related observation did not reach its deterministic test boundary")
+                await Task.yield()
+            }
+        }
+    #endif
 }
 
 private struct GraphFixture {
@@ -248,3 +614,52 @@ private struct GraphFixture {
             catalog: catalog ?? self.catalog, linkCatalog: linkCatalog, existingCandidates: candidates)
     }
 }
+
+#if DEBUG
+    private actor RelatedFinalValidationGate {
+        private let arrival = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        private let releaseSignal = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        private var didArrive = false
+        private(set) var entryCount = 0
+
+        func holdOnce() async {
+            entryCount += 1
+            guard !didArrive else { return }
+            didArrive = true
+            arrival.continuation.yield(())
+            arrival.continuation.finish()
+            var iterator = releaseSignal.stream.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+
+        func waitUntilArrived() async -> Bool {
+            var iterator = arrival.stream.makeAsyncIterator()
+            return await iterator.next() != nil
+        }
+
+        func finish() { arrival.continuation.finish() }
+
+        func release() {
+            releaseSignal.continuation.yield(())
+            releaseSignal.continuation.finish()
+            arrival.continuation.finish()
+        }
+    }
+#endif
+
+#if DEBUG
+    private actor RelatedObservationProgress {
+        private var preflights = 0
+        private var preparations = 0
+        private(set) var queryFinished = false
+        func nextPreflight() -> Int {
+            preflights += 1
+            return preflights
+        }
+        func nextPreparation() -> Int {
+            preparations += 1
+            return preparations
+        }
+        func finishQuery() { queryFinished = true }
+    }
+#endif

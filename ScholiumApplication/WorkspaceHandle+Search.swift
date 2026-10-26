@@ -97,7 +97,52 @@ private func currentNoteCompletionTerms(
         .map { $0 }
 }
 
+enum RelatedContentRefreshOwner: Hashable {
+    case sourceCommit, liveInventory
+}
+
+struct RelatedContentRefreshWaiter {
+    var owners: Set<RelatedContentRefreshOwner>
+    let completion: AsyncStream<Void>.Continuation
+}
+
 extension WorkspaceHandle {
+    /// Observes only work already admitted by the owning refresh pumps. Each
+    /// waiter ends at the captured batch boundary, not pump quiescence. Stream
+    /// cancellation removes the query without cancelling shared source work.
+    private func observeAdmittedRelatedRefreshWork() async throws -> Bool {
+        try Task.checkCancellation()
+        try requireActive()
+        let observedMutation = try await observeAdmittedSourceMutation()
+        try requireActive()
+        var owners = Set<RelatedContentRefreshOwner>()
+        if sourceCommitRefreshTask != nil { owners.insert(.sourceCommit) }
+        if liveIndexRefreshTask != nil { owners.insert(.liveInventory) }
+        guard !owners.isEmpty else { return observedMutation }
+        let id = UUID()
+        let signal = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        relatedContentRefreshWaiters[id] = .init(owners: owners, completion: signal.continuation)
+        defer { relatedContentRefreshWaiters[id] = nil }
+        var iterator = signal.stream.makeAsyncIterator()
+        _ = await iterator.next()
+        try Task.checkCancellation()
+        try requireActive()
+        return true
+    }
+
+    func completeRelatedRefreshObservation(_ owner: RelatedContentRefreshOwner) {
+        for id in Array(relatedContentRefreshWaiters.keys) {
+            guard var waiter = relatedContentRefreshWaiters[id], waiter.owners.remove(owner) != nil else { continue }
+            if waiter.owners.isEmpty {
+                relatedContentRefreshWaiters[id] = nil
+                waiter.completion.yield(())
+                waiter.completion.finish()
+            } else {
+                relatedContentRefreshWaiters[id] = waiter
+            }
+        }
+    }
+
     /// Recommendation projections depend on exact Markdown only. Keep these
     /// fresh, authorized source reads separate from managed-document hydration.
     private func loadRelatedContentSource(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
@@ -333,6 +378,9 @@ extension WorkspaceHandle {
         let read = ContinuousClock.now
         let passages = try await services.searchIndex.relatedPassages(request, sources: sources)
         let ranked = ContinuousClock.now
+        #if DEBUG
+            await relatedContentFinalValidationBarrierForTesting?()
+        #endif
         // Publish after final validation, without another suspension. Measurements
         // carry no source content and do not authorize publication of a response.
         defer {
@@ -349,13 +397,74 @@ extension WorkspaceHandle {
         }
         try requireActive()
         try Task.checkCancellation()
-        let finalAvailability = try await services.searchIndex.availability()
+        var finalAvailability = try await services.searchIndex.availability()
+        // An admitted batch may finish without a publication (for example a
+        // harmless watcher hint). Observe its actual completion rather than
+        // asking Search to refresh or waiting for an invented next generation.
+        // A finite follow-on backlog can be observed at its next batch boundary;
+        // candidates, source reads and ranking remain this one request pass.
+        while graphResult != nil,
+            !derivedStateRequiresRefresh,
+            finalAvailability == .current(generation),
+            currentSnapshot.discovery.searchGeneration == generation,
+            currentSnapshot.discovery.catalog.notes == capturedSnapshot.discovery.catalog.notes,
+            try await observeAdmittedRelatedRefreshWork()
+        {
+            finalAvailability = try await services.searchIndex.availability()
+        }
         try requireActive()
         try Task.checkCancellation()
+        if derivedStateRequiresRefresh {
+            let failureSnapshot = currentSnapshot
+            let failureSourceToken = sourceAuthorityToken
+            let failureRoots = unavailableRootVaultIDs
+            let publishedStatus = await events.derivedRefreshStatus
+            finalAvailability = try await services.searchIndex.availability()
+            try requireActive()
+            try Task.checkCancellation()
+            if derivedStateRequiresRefresh {
+                // A failed catalog preparation may retain a healthy index.
+                // Its published provider failure is actionable; current(G)
+                // would incorrectly promise a future generation to wait for.
+                switch finalAvailability {
+                case .current, .refreshing:
+                    let sameFailureContext =
+                        sourceAuthorityToken == failureSourceToken
+                        && unavailableRootVaultIDs == failureRoots
+                        && currentSnapshot.phase == failureSnapshot.phase
+                        && currentSnapshot.sourceInventoryRevision == failureSnapshot.sourceInventoryRevision
+                        && currentSnapshot.discovery.searchGeneration == failureSnapshot.discovery.searchGeneration
+                        && currentSnapshot.discovery.catalog.notes == failureSnapshot.discovery.catalog.notes
+                    if sameFailureContext {
+                        switch publishedStatus {
+                        case .failed(let issue):
+                            finalAvailability = .failed(lastGood: issue.lastKnownGood.searchGeneration, reason: issue.reason)
+                        case .stale(let issue):
+                            if let lastGood = issue.lastKnownGood.searchGeneration {
+                                finalAvailability = .stale(lastGood: lastGood, reason: issue.reason)
+                            } else {
+                                finalAvailability = .failed(lastGood: nil, reason: issue.reason)
+                            }
+                        case .opening, .current:
+                            finalAvailability = .unavailable
+                        }
+                    } else {
+                        // A newer failed context cannot borrow an older reason.
+                        finalAvailability = .unavailable
+                    }
+                default: break  // Keep an existing index failure's own reason.
+                }
+            }
+        }
+        let currentGraph = currentSnapshot.discovery.catalog.graph
+        let capturedGraph = capturedSnapshot.discovery.catalog.graph
         let graphIsCurrent =
             graphResult == nil
-            || (currentSnapshot.discovery.catalog.graph?.generation == capturedSnapshot.discovery.catalog.graph?.generation
-                && currentSnapshot.discovery.catalog.graph?.sourceManifestHash == generation.sourceManifestHash
+            || (currentGraph?.contractVersion == GraphSnapshot.currentContractVersion
+                && currentGraph?.contractVersion == capturedGraph?.contractVersion
+                && !generation.sourceManifestHash.isEmpty
+                && currentGraph?.sourceManifestHash == generation.sourceManifestHash
+                && currentGraph?.outgoing == capturedGraph?.outgoing
                 && !derivedStateRequiresRefresh && pendingSourceCommitRefreshes.isEmpty
                 && sourceCommitRefreshTask == nil && pendingLiveEvents.isEmpty && liveIndexRefreshTask == nil)
         guard currentSnapshot.phase.isComplete,

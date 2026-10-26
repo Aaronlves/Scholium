@@ -781,6 +781,26 @@ struct RelatedMaterialsTests {
         #expect(manual.issue != nil && manual.needsRefresh && !manual.isLoading)
     }
 
+    @Test("A genuine failed provider remains actionable and manual recovery can reuse the same Search generation")
+    func genuineFailureRecoversAtSameGeneration() async {
+        let model = RelatedMaterialsSession()
+        var captured = seed()
+        captured.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
+        let current = captured
+        let index = current.searchGeneration!
+        let source = reference()
+        let failed = RelatedContentResponse(
+            requestID: current.request.id, seedFingerprint: current.request.seed.fingerprint,
+            freshnessToken: .triptych(index), availability: .failed(lastGood: index, reason: "Synthetic genuine derived failure"), state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        await model.find(capture: { current }, retrieve: { _ in failed }, references: [source], automatic: true).value
+        #expect(model.issue != nil && model.needsRefresh && !model.canInsertParagraphLink)
+        let recovered = populatedResponse(current)
+        await model.find(capture: { current }, retrieve: { _ in recovered }, references: [source]).value
+        #expect(model.issue == nil && !model.needsRefresh && model.seed?.searchGeneration == index)
+        #expect(model.insertionPoint == current.insertionPoint && model.canInsertParagraphLink)
+    }
+
     @Test("A new owned generation resumes waiting once and supersedes a late old response", arguments: [false, true])
     func generationResumesAutomatic(eventBeforeStale: Bool) async {
         let model = RelatedMaterialsSession()
