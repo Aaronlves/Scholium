@@ -38,8 +38,9 @@ function harness() {
     input.setSelectionRange = vi.fn();
     return input;
   };
-  const event = (input: HTMLTextAreaElement, type: string) => {
+  const event = (input: HTMLTextAreaElement, type: string, key?: string) => {
     const value = new window.Event(type, {bubbles: true});
+    if (key) Object.defineProperty(value, "key", {value: key});
     input.dispatchEvent(value);
     return value;
   };
@@ -67,6 +68,24 @@ function harness() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("filename title ownership", () => {
+  it("restores the saved accessible heading with the input when Escape cancels a title draft", () => {
+    const h = harness();
+    const input = h.render();
+    const heading = input.parentElement!;
+    input.blur = () => { h.event(input, "blur"); };
+    expect(heading.getAttribute("role")).toBe("heading");
+    for (const draft of ["Cancelled title 中文", "Another draft 🦉"]) {
+      h.draft(input, draft);
+      expect(heading.getAttribute("aria-label")).toBe(draft);
+      h.event(input, "keydown", "Escape");
+      expect(input.value).toBe("Title");
+      expect(heading.getAttribute("aria-label")).toBe("Title");
+      expect(h.title.allowsDetachment()).toBe(true);
+      expect(h.requestRename).not.toHaveBeenCalled();
+      h.expectSourceUnchanged();
+    }
+  });
+
   it("keeps drafts and rename failures outside source and blocks detachment until settled", async () => {
     const h = harness();
     let input = h.render();

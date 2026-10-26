@@ -38565,6 +38565,7 @@ ${blankRow(table.position.columnCount)}`;
             documentTitleDraft = null;
             documentTitleError = null;
             input.value = documentTitle2;
+            wrapper.setAttribute("aria-label", documentTitle2);
             resize();
             input.blur();
           }

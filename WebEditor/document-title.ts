@@ -144,6 +144,7 @@ export function createDocumentTitle(options: DocumentTitleOptions) {
           documentTitleDraft = null;
           documentTitleError = null;
           input.value = documentTitle;
+          wrapper.setAttribute("aria-label", documentTitle);
           resize();
           input.blur();
         }
