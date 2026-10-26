@@ -237,7 +237,12 @@ describe("local projection-topology proof", () => {
   }
 
   function syntaxFor(state: EditorState) {
-    return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0);
+    // ensureSyntaxTree can advance its ready context without publishing a new
+    // LanguageState tree. The fresh oracle must use that completed tree.
+    const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
+    expect(tree).not.toBeNull();
+    expect(tree!.length).toBe(state.doc.length);
+    return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0, tree!);
   }
 
   it.each(["x", "中", "e\u0301 🧭"])("keeps parser-proved ordinary input incremental without a full source string: %j", insert => {
