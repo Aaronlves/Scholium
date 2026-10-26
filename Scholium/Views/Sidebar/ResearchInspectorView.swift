@@ -25,6 +25,7 @@ struct ResearchInspectorView: View {
     let graph: GraphSnapshot?
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
+    let searchGeneration: SearchGenerationID?
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?, DocumentFingerprint?) -> Void
     let findRelated: @MainActor () -> Void
@@ -51,6 +52,7 @@ struct ResearchInspectorView: View {
         graph: GraphSnapshot?,
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
+        searchGeneration: SearchGenerationID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?, DocumentFingerprint?) -> Void,
         findRelated: @escaping @MainActor () -> Void,
@@ -76,6 +78,7 @@ struct ResearchInspectorView: View {
         self.graph = graph
         self.catalog = catalog
         self.currentVaultID = currentVaultID
+        self.searchGeneration = searchGeneration
         self.researchInspectorContentContext = researchInspectorContentContext
         self.openReference = openReference
         self.findRelated = findRelated
@@ -115,7 +118,7 @@ struct ResearchInspectorView: View {
             RelatedMaterialsView(
                 session: research.relatedMaterials,
                 keptPassages: research.keptPassages,
-                isVisible: relatedActive,
+                isVisible: relatedActive, searchGeneration: searchGeneration,
                 editor: editor, termGroups: termGroups, find: findRelated,
                 findWithTermGroup: findRelatedWithTermGroup,
                 retry: retryRelated,

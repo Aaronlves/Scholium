@@ -931,6 +931,7 @@ struct ContentView: View {
                 graph: appState.linkGraph,
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
+                searchGeneration: workspaceProjectionController.searchGeneration,
                 researchInspectorContentContext: researchInspectorContentContext,
                 openReference: { reference, sourceLine, sourceFingerprint in
                     appState.researchController.requestOpen(

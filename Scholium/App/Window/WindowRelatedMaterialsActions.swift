@@ -59,13 +59,10 @@ extension WindowModel {
                     searchGeneration: self.workspaceProjectionController.searchGeneration)
             },
             retrieve: { [discovery = capabilities.discovery] request in
-                if refreshIndex { _ = try await discovery.refresh() }
-                let response = try await discovery.relatedContent(request)
-                guard response.state == .stale, !refreshIndex else { return response }
-                try Task.checkCancellation()
-                _ = try await discovery.refresh()
-                try Task.checkCancellation()
-                return try await discovery.relatedContent(request)
+                try await Self.retrieveRelatedMaterialContent(
+                    request, automatic: automatic, refreshIndex: refreshIndex,
+                    retrieve: { try await discovery.relatedContent($0) },
+                    refresh: { _ = try await discovery.refresh() })
             }, references: workspaceCatalog?.notes.map(\.reference) ?? [], automatic: automatic,
             canPublish: { [weak self] in
                 guard let self,
@@ -80,6 +77,20 @@ extension WindowModel {
                     for: references, catalog: catalog.notes,
                     from: .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath))
             })
+    }
+
+    nonisolated static func retrieveRelatedMaterialContent(
+        _ request: RelatedContentRequest, automatic: Bool, refreshIndex: Bool,
+        retrieve: @Sendable (RelatedContentRequest) async throws -> RelatedContentResponse,
+        refresh: @Sendable () async throws -> Void
+    ) async throws -> RelatedContentResponse {
+        if refreshIndex && !automatic { try await refresh() }
+        let response = try await retrieve(request)
+        guard !automatic, response.state == .stale, !refreshIndex else { return response }
+        try Task.checkCancellation()
+        try await refresh()
+        try Task.checkCancellation()
+        return try await retrieve(request)
     }
 
     @MainActor

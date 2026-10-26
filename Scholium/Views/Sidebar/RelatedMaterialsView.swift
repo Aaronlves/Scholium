@@ -7,6 +7,7 @@ struct RelatedMaterialsView: View {
     @ObservedObject var session: RelatedMaterialsSession
     @ObservedObject var keptPassages: KeptPassagesSession
     let isVisible: Bool
+    let searchGeneration: SearchGenerationID?
     let editor: MarkdownEditorSession?
     let termGroups: [SearchTermGroup]
     let find: @MainActor () -> Void
@@ -169,6 +170,12 @@ struct RelatedMaterialsView: View {
             } else {
                 session.stopAutomaticSearch()
             }
+        }
+        .onChange(of: searchGeneration) { previous, current in
+            guard session.searchGenerationDidChange(from: previous, to: current),
+                isVisible, !pointerInReferences, let editor, editor.hasWritingFocus, !editor.isComposing
+            else { return }
+            scheduleFollowing(immediate: true)
         }
         .onChange(of: editor.map(ObjectIdentifier.init)) { _, _ in
             pointerInReferences = false

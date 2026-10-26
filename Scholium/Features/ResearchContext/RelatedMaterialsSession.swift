@@ -143,7 +143,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     }
 
     func invalidateWritingContext() {
-        if isLoading { stopAutomaticSearch() }
+        if activeFind != nil { stopAutomaticSearch() }
         guard seed != nil else { return }
         insertionPoint = nil
         contextChanged = true
@@ -152,6 +152,16 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     private var scheduledSearch: Task<Void, Never>?
     private var generation = UUID()
     private var task: Task<Void, Never>?
+    private struct FindActivity {
+        let id: UUID
+        let automatic: Bool
+        var capturedGeneration: SearchGenerationID?
+    }
+    private var activeFind: FindActivity?
+    private struct AutomaticWait {
+        let generation: SearchGenerationID?
+    }
+    private var automaticWait: AutomaticWait?
     private var backgroundTask: Task<Void, Never>?
     private var backgroundTicket = UUID()
     private var pendingBackground: BackgroundKey?
@@ -175,7 +185,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         pause: @escaping @MainActor () async throws -> Void = { try await Task.sleep(for: .milliseconds(350)) },
         prepare: @escaping @MainActor () async throws -> Void
     ) -> Task<Void, Never>? {
-        guard key != pendingBackground, key != preparedBackground, !isLoading, !isInsertingParagraphLink else { return nil }
+        guard key != pendingBackground, key != preparedBackground, activeFind == nil, !isInsertingParagraphLink else { return nil }
         stopBackgroundPreparation()
         pendingBackground = key
         let ticket = backgroundTicket
@@ -236,6 +246,27 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         omittedCount = 0
         issue = nil
         needsRefresh = false
+        automaticWait = nil
+    }
+
+    /// An owned generation publication may replace only an older automatic
+    /// request. Manual refresh and an already-current automatic query keep ownership.
+    func searchGenerationDidChange(from previous: SearchGenerationID?, to current: SearchGenerationID?) -> Bool {
+        guard previous != current, activeFind?.automatic != false else { return false }
+        if let current {
+            if activeFind?.capturedGeneration == current { return false }
+            if activeFind == nil, automaticWait == nil, seed?.searchGeneration == current,
+                !contextChanged, issue == nil, !needsRefresh
+            {
+                return false
+            }
+        }
+        if let automaticWait, automaticWait.generation == current { return false }
+        stopAutomaticSearch()
+        automaticWait = nil
+        insertionPoint = nil
+        contextChanged = seed != nil
+        return current != nil
     }
 
     func scheduleAutomaticSearch(selection: Bool, immediate: Bool = false, find: @escaping @MainActor () -> Void) {
@@ -256,6 +287,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         generation = UUID()
         task?.cancel()
         task = nil
+        activeFind = nil
         isLoading = false
     }
 
@@ -282,6 +314,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         // prepared Core data remains usable; cancelling this task clears no cache.
         stopBackgroundPreparation()
         if !automatic {
+            automaticWait = nil
             scheduledSearch?.cancel()
             scheduledSearch = nil
         }
@@ -289,19 +322,31 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         generation = UUID()
         task?.cancel()
         let ticket = generation
-        isLoading = true
+        activeFind = FindActivity(id: ticket, automatic: automatic)
+        // Capture may prove that automatic following needs no retrieval.
+        // Keep retained cards readable while their insertion receipt is revoked.
+        isLoading = !(automatic && canReuseResults && !cards.isEmpty)
         insertionPoint = nil
         issue = nil
         needsRefresh = false
         let operation = Task { [weak self] in
             guard let self else { return }
+            defer { if activeFind?.id == ticket { activeFind = nil } }
             do {
                 let seed = try await capture()
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
+                activeFind?.capturedGeneration = seed.searchGeneration
                 guard canPublish() else {
                     isLoading = false
                     return
+                }
+                if automatic, let automaticWait {
+                    if automaticWait.generation == seed.searchGeneration {
+                        isLoading = false
+                        return
+                    }
+                    self.automaticWait = nil
                 }
                 if automatic, let generation = seed.searchGeneration,
                     self.seed?.searchGeneration == generation,
@@ -314,6 +359,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                     return
                 }
                 if cards.isEmpty { self.seed = seed }
+                isLoading = true
                 let response = try await retrieve(seed.request)
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
@@ -327,7 +373,20 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                 switch response.state {
                 case .current, .empty: break
                 case .partial: issue = String(localized: "Some related material is temporarily unavailable.", bundle: .module)
-                case .stale: throw RelatedMaterialsError.staleIndex
+                case .stale:
+                    if automatic {
+                        switch response.availability {
+                        case .current, .refreshing:
+                            automaticWait = AutomaticWait(generation: seed.searchGeneration)
+                            insertionPoint = nil
+                            hasCompleteCurrentResults = false
+                            contextChanged = true
+                            isLoading = false
+                            return
+                        default: break
+                        }
+                    }
+                    throw RelatedMaterialsError.staleIndex
                 case .invalidSeed: throw RelatedMaterialsError.invalidSeed
                 case .unavailable: throw RelatedMaterialsError.unavailable
                 }

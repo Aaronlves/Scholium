@@ -578,6 +578,332 @@ struct RelatedMaterialsTests {
         #expect(model.insertionPoint == moved.insertionPoint && !model.contextChanged)
     }
 
+    @Test("Unchanged automatic capture keeps retained cards readable without loading publications")
+    func unchangedCaptureKeepsResults() async {
+        let model = RelatedMaterialsSession()
+        var original = seed()
+        original.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
+        let response = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in response }, references: [reference]).value
+        let retained = model.cards
+        model.invalidateWritingContext()
+        let gate = RelatedRetrievalGate()
+        var loading: [Bool] = []
+        var retrievals = 0
+        let observation = model.$isLoading.removeDuplicates().dropFirst().sink { loading.append($0) }
+        defer { observation.cancel() }
+        let pending = model.find(
+            capture: {
+                await gate.wait()
+                return original
+            },
+            retrieve: { _ in
+                await MainActor.run { retrievals += 1 }
+                return response
+            },
+            references: [reference], automatic: true)
+        for await _ in gate.ready.stream {}
+        #expect(model.cards == retained && model.presentation == .results && !model.isLoading)
+        #expect(model.insertionPoint == nil && model.contextChanged)
+        let backgroundKey = RelatedMaterialsSession.BackgroundKey(
+            runtime: .init(triptychID: vault, activationID: UUID()), note: original.request.seed.noteID,
+            sessionID: UUID(), documentID: "draft", startingFingerprint: original.request.seed.fingerprint.sha256,
+            editorGeneration: 1, searchGeneration: original.searchGeneration!)
+        var backgroundCalls = 0
+        #expect(model.prepareBackground(key: backgroundKey, pause: {}) { backgroundCalls += 1 } == nil)
+        gate.release()
+        await pending.value
+        #expect(retrievals == 0 && loading.isEmpty)
+        #expect(model.cards == retained && model.presentation == .results)
+        #expect(model.insertionPoint == original.insertionPoint && !model.contextChanged && model.issue == nil)
+        let background = model.prepareBackground(key: backgroundKey, pause: {}) { backgroundCalls += 1 }
+        #expect(background != nil)
+        await background?.value
+        #expect(backgroundCalls == 1)
+    }
+
+    @Test("An automatic capture exposes real retrieval and failure after proving the context changed", arguments: [false, true])
+    func changedCaptureUsesLoading(changedGeneration: Bool) async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let response = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in response }, references: [reference]).value
+        let retained = model.cards
+        var changed = changedGeneration ? original : seed("new authored paragraph")
+        if changedGeneration { changed.searchGeneration = .init(triptychID: vault, sequence: 2, sourceManifestHash: "updated") }
+        let captured = changed
+        let captureGate = RelatedRetrievalGate()
+        let retrievalGate = RelatedRetrievalGate()
+        var loading: [Bool] = []
+        var retrievals = 0
+        let observation = model.$isLoading.removeDuplicates().dropFirst().sink { loading.append($0) }
+        defer { observation.cancel() }
+        model.invalidateWritingContext()
+        let pending = model.find(
+            capture: {
+                await captureGate.wait()
+                return captured
+            },
+            retrieve: { _ in
+                await MainActor.run { retrievals += 1 }
+                await retrievalGate.wait()
+                throw RelatedMaterialsError.unavailable
+            }, references: [reference], automatic: true)
+        for await _ in captureGate.ready.stream {}
+        #expect(model.presentation == .results && !model.isLoading && model.insertionPoint == nil)
+        captureGate.release()
+        for await _ in retrievalGate.ready.stream {}
+        #expect(model.isLoading && model.presentation == .loading && model.cards == retained)
+        retrievalGate.release()
+        await pending.value
+        #expect(retrievals == 1 && loading == [true, false])
+        #expect(model.cards == retained && !model.isLoading && model.issue != nil && model.needsRefresh)
+        #expect(model.insertionPoint == nil)
+    }
+
+    @Test("Failed automatic capture retains readable cards and reports the actual failure")
+    func failedCaptureKeepsCards() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let response = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in response }, references: [reference]).value
+        let retained = model.cards
+        let gate = RelatedRetrievalGate()
+        var loading: [Bool] = []
+        let observation = model.$isLoading.removeDuplicates().dropFirst().sink { loading.append($0) }
+        defer { observation.cancel() }
+        model.invalidateWritingContext()
+        let pending = model.find(
+            capture: {
+                await gate.wait()
+                throw RelatedMaterialsError.unavailable
+            },
+            retrieve: { _ in
+                Issue.record("A failed capture must not retrieve")
+                return response
+            },
+            references: [reference], automatic: true)
+        for await _ in gate.ready.stream {}
+        #expect(!model.isLoading && model.cards == retained && model.insertionPoint == nil)
+        gate.release()
+        await pending.value
+        #expect(loading.isEmpty && model.cards == retained && model.issue != nil && model.needsRefresh)
+        #expect(model.seed?.request.id == original.request.id && model.insertionPoint == nil)
+    }
+
+    @Test("A cancelled or superseded automatic capture cannot publish after its gate resumes", arguments: [false, true])
+    func supersededCaptureCannotPublish(replace: Bool) async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let response = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in response }, references: [reference]).value
+        let retained = model.cards
+        let gate = RelatedRetrievalGate()
+        model.invalidateWritingContext()
+        let pending = model.find(
+            capture: {
+                await gate.wait()
+                return original
+            },
+            retrieve: { _ in
+                Issue.record("Departed capture must not retrieve")
+                return response
+            },
+            references: [reference], automatic: true)
+        for await _ in gate.ready.stream {}
+        let current = seed("current writing")
+        let currentResponse = self.response(current.request)
+        if replace {
+            await model.find(capture: { current }, retrieve: { _ in currentResponse }, references: []).value
+        } else {
+            model.stopAutomaticSearch()
+        }
+        gate.release()
+        await pending.value
+        #expect(!model.isLoading && model.issue == nil && model.insertionPoint == nil)
+        #expect(model.cards == (replace ? [] : retained))
+        #expect(model.seed?.request.id == (replace ? current.request.id : original.request.id))
+    }
+
+    @Test("Automatic generation crossings retain cards and wait without refreshing or renewing insertion", arguments: [false, true])
+    func automaticTransientStale(currentAvailability: Bool) async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let first = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in first }, references: [reference]).value
+        let retained = model.cards
+        var captured = seed("new unsaved writing")
+        captured.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 2, selection: .init(anchor: 4, head: 4))
+        let requestSeed = captured
+        let index = captured.searchGeneration!
+        let stale = RelatedContentResponse(
+            requestID: captured.request.id, seedFingerprint: captured.request.seed.fingerprint, freshnessToken: .triptych(index),
+            availability: currentAvailability ? .current(index) : .refreshing(lastGood: index), state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        var retrievals = 0
+        for _ in 0..<2 {
+            await model.find(
+                capture: { requestSeed },
+                retrieve: { _ in
+                    await MainActor.run { retrievals += 1 }
+                    return stale
+                },
+                references: [reference], automatic: true
+            ).value
+            #expect(model.cards == retained && model.issue == nil && !model.needsRefresh && !model.isLoading)
+            #expect(model.insertionPoint == nil && !model.canInsertParagraphLink)
+        }
+        #expect(retrievals == 1)
+    }
+
+    @Test("Automatic stale failures remain actionable while manual generation crossings remain explicit", arguments: [false, true])
+    func staleFailureRemainsVisible(failedAvailability: Bool) async {
+        let model = RelatedMaterialsSession()
+        let captured = seed()
+        let index = captured.searchGeneration!
+        let response = RelatedContentResponse(
+            requestID: captured.request.id, seedFingerprint: captured.request.seed.fingerprint, freshnessToken: .triptych(index),
+            availability: failedAvailability ? .failed(lastGood: index, reason: "fixture failure") : .unavailable,
+            state: .stale, identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [], automatic: true).value
+        #expect(model.issue != nil && model.needsRefresh && !model.isLoading && model.insertionPoint == nil)
+        let manual = RelatedMaterialsSession()
+        let crossing = RelatedContentResponse(
+            requestID: captured.request.id, seedFingerprint: captured.request.seed.fingerprint, freshnessToken: .triptych(index),
+            availability: .current(index), state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        await manual.find(capture: { captured }, retrieve: { _ in crossing }, references: []).value
+        #expect(manual.issue != nil && manual.needsRefresh && !manual.isLoading)
+    }
+
+    @Test("A new owned generation resumes waiting once and supersedes a late old response", arguments: [false, true])
+    func generationResumesAutomatic(eventBeforeStale: Bool) async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let initial = populatedResponse(original)
+        let reference = reference()
+        await model.find(capture: { original }, retrieve: { _ in initial }, references: [reference]).value
+        let firstGeneration = original.searchGeneration!
+        let nextGeneration = SearchGenerationID(triptychID: vault, sequence: 2, sourceManifestHash: "next")
+        let old = seed("new unsaved writing")
+        let stale = RelatedContentResponse(
+            requestID: old.request.id, seedFingerprint: old.request.seed.fingerprint, freshnessToken: .triptych(nextGeneration),
+            availability: .current(nextGeneration), state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        let gate = RelatedRetrievalGate()
+        var queries = 0
+        let pending = model.find(
+            capture: { old },
+            retrieve: { _ in
+                await MainActor.run { queries += 1 }
+                await gate.wait()
+                return stale
+            }, references: [reference], automatic: true)
+        for await _ in gate.ready.stream {}
+        if !eventBeforeStale {
+            gate.release()
+            await pending.value
+            #expect(model.issue == nil && model.insertionPoint == nil)
+        }
+        #expect(!model.searchGenerationDidChange(from: firstGeneration, to: firstGeneration))
+        #expect(model.searchGenerationDidChange(from: firstGeneration, to: nextGeneration))
+        var fresh = seed("new unsaved writing")
+        fresh.searchGeneration = nextGeneration
+        fresh.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 2, selection: .init(anchor: 4, head: 4))
+        let captured = fresh
+        let result = populatedResponse(captured)
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                await MainActor.run { queries += 1 }
+                return result
+            },
+            references: [reference], automatic: true
+        ).value
+        if eventBeforeStale {
+            gate.release()
+            await pending.value
+        }
+        #expect(queries == 2 && model.seed?.request.id == captured.request.id && model.issue == nil)
+        #expect(model.seed?.searchGeneration == nextGeneration && model.insertionPoint == captured.insertionPoint)
+        #expect(model.canInsertParagraphLink)
+        #expect(!model.searchGenerationDidChange(from: nextGeneration, to: nextGeneration))
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                Issue.record("Same current generation repeated retrieval")
+                return result
+            },
+            references: [reference], automatic: true
+        ).value
+        #expect(model.insertionPoint == captured.insertionPoint && model.issue == nil)
+    }
+
+    @Test("Generation publication does not cancel manual work or an automatic request that already captured it", arguments: [false, true])
+    func generationKeepsCurrentOwner(automatic: Bool) async {
+        let model = RelatedMaterialsSession()
+        let first = seed().searchGeneration!
+        let next = SearchGenerationID(triptychID: vault, sequence: 2, sourceManifestHash: "next")
+        var current = seed("current writing")
+        current.searchGeneration = automatic ? next : first
+        current.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 2, selection: .init(anchor: 4, head: 4))
+        let captured = current
+        var published = current
+        published.searchGeneration = next
+        let result = populatedResponse(published)
+        let gate = RelatedRetrievalGate()
+        let pending = model.find(
+            capture: { captured },
+            retrieve: { _ in
+                await gate.wait()
+                return result
+            },
+            references: [reference()], automatic: automatic)
+        for await _ in gate.ready.stream {}
+        #expect(!model.searchGenerationDidChange(from: first, to: next))
+        gate.release()
+        await pending.value
+        #expect(model.seed?.request.id == captured.request.id && model.seed?.searchGeneration == next)
+        #expect(model.issue == nil && model.insertionPoint == captured.insertionPoint && !model.isLoading)
+    }
+
+    @Test("An already-captured stale generation waits for a later one and close cancels a queued follow")
+    func lateGenerationEventDoesNotRepeat() async {
+        let model = RelatedMaterialsSession()
+        let first = seed().searchGeneration!
+        let current = SearchGenerationID(triptychID: vault, sequence: 2, sourceManifestHash: "current")
+        let next = SearchGenerationID(triptychID: vault, sequence: 3, sourceManifestHash: "next")
+        var original = seed()
+        original.searchGeneration = current
+        let captured = original
+        let stale = RelatedContentResponse(
+            requestID: captured.request.id, seedFingerprint: captured.request.seed.fingerprint, freshnessToken: .triptych(current),
+            availability: .current(current), state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
+        await model.find(capture: { captured }, retrieve: { _ in stale }, references: [], automatic: true).value
+        #expect(!model.searchGenerationDidChange(from: first, to: current))
+        await model.find(
+            capture: { captured },
+            retrieve: { _ in
+                Issue.record("Already-captured generation retried")
+                return stale
+            },
+            references: [], automatic: true
+        ).value
+        #expect(model.issue == nil && model.insertionPoint == nil)
+        #expect(model.searchGenerationDidChange(from: current, to: next))
+        var follows = 0
+        model.scheduleAutomaticSearch(selection: false, immediate: true) { follows += 1 }
+        model.stopAutomaticSearch()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(follows == 0 && !model.isLoading && model.insertionPoint == nil)
+    }
+
     @Test("Unchanged writing retrieves current recommendations after an index generation changes")
     func changedSearchGeneration() async {
         let model = RelatedMaterialsSession()
