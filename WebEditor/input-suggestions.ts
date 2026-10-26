@@ -30,7 +30,7 @@ import {
 } from "./protocol";
 import {transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
-import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
+import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, showTooltip, type DecorationSet, type ViewUpdate} from "@codemirror/view";
 import type {NativeSuggestionPort} from "./native-floating";
 import {localized, localizedTemplate, localizedCallout, type WebInterfaceLocalizationKey} from "./localization";
 
@@ -422,6 +422,12 @@ function slashCommandOptions(
     .map(command => ({...command, filterText: command.label, label: localized(command.label)}));
 }
 
+function completionWikilinkContent(candidate: EditorLinkCompletionCandidate) {
+  const display = candidate.displayText;
+  const alias = display && display !== candidate.insertion ? `|${display}` : "";
+  return `${candidate.insertion}${alias}`;
+}
+
 function applyWikilinkCandidate(
   candidate: EditorLinkCompletionCandidate,
   didApply: (undoLabel: string) => void,
@@ -434,8 +440,7 @@ function applyWikilinkCandidate(
       && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
       closingLength += 1;
     }
-    const display = candidate.displayText ? `|${candidate.displayText}` : "";
-    const insert = `${candidate.insertion}${display}]]`;
+    const insert = `${completionWikilinkContent(candidate)}]]`;
     view.dispatch({
       changes: {from, to: to + closingLength, insert},
       selection: {anchor: from + insert.length},
@@ -455,8 +460,7 @@ function applyAnalysisReferenceCandidate(
 ): NonNullable<Completion["apply"]> {
   return (view, completion, from, to) => {
     if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
-    const display = candidate.displayText ? `|${candidate.displayText}` : "";
-    const insert = `[[${candidate.insertion}${display}]]`;
+    const insert = `[[${completionWikilinkContent(candidate)}]]`;
     view.dispatch({
       changes: {from, to, insert},
       selection: {anchor: from + insert.length},
@@ -1296,10 +1300,13 @@ export function createEditorInputSuggestions(
           || completionStatus(view.state) === null
           || !(wikilinkContext(options, view.state, view.state.selection.main.head)
             || analysisReferenceContext(options, view.state, view.state.selection.main.head))) return;
-        closeCompletion(view);
-        // Closing only hides CodeMirror's list; an explicit unchanged selection
-        // ends its running queries without editing source or adding history.
-        view.dispatch({selection: view.state.selection, annotations: Transaction.addToHistory.of(false)});
+        // Retire an unpresented query promptly. A state-owned tooltip (including
+        // a disabled pending dialog) or native list must keep its lifetime.
+        if (!this.signature && !view.state.facet(showTooltip).some(Boolean)) {
+          closeCompletion(view);
+          view.dispatch({selection: view.state.selection, annotations: Transaction.addToHistory.of(false)});
+        }
+        // CodeMirror keeps the presented dialog disabled until fresh rows arrive.
         startCompletion(view);
       };
       this.refresh();

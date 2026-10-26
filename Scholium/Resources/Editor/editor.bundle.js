@@ -41455,6 +41455,11 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
     ];
     return commands2.filter((command2) => blockContext || !command2.blockOnly).map((command2) => ({ ...command2, filterText: command2.label, label: localized(command2.label) }));
   }
+  function completionWikilinkContent(candidate) {
+    const display = candidate.displayText;
+    const alias = display && display !== candidate.insertion ? `|${display}` : "";
+    return `${candidate.insertion}${alias}`;
+  }
   function applyWikilinkCandidate(candidate, didApply, isCurrent) {
     return (view, completion, from, to) => {
       if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
@@ -41462,8 +41467,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
       while (closingLength < 2 && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
         closingLength += 1;
       }
-      const display = candidate.displayText ? `|${candidate.displayText}` : "";
-      const insert2 = `${candidate.insertion}${display}]]`;
+      const insert2 = `${completionWikilinkContent(candidate)}]]`;
       view.dispatch({
         changes: { from, to: to + closingLength, insert: insert2 },
         selection: { anchor: from + insert2.length },
@@ -41478,8 +41482,7 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
   function applyAnalysisReferenceCandidate(candidate, didApply, isCurrent) {
     return (view, completion, from, to) => {
       if (candidate.availability !== "available" || !candidate.insertion || !isCurrent(view)) return;
-      const display = candidate.displayText ? `|${candidate.displayText}` : "";
-      const insert2 = `[[${candidate.insertion}${display}]]`;
+      const insert2 = `[[${completionWikilinkContent(candidate)}]]`;
       view.dispatch({
         changes: { from, to, insert: insert2 },
         selection: { anchor: from + insert2.length },
@@ -42406,8 +42409,10 @@ ${raw}${raw.endsWith("\n") ? "" : "\n"}${fence}
         this.view = view;
         refreshLinkChoices = () => {
           if (!view.hasFocus || !isLiveSuggestionContext(options, view.state) || completionStatus(view.state) === null || !(wikilinkContext(options, view.state, view.state.selection.main.head) || analysisReferenceContext(options, view.state, view.state.selection.main.head))) return;
-          closeCompletion(view);
-          view.dispatch({ selection: view.state.selection, annotations: Transaction.addToHistory.of(false) });
+          if (!this.signature && !view.state.facet(showTooltip).some(Boolean)) {
+            closeCompletion(view);
+            view.dispatch({ selection: view.state.selection, annotations: Transaction.addToHistory.of(false) });
+          }
           startCompletion(view);
         };
         this.refresh();

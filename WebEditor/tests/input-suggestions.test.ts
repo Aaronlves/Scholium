@@ -2059,6 +2059,64 @@ describe("Edit input suggestions", () => {
     expect(undoLabels).toEqual(["Insert Wikilink"]);
   });
 
+  it.each(["wikilink", "analysisReference"] as const)("omits only an exactly identical alias in accepted %s links", async kind => {
+    const cases = [
+      {target: "Alison Duncan Kerr", display: "Alison Duncan Kerr", expected: "[[Alison Duncan Kerr]]"},
+      {target: "A & B (自由) 😀", display: "A & B (自由) 😀", expected: "[[A & B (自由) 😀]]"},
+      {target: "Axiology", display: "Value Theory", expected: "[[Axiology|Value Theory]]"},
+      {target: "People/Alison Duncan Kerr", display: "Alison Duncan Kerr", expected: "[[People/Alison Duncan Kerr|Alison Duncan Kerr]]"},
+      {target: "Work#Argument", display: "Argument", expected: "[[Work#Argument|Argument]]"},
+      {target: "Work#^claim", display: "claim", expected: "[[Work#^claim|claim]]"},
+      {target: "Caf\u00e9", display: "Cafe\u0301", expected: "[[Caf\u00e9|Cafe\u0301]]"},
+      {target: "Value", display: "value", expected: "[[Value|value]]"},
+    ];
+    for (const {target, display, expected} of cases) {
+      const {suggestions, request} = controller();
+      const prefix = "\uFEFFEarlier 😀.\r\nAccording to ";
+      const trigger = kind === "wikilink" ? "[[Al]]" : "@Al";
+      const suffix = " remains.\r\n";
+      const source = prefix + trigger + suffix;
+      const caret = normalizedDocumentText(prefix).length + (kind === "wikilink" ? 4 : 3);
+      const initial = EditorState.create({doc: normalizedDocumentText(source), selection: {anchor: caret},
+        extensions: [history(), exactSourceHistory, suggestions.extension]})
+        .update({effects: setExactSource.of(source), annotations: Transaction.addToHistory.of(false)}).state;
+      const completionSource = kind === "wikilink" ? suggestions.wikilinkCompletionSource : suggestions.analysisReferenceCompletionSource;
+      const pending = completionSource(new CompletionContext(initial, caret, false));
+      suggestions.resolveLinkCompletionQuery(request()!.id, [{label: display, insertion: target, displayText: display,
+        detail: "Synthetic selected Note", availability: "available"}]);
+      const result = (await pending)!;
+      const mutable = mutableView(initial);
+      const option = result.options[0];
+      expect(typeof option.apply).toBe("function");
+      if (typeof option.apply === "function") option.apply(mutable.view, option, result.from, caret);
+      expect(mutable.state().field(exactSourceState).text).toBe(prefix + expected + suffix);
+      expect(mutable.state().selection.main.anchor).toBe(normalizedDocumentText(prefix).length + expected.length);
+      expect(mutable.state().selection.main.empty).toBe(true);
+      expect(undo({state: mutable.state(), dispatch: mutable.view.dispatch})).toBe(true);
+      expect(mutable.state().field(exactSourceState).text).toBe(source);
+    }
+  });
+
+  it.each(["wikilink", "analysisReference"] as const)("retains the selected disambiguating path for duplicate %s labels", async kind => {
+    const {suggestions, request} = controller();
+    const text = kind === "wikilink" ? "[[Kerr]]" : "@Kerr";
+    const caret = kind === "wikilink" ? text.length - 2 : text.length;
+    const state = EditorState.create({doc: text, selection: {anchor: caret}});
+    const completionSource = kind === "wikilink" ? suggestions.wikilinkCompletionSource : suggestions.analysisReferenceCompletionSource;
+    const pending = completionSource(new CompletionContext(state, caret, false));
+    suggestions.resolveLinkCompletionQuery(request()!.id, ["People", "Sources"].map(folder => ({
+      label: "Alison Duncan Kerr", insertion: `${folder}/Alison Duncan Kerr`, displayText: "Alison Duncan Kerr",
+      detail: `${folder}/Alison Duncan Kerr.md`, availability: "available",
+    })));
+    const result = (await pending)!;
+    expect(result.options).toHaveLength(2);
+    const mutable = mutableView(state);
+    const selected = result.options[1];
+    if (typeof selected.apply === "function") selected.apply(mutable.view, selected, result.from, caret);
+    expect(mutable.state().doc.toString()).toBe("[[Sources/Alison Duncan Kerr|Alison Duncan Kerr]]");
+    expect(mutable.state().selection.main.anchor).toBe(mutable.state().doc.length);
+  });
+
   it("inserts a stored alias as canonical target plus display text", async () => {
     const {suggestions, request} = controller();
     const text = "[[Value Theory]]";
@@ -2237,7 +2295,7 @@ describe("Edit input suggestions", () => {
       await vi.advanceTimersByTimeAsync(100);
       expect(currentCompletions(state).map(item => item.label)).toEqual(["Fresh"]);
       expect(acceptCompletion(view)).toBe(true);
-      expect(state.doc.toString()).toBe("[[Fresh|Fresh]]");
+      expect(state.doc.toString()).toBe("[[Fresh]]");
     } finally {
       nativePlugin.destroy(); suggestions.resetDocument(); vi.unstubAllGlobals(); vi.useRealTimers();
     }
