@@ -171,7 +171,20 @@ struct DocumentFeatureView<ShellNotices: View>: View {
     }
 
     var body: some View {
-        if let selectedDocumentPath = state.selectedDocumentPath,
+        if let binding = controller.retainedPresentationBinding {
+            NoteContentView(
+                controller: controller,
+                target: .workspace(binding.document.sessionKey),
+                note: binding.snapshot,
+                documentSession: binding.session,
+                state: state,
+                actions: actions,
+                hasShellNotices: hasShellNotices,
+                shellNotices: shellNotices
+            )
+            .id(binding.document.sessionKey)
+        } else if controller.activeDocument == nil,
+            let selectedDocumentPath = state.selectedDocumentPath,
             let active = state.activeNote,
             active.id.relativePath == selectedDocumentPath
         {

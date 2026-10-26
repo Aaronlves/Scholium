@@ -124,6 +124,319 @@ struct DocumentControllerConvergenceTests {
         }
     }
 
+    @Test(
+        "A recognized external rename keeps its exact source and mounted editor while changed bytes hydrate",
+        arguments: [false, true])
+    func externalRenamedSourceKeepsMountedHost(changesPath: Bool) async throws {
+        _ = NSApplication.shared
+        let vaultID = UUID()
+        let source =
+            "\u{FEFF}---\r\ncustom: 'keep' # exact\r\n---\r\n\r\n![Study](images/study.png)\r\n\r\n"
+            + (0..<60).map { "Research paragraph \($0): retained source 中文 🦉.\r\n\r\n" }.joined()
+        let base = note(vaultID: vaultID, noteID: UUID(), path: "Original/Retained.md", source: source)
+        let destination = changesPath ? "Moved/Renamed.md" : base.id.relativePath
+        let external = note(
+            vaultID: vaultID, noteID: base.stableIdentity.resolvedID!, path: destination,
+            source: source + "External revision.\r\n")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { expected in
+            guard expected.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            await gate.pause()
+            return external
+        })
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(base, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor.sessionKey)
+        let projection = RetainedPresentationProjection(notes: [external])
+        var renderedSelectedPath: String?
+        var renderedSourcePath: String?
+        let host = NSHostingView(
+            rootView: RetainedPresentationFixture(
+                controller: controller, projection: projection,
+                observedPresentation: { selectedPath, sourcePath in
+                    renderedSelectedPath = selectedPath
+                    renderedSourcePath = sourcePath
+                }))
+        host.sizingOptions = []
+        let nativeWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 620),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        nativeWindow.isReleasedWhenClosed = false
+        nativeWindow.contentView = host
+        defer {
+            gate.release()
+            session.cancelScheduledWork()
+            nativeWindow.contentView = nil
+            nativeWindow.close()
+            controller.unbind()
+        }
+        try await waitForPresentation {
+            session.isEditing && session.editorSession.isReady && session.editorSession.isLoaded
+                && session.editorSession.presentedMode == .source
+                && session.editorSession.webView?.window === nativeWindow
+        }
+        let webView = try #require(session.editorSession.webView)
+        let editor = session.editorSession
+        let sourceOffset = source.range(of: "Research paragraph 20")!.lowerBound.utf16Offset(in: source)
+        editor.revealSourceRange(fromUTF16: sourceOffset, toUTF16: sourceOffset + 8)
+        let editorOffset = try #require(
+            EditorSourceOffsetMap(source: source).editorUTF16Offset(forSourceUTF16Offset: sourceOffset))
+        try await waitForPresentation { editor.context?.selections.first?.anchor == editorOffset }
+        try await editor.testingApplyScrollFraction(0.4)
+        let selected = editor.context?.selections
+        let bridgeID = editor.bridgeDocumentID
+        let openingID = editor.openingPresentationID
+        let reconstructionID = editor.viewReconstructionID
+        let generation = editor.generation
+        let scroll = editor.testingRetainedScrollFraction
+        let focusRevision = editor.focusRequestRevision
+
+        // This is the real upstream path-migration owner, not a cloned source
+        // snapshot. A recognized identity can move before its new bytes arrive.
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let root = repository.appendingPathComponent(".build/external-rename-host-\(UUID())")
+        let defaultsName = "Scholium.ExternalRenameHost.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: defaultsName)
+        }
+        let store = try WorkspaceStore(applicationSupportURL: root)
+        let window = WindowModel(
+            workspaceStore: store, chatSidebarPreferences: ChatSidebarPreferences(defaults: defaults))
+        window.documentController = controller
+        do {
+            if changesPath {
+                window.migrateInMemoryPath(
+                    from: base.id.relativePath, to: destination,
+                    noteID: descriptor.sessionKey.noteID, identityResolved: true, vaultID: vaultID)
+            }
+            controller.receive(workspace(vaultID: vaultID, notes: [external]))
+            await gate.waitUntilStarted()
+            try await waitForPresentation {
+                renderedSelectedPath == destination && renderedSourcePath == base.id.relativePath
+            }
+            host.layoutSubtreeIfNeeded()
+
+            #expect(controller.selectedDocumentPath == destination)
+            #expect(controller.relativePath(for: .workspace(descriptor.sessionKey)) == destination)
+            #expect(controller.activeSnapshot?.id == base.id)
+            #expect(controller.activeSnapshot?.document.relativePath == base.id.relativePath)
+            #expect(controller.activeSnapshot?.document.sourceBytes == base.document.sourceBytes)
+            #expect(controller.activeSnapshot?.fingerprint == base.fingerprint)
+            #expect(controller.session(for: descriptor.sessionKey) === session)
+            #expect(editor.webView === webView)
+            #expect(
+                webView.window === nativeWindow,
+                "Pending source hydration must not remove the mounted editor host")
+            #expect(editor.hasAttachedWebView)
+            #expect(editor.bridgeDocumentID == bridgeID)
+            #expect(editor.openingPresentationID == openingID)
+            #expect(editor.viewReconstructionID == reconstructionID)
+            #expect(editor.generation == generation)
+            #expect(editor.checkedSource.utf8.elementsEqual(source.utf8))
+            #expect(editor.context?.selections == selected)
+            #expect(editor.testingRetainedScrollFraction == scroll)
+            #expect(editor.focusRequestRevision == focusRevision)
+            #expect(controller.pendingHydrationCount == 1)
+            let retained = try #require(controller.activeSnapshot)
+            let image = SourceResourceReferences.file(
+                destination: "images/study.png", noteRelativePath: retained.document.relativePath,
+                isImage: true)
+            #expect(image?.relativePath?.rawValue == "Original/images/study.png")
+            if changesPath {
+                #expect(
+                    SourceResourceReferences.file(
+                        destination: "images/study.png", noteRelativePath: destination, isImage: true)?
+                        .relativePath != image?.relativePath)
+            }
+
+            gate.release()
+            await controller.waitForPendingHydrations()
+            try await waitForPresentation {
+                controller.activeSnapshot?.fingerprint == external.fingerprint
+                    && editor.checkedSource.utf8.elementsEqual(external.document.rawContent.utf8)
+                    && editor.webView?.window === nativeWindow
+            }
+            #expect(controller.activeDocument?.sessionKey == descriptor.sessionKey)
+            #expect(controller.activeSnapshot?.document.relativePath == destination)
+            #expect(controller.activeSnapshot?.document.sourceBytes == external.document.sourceBytes)
+            #expect(controller.session(for: descriptor.sessionKey) === session)
+            #expect(editor.webView === webView)
+            #expect(session.conflict == nil)
+            window.windowCloseCoordinator.finalize()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            gate.release()
+            controller.unbind()
+            window.windowCloseCoordinator.finalize()
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test(
+        "Retained presentation keeps source origin through external rename hydration outcomes",
+        arguments: [
+            "clean", "dirty", "composing", "failed", "superseded", "unbound", "deleted", "dirty-deleted",
+        ])
+    func retainedPresentationHydrationLifecycle(outcome: String) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(
+            vaultID: vault, noteID: id, path: "Before/Note.md",
+            source: "\u{FEFF}![Study](images/study.png)\r\n\r\nExact original 中文.\r\n")
+        let external = note(
+            vaultID: vault, noteID: id, path: "After/Renamed.md",
+            source: original.document.rawContent + "External B.\r\n")
+        let latest = note(
+            vaultID: vault, noteID: id, path: "Latest/Note.md",
+            source: original.document.rawContent + "External C.\r\n")
+        let gate = HydrationGate()
+        let controller = DocumentController(hydrationLoader: { summary in
+            if summary.hasSameSourceBinding(as: latest.summary) { return latest }
+            guard summary.hasSameSourceBinding(as: external.summary) else {
+                throw WorkspaceHydrationError.staleSnapshot
+            }
+            await gate.pause()
+            if outcome == "failed" { throw CocoaError(.fileReadNoPermission) }
+            return external
+        })
+        controller.rememberPresentationMode(.source)
+        controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let descriptor = try #require(controller.activeDocument)
+        let session = controller.session(for: descriptor.sessionKey)
+        defer {
+            gate.release()
+            session.cancelScheduledWork()
+            controller.unbind()
+        }
+        controller.receive(workspace(vaultID: vault, notes: [external]))
+        await gate.waitUntilStarted()
+        let pending = try #require(controller.retainedPresentationBinding)
+        #expect(pending.document.sessionKey == descriptor.sessionKey)
+        #expect(pending.session === session)
+        #expect(pending.sourceLocation == original.id)
+        #expect(pending.currentLocation == external.id)
+        #expect(pending.snapshot.document.sourceBytes == original.document.sourceBytes)
+        #expect(pending.snapshot.fingerprint == original.fingerprint)
+        #expect(
+            controller.relativePath(for: .workspace(descriptor.sessionKey)) == external.id.relativePath)
+        #expect(
+            SourceResourceReferences.file(
+                destination: "images/study.png", noteRelativePath: pending.sourceLocation.relativePath,
+                isImage: true)?.relativePath?.rawValue
+                == "Before/images/study.png")
+        let draft = original.document.rawContent + "Unsaved researcher thought e\u{301}.\r\n"
+        let protectsDraft = outcome == "dirty" || outcome == "dirty-deleted"
+        if protectsDraft { try acceptCheckedDraft(draft, in: session) }
+        if outcome == "composing" {
+            let selection = MarkdownEditorSelectionRange(anchor: 2, head: 2)
+            session.editorSession.updateInteraction(
+                selections: [selection], line: 1, column: 3, lineCount: 1,
+                documentVersion: session.editorSession.generation, interactionRevision: 0,
+                context: MarkdownEditorContext(
+                    selections: [selection], activeInlineConstructs: [], activeBlockConstructs: [],
+                    composing: true, availableCommands: [], undoLabel: nil, redoLabel: nil))
+        }
+        if outcome == "superseded" {
+            controller.receive(workspace(vaultID: vault, notes: [latest]))
+            await controller.waitForPendingHydrations()
+            #expect(
+                controller.retainedPresentationBinding?.snapshot.document.sourceBytes
+                    == latest.document.sourceBytes)
+        } else if outcome == "unbound" {
+            controller.unbind()
+        } else if outcome == "deleted" || outcome == "dirty-deleted" {
+            controller.receive(workspace(vaultID: vault, notes: []))
+        }
+        gate.release()
+        await gate.waitUntilReturned()
+        await controller.waitForPendingHydrations()
+        await Task.yield()
+
+        if outcome == "deleted" {
+            #expect(controller.selectedDocument == nil)
+            #expect(controller.retainedPresentationBinding == nil)
+            #expect(controller.activeSnapshot == nil)
+        } else {
+            let retained = try #require(controller.retainedPresentationBinding)
+            #expect(retained.document.sessionKey == descriptor.sessionKey)
+            #expect(retained.session === session)
+            let unchanged = ["failed", "unbound", "dirty-deleted"].contains(outcome)
+            let expected = outcome == "superseded" ? latest : unchanged ? original : external
+            #expect(retained.snapshot.id == expected.id)
+            #expect(retained.snapshot.document.sourceBytes == expected.document.sourceBytes)
+            #expect(retained.snapshot.fingerprint == expected.fingerprint)
+            #expect(retained.sourceLocation == expected.id)
+            #expect(retained.currentLocation == (outcome == "superseded" ? latest.id : external.id))
+            if protectsDraft || outcome == "composing" {
+                let exact = protectsDraft ? draft : original.document.rawContent
+                #expect(session.retainedExactSource.utf8.elementsEqual(exact.utf8))
+                #expect(session.editingRevision == original.fingerprint)
+                if outcome != "dirty-deleted" {
+                    #expect(session.conflict?.editorSource.utf8.elementsEqual(exact.utf8) == true)
+                    #expect(session.conflict?.diskSource == external.document.rawContent)
+                }
+            }
+            if outcome == "composing" { #expect(session.editorSession.isComposing) }
+            if outcome == "failed" || outcome == "dirty-deleted" {
+                #expect(controller.lastSaveError != nil)
+            }
+            if outcome == "unbound" { #expect(controller.lastSaveError == nil) }
+        }
+        #expect(controller.pendingHydrationCount == 0)
+    }
+
+    @Test("Retained presentation follows stable selection and rejects a mismatched current location")
+    func retainedPresentationAdmitsOnlySelectedSession() throws {
+        let controller = DocumentController()
+        controller.rememberPresentationMode(.read)
+        defer { controller.unbind() }
+        let first = note(
+            vaultID: UUID(), noteID: UUID(), path: "Note.md", source: "First exact source.\r\n")
+        let second = note(
+            vaultID: UUID(), noteID: UUID(), path: "Note.md", source: "Same-path peer source.\r\n")
+        controller.installOpenedDocument(first, vaultName: "Analyses", vaultRole: .sourceCorpus)
+        let firstDocument = try #require(controller.activeDocument)
+        let firstSession = controller.session(for: firstDocument.sessionKey)
+        controller.installOpenedDocument(second, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let secondDocument = try #require(controller.activeDocument)
+        let secondSession = controller.session(for: secondDocument.sessionKey)
+        let peer = try #require(controller.retainedPresentationBinding)
+        #expect(peer.document == secondDocument)
+        #expect(peer.session === secondSession && peer.session !== firstSession)
+        #expect(peer.snapshot.document.sourceBytes == second.document.sourceBytes)
+        #expect(peer.sourceLocation.vaultID == second.id.vaultID)
+
+        #expect(controller.selectRetainedDocument(.workspace(firstDocument)))
+        let restored = try #require(controller.retainedPresentationBinding)
+        #expect(restored.document == firstDocument)
+        #expect(restored.session === firstSession)
+        #expect(restored.snapshot.document.sourceBytes == first.document.sourceBytes)
+        controller.updateDocumentProjection(
+            .init(
+                sessionKey: firstDocument.sessionKey,
+                reference: .init(
+                    vaultID: second.id.vaultID, vaultName: "Topics", vaultRole: .topicKnowledge,
+                    relativePath: first.id.relativePath,
+                    stableNoteID: firstDocument.sessionKey.noteID.uuidString)))
+        #expect(
+            controller.retainedPresentationBinding == nil,
+            "A same-path location in a different vault cannot present the retained source")
+        controller.updateDocumentProjection(firstDocument)
+        #expect(controller.retainedPresentationBinding?.session === firstSession)
+        controller.selectDocument(
+            .unavailable(vaultID: first.id.vaultID, relativePath: first.id.relativePath))
+        #expect(
+            controller.retainedPresentationBinding == nil,
+            "Path-only recovery cannot borrow a workspace editing binding")
+    }
+
     private func waitForPresentation(diagnostics: @autoclosure () -> String = "", _ ready: () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         while !ready(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
@@ -140,9 +453,11 @@ struct DocumentControllerConvergenceTests {
     private struct RetainedPresentationFixture: View {
         @ObservedObject var controller: DocumentController
         @ObservedObject var projection: RetainedPresentationProjection
+        var observedPresentation: ((String?, String?) -> Void)? = nil
 
         var body: some View {
             let active = controller.activeSnapshot
+            let _ = observedPresentation?(controller.selectedDocumentPath, active?.id.relativePath)
             let state = DocumentFeatureState(
                 activeNote: active,
                 selectedDocumentPath: controller.selectedDocumentPath,

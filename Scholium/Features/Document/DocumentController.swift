@@ -10,6 +10,21 @@ struct WindowDocumentDescriptor: Hashable, Sendable {
     let reference: VaultNoteReference
 }
 
+/// The retained source presented by one stable session, separately from its
+/// current write location. A newer location does not reinterpret pending bytes.
+@MainActor
+struct DocumentRetainedPresentationBinding {
+    let document: WindowDocumentDescriptor
+    let snapshot: WorkspaceNoteSnapshot
+    let session: DocumentSessionModel
+
+    var sourceLocation: VaultQualifiedNoteID { snapshot.id }
+    var currentLocation: VaultQualifiedNoteID {
+        VaultQualifiedNoteID(
+            vaultID: document.reference.vaultID, relativePath: document.reference.relativePath)
+    }
+}
+
 /// The one selected document projection owned by a window. Workspace notes
 /// carry stable session identity; identity-recovery notes remain explicitly
 /// path-addressed until their stable identity is available again.
@@ -284,6 +299,26 @@ final class DocumentController: ObservableObject {
     var activeSnapshot: WorkspaceNoteSnapshot? {
         guard let key = selectedDocument?.sessionKey else { return nil }
         return snapshots[key]
+    }
+
+    var retainedPresentationBinding: DocumentRetainedPresentationBinding? {
+        guard let document = activeDocument,
+            let snapshot = snapshots[document.sessionKey],
+            let session = sessions.retainedSession(for: .workspace(document.sessionKey)),
+            session.key == document.sessionKey,
+            document.reference.vaultID == document.sessionKey.vaultID,
+            snapshot.id.vaultID == document.sessionKey.vaultID,
+            snapshot.id.relativePath.utf8.elementsEqual(snapshot.document.relativePath.utf8),
+            retainedReferences[document.sessionKey] == document.reference
+        else { return nil }
+        switch snapshot.stableIdentity {
+        case .resolved(let noteID), .pending(let noteID):
+            guard noteID == document.sessionKey.noteID else { return nil }
+        case .unresolved, .ambiguous:
+            return nil
+        }
+        return DocumentRetainedPresentationBinding(
+            document: document, snapshot: snapshot, session: session)
     }
 
     /// Binds this window-local controller to capabilities selected by the one
