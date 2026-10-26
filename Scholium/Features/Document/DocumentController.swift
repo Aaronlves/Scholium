@@ -3,6 +3,17 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 
+@MainActor
+struct DocumentAutosaveClock {
+    let now: @MainActor () -> ContinuousClock.Instant
+    let sleepUntil: @MainActor (ContinuousClock.Instant) async throws -> Void
+
+    static var continuous: Self {
+        let clock = ContinuousClock()
+        return Self(now: { clock.now }, sleepUntil: { try await clock.sleep(until: $0) })
+    }
+}
+
 /// Stable session identity plus the current path/title projection used by a
 /// single window. Renames replace `reference` while retaining `sessionKey`.
 struct WindowDocumentDescriptor: Hashable, Sendable {
@@ -197,6 +208,7 @@ final class DocumentController: ObservableObject {
 
     private let sessions = DocumentSessionStore()
     private let hydrationLoader: HydrationLoader?
+    private let autosaveClock: DocumentAutosaveClock
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private let writingSuggestions = EditorWritingSuggestions()
@@ -282,10 +294,12 @@ final class DocumentController: ObservableObject {
 
     init(
         intentHandler: @escaping IntentHandler = { _ in },
-        hydrationLoader: HydrationLoader? = nil
+        hydrationLoader: HydrationLoader? = nil,
+        autosaveClock: DocumentAutosaveClock = .continuous
     ) {
         self.intentHandler = intentHandler
         self.hydrationLoader = hydrationLoader
+        self.autosaveClock = autosaveClock
     }
 
     var activeDocument: WindowDocumentDescriptor? {
@@ -762,6 +776,7 @@ final class DocumentController: ObservableObject {
                 self.reconcileDeferredWorkspaceSnapshotIfAvailable(for: session)
                 self.refreshChromeProjection(ifOwnedBy: session)
                 self.reconcileEditorFocusIntent(for: session)
+                self.resumeAutosaveAfterCompositionIfNeeded(session)
                 // Close's first reap can precede SwiftUI's actual detach.
                 // Its deferred presentation publication completes cleanup.
                 if session.presentationIsClosed, !session.editorSession.hasAttachedWebView,
@@ -1224,7 +1239,7 @@ final class DocumentController: ObservableObject {
             let captureDocumentID = session.editorSession.documentID
             let wasSuppressingAutosave = session.suppressAutosave
             session.suppressAutosave = true
-            session.cancelAutosave()
+            session.cancelAutosave(preservingPendingInput: true)
             defer { session.suppressAutosave = wasSuppressingAutosave }
             var acquiredSuspension: (id: String, sessionID: UUID, documentID: String)?
             do {
@@ -1318,7 +1333,7 @@ final class DocumentController: ObservableObject {
         guard !session.editorSession.isComposing else {
             throw DocumentControllerError.editorUnavailable
         }
-        session.cancelAutosave()
+        session.cancelAutosave(preservingPendingInput: true)
         do {
             if let admittedSave { _ = try await admittedSave.value }
             if let save = session.activeSaveAttempt?.task {
@@ -1348,7 +1363,7 @@ final class DocumentController: ObservableObject {
     func takeSessionForTransfer(_ document: WindowSelectedDocument) -> DocumentSessionTransfer? {
         guard let session = sessions.takeSession(for: document.editingTarget) else { return nil }
         session.cancelModeWork()
-        session.cancelAutosave()
+        session.cancelAutosave(preservingPendingInput: true)
         let transfer = DocumentSessionTransfer(
             document: document, session: session,
             snapshot: document.sessionKey.flatMap { snapshots[$0] }
@@ -2201,26 +2216,47 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget
     ) {
         guard session.isEditing else { return }
+        if session.hasUnsavedChanges {
+            let now = autosaveClock.now()
+            if session.autosavePendingSince == nil { session.autosavePendingSince = now }
+            session.autosaveLastActivity = now
+        }
         scheduleAutosave(session: session, target: target)
+    }
+
+    private func resumeAutosaveAfterCompositionIfNeeded(_ session: DocumentSessionModel) {
+        guard session.autosaveDeferredForComposition, !session.editorSession.isComposing,
+            let key = session.key, retainsSession(session, for: .workspace(key))
+        else { return }
+        scheduleAutosave(session: session, target: .workspace(key))
     }
 
     func scheduleAutosave(
         session: DocumentSessionModel,
         target: DocumentEditingTarget
     ) {
-        guard session.isEditing,
-            !session.suppressAutosave,
-            session.conflict == nil,
+        guard session.isEditing, session.conflict == nil,
             session.hasUnsavedChanges
-        else { return }
+        else {
+            session.cancelAutosave()
+            return
+        }
         let path = relativePath(for: target)
         guard !path.isEmpty else { return }
         if editingDocumentPath != path {
             editingDocumentPath = path
         }
-        let clock = ContinuousClock()
-        session.autosaveDeadline = clock.now.advanced(
-            by: .milliseconds(Self.autosaveDelayMilliseconds)
+        let clock = autosaveClock
+        let now = clock.now()
+        let pendingSince = session.autosavePendingSince ?? now
+        let lastActivity = session.autosaveLastActivity ?? now
+        session.autosavePendingSince = pendingSince
+        session.autosaveLastActivity = lastActivity
+        guard !session.suppressAutosave, !session.isSavingEdit else { return }
+        session.autosaveDeferredForComposition = false
+        session.autosaveDeadline = min(
+            lastActivity.advanced(by: .milliseconds(Self.autosaveDelayMilliseconds)),
+            pendingSince.advanced(by: .seconds(5))
         )
         guard session.autosaveTask == nil else { return }
         let autosaveToken = UUID()
@@ -2230,14 +2266,22 @@ final class DocumentController: ObservableObject {
             defer { session.finishAutosave(token: autosaveToken) }
             while let deadline = session.autosaveDeadline {
                 do {
-                    try await clock.sleep(until: deadline)
+                    try await clock.sleepUntil(deadline)
                 } catch {
                     return
                 }
                 guard !Task.isCancelled else { return }
+                guard session.autosaveToken == autosaveToken, self.retainsSession(session, for: target) else { return }
                 guard session.autosaveDeadline == deadline else { continue }
+                guard session.isEditing, session.conflict == nil, session.hasUnsavedChanges else { return }
+                if session.suppressAutosave || session.isSavingEdit || session.editorSession.isComposing {
+                    session.finishAutosave(token: autosaveToken, preservingPendingInput: true)
+                    session.autosaveDeferredForComposition = session.editorSession.isComposing
+                    return
+                }
+                let inputSince = session.autosavePendingSince
                 session.finishAutosave(token: autosaveToken)
-                await self.persistEditingSource(session: session, target: target)
+                await self.persistEditingSource(session: session, target: target, automaticInputSince: inputSince)
                 return
             }
         }
@@ -2245,7 +2289,8 @@ final class DocumentController: ObservableObject {
 
     func persistEditingSource(
         session: DocumentSessionModel,
-        target: DocumentEditingTarget
+        target: DocumentEditingTarget,
+        automaticInputSince: ContinuousClock.Instant? = nil
     ) async {
         #if DEBUG
             PerformanceProbe.shared.recordQASaveStage(
@@ -2270,6 +2315,16 @@ final class DocumentController: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            if let automaticInputSince, session.editorSession.isComposing,
+                (error as? DocumentControllerError) == .editorUnavailable
+            {
+                // Composition can begin while the full-buffer request is in
+                // flight. The shared writer refused before any source write.
+                session.autosavePendingSince = min(session.autosavePendingSince ?? automaticInputSince, automaticInputSince)
+                if session.autosaveLastActivity == nil { session.autosaveLastActivity = autosaveClock.now() }
+                session.autosaveDeferredForComposition = true
+                return
+            }
             if let repositoryError = error as? VaultRepositoryError,
                 case .fileDoesNotExist = repositoryError,
                 case .workspace = target
@@ -2453,6 +2508,7 @@ final class DocumentController: ObservableObject {
                     throw DocumentControllerError.changedDuringSave
                 }
                 session.suppressAutosave = true
+                session.cancelAutosave()
                 session.editingSource = document.rawContent
                 session.originalEditingSource = document.rawContent
                 session.editingRevision = document.fingerprint
@@ -2532,6 +2588,9 @@ final class DocumentController: ObservableObject {
         try Task.checkCancellation()
         guard session.activeSaveAttempt == nil else { throw DocumentControllerError.changedDuringSave }
 
+        // Admission consumes this input epoch. Accepted input during capture,
+        // commit or acknowledgement starts a separately aged successor.
+        session.cancelAutosave()
         let receipt = EditorSaveCommitReceipt()
         defer { if let document = receipt.document { onCommitted?(document) } }
         let token = UUID()
@@ -2621,6 +2680,7 @@ final class DocumentController: ObservableObject {
             if let conflict = repositoryConflict(for: session) { throw conflict }
             return .clean
         }
+        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         let path = relativePath(for: target)
         guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
         if (!session.editorSession.isReady || !session.editorSession.isLoaded)
@@ -2655,6 +2715,7 @@ final class DocumentController: ObservableObject {
                 counts: [.generation: session.editorSession.generation, .snapshotGeneration: editorSnapshot.generation])
         #endif
         try Task.checkCancellation()
+        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         guard relativePath(for: target) == path else {
             throw DocumentControllerError.documentUnavailable
         }
@@ -2668,6 +2729,7 @@ final class DocumentController: ObservableObject {
                 || session.editorSession.isDirty
         else {
             if editingDocumentPath == path { editingDocumentPath = nil }
+            session.cancelAutosave()
             return .clean
         }
 
@@ -2713,6 +2775,8 @@ final class DocumentController: ObservableObject {
         case .clean:
             session.editingSource = saved.rawContent
             if editingDocumentPath == path { editingDocumentPath = nil }
+            if session.hasUnsavedChanges { return .changedDuringSave }
+            session.cancelAutosave()
             return .clean
         case .superseded:
             session.editingSource = session.editorSession.checkedSource
@@ -2823,6 +2887,7 @@ final class DocumentController: ObservableObject {
             session.canRetrySave = Self.saveFailureAllowsRetry(error)
         }
         session.editError = message
+        session.cancelAutosave()
     }
 
     private static func isRevisionConflict(_ error: Error) -> Bool {
@@ -3351,6 +3416,7 @@ final class DocumentController: ObservableObject {
         }
 
         session.suppressAutosave = true
+        session.cancelAutosave()
         session.editingSource = diskSource
         session.originalEditingSource = diskSource
         session.editingRevision = snapshot.fingerprint

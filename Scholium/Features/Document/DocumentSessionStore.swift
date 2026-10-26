@@ -151,6 +151,9 @@ final class DocumentSessionModel: ObservableObject {
     var autosaveTask: Task<Void, Never>?
     var autosaveToken: UUID?
     var autosaveDeadline: ContinuousClock.Instant?
+    var autosavePendingSince: ContinuousClock.Instant?
+    var autosaveLastActivity: ContinuousClock.Instant?
+    var autosaveDeferredForComposition = false
     var pendingEditorCommit: (snapshot: MarkdownEditorPersistenceSnapshot, document: NoteDocument)?
     var detachmentResumeTask: Task<Void, Never>?
     var detachmentResumeToken: UUID?
@@ -418,18 +421,26 @@ final class DocumentSessionModel: ObservableObject {
         cancelSaveAttempt()
     }
 
-    func cancelAutosave() {
+    func cancelAutosave(preservingPendingInput: Bool = false) {
         autosaveDeadline = nil
         autosaveTask?.cancel()
         autosaveTask = nil
         autosaveToken = nil
+        if !preservingPendingInput { resetAutosavePendingInput() }
     }
 
-    func finishAutosave(token: UUID) {
+    func finishAutosave(token: UUID, preservingPendingInput: Bool = false) {
         guard autosaveToken == token else { return }
         autosaveDeadline = nil
         autosaveTask = nil
         autosaveToken = nil
+        if !preservingPendingInput { resetAutosavePendingInput() }
+    }
+
+    private func resetAutosavePendingInput() {
+        autosavePendingSince = nil
+        autosaveLastActivity = nil
+        autosaveDeferredForComposition = false
     }
 
     /// Releases reconstruction-sensitive state after the owning tab lease and

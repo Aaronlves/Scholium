@@ -338,6 +338,13 @@ Autosave creates no per-save version history, Checkpoint product, whole-Triptych
 rollback or saved-version store. Explicit Changes review retains the exact
 history batches defined by §5.7.
 
+Autosave retains its 850 ms idle delay and admits a safe save attempt within
+five seconds of the first pending input even during continuous typing.
+Composition, conflict, unavailable editor state and pending I/O do not permit
+unsafe capture or replacement; this bound governs scheduler admission rather
+than guaranteed completion. Newer input remains dirty until its own exact
+source is committed. This adds no saved-version or draft store.
+
 §5.7 owns Changes review history; §8.4 owns Agent Change evidence and eligible
 direct Undo; §6 owns system-Trash receipts and Finder recovery. These are
 distinct from autosave versions.
