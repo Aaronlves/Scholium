@@ -290,6 +290,15 @@ struct RelatedContentBM25F {
             }
             rows.append(.init(fieldLengths: document.fieldLengths, countsByField: countsByField))
         }
+
+        /// Return the same original-row permutation for the caller's candidate
+        /// metadata. Statistics must retain their canonical accumulation order,
+        /// including admitted finite, fractional field lengths.
+        mutating func sortRows(by areInIncreasingOrder: (Int, Int) throws -> Bool) rethrows -> [Int] {
+            let order = try rows.indices.sorted(by: areInIncreasingOrder)
+            rows = order.map { rows[$0] }
+            return order
+        }
     }
 
     static func evaluate(documents: [Document], terms: [String], roles: [VaultRole]? = nil) throws -> Evaluation {

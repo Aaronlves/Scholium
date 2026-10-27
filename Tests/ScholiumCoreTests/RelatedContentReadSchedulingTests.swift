@@ -111,7 +111,7 @@ import Testing
             }
         }
 
-        @Test("Cancellation and shutdown drain an opened lexical cursor and its reused payload statement", .timeLimit(.minutes(1)))
+        @Test("Cancellation and shutdown drain an opened cursor streaming validated lexical payloads", .timeLimit(.minutes(1)))
         func shutdownDrainsLexicalPayloadRead() async throws {
             let fixture = try Fixture()
             defer { fixture.remove() }
@@ -138,7 +138,7 @@ import Testing
                 await index.setRelatedReadBatchBarrierForTesting {
                     // Earlier row-ID checkpoints have no lexical row observations.
                     // Each observed row has already fetched and validated its payload;
-                    // the same inner statement has been reset/reused before this pause.
+                    // the streaming cursor remains open at this batch checkpoint.
                     if payloadRows.count >= 64 { await gate.holdOnce() }
                 }
                 await index.setRelatedShutdownObserverForTesting { started.continuation.yield(()) }

@@ -359,20 +359,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 triptychID: manifest.id,
                 vaults: Array(assignment.vaults.values))
             searchIndexOwner = indexOwner
-            let initialWorkspaceGeneration: UInt64
-            if usesProgressiveOpening {
-                // Opening has no derived generation. Complete publication reads
-                // the persisted watermark and advances it before committing.
-                initialWorkspaceGeneration = 1
-            } else {
-                let index = try await indexOwner.resolve()
-                let priorWorkspaceGeneration = try await index.workspaceGeneration()
-                guard priorWorkspaceGeneration < UInt64(Int.max) else {
-                    throw SearchIndexError.invalidDocuments(
-                        "Search workspace generation IDs were exhausted.")
-                }
-                initialWorkspaceGeneration = priorWorkspaceGeneration + 1
-            }
 
             let agentChangeStore = try AgentChangeStore(
                 applicationSupportURL: applicationSupportURL,
@@ -431,8 +417,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             } else {
                 initialSlots = WorkspaceVaultSlot.allCases
             }
-            let sourceSnapshots = try await prepareInitialSourceSnapshots(
-                assignment: assignment, catalogs: services.sourceCatalogs, slots: initialSlots)
+            let (initialWorkspaceGeneration, sourceSnapshots) = try await prepareInitialOpeningState(
+                assignment: assignment, catalogs: services.sourceCatalogs, slots: initialSlots,
+                indexOwner: indexOwner, usesProgressiveOpening: usesProgressiveOpening)
             let preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]? =
                 mode == .live && !usesProgressiveOpening
                 ? Dictionary(
@@ -536,38 +523,98 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    /// Before a Handle exists, the pooled catalog owns candidate installation.
-    /// Capture only the requested opening Library, or one fully validated
-    /// immutable cohort for an immediate complete configuration.
-    private static func prepareInitialSourceSnapshots(
+    private enum InitialOpeningPreparation: Sendable {
+        case generation(UInt64)
+        case source(UUID, VaultSourceCatalogSnapshot)
+    }
+
+    /// Before a Handle exists, pooled catalogs own candidate installation. Join
+    /// required index admission before the final immutable-cohort validation;
+    /// progressive opening keeps Search lazy until complete publication.
+    static func prepareInitialOpeningState(
         assignment: TriptychAssignment,
         catalogs: [UUID: VaultSourceCatalog],
-        slots: [WorkspaceVaultSlot]
-    ) async throws -> [UUID: VaultSourceCatalogSnapshot] {
-        var snapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
-        var pending = slots
-        while true {
-            for slot in pending {
-                guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id] else {
-                    throw ScholiumApplicationError.incompleteTriptych(assignment.id)
-                }
+        slots: [WorkspaceVaultSlot],
+        indexOwner: WorkspaceSearchIndexOwner,
+        usesProgressiveOpening: Bool
+    ) async throws -> (generation: UInt64, snapshots: [UUID: VaultSourceCatalogSnapshot]) {
+        try await withTaskCancellationHandler {
+            do {
+                var snapshots: [UUID: VaultSourceCatalogSnapshot] = [:]
+                var pending = slots
+                var initialWorkspaceGeneration: UInt64 = 1
+                var needsIndexAdmission = !usesProgressiveOpening
                 while true {
-                    try Task.checkCancellation()
-                    let candidate = try await catalog.prepare(.fullReconcile)
-                    if case .installed = try await catalog.install(candidate) {
-                        snapshots[vault.id] = try await catalog.snapshot(consumePendingMeasurement: true)
-                        break
+                    // Distinct Catalog owners share the existing source-memory budget.
+                    // Join every child before cohort validation or source-access teardown.
+                    try await withThrowingTaskGroup(of: InitialOpeningPreparation.self) { group in
+                        do {
+                            if needsIndexAdmission {
+                                group.addTask {
+                                    let index = try await indexOwner.resolve()
+                                    let priorWorkspaceGeneration = try await index.workspaceGeneration()
+                                    guard priorWorkspaceGeneration < UInt64(Int.max) else {
+                                        throw SearchIndexError.invalidDocuments(
+                                            "Search workspace generation IDs were exhausted.")
+                                    }
+                                    return .generation(priorWorkspaceGeneration + 1)
+                                }
+                            }
+                            for slot in pending {
+                                guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id] else {
+                                    throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+                                }
+                                group.addTask {
+                                    while true {
+                                        try Task.checkCancellation()
+                                        let candidate = try await catalog.prepare(.fullReconcile)
+                                        if case .installed = try await catalog.install(candidate) {
+                                            let snapshot = try await catalog.snapshot(consumePendingMeasurement: true)
+                                            try Task.checkCancellation()
+                                            return .source(vault.id, snapshot)
+                                        }
+                                    }
+                                }
+                            }
+                            for try await prepared in group {
+                                switch prepared {
+                                case .generation(let generation): initialWorkspaceGeneration = generation
+                                case .source(let vaultID, let snapshot): snapshots[vaultID] = snapshot
+                                }
+                            }
+                        } catch {
+                            // Cancelling a resolve waiter does not cancel its shared
+                            // factory. Stop admission before the group joins that waiter.
+                            _ = await indexOwner.beginShutdown()
+                            throw error
+                        }
+                    }
+                    needsIndexAdmission = false
+                    pending = []
+                    for slot in slots {
+                        guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id],
+                            let snapshot = snapshots[vault.id]
+                        else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
+                        if try await catalog.validate(snapshot) == .superseded { pending.append(slot) }
+                    }
+                    if pending.isEmpty {
+                        try Task.checkCancellation()
+                        return (initialWorkspaceGeneration, snapshots)
                     }
                 }
+            } catch {
+                guard Task.isCancelled else { throw error }
+                // The callback only starts this owner's retained drain. Join it
+                // here so cancellation cannot return before a late index closes.
+                await indexOwner.shutdown()
+                throw CancellationError()
             }
-            pending = []
-            for slot in slots {
-                guard let vault = assignment.vault(for: slot), let catalog = catalogs[vault.id],
-                    let snapshot = snapshots[vault.id]
-                else { throw ScholiumApplicationError.incompleteTriptych(assignment.id) }
-                if try await catalog.validate(snapshot) == .superseded { pending.append(slot) }
+        } onCancel: {
+            // Only this opening owns the index lifetime; ordinary resolve
+            // waiters retain their existing shared-admission cancellation policy.
+            Task {
+                _ = await indexOwner.beginShutdown()
             }
-            if pending.isEmpty { return snapshots }
         }
     }
 

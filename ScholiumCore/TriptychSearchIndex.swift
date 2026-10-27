@@ -1623,8 +1623,8 @@ public actor TriptychSearchIndex {
             #if DEBUG
                 rankedSearchExecutionCountsForTesting.candidateScans += 1
             #endif
-            let ranks = try lexicalRanks(for: ast)
             let normalizedNeedles = SearchMatcher.normalizedNeedles(for: ast.expression)
+            let ranks = try lexicalRanks(for: ast, normalizedNeedles: normalizedNeedles)
             let admission = try candidateAdmission(ast.expression)
             var sql = "SELECT d.id FROM search_documents d WHERE " + admission.sql
             var bindings = admission.bindings
@@ -1668,13 +1668,13 @@ public actor TriptychSearchIndex {
                 var keys = Set(
                     evaluation.matches.compactMap { predicate -> SearchLexicalClause? in
                         guard !predicate.excluded, case .lexical(let clause) = predicate.clause else { return nil }
-                        return Self.rankingKey(clause)
+                        return Self.rankingKey(clause, normalizedNeedles: normalizedNeedles)
                     })
                 if includesParagraphs {
                     let matched = ast.matched(by: evaluation)
                     keys.formUnion(
                         SearchMatcher.paragraphRankingClauses(matched, document: document, normalizedNeedles: normalizedNeedles)
-                            .map(Self.rankingKey))
+                            .map { Self.rankingKey($0, normalizedNeedles: normalizedNeedles) })
                 }
                 let rank = keys.reduce(0.0) { $0 + (ranks[$1]?[rowID] ?? 0) }
                 let candidate = SearchCandidate(
@@ -1821,8 +1821,7 @@ public actor TriptychSearchIndex {
             FROM search_documents d
             WHERE d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
-            ORDER BY d.normalized_title, d.role_order, d.path_key,
-                     d.relative_path;
+            ;
             """,
             bindings: bindings
         ) { row in
@@ -1892,8 +1891,8 @@ public actor TriptychSearchIndex {
                     completePoolEstimatedBytes: preparationEstimatedBytes))
         #endif
         try await database.queryBatches(
-            "SELECT \(Self.documentColumns(includingSourceEvidence: false)), d.id "
-                + from + " ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path;",
+            "SELECT \(Self.documentColumns(includingSourceEvidence: false)), d.id, d.related_lexical, d.related_lexical_hash "
+                + from + ";",
             bindings: bindings
         ) { row in
             try Task.checkCancellation()
@@ -1902,20 +1901,11 @@ public actor TriptychSearchIndex {
                     row, rowID: row.int(at: 21), includingAliases: false, includingSegments: false,
                     includingSourceEvidence: false, database: database)
             else { return }
-            // Keep large payloads out of the ordered cursor. This nested read
-            // reuses its own statement within the same fixed snapshot.
-            var payload: Data?
-            var checksum: String?
-            try database.query(
-                "SELECT related_lexical, related_lexical_hash FROM search_documents WHERE id = ?;",
-                bindings: [.int(document.rowID)]
-            ) { current in
-                payload = current.data(at: 0)
-                checksum = current.text(at: 1)
-            }
+            // The unsorted cursor streams one complete current row. No payload
+            // enters a SQLite sorter or needs a second primary-key lookup.
             let projection = try self.relatedBackgroundPreparation.projection(
                 rowID: document.rowID, generation: generation, fingerprint: document.fingerprint,
-                data: payload, checksum: checksum, protection: protection)
+                data: row.data(at: 22), checksum: row.text(at: 23), protection: protection)
             document.relatedLexical = projection
             preparationEstimatedBytes += 224 + projection.estimatedByteCount
             try scoring.append(projection.scoringDocument)
@@ -1937,6 +1927,25 @@ public actor TriptychSearchIndex {
         } checkpoint: {
             try await self.relatedReadCheckpoint(generation)
         }
+        // Preserve the former SQLite BINARY four-key corpus order before any
+        // floating-point accumulation. Public result comparators remain separate.
+        var comparisons = 0
+        try Task.checkCancellation()
+        let order = try scoring.sortRows { lhs, rhs in
+            if comparisons.isMultiple(of: 256) { try Task.checkCancellation() }
+            comparisons += 1
+            let left = result[lhs].candidate.document
+            let right = result[rhs].candidate.document
+            if !left.normalizedTitle.utf8.elementsEqual(right.normalizedTitle.utf8) {
+                return left.normalizedTitle.utf8.lexicographicallyPrecedes(right.normalizedTitle.utf8)
+            }
+            if left.roleOrder != right.roleOrder { return left.roleOrder < right.roleOrder }
+            if !left.pathKey.utf8.elementsEqual(right.pathKey.utf8) {
+                return left.pathKey.utf8.lexicographicallyPrecedes(right.pathKey.utf8)
+            }
+            return left.relativePath.utf8.lexicographicallyPrecedes(right.relativePath.utf8)
+        }
+        try Task.checkCancellation()
         #if DEBUG
             relatedLexicalPoolObserverForTesting?(
                 .init(
@@ -1944,7 +1953,7 @@ public actor TriptychSearchIndex {
                     retainedProjectionCount: self.relatedBackgroundPreparation.entryCount,
                     completePoolEstimatedBytes: preparationEstimatedBytes))
         #endif
-        return .init(candidates: result, scoring: scoring)
+        return .init(candidates: order.map { result[$0] }, scoring: scoring)
     }
 
     private func searchCurrentNote(
@@ -2130,8 +2139,11 @@ public actor TriptychSearchIndex {
         return currentAvailability
     }
 
-    private static func rankingKey(_ clause: SearchLexicalClause) -> SearchLexicalClause {
-        let text = SearchTextNormalization.lexicalNormalize(clause.value.text)
+    private static func rankingKey(
+        _ clause: SearchLexicalClause,
+        normalizedNeedles: [SearchLexicalValue: String]
+    ) -> SearchLexicalClause {
+        let text = normalizedNeedles[clause.value] ?? SearchTextNormalization.lexicalNormalize(clause.value.text)
         let value: SearchLexicalValue =
             switch clause.value {
             case .term: .term(text)
@@ -2141,14 +2153,17 @@ public actor TriptychSearchIndex {
         return SearchLexicalClause(field: clause.field, value: value, sourceRange: 0..<0)
     }
 
-    private func lexicalRanks(for ast: SearchQueryAST) throws -> [SearchLexicalClause: [Int: Double]] {
+    private func lexicalRanks(
+        for ast: SearchQueryAST,
+        normalizedNeedles: [SearchLexicalValue: String]
+    ) throws -> [SearchLexicalClause: [Int: Double]] {
         #if DEBUG
             rankedSearchExecutionCountsForTesting.rankingPasses += 1
         #endif
         var ranks: [SearchLexicalClause: [Int: Double]] = [:]
         for clause in ast.rankingLexicalClauses {
             try Task.checkCancellation()
-            let key = Self.rankingKey(clause)
+            let key = Self.rankingKey(clause, normalizedNeedles: normalizedNeedles)
             guard ranks[key] == nil else { continue }
             var values: [Int: Double] = [:]
             guard let expression = try database.ftsExpression(for: [clause]) else {

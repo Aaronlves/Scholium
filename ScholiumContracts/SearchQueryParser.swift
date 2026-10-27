@@ -1168,6 +1168,44 @@ public enum SearchTextNormalization {
         _ value: String,
         options: String.CompareOptions
     ) -> String {
+        // ASCII has no canonical/diacritic folds or case expansions under
+        // either policy. Build its collapsed whitespace directly in String's
+        // UTF-8 buffer; other text keeps Foundation's complete Unicode policy.
+        var asciiCount = 0
+        var asciiPendingSpace = false
+        let isASCII = value.utf8.allSatisfy { unit in
+            guard unit < 0x80 else { return false }
+            if unit == 0x20 || (0x09...0x0D).contains(unit) {
+                asciiPendingSpace = asciiCount > 0
+            } else {
+                asciiCount += asciiPendingSpace ? 2 : 1
+                asciiPendingSpace = false
+            }
+            return true
+        }
+        if isASCII {
+            let folded = value.lowercased()
+            // String retains its requested capacity even when the initialized
+            // prefix is shorter. Size the output during the ASCII check above.
+            return String(unsafeUninitializedCapacity: asciiCount) { buffer in
+                var initializedCount = 0
+                var pendingSpace = false
+                for unit in folded.utf8 {
+                    if unit == 0x20 || (0x09...0x0D).contains(unit) {
+                        pendingSpace = initializedCount > 0
+                    } else {
+                        if pendingSpace {
+                            buffer[initializedCount] = 0x20
+                            initializedCount += 1
+                        }
+                        buffer[initializedCount] = unit
+                        initializedCount += 1
+                        pendingSpace = false
+                    }
+                }
+                return initializedCount
+            }
+        }
         let folded = value.precomposedStringWithCanonicalMapping.folding(
             options: options,
             locale: Locale(identifier: "en_US_POSIX")

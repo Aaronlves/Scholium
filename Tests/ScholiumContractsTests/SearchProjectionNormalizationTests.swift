@@ -4,6 +4,39 @@ import Testing
 
 @Suite("Search projection normalization fidelity")
 struct SearchProjectionNormalizationTests {
+    @Test("ASCII comparison matches complete Foundation folding for both policies")
+    func asciiFoundationParity() {
+        let ascii = String(decoding: Array(UInt8(0)...UInt8(127)), as: UTF8.self)
+        for source in ["", ascii, String(ascii.reversed()), "\r\n Agency\t \r\nEVIDENCE \u{0B}\u{0C} ", "I\0Z"] {
+            for options: String.CompareOptions in [[.caseInsensitive], [.caseInsensitive, .diacriticInsensitive]] {
+                let folded = source.precomposedStringWithCanonicalMapping.folding(
+                    options: options, locale: Locale(identifier: "en_US_POSIX"))
+                let expected = folded.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                    .precomposedStringWithCanonicalMapping
+                let actual =
+                    options.contains(.diacriticInsensitive)
+                    ? SearchTextNormalization.lexicalNormalize(source)
+                    : SearchTextNormalization.normalize(source)
+                #expect(actual.utf8.elementsEqual(expected.utf8))
+            }
+        }
+    }
+
+    @Test("Unicode whitespace runs collapse between whole folded graphemes")
+    func whitespaceRunsAndFoldedGraphemes() {
+        for whitespace in [
+            " ", "\t", "\n", "\r", "\r\n", "\u{0B}", "\u{0C}", "\u{85}", "\u{A0}",
+            "\u{1680}", "\u{2000}", "\u{2003}", "\u{2009}", "\u{2028}", "\u{2029}",
+            "\u{202F}", "\u{205F}", "\u{3000}",
+        ] {
+            let source = whitespace + "ÉCOLE" + whitespace + whitespace + "Cafe\u{301} 👩‍🔬" + whitespace
+            #expect(SearchTextNormalization.normalize(source).utf8.elementsEqual("école café 👩‍🔬".utf8))
+            #expect(SearchTextNormalization.lexicalNormalize(source).utf8.elementsEqual("ecole cafe 👩‍🔬".utf8))
+            #expect(SearchTextNormalization.normalize(whitespace + whitespace).isEmpty)
+            #expect(SearchTextNormalization.lexicalNormalize(whitespace + whitespace).isEmpty)
+        }
+    }
+
     @Test("ASCII case folding and Unicode grapheme maps match the lexical policy")
     func normalizationAndExactOffsets() throws {
         let source =

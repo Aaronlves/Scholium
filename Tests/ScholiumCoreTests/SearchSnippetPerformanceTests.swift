@@ -86,6 +86,8 @@ struct SearchSnippetPerformanceTests {
             "ß  X", "ß e\u{301}", "Straße STRASSE", "ﬃA", "İıΣςσ", "café Cafe\u{301}",
             "😀A", "👩‍🔬 A", "👨‍👩‍👧‍👦 Z", "a\u{200D}b", "A\u{20DD}", "한 한",
             "\u{FEFF}Agency\n哲学", "A\0B",
+            "\r\nA\r\nB\r\n", "A\u{0B}B\u{0C}C", "A\u{01}\0B\u{7F}C",
+            String(decoding: Array(UInt8(0)...UInt8(127)), as: UTF8.self),
         ])
     func displayMappingCanonicalRangeParity(source: String) {
         let normalized = SearchTextNormalization.lexicalNormalize(source)
