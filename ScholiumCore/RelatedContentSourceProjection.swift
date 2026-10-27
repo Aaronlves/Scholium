@@ -241,7 +241,13 @@ struct RelatedContentSourceProjection: Codable, Sendable {
     }
 
     static func checksum(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var hexadecimal = ""
+        hexadecimal.reserveCapacity(64)
+        for byte in SHA256.hash(data: data) {
+            if byte < 0x10 { hexadecimal.append("0") }
+            hexadecimal.append(String(byte, radix: 16, uppercase: false))
+        }
+        return hexadecimal
     }
 
     static func decode(_ data: Data?, checksum: String?, sourceUTF16Count: Int) throws -> Self {

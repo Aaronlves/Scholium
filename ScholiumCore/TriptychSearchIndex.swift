@@ -75,12 +75,22 @@ public actor TriptychSearchIndex {
         enum RelatedLexicalPoolPhase: Sendable { case begin, row, end }
 
         struct RelatedLexicalPoolObservation: Sendable {
+            let requestID: UUID
             let phase: RelatedLexicalPoolPhase
             let candidateCount: Int
             let retainedProjectionCount: Int
             /// Cost of the complete pool seen so far, even after its full
             /// projections have been released on crossing the cache budget.
             let completePoolEstimatedBytes: Int
+        }
+
+        private var relatedReadBatchBarrierForTesting: (@Sendable () async throws -> Void)?
+        private var relatedShutdownObserverForTesting: (@Sendable () -> Void)?
+        func setRelatedShutdownObserverForTesting(_ observer: (@Sendable () -> Void)?) {
+            relatedShutdownObserverForTesting = observer
+        }
+        func setRelatedReadBatchBarrierForTesting(_ barrier: (@Sendable () async throws -> Void)?) {
+            relatedReadBatchBarrierForTesting = barrier
         }
 
         private var relatedLexicalPoolObserverForTesting: (@Sendable (RelatedLexicalPoolObservation) -> Void)?
@@ -107,6 +117,10 @@ public actor TriptychSearchIndex {
     /// A separate connection may publish while the actor serves last-good
     /// reads from `database`.
     private let writerDatabase: SearchSQLiteDatabase
+    /// Each long Related read exclusively leases a connection/snapshot. Its
+    /// bounded batches yield the actor without lending the Search connection.
+    private var relatedReadConnections: [UUID: SearchSQLiteDatabase] = [:]
+    private var relatedReadDrain: AsyncStream<Void>.Continuation?
     private var storageLease: DerivedStateStorageLease?
     private var shutdownTask: Task<Void, Never>?
     private var isClosing = false
@@ -117,6 +131,11 @@ public actor TriptychSearchIndex {
     private var synchronizationQueuedForTesting: (@Sendable (UInt64) async -> Void)?
     private var joinedSynchronizationWaitForTesting: (@Sendable () async -> Void)?
     private var latestWorkspaceGeneration: UInt64 = 0
+    private var paragraphMatchingMemo = SearchParagraphMatchingMemo()
+    private struct ParagraphMatchingRead {
+        let generation: SearchGenerationID
+        let protection: SearchParagraphMatchingMemo.ScanProtection
+    }
     private var relatedPassageMemo = RelatedContentSourceProjectionMemo()
     private var relatedBackgroundPreparation = RelatedContentBackgroundPreparation()
     var relatedBackgroundPreparationStatistics: RelatedContentBackgroundPreparation.Statistics {
@@ -478,6 +497,7 @@ public actor TriptychSearchIndex {
                 rankedSearchAccessClock = 0
                 relatedPassageMemo = .init()
                 relatedBackgroundPreparation = .init()
+                paragraphMatchingMemo.clear()
                 currentAvailability = .unavailable
             }
             return result
@@ -538,11 +558,17 @@ public actor TriptychSearchIndex {
             return
         }
         isClosing = true
+        #if DEBUG
+            relatedShutdownObserverForTesting?()
+        #endif
+        let drain = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        if relatedReadConnections.isEmpty { drain.continuation.finish() } else { relatedReadDrain = drain.continuation }
         let synchronization = activeSynchronization
         let clearing = activeClear
         synchronization?.task.cancel()
         clearing?.task.cancel()
         let task = Task { [self] in
+            for await _ in drain.stream {}
             if let clearing { _ = await clearing.task.result }
             if let synchronization {
                 _ = await synchronization.task.result
@@ -553,6 +579,7 @@ public actor TriptychSearchIndex {
             rankedSearchCache.removeAll()
             relatedPassageMemo = .init()
             relatedBackgroundPreparation = .init()
+            paragraphMatchingMemo.clear()
             database.close()
             writerDatabase.close()
             currentAvailability = .unavailable
@@ -859,6 +886,7 @@ public actor TriptychSearchIndex {
                 recoveredGeneratedDatabase = false
                 currentAvailability = .current(result.generation)
                 relatedBackgroundPreparation.retain(generation: result.generation)
+                paragraphMatchingMemo.retainGeneration(result.generation)
                 rankedSearchCache.removeAll(keepingCapacity: true)
                 rankedSearchAccessClock = 0
             }
@@ -1315,11 +1343,26 @@ public actor TriptychSearchIndex {
     /// Workspace verifies current bytes before material scoring and limiting.
     public func relatedMaterialSourceCandidates(
         _ request: RelatedContentRequest
-    ) throws -> RelatedContentResponse {
+    ) async throws -> RelatedContentResponse {
         try requireOpen()
-        return try database.readTransaction {
+        let identifier = UUID()
+        try storageLease?.validateCurrent()
+        try storageLease?.validateDatabaseFile(databaseURL.lastPathComponent, permitsMissing: false)
+        let reader = try SearchSQLiteDatabase(path: databaseURL.path, readOnly: true)
+        try reader.execute("PRAGMA cache_size=-1024;")
+        relatedReadConnections[identifier] = reader
+        defer {
+            reader.close()
+            relatedReadConnections[identifier] = nil
+            if relatedReadConnections.isEmpty {
+                relatedReadDrain?.finish()
+                relatedReadDrain = nil
+            }
+        }
+        return try await reader.asyncReadTransaction {
+            let database = reader
             try Task.checkCancellation()
-            let readGeneration = try generation()
+            let readGeneration = try Self.readGeneration(in: database, triptychID: triptychID)
             let availability = responseAvailability(for: readGeneration)
             let freshness =
                 readGeneration.map(SearchFreshnessToken.triptych)
@@ -1366,7 +1409,7 @@ public actor TriptychSearchIndex {
                                 }))
                 }),
                 let descriptor = try vaultDescriptor(
-                    request.seed.noteID.vaultID
+                    request.seed.noteID.vaultID, database: database
                 ),
                 [.sourceCorpus, .topicKnowledge, .draftProject]
                     .contains(descriptor.role)
@@ -1414,7 +1457,8 @@ public actor TriptychSearchIndex {
             }
 
             let focused = !request.seed.focuses.isEmpty
-            let identity = try relatedIdentityCandidates(
+            let identity = try await relatedIdentityCandidates(
+                database: database, generation: currentGeneration,
                 material: material,
                 excluding: request.seed.noteID,
                 candidateRoles: request.candidateRoles,
@@ -1428,29 +1472,22 @@ public actor TriptychSearchIndex {
             }
             let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
             let scoringTerms = focused ? focusedTerms : material.combinedTerms
-            let preparationKey = RelatedContentBackgroundPreparation.Key(
-                seed: request.seed, generation: currentGeneration, roles: request.candidateRoles)
-            let prepared = try relatedBackgroundPreparation.prepared(for: preparationKey) ?? .init()
-            // A foreground cache miss performs only the ordinary focus scan;
-            // it never synchronously rebuilds the whole-Note background pool.
-            // Both paths use the same complete FTS pool and current payload checks.
-            let pool = try relatedContentCandidates(
-                terms: scoringTerms, material: material, preparationKey: preparationKey,
-                prepareBackgroundPool: !focused,
-                excluding: request.seed.noteID,
-                candidateRoles: request.candidateRoles,
-                reusing: prepared
-            )
+            // A row memo accelerates only current payload decoding. The FTS
+            // corpus, seed reasons, scores and eligibility remain request-local.
+            let pool = try await relatedContentCandidates(
+                database: database, generation: currentGeneration, requestID: request.id,
+                terms: scoringTerms, material: material,
+                excluding: request.seed.noteID, candidateRoles: request.candidateRoles)
             let lexical = try Self.relatedLexicalResults(pool)
-            if !focused, let preparation = pool.preparation {
-                // Only a complete background scan publishes preparation. A
-                // focused subset cannot overwrite a previously prepared Note.
-                switch preparation {
-                case .complete(let value):
-                    try relatedBackgroundPreparation.store(value, for: preparationKey)
-                case .oversized:
-                    try relatedBackgroundPreparation.rejectOversizedCompletePool(for: preparationKey)
-                }
+            try requireOpen()
+            try Task.checkCancellation()
+            guard activeClear == nil,
+                try Self.readGeneration(in: self.database, triptychID: triptychID) == currentGeneration
+            else {
+                return RelatedContentResponse(
+                    requestID: request.id, seedFingerprint: request.seed.fingerprint,
+                    freshnessToken: freshness, availability: currentAvailability, state: .stale,
+                    identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
             }
             try Task.checkCancellation()
             let lexicalHasMore = lexical.count > request.lexicalLimit
@@ -1480,20 +1517,31 @@ public actor TriptychSearchIndex {
         }
     }
 
+    private func relatedReadCheckpoint(_ generation: SearchGenerationID) async throws {
+        await Task.yield()
+        try requireOpen()
+        try Task.checkCancellation()
+        guard activeClear == nil,
+            try Self.readGeneration(in: database, triptychID: triptychID) == generation
+        else { throw CancellationError() }
+        #if DEBUG
+            try await relatedReadBatchBarrierForTesting?()
+        #endif
+        try requireOpen()
+        try Task.checkCancellation()
+        guard activeClear == nil,
+            try Self.readGeneration(in: database, triptychID: triptychID) == generation
+        else { throw CancellationError() }
+    }
+
     private struct RelatedLexicalInput {
         let candidate: SearchCandidate
         let reason: RelatedContentLexicalReason
     }
 
-    private enum RelatedPoolPreparation {
-        case complete(RelatedContentBackgroundPreparation.Value)
-        case oversized
-    }
-
     private struct RelatedCandidatePool {
         let candidates: [RelatedLexicalInput]
         let scoring: RelatedContentBM25F.PreparedCorpus
-        let preparation: RelatedPoolPreparation?
     }
 
     private nonisolated static func relatedLexicalResults(_ pool: RelatedCandidatePool) throws -> [RelatedLexicalCandidate] {
@@ -1590,6 +1638,12 @@ public actor TriptychSearchIndex {
             }
             var rowIDs: [Int] = []
             try database.query(sql, bindings: bindings) { rowIDs.append($0.int(at: 0)) }
+            let paragraphRead: ParagraphMatchingRead? =
+                includesParagraphs
+                ? .init(
+                    generation: generation,
+                    protection: paragraphMatchingMemo.scanProtection(generation: generation, rowIDs: Set(rowIDs)))
+                : nil
             let rankingLimit = cacheKey == nil ? required : Self.maximumCachedRankedResults
             var accepted: [(candidate: SearchCandidate, evaluation: SearchEvaluation)] = []
             var evaluatedTotal = 0
@@ -1601,8 +1655,8 @@ public actor TriptychSearchIndex {
                         rowID: rowID, includingProperties: includesProperties,
                         includingParagraphs: includesParagraphs,
                         includingAliases: ast.identityNeedle != nil,
-                        includingSegments: includesLexicalSegments || includesParagraphs,
-                        includingSourceEvidence: includesParagraphs),
+                        includingSegments: includesLexicalSegments,
+                        includingSourceEvidence: false, paragraphMatchingRead: paragraphRead),
                     Self.isEligible(document, in: eligibleDocuments)
                 else { continue }
                 let evaluation = SearchMatcher.evaluate(
@@ -1619,8 +1673,8 @@ public actor TriptychSearchIndex {
                 if includesParagraphs {
                     let matched = ast.matched(by: evaluation)
                     keys.formUnion(
-                        SearchMatcher.paragraphWitnesses(matched, document: document)
-                            .flatMap { $0.ast.positiveLexicalClauses }.map(Self.rankingKey))
+                        SearchMatcher.paragraphRankingClauses(matched, document: document, normalizedNeedles: normalizedNeedles)
+                            .map(Self.rankingKey))
                 }
                 let rank = keys.reduce(0.0) { $0 + (ranks[$1]?[rowID] ?? 0) }
                 let candidate = SearchCandidate(
@@ -1725,11 +1779,12 @@ public actor TriptychSearchIndex {
     }
 
     private func relatedIdentityCandidates(
+        database: SearchSQLiteDatabase, generation: SearchGenerationID,
         material: RelatedContentSeedMaterial,
         excluding seed: VaultQualifiedNoteID,
         candidateRoles: [RelatedContentCandidateRole],
         scan: Bool
-    ) throws -> [RelatedIdentityCandidate] {
+    ) async throws -> [RelatedIdentityCandidate] {
         guard scan else { return [] }
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
@@ -1760,7 +1815,7 @@ public actor TriptychSearchIndex {
             }
         }
         var matches: [RelatedIdentityCandidate] = []
-        try database.query(
+        try await database.queryBatches(
             """
             SELECT \(Self.documentColumns(includingSourceEvidence: false)), d.id
             FROM search_documents d
@@ -1774,8 +1829,8 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
             guard
                 let document = try self.decodeDocument(
-                    row, rowID: row.int(at: 23), includingSegments: false, includingSourceEvidence: false,
-                    preparedAliases: aliasesByDocument[row.int(at: 23)] ?? []),
+                    row, rowID: row.int(at: 21), includingSegments: false, includingSourceEvidence: false,
+                    preparedAliases: aliasesByDocument[row.int(at: 21)] ?? [], database: database),
                 let reason = material.identityMentionReason(for: document)
             else { return }
             matches.append(
@@ -1783,24 +1838,22 @@ public actor TriptychSearchIndex {
                     document: document,
                     reason: reason
                 ))
+        } checkpoint: {
+            try await self.relatedReadCheckpoint(generation)
         }
         matches.sort(by: RelatedIdentityCandidate.precedes)
         return matches
     }
 
     private func relatedContentCandidates(
+        database: SearchSQLiteDatabase, generation: SearchGenerationID, requestID: UUID,
         terms: [String], material: RelatedContentSeedMaterial,
-        preparationKey: RelatedContentBackgroundPreparation.Key,
-        prepareBackgroundPool: Bool,
         excluding seed: VaultQualifiedNoteID,
-        candidateRoles: [RelatedContentCandidateRole],
-        reusing prepared: RelatedContentBackgroundPreparation.Value
-    ) throws -> RelatedCandidatePool {
+        candidateRoles: [RelatedContentCandidateRole]
+    ) async throws -> RelatedCandidatePool {
         var scoring = RelatedContentBM25F.PreparedCorpus(terms: terms)
         guard !terms.isEmpty else {
-            return .init(
-                candidates: [], scoring: scoring,
-                preparation: prepareBackgroundPool ? .complete(.init()) : nil)
+            return .init(candidates: [], scoring: scoring)
         }
         let constraints = try terms.map { term in
             try database.ftsExpression(for: [.init(field: nil, value: .term(term), sourceRange: 0..<0)])
@@ -1812,41 +1865,59 @@ public actor TriptychSearchIndex {
         let rolePlaceholders = candidateRoles.map { _ in "?" }
             .joined(separator: ", ")
         var result: [RelatedLexicalInput] = []
-        var preparation = RelatedContentBackgroundPreparation.Value()
-        var preparationEstimatedBytes = preparation.estimatedByteCount
-        var preparationOversized = false
-        #if DEBUG
-            relatedLexicalPoolObserverForTesting?(
-                .init(
-                    phase: .begin, candidateCount: 0, retainedProjectionCount: 0,
-                    completePoolEstimatedBytes: preparationEstimatedBytes))
-        #endif
-        try database.query(
-            """
-            SELECT \(Self.documentColumns(includingSourceEvidence: false, includingRelatedRankingText: true)), d.id
+        var preparationEstimatedBytes = 0
+        let from = """
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
             WHERE \(unrestricted ? "1 = 1" : "search_fts MATCH ?")
               AND d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
-            ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path;
-            """,
-            bindings: (unrestricted ? [] : [.text(expression)])
-                + candidateRoles.map {
-                    .text($0.vaultRole.rawValue)
-                } + [
-                    .text(seed.vaultID.uuidString.lowercased()),
-                    .text(seed.relativePath),
-                ]
+            """
+        let bindings: [SearchSQLiteBinding] =
+            (unrestricted ? [] : [.text(expression)])
+            + candidateRoles.map { .text($0.vaultRole.rawValue) }
+            + [.text(seed.vaultID.uuidString.lowercased()), .text(seed.relativePath)]
+        var rowIDs = Set<Int>()
+        try await database.queryBatches("SELECT d.id " + from, bindings: bindings) { row in
+            rowIDs.insert(row.int(at: 0))
+        } checkpoint: {
+            try await self.relatedReadCheckpoint(generation)
+        }
+        try Task.checkCancellation()
+        let protection = relatedBackgroundPreparation.scanProtection(generation: generation, rowIDs: rowIDs)
+        #if DEBUG
+            relatedLexicalPoolObserverForTesting?(
+                .init(
+                    requestID: requestID, phase: .begin, candidateCount: 0, retainedProjectionCount: 0,
+                    completePoolEstimatedBytes: preparationEstimatedBytes))
+        #endif
+        try await database.queryBatches(
+            "SELECT \(Self.documentColumns(includingSourceEvidence: false)), d.id "
+                + from + " ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path;",
+            bindings: bindings
         ) { row in
             try Task.checkCancellation()
             guard
-                let document = try self.decodeDocument(
-                    row, rowID: row.int(at: 23), includingAliases: false,
-                    includingSourceEvidence: false, includingRelatedRankingText: true,
-                    preparedRelatedLexical: prepared.documents[row.int(at: 23)])
+                var document = try self.decodeDocument(
+                    row, rowID: row.int(at: 21), includingAliases: false, includingSegments: false,
+                    includingSourceEvidence: false, database: database)
             else { return }
-            let projection = document.relatedLexical!
+            // Keep large payloads out of the ordered cursor. This nested read
+            // reuses its own statement within the same fixed snapshot.
+            var payload: Data?
+            var checksum: String?
+            try database.query(
+                "SELECT related_lexical, related_lexical_hash FROM search_documents WHERE id = ?;",
+                bindings: [.int(document.rowID)]
+            ) { current in
+                payload = current.data(at: 0)
+                checksum = current.text(at: 1)
+            }
+            let projection = try self.relatedBackgroundPreparation.projection(
+                rowID: document.rowID, generation: generation, fingerprint: document.fingerprint,
+                data: payload, checksum: checksum, protection: protection)
+            document.relatedLexical = projection
+            preparationEstimatedBytes += 224 + projection.estimatedByteCount
             try scoring.append(projection.scoringDocument)
             try Task.checkCancellation()
             let reason = material.lexicalReason(for: projection)
@@ -1856,44 +1927,24 @@ public actor TriptychSearchIndex {
                 .init(
                     candidate: .init(document: compactDocument, identityPriority: 10, lexicalRank: 0),
                     reason: reason))
-            if prepareBackgroundPool {
-                let cacheDocument = RelatedContentBackgroundPreparation.LexicalDocument(
-                    fingerprint: document.fingerprint, checksum: row.text(at: 22)!, projection: projection)
-                let (nextEstimate, overflow) = preparationEstimatedBytes.addingReportingOverflow(
-                    64 + cacheDocument.estimatedByteCount)
-                preparationEstimatedBytes = overflow ? Int.max : nextEstimate
-                if !preparationOversized {
-                    if overflow
-                        || !self.relatedBackgroundPreparation.fitsBudget(
-                            valueEstimatedByteCount: nextEstimate, for: preparationKey)
-                    {
-                        // A partial pool cannot be a cache hit. Release the
-                        // entire candidate before scoring compact records.
-                        preparation.documents.removeAll(keepingCapacity: false)
-                        preparationOversized = true
-                    } else {
-                        preparation.documents[document.rowID] = cacheDocument
-                    }
-                }
-            }
             #if DEBUG
                 self.relatedLexicalPoolObserverForTesting?(
                     .init(
-                        phase: .row, candidateCount: result.count,
-                        retainedProjectionCount: preparation.documents.count,
+                        requestID: requestID, phase: .row, candidateCount: result.count,
+                        retainedProjectionCount: self.relatedBackgroundPreparation.entryCount,
                         completePoolEstimatedBytes: preparationEstimatedBytes))
             #endif
+        } checkpoint: {
+            try await self.relatedReadCheckpoint(generation)
         }
         #if DEBUG
             relatedLexicalPoolObserverForTesting?(
                 .init(
-                    phase: .end, candidateCount: result.count,
-                    retainedProjectionCount: preparation.documents.count,
+                    requestID: requestID, phase: .end, candidateCount: result.count,
+                    retainedProjectionCount: self.relatedBackgroundPreparation.entryCount,
                     completePoolEstimatedBytes: preparationEstimatedBytes))
         #endif
-        let cacheCandidate: RelatedPoolPreparation? =
-            prepareBackgroundPool ? (preparationOversized ? .oversized : .complete(preparation)) : nil
-        return .init(candidates: result, scoring: scoring, preparation: cacheCandidate)
+        return .init(candidates: result, scoring: scoring)
     }
 
     private func searchCurrentNote(
@@ -2153,18 +2204,17 @@ public actor TriptychSearchIndex {
     }
 
     // One column layout and decoder serve single-row Search loads and batched
-    // Related-Content reads. Batched callers append d.id at column 23.
+    // Related-Content reads. Batched callers append d.id at column 21.
     private nonisolated static func documentColumns(
         includingProperties: Bool = false, includingParagraphs: Bool = false,
-        includingSourceEvidence: Bool = true, includingRelatedRankingText: Bool = false
+        includingSourceEvidence: Bool = true
     ) -> String {
         """
         d.vault_id, d.vault_name, d.role, d.relative_path, d.stable_note_id, d.title,
         d.normalized_title, d.title_key, d.filename_key, d.path_key, d.callout_roles,
         d.has_broken_link, d.fingerprint_sha256, d.fingerprint_byte_count,
         d.evidential_layer, d.role_order, \(includingSourceEvidence ? "d.line_starts" : "NULL"), d.source_utf16_count,
-        \(includingProperties ? "d.property_issues" : "NULL"), \(includingParagraphs ? "d.paragraphs" : "NULL"), d.paragraphs_complete,
-        \(includingRelatedRankingText ? "d.related_lexical" : "NULL"), \(includingRelatedRankingText ? "d.related_lexical_hash" : "NULL")
+        \(includingProperties ? "d.property_issues" : "NULL"), \(includingParagraphs ? "d.paragraphs" : "NULL"), d.paragraphs_complete
         """
     }
 
@@ -2172,14 +2222,14 @@ public actor TriptychSearchIndex {
         rowID: Int,
         includingProperties: Bool = false, includingParagraphs: Bool = false,
         includingAliases: Bool = true, includingSegments: Bool = true, includingSourceEvidence: Bool = true,
-        includingRelatedRankingText: Bool = false
+        paragraphMatchingRead: ParagraphMatchingRead? = nil
     ) throws -> StoredSearchDocument? {
         var document: StoredSearchDocument?
         try database.query(
             """
             SELECT \(Self.documentColumns(
                 includingProperties: includingProperties, includingParagraphs: includingParagraphs,
-                includingSourceEvidence: includingSourceEvidence, includingRelatedRankingText: includingRelatedRankingText))
+                includingSourceEvidence: includingSourceEvidence))
             FROM search_documents d WHERE d.id = ?;
             """,
             bindings: [.int(rowID)]
@@ -2187,7 +2237,8 @@ public actor TriptychSearchIndex {
             document = try self.decodeDocument(
                 row, rowID: rowID, includingProperties: includingProperties, includingParagraphs: includingParagraphs,
                 includingAliases: includingAliases, includingSegments: includingSegments,
-                includingSourceEvidence: includingSourceEvidence, includingRelatedRankingText: includingRelatedRankingText)
+                includingSourceEvidence: includingSourceEvidence,
+                paragraphMatchingRead: paragraphMatchingRead)
         }
         return document
     }
@@ -2196,9 +2247,11 @@ public actor TriptychSearchIndex {
         _ row: SearchSQLiteStatement, rowID: Int,
         includingProperties: Bool = false, includingParagraphs: Bool = false,
         includingAliases: Bool = true, includingSegments: Bool = true, includingSourceEvidence: Bool = true,
-        includingRelatedRankingText: Bool = false, preparedAliases: [String]? = nil,
-        preparedRelatedLexical: RelatedContentBackgroundPreparation.LexicalDocument? = nil
+        preparedAliases: [String]? = nil,
+        paragraphMatchingRead: ParagraphMatchingRead? = nil,
+        database reader: SearchSQLiteDatabase? = nil
     ) throws -> StoredSearchDocument? {
+        let database = reader ?? self.database
         guard let vaultText = row.text(at: 0), let vaultID = UUID(uuidString: vaultText),
             let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
             let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
@@ -2221,31 +2274,27 @@ public actor TriptychSearchIndex {
         } else {
             lineStarts = []
         }
-        let aliases = includingAliases ? try (preparedAliases ?? self.aliases(documentID: rowID)) : []
+        let aliases = includingAliases ? try (preparedAliases ?? self.aliases(documentID: rowID, database: database)) : []
         let segments: [SearchTextSegment]
-        if includingSegments && !includingRelatedRankingText {
+        if includingSegments {
             segments = try self.segments(
                 documentID: rowID, sourceUTF16Count: sourceUTF16Count,
-                includingSourceEvidence: includingSourceEvidence,
-                includingRelatedRankingText: includingRelatedRankingText)
+                includingSourceEvidence: includingSourceEvidence, database: database)
         } else {
             segments = []
         }
-        let properties = includingProperties ? try self.properties(documentID: rowID) : []
+        let properties = includingProperties ? try self.properties(documentID: rowID, database: database) : []
         let fingerprint = DocumentFingerprint(sha256: sha, byteCount: row.int(at: 13))
-        let relatedLexical: RelatedContentLexicalProjection?
-        if includingRelatedRankingText {
-            let payload = row.data(at: 21)
-            let checksum = row.text(at: 22)
-            if let preparedRelatedLexical,
-                preparedRelatedLexical.matches(payload, checksum: checksum, fingerprint: fingerprint)
-            {
-                relatedLexical = preparedRelatedLexical.projection
-            } else {
-                relatedLexical = try RelatedContentLexicalProjection.decode(payload, checksum: checksum)
-            }
+        let paragraphs: [SearchParagraphProjection]
+        if includingParagraphs, let read = paragraphMatchingRead {
+            paragraphs = try paragraphMatchingMemo.paragraphs(
+                rowID: rowID, generation: read.generation, fingerprint: fingerprint,
+                sourceUTF16Count: sourceUTF16Count, data: row.data(at: 19), protection: read.protection,
+                decode: { try Self.decodeParagraphs($0, sourceUTF16Count: sourceUTF16Count) })
+        } else if includingParagraphs {
+            paragraphs = try Self.decodeParagraphs(row.data(at: 19), sourceUTF16Count: sourceUTF16Count)
         } else {
-            relatedLexical = nil
+            paragraphs = []
         }
         return StoredSearchDocument(
             rowID: rowID,
@@ -2266,14 +2315,14 @@ public actor TriptychSearchIndex {
             roleOrder: row.int(at: 15),
             sourceLineStarts: lineStarts,
             segments: segments,
-            paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.data(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
+            paragraphs: paragraphs,
             paragraphsAreComplete: row.int(at: 20) == 1,
             properties: properties,
-            propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [],
-            relatedLexical: relatedLexical)
+            propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : [])
     }
 
-    private func aliases(documentID: Int) throws -> [String] {
+    private func aliases(documentID: Int, database reader: SearchSQLiteDatabase? = nil) throws -> [String] {
+        let database = reader ?? self.database
         var result: [String] = []
         try database.query(
             "SELECT alias FROM search_aliases WHERE document_id = ? ORDER BY ordinal;",
@@ -2286,14 +2335,15 @@ public actor TriptychSearchIndex {
         documentID: Int,
         sourceUTF16Count: Int,
         includingSourceEvidence: Bool = true,
-        includingRelatedRankingText: Bool = false
+        database reader: SearchSQLiteDatabase? = nil
     ) throws -> [SearchTextSegment] {
+        let database = reader ?? self.database
         // Predicate evaluation consumes only field and normalized text. Avoid
         // decoding and validating every candidate's source maps for a short page.
         if !includingSourceEvidence {
             var segments: [SearchTextSegment] = []
             try database.query(
-                "SELECT field, ordinal, normalized_text, \(includingRelatedRankingText ? "related_ranking_text" : "NULL") FROM search_segments WHERE document_id = ? ORDER BY ordinal;",
+                "SELECT field, ordinal, normalized_text FROM search_segments WHERE document_id = ? ORDER BY ordinal;",
                 bindings: [.int(documentID)]
             ) { row in
                 guard let fieldText = row.text(at: 0),
@@ -2303,10 +2353,7 @@ public actor TriptychSearchIndex {
                 segments.append(
                     SearchTextSegment(
                         field: field, ordinal: row.int(at: 1), text: "",
-                        normalizedText: normalized, sourceRange: nil, offsetMap: [],
-                        relatedRankingText: includingRelatedRankingText
-                            ? try Self.decodeGeneratedJSON([String: String].self, from: row.text(at: 3))
-                            : [:]))
+                        normalizedText: normalized, sourceRange: nil, offsetMap: []))
             }
             return segments
         }
@@ -2364,8 +2411,9 @@ public actor TriptychSearchIndex {
     }
 
     private func properties(
-        documentID: Int
+        documentID: Int, database reader: SearchSQLiteDatabase? = nil
     ) throws -> [SearchPropertyProjection.Entry] {
+        let database = reader ?? self.database
         struct Accumulator {
             let key: String
             let keyRange: SearchSourceRange?
@@ -2474,7 +2522,8 @@ public actor TriptychSearchIndex {
         return result
     }
 
-    private func vaultDescriptor(_ id: UUID) throws -> (name: String, role: VaultRole)? {
+    private func vaultDescriptor(_ id: UUID, database reader: SearchSQLiteDatabase? = nil) throws -> (name: String, role: VaultRole)? {
+        let database = reader ?? self.database
         if let configured = configuredVaults[id] {
             return (configured.name, configured.role)
         }

@@ -96,6 +96,7 @@ receipt recovery eligibility.
 ## Native Chat client
 
 Application bounds frames, queued wire bytes/count and pending operations.
+Iterative JSONEncoder containers encode closed values; Foundation retains validity and depth checks.
 Overflow revokes transport admission, fails pending calls and delivers a reserved
 disconnect marker after accepted events; RPC replies never await event consumption.
 Subprocess owns process I/O/teardown; selected-directory configuration owns credentials.

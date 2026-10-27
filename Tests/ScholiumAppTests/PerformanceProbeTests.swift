@@ -207,8 +207,7 @@ struct PerformanceProbeTests {
                 (vaultHome, ScholiumRuntimeIsolation.qaBundleIdentifier, fixture.bundle),
                 (
                     fixture.environment, ScholiumRuntimeIsolation.qaBundleIdentifier,
-                    fixture.root.deletingLastPathComponent().deletingLastPathComponent()
-                        .appendingPathComponent("Scholium-QA.app")
+                    URL(fileURLWithPath: "/Scholium-QA.app")
                 ),
             ]
             for (environment, bundleID, bundleURL) in configurations {

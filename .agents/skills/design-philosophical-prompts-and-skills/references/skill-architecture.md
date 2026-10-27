@@ -156,17 +156,15 @@ When a workflow depends on a canonical method, either package that method as an 
 
 ## Design triggering and routing
 
-Make descriptions discriminative enough to select the right skill without loading all bodies.
+Briefly name the intellectual operation and its discriminating trigger, placing
+the key use case first so a shortened description remains useful. Add a genre,
+exclusion, side-effect distinction, or application context only when it prevents
+a likely routing collision. Keep detailed modes and safeguards in the body or
+their conditional references; discovery metadata is not a package inventory.
 
-Include:
-
-- the intellectual operation;
-- relevant research objects or genres;
-- important exclusions that distinguish adjacent skills;
-- whether it creates, reviews, integrates, or only advises;
-- any essential application or tool context.
-
-Avoid descriptions so broad that every philosophy request triggers the skill. Avoid separate top-level skills for every output lens, submode, or rhetorical role.
+Check a representative request and an adjacent request against the description
+before loading the body. Avoid descriptions that attract every philosophy task
+and separate top-level skills for every output lens, submode, or rhetorical role.
 
 For a catalog, expose only routing metadata such as:
 

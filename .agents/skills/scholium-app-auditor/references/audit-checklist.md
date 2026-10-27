@@ -47,7 +47,27 @@ reachability before admitting a finding. Prefer focused deterministic checks
 that can invalidate a claim. Release configuration, human acceptance,
 performance acceptance, and source-level correctness are independent.
 
-For each finding state the affected task, controlling target, live evidence,
-consequence, owner, smallest correction, regression proof, and uncertainty.
-Do not transform a read-only audit into implementation or expand a local issue
-into a speculative rewrite.
+## Change review and re-review
+
+Bind the review to its baseline, candidate revision, requested intent, and checked
+paths; for uncommitted work identify the captured diff or content hashes.
+Distinguish introduced or newly exposed failures from pre-existing issues and
+uncertain provenance. A changed line alone does not establish causation.
+
+On re-review, verify earlier fixes and inspect the new diff plus the callers,
+invariants, and failure paths it can affect. Carry forward each prior finding's
+disposition and reason. Reopen a fixed or dismissed finding only with new
+counterevidence; keep unresolved findings visible without posting them as new.
+Report a shared bug class with its demonstrated instances so the correction
+addresses the cause. Keep unrelated pre-existing issues outside patch findings
+unless the requested audit covers them.
+
+Do not run repeated whole-app passes just to find something else. When review
+and repair cycle without new evidence or progress, revisit the causal model and
+smallest discriminating check. Continue authorized corrections; an unresolved
+consequential failure is not a clean review. Stop when requested coverage and
+finding dispositions are accounted for, stating any blocked proof.
+
+Adapted from [How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/).
+Its review-convergence experience informs this method; local authority still
+owns approval, acceptance, and release requirements.

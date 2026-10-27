@@ -87,28 +87,27 @@ Committed summaries and descriptor versions bridge consecutive moves and link
 rewrites to complete derived publication. Hydration validates version, path,
 fingerprint and identity before returning source. Filename and YAML projections
 support display/discovery without write or bibliographic authority. Yams proves
-source ranges and refuses ambiguity.
+source ranges and refuses ambiguity. One fresh parse supplies metadata and
+source-bound properties; no parser node survives.
 
-One source-projection cache owns compact catalog and Search records under independent
-parser/projection and Search policies. Fresh descriptor reads supply exact fingerprints,
-facts and versions; validated catalog hits skip semantic parsing. Restoration validates
-path, role/profile, coordinates and payload digest; unusable records recompute.
-Cached text and syntax never authorize identity or writes. Path deletion clears both kinds;
-policy retirement and abandoned staging share that owner.
+One source-projection cache owns catalog/Search records under independent
+policies. Fresh descriptor reads establish fingerprints, facts and versions;
+validated catalog hits skip semantic parsing. Restore rechecks path, role/profile,
+coordinates and digest; invalid records recompute. Caches never authorize identity
+or writes. Deletion clears both kinds; that owner retires policies and staging.
 Search index publication transactionally binds complete paragraph/offset maps and
 lexical preparation to exact source revisions. Negation cannot evaluate cropped
 body passages. Literal term groups persist raw alternatives with group-level
 preimage comparison, not query macros or hidden expansion.
 
-Recommendation retrieval shares Search's transaction/decoder/parser. Core owns
-bounded, revision/generation/role-bound Note preparation reused by independent
-focused recall. Application validates current sources before scoring; prewarming
-reads bounded batches under one protection snapshot covering all candidates and checks
-the generation at each batch. It authorizes no results. The window owns cancellation and
-foreground priority. Complete comparison sets precede bounded excerpts; exact
-source ranges remain separate from readable highlights. Deduplication preserves
-provenance; contextual weighting implies no philosophical interpretation.
-Ordinary Search coordinates/clauses remain separate.
+Core bounds lexical decoding and source-bound passage preparation. Current payload
+hashes guard lexical/paragraph-matcher memos; Search pages hydrate full evidence.
+Application source-checks every eligible candidate before scoring. Prewarm uses
+bounded batches and one scan protection, checking generation per batch; it
+authorizes no results. The window owns cancellation/foreground priority.
+Complete comparisons precede excerpts; exact ranges and readable highlights remain
+distinct. Deduplication preserves provenance; weighting implies no philosophical
+interpretation. Search coordinates/clauses remain separate.
 
 Source resource projection walks current links/images and validated Zotero
 locators without API calls or inferred bindings. One portable attachment registry

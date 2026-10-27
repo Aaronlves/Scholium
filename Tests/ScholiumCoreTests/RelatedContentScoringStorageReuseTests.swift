@@ -120,57 +120,50 @@ struct RelatedContentScoringStorageReuseTests {
         }
     }
 
-    @Test("Storage lookup selects the exact row and fingerprint across resident seed pools")
+    @Test("Storage lookup selects the current exact row revision without granting a projection hit")
     func candidateIdentity() throws {
-        let first = try lexicalDocument("needle orchard", rowID: 11)
-        let second = try lexicalDocument("needle geology", rowID: 11)
+        let first = try lexicalDocument("needle orchard")
+        let second = try lexicalDocument("needle geology")
+        let generation = generation()
         var memo = RelatedContentBackgroundPreparation()
         #expect(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint) == nil)
-        try memo.store(first.value, for: key("A.md"))
-        try memo.store(second.value, for: key("B.md"))
+        _ = try admit(&memo, rowID: 11, generation: generation, value: first)
         let statistics = memo.statistics
         let bytes = memo.estimatedByteCount
-        let firstMatch = try #require(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint))
-        let secondMatch = try #require(memo.scoringStorage(rowID: 11, fingerprint: second.fingerprint))
-        #expect(try canonicalBytes(firstMatch) == canonicalBytes(first.scorer))
-        #expect(try canonicalBytes(secondMatch) == canonicalBytes(second.scorer))
-        #expect(!firstMatch.hasSameContents(as: secondMatch))
+        let candidate = try #require(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint))
+        #expect(try canonicalBytes(candidate) == canonicalBytes(first.scorer))
         #expect(memo.scoringStorage(rowID: 12, fingerprint: first.fingerprint) == nil)
-        #expect(memo.scoringStorage(rowID: 11, fingerprint: DocumentFingerprint(content: "different")) == nil)
-        #expect(memo.statistics == statistics)
-        #expect(memo.estimatedByteCount == bytes)
-        #expect(memo.entryCount == 2)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: second.fingerprint) == nil)
+        #expect(memo.statistics == statistics && memo.estimatedByteCount == bytes)
+        _ = try admit(&memo, rowID: 11, generation: generation, value: second)
+        #expect(memo.entryCount == 1)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint) == nil)
+        let replacement = try #require(memo.scoringStorage(rowID: 11, fingerprint: second.fingerprint))
+        #expect(try canonicalBytes(replacement) == canonicalBytes(second.scorer))
     }
 
-    @Test("Reading an older candidate changes neither statistics, accounting nor LRU eviction")
+    @Test("Immutable storage lookup changes neither statistics, accounting nor row LRU")
     func candidateLookupDoesNotTouchLRU() throws {
-        let first = try lexicalDocument("needle orchard", rowID: 11)
-        let second = try lexicalDocument("needle geology", rowID: 22)
-        let third = try lexicalDocument("needle compass", rowID: 33)
-        let a = key("A.md")
-        let b = key("B.md")
-        let c = key("C.md")
-        var memo = RelatedContentBackgroundPreparation()
-        try memo.store(first.value, for: a)
-        try memo.store(second.value, for: b)
+        let value = try lexicalDocument("needle orchard")
+        let generation = generation()
+        var probe = RelatedContentBackgroundPreparation()
+        _ = try admit(&probe, rowID: 11, generation: generation, value: value)
+        var memo = RelatedContentBackgroundPreparation(maximumByteCount: probe.estimatedByteCount * 2)
+        _ = try admit(&memo, rowID: 11, generation: generation, value: value)
+        _ = try admit(&memo, rowID: 22, generation: generation, value: value)
         let statistics = memo.statistics
         let bytes = memo.estimatedByteCount
-        // Read A last: a lookup that refreshed LRU would incorrectly evict B.
         for _ in 0..<3 {
-            let candidate = try #require(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint))
-            #expect(try canonicalBytes(candidate) == canonicalBytes(first.scorer))
+            let candidate = try #require(memo.scoringStorage(rowID: 11, fingerprint: value.fingerprint))
+            #expect(try canonicalBytes(candidate) == canonicalBytes(value.scorer))
         }
-        #expect(memo.statistics == statistics)
-        #expect(memo.estimatedByteCount == bytes)
-        #expect(memo.entryCount == 2)
-        try memo.store(third.value, for: c)
+        #expect(memo.statistics == statistics && memo.estimatedByteCount == bytes)
+        _ = try admit(&memo, rowID: 33, generation: generation, value: value)
         #expect(memo.statistics.evictions == statistics.evictions + 1)
-        #expect(memo.scoringStorage(rowID: 11, fingerprint: first.fingerprint) == nil)
-        #expect(memo.scoringStorage(rowID: 22, fingerprint: second.fingerprint) != nil)
-        #expect(memo.scoringStorage(rowID: 33, fingerprint: third.fingerprint) != nil)
-        #expect(try memo.prepared(for: a) == nil)
-        #expect(try memo.prepared(for: b)?.documents.count == 1)
-        #expect(try memo.prepared(for: c)?.documents.count == 1)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: value.fingerprint) == nil)
+        #expect(memo.scoringStorage(rowID: 22, fingerprint: value.fingerprint) != nil)
+        #expect(memo.scoringStorage(rowID: 33, fingerprint: value.fingerprint) != nil)
+        #expect(memo.entryCount == 2 && memo.estimatedByteCount == bytes)
     }
 
     private func scorerWire(
@@ -187,26 +180,33 @@ struct RelatedContentScoringStorageReuseTests {
             """
     }
 
-    private func lexicalDocument(_ source: String, rowID: Int) throws -> (
-        value: RelatedContentBackgroundPreparation.Value, fingerprint: DocumentFingerprint, scorer: RelatedContentBM25F.Document
-    ) {
+    private struct LexicalPayload {
+        let data: Data
+        let checksum: String
+        let fingerprint: DocumentFingerprint
+        let scorer: RelatedContentBM25F.Document
+    }
+
+    private func lexicalDocument(_ source: String) throws -> LexicalPayload {
         let note = NoteDocument(relativePath: "Material.md", rawContent: source)
         let search = SearchDocumentProjection(document: note)
         let scorer = RelatedContentBM25F.Document(segments: search.segments)
         let projection = RelatedContentLexicalProjection(projection: search, scoringDocument: scorer)
-        var value = RelatedContentBackgroundPreparation.Value()
-        value.documents[rowID] = .init(
-            fingerprint: note.fingerprint, checksum: RelatedContentSourceProjection.checksum(try projection.encoded()), projection: projection)
-        return (value, note.fingerprint, scorer)
+        let data = try projection.encoded()
+        return .init(data: data, checksum: RelatedContentSourceProjection.checksum(data), fingerprint: note.fingerprint, scorer: scorer)
     }
 
-    private func key(_ path: String) -> RelatedContentBackgroundPreparation.Key {
-        .init(
-            seed: .init(
-                noteID: .init(vaultID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, relativePath: path), source: "seed"),
-            generation: .init(
-                triptychID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, sequence: 1, sourceManifestHash: "manifest"),
-            roles: [.analysis, .topic, .work])
+    private func generation() -> SearchGenerationID {
+        .init(triptychID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, sequence: 1, sourceManifestHash: "manifest")
+    }
+
+    private func admit(
+        _ memo: inout RelatedContentBackgroundPreparation, rowID: Int, generation: SearchGenerationID, value: LexicalPayload
+    ) throws -> RelatedContentLexicalProjection {
+        let protection = memo.scanProtection(generation: generation, rowIDs: [])
+        return try memo.projection(
+            rowID: rowID, generation: generation, fingerprint: value.fingerprint,
+            data: value.data, checksum: value.checksum, protection: protection)
     }
 
     private func canonicalBytes<Value: Encodable>(_ value: Value) throws -> Data {

@@ -15,7 +15,8 @@ to its subsystem owner within that scope.
   smallest justified boundary using the shared
   [architecture method](../scholium-engineering/references/architecture-classification-and-decomposition.md).
 - **Defect audit:** inspect reachable correctness failures through the
-  [audit coverage guide](references/audit-checklist.md).
+  [audit coverage guide](references/audit-checklist.md); use its change-review
+  method when reviewing a patch or rechecking earlier findings.
 - **Contract conformance:** trace target rules to status, reachability, and
   evidence using [contract conformance](references/contract-conformance.md).
 - **Release acceptance:** build an evidence ledger and decision using

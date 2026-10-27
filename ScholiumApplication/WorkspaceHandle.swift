@@ -44,6 +44,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     // runtime or transaction owners.
     var lastRelatedContentMeasurement: RelatedContentRetrievalMeasurement?
     var relatedContentRefreshWaiters: [UUID: RelatedContentRefreshWaiter] = [:]
+    var relatedContentPreparationFlights: [RelatedContentPreparationKey: RelatedContentPreparationFlight] = [:]
+    var relatedContentCompletedPreparations: [RelatedContentPreparationKey] = []
     var writingCompletionMemo = WritingCompletionProjectionMemo()
     var lastWritingCompletionMeasurement: WritingCompletionLookupMeasurement?
     var writingCompletionPostSourceReadBarrierForTesting: (@Sendable () async -> Void)?
@@ -128,7 +130,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var capturedSearchManifestBarrierForTesting: (@Sendable () async -> Void)?
         var reviewedSnapshotPublicationBarrierForTesting: (@Sendable () async -> Void)?
         var preparedSourceCatalogBarrierForTesting: (@Sendable (UUID) async -> Void)?
+        var relatedContentGraphPreparedBarrierForTesting: (@Sendable () async -> Void)?
+        var relatedContentPreparationStartedBarrierForTesting: (@Sendable () async -> Void)?
         var relatedContentFinalValidationBarrierForTesting: (@Sendable () async -> Void)?
+        var relatedContentSourceLoadAttemptsForTesting = 0
         var discoveryResultDeliveryBarrierForTesting: (@Sendable () async -> Void)?
 
         func setDiscoveryResultDeliveryBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
@@ -137,6 +142,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
         func setRelatedContentFinalValidationBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
             relatedContentFinalValidationBarrierForTesting = barrier
+        }
+
+        func setRelatedContentGraphPreparedBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            relatedContentGraphPreparedBarrierForTesting = barrier
+        }
+
+        func setRelatedContentPreparationStartedBarrierForTesting(_ barrier: (@Sendable () async -> Void)?) {
+            relatedContentPreparationStartedBarrierForTesting = barrier
         }
 
         func setPreparedSourceCatalogBarrierForTesting(_ barrier: (@Sendable (UUID) async -> Void)?) {
@@ -644,12 +657,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     private func finishShutdown() async {
+        let relatedPreparations = relatedContentPreparationFlights.values.map(\.task)
+        for flight in relatedContentPreparationFlights.values {
+            flight.task.cancel()
+            for waiter in flight.waiters.values { waiter.completion.finish() }
+        }
+        relatedContentPreparationFlights.removeAll()
+        relatedContentCompletedPreparations.removeAll()
         for waiter in relatedContentRefreshWaiters.values { waiter.completion.finish() }
         relatedContentRefreshWaiters.removeAll()
         writingCompletionMemo.clear()
         lastWritingCompletionMeasurement = nil
         writingCompletionPostSourceReadBarrierForTesting = nil
         #if DEBUG
+            relatedContentGraphPreparedBarrierForTesting = nil
+            relatedContentPreparationStartedBarrierForTesting = nil
             relatedContentFinalValidationBarrierForTesting = nil
         #endif
         let sourceCommitRefresh = sourceCommitRefreshTask
@@ -694,6 +716,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
+        for task in relatedPreparations { await task.value }
         await indexShutdown.value
         await events.finish(finalSnapshot: currentSnapshot)
         await services.indexedAttachmentAccessStore.endAllAccesses()

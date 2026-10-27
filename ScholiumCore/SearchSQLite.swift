@@ -212,6 +212,35 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
         return value
     }
 
+    /// The caller exclusively owns this connection for its read transaction.
+    /// Keep SQLite's cursor/snapshot, rather than repeatedly sorting OFFSET
+    /// pages, while allowing its actor to serve other connections per batch.
+    func queryBatches(
+        _ sql: String, bindings: [SearchSQLiteBinding] = [], batchSize: Int = 64,
+        isolation: isolated (any Actor)? = #isolation,
+        row: (SearchSQLiteStatement) throws -> Void,
+        checkpoint: () async throws -> Void
+    ) async throws {
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement.handle) }
+        try statement.bind(bindings)
+        var count = 0
+        while true {
+            let result = sqlite3_step(statement.handle)
+            switch result {
+            case SQLITE_ROW:
+                try row(statement)
+                count += 1
+                if count == batchSize {
+                    count = 0
+                    try await checkpoint()
+                }
+            case SQLITE_DONE: return
+            default: throw sqliteError(code: result)
+            }
+        }
+    }
+
     func transaction(_ operation: () throws -> Void) throws {
         try execute("BEGIN IMMEDIATE;")
         do {
@@ -252,6 +281,32 @@ final class SearchSQLiteDatabase: @unchecked Sendable {
         }
         do {
             let result = try operation()
+            try execute("COMMIT;")
+            return result
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    /// One exclusively leased reader can keep its WAL snapshot while its
+    /// actor yields between bounded batches. No other call uses this connection
+    /// until the transaction ends. The index drains every lease/cursor before close.
+    func asyncReadTransaction<Result>(
+        isolation: isolated (any Actor)? = #isolation,
+        _ operation: () async throws -> Result
+    ) async throws -> Result {
+        try execute("BEGIN DEFERRED;")
+        readStatements = [:]
+        defer {
+            for statement in readStatements?.values ?? [String: SearchSQLiteStatement]().values {
+                sqlite3_finalize(statement.handle)
+            }
+            readStatements = nil
+        }
+        do {
+            let result = try await operation()
+            try Task.checkCancellation()
             try execute("COMMIT;")
             return result
         } catch {

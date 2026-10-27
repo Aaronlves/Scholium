@@ -32,6 +32,7 @@ public actor CodexAppServer {
         }
         let destination: Destination
         let data: Data
+        var wireByteCount: Int { data.count + 1 }
         var admission: (@Sendable () async -> Bool)? = nil
     }
     private var connectionTask: Task<Void, Never>?
@@ -46,6 +47,7 @@ public actor CodexAppServer {
     private var timeouts: [Int: Task<Void, Never>] = [:]
     private var generation = UUID()
     private static let maximumFrameBytes = 8 * 1_024 * 1_024
+    private static let frameTerminator: [UInt8] = [10]
 
     public init() {
         self.init(limits: .standard)
@@ -129,6 +131,8 @@ public actor CodexAppServer {
                                     guard await self?.admitted(frame, token: token) == true else { continue }
                                     let count = try await execution.standardInputWriter.write(frame.data)
                                     guard count == frame.data.count else { throw CodexConnectionError.disconnected }
+                                    let terminatorCount = try await execution.standardInputWriter.write(Self.frameTerminator)
+                                    guard terminatorCount == 1 else { throw CodexConnectionError.disconnected }
                                     await self?.written(frame, token: token)
                                 }
                                 throw CodexConnectionError.disconnected
@@ -201,7 +205,8 @@ public actor CodexAppServer {
                     return
                 }
                 pending[id] = reply
-                guard outgoing.offer(Outbound(destination: .request(id), data: data), bytes: data.count) else {
+                let frame = Outbound(destination: .request(id), data: data)
+                guard outgoing.offer(frame, bytes: frame.wireByteCount) else {
                     // This request never entered the writer's FIFO. Separate
                     // definite local rejection from accepted, uncertain RPCs.
                     pending.removeValue(forKey: id)
@@ -241,7 +246,9 @@ public actor CodexAppServer {
     }
 
     private func encode(_ value: [String: MCPJSONValue]) throws -> Data {
-        let data = try JSONEncoder().encode(MCPJSONValue.object(value))
+        // Validation and byte generation complete synchronously before any
+        // queue admission. The transport retains only the immutable JSON Data.
+        let data = try CodexJSONEnvelopeEncoder.encode(value)
         // Several individually valid materials can exceed the incoming 8 MiB
         // ceiling. The complete outgoing envelope, including its newline,
         // uses the independent outgoing queue byte budget.
@@ -249,7 +256,7 @@ public actor CodexAppServer {
             interruptForCapacity()
             throw CodexConnectionError.capacityExceeded
         }
-        return data + Data([10])
+        return data
     }
 
     private func write(
@@ -267,7 +274,8 @@ public actor CodexAppServer {
                     return
                 }
                 writes[id] = reply
-                guard outgoing.offer(Outbound(destination: .message(id), data: data, admission: admission), bytes: data.count) else {
+                let frame = Outbound(destination: .message(id), data: data, admission: admission)
+                guard outgoing.offer(frame, bytes: frame.wireByteCount) else {
                     writes.removeValue(forKey: id)
                     interruptForCapacity()
                     reply.resume(throwing: CodexConnectionError.capacityExceeded)

@@ -315,6 +315,56 @@ struct SourceProjectionCacheTests {
         }
     }
 
+    @Test("Typed frame failures preserve unowned policy while reclaiming known damaged frames", arguments: [false, true])
+    func malformedFramePolicyOwnership(catalog: Bool) throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let source = Data("\u{FEFF}---\r\naliases: [资料]\r\n---\r\n# Exact source\r\n\r\n[[Target]]\r\n".utf8)
+        let document = NoteDocument(relativePath: "Note.md", rawContent: try #require(NoteDocument.decodeUTF8PreservingBOM(source)))
+        let sourceURL = fixture.root.appendingPathComponent(document.relativePath)
+        try source.write(to: sourceURL)
+        let search = SearchDocumentProjection(document: document)
+        let syntax = fixture.catalogProjection(document)
+        fixture.cache.store(search, for: document)
+        fixture.cache.storeCatalog(syntax, for: document)
+        let record = catalog ? fixture.catalogRecord(document) : fixture.record(document)
+        let sibling = catalog ? fixture.record(document) : fixture.catalogRecord(document)
+        let original = try Data(contentsOf: record)
+        let siblingBytes = try Data(contentsOf: sibling)
+        for kind in 0..<6 {
+            var frame = try #require(PropertyListSerialization.propertyList(from: original, format: nil) as? [String: Any])
+            var policy = try #require(frame["policy"] as? [String: Any])
+            // Even an undecodable payload/required field is unowned when its
+            // framing or policy belongs to an unknown future format.
+            frame["payload"] = "opaque bytes of another format"
+            frame.removeValue(forKey: "vaultID")
+            switch kind {
+            case 0: policy["projectionVersion"] = Int.max
+            case 1: frame["futureFrameExtension"] = ["opaque": true]
+            case 2: policy["futurePolicy"] = "opaque"
+            case 3: policy.removeValue(forKey: "yamlParserVersion")
+            case 4: policy["projectionVersion"] = -1
+            default: break
+            }
+            frame["policy"] = policy
+            let bytes = try PropertyListSerialization.data(fromPropertyList: frame, format: .binary, options: 0)
+            try bytes.write(to: record)
+            let unowned = kind < 4
+            #expect(SourceProjectionCache.recordPolicy(bytes, fileName: record.lastPathComponent) == (unowned ? .unknown : kind == 4 ? .retired : .current))
+            if catalog { #expect(fixture.cache.loadCatalog(for: document) == nil) } else { #expect(fixture.cache.load(for: document) == nil) }
+            if unowned {
+                #expect(try Data(contentsOf: record) == bytes)
+            } else {
+                #expect(!FileManager.default.fileExists(atPath: record.path))
+            }
+            #expect(try Data(contentsOf: sibling) == siblingBytes)
+            #expect(try Data(contentsOf: sourceURL) == source)
+        }
+        try original.write(to: record)
+        #expect(fixture.cache.loadCatalog(for: document) == syntax)
+        #expect(fixture.cache.load(for: document) == search)
+    }
+
     enum CatalogDamage: CaseIterable, Sendable {
         case negativeUTF8, overflowingUTF16, mismatchedUTF8, surrogateBoundary, mismatchedLine, overflowingColumn
         case headingLevel, wrongVault, wrongPath, changedTitle, changedProperty, dynamicResolution

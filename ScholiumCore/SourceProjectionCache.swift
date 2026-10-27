@@ -61,6 +61,60 @@ public struct SourceProjectionCache: Sendable {
         let payload: Data
     }
 
+    /// Current records take one typed Foundation decode. Its closed key check
+    /// prevents Decodable's ignored unknown keys from authorizing a future
+    /// record; only a rejected decode needs the general retirement classifier.
+    private struct CurrentSearchFrame: Decodable {
+        let value: Frame
+
+        init(from decoder: any Decoder) throws {
+            try SourceProjectionCache.requireClosedFrame(decoder, catalog: false)
+            value = try Frame(from: decoder)
+            guard value.policy == .current else { throw FrameAdmissionError.nonCurrent }
+        }
+    }
+
+    private struct CurrentCatalogFrame: Decodable {
+        let value: CatalogFrame
+
+        init(from decoder: any Decoder) throws {
+            try SourceProjectionCache.requireClosedFrame(decoder, catalog: true)
+            value = try CatalogFrame(from: decoder)
+            guard value.policy == .current else { throw FrameAdmissionError.nonCurrent }
+        }
+    }
+
+    private enum FrameAdmissionError: Error { case nonCurrent }
+
+    private struct FrameKey: CodingKey, ExpressibleByStringLiteral {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+        init(stringLiteral value: String) { stringValue = value }
+    }
+
+    private static let frameKeys: Set<String> = [
+        "policy", "vaultID", "role", "profile", "relativePathUTF8", "fingerprint", "payloadDigest", "payload",
+    ]
+    private static let catalogPolicyKeys: Set<String> = [
+        "formatVersion", "projectionVersion", "markdownParserVersion", "yamlParserVersion",
+    ]
+    private static let searchPolicyKeys: Set<String> = catalogPolicyKeys.union([
+        "searchVersion", "schemaVersion", "tokenizerVersion", "rankingVersion",
+    ])
+
+    private static func requireClosedFrame(_ decoder: any Decoder, catalog: Bool) throws {
+        let frame = try decoder.container(keyedBy: FrameKey.self)
+        guard Set(frame.allKeys.map(\.stringValue)).isSubset(of: frameKeys) else {
+            throw FrameAdmissionError.nonCurrent
+        }
+        let policy = try frame.nestedContainer(keyedBy: FrameKey.self, forKey: "policy")
+        guard Set(policy.allKeys.map(\.stringValue)) == (catalog ? catalogPolicyKeys : searchPolicyKeys) else {
+            throw FrameAdmissionError.nonCurrent
+        }
+    }
+
     private let applicationSupportURL: URL
     private let vaultID: UUID
     private let role: VaultRole
@@ -84,18 +138,14 @@ public struct SourceProjectionCache: Sendable {
         do {
             guard let bytes = try storage.readIfPresent(directory: nil, fileName: name) else { return nil }
             observed = bytes
-            guard Self.policyState(bytes, catalog: false) == .current else {
-                discardIfRetired(name, observed: bytes, catalog: false)
-                return nil
-            }
-            let frame = try PropertyListDecoder().decode(Frame.self, from: bytes)
+            let frame = try PropertyListDecoder().decode(CurrentSearchFrame.self, from: bytes).value
             // A different fresh source or role may belong to another live
             // participant; it is a miss, not a damaged record to delete.
             guard frame.vaultID == vaultID, frame.role == role,
                 frame.profile == WorkflowProfileResolver.resolve(vaultRole: role),
                 frame.relativePathUTF8 == Data(document.relativePath.utf8), frame.fingerprint == document.fingerprint
             else { return nil }
-            guard frame.policy == .current, frame.payloadDigest == Self.digest(frame.payload) else {
+            guard frame.payloadDigest == Self.digest(frame.payload) else {
                 discard(name, observed: bytes)
                 return nil
             }
@@ -108,7 +158,7 @@ public struct SourceProjectionCache: Sendable {
             }
             return projection
         } catch {
-            if let observed { discard(name, observed: observed) }
+            if let observed { discardIfRetired(name, observed: observed, catalog: false) }
             return nil
         }
     }
@@ -119,16 +169,12 @@ public struct SourceProjectionCache: Sendable {
         do {
             guard let bytes = try storage.readIfPresent(directory: nil, fileName: name) else { return nil }
             observed = bytes
-            guard Self.policyState(bytes, catalog: true) == .current else {
-                discardIfRetired(name, observed: bytes, catalog: true)
-                return nil
-            }
-            let frame = try PropertyListDecoder().decode(CatalogFrame.self, from: bytes)
+            let frame = try PropertyListDecoder().decode(CurrentCatalogFrame.self, from: bytes).value
             guard frame.vaultID == vaultID, frame.role == role,
                 frame.profile == WorkflowProfileResolver.resolve(vaultRole: role),
                 frame.relativePathUTF8 == Data(document.relativePath.utf8), frame.fingerprint == document.fingerprint
             else { return nil }
-            guard frame.policy == .current, frame.payloadDigest == Self.digest(frame.payload) else {
+            guard frame.payloadDigest == Self.digest(frame.payload) else {
                 discard(name, observed: bytes)
                 return nil
             }
@@ -140,7 +186,7 @@ public struct SourceProjectionCache: Sendable {
             }
             return projection
         } catch {
-            if let observed { discard(name, observed: observed) }
+            if let observed { discardIfRetired(name, observed: observed, catalog: true) }
             return nil
         }
     }
@@ -355,8 +401,7 @@ public struct SourceProjectionCache: Sendable {
             return .corrupt
         }
         guard let frame = value as? [String: Any], let policy = frame["policy"] as? [String: Any] else { return .unknown }
-        let knownFrameKeys: Set<String> = ["policy", "vaultID", "role", "profile", "relativePathUTF8", "fingerprint", "payloadDigest", "payload"]
-        guard Set(frame.keys).isSubset(of: knownFrameKeys) else { return .unknown }
+        guard Set(frame.keys).isSubset(of: frameKeys) else { return .unknown }
         let currentIntegers: [String: Int]
         if catalog {
             currentIntegers = ["formatVersion": CatalogPolicy.current.formatVersion, "projectionVersion": CatalogPolicy.current.projectionVersion]
@@ -368,7 +413,7 @@ public struct SourceProjectionCache: Sendable {
                 "tokenizerVersion": current.tokenizerVersion, "rankingVersion": current.rankingVersion,
             ]
         }
-        guard Set(policy.keys) == Set(currentIntegers.keys).union(["markdownParserVersion", "yamlParserVersion"]) else { return .unknown }
+        guard Set(policy.keys) == (catalog ? catalogPolicyKeys : searchPolicyKeys) else { return .unknown }
         var retired = false
         for (key, current) in currentIntegers {
             guard let stored = policy[key] as? Int, stored <= current else { return .unknown }

@@ -78,6 +78,64 @@ struct SearchSnippetPerformanceTests {
         #expect(fixture.document.sourceBytes == Data(source.utf8))
     }
 
+    @Test(
+        "Position-preserving display maps match canonical mapping for every small UTF-16 range",
+        arguments: [
+            "", " \t\r\n\u{00A0}", "A", "The authored discussion.", "Agency 哲学 自由 Z",
+            "\t  A\n哲\tZ \r\n", "A\u{00A0}哲\u{2003}Z", "A  B", "A\t\nB", "A\r\nB",
+            "ß  X", "ß e\u{301}", "Straße STRASSE", "ﬃA", "İıΣςσ", "café Cafe\u{301}",
+            "😀A", "👩‍🔬 A", "👨‍👩‍👧‍👦 Z", "a\u{200D}b", "A\u{20DD}", "한 한",
+            "\u{FEFF}Agency\n哲学", "A\0B",
+        ])
+    func displayMappingCanonicalRangeParity(source: String) {
+        let normalized = SearchTextNormalization.lexicalNormalize(source)
+        let count = normalized.utf16.count
+        var requested = [-1..<1, 0..<0, count..<(count + 1), (Int.max - 1)..<Int.max]
+        for lower in 0...count {
+            for upper in lower...count { requested.append(lower..<upper) }
+        }
+        requested.reverse()
+        requested.append(contentsOf: requested.prefix(7))
+        // This canonical algorithm does not use the Core linear shortcut.
+        // Include partial graphemes, empty/invalid ranges and repeated batches.
+        let canonical = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+            in: source, requestedRanges: requested)
+        let mapping = NoteSearchResultBuilder.PreparedDisplayRangeMapping(in: source, normalizedText: normalized)
+        #expect(mapping.ranges(for: requested) == canonical)
+        #expect(mapping.ranges(for: []).isEmpty)
+        for start in stride(from: 0, to: requested.count, by: 7) {
+            let end = min(start + 7, requested.count)
+            #expect(mapping.ranges(for: Array(requested[start..<end])) == Array(canonical[start..<end]))
+        }
+    }
+
+    @Test("ASCII folding and single-unit whitespace retain the authored trim offset")
+    func positionPreservingDisplayCoordinates() {
+        let source = "\t  A\n哲\tZ \r\n"
+        let normalized = SearchTextNormalization.lexicalNormalize(source)
+        #expect(normalized.utf8.elementsEqual("a 哲 z".utf8))
+        let mapping = NoteSearchResultBuilder.PreparedDisplayRangeMapping(in: source, normalizedText: normalized)
+        #expect(
+            mapping.ranges(for: [0..<1, 1..<2, 2..<3, 3..<4, 4..<5, 0..<5]) == [
+                3..<4, 4..<5, 5..<6, 6..<7, 7..<8, 3..<8,
+            ])
+    }
+
+    @Test("Comparison bytes must pass whole-string normalization before a linear map is admitted")
+    func displayMappingRequiresExactNormalization() {
+        let source = "ﬃA"
+        let mismatched = "ﬃa"
+        #expect(SearchTextNormalization.lexicalNormalize(source).utf8.elementsEqual("ffia".utf8))
+        // Every unit is unchanged or ASCII-case-folded, but the ligature must
+        // expand. Omitting the whole-string check would map 1..<2 to the A.
+        let requested = [0..<1, 1..<2, 2..<3, 3..<4]
+        let canonical = SearchTextNormalization.originalUTF16RangesForLexicalNormalization(
+            in: source, requestedRanges: requested)
+        #expect(canonical == [0..<1, 0..<1, 0..<1, 1..<2])
+        let mapping = NoteSearchResultBuilder.PreparedDisplayRangeMapping(in: source, normalizedText: mismatched)
+        #expect(mapping.ranges(for: requested) == canonical)
+    }
+
     @Test("A later multi-predicate cluster outranks earlier isolated occurrences")
     func compactPredicateCluster() throws {
         let padding = String(repeating: "padding ", count: 60)

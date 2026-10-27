@@ -61,13 +61,15 @@ import Testing
                 #expect(candidates.count == 499)
                 #expect(Set(candidates.map(\.note)).count == 499)
                 #expect(peak.lastCandidateCount == 499)
-                #expect(peak.lastRetainedCount == (isLong ? 0 : 499))
+                #expect(peak.lastRetainedCount == retention.entries)
+                #expect(isLong ? (0 < retention.entries && retention.entries < 499) : retention.entries == 499)
+                #expect(retention.estimatedBytes <= RelatedContentBackgroundPreparation.defaultMaximumByteCount)
                 #expect(
                     isLong
                         ? peak.completePoolEstimatedBytes > RelatedContentBackgroundPreparation.defaultMaximumByteCount
                         : peak.completePoolEstimatedBytes < RelatedContentBackgroundPreparation.defaultMaximumByteCount)
                 #expect(peak.sampleCount >= 499)
-                #expect(retention.entries == (isLong ? 0 : 1))
+                // Retention is decoded lexical rows, never all-or-nothing seed pools.
                 print(
                     "Related lexical peak \(label): sourceNotes=500 sourceBytes=\(sourceBytes) "
                         + "candidateRows=\(candidates.count) beforeRequest=\(beforeRequest) "

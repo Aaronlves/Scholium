@@ -226,6 +226,90 @@ struct DocumentReviewStoreTests {
             ))
     }
 
+    enum RecordDamage: String, CaseIterable, Sendable {
+        case rootField, captureField, batchField, coverageField
+        case initialReceiptField, captureReceiptField, coverageReceiptField
+        case futureSchema, baselineBytes, captureBytes, batchBytes, receiptType
+    }
+
+    @Test("Unsupported and damaged review records remain unchanged and cannot authorize a baseline", arguments: RecordDamage.allCases)
+    func closedRecordValidation(damage: RecordDamage) async throws {
+        let fixture = try Fixture()
+        defer { fixture.dispose() }
+        let store = try fixture.store()
+        let note = UUID()
+        let vault = UUID()
+        let a = Data("\u{feff}# 原文 A\r\n".utf8)
+        let b = Data("\u{feff}# 原文 B\r\n".utf8)
+        let c = Data("\u{feff}# 原文 C\r\n".utf8)
+        let initial = DocumentReviewStore.ReceiptVersion(change(noteID: note, state: .confirmed))
+        let reviewed = DocumentReviewStore.ReceiptVersion(change(noteID: note, state: .confirmed))
+        let pending = DocumentReviewStore.ReceiptVersion(change(noteID: note, state: .confirmed))
+        try await store.initializeExisting(noteID: note, vaultID: vault, source: a, receiptVersions: [initial])
+        let first = try await store.capture(
+            noteID: note, vaultID: vault, role: .topicKnowledge,
+            relativePath: "Note.md", endingData: b, receiptVersions: [initial, reviewed])
+        let batch = try await store.markReviewed(first.token)
+        let second = try await store.capture(
+            noteID: note, vaultID: vault, role: .topicKnowledge,
+            relativePath: "Note.md", endingData: c, receiptVersions: [initial, reviewed, pending])
+        let recordURL = fixture.root.appendingPathComponent(
+            "Triptychs/\(fixture.triptychID.uuidString)/document-reviews-v1/\(note.uuidString).json")
+        let original = try Data(contentsOf: recordURL)
+        var object = try #require(JSONSerialization.jsonObject(with: original) as? [String: Any])
+
+        func changingFirst(_ key: String, field: String, value: Any) throws {
+            var values = try #require(object[key] as? [[String: Any]])
+            try #require(!values.isEmpty)
+            values[0][field] = value
+            object[key] = values
+        }
+        func changingReceipt(_ key: String) throws {
+            var values = try #require(object[key] as? [[String: Any]])
+            try #require(!values.isEmpty)
+            var receipts = try #require(values[0]["receiptVersions"] as? [[String: Any]])
+            try #require(!receipts.isEmpty)
+            receipts[0]["futureReceiptField"] = "opaque"
+            values[0]["receiptVersions"] = receipts
+            object[key] = values
+        }
+        switch damage {
+        case .rootField: object["futureField"] = ["opaque": true]
+        case .captureField: try changingFirst("captures", field: "futureField", value: true)
+        case .batchField: try changingFirst("batches", field: "futureField", value: true)
+        case .coverageField: try changingFirst("coverage", field: "futureField", value: true)
+        case .initialReceiptField: try changingFirst("initialReceiptVersions", field: "futureReceiptField", value: true)
+        case .captureReceiptField: try changingReceipt("captures")
+        case .coverageReceiptField: try changingReceipt("coverage")
+        case .futureSchema: object["schemaVersion"] = Int.max
+        case .baselineBytes: object["baselineData"] = a.base64EncodedString()
+        case .captureBytes: try changingFirst("captures", field: "endingData", value: a.base64EncodedString())
+        case .batchBytes: try changingFirst("batches", field: "endingData", value: a.base64EncodedString())
+        case .receiptType: try changingFirst("initialReceiptVersions", field: "state", value: 42)
+        }
+        let damaged = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        try damaged.write(to: recordURL)
+        let reopened = try fixture.store()
+        do {
+            _ = try await reopened.baseline(noteID: note, vaultID: vault)
+            Issue.record("A damaged or unsupported record must not return an authorizing baseline")
+        } catch DocumentChangeError.invalidRecord(let rejected) {
+            #expect(rejected == note)
+        }
+        await #expect(throws: DocumentChangeError.self) {
+            try await reopened.initializeExisting(noteID: note, vaultID: vault, source: a)
+        }
+        await #expect(throws: DocumentChangeError.self) {
+            _ = try await reopened.markReviewed(second.token)
+        }
+        #expect(try Data(contentsOf: recordURL) == damaged)
+        try original.write(to: recordURL)
+        #expect(try await reopened.baseline(noteID: note, vaultID: vault)?.fingerprint == DocumentFingerprint(data: b))
+        let detail = try await reopened.historyDetail(id: batch.id)
+        #expect(detail.startingData == a && detail.endingData == b)
+        #expect(try await reopened.markReviewed(second.token).endingRevision == DocumentFingerprint(data: c))
+    }
+
     private func change(
         id: UUID = UUID(), noteID: UUID,
         state: AgentChangeRecoveryState

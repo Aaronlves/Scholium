@@ -7,14 +7,14 @@ import Testing
 @Suite("Related-content authored graph paths")
 struct RelatedContentGraphTests {
     @Test("Direct and reverse traversal retain the actual authored source occurrence")
-    func directAndIncoming() throws {
+    func directAndIncoming() async throws {
         let outgoing = GraphFixture(["Seed.md": "Context [[Target]].", "Target.md": "Target text."])
-        let direct = try #require(outgoing.result()?.contexts[outgoing.id("Target.md")])
+        let direct = try #require(try await outgoing.result()?.contexts[outgoing.id("Target.md")])
         #expect(direct.proximity == 1 && direct.paths.count == 1)
         #expect(direct.paths[0].steps[0].source == outgoing.id("Seed.md"))
         #expect(direct.paths[0].steps[0].traversal == .outgoing)
         let incoming = GraphFixture(["Seed.md": "Context text.", "Target.md": "Target [[Seed]]."])
-        let reverse = try #require(incoming.result()?.contexts[incoming.id("Target.md")])
+        let reverse = try #require(try await incoming.result()?.contexts[incoming.id("Target.md")])
         #expect(reverse.proximity == 1)
         #expect(reverse.paths[0].steps[0].source == incoming.id("Target.md"))
         #expect(reverse.paths[0].steps[0].destination == incoming.id("Seed.md"))
@@ -23,7 +23,7 @@ struct RelatedContentGraphTests {
     }
 
     @Test("All four two-step traversal directions work without inventing directed edges")
-    func allDirections() throws {
+    func allDirections() async throws {
         let cases: [(String, String, String, [RelatedContentGraphTraversal])] = [
             ("Context [[Middle]].", "Middle [[Target]].", "Target text.", [.outgoing, .outgoing]),
             ("Context [[Middle]].", "Middle text.", "Target [[Middle]].", [.outgoing, .incoming]),
@@ -32,7 +32,7 @@ struct RelatedContentGraphTests {
         ]
         for (seed, middle, target, expected) in cases {
             let fixture = GraphFixture(["Seed.md": seed, "Middle.md": middle, "Target.md": target])
-            let context = try #require(fixture.result()?.contexts[fixture.id("Target.md")])
+            let context = try #require(try await fixture.result()?.contexts[fixture.id("Target.md")])
             #expect(context.proximity == 0.25)
             #expect(context.paths.count == 1)
             #expect(context.paths[0].steps.map(\.traversal) == expected)
@@ -43,12 +43,12 @@ struct RelatedContentGraphTests {
     }
 
     @Test("Three-hop targets and cycles never become two-hop candidates or return the seed")
-    func distanceAndCycles() throws {
+    func distanceAndCycles() async throws {
         let fixture = GraphFixture([
             "Seed.md": "Context [[Seed]] [[Middle]].", "Middle.md": "Middle [[Seed]] [[Near]].",
             "Near.md": "Near [[Far]].", "Far.md": "Far text.",
         ])
-        let result = try #require(try fixture.result(existing: ["Far.md"]))
+        let result = try #require(try await fixture.result(existing: ["Far.md"]))
         #expect(result.contexts[fixture.id("Seed.md")] == nil)
         #expect(result.contexts[fixture.id("Middle.md")]?.proximity == 1)
         #expect(result.contexts[fixture.id("Near.md")]?.proximity == 0.25)
@@ -57,27 +57,27 @@ struct RelatedContentGraphTests {
     }
 
     @Test("Repeated and reciprocal occurrences do not multiply proximity or degree")
-    func deduplication() throws {
+    func deduplication() async throws {
         let ordinary = GraphFixture(["Seed.md": "Context [[Middle]].", "Middle.md": "Middle [[Target]].", "Target.md": "Target text."])
         let repeated = GraphFixture([
             "Seed.md": "Context [[Middle]] [[Middle]] [[Middle]].",
             "Middle.md": "Middle [[Seed]] [[Target]] [[Target]].", "Target.md": "Target [[Middle]].",
         ])
-        let baseline = try #require(ordinary.result()?.contexts[ordinary.id("Target.md")])
-        let context = try #require(repeated.result()?.contexts[repeated.id("Target.md")])
+        let baseline = try #require(try await ordinary.result()?.contexts[ordinary.id("Target.md")])
+        let context = try #require(try await repeated.result()?.contexts[repeated.id("Target.md")])
         #expect(context.proximity == baseline.proximity && context.proximity == 0.25)
         #expect(context.paths.count == 1)
         #expect(context.paths[0].steps[1].occurrence.span.utf16LowerBound < 20)
     }
 
     @Test("Complete distinct degree discounts hubs even beyond bounded graph-only expansion")
-    func hubDiscountAndExpansion() throws {
+    func hubDiscountAndExpansion() async throws {
         var documents: [String: String] = ["Seed.md": "Context [[Middle]].", "Target.md": "Target text."]
         let extras = (0..<260).map { String(format: "Extra%03d", $0) }
         documents["Middle.md"] = "Middle [[Target]] " + extras.map { "[[\($0)]]" }.joined(separator: " ")
         for extra in extras { documents[extra + ".md"] = "Extra text." }
         let fixture = GraphFixture(documents)
-        let result = try #require(try fixture.result(existing: ["Target.md"]))
+        let result = try #require(try await fixture.result(existing: ["Target.md"]))
         let context = try #require(result.contexts[fixture.id("Target.md")])
         #expect(abs(context.proximity - 0.5 / 262) < 0.0000001)
         #expect(result.candidates.count == RelatedContentContract.maximumGraphCandidates)
@@ -86,26 +86,26 @@ struct RelatedContentGraphTests {
     }
 
     @Test("Distinct intermediate contributions sum and explanatory paths stay bounded")
-    func multiplePaths() throws {
+    func multiplePaths() async throws {
         let fixture = GraphFixture([
             "Seed.md": "Context [[M1]] [[M2]] [[M3]] [[M4]] [[M5]].",
             "M1.md": "Middle [[Target]].", "M2.md": "Middle [[Target]].", "M3.md": "Middle [[Target]].",
             "M4.md": "Middle [[Target]].", "M5.md": "Middle [[Target]].", "Target.md": "Target text.",
         ])
-        let context = try #require(fixture.result()?.contexts[fixture.id("Target.md")])
+        let context = try #require(try await fixture.result()?.contexts[fixture.id("Target.md")])
         #expect(context.proximity == 1)
         #expect(context.paths.count == RelatedContentContract.maximumGraphPathsPerCandidate)
         #expect(context.paths.map { $0.steps[0].destination.relativePath } == ["M1.md", "M2.md", "M3.md"])
     }
 
     @Test("Exact unsaved seed replaces saved outgoing occurrences in forward and reverse walks")
-    func unsavedOverlay() throws {
+    func unsavedOverlay() async throws {
         let fixture = GraphFixture([
             "Seed.md": "Context [[Old]].", "Old.md": "Old [[OldTarget]].", "OldTarget.md": "Old target.",
             "New.md": "New [[NewTarget]].", "NewTarget.md": "New target.",
         ])
         let source = "Unsaved context [[New]]."
-        let result = try #require(try fixture.result(source: source, existing: ["OldTarget.md"]))
+        let result = try #require(try await fixture.result(source: source, existing: ["OldTarget.md"]))
         #expect(result.contexts[fixture.id("Old.md")] == nil)
         #expect(result.contexts[fixture.id("OldTarget.md")] == nil)
         #expect(result.contexts[fixture.id("New.md")]?.proximity == 1)
@@ -115,27 +115,27 @@ struct RelatedContentGraphTests {
     }
 
     @Test("Ambiguous, unresolved and nonresearch intermediates cannot authorize paths")
-    func ambiguityAndAccess() throws {
+    func ambiguityAndAccess() async throws {
         let ambiguous = GraphFixture([
             "Seed.md": "Context [[Shared]] [[Missing]].", "one/Shared.md": "One [[Target]].",
             "two/Shared.md": "Two [[Target]].", "Target.md": "Target text.",
         ])
-        #expect(try ambiguous.result()?.contexts.isEmpty == true)
+        #expect(try await ambiguous.result()?.contexts.isEmpty == true)
         let inaccessible = GraphFixture(
             ["Seed.md": "Context [[Private]].", "Private.md": "Private [[Target]].", "Target.md": "Target text."],
             roles: ["Private.md": .other])
-        #expect(try inaccessible.result()?.contexts.isEmpty == true)
+        #expect(try await inaccessible.result()?.contexts.isEmpty == true)
         let wrongManifest = GraphFixture(["Seed.md": "Context [[Target]].", "Target.md": "Target text."])
-        #expect(try wrongManifest.result(manifest: "incompatible") == nil)
-        #expect(try wrongManifest.result(catalog: Array(wrongManifest.catalog.dropLast())) == nil)
+        #expect(try await wrongManifest.result(manifest: "incompatible") == nil)
+        #expect(try await wrongManifest.result(catalog: Array(wrongManifest.catalog.dropLast())) == nil)
     }
 
     @Test("Output role filtering does not exclude an authorized intermediate from another research role")
-    func roles() throws {
+    func roles() async throws {
         let fixture = GraphFixture(
             ["Seed.md": "Context [[Middle]].", "Middle.md": "Middle [[Target]].", "Target.md": "Target text."],
             roles: ["Middle.md": .sourceCorpus])
-        let result = try #require(try fixture.result(candidateRoles: [.topic]))
+        let result = try #require(try await fixture.result(candidateRoles: [.topic]))
         #expect(result.contexts[fixture.id("Middle.md")] == nil)
         #expect(result.contexts[fixture.id("Target.md")]?.proximity == 0.25)
         #expect(result.candidates.map(\.note) == [fixture.id("Target.md")])
@@ -194,6 +194,184 @@ struct RelatedContentGraphTests {
     }
 
     #if DEBUG
+        enum GraphPreparationControl: CaseIterable, Equatable, Sendable {
+            case unchanged, sourceIdenticalRefresh, changedSourceRefresh, failedRefresh, admittedRefresh, cancel, shutdown
+
+            var observesRefresh: Bool { self == .admittedRefresh || self == .cancel || self == .shutdown }
+        }
+
+        @Test(
+            "A suspended graph walk revalidates its cohort before any candidate source read",
+            .timeLimit(.minutes(1)), arguments: GraphPreparationControl.allCases)
+        func graphPreparationAdmission(control: GraphPreparationControl) async throws {
+            let fixture = try await ApplicationFixture.make()
+            defer { fixture.remove() }
+            let middle = fixture.topicsURL.appendingPathComponent("Middle.md")
+            try Data("# Middle\n\n[[Target]]\n".utf8).write(to: middle)
+            try Data("# Target\n\nAgency requires a deliberate choice.\n".utf8)
+                .write(to: fixture.topicsURL.appendingPathComponent("Target.md"))
+            let runtime: WorkspaceRuntime
+            if control.observesRefresh {
+                runtime = WorkspaceRuntime(
+                    configuration: .live(
+                        .init(applicationSupportURL: fixture.applicationSupportURL, workspaceRegistryStorageURL: fixture.registryStorageURL)))
+            } else {
+                runtime = try await WorkspaceRuntime.snapshot(
+                    applicationSupportURL: fixture.applicationSupportURL, workspaceRegistryStorageURL: fixture.registryStorageURL)
+            }
+            let handle: WorkspaceHandle
+            do { handle = try await runtime.openWorkspace(id: fixture.assignment.id) } catch {
+                await runtime.shutdown()
+                throw error
+            }
+            let gate = RelatedFinalValidationGate()
+            let preflight = RelatedFinalValidationGate()
+            let progress = RelatedObservationProgress()
+            var query: Task<RelatedContentResponse, Error>?
+            var shutdown: Task<Void, Never>?
+            do {
+                if control.observesRefresh {
+                    await handle.openingPresentationDidComplete()
+                    await handle.awaitOpeningCompletionForTesting()
+                    _ = try await handle.refresh()
+                    if let refresh = await handle.liveIndexRefreshTask?.task { await refresh.value }
+                }
+                let request = RelatedContentRequest(
+                    seed: .init(
+                        noteID: fixture.analysisNoteID, source: "# Agency\n\nAgency [[Middle]].",
+                        focuses: [.init(kind: .selectedPassage, text: "agency deliberate choice")]))
+                let original = try await handle.discovery.relatedContent(request)
+                try #require(original.state == .current && !original.passages.isEmpty)
+                try #require(await handle.lastRelatedContentMeasurement?.graphUsed == true)
+                let initial = try await handle.snapshot()
+                let initialSearch = try #require(initial.discovery.searchGeneration)
+                let readsBefore = await handle.relatedContentSourceLoadAttemptsForTesting
+                await handle.setRelatedContentGraphPreparedBarrierForTesting { await gate.holdOnce() }
+                let pending = Task {
+                    do {
+                        let response = try await handle.discovery.relatedContent(request)
+                        await progress.finishQuery()
+                        await gate.finish()
+                        return response
+                    } catch {
+                        await progress.finishQuery()
+                        await gate.finish()
+                        throw error
+                    }
+                }
+                query = pending
+                try #require(await gate.waitUntilArrived())
+                #expect(await handle.relatedContentSourceLoadAttemptsForTesting == readsBefore)
+                #expect(await handle.lastRelatedContentMeasurement == nil)
+                switch control {
+                case .unchanged: break
+                case .sourceIdenticalRefresh:
+                    let refreshed = try await handle.refresh()
+                    #expect(refreshed.discovery.searchGeneration == initialSearch)
+                    #expect(refreshed.discovery.catalog.graph?.generation != initial.discovery.catalog.graph?.generation)
+                    #expect(refreshed.discovery.catalog.graph?.outgoing == initial.discovery.catalog.graph?.outgoing)
+                case .changedSourceRefresh:
+                    try Data("# Middle\n\nThe intermediary no longer links to Target.\n".utf8).write(to: middle)
+                    let refreshed = try await handle.refresh()
+                    #expect(refreshed.discovery.searchGeneration != initialSearch)
+                case .failedRefresh:
+                    try Data([0xFF, 0xFE, 0xFA]).write(to: fixture.topicsURL.appendingPathComponent("Unreadable.md"))
+                    await #expect(throws: (any Error).self) { try await handle.refresh() }
+                    #expect(await handle.derivedStateRequiresRefresh)
+                case .admittedRefresh, .cancel, .shutdown:
+                    await handle.setLiveInventoryPreflightBarrierForTesting { await preflight.holdOnce() }
+                    try await runtime.deliverPooledVaultEventForTesting(
+                        .reconciliationRequired(sequence: 100), vaultID: fixture.analysisNoteID.vaultID)
+                    try #require(await preflight.waitUntilArrived())
+                    #expect(await handle.liveIndexRefreshTask != nil)
+                }
+                // Refresh reads have their own owner. Compare only this query's
+                // load attempts after the intervening operation has been admitted.
+                let readsBeforeRelease = await handle.relatedContentSourceLoadAttemptsForTesting
+                let publicationsBeforeRelease = await handle.events.publishedGeneration
+                await gate.release()
+                if control.observesRefresh {
+                    try await waitForRelatedProbe {
+                        let completed = await progress.queryFinished
+                        let observing = await handle.relatedContentRefreshWaiters.count == 1
+                        return completed || observing
+                    }
+                    #expect(!(await progress.queryFinished), "An admitted same-source batch escaped observation before completion")
+                    #expect(await handle.relatedContentRefreshWaiters.count == 1)
+                    #expect(await handle.relatedContentSourceLoadAttemptsForTesting == readsBeforeRelease)
+                    #expect(await handle.lastRelatedContentMeasurement == nil)
+                    #expect(await handle.liveIndexRefreshTask != nil)
+                    switch control {
+                    case .cancel: pending.cancel()
+                    case .shutdown:
+                        shutdown = Task { await runtime.shutdown() }
+                        try await waitForRelatedProbe { await handle.isShutDown }
+                    default:
+                        let sharedRefresh = await handle.liveIndexRefreshTask?.task
+                        await preflight.release()
+                        await sharedRefresh?.value
+                    }
+                }
+                switch control {
+                case .cancel:
+                    await #expect(throws: CancellationError.self) { try await pending.value }
+                    #expect(await handle.liveIndexRefreshTask != nil, "Cancelling a graph observer cancelled shared refresh work")
+                case .shutdown:
+                    do {
+                        _ = try await pending.value
+                        Issue.record("A graph walk returned a response after its Handle shut down")
+                    } catch ScholiumApplicationError.workspaceShutDown(let id) {
+                        #expect(id == handle.id)
+                    }
+                default:
+                    let response = try await pending.value
+                    if control == .unchanged || control == .sourceIdenticalRefresh || control == .admittedRefresh {
+                        #expect(response.state == .current && response.availability == .current(initialSearch))
+                        #expect(response.passages == original.passages)
+                        #expect(response.graphCandidates == original.graphCandidates)
+                        #expect(await handle.relatedContentSourceLoadAttemptsForTesting > readsBeforeRelease)
+                    } else {
+                        #expect(response.state == .stale)
+                        #expect(response.identityCandidates.isEmpty && response.lexicalCandidates.isEmpty)
+                        #expect(response.graphCandidates.isEmpty && response.passages.isEmpty)
+                        if control == .failedRefresh {
+                            if case .failed(let lastGood, let reason) = response.availability {
+                                #expect(lastGood == initialSearch && !reason.isEmpty)
+                            } else {
+                                Issue.record("A genuine preparation failure lost its typed availability at graph admission")
+                            }
+                        }
+                    }
+                }
+                if control != .unchanged && control != .sourceIdenticalRefresh && control != .admittedRefresh {
+                    #expect(await handle.relatedContentSourceLoadAttemptsForTesting == readsBeforeRelease)
+                    #expect(await handle.lastRelatedContentMeasurement == nil)
+                }
+                #expect(await gate.entryCount == 1)
+                #expect(await handle.events.publishedGeneration == publicationsBeforeRelease)
+                #expect(await handle.relatedContentRefreshWaiters.isEmpty)
+                if control == .cancel {
+                    let sharedRefresh = await handle.liveIndexRefreshTask?.task
+                    await preflight.release()
+                    await sharedRefresh?.value
+                }
+                await handle.setRelatedContentGraphPreparedBarrierForTesting(nil)
+                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+            } catch {
+                query?.cancel()
+                await gate.release()
+                await preflight.release()
+                _ = try? await query?.value
+                await handle.setRelatedContentGraphPreparedBarrierForTesting(nil)
+                await handle.setLiveInventoryPreflightBarrierForTesting(nil)
+                await runtime.shutdown()
+                await shutdown?.value
+                throw error
+            }
+            await runtime.shutdown()
+            await shutdown?.value
+        }
+
         @Test("A completed source-identical refresh does not strand Related at the same Search generation", .timeLimit(.minutes(1)))
         func sameSearchGenerationRefreshRemainsLive() async throws {
             let fixture = try await ApplicationFixture.make()
@@ -599,7 +777,7 @@ private struct GraphFixture {
     func result(
         source: String? = nil, existing: [String] = [], manifest: String? = nil,
         catalog: [WorkspaceCatalogNote]? = nil, candidateRoles: [RelatedContentCandidateRole] = [.analysis, .topic, .work]
-    ) throws -> RelatedContentGraphCandidates.Result? {
+    ) async throws -> RelatedContentGraphCandidates.Result? {
         let request = RelatedContentRequest(
             seed: .init(noteID: id("Seed.md"), source: source ?? documents["Seed.md"]!.rawContent), candidateRoles: candidateRoles)
         let candidates = existing.compactMap { path -> RelatedContentCandidate? in
@@ -608,7 +786,7 @@ private struct GraphFixture {
                 note: id(path), vaultRole: note.reference.vaultRole, title: note.title, fingerprint: note.fingerprint,
                 reason: .lexicalOverlap(.init(matchedFields: [], seedMatches: [])))
         }
-        return try RelatedContentGraphCandidates.build(
+        return try await RelatedContentGraphCandidates.build(
             request: request, graph: graph,
             searchGeneration: .init(triptychID: triptychID, sequence: 1, sourceManifestHash: manifest ?? graph.sourceManifestHash),
             catalog: catalog ?? self.catalog, linkCatalog: linkCatalog, existingCandidates: candidates)

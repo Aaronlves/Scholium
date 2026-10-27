@@ -71,7 +71,7 @@ enum AgentChatInputPreparation {
     static func prepare(_ message: AgentChatMessage) async throws -> String? {
         try Task.checkCancellation()
         let text = try inputText(message)
-        let encodedByteCount = try JSONEncoder().encode(MCPJSONValue.string(text)).count
+        let encodedByteCount = try JSONEncoder().encode(text).count
         try Task.checkCancellation()
         return encodedByteCount <= 7 * 1_024 * 1_024 ? text : nil
     }
@@ -814,7 +814,6 @@ extension AgentChatController {
         if let model = model(for: preferences) { params["model"] = .string(model.model) }
         return params
     }
-
 
     var pendingAsyncQuestion: AgentChatMessage? {
         guard let selected, selected.isAvailable == true else { return nil }

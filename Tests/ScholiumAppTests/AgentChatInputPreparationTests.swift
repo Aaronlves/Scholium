@@ -11,7 +11,8 @@ struct AgentChatInputPreparationTests {
     func exactTextAndSnapshot() async throws {
         let raw = "\u{feff}Question: e\u{301}, 中文, \\\"quoted\\\"\r\n\r\n"
         let excerpt = "\u{feff}# Source\r\nExact e\u{301} text\r\n"
-        let noteID = UUID(), vaultID = UUID()
+        let noteID = UUID()
+        let vaultID = UUID()
         let fingerprint = DocumentFingerprint(content: excerpt)
         let attachment = AgentChatAttachment(
             noteID: noteID, vaultID: vaultID, relativePath: "Sources/Exact.md", text: excerpt,
@@ -20,7 +21,10 @@ struct AgentChatInputPreparationTests {
         let text = try #require(try await AgentChatInputPreparation.prepare(message))
         #expect(text.hasPrefix(raw))
         #expect(text.contains("\nNote: Sources/Exact.md\nID: \(noteID.uuidString)\nExtent: wholeNote\nSource: editorSnapshot\nVault role: source_corpus\n"))
-        #expect(text.contains("Snapshot SHA-256: \(fingerprint.sha256)\nReference: \(AgentChatReference.url(noteID: noteID, line: 2, revision: fingerprint, vaultID: vaultID).absoluteString)\n"))
+        #expect(
+            text.contains(
+                "Snapshot SHA-256: \(fingerprint.sha256)\nReference: \(AgentChatReference.url(noteID: noteID, line: 2, revision: fingerprint, vaultID: vaultID).absoluteString)\n"
+            ))
         #expect(text.hasSuffix(excerpt + "\nEnd material."))
         #expect(String(text.prefix(raw.count)).utf8.elementsEqual(raw.utf8))
     }
@@ -40,24 +44,74 @@ struct AgentChatInputPreparationTests {
         #expect(CodexChatAsyncQuestions.decode(text) == replies)
     }
 
-    @Test("The existing seven MiB encoded-string limit includes JSON escapes", arguments: [false, true])
-    func encodedBudgetBoundary(escaped: Bool) async throws {
-        // The two enclosing quotes also count. A literal quote is encoded as
-        // two bytes; this checks the real encoder rather than a raw-text cap.
+    @Test(
+        "Every encoded-string shape retains the independent Foundation seven MiB boundary",
+        arguments: [
+            "ascii", "quote", "controls", "slash", "backslash", "unicode",
+        ])
+    func encodedBudgetBoundary(kind: String) async throws {
+        // An independent Foundation serializer supplies actual framing and
+        // unit sizes for both neighboring inputs;
+        // no hand-written JSON escaping rule defines the expectation.
         let maximum = 7 * 1_024 * 1_024
-        let unit = escaped ? "\"" : "x"
-        let count = (maximum - 2) / (escaped ? 2 : 1)
-        let accepted = String(repeating: unit, count: count)
+        let unit = try #require(encodingSamples[kind])
+        func encodedSize(_ text: String) throws -> Int {
+            try JSONSerialization.data(withJSONObject: text, options: [.fragmentsAllowed]).count
+        }
+        let framingBytes = try encodedSize("")
+        let unitBytes = try encodedSize(unit) - framingBytes
+        try #require(unitBytes > 0)
+        let count = (maximum - framingBytes) / unitBytes
+        let padding = maximum - framingBytes - count * unitBytes
+        let accepted = String(repeating: unit, count: count) + String(repeating: "x", count: padding)
+        let rejected = accepted + "x"
+        try #require(try encodedSize(accepted) == maximum)
+        try #require(try encodedSize(rejected) == maximum + 1)
         let prepared = try await AgentChatInputPreparation.prepare(.init(role: .user, text: accepted))
         #expect(prepared?.utf8.elementsEqual(accepted.utf8) == true)
-        let refused = try await AgentChatInputPreparation.prepare(.init(role: .user, text: accepted + unit))
+        let refused = try await AgentChatInputPreparation.prepare(.init(role: .user, text: rejected))
         #expect(refused == nil)
     }
 
+    @Test(
+        "Bounded JSON string samples preserve exact encoding and decoded source bytes",
+        arguments: [
+            "empty", "quote", "controls", "slash", "backslash", "unicode", "scalarEdges",
+        ])
+    func exactSystemStringEncoding(kind: String) async throws {
+        let source = try #require(encodingSamples[kind])
+        let encoded = try JSONEncoder().encode(source)
+        let reference = try JSONSerialization.data(withJSONObject: source, options: [.fragmentsAllowed])
+        #expect(encoded == reference)
+        let decoded = try JSONDecoder().decode(String.self, from: encoded)
+        #expect(decoded.utf8.elementsEqual(source.utf8))
+        let prepared = try await AgentChatInputPreparation.prepare(.init(role: .user, text: source))
+        #expect(prepared?.utf8.elementsEqual(source.utf8) == true)
+    }
+
+    private var encodingSamples: [String: String] {
+        [
+            "empty": "",
+            "ascii": "x",
+            "quote": "\"",
+            "controls": String(String.UnicodeScalarView((0..<32).map { UnicodeScalar($0)! })),
+            "slash": "https://example.invalid/a/b/",
+            "backslash": "\\",
+            "unicode": "\u{feff}e\u{301} é 中文 📝 👨‍👩‍👧‍👦 \u{2028}\u{2029}",
+            "scalarEdges": String(
+                String.UnicodeScalarView(
+                    [
+                        0x7F, 0x80, 0x7FF, 0x800, 0xD7FF, 0xE000, 0xFFFF, 0x10000, 0x10FFFF,
+                    ].map { UnicodeScalar($0)! })),
+        ]
+    }
+
     @MainActor
-    @Test("A queued send cannot publish a stale budget error or consume input", .timeLimit(.minutes(1)), arguments: [
-        "cancelled", "connection", "thread", "pending", "state", "sendingIdentity", "boundTurn",
-    ])
+    @Test(
+        "A queued send cannot publish a stale budget error or consume input", .timeLimit(.minutes(1)),
+        arguments: [
+            "cancelled", "connection", "thread", "pending", "state", "sendingIdentity", "boundTurn",
+        ])
     func invalidatedPreparation(reason: String) async throws {
         try await withController { controller in
             let id = try #require(controller.selectedID)

@@ -110,6 +110,9 @@ public struct NoteDocument: Sendable {
     public let frontmatterByteRange: Range<Int>?
     public let bodyByteRange: Range<Int>
     public let parsedFrontmatter: [String: YAMLValue]
+    /// Immutable coordinates derived from the same fresh YAML parse as the
+    /// metadata. No parser node or mutable construction state is retained.
+    let searchPropertyProjection: SearchPropertyProjection
     public let newlineStyle: NewlineStyle
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
@@ -200,7 +203,14 @@ public struct NoteDocument: Sendable {
 
         if let frontmatter = split.frontmatter {
             do {
-                let loaded = try Yams.load(yaml: frontmatter)
+                let root = try Yams.compose(yaml: frontmatter)
+                // Preserve lexical tags before Yams' metadata constructor can
+                // resolve special mapping keys. Pinned load then performs this
+                // same default compose followed by root?.any.
+                self.searchPropertyProjection = SearchPropertyProjection(
+                    root: root, sourceBytes: sourceBytes,
+                    frontmatterByteRange: frontmatterByteRange, frontmatter: frontmatter)
+                let loaded = root?.any
                 if let dictionary = loaded as? [String: Any] {
                     self.parsedFrontmatter = dictionary.mapValues(YAMLValue.convert)
                     self.validationWarnings = []
@@ -214,10 +224,13 @@ public struct NoteDocument: Sendable {
             } catch {
                 self.parsedFrontmatter = [:]
                 self.validationWarnings = [error.localizedDescription]
+                self.searchPropertyProjection = SearchPropertyProjection(issues: [.invalidYAML])
             }
         } else {
             self.parsedFrontmatter = [:]
             self.validationWarnings = []
+            self.searchPropertyProjection = SearchPropertyProjection(
+                issues: Self.hasFrontmatterOpeningDelimiter(rawContent) ? [.invalidYAML] : [])
         }
     }
 

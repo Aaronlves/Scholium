@@ -137,10 +137,16 @@ Record what the performer actually calculated, inspected, or ran. A plausible
 regression proposal is not an executed regression test. Equal correct outcomes
 support retained capability in those cases, not a quality or latency gain.
 
+For review changes, replay a confirmed failure with its corrective evidence and
+a known-clean neighboring change. Keep the diagnosis and fix out of performer
+inputs. Check missed failures, unsupported findings, harmful suggested edits,
+and whether re-review preserves dispositions instead of repeating findings.
+Use sanitized incidents when available; label synthetic cases as synthetic.
+
 ### Run the supplied artifact cases
 
-The title-edit, autosave-race and retry-after-timeout cases declare package-relative
-raw files. Use [fixture_eval.py](../scripts/fixture_eval.py) to prepare a fresh
+The title-edit, autosave-race, retry-after-timeout, and app-audit re-review cases
+declare package-relative raw files. Use [fixture_eval.py](../scripts/fixture_eval.py) to prepare a fresh
 working directory under repository `.build/`; it copies only those inputs and the
 raw prompt, never expected outputs or assertions. The manifest records input,
 case and entry hashes plus the selected instruction tree. Point `--instructions-root`
@@ -160,6 +166,11 @@ code. For `scholium-vault-file-coordination` case 0 and
 trace and withheld assertions. No keyword check can establish causal accuracy.
 Retain performer output and review results in the run directory, and distinguish
 fixture diagnosis from a reproduced application defect.
+
+For `scholium-app-auditor` cases 4 and 5, inspect the actual review and any
+executed probe against the withheld assertions. These synthetic revisions test
+cross-layer conflict handling, prior dispositions, and a clean control; they do
+not establish application correctness or an incident-detection rate.
 
 ## Evaluation report
 

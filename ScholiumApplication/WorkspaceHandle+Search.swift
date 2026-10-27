@@ -2,6 +2,7 @@ import Foundation
 import OSLog
 import ScholiumContracts
 import ScholiumCore
+import Synchronization
 
 struct RelatedContentRetrievalMeasurement: Sendable {
     let requestID: UUID
@@ -177,6 +178,9 @@ extension WorkspaceHandle {
     /// fresh, authorized source reads separate from managed-document hydration.
     private func loadRelatedContentSource(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
         try requireActive()
+        #if DEBUG
+            relatedContentSourceLoadAttemptsForTesting += 1
+        #endif
         let repository = try repository(vaultID: id.vaultID)
         return try await repository.load(relativePath: id.relativePath)
     }
@@ -187,6 +191,40 @@ extension WorkspaceHandle {
         /// Exact freshly read source Data held by the batch, excluding parsed
         /// fields, Core memos and allocator overhead; not a process footprint.
         var peakBufferedSourceBytes = 0
+        /// This call did no source I/O; only best-effort warmup was skipped.
+        var reusedCompletedPreparation = false
+        /// Another caller owns the producer's source-read measurement.
+        var joinedRunningPreparation = false
+    }
+
+    struct RelatedContentPreparationKey: Hashable, Sendable {
+        let note: VaultQualifiedNoteID
+        let pathUTF8: Data
+        let fingerprint: DocumentFingerprint
+        let generation: SearchGenerationID
+        let roles: [RelatedContentCandidateRole]
+        let cohort: [WorkspaceCatalogNote]
+        let sourceAuthority: UUID
+    }
+
+    struct RelatedContentPreparationWaiter: Sendable {
+        let completion: AsyncStream<Result<RelatedContentPreparationMeasurement?, Error>>.Continuation
+        let cancellation: RelatedContentPreparationCancellation
+        let joined: Bool
+    }
+
+    /// The cancellation callback must make its one-way signal visible before
+    /// its actor cleanup can run. The flight and its membership stay actor owned.
+    final class RelatedContentPreparationCancellation: Sendable {
+        private let cancelled = Mutex(false)
+        var isCancelled: Bool { cancelled.withLock { $0 } }
+        func cancel() { cancelled.withLock { $0 = true } }
+    }
+
+    struct RelatedContentPreparationFlight: Sendable {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: [UUID: RelatedContentPreparationWaiter]
     }
 
     /// Best-effort preparation uses the same registered scope, source reads and
@@ -206,32 +244,128 @@ extension WorkspaceHandle {
                 $0.reference.vaultID == request.seed.noteID.vaultID && $0.reference.relativePath == request.seed.noteID.relativePath
             })
         else { throw CocoaError(.fileReadNoSuchFile) }
-        let captured = currentSnapshot
-        let background = RelatedContentRequest(
-            id: request.id, seed: .init(noteID: request.seed.noteID, source: request.seed.source),
-            candidateRoles: request.candidateRoles)
+        guard let generation = currentSnapshot.discovery.searchGeneration, !hasPendingRelatedContentRefreshWork else { return nil }
+        let key = RelatedContentPreparationKey(
+            note: request.seed.noteID, pathUTF8: Data(request.seed.noteID.relativePath.utf8),
+            fingerprint: request.seed.fingerprint, generation: generation,
+            roles: RelatedContentCandidateRole.allCases.filter { request.candidateRoles.contains($0) },
+            cohort: currentSnapshot.discovery.catalog.notes, sourceAuthority: sourceAuthorityToken)
+        relatedContentCompletedPreparations.removeAll { !relatedPreparationIsCurrent($0) }
+        for (obsolete, flight) in relatedContentPreparationFlights where !relatedPreparationIsCurrent(obsolete) {
+            flight.task.cancel()
+        }
+        if let index = relatedContentCompletedPreparations.firstIndex(of: key) {
+            relatedContentCompletedPreparations.remove(at: index)
+            relatedContentCompletedPreparations.append(key)
+            return .init(reusedCompletedPreparation: true)
+        }
+        let waiter = UUID()
+        let cancellation = RelatedContentPreparationCancellation()
+        let signal = AsyncStream<Result<RelatedContentPreparationMeasurement?, Error>>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let flightID: UUID
+        if var flight = relatedContentPreparationFlights[key] {
+            guard !flight.task.isCancelled else { return nil }
+            flightID = flight.id
+            flight.waiters[waiter] = .init(completion: signal.continuation, cancellation: cancellation, joined: true)
+            relatedContentPreparationFlights[key] = flight
+        } else {
+            // Preparation is best effort: bound active source batches as well
+            // as completed metadata instead of queueing arbitrary seed keys.
+            guard relatedContentPreparationFlights.count < 2 else { return nil }
+            flightID = UUID()
+            let background = RelatedContentRequest(
+                id: request.id, seed: .init(noteID: request.seed.noteID, source: request.seed.source), candidateRoles: key.roles)
+            let task = Task { [self] in
+                let result: Result<RelatedContentPreparationMeasurement?, Error>
+                do { result = .success(try await performRelatedContentPreparation(background, key: key)) } catch { result = .failure(error) }
+                finishRelatedContentPreparation(key: key, id: flightID, result: result)
+            }
+            relatedContentPreparationFlights[key] = .init(
+                id: flightID, task: task,
+                waiters: [waiter: .init(completion: signal.continuation, cancellation: cancellation, joined: false)])
+        }
+        return try await withTaskCancellationHandler {
+            defer { removeRelatedContentPreparationWaiter(key: key, flightID: flightID, waiter: waiter) }
+            var iterator = signal.stream.makeAsyncIterator()
+            let result = await iterator.next()
+            try requireActive()
+            try Task.checkCancellation()
+            guard let result else { throw CancellationError() }
+            return try result.get()
+        } onCancel: {
+            cancellation.cancel()
+            Task { await self.removeRelatedContentPreparationWaiter(key: key, flightID: flightID, waiter: waiter) }
+        }
+    }
+
+    private func relatedPreparationIsCurrent(_ key: RelatedContentPreparationKey) -> Bool {
+        !isShutDown && unavailableRootVaultIDs.isEmpty && currentSnapshot.phase.isComplete
+            && !hasPendingRelatedContentRefreshWork && sourceAuthorityToken == key.sourceAuthority
+            && currentSnapshot.discovery.searchGeneration == key.generation
+            && currentSnapshot.discovery.catalog.notes == key.cohort
+    }
+
+    private func removeRelatedContentPreparationWaiter(key: RelatedContentPreparationKey, flightID: UUID, waiter: UUID) {
+        guard var flight = relatedContentPreparationFlights[key], flight.id == flightID else { return }
+        flight.waiters.removeValue(forKey: waiter)?.completion.finish()
+        if flight.waiters.isEmpty { flight.task.cancel() }
+        relatedContentPreparationFlights[key] = flight
+    }
+
+    private func finishRelatedContentPreparation(
+        key: RelatedContentPreparationKey, id: UUID, result: Result<RelatedContentPreparationMeasurement?, Error>
+    ) {
+        guard let flight = relatedContentPreparationFlights[key], flight.id == id else { return }
+        relatedContentPreparationFlights[key] = nil
+        if case .success(.some) = result, !flight.task.isCancelled,
+            flight.waiters.values.contains(where: { !$0.cancellation.isCancelled }), relatedPreparationIsCurrent(key)
+        {
+            relatedContentCompletedPreparations.removeAll { $0 == key }
+            relatedContentCompletedPreparations.append(key)
+            if relatedContentCompletedPreparations.count > 2 { relatedContentCompletedPreparations.removeFirst() }
+        }
+        for waiter in flight.waiters.values {
+            let delivered: Result<RelatedContentPreparationMeasurement?, Error>
+            if waiter.joined, case .success(.some) = result {
+                delivered = .success(.init(joinedRunningPreparation: true))
+            } else {
+                delivered = result
+            }
+            waiter.completion.yield(delivered)
+            waiter.completion.finish()
+        }
+    }
+
+    private func performRelatedContentPreparation(
+        _ background: RelatedContentRequest, key: RelatedContentPreparationKey
+    ) async throws -> RelatedContentPreparationMeasurement? {
+        #if DEBUG
+            await relatedContentPreparationStartedBarrierForTesting?()
+        #endif
+        try requireActive()
+        try Task.checkCancellation()
+        guard relatedPreparationIsCurrent(key) else { throw CancellationError() }
         let response = try await services.searchIndex.relatedMaterialSourceCandidates(background)
         try requireActive()
         try Task.checkCancellation()
         guard [.current, .empty].contains(response.state),
             case .current(let generation) = response.availability,
-            captured.discovery.searchGeneration == generation,
-            currentSnapshot.discovery.searchGeneration == generation,
-            currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+            generation == key.generation, relatedPreparationIsCurrent(key)
         else { return nil }
         let preparation = try await services.searchIndex.beginRelatedPassagePreparation(
             background, candidates: response.identityCandidates + response.lexicalCandidates, generation: generation)
         func requireCurrentPreparation() throws {
             try requireActive()
             try Task.checkCancellation()
-            guard currentSnapshot.discovery.searchGeneration == generation,
-                currentSnapshot.discovery.catalog.notes == captured.discovery.catalog.notes
+            try requireRootAuthoritiesAvailable()
+            guard relatedPreparationIsCurrent(key)
             else { throw CancellationError() }
         }
         try requireCurrentPreparation()
         var sources: [RelatedContentSource] = []
         sources.reserveCapacity(16)
         var measurement = RelatedContentPreparationMeasurement()
+        var allSourcesPrepared = true
         var bufferedSourceBytes = 0
         var seen = Set<VaultQualifiedNoteID>()
         for candidate in response.identityCandidates + response.lexicalCandidates where seen.insert(candidate.note).inserted {
@@ -239,11 +373,17 @@ extension WorkspaceHandle {
             let document: NoteDocument
             do {
                 document = try await loadRelatedContentSource(candidate.note)
-            } catch is CancellationError { throw CancellationError() } catch { continue }
+            } catch is CancellationError { throw CancellationError() } catch {
+                allSourcesPrepared = false
+                continue
+            }
             try Task.checkCancellation()
             guard document.fingerprint == candidate.fingerprint,
                 document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
-            else { continue }
+            else {
+                allSourcesPrepared = false
+                continue
+            }
             sources.append(.init(candidate: candidate, document: document))
             measurement.sourceCount += 1
             bufferedSourceBytes += document.sourceBytes.count
@@ -265,7 +405,9 @@ extension WorkspaceHandle {
             try await services.searchIndex.prepareRelatedPassages(preparation, sources: sources)
         }
         try requireCurrentPreparation()
-        return measurement
+        guard try await services.searchIndex.availability() == .current(generation) else { return nil }
+        try requireCurrentPreparation()
+        return allSourcesPrepared ? measurement : nil
     }
 
     func writingCompletions(matching query: String) async throws -> [String] {
@@ -373,9 +515,7 @@ extension WorkspaceHandle {
                 freshnessToken: response.freshnessToken, availability: response.availability,
                 state: .stale, identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
         }
-        let canUseGraph =
-            !derivedStateRequiresRefresh && pendingSourceCommitRefreshes.isEmpty
-            && sourceCommitRefreshTask == nil && pendingLiveEvents.isEmpty && liveIndexRefreshTask == nil
+        let canUseGraph = !hasPendingRelatedContentRefreshWork
         var graphResult: RelatedContentGraphCandidates.Result?
         if canUseGraph, let graph = capturedSnapshot.discovery.catalog.graph {
             let authorizedVaults = Set(assignment.vaults.values.map(\.id))
@@ -387,10 +527,28 @@ extension WorkspaceHandle {
                     exactNotes[.init(vaultID: note.reference.vaultID, relativePath: note.reference.relativePath)]?.fingerprint == note.fingerprint
                 })
             {
-                graphResult = try RelatedContentGraphCandidates.build(
+                graphResult = try await RelatedContentGraphCandidates.build(
                     request: request, graph: graph, searchGeneration: generation, catalog: catalog,
                     linkCatalog: notes.map(\.linkCatalog),
                     existingCandidates: response.identityCandidates + response.lexicalCandidates)
+                #if DEBUG
+                    await relatedContentGraphPreparedBarrierForTesting?()
+                #endif
+                try requireActive()
+                try Task.checkCancellation()
+                let indexedAvailability = try await services.searchIndex.availability()
+                let availability = try await relatedContentAvailabilityAfterAdmittedRefresh(
+                    indexedAvailability, capturedSnapshot: capturedSnapshot,
+                    generation: generation, usesGraph: graphResult != nil)
+                // The pure walk leaves this actor. Observe any admitted batch,
+                // then reject a changed cohort before reading candidate sources.
+                guard
+                    relatedContentCohortIsCurrent(
+                        capturedSnapshot, generation: generation, availability: availability,
+                        usesGraph: graphResult != nil)
+                else {
+                    return staleRelatedContentResponse(request, original: response, availability: availability)
+                }
             }
         }
         let identityCandidates = response.identityCandidates.map {
@@ -439,23 +597,82 @@ extension WorkspaceHandle {
         }
         try requireActive()
         try Task.checkCancellation()
-        var finalAvailability = try await services.searchIndex.availability()
+        let indexedAvailability = try await services.searchIndex.availability()
+        let finalAvailability = try await relatedContentAvailabilityAfterAdmittedRefresh(
+            indexedAvailability, capturedSnapshot: capturedSnapshot,
+            generation: generation, usesGraph: graphResult != nil)
+        guard
+            relatedContentCohortIsCurrent(
+                capturedSnapshot, generation: generation, availability: finalAvailability,
+                usesGraph: graphResult != nil)
+        else {
+            // A source read/ranking suspension may straddle refresh. Never publish
+            // an old path boost, locator or candidate with a newer generation.
+            return staleRelatedContentResponse(request, original: response, availability: finalAvailability)
+        }
+        return RelatedContentResponse(
+            requestID: response.requestID, seedFingerprint: response.seedFingerprint,
+            freshnessToken: response.freshnessToken, availability: response.availability,
+            state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
+            identityCandidates: identityCandidates, lexicalCandidates: Array(lexicalCandidates.prefix(request.lexicalLimit)),
+            identityHasMore: response.identityHasMore, lexicalHasMore: response.lexicalHasMore,
+            graphCandidates: graphCandidates, graphHasMore: graphResult?.hasMore ?? false,
+            passages: passages, omittedSourceCount: omitted)
+    }
+
+    private var hasPendingRelatedContentRefreshWork: Bool {
+        derivedStateRequiresRefresh || !pendingSourceCommitRefreshes.isEmpty
+            || sourceCommitRefreshTask != nil || !pendingLiveEvents.isEmpty || liveIndexRefreshTask != nil
+    }
+
+    private func relatedContentAvailabilityAfterAdmittedRefresh(
+        _ availability: SearchAvailability, capturedSnapshot: WorkspaceSnapshot,
+        generation: SearchGenerationID, usesGraph: Bool
+    ) async throws -> SearchAvailability {
+        try requireActive()
+        try Task.checkCancellation()
+        var availability = availability
         // An admitted batch may finish without a publication (for example a
         // harmless watcher hint). Observe its actual completion rather than
         // asking Search to refresh or waiting for an invented next generation.
         // A finite follow-on backlog can be observed at its next batch boundary;
         // candidates, source reads and ranking remain this one request pass.
-        while graphResult != nil,
+        while usesGraph,
             !derivedStateRequiresRefresh,
-            finalAvailability == .current(generation),
+            availability == .current(generation),
             currentSnapshot.discovery.searchGeneration == generation,
             currentSnapshot.discovery.catalog.notes == capturedSnapshot.discovery.catalog.notes,
             try await observeAdmittedRelatedRefreshWork()
         {
-            finalAvailability = try await services.searchIndex.availability()
+            availability = try await services.searchIndex.availability()
         }
         try requireActive()
         try Task.checkCancellation()
+        return try await relatedContentAvailabilityAfterRefreshFailure(availability)
+    }
+
+    private func relatedContentCohortIsCurrent(
+        _ capturedSnapshot: WorkspaceSnapshot, generation: SearchGenerationID,
+        availability: SearchAvailability, usesGraph: Bool
+    ) -> Bool {
+        let currentGraph = currentSnapshot.discovery.catalog.graph
+        let capturedGraph = capturedSnapshot.discovery.catalog.graph
+        let graphIsCurrent =
+            !usesGraph
+            || (currentGraph?.contractVersion == GraphSnapshot.currentContractVersion
+                && currentGraph?.contractVersion == capturedGraph?.contractVersion
+                && !generation.sourceManifestHash.isEmpty
+                && currentGraph?.sourceManifestHash == generation.sourceManifestHash
+                && currentGraph?.outgoing == capturedGraph?.outgoing
+                && !hasPendingRelatedContentRefreshWork)
+        return currentSnapshot.phase.isComplete
+            && currentSnapshot.discovery.searchGeneration == generation
+            && currentSnapshot.discovery.catalog.notes == capturedSnapshot.discovery.catalog.notes
+            && availability == .current(generation) && graphIsCurrent
+    }
+
+    private func relatedContentAvailabilityAfterRefreshFailure(_ availability: SearchAvailability) async throws -> SearchAvailability {
+        var finalAvailability = availability
         if derivedStateRequiresRefresh {
             let failureSnapshot = currentSnapshot
             let failureSourceToken = sourceAuthorityToken
@@ -498,38 +715,17 @@ extension WorkspaceHandle {
                 }
             }
         }
-        let currentGraph = currentSnapshot.discovery.catalog.graph
-        let capturedGraph = capturedSnapshot.discovery.catalog.graph
-        let graphIsCurrent =
-            graphResult == nil
-            || (currentGraph?.contractVersion == GraphSnapshot.currentContractVersion
-                && currentGraph?.contractVersion == capturedGraph?.contractVersion
-                && !generation.sourceManifestHash.isEmpty
-                && currentGraph?.sourceManifestHash == generation.sourceManifestHash
-                && currentGraph?.outgoing == capturedGraph?.outgoing
-                && !derivedStateRequiresRefresh && pendingSourceCommitRefreshes.isEmpty
-                && sourceCommitRefreshTask == nil && pendingLiveEvents.isEmpty && liveIndexRefreshTask == nil)
-        guard currentSnapshot.phase.isComplete,
-            currentSnapshot.discovery.searchGeneration == generation,
-            currentSnapshot.discovery.catalog.notes == capturedSnapshot.discovery.catalog.notes,
-            finalAvailability == .current(generation), graphIsCurrent
-        else {
-            // A source read/ranking suspension may straddle refresh. Never publish
-            // an old path boost, locator or candidate with a newer generation.
-            return RelatedContentResponse(
-                requestID: request.id, seedFingerprint: request.seed.fingerprint,
-                freshnessToken: finalAvailability.lastGoodGeneration.map(SearchFreshnessToken.triptych) ?? response.freshnessToken,
-                availability: finalAvailability, state: .stale,
-                identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
-        }
-        return RelatedContentResponse(
-            requestID: response.requestID, seedFingerprint: response.seedFingerprint,
-            freshnessToken: response.freshnessToken, availability: response.availability,
-            state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
-            identityCandidates: identityCandidates, lexicalCandidates: Array(lexicalCandidates.prefix(request.lexicalLimit)),
-            identityHasMore: response.identityHasMore, lexicalHasMore: response.lexicalHasMore,
-            graphCandidates: graphCandidates, graphHasMore: graphResult?.hasMore ?? false,
-            passages: passages, omittedSourceCount: omitted)
+        return finalAvailability
+    }
+
+    private func staleRelatedContentResponse(
+        _ request: RelatedContentRequest, original: RelatedContentResponse, availability: SearchAvailability
+    ) -> RelatedContentResponse {
+        RelatedContentResponse(
+            requestID: request.id, seedFingerprint: request.seed.fingerprint,
+            freshnessToken: availability.lastGoodGeneration.map(SearchFreshnessToken.triptych) ?? original.freshnessToken,
+            availability: availability, state: .stale,
+            identityCandidates: [], lexicalCandidates: [], identityHasMore: false, lexicalHasMore: false)
     }
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {

@@ -15,11 +15,12 @@ enum RelatedContentGraphCandidates {
         let step: RelatedContentGraphStep
     }
 
-    static func build(
+    @concurrent static func build(
         request: RelatedContentRequest, graph: GraphSnapshot,
         searchGeneration: SearchGenerationID, catalog: [WorkspaceCatalogNote],
         linkCatalog: [LinkCatalogNote], existingCandidates: [RelatedContentCandidate]
-    ) throws -> Result? {
+    ) async throws -> Result? {
+        try Task.checkCancellation()
         let manifest = SearchSourceManifest.hash(
             catalog.map {
                 SearchSourceManifestEntry(vaultID: $0.reference.vaultID, relativePath: $0.reference.relativePath, fingerprint: $0.fingerprint)
@@ -37,16 +38,19 @@ enum RelatedContentGraphCandidates {
         let seed = request.seed.noteID
         guard authorized.contains(seed), Set(linkCatalog.map(\.id)) == Set(notes.keys) else { return nil }
         try Task.checkCancellation()
-        let seedDocument = NoteDocument(relativePath: seed.relativePath, rawContent: request.seed.source)
-        let seedSemantic = MarkdownSemanticDocument(parsing: seedDocument)
-        let seedCatalog = LinkCatalogNote(vaultID: seed.vaultID, document: seedDocument, semantic: seedSemantic)
-        let overlay = try LinkGraphBuilder.buildCancellable(
-            generation: graph.generation,
-            catalog: linkCatalog.map { $0.id == seed ? seedCatalog : $0 },
-            documents: [seed: seedSemantic], resolutionScope: .workspace)
-
         var outgoing = graph.outgoing
-        outgoing[seed] = overlay.outgoing[seed] ?? []
+        // The complete Graph manifest already binds this exact saved seed. Only
+        // an actual unsaved revision needs reparsing and a resolver overlay.
+        if notes[seed]?.fingerprint != request.seed.fingerprint {
+            let seedDocument = NoteDocument(relativePath: seed.relativePath, rawContent: request.seed.source)
+            let seedSemantic = MarkdownSemanticDocument(parsing: seedDocument)
+            let seedCatalog = LinkCatalogNote(vaultID: seed.vaultID, document: seedDocument, semantic: seedSemantic)
+            let overlay = try LinkGraphBuilder.buildCancellable(
+                generation: graph.generation,
+                catalog: linkCatalog.map { $0.id == seed ? seedCatalog : $0 },
+                documents: [seed: seedSemantic], resolutionScope: .workspace)
+            outgoing[seed] = overlay.outgoing[seed] ?? []
+        }
         var neighbors: [VaultQualifiedNoteID: [VaultQualifiedNoteID: Neighbor]] = [:]
         var examined = 0
         // Outgoing is the occurrence authority; incoming is only its reverse

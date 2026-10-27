@@ -1,72 +1,39 @@
 import Foundation
 import ScholiumContracts
 
-/// Actor-owned preparation for complete background candidate pools. Only
-/// query-independent lexical projections survive a request; neither source
-/// Markdown nor scores, reasons, access decisions or final results are cached.
+/// Actor-owned, query-independent decoded lexical rows. Candidate membership,
+/// role/path authorization, reasons and ranking always come from the current scan.
 struct RelatedContentBackgroundPreparation {
-    struct Key: Hashable {
-        let note: VaultQualifiedNoteID
-        let pathUTF8: Data
-        let fingerprint: DocumentFingerprint
-        let generation: SearchGenerationID
-        let roles: [RelatedContentCandidateRole]
-
-        init(seed: RelatedContentSeedSnapshot, generation: SearchGenerationID, roles: [RelatedContentCandidateRole]) {
-            note = seed.noteID
-            pathUTF8 = Data(seed.noteID.relativePath.utf8)
-            fingerprint = seed.fingerprint
-            self.generation = generation
-            self.roles = RelatedContentCandidateRole.allCases.filter { roles.contains($0) }
-        }
-
-        var estimatedByteCount: Int {
-            320 + pathUTF8.count + note.relativePath.utf8.count + fingerprint.sha256.utf8.count
-                + generation.sourceManifestHash.utf8.count + roles.count * 32
-        }
-    }
-
-    struct LexicalDocument {
-        let fingerprint: DocumentFingerprint
-        let checksum: String
-        let projection: RelatedContentLexicalProjection
-
-        var estimatedByteCount: Int {
-            160 + fingerprint.sha256.utf8.count + checksum.utf8.count + projection.estimatedByteCount
-        }
-
-        /// Even within one generation, read and hash the persisted payload.
-        /// A cache hit must not conceal live corruption or a replaced payload.
-        func matches(_ data: Data?, checksum: String?, fingerprint: DocumentFingerprint) -> Bool {
-            guard self.fingerprint == fingerprint, self.checksum == checksum, let data else { return false }
-            return RelatedContentSourceProjection.checksum(data) == self.checksum
-        }
-    }
-
-    struct Value {
-        var documents: [Int: LexicalDocument] = [:]
-        var estimatedByteCount: Int {
-            64 + documents.values.reduce(0) { $0 + 64 + $1.estimatedByteCount }
-        }
-    }
-
     struct Statistics: Equatable, Sendable {
         var hits = 0
         var misses = 0
         var evictions = 0
         var oversizeSkips = 0
+        var protectedAdmissionSkips = 0
+    }
+
+    /// Protect only rows resident when this scan began. Protection owns no
+    /// projections and never authorizes a hit without validating current bytes.
+    struct ScanProtection: Sendable {
+        fileprivate let generation: SearchGenerationID
+        fileprivate let rowIDs: Set<Int>
+        fileprivate let estimatedByteCount: Int
     }
 
     private struct Entry {
-        let value: Value
+        let fingerprint: DocumentFingerprint
+        let checksum: String
+        let projection: RelatedContentLexicalProjection
         let cost: Int
         var lastAccess: UInt64
     }
 
-    static let maximumNotes = 2
+    /// The same 16 MiB budget now accounts individual decoded lexical rows,
+    /// including key/entry metadata. entryCount and statistics count rows, not seeds.
     static let defaultMaximumByteCount = 16 * 1_024 * 1_024
     let maximumByteCount: Int
-    private var entries: [Key: Entry] = [:]
+    private var generation: SearchGenerationID?
+    private var entries: [Int: Entry] = [:]
     private var clock: UInt64 = 0
     private(set) var estimatedByteCount = 0
     private(set) var statistics = Statistics()
@@ -76,85 +43,89 @@ struct RelatedContentBackgroundPreparation {
         self.maximumByteCount = max(0, maximumByteCount)
     }
 
-    /// A storage-sharing candidate, not a preparation hit. The caller still
-    /// decodes and validates the current payload and compares the full scorer.
-    /// Reading it neither refreshes LRU nor changes conservative byte accounting.
-    func scoringStorage(rowID: Int, fingerprint: DocumentFingerprint) -> RelatedContentBM25F.Document? {
-        for entry in entries.values {
-            if let document = entry.value.documents[rowID], document.fingerprint == fingerprint {
-                return document.projection.scoringDocument
-            }
-        }
-        return nil
+    mutating func scanProtection(generation: SearchGenerationID, rowIDs: Set<Int>) -> ScanProtection {
+        retain(generation: generation)
+        let resident = rowIDs.intersection(entries.keys)
+        return .init(
+            generation: generation, rowIDs: resident,
+            estimatedByteCount: resident.reduce(0) { $0 + entries[$1]!.cost })
     }
 
-    mutating func prepared(for key: Key) throws -> Value? {
+    mutating func projection(
+        rowID: Int, generation: SearchGenerationID, fingerprint: DocumentFingerprint,
+        data: Data?, checksum: String?, protection: ScanProtection
+    ) throws -> RelatedContentLexicalProjection {
         try Task.checkCancellation()
-        // Keep at most the latest exact revision/scope of a Note. A generation
-        // change invalidates every slot, including other previously opened Notes.
-        invalidateIncompatible(with: key)
-        guard var entry = entries[key] else {
-            statistics.misses += 1
-            return nil
+        retain(generation: generation)
+        if var entry = entries[rowID], entry.fingerprint == fingerprint,
+            entry.checksum == checksum, let data,
+            RelatedContentSourceProjection.checksum(data) == entry.checksum
+        {
+            clock &+= 1
+            entry.lastAccess = clock
+            entries[rowID] = entry
+            statistics.hits += 1
+            return entry.projection
         }
-        clock &+= 1
-        entry.lastAccess = clock
-        entries[key] = entry
-        statistics.hits += 1
-        return entry.value
-    }
-
-    mutating func store(_ value: Value, for key: Key) throws {
+        statistics.misses += 1
+        // A failed or oversized replacement cannot leave an earlier revision
+        // available to the immutable-storage sharing lookup.
+        remove(rowID)
+        let projection = try RelatedContentLexicalProjection.decode(data, checksum: checksum)
         try Task.checkCancellation()
-        invalidateIncompatible(with: key)
-        remove(key)
-        let cost = key.estimatedByteCount + value.estimatedByteCount + 64
-        guard fitsBudget(valueEstimatedByteCount: value.estimatedByteCount, for: key) else {
+        let cost =
+            256 + generation.sourceManifestHash.utf8.count
+            + fingerprint.sha256.utf8.count + (checksum?.utf8.count ?? 0) + projection.estimatedByteCount
+        guard cost <= maximumByteCount else {
             statistics.oversizeSkips += 1
-            return
+            return projection
         }
-        while entries.count >= Self.maximumNotes || estimatedByteCount > maximumByteCount - cost {
-            guard let victim = entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key else { break }
+        let protectedRows = protection.generation == generation ? protection.rowIDs : []
+        let protectedBytes = protection.generation == generation ? protection.estimatedByteCount : 0
+        // Conservative if a protected row was invalidated during the scan.
+        // A later scan takes a fresh snapshot; no valid result depends on admission.
+        guard protectedBytes <= maximumByteCount - cost else {
+            statistics.protectedAdmissionSkips += 1
+            return projection
+        }
+        while estimatedByteCount > maximumByteCount - cost {
+            guard
+                let victim = entries.lazy.filter({ !protectedRows.contains($0.key) }).min(by: {
+                    $0.value.lastAccess == $1.value.lastAccess
+                        ? $0.key < $1.key : $0.value.lastAccess < $1.value.lastAccess
+                })?.key
+            else {
+                statistics.protectedAdmissionSkips += 1
+                return projection
+            }
             remove(victim)
             statistics.evictions += 1
         }
         clock &+= 1
-        entries[key] = Entry(value: value, cost: cost, lastAccess: clock)
+        // Successful decode proves a nonnil checksum matching these bytes.
+        entries[rowID] = .init(
+            fingerprint: fingerprint, checksum: checksum!, projection: projection,
+            cost: cost, lastAccess: clock)
         estimatedByteCount += cost
+        return projection
     }
 
-    /// The scanner can release an already over-budget complete pool before
-    /// scoring. Admission and the skip count still belong to this memo owner.
-    func fitsBudget(valueEstimatedByteCount: Int, for key: Key) -> Bool {
-        let overhead = key.estimatedByteCount + 64
-        return overhead <= maximumByteCount
-            && valueEstimatedByteCount <= maximumByteCount - overhead
+    /// A storage-sharing candidate only. Callers still validate the current
+    /// persisted projection and compare every scorer value before substitution.
+    /// This does not refresh LRU, statistics or conservative accounting.
+    func scoringStorage(rowID: Int, fingerprint: DocumentFingerprint) -> RelatedContentBM25F.Document? {
+        guard let entry = entries[rowID], entry.fingerprint == fingerprint else { return nil }
+        return entry.projection.scoringDocument
     }
 
-    mutating func rejectOversizedCompletePool(for key: Key) throws {
-        try Task.checkCancellation()
-        invalidateIncompatible(with: key)
-        remove(key)
-        statistics.oversizeSkips += 1
-    }
-
-    /// Publication invalidates obsolete pools even when no later retrieval
-    /// occurs. Keep the current generation through unchanged synchronization.
     mutating func retain(generation: SearchGenerationID) {
-        for key in Array(entries.keys) where key.generation != generation {
-            remove(key)
-        }
+        guard self.generation != generation else { return }
+        entries.removeAll(keepingCapacity: false)
+        estimatedByteCount = 0
+        self.generation = generation
     }
 
-    private mutating func remove(_ key: Key) {
-        if let removed = entries.removeValue(forKey: key) { estimatedByteCount -= removed.cost }
-    }
-
-    private mutating func invalidateIncompatible(with key: Key) {
-        retain(generation: key.generation)
-        for existing in Array(entries.keys)
-        where existing.note == key.note && existing != key {
-            remove(existing)
-        }
+    private mutating func remove(_ rowID: Int) {
+        if let removed = entries.removeValue(forKey: rowID) { estimatedByteCount -= removed.cost }
     }
 }

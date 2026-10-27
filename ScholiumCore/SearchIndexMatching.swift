@@ -411,7 +411,11 @@ enum SearchMatcher {
                 if property.value != nil, document.propertyIssues.contains(.unboundedScalarValue(property.key)) { return .unknown }
                 return .no
             case .paragraph(let query):
-                if !paragraphWitnesses(query, document: document, normalizedNeedles: needles).isEmpty { return .yes }
+                if document.paragraphs.contains(where: {
+                    evaluateParagraph(query, paragraph: $0, normalizedNeedles: needles).truth == .yes
+                }) {
+                    return .yes
+                }
                 return document.paragraphsAreComplete ? .no : .unknown
             case .link(let query):
                 guard let resolved = linkMatches[query] else { return .unknown }
@@ -427,7 +431,31 @@ enum SearchMatcher {
         let ast: SearchQueryAST
     }
     static func paragraphWitnesses(_ ast: SearchQueryAST, document: StoredSearchDocument) -> [ParagraphWitness] {
-        ast.positiveParagraphQueries.flatMap { paragraphWitnesses($0, document: document) }
+        let queries = ast.positiveParagraphQueries
+        guard !queries.isEmpty else { return [] }
+        let needles = normalizedNeedles(for: ast.expression)
+        return queries.flatMap { paragraphWitnesses($0, document: document, normalizedNeedles: needles) }
+    }
+
+    /// Ranking needs successful positive predicates from every matching
+    /// paragraph, but no local document copies, source locators or snippet ASTs.
+    static func paragraphRankingClauses(
+        _ ast: SearchQueryAST, document: StoredSearchDocument,
+        normalizedNeedles preparedNeedles: [SearchLexicalValue: String]? = nil
+    ) -> [SearchLexicalClause] {
+        let queries = ast.positiveParagraphQueries
+        guard !queries.isEmpty else { return [] }
+        let needles = preparedNeedles ?? normalizedNeedles(for: ast.expression)
+        return queries.flatMap { query in
+            document.paragraphs.flatMap { paragraph -> [SearchLexicalClause] in
+                let evaluation = evaluateParagraph(query, paragraph: paragraph, normalizedNeedles: needles)
+                guard evaluation.truth == .yes else { return [] }
+                return evaluation.matches.compactMap { predicate in
+                    guard !predicate.excluded, case .lexical(let value) = predicate.clause else { return nil }
+                    return value
+                }
+            }
+        }
     }
     static func paragraphWitnesses(
         _ query: SearchParagraphQuery, document: StoredSearchDocument,
@@ -435,20 +463,25 @@ enum SearchMatcher {
     ) -> [ParagraphWitness] {
         let needles = preparedNeedles ?? normalizedNeedles(for: query.expression)
         return document.paragraphs.compactMap { paragraph in
-            let evaluation = query.expression.evaluate { clause in
-                guard case .lexical(let value) = clause else { return .unknown }
-                return paragraph.segments.contains {
-                    !occurrences(
-                        of: value.value, in: $0.normalizedText,
-                        normalizedNeedle: needles[value.value], firstOnly: true
-                    ).isEmpty
-                } ? .yes : .no
-            }
+            let evaluation = evaluateParagraph(query, paragraph: paragraph, normalizedNeedles: needles)
             guard evaluation.truth == .yes else { return nil }
             var local = document
             local.segments = paragraph.segments
             let ast = SearchQueryAST(provider: .note, providerWasExplicit: false, expression: query.expression, identityNeedle: nil).matched(by: evaluation)
             return ParagraphWitness(range: paragraph.range, document: local, ast: ast)
+        }
+    }
+
+    private static func evaluateParagraph(
+        _ query: SearchParagraphQuery, paragraph: SearchParagraphProjection,
+        normalizedNeedles: [SearchLexicalValue: String]
+    ) -> SearchEvaluation {
+        query.expression.evaluate { clause in
+            guard case .lexical(let value) = clause else { return .unknown }
+            let needle = normalizedNeedles[value.value] ?? SearchTextNormalization.lexicalNormalize(value.value.text)
+            return paragraph.segments.contains {
+                containsOccurrence(of: value.value, in: $0.normalizedText, normalizedNeedle: needle)
+            } ? .yes : .no
         }
     }
 
@@ -509,7 +542,8 @@ enum SearchMatcher {
 
     static func matchedFields(
         ast: SearchQueryAST,
-        document: StoredSearchDocument
+        document: StoredSearchDocument,
+        paragraphWitnesses preparedParagraphs: [ParagraphWitness]? = nil
     ) -> [SearchMatchedField] {
         var fields: [SearchMatchedField] = []
         for clause in ast.positiveLexicalClauses {
@@ -518,7 +552,7 @@ enum SearchMatcher {
                 if !fields.contains(segment.field) { fields.append(segment.field) }
             }
         }
-        for paragraph in paragraphWitnesses(ast, document: document) {
+        for paragraph in preparedParagraphs ?? paragraphWitnesses(ast, document: document) {
             for field in matchedFields(ast: paragraph.ast, document: paragraph.document) where !fields.contains(field) {
                 fields.append(field)
             }
@@ -729,9 +763,9 @@ enum NoteSearchResultBuilder {
         linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) -> NoteSearchResult {
         let document = candidate.document
-        let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
-        let preferredField = matchedFields.first ?? .title
         let paragraphs = SearchMatcher.paragraphWitnesses(ast, document: document)
+        let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document, paragraphWitnesses: paragraphs)
+        let preferredField = matchedFields.first ?? .title
         let paragraphLead = paragraphs.first
         let snippetAST = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.ast ?? ast) : ast
         let snippetDocument = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.document ?? document) : document
@@ -1095,11 +1129,18 @@ enum NoteSearchResultBuilder {
                 .map { leadingTrimmed.index(after: $0) } ?? leadingTrimmed.startIndex
             let retained = leadingTrimmed[..<retainedEnd]
             let utf16Count = retained.utf16.count
-            // Retain the same checked linear shortcut. Canonically equal
-            // strings alone never authorize reusing a map from another input.
-            if retained == normalizedText,
-                retained.count == utf16Count,
-                SearchTextNormalization.lexicalNormalize(text).utf8.elementsEqual(retained.utf8)
+            // Each retained grapheme must occupy one UTF-16 unit, and folding
+            // may only preserve its position. Whole-string Foundation
+            // normalization still verifies the exact comparison bytes.
+            if retained.count == utf16Count,
+                normalizedText.utf16.count == utf16Count,
+                zip(retained, normalizedText.utf16).allSatisfy({ character, normalizedUnit in
+                    guard let originalUnit = character.utf16.first else { return false }
+                    return originalUnit == normalizedUnit
+                        || ((0x41...0x5A).contains(originalUnit) && normalizedUnit == originalUnit + 0x20)
+                        || (character.isWhitespace && normalizedUnit == 0x20)
+                }),
+                SearchTextNormalization.lexicalNormalize(text).utf8.elementsEqual(normalizedText.utf8)
             {
                 storage = .linear(sourceOffset: retained.startIndex.utf16Offset(in: text), utf16Count: utf16Count)
             } else {

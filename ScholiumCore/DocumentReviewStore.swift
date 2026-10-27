@@ -502,20 +502,20 @@ public actor DocumentReviewStore {
         else { return nil }
         let record: Record
         do {
-            try rejectUnknownFields(
-                data,
-                allowed: [
-                    "schemaVersion", "triptychID", "noteID", "vaultID",
-                    "baselineID", "baselineState", "baselineData",
-                    "baselineFingerprint", "captures", "batches",
-                    "lastAppliedCaptureID", "initialReceiptVersions", "coverage",
-                ])
             let object = try JSONSerialization.jsonObject(with: data)
             guard let dictionary = object as? [String: Any],
                 let captures = dictionary["captures"] as? [[String: Any]],
                 let batches = dictionary["batches"] as? [[String: Any]],
                 let coverage = dictionary["coverage"] as? [[String: Any]]
             else { throw DocumentChangeError.invalidRecord(noteID) }
+            try rejectUnknownFields(
+                dictionary,
+                allowed: [
+                    "schemaVersion", "triptychID", "noteID", "vaultID",
+                    "baselineID", "baselineState", "baselineData",
+                    "baselineFingerprint", "captures", "batches",
+                    "lastAppliedCaptureID", "initialReceiptVersions", "coverage",
+                ])
             for value in captures {
                 try rejectUnknownFields(
                     value,

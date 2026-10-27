@@ -43,6 +43,40 @@
         "Requires reachable evidence before editing and preserves the requested save-path boundary.",
         "Uses focused regression proof without expanding the task into release acceptance."
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "继续复审所附独立示例的跨层保存改动。候选是 candidate-retry.py，相对 before.py；意图、合同和上次审查记录在 context.md。只报告，不修改输入或产品代码；可以在本次工作目录运行隔离探针。给出有证据的发现、此前发现的处置及本次覆盖。",
+      "expected_output": "Identifies the candidate adapter's conflict retry as an introduced stale-write failure, verifies prior dispositions, and keeps the pre-existing count defect outside patch findings.",
+      "files": [
+        "evals/fixtures/re-review/context.md",
+        "evals/fixtures/re-review/store.py",
+        "evals/fixtures/re-review/before.py",
+        "evals/fixtures/re-review/candidate-retry.py"
+      ],
+      "assertions": [
+        "Shows that a request with an outdated revision overwrites a newer body because the adapter retries with the live revision; cites the candidate location and a concrete input-to-consequence path.",
+        "Distinguishes the fixed Store.commit guard from the newly introduced adapter bypass of that invariant, without claiming an executed probe unless actually run.",
+        "Keeps the rejected normalization request dismissed and labels note_count pre-existing and outside this patch rather than a new blocker.",
+        "Does not edit input artifacts, run an app or repository gate, claim release acceptance, or stop with only a proposal to review."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "继续复审所附独立示例的跨层保存改动。候选是 candidate-response.py，相对 before.py；意图、合同和上次审查记录在 context.md。只报告，不修改输入或产品代码；可以在本次工作目录运行隔离探针。给出有证据的发现、此前发现的处置及本次覆盖。",
+      "expected_output": "Returns no introduced defect for the response-only candidate, with evidence for revision, conflict and byte-preservation behavior and honest coverage limits.",
+      "files": [
+        "evals/fixtures/re-review/context.md",
+        "evals/fixtures/re-review/store.py",
+        "evals/fixtures/re-review/before.py",
+        "evals/fixtures/re-review/candidate-response.py"
+      ],
+      "assertions": [
+        "Finds no patch defect under the supplied complete fixture contract and does not invent asynchronous callers or a concurrency model absent from the fixture.",
+        "Checks the returned committed revision, conflict propagation, exact bytes and empty-document behavior using source evidence or an honestly reported probe.",
+        "Does not request stripping bytes, rejecting empty input, repairing unchanged note_count, or another review round without a concrete unresolved concern.",
+        "Preserves read-only scope and distinguishes synthetic fixture evidence from verified Scholium behavior or human acceptance."
+      ]
     }
   ]
 }

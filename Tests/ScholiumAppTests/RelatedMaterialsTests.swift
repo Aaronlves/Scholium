@@ -251,7 +251,8 @@ struct RelatedMaterialsTests {
             capture: { current }, retrieve: { _ in currentResponse }, references: [source],
             prepareLinkTargets: { references in
                 Dictionary(references.map { ($0, "Current Source") }, uniquingKeysWith: { first, _ in first })
-            }).value
+            }
+        ).value
         let currentCards = model.cards
         #expect(currentCards.count == 1 && currentCards[0].linkTarget == "Current Source")
         gate.release()

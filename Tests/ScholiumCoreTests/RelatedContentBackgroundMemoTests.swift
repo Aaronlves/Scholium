@@ -4,134 +4,154 @@ import Testing
 
 @testable import ScholiumCore
 
-@Suite("Bounded related-content background memo")
+@Suite("Bounded related-content lexical row memo")
 struct RelatedContentBackgroundMemoTests {
     private let triptychID = UUID()
-    private let vaultID = UUID()
 
-    @Test("Preparation is bounded by both two Notes and estimated bytes, with LRU reuse")
-    func boundsAndEviction() throws {
-        let value = try preparedValue()
-        let a = key("A.md")
-        let b = key("B.md")
-        let c = key("C.md")
-        var memo = RelatedContentBackgroundPreparation()
-        #expect(memo.maximumByteCount == 16 * 1_024 * 1_024)
-        try memo.store(value, for: a)
-        let oneCost = memo.estimatedByteCount
-        #expect(oneCost > value.estimatedByteCount)
-        try memo.store(value, for: b)
-        #expect(memo.entryCount == 2)
-        #expect(try memo.prepared(for: a)?.documents.count == value.documents.count)
-        try memo.store(value, for: c)
-        #expect(memo.entryCount == 2)
-        #expect(memo.statistics.evictions == 1)
-        #expect(try memo.prepared(for: b) == nil)
-        #expect(try memo.prepared(for: a)?.documents.count == value.documents.count)
-        #expect(try memo.prepared(for: c)?.documents.count == value.documents.count)
-        #expect(memo.estimatedByteCount == oneCost * 2)
-
-        var oneSlot = RelatedContentBackgroundPreparation(maximumByteCount: oneCost)
-        try oneSlot.store(value, for: a)
-        try oneSlot.store(value, for: b)
-        #expect(oneSlot.entryCount == 1)
-        #expect(oneSlot.estimatedByteCount == oneCost)
-        #expect(try oneSlot.prepared(for: a) == nil)
-        #expect(try oneSlot.prepared(for: b)?.documents.count == value.documents.count)
-
-        var tooSmall = RelatedContentBackgroundPreparation(maximumByteCount: oneCost - 1)
-        try tooSmall.store(value, for: a)
-        #expect(tooSmall.entryCount == 0 && tooSmall.estimatedByteCount == 0)
-        #expect(tooSmall.statistics.oversizeSkips == 1)
-        // The complete computed pool remains available; the budget affects only retention.
-        #expect(value.documents.count == 4)
-        #expect(try tooSmall.prepared(for: a) == nil)
-    }
-
-    @Test("Canonical roles reuse preparation, but scope, exact bytes, path and generation do not")
-    func keyInvariants() throws {
-        let value = try preparedValue()
-        var memo = RelatedContentBackgroundPreparation()
-        let original = key("A.md", source: "é", roles: [.work, .analysis, .analysis])
-        let canonical = key("A.md", source: "é", roles: [.analysis, .work])
-        #expect(original == canonical)
-        try memo.store(value, for: original)
-        #expect(try memo.prepared(for: canonical) != nil)
-        let narrow = key("A.md", source: "é", roles: [.analysis])
-        #expect(try memo.prepared(for: narrow) == nil)
-        #expect(memo.entryCount == 0)
-        try memo.store(value, for: narrow)
-        let changedBytes = key("A.md", source: "e\u{301}", roles: [.analysis])
-        #expect(try memo.prepared(for: changedBytes) == nil)
-        try memo.store(value, for: changedBytes)
-        try memo.store(value, for: key("B.md"))
-        #expect(memo.entryCount == 2)
-        #expect(try memo.prepared(for: key("B.md", sequence: 2)) == nil)
-        #expect(memo.entryCount == 0 && memo.estimatedByteCount == 0)
-
-        let composed = key("É.md")
-        let decomposed = key("E\u{301}.md")
-        #expect(composed.note == decomposed.note)
-        #expect(composed != decomposed)
-        try memo.store(value, for: composed)
-        #expect(try memo.prepared(for: decomposed) == nil)
-        #expect(memo.entryCount == 0)
-    }
-
-    @Test("Oversized replacement does not leave the previous version resident")
-    func oversizedRevision() throws {
-        let value = try preparedValue()
-        let original = key("A.md")
+    @Test("A partial row budget preserves resident hits across repeated sequential full scans")
+    func partialPoolDoesNotThrash() throws {
+        let payload = try Payload("orchard geology magnetic compass")
+        let generation = generation()
         var probe = RelatedContentBackgroundPreparation()
-        try probe.store(value, for: original)
-        var memo = RelatedContentBackgroundPreparation(maximumByteCount: probe.estimatedByteCount)
-        try memo.store(value, for: original)
-        var larger = value
-        for rowID in 5..<40 { larger.documents[rowID] = value.documents[0] }
-        try memo.store(larger, for: key("A.md", source: "new revision"))
-        #expect(memo.entryCount == 0 && memo.estimatedByteCount == 0)
-        #expect(memo.statistics.oversizeSkips == 1)
-        #expect(try memo.prepared(for: original) == nil)
-        #expect(larger.documents.count == 39)
-    }
-
-    @Test("Decoded projection reuse requires current payload, checksum and exact fingerprint")
-    func digestValidation() throws {
-        let document = NoteDocument(relativePath: "A.md", rawContent: "orchard geology")
-        let search = SearchDocumentProjection(document: document)
-        let projection = RelatedContentLexicalProjection(
-            projection: search, scoringDocument: .init(segments: search.segments))
-        let data = try projection.encoded()
-        let checksum = RelatedContentSourceProjection.checksum(data)
-        let prepared = RelatedContentBackgroundPreparation.LexicalDocument(
-            fingerprint: document.fingerprint, checksum: checksum, projection: projection)
-        #expect(prepared.matches(data, checksum: checksum, fingerprint: document.fingerprint))
-        #expect(!prepared.matches(Data([0]), checksum: checksum, fingerprint: document.fingerprint))
-        #expect(!prepared.matches(data, checksum: "incorrect", fingerprint: document.fingerprint))
-        #expect(!prepared.matches(data, checksum: checksum, fingerprint: DocumentFingerprint(content: "changed")))
-        #expect(!prepared.matches(nil, checksum: checksum, fingerprint: document.fingerprint))
-        #expect(prepared.estimatedByteCount > projection.estimatedByteCount)
-        #expect(projection.estimatedByteCount > projection.scoringDocument.estimatedByteCount)
-    }
-
-    private func key(
-        _ path: String, source: String = "orchard", roles: [RelatedContentCandidateRole] = [.analysis, .topic, .work], sequence: Int = 1
-    ) -> RelatedContentBackgroundPreparation.Key {
-        .init(
-            seed: .init(noteID: .init(vaultID: vaultID, relativePath: path), source: source),
-            generation: .init(triptychID: triptychID, sequence: sequence, sourceManifestHash: "manifest-\(sequence)"), roles: roles)
-    }
-
-    private func preparedValue() throws -> RelatedContentBackgroundPreparation.Value {
-        let document = NoteDocument(relativePath: "Material.md", rawContent: "orchard geology magnetic compass")
-        let search = SearchDocumentProjection(document: document)
-        let projection = RelatedContentLexicalProjection(
-            projection: search, scoringDocument: .init(segments: search.segments))
-        let checksum = RelatedContentSourceProjection.checksum(try projection.encoded())
-        var value = RelatedContentBackgroundPreparation.Value()
-        for rowID in 0..<4 {
-            value.documents[rowID] = .init(fingerprint: document.fingerprint, checksum: checksum, projection: projection)
+        _ = try load(&probe, rowID: 0, generation: generation, payload: payload)
+        let rowCost = probe.estimatedByteCount
+        #expect(probe.maximumByteCount == 16 * 1_024 * 1_024)
+        #expect(rowCost > payload.projection.estimatedByteCount)
+        var memo = RelatedContentBackgroundPreparation(maximumByteCount: rowCost * 2)
+        let rows = Set(0..<5)
+        let coldProtection = memo.scanProtection(generation: generation, rowIDs: rows)
+        for rowID in 0..<5 {
+            let result = try load(&memo, rowID: rowID, generation: generation, payload: payload, protection: coldProtection)
+            #expect(result.scoringDocument.hasSameContents(as: payload.projection.scoringDocument))
         }
-        return value
+        #expect(memo.entryCount == 2 && memo.estimatedByteCount == rowCost * 2)
+        #expect(memo.statistics.misses == 5 && memo.statistics.evictions == 3)
+        #expect(memo.scoringStorage(rowID: 3, fingerprint: payload.fingerprint) != nil)
+        #expect(memo.scoringStorage(rowID: 4, fingerprint: payload.fingerprint) != nil)
+        let warmProtection = memo.scanProtection(generation: generation, rowIDs: rows)
+        for rowID in 0..<5 {
+            let result = try load(&memo, rowID: rowID, generation: generation, payload: payload, protection: warmProtection)
+            #expect(result.scoringDocument.hasSameContents(as: payload.projection.scoringDocument))
+        }
+        #expect(memo.statistics.hits == 2 && memo.statistics.misses == 8)
+        #expect(memo.statistics.protectedAdmissionSkips == 3)
+        #expect(memo.statistics.evictions == 3)
+        #expect(memo.entryCount == 2 && memo.estimatedByteCount == rowCost * 2)
+
+        var undersized = RelatedContentBackgroundPreparation(maximumByteCount: rowCost - 1)
+        let uncached = try load(&undersized, rowID: 0, generation: generation, payload: payload)
+        #expect(uncached.scoringDocument.hasSameContents(as: payload.projection.scoringDocument))
+        #expect(undersized.entryCount == 0 && undersized.estimatedByteCount == 0)
+        #expect(undersized.statistics.oversizeSkips == 1)
+    }
+
+    @Test("Generation and exact row revisions invalidate independently of seed or scope")
+    func generationAndRevision() throws {
+        let a = try Payload("orchard geology é")
+        let b = try Payload("orchard geology e\u{301}")
+        #expect(a.fingerprint != b.fingerprint)
+        var memo = RelatedContentBackgroundPreparation()
+        let first = generation()
+        _ = try load(&memo, rowID: 11, generation: first, payload: a)
+        _ = try load(&memo, rowID: 11, generation: first, payload: a)
+        #expect(memo.statistics.hits == 1 && memo.statistics.misses == 1)
+        _ = try load(&memo, rowID: 11, generation: first, payload: b)
+        #expect(memo.entryCount == 1 && memo.statistics.misses == 2)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: a.fingerprint) == nil)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: b.fingerprint) != nil)
+        memo.retain(generation: first)
+        #expect(memo.entryCount == 1)
+        let second = generation(2)
+        memo.retain(generation: second)
+        #expect(memo.entryCount == 0 && memo.estimatedByteCount == 0)
+        _ = try load(&memo, rowID: 11, generation: second, payload: b)
+        #expect(memo.statistics.hits == 1 && memo.statistics.misses == 3)
+    }
+
+    @Test("An oversized replacement releases the old row without changing computed results")
+    func oversizedRevision() throws {
+        let small = try Payload("orchard geology")
+        let large = try Payload(String(repeating: "geology magnetic calibration instrument ", count: 100))
+        let generation = generation()
+        var probe = RelatedContentBackgroundPreparation()
+        _ = try load(&probe, rowID: 11, generation: generation, payload: small)
+        var memo = RelatedContentBackgroundPreparation(maximumByteCount: probe.estimatedByteCount)
+        _ = try load(&memo, rowID: 11, generation: generation, payload: small)
+        let result = try load(&memo, rowID: 11, generation: generation, payload: large)
+        #expect(result.scoringDocument.hasSameContents(as: large.projection.scoringDocument))
+        #expect(memo.entryCount == 0 && memo.estimatedByteCount == 0 && memo.statistics.oversizeSkips == 1)
+        #expect(memo.scoringStorage(rowID: 11, fingerprint: small.fingerprint) == nil)
+    }
+
+    enum Damage: CaseIterable, Sendable { case missingData, missingChecksum, changedBytes, changedChecksum, invalidJSON }
+    @Test("A resident row cannot conceal missing or damaged current payload", arguments: Damage.allCases)
+    func currentPayloadValidation(_ damage: Damage) throws {
+        let payload = try Payload("orchard geology")
+        let generation = generation()
+        var memo = RelatedContentBackgroundPreparation()
+        _ = try load(&memo, rowID: 11, generation: generation, payload: payload)
+        var data: Data? = payload.data
+        var checksum: String? = payload.checksum
+        switch damage {
+        case .missingData: data = nil
+        case .missingChecksum: checksum = nil
+        case .changedBytes: data = Data([0])
+        case .changedChecksum: checksum = "incorrect"
+        case .invalidJSON:
+            data = Data([0])
+            checksum = RelatedContentSourceProjection.checksum(Data([0]))
+        }
+        let protection = memo.scanProtection(generation: generation, rowIDs: [11])
+        do {
+            _ = try memo.projection(
+                rowID: 11, generation: generation, fingerprint: payload.fingerprint,
+                data: data, checksum: checksum, protection: protection)
+            Issue.record("Cached decoded values must not hide current storage damage")
+        } catch SearchIndexError.corruptDatabase {}
+        #expect(memo.statistics.hits == 0 && memo.statistics.misses == 2)
+        #expect(memo.entryCount == 0 && memo.estimatedByteCount == 0)
+    }
+
+    @Test("A valid changed current payload is decoded even when the source fingerprint is unchanged")
+    func replacedPayload() throws {
+        let a = try Payload("orchard geology")
+        let b = try Payload("magnetic compass")
+        let generation = generation()
+        var memo = RelatedContentBackgroundPreparation()
+        _ = try load(&memo, rowID: 11, generation: generation, payload: a)
+        let protection = memo.scanProtection(generation: generation, rowIDs: [11])
+        let result = try memo.projection(
+            rowID: 11, generation: generation, fingerprint: a.fingerprint,
+            data: b.data, checksum: b.checksum, protection: protection)
+        #expect(result.scoringDocument.hasSameContents(as: b.projection.scoringDocument))
+        #expect(!result.scoringDocument.hasSameContents(as: a.projection.scoringDocument))
+        #expect(memo.statistics.hits == 0 && memo.statistics.misses == 2)
+    }
+
+    private func generation(_ sequence: Int = 1) -> SearchGenerationID {
+        .init(triptychID: triptychID, sequence: sequence, sourceManifestHash: "manifest-\(sequence)")
+    }
+    private func load(
+        _ memo: inout RelatedContentBackgroundPreparation, rowID: Int, generation: SearchGenerationID,
+        payload: Payload, protection: RelatedContentBackgroundPreparation.ScanProtection? = nil
+    ) throws -> RelatedContentLexicalProjection {
+        let protection = protection ?? memo.scanProtection(generation: generation, rowIDs: [])
+        return try memo.projection(
+            rowID: rowID, generation: generation, fingerprint: payload.fingerprint,
+            data: payload.data, checksum: payload.checksum, protection: protection)
+    }
+    private struct Payload {
+        let fingerprint: DocumentFingerprint
+        let projection: RelatedContentLexicalProjection
+        let data: Data
+        let checksum: String
+        init(_ source: String) throws {
+            let note = NoteDocument(relativePath: "Material.md", rawContent: source)
+            let search = SearchDocumentProjection(document: note)
+            fingerprint = note.fingerprint
+            projection = .init(projection: search, scoringDocument: .init(segments: search.segments))
+            data = try projection.encoded()
+            checksum = RelatedContentSourceProjection.checksum(data)
+        }
     }
 }

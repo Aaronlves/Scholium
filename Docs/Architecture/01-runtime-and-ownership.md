@@ -100,20 +100,20 @@ rollback failure distinguishes proven retained source from uncertain presence;
 neither permits blind recreation. One owned source-commit task is queued before
 the mutation lease releases and coalesces matching watcher work.
 
-Contracts owns Search grammar, lexical comparison and boundaries, provider capabilities,
-source coordinates and results; Core owns disposable index validation, exact
-predicate evaluation, lexical ranking and read transactions; Application
-authorizes visible scope. Adapters own no parallel parser or ranking. Candidate
-evaluation and page hydration share one read transaction. Eligibility precedes
-counting, global ranking precedes pagination, and successful branches alone
-supply witnesses. Paragraph predicates retain their existential boundary.
-Direct-link queries require agreeing Graph/Search manifests and fail closed
-rather than broadening to lexical clauses. Each link predicate resolves within
-its own scope; uncertain candidates remain distinct from confirmed totals.
-Application prepares request-local two-step Related-Content paths over that
-cohort, replacing only the seed's outgoing projection with unsaved source.
-Core admits matching paragraphs and applies bounded graph proximity to their
-Note ranking; delivery explains paths without interpreting them as evidence.
+Contracts owns Search grammar, comparison, scopes, source coordinates and results;
+Core owns generation validation, matching, ranking and SQLite transactions;
+Application authorizes visible scope. Adapters reuse these owners. Eligibility
+precedes counting/limits; ranking precedes pagination. Candidate evaluation and
+page hydration share one snapshot; successful branches supply witnesses,
+preserving paragraph existential boundaries.
+Long Related scans lease separate read-only WAL snapshots and yield between
+batches; Search keeps its own reader. Shutdown drains borrowed cursors before
+storage closes. Handle-owned bounded warmup joins equal cohorts; completed keys
+skip preparation, never current-source checks.
+Direct-link queries require agreeing Graph/Search manifests and fail closed;
+indeterminate candidates stay distinct. Application prepares request-local two-step
+paths, overlaying unsaved seed links. Core admits matching paragraphs and applies
+bounded proximity; delivery explains paths without interpreting them as evidence.
 
 Saved Searches persist raw query, visible scope and contract version only, not
 ASTs, resolved anchors, result bytes or generations. Execution, cancellation and

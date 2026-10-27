@@ -14,10 +14,10 @@ struct RelatedContentBackgroundPreparationTests {
         let index = try fixture.index()
         var documents = fixture.documents + [fixture.item(fixture.works, "SecondDraft.md", "Orchard geology writing.")]
         let initial = try await index.synchronize(documents)
-        _ = try await index.relatedMaterialSourceCandidates(fixture.request())
-        _ = try await index.relatedMaterialSourceCandidates(fixture.request(path: "SecondDraft.md"))
+        let firstPool = try await index.relatedMaterialSourceCandidates(fixture.request())
+        let secondPool = try await index.relatedMaterialSourceCandidates(fixture.request(path: "SecondDraft.md"))
         let prepared = await index.relatedBackgroundPreparationRetention
-        #expect(prepared.entries == 2)
+        #expect(prepared.entries == Set((firstPool.lexicalCandidates + secondPool.lexicalCandidates).map(\.note)).count)
         #expect(prepared.estimatedBytes > 0)
 
         let unchanged = try await index.synchronize(documents)
@@ -28,7 +28,7 @@ struct RelatedContentBackgroundPreparationTests {
         #expect(retained.estimatedBytes == prepared.estimatedBytes)
         let hitsBefore = await index.relatedBackgroundPreparationStatistics.hits
         _ = try await index.relatedMaterialSourceCandidates(fixture.request())
-        #expect(await index.relatedBackgroundPreparationStatistics.hits == hitsBefore + 1)
+        #expect(await index.relatedBackgroundPreparationStatistics.hits == hitsBefore + firstPool.lexicalCandidates.count)
 
         documents[0] = fixture.item(fixture.analyses, "Context.md", "Orchard geology records a revised source.")
         let cancelledDocuments = documents
@@ -119,11 +119,11 @@ struct RelatedContentBackgroundPreparationTests {
             assertCandidates(response, equalTo: expected)
             #expect(try await index.relatedPassages(focus, sources: fixture.sources(response)) == passages)
         }
-        // Foreground requests do not publish their subset as background preparation.
+        // Foreground recall admits only its own verified rows; repeating it reuses those rows.
         let repeatedCold = try await cold.relatedMaterialSourceCandidates(focus)
         assertCandidates(repeatedCold, equalTo: expected)
         let coldStatistics = await cold.relatedBackgroundPreparationStatistics
-        #expect(coldStatistics.hits == 0 && coldStatistics.misses == 2)
+        #expect(coldStatistics.hits == 2 && coldStatistics.misses == 2)
     }
 
     @Test("Broad Note preparation cannot expand a rare focus response or its source-read set")
@@ -171,7 +171,7 @@ struct RelatedContentBackgroundPreparationTests {
         } catch SearchIndexError.corruptDatabase {}
     }
 
-    @Test("Narrow scope, exact source revision, seed identity and new generation invalidate preparation")
+    @Test("Scope and seed changes reuse only current rows, while new generations invalidate them")
     func invalidationAndIncrementalEquivalence() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -183,7 +183,7 @@ struct RelatedContentBackgroundPreparationTests {
         #expect(restricted.lexicalCandidates.allSatisfy { $0.vaultRole == .sourceCorpus })
         #expect(!restricted.lexicalCandidates.contains { $0.note.relativePath == "Shared.md" })
         var statistics = await index.relatedBackgroundPreparationStatistics
-        #expect(statistics.hits == 0 && statistics.misses == 2)
+        #expect(statistics.hits == 0 && statistics.misses == 3)
 
         let changedSeed = fixture.request(source: "orchard geology é")
         let canonicallyEquivalentSeed = fixture.request(source: "orchard geology e\u{301}")
@@ -193,7 +193,8 @@ struct RelatedContentBackgroundPreparationTests {
         _ = try await index.relatedMaterialSourceCandidates(canonicallyEquivalentSeed)
         _ = try await index.relatedMaterialSourceCandidates(fixture.request(path: "OtherDraft.md"))
         statistics = await index.relatedBackgroundPreparationStatistics
-        #expect(statistics.hits == 0 && statistics.misses == 5)
+        #expect(statistics.hits >= 4 && statistics.misses == 4)
+        let beforePublication = statistics
 
         var changed = fixture.documents.filter { $0.relativePath != "Context.md" }
         changed.append(fixture.item(fixture.analyses, "Replacement.md", "Orchard geology and magnetic compass calibration are recorded."))
@@ -203,7 +204,7 @@ struct RelatedContentBackgroundPreparationTests {
         #expect(!incremental.lexicalCandidates.contains { $0.note.relativePath == "Context.md" })
         #expect(incremental.lexicalCandidates.contains { $0.note.relativePath == "Replacement.md" })
         statistics = await index.relatedBackgroundPreparationStatistics
-        #expect(statistics.hits == 0 && statistics.misses == 6)
+        #expect(statistics.hits == beforePublication.hits && statistics.misses > beforePublication.misses)
         let rebuilt = try fixture.index(name: "rebuilt.sqlite")
         _ = try await rebuilt.synchronize(Array(changed.reversed()))
         let clean = try await rebuilt.relatedMaterialSourceCandidates(focus)
@@ -292,7 +293,7 @@ struct RelatedContentBackgroundPreparationTests {
         let sources = fixture.sources(response, documents: documents)
         try #require(!sources.isEmpty)
         _ = try await index.relatedMaterialSourceCandidates(request)
-        #expect(await index.relatedBackgroundPreparationStatistics.hits == 1)
+        #expect(await index.relatedBackgroundPreparationStatistics.hits == 2)
         #expect(await index.relatedPassagePreparationStatistics.misses == 0)
         let mutation =
             damagePayload
@@ -343,7 +344,7 @@ struct RelatedContentBackgroundPreparationTests {
     }
 
     #if DEBUG
-        @Test("An over-budget complete pool preserves candidates and rejects partial, cancelled or corrupt preparation")
+        @Test("A row budget too small for any projection preserves complete recall and corruption checks")
         func oversizedCandidatePool() async throws {
             let fixture = try Fixture()
             defer { fixture.remove() }
@@ -357,34 +358,46 @@ struct RelatedContentBackgroundPreparationTests {
             let actual = try await index.relatedMaterialSourceCandidates(request)
             assertCandidates(actual, equalTo: expected)
             #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
-            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
-
+            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 2)
             let warm = try await control.relatedMaterialSourceCandidates(request)
             assertCandidates(warm, equalTo: expected)
-            #expect(await control.relatedBackgroundPreparationRetention.entries == 1)
-            #expect(await control.relatedBackgroundPreparationStatistics.hits == 1)
-
-            await index.setRelatedLexicalPoolObserverForTesting { observation in
-                if observation.phase == .row && observation.candidateCount == 1 {
-                    withUnsafeCurrentTask { $0?.cancel() }
-                }
-            }
-            let cancelled = Task { try await index.relatedMaterialSourceCandidates(request) }
-            await #expect(throws: CancellationError.self) { try await cancelled.value }
-            await index.setRelatedLexicalPoolObserverForTesting(nil)
-            #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
-            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
+            #expect(await control.relatedBackgroundPreparationRetention.entries == 2)
+            #expect(await control.relatedBackgroundPreparationStatistics.hits == 2)
 
             try fixture.execute(
                 "UPDATE search_documents SET related_lexical_hash = 'incorrect' WHERE relative_path = 'Shared.md';")
             do {
                 _ = try await index.relatedMaterialSourceCandidates(request)
-                Issue.record("An oversized scan must still validate every persisted projection")
+                Issue.record("An uncached scan must still validate every eligible persisted projection")
             } catch SearchIndexError.corruptDatabase {}
             #expect(await index.relatedBackgroundPreparationRetention.entries == 0)
-            #expect(await index.relatedBackgroundPreparationStatistics.oversizeSkips == 1)
         }
     #endif
+
+    @Test("A shared row across different seeds and scopes preserves current reasons and ordered passages")
+    func crossSeedAndScopeReuse() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let cold = try fixture.index(name: "scope-control.sqlite")
+        for reader in [index, cold] { _ = try await reader.synchronize(fixture.documents) }
+        _ = try await index.relatedMaterialSourceCandidates(fixture.request())
+        let before = await index.relatedBackgroundPreparationStatistics
+        let request = fixture.request(source: "magnetic compass calibration", path: "OtherDraft.md", roles: [.topic])
+        let expected = try await cold.relatedMaterialSourceCandidates(request)
+        let actual = try await index.relatedMaterialSourceCandidates(request)
+        assertCandidates(actual, equalTo: expected)
+        #expect(actual.lexicalCandidates.map(\.note.relativePath) == ["Shared.md"])
+        #expect(actual.lexicalCandidates.allSatisfy { $0.vaultRole == .topicKnowledge })
+        let after = await index.relatedBackgroundPreparationStatistics
+        #expect(after.hits == before.hits + 1 && after.misses == before.misses)
+        let sources = fixture.sources(actual)
+        let passages = try await index.relatedPassages(request, sources: sources)
+        #expect(!passages.isEmpty)
+        #expect(passages == (try await cold.relatedPassages(request, sources: fixture.sources(expected))))
+        #expect(passages == (try TriptychSearchIndex.relatedPassages(request, sources: sources)))
+        #expect(passages.allSatisfy { $0.source.contains("Magnetic compass calibration") })
+    }
 
     @Test("Passage warmup excludes the seed and out-of-scope or mismatched current documents")
     func prewarmSourceValidation() async throws {

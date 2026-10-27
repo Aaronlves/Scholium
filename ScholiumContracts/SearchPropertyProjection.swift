@@ -66,25 +66,17 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown
     ) {
-        guard document.hasProvableBodyBoundary else {
-            entries = []
-            issues = [.invalidYAML]
-            return
-        }
-        guard let frontmatter = document.rawFrontmatter else {
-            entries = []
-            issues = document.rawFrontmatter == nil ? [] : [.invalidYAML]
-            return
-        }
+        self = document.searchPropertyProjection
+    }
 
-        let root: Node?
-        do {
-            root = try Yams.compose(yaml: frontmatter)
-        } catch {
-            entries = []
-            issues = [.invalidYAML]
-            return
-        }
+    init(issues: [Issue]) {
+        entries = []
+        self.issues = issues
+    }
+
+    /// Consume one freshly parsed tree synchronously. Only typed, source-bound
+    /// entries and issues survive in the Sendable document; Yams nodes do not.
+    init(root: Node?, sourceBytes: Data, frontmatterByteRange: Range<Int>?, frontmatter: String) {
         guard let root else {
             entries = []
             issues = []
@@ -96,7 +88,7 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             return
         }
 
-        let source = Source(document: document, frontmatter: frontmatter)
+        let source = Source(sourceBytes: sourceBytes, frontmatterByteRange: frontmatterByteRange, frontmatter: frontmatter)
         var projected: [Entry] = []
         var projectionIssues: [Issue] = []
         var keyCounts: [String: Int] = [:]
@@ -241,11 +233,11 @@ private extension SearchPropertyProjection {
         private let parserLineStarts: [Int]
         private let sourceLineStartsUTF16: [Int]
 
-        init(document: NoteDocument, frontmatter: String) {
+        init(sourceBytes: Data, frontmatterByteRange: Range<Int>?, frontmatter: String) {
             units = Array(frontmatter.utf16)
             let prefix: String
-            if let byteRange = document.frontmatterByteRange {
-                let prefixBytes = document.sourceBytes.prefix(byteRange.lowerBound)
+            if let byteRange = frontmatterByteRange {
+                let prefixBytes = sourceBytes.prefix(byteRange.lowerBound)
                 prefix = String(decoding: prefixBytes, as: UTF8.self)
             } else {
                 prefix = ""

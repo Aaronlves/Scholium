@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SQLite3
 import ScholiumContracts
@@ -7,6 +8,39 @@ import Testing
 
 @Suite("Persistent related-content projections")
 struct RelatedContentPersistenceTests {
+    @Test("Projection checksums retain the known empty and abc SHA256 vectors")
+    func checksumKnownVectors() {
+        for (data, expected) in [
+            (Data(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            (Data("abc".utf8), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        ] {
+            #expect(RelatedContentSourceProjection.checksum(data).utf8.elementsEqual(expected.utf8))
+        }
+    }
+
+    @Test("Binary projection checksums match the independent Foundation hexadecimal formatter")
+    func checksumBinaryFormattingParity() {
+        let fixtures =
+            (0...255).map { Data([UInt8($0)]) } + [
+                Data((0...255).map { UInt8($0) }),
+                Data(repeating: 0, count: 4_096),
+                Data((0..<4_096).map { UInt8(truncatingIfNeeded: $0 * 73 + 19) }),
+            ]
+        var observedDigestBytes: Set<UInt8> = []
+        for data in fixtures {
+            let digest = SHA256.hash(data: data)
+            observedDigestBytes.formUnion(digest)
+            // Keep the previous system formatter as an independent wire-format
+            // oracle, including zero-padding and lowercase hexadecimal digits.
+            let expected = digest.map { String(format: "%02x", $0) }.joined()
+            let actual = RelatedContentSourceProjection.checksum(data)
+            #expect(actual.utf8.count == 64)
+            #expect(actual.utf8.elementsEqual(expected.utf8))
+        }
+        #expect(observedDigestBytes.contains { $0 < 0x10 })
+        #expect(observedDigestBytes.contains { $0 >= 0x80 })
+    }
+
     @Test("Encoded projections retain nested Unicode paragraphs and exact CRLF source coordinates")
     func roundTrip() throws {
         let text = "\u{FEFF}---\r\nsummary: needle freedom\r\n---\r\n\r\n# Émotion 😀\r\n\r\n- nested needle freedom.\r\n\r\n> [[目标|行动]]{{needle freedom}}.\r\n"

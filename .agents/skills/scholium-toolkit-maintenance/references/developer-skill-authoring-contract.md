@@ -22,8 +22,10 @@ in their live document authorities, not a second manual inside skills.
 ## Disclose detail when needed
 
 Descriptions should name the job and its discriminating trigger in a short
-sentence; add an exclusion only for a likely neighboring collision. A related
-file type or keyword alone is not a trigger. Keep ordinary use self-contained.
+sentence, with the key use case first so shortening does not erase the trigger.
+Add an exclusion only for a likely neighboring collision; do not inventory
+every object, mode, tool, or safeguard in discovery metadata. A related file
+type or keyword alone is not a trigger. Keep ordinary use self-contained.
 For substantial modes, keep the entry a router rather than a shared itinerary.
 Link a reference with a specific loading condition only when its detail earns
 the extra file and read.
@@ -48,7 +50,9 @@ routing simulation from task execution. If both versions succeed, claim retained
 capability or simpler guidance, not a demonstrated performance improvement.
 Use positive and neighboring boundary cases for changed routing or permissions;
 structural checks do not establish behavior. Evaluate realistic outcomes, not
-heading matches or deletion percentages. Report any untested behavior.
+heading matches or deletion percentages. For review methods, include a confirmed
+failure and a known-clean control: finding more candidates is not a gain if
+false positives prompt harmful edits. Report any untested behavior.
 
 ## Source guidance
 
@@ -61,6 +65,9 @@ keep instructions useful across models rather than prescribing a model or
 removing safeguards on the strength of a capability claim.
 Official [Build skills](https://learn.chatgpt.com/docs/build-skills) guidance
 supports focused jobs and tested triggers. The official
+[skill-evaluation guide](https://developers.openai.com/blog/eval-skills)
+supports captured task runs and small outcome, process, and efficiency checks.
+The official
 [model guidance](https://developers.openai.com/api/docs/guides/latest-model)
 explains instruction-conflict and unnecessary-pause risks. Refresh runtime
 claims when relevant; do not embed model settings in durable developer methods.

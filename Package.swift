@@ -68,7 +68,7 @@ let package = Package(
         .executableTarget(name: "ScholiumAgentHelper", dependencies: ["ScholiumApplication"], path: "ScholiumAgentHelper"),
         .testTarget(
             name: "ScholiumContractsTests",
-            dependencies: ["ScholiumContracts"],
+            dependencies: ["ScholiumContracts", .product(name: "Yams", package: "Yams")],
             path: "Tests/ScholiumContractsTests",
             resources: [.copy("Fixtures")]
         ),
