@@ -240,6 +240,13 @@ body,
   padding-inline: 0;
 }
 
+/* These zero-source cursor anchors must keep their DOM nodes and layout
+   boxes. WebKit otherwise exposes the images in the Markdown textbox's flat
+   accessibility range, shifting text-service selections past hidden syntax. */
+.cm-content .cm-widgetBuffer {
+  visibility: hidden;
+}
+
 /* CodeMirror inserts a zero-width image around replaced syntax so the caret
    never sits directly beside an uneditable widget. Its default 1em height
    must follow the editor's body strut, not a semantic heading's enlarged em,

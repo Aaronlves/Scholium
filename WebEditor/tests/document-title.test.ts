@@ -1,5 +1,6 @@
-import {EditorState} from "@codemirror/state";
+import {Compartment, EditorState} from "@codemirror/state";
 import {history, undoDepth} from "@codemirror/commands";
+import {showPanel, type EditorView, type Panel, type PanelConstructor, type ViewUpdate} from "@codemirror/view";
 import {parseHTML} from "linkedom";
 import {afterEach, describe, expect, it, vi} from "vitest";
 import {createDocumentTitle} from "../document-title";
@@ -28,13 +29,40 @@ function harness() {
     endComposition,
   });
   const source = "\uFEFF---\r\nkind: note\r\n---\r\n😀 Body\r\n";
-  const extensions = [history(), exactSourceHistory, title.extension];
+  const editMode = new Compartment();
+  const extensions = [history(), exactSourceHistory, editMode.of(title.extension)];
   state = createMarkdownDocumentState(source, extensions);
+  const scrollDOM = document.createElement("div");
+  const contentDOM = document.createElement("div");
+  scrollDOM.append(contentDOM);
+  document.body.append(scrollDOM);
+  const view = {scrollDOM, contentDOM, requestMeasure: vi.fn()} as unknown as EditorView;
+  let panel: Panel | undefined;
+  let constructor: PanelConstructor | undefined;
+  // Exercise the public panel lifecycle without substituting a layout or AX
+  // engine. WK integration checks the real CodeMirror mount and geometry.
+  const synchronizePanel = () => {
+    const next = state.facet(showPanel).find((value): value is PanelConstructor => value !== null);
+    if (next !== constructor) {
+      const previousGroup = panel?.dom.parentElement;
+      panel?.destroy?.();
+      previousGroup?.remove();
+      constructor = next;
+      panel = next?.(view);
+      if (panel) {
+        const group = document.createElement("div");
+        group.className = "cm-panels cm-panels-top";
+        group.append(panel.dom);
+        panel.mount?.();
+        scrollDOM.querySelector(".scholium-note-title-container")!.append(group);
+      }
+    } else {
+      panel?.update?.({state} as ViewUpdate);
+    }
+  };
   const render = () => {
-    const widget = state.field(title.extension).iter().value!.spec.widget;
-    const wrapper = widget.toDOM();
-    document.body.replaceChildren(wrapper);
-    const input = wrapper.querySelector("textarea") as HTMLTextAreaElement;
+    synchronizePanel();
+    const input = panel!.dom.querySelector("textarea") as HTMLTextAreaElement;
     input.setSelectionRange = vi.fn();
     return input;
   };
@@ -50,7 +78,16 @@ function harness() {
   };
   title.setTitle("Title");
   return {
-    title, render, event, draft, requestRename, beginComposition, endComposition,
+    title, render, event, draft, requestRename, beginComposition, endComposition, scrollDOM, contentDOM,
+    leaveEdit() {
+      state = state.update({effects: editMode.reconfigure([])}).state;
+      synchronizePanel();
+    },
+    enterEdit() {
+      state = state.update({effects: editMode.reconfigure(title.extension)}).state;
+      synchronizePanel();
+    },
+    bodyTransaction() { state = state.update({changes: {from: state.doc.length, insert: "Body input"}}).state; },
     suspend: () => { suspended = true; },
     replaceDocument() {
       attachment += 1;
@@ -68,6 +105,42 @@ function harness() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("filename title ownership", () => {
+  it("mounts one separate filename control before Markdown in the same scrolling flow", () => {
+    const h = harness();
+    const input = h.render();
+    const container = h.scrollDOM.querySelector(".scholium-note-title-container")!;
+    expect(h.contentDOM.contains(input)).toBe(false);
+    expect(container.contains(input)).toBe(true);
+    expect(container.nextSibling).toBe(h.contentDOM);
+    expect(h.scrollDOM.classList.contains("scholium-note-title-scroll")).toBe(true);
+    expect(h.scrollDOM.querySelectorAll(".scholium-note-title-input")).toHaveLength(1);
+    h.expectSourceUnchanged();
+  });
+
+  it("retains a title draft and its control across an independent body transaction", () => {
+    const h = harness();
+    const input = h.render();
+    h.draft(input, "Draft 中文 🦉");
+    h.bodyTransaction();
+    expect(h.render()).toBe(input);
+    expect(input.value).toBe("Draft 中文 🦉");
+    expect(h.requestRename).not.toHaveBeenCalled();
+    expect(h.title.allowsDetachment()).toBe(false);
+  });
+
+  it("removes its panel framing when Edit leaves and remounts one saved title", () => {
+    const h = harness();
+    h.render();
+    h.leaveEdit();
+    expect(h.scrollDOM.querySelector(".scholium-note-title-container")).toBeNull();
+    expect(h.scrollDOM.classList.contains("scholium-note-title-scroll")).toBe(false);
+    expect(h.contentDOM.querySelector("textarea")).toBeNull();
+    h.expectSourceUnchanged();
+    h.enterEdit();
+    expect(h.render().value).toBe("Title");
+    expect(h.scrollDOM.querySelectorAll(".scholium-note-title-input")).toHaveLength(1);
+  });
+
   it("restores the saved accessible heading with the input when Escape cancels a title draft", () => {
     const h = harness();
     const input = h.render();
