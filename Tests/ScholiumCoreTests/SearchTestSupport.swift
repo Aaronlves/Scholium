@@ -13,7 +13,7 @@ extension TriptychSearchIndex {
     ) async throws -> SearchResponse {
         let ast = try #require(SearchQueryParser.parse(request.query).ast)
         await Task.yield()
-        return try search(
+        return try await search(
             request,
             ast: ast,
             linkMatches: linkMatches,

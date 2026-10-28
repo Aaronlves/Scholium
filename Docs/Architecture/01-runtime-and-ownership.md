@@ -106,9 +106,10 @@ Application authorizes visible scope. Adapters reuse these owners. Eligibility
 precedes counting/limits; ranking precedes pagination. Candidate evaluation and
 page hydration share one snapshot; successful branches supply witnesses,
 preserving paragraph existential boundaries.
-Long Related scans lease separate read-only WAL snapshots and yield between
-batches; Search keeps its own reader. Shutdown drains borrowed cursors before
-storage closes. Handle-owned bounded warmup joins equal cohorts; completed keys
+Search and long Related reads lease read-only WAL snapshots. Search page
+hydration uses structured concurrency; ranking and memos stay actor-owned.
+Checkpoints and delivery reject invalidated reads; shutdown drains borrowed
+cursors before storage closes. Handle-owned bounded warmup joins equal cohorts; completed keys
 skip preparation, never current-source checks.
 Direct-link queries require agreeing Graph/Search manifests and fail closed;
 indeterminate candidates stay distinct. Application prepares request-local two-step
